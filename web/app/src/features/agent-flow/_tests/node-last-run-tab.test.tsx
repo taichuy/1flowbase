@@ -44,7 +44,9 @@ describe('NodeLastRunTab', () => {
   });
 
   test('uses the schema last-run template for active-run empty state', async () => {
-    vi.spyOn(runtimeApi, 'fetchApplicationRunNodeLastRun').mockResolvedValue(null);
+    vi.spyOn(runtimeApi, 'fetchApplicationRunNodeLastRun').mockResolvedValue(
+      null
+    );
 
     render(
       <AppProviders>
@@ -428,6 +430,104 @@ describe('NodeLastRunTab', () => {
     );
     expect(await screen.findByLabelText('输出 JSON')).toHaveTextContent(
       '完整 Last Run 内容'
+    );
+  });
+
+  test('keeps start input summary shape when loading full history and tools', async () => {
+    vi.spyOn(runtimeApi, 'fetchRuntimeDebugArtifact').mockResolvedValue({
+      'node-start': {
+        query: '总结退款政策',
+        model: 'deepseek-chat',
+        files: [{ name: 'refund.md' }],
+        history: [{ role: 'user', content: '旧问题' }],
+        compatibility: {
+          tools: [{ name: 'read_file' }]
+        }
+      }
+    });
+    vi.spyOn(runtimeApi, 'fetchNodeLastRun').mockResolvedValue({
+      flow_run: {
+        id: 'run-1',
+        application_id: 'app-1',
+        flow_id: 'flow-1',
+        draft_id: 'draft-1',
+        compiled_plan_id: 'plan-1',
+        run_mode: 'debug_node_preview',
+        status: 'succeeded',
+        target_node_id: 'node-start',
+        input_payload: {},
+        output_payload: {},
+        error_payload: null,
+        created_by: 'user-1',
+        started_at: '2026-04-17T09:00:00Z',
+        finished_at: '2026-04-17T09:00:01Z',
+        created_at: '2026-04-17T09:00:00Z'
+      },
+      node_run: {
+        id: 'node-run-1',
+        flow_run_id: 'run-1',
+        node_id: 'node-start',
+        node_type: 'start',
+        node_alias: 'Start',
+        status: 'succeeded',
+        input_payload: {
+          __runtime_debug_artifact: true,
+          is_truncated: true,
+          original_size_bytes: 4096,
+          preview_size_bytes: 128,
+          content_type: 'application/json',
+          artifact_ref: 'artifact-start-input',
+          preview: '{"query":"总结'
+        },
+        input_payload_view: {
+          kind: 'start_input_summary',
+          artifact_ref: 'artifact-start-input',
+          is_truncated: true,
+          original_size_bytes: 4096,
+          preview_size_bytes: 128,
+          preview: {
+            query: '总结退款政策',
+            model: 'deepseek-chat',
+            files: [{ name: 'refund.md' }],
+            history: ['...'],
+            tools: ['...']
+          }
+        },
+        output_payload: {},
+        error_payload: null,
+        metrics_payload: {},
+        debug_payload: {},
+        started_at: '2026-04-17T09:00:00Z',
+        finished_at: '2026-04-17T09:00:01Z'
+      },
+      checkpoints: [],
+      events: []
+    });
+
+    render(
+      <AppProviders>
+        <NodeLastRunTab applicationId="app-1" nodeId="node-start" />
+      </AppProviders>
+    );
+
+    const inputJson = await screen.findByLabelText('输入 JSON');
+    expect(inputJson).toHaveTextContent('start_input_summary');
+    expect(inputJson).toHaveTextContent('...');
+
+    fireEvent.click(await screen.findByRole('button', { name: '加载完整值' }));
+
+    expect(runtimeApi.fetchRuntimeDebugArtifact).toHaveBeenCalledWith(
+      'app-1',
+      'artifact-start-input'
+    );
+    expect(await screen.findByLabelText('输入 JSON')).toHaveTextContent(
+      'start_input_summary'
+    );
+    expect(await screen.findByLabelText('输入 JSON')).toHaveTextContent(
+      '旧问题'
+    );
+    expect(await screen.findByLabelText('输入 JSON')).toHaveTextContent(
+      'read_file'
     );
   });
 

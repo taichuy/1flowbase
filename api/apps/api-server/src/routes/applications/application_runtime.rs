@@ -916,42 +916,12 @@ fn start_input_payload_summary_view(payload: &serde_json::Value) -> serde_json::
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     });
-    let query = application_run_query(source).or_else(|| immediate_start_input_text(start_payload));
-    let model =
-        application_run_model(source).or_else(|| immediate_start_model_value(start_payload));
-    let history_count = named_array_len(start_payload, &["history", "messages"]);
-    let tools_count = named_array_len(
-        start_payload,
-        &["tools", "tool_registry", "tool_definitions"],
-    );
-    let files_count = named_array_len(start_payload, &["files", "attachments"]);
-    let variables_count = start_payload
-        .as_object()
-        .map(serde_json::Map::len)
-        .unwrap_or_default();
     let mut view = serde_json::Map::new();
 
     view.insert(
         "kind".to_string(),
         serde_json::Value::String("start_input_summary".to_string()),
     );
-    view.insert(
-        "query".to_string(),
-        query
-            .map(serde_json::Value::String)
-            .unwrap_or(serde_json::Value::Null),
-    );
-    view.insert(
-        "model".to_string(),
-        model
-            .map(serde_json::Value::String)
-            .unwrap_or(serde_json::Value::Null),
-    );
-    view.insert("history_count".to_string(), history_count.into());
-    view.insert("tools_count".to_string(), tools_count.into());
-    view.insert("tool_registry_count".to_string(), tools_count.into());
-    view.insert("files_count".to_string(), files_count.into());
-    view.insert("variables_count".to_string(), variables_count.into());
 
     if let Some(object) = artifact_object {
         if let Some(value) = object
@@ -983,6 +953,11 @@ fn start_input_payload_summary_view(payload: &serde_json::Value) -> serde_json::
         }
     }
 
+    view.insert(
+        "preview".to_string(),
+        start_input_payload_preview(source, start_payload),
+    );
+
     serde_json::Value::Object(view)
 }
 
@@ -1009,8 +984,50 @@ fn start_input_payload(payload: &serde_json::Value) -> &serde_json::Value {
         .unwrap_or(payload)
 }
 
-fn named_array_len(payload: &serde_json::Value, keys: &[&str]) -> i64 {
-    find_named_array_len(payload, keys).unwrap_or_default() as i64
+fn start_input_payload_preview(
+    source: &serde_json::Value,
+    start_payload: &serde_json::Value,
+) -> serde_json::Value {
+    let mut preview = serde_json::Map::new();
+    let query = immediate_start_input_text(start_payload)
+        .or_else(|| application_run_query(source))
+        .unwrap_or_default();
+    let model = immediate_start_model_value(start_payload)
+        .or_else(|| application_run_model(source))
+        .unwrap_or_default();
+
+    preview.insert("query".to_string(), serde_json::Value::String(query));
+    preview.insert("model".to_string(), serde_json::Value::String(model));
+    preview.insert(
+        "files".to_string(),
+        named_array_value(start_payload, &["files", "attachments"])
+            .map(|value| serde_json::Value::Array(value.clone()))
+            .unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
+    );
+    preview.insert(
+        "history".to_string(),
+        placeholder_array_for_named_array(start_payload, &["history", "messages"]),
+    );
+    preview.insert(
+        "tools".to_string(),
+        placeholder_array_for_named_array(
+            start_payload,
+            &["tools", "tool_registry", "tool_definitions"],
+        ),
+    );
+
+    serde_json::Value::Object(preview)
+}
+
+fn placeholder_array_for_named_array(
+    payload: &serde_json::Value,
+    keys: &[&str],
+) -> serde_json::Value {
+    if find_named_array_len(payload, keys).unwrap_or_default() == 0 {
+        return serde_json::Value::Array(Vec::new());
+    }
+
+    serde_json::Value::Array(vec![serde_json::Value::String("...".to_string())])
 }
 
 fn immediate_start_input_text(value: &serde_json::Value) -> Option<String> {
@@ -1039,16 +1056,23 @@ fn immediate_start_model_value(value: &serde_json::Value) -> Option<String> {
 }
 
 fn find_named_array_len(payload: &serde_json::Value, keys: &[&str]) -> Option<usize> {
+    named_array_value(payload, keys).map(Vec::len)
+}
+
+fn named_array_value<'a>(
+    payload: &'a serde_json::Value,
+    keys: &[&str],
+) -> Option<&'a Vec<serde_json::Value>> {
     let object = payload.as_object()?;
     for key in keys {
         if let Some(array) = object.get(*key).and_then(serde_json::Value::as_array) {
-            return Some(array.len());
+            return Some(array);
         }
     }
 
     for value in object.values() {
-        if let Some(len) = find_named_array_len(value, keys) {
-            return Some(len);
+        if let Some(array) = named_array_value(value, keys) {
+            return Some(array);
         }
     }
 
@@ -2280,6 +2304,7 @@ mod tests {
 
     #[test]
     fn start_node_response_exposes_input_payload_summary_view() {
+        let artifact_ref = Uuid::now_v7().to_string();
         let run = domain::NodeRunRecord {
             id: Uuid::now_v7(),
             flow_run_id: Uuid::now_v7(),
@@ -2289,24 +2314,16 @@ mod tests {
             status: domain::NodeRunStatus::Succeeded,
             input_payload: serde_json::json!({
                 "__runtime_debug_artifact": true,
-                "artifact_ref": Uuid::now_v7().to_string(),
+                "artifact_ref": artifact_ref,
                 "is_truncated": true,
                 "original_size_bytes": 12598,
                 "preview_size_bytes": 2048,
-                "preview": serde_json::json!({
-                    "query": "say hello",
-                    "model": "deepseek-chat",
-                    "history": [
-                        { "role": "user", "content": "old question" },
-                        { "role": "assistant", "content": "old answer" }
-                    ],
-                    "tools": [
-                        { "name": "read_file" },
-                        { "function": { "name": "search" } }
-                    ],
-                    "files": []
-                })
-                .to_string()
+                "preview": "{\"query\":\"say",
+                "query": "say hello",
+                "model": "deepseek-chat",
+                "files": [{ "name": "brief.md" }],
+                "history": ["..."],
+                "tools": ["..."]
             }),
             output_payload: serde_json::json!({ "query": "say hello" }),
             error_payload: None,
@@ -2323,12 +2340,28 @@ mod tests {
             serde_json::json!(true)
         );
         assert_eq!(response.input_payload_view["kind"], "start_input_summary");
-        assert_eq!(response.input_payload_view["query"], "say hello");
-        assert_eq!(response.input_payload_view["model"], "deepseek-chat");
-        assert_eq!(response.input_payload_view["history_count"], 2);
-        assert_eq!(response.input_payload_view["tools_count"], 2);
-        assert_eq!(response.input_payload_view["files_count"], 0);
-        assert!(response.input_payload_view.get("preview").is_none());
+        assert_eq!(response.input_payload_view["artifact_ref"], artifact_ref);
+        assert_eq!(response.input_payload_view["is_truncated"], true);
+        assert_eq!(response.input_payload_view["original_size_bytes"], 12598);
+        assert_eq!(response.input_payload_view["preview_size_bytes"], 2048);
+        assert_eq!(response.input_payload_view["preview"]["query"], "say hello");
+        assert_eq!(
+            response.input_payload_view["preview"]["model"],
+            "deepseek-chat"
+        );
+        assert_eq!(
+            response.input_payload_view["preview"]["files"],
+            serde_json::json!([{ "name": "brief.md" }])
+        );
+        assert_eq!(
+            response.input_payload_view["preview"]["history"],
+            serde_json::json!(["..."])
+        );
+        assert_eq!(
+            response.input_payload_view["preview"]["tools"],
+            serde_json::json!(["..."])
+        );
+        assert!(response.input_payload_view.get("query").is_none());
     }
 
     #[test]

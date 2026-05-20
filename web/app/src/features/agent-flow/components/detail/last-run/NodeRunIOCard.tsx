@@ -48,6 +48,94 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
+function isStartInputSummaryPayload(value: unknown): value is {
+  kind: 'start_input_summary';
+  preview: Record<string, unknown>;
+} & Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    value.kind === 'start_input_summary' &&
+    isRecord(value.preview)
+  );
+}
+
+function pickStartInputPayload(value: unknown) {
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const nodeStart = value['node-start'];
+  if (isRecord(nodeStart)) {
+    return nodeStart;
+  }
+
+  const start = value.start;
+  if (isRecord(start)) {
+    return start;
+  }
+
+  return value;
+}
+
+function readNamedArray(value: unknown, keys: string[]) {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const entryValue = value[key];
+    if (Array.isArray(entryValue)) {
+      return [...entryValue];
+    }
+  }
+
+  for (const entryValue of Object.values(value)) {
+    const nestedArray = readNamedArray(entryValue, keys);
+    if (nestedArray) {
+      return nestedArray;
+    }
+  }
+
+  return null;
+}
+
+function mergeLoadedStartInputSummary(
+  summary: { preview: Record<string, unknown> } & Record<string, unknown>,
+  fullPayload: unknown
+) {
+  const startPayload = pickStartInputPayload(fullPayload);
+
+  return {
+    ...summary,
+    preview: {
+      ...summary.preview,
+      history:
+        readNamedArray(startPayload, ['history', 'messages']) ??
+        summary.preview.history ??
+        [],
+      tools:
+        readNamedArray(startPayload, [
+          'tools',
+          'tool_registry',
+          'tool_definitions'
+        ]) ??
+        summary.preview.tools ??
+        []
+    }
+  };
+}
+
+function mergeLoadedArtifactPayload(
+  currentPayload: unknown,
+  fullPayload: unknown
+) {
+  if (isStartInputSummaryPayload(currentPayload)) {
+    return mergeLoadedStartInputSummary(currentPayload, fullPayload);
+  }
+
+  return fullPayload;
+}
+
 type ConsoleLogLevel = 'info' | 'warn' | 'error';
 
 interface ConsoleLogEntryView {
@@ -90,17 +178,15 @@ function readConsoleLogs(debugPayload: unknown): ConsoleLogEntryView[] {
     return [];
   }
 
-  return debugPayload.console_logs
-    .filter(isRecord)
-    .map((entry) => {
-      const args = Array.isArray(entry.args) ? entry.args : [];
+  return debugPayload.console_logs.filter(isRecord).map((entry) => {
+    const args = Array.isArray(entry.args) ? entry.args : [];
 
-      return {
-        level: normalizeConsoleLogLevel(entry.level),
-        message: formatConsoleLogMessage(entry.message || args),
-        args
-      };
-    });
+    return {
+      level: normalizeConsoleLogLevel(entry.level),
+      message: formatConsoleLogMessage(entry.message || args),
+      args
+    };
+  });
 }
 
 function pickProcessPayload(debugPayload: unknown) {
@@ -139,10 +225,7 @@ function NodeRunConsoleLogs({ logs }: { logs: ConsoleLogEntryView[] }) {
 
   return (
     <section aria-label="控制台日志" className="agent-flow-node-run-console">
-      <Typography.Text
-        className="agent-flow-node-run-console__title"
-        strong
-      >
+      <Typography.Text className="agent-flow-node-run-console__title" strong>
         控制台日志
       </Typography.Text>
       <div className="agent-flow-node-run-console__list">
@@ -236,7 +319,8 @@ function NodeRunJsonBlock({
     }
 
     try {
-      setLoadedPayload(await onLoadArtifact(artifactRef));
+      const fullPayload = await onLoadArtifact(artifactRef);
+      setLoadedPayload(mergeLoadedArtifactPayload(payload, fullPayload));
       message.success('已加载完整值');
     } catch {
       message.error('加载完整值失败');
@@ -274,7 +358,8 @@ export function NodeRunIOCard({ lastRun }: { lastRun: NodeLastRun }) {
       <div className="agent-flow-node-run-json-list">
         <NodeRunPayloadSections
           inputPayload={
-            lastRun.node_run.input_payload_view ?? lastRun.node_run.input_payload
+            lastRun.node_run.input_payload_view ??
+            lastRun.node_run.input_payload
           }
           debugPayload={lastRun.node_run.debug_payload}
           outputPayload={lastRun.node_run.output_payload}

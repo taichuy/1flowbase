@@ -188,13 +188,19 @@ pub async fn offload_application_run_detail_artifacts(
             node_run_id: Some(node_run.id),
             run_event_id: None,
         };
+        let original_input_payload = node_run.input_payload.clone();
         let (input_payload, input_changed) = writer
             .offload_value(
                 &node_scope,
                 "node_input_payload",
-                node_run.input_payload.clone(),
+                original_input_payload.clone(),
             )
             .await?;
+        let input_payload = if input_changed && node_run.node_type == "start" {
+            with_start_node_input_summary(input_payload, &original_input_payload)
+        } else {
+            input_payload
+        };
         let (output_payload, output_changed) = writer
             .offload_value(
                 &node_scope,
@@ -422,6 +428,73 @@ fn with_application_run_input_summary(
     payload
 }
 
+fn with_start_node_input_summary(mut payload: Value, full_input: &Value) -> Value {
+    let Some(object) = payload.as_object_mut() else {
+        return payload;
+    };
+    let start_payload = start_node_input_payload(full_input);
+    let query = immediate_input_text(start_payload)
+        .or_else(|| application_run_query(full_input))
+        .unwrap_or_default();
+    let model = immediate_model_value(start_payload)
+        .or_else(|| application_run_model(full_input))
+        .unwrap_or_default();
+
+    object.insert("query".to_string(), Value::String(query));
+    object.insert("model".to_string(), Value::String(model));
+    object.insert(
+        "files".to_string(),
+        named_array_value(start_payload, &["files", "attachments"])
+            .map(|value| Value::Array(value.clone()))
+            .unwrap_or_else(|| Value::Array(Vec::new())),
+    );
+    object.insert(
+        "history".to_string(),
+        placeholder_array_for_named_array(start_payload, &["history", "messages"]),
+    );
+    object.insert(
+        "tools".to_string(),
+        placeholder_array_for_named_array(
+            start_payload,
+            &["tools", "tool_registry", "tool_definitions"],
+        ),
+    );
+
+    payload
+}
+
+fn start_node_input_payload(payload: &Value) -> &Value {
+    payload
+        .get("node-start")
+        .or_else(|| payload.get("start"))
+        .unwrap_or(payload)
+}
+
+fn placeholder_array_for_named_array(payload: &Value, keys: &[&str]) -> Value {
+    if named_array_value(payload, keys).is_none_or(Vec::is_empty) {
+        return Value::Array(Vec::new());
+    }
+
+    Value::Array(vec![Value::String("...".to_string())])
+}
+
+fn named_array_value<'a>(payload: &'a Value, keys: &[&str]) -> Option<&'a Vec<Value>> {
+    let object = payload.as_object()?;
+    for key in keys {
+        if let Some(array) = object.get(*key).and_then(Value::as_array) {
+            return Some(array);
+        }
+    }
+
+    for value in object.values() {
+        if let Some(array) = named_array_value(value, keys) {
+            return Some(array);
+        }
+    }
+
+    None
+}
+
 fn is_safe_to_persist_debug_artifact_previews(status: domain::FlowRunStatus) -> bool {
     matches!(
         status,
@@ -540,6 +613,36 @@ mod tests {
 
         assert_eq!(preview["query"], json!("ping"));
         assert_eq!(preview["model"], json!("gpt-test"));
+    }
+
+    #[test]
+    fn start_node_input_artifact_preview_keeps_lightweight_start_fields() {
+        let preview = json!({
+            "__runtime_debug_artifact": true,
+            "artifact_ref": Uuid::now_v7().to_string(),
+            "preview": "{\"query\":\"truncated"
+        });
+        let full_input = json!({
+            "query": "总结退款政策",
+            "model": "deepseek-chat",
+            "files": [{ "name": "refund.md" }],
+            "history": [
+                { "role": "user", "content": "旧问题" }
+            ],
+            "compatibility": {
+                "tools": [
+                    { "name": "read_file" }
+                ]
+            }
+        });
+
+        let preview = with_start_node_input_summary(preview, &full_input);
+
+        assert_eq!(preview["query"], json!("总结退款政策"));
+        assert_eq!(preview["model"], json!("deepseek-chat"));
+        assert_eq!(preview["files"], json!([{ "name": "refund.md" }]));
+        assert_eq!(preview["history"], json!(["..."]));
+        assert_eq!(preview["tools"], json!(["..."]));
     }
 
     #[test]

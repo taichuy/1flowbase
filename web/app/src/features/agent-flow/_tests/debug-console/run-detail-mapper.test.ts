@@ -215,11 +215,15 @@ describe('run detail mapper', () => {
         },
         input_payload_view: {
           kind: 'start_input_summary',
-          query: '总结退款政策',
-          model: 'deepseek-chat',
-          history_count: 4,
-          tools_count: 2,
-          files_count: 0
+          artifact_ref: 'artifact-start-input',
+          is_truncated: true,
+          preview: {
+            query: '总结退款政策',
+            model: 'deepseek-chat',
+            files: [],
+            history: ['...'],
+            tools: ['...']
+          }
         },
         output_payload: {},
         error_payload: null,
@@ -232,11 +236,15 @@ describe('run detail mapper', () => {
 
     expect(mapRunDetailToTrace(detail)[0].inputPayload).toEqual({
       kind: 'start_input_summary',
-      query: '总结退款政策',
-      model: 'deepseek-chat',
-      history_count: 4,
-      tools_count: 2,
-      files_count: 0
+      artifact_ref: 'artifact-start-input',
+      is_truncated: true,
+      preview: {
+        query: '总结退款政策',
+        model: 'deepseek-chat',
+        files: [],
+        history: ['...'],
+        tools: ['...']
+      }
     });
   });
 });
