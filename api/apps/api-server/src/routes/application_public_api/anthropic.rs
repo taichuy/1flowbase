@@ -270,6 +270,7 @@ mod tests {
             node_input_payload: json!({}),
             metadata: json!({}),
             answer: None,
+            reasoning: None,
             required_action: None,
             tool_calls: Some(json!([
                 {

@@ -239,6 +239,17 @@ fn openai_runtime_event_to_sse(
                 "finish_reason": null
             }]
         }))],
+        "reasoning_delta" => vec![json_sse(json!({
+            "id": format!("chatcmpl-{}", initial_run.id),
+            "object": "chat.completion.chunk",
+            "created": initial_run.created_at.unix_timestamp(),
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "delta": { "reasoning_content": envelope.text.unwrap_or_default() },
+                "finish_reason": null
+            }]
+        }))],
         "flow_finished" => vec![
             json_sse(json!({
                 "id": format!("chatcmpl-{}", initial_run.id),
@@ -423,4 +434,70 @@ fn event_json_sse(event_name: &'static str, payload: Value) -> Result<Event, Inf
 
 fn done_sse() -> Result<Event, Infallible> {
     Ok(Event::default().data("[DONE]"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{body::to_bytes, response::IntoResponse};
+    use control_plane::{
+        application_public_api::native::NativeRunStatus,
+        ports::{RuntimeEventDurability, RuntimeEventPayload, RuntimeEventSource},
+    };
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    fn native_run(run_id: Uuid) -> NativeRunResult {
+        NativeRunResult {
+            id: run_id,
+            application_id: Uuid::nil(),
+            api_key_id: Uuid::nil(),
+            publication_version_id: Uuid::nil(),
+            status: NativeRunStatus::Running,
+            node_input_payload: json!({}),
+            metadata: json!({}),
+            answer: None,
+            reasoning: None,
+            required_action: None,
+            tool_calls: None,
+            usage: None,
+            error: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    fn reasoning_envelope(run_id: Uuid) -> RuntimeEventEnvelope {
+        RuntimeEventEnvelope::new(
+            run_id,
+            1,
+            RuntimeEventPayload {
+                event_type: "reasoning_delta".to_string(),
+                source: RuntimeEventSource::Provider,
+                durability: RuntimeEventDurability::DurableRequired,
+                persist_required: true,
+                trace_visible: false,
+                payload: json!({ "type": "reasoning_delta", "text": "先分析用户意图" }),
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn openai_stream_projects_reasoning_delta_as_reasoning_content() {
+        let run_id = Uuid::now_v7();
+        let events = openai_runtime_event_to_sse(
+            &native_run(run_id),
+            "provider/model",
+            reasoning_envelope(run_id),
+        );
+
+        let response = Sse::new(tokio_stream::iter(events)).into_response();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(
+            body.contains("\"reasoning_content\":\"先分析用户意图\""),
+            "{body}"
+        );
+        assert!(!body.contains("\"content\":\"先分析用户意图\""), "{body}");
+    }
 }

@@ -134,6 +134,8 @@ pub struct NativeRunResult {
     #[serde(default)]
     pub answer: Option<String>,
     #[serde(default)]
+    pub reasoning: Option<String>,
+    #[serde(default)]
     pub required_action: Option<NativeRequiredAction>,
     #[serde(default)]
     pub tool_calls: Option<Value>,

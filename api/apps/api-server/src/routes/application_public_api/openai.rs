@@ -119,6 +119,8 @@ pub struct OpenAiChatMessage {
     pub role: &'static str,
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<OpenAiToolCall>>,
 }
 
@@ -440,6 +442,7 @@ fn to_openai_response(run: NativeRunResult, model: String) -> OpenAiChatCompleti
                 } else {
                     Some(run.answer.unwrap_or_default())
                 },
+                reasoning_content: run.reasoning.filter(|value| !value.is_empty()),
                 tool_calls,
             },
             finish_reason,
@@ -507,6 +510,7 @@ mod tests {
             node_input_payload: json!({}),
             metadata: json!({}),
             answer: None,
+            reasoning: None,
             required_action: None,
             tool_calls: Some(json!([
                 {
@@ -531,6 +535,38 @@ mod tests {
         assert_eq!(
             payload["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"],
             json!("{\"order_id\":\"order_123\"}")
+        );
+    }
+
+    #[test]
+    fn openai_response_projects_native_reasoning_content() {
+        let run = NativeRunResult {
+            id: Uuid::nil(),
+            application_id: Uuid::nil(),
+            api_key_id: Uuid::nil(),
+            publication_version_id: Uuid::nil(),
+            status: NativeRunStatus::Succeeded,
+            node_input_payload: json!({}),
+            metadata: json!({}),
+            answer: Some("正式回答".to_string()),
+            reasoning: Some("先分析用户意图".to_string()),
+            required_action: None,
+            tool_calls: None,
+            usage: None,
+            error: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+        };
+
+        let payload = serde_json::to_value(to_openai_response(run, "provider/model".into()))
+            .expect("openai response serializes");
+
+        assert_eq!(
+            payload["choices"][0]["message"]["reasoning_content"],
+            json!("先分析用户意图")
+        );
+        assert_eq!(
+            payload["choices"][0]["message"]["content"],
+            json!("正式回答")
         );
     }
 }

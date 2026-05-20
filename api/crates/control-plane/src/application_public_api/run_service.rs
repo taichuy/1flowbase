@@ -428,12 +428,22 @@ pub fn native_result_from_flow_run(
         node_input_payload: flow_run.input_payload.clone(),
         metadata,
         answer: extract_answer(&flow_run.output_payload),
+        reasoning: None,
         required_action: None,
         tool_calls: extract_tool_calls(&flow_run.output_payload),
         usage: extract_usage(&flow_run.output_payload),
         error,
         created_at: flow_run.created_at,
     }
+}
+
+pub fn native_result_from_application_run_detail(
+    detail: &domain::ApplicationRunDetail,
+    metadata: Value,
+) -> NativeRunResult {
+    let mut result = native_result_from_flow_run(&detail.flow_run, metadata);
+    result.reasoning = extract_reasoning(&detail.events);
+    result
 }
 
 fn extract_answer(output_payload: &Value) -> Option<String> {
@@ -443,6 +453,22 @@ fn extract_answer(output_payload: &Value) -> Option<String> {
         .or_else(|| output_payload.get("output"))
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
+}
+
+fn extract_reasoning(events: &[domain::RunEventRecord]) -> Option<String> {
+    let reasoning = events
+        .iter()
+        .filter(|event| event.event_type == "reasoning_delta")
+        .filter_map(|event| {
+            event
+                .payload
+                .get("text")
+                .or_else(|| event.payload.get("delta"))
+                .and_then(Value::as_str)
+        })
+        .collect::<String>();
+
+    (!reasoning.is_empty()).then_some(reasoning)
 }
 
 fn extract_tool_calls(output_payload: &Value) -> Option<Value> {
@@ -476,5 +502,76 @@ fn native_status(status: domain::FlowRunStatus) -> NativeRunStatus {
         domain::FlowRunStatus::Succeeded => NativeRunStatus::Succeeded,
         domain::FlowRunStatus::Failed => NativeRunStatus::Failed,
         domain::FlowRunStatus::Cancelled => NativeRunStatus::Cancelled,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn flow_run(output_payload: Value) -> domain::FlowRunRecord {
+        domain::FlowRunRecord {
+            id: Uuid::nil(),
+            application_id: Uuid::nil(),
+            flow_id: Uuid::nil(),
+            draft_id: Uuid::nil(),
+            compiled_plan_id: None,
+            debug_session_id: String::new(),
+            flow_schema_version: "1flowbase.flow/v2".to_string(),
+            document_hash: "hash".to_string(),
+            run_mode: domain::FlowRunMode::PublishedApiRun,
+            target_node_id: None,
+            title: "test".to_string(),
+            status: domain::FlowRunStatus::Succeeded,
+            input_payload: json!({}),
+            output_payload,
+            error_payload: None,
+            created_by: Uuid::nil(),
+            authorized_account: None,
+            api_key_id: Some(Uuid::nil()),
+            publication_version_id: Some(Uuid::nil()),
+            external_user: None,
+            external_conversation_id: None,
+            external_trace_id: None,
+            compatibility_mode: None,
+            idempotency_key: None,
+            started_at: OffsetDateTime::UNIX_EPOCH,
+            finished_at: Some(OffsetDateTime::UNIX_EPOCH),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    fn run_event(sequence: i64, event_type: &str, text: &str) -> domain::RunEventRecord {
+        domain::RunEventRecord {
+            id: Uuid::now_v7(),
+            flow_run_id: Uuid::nil(),
+            node_run_id: Some(Uuid::nil()),
+            sequence,
+            event_type: event_type.to_string(),
+            payload: json!({ "text": text }),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    #[test]
+    fn native_result_from_application_run_detail_restores_reasoning_deltas() {
+        let detail = domain::ApplicationRunDetail {
+            flow_run: flow_run(json!({ "answer": "正式回答" })),
+            node_runs: Vec::new(),
+            checkpoints: Vec::new(),
+            callback_tasks: Vec::new(),
+            events: vec![
+                run_event(1, "reasoning_delta", "先分析"),
+                run_event(2, "text_delta", "正式回答"),
+                run_event(3, "reasoning_delta", "用户意图"),
+            ],
+        };
+
+        let result = native_result_from_application_run_detail(&detail, json!({}));
+
+        assert_eq!(result.answer.as_deref(), Some("正式回答"));
+        assert_eq!(result.reasoning.as_deref(), Some("先分析用户意图"));
     }
 }

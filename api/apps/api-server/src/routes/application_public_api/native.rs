@@ -18,7 +18,7 @@ use control_plane::{
             GetNativeRunCommand, NativeRunRequest, NativeRunResult, NativeRunValidationError,
             ResumeNativeRunCommand,
         },
-        run_service::native_result_from_flow_run,
+        run_service::native_result_from_application_run_detail,
     },
     file_management::{FileUploadService, UploadFileCommand},
     orchestration_runtime::{
@@ -60,6 +60,7 @@ pub struct NativeRunResponse {
     pub node_input_payload: Value,
     pub metadata: Value,
     pub answer: Option<String>,
+    pub reasoning: Option<String>,
     pub required_action: Option<Value>,
     pub tool_calls: Option<Value>,
     pub usage: Option<Value>,
@@ -272,6 +273,7 @@ pub(crate) fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse 
         node_input_payload: run.node_input_payload,
         metadata: run.metadata,
         answer: run.answer,
+        reasoning: run.reasoning,
         required_action: run
             .required_action
             .and_then(|value| serde_json::to_value(value).ok()),
@@ -300,8 +302,8 @@ pub(crate) async fn execute_blocking_native_run(
         })
         .await;
     match execution_result {
-        Ok(detail) => Ok(native_result_from_flow_run(
-            &detail.flow_run,
+        Ok(detail) => Ok(native_result_from_application_run_detail(
+            &detail,
             run.metadata.clone(),
         )),
         Err(error) => {
@@ -587,8 +589,8 @@ pub async fn resume_native_run(
             })
             .await
             .map_err(service_error)?;
-            native_result_from_flow_run(
-                &detail.flow_run,
+            native_result_from_application_run_detail(
+                &detail,
                 serde_json::json!({
                     "external_user": detail.flow_run.external_user,
                     "external_conversation_id": detail.flow_run.external_conversation_id,
