@@ -53,6 +53,9 @@ runs:
       env:
         POSTGRES_MAX_CONNECTIONS: "300"
       run: |
+        if [ ! -f docker/middleware.env ]; then
+          cp docker/middleware.env.example docker/middleware.env
+        fi
         if docker compose version >/dev/null 2>&1; then
           docker compose -f docker/docker-compose.middleware.yaml down --remove-orphans || true
           docker compose -f docker/docker-compose.middleware.yaml up -d --wait db

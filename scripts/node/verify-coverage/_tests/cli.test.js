@@ -29,7 +29,7 @@ function expectedBackendCoverageCommand({ repoRoot, entry, cargoParallelism, car
       '--json',
       '--summary-only',
       '--output-path',
-      `${repoRoot}/tmp/test-governance/coverage/backend/${entry.key}.json`,
+      path.join(repoRoot, 'tmp', 'test-governance', 'coverage', 'backend', `${entry.key}.json`),
       '--',
       `--test-threads=${cargoTestThreads}`,
     ],

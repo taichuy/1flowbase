@@ -114,10 +114,13 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       globals: true,
       setupFiles: './src/test/setup.ts',
+      include: ['src/**/*.{test,spec}.?(c|m)[jt]s?(x)', '../packages/page-runtime/src/_tests/**/*.test.ts'],
       coverage: {
         provider: 'v8',
         reporter: ['text-summary', 'json-summary', 'html'],
         reportsDirectory: '../../tmp/test-governance/coverage/frontend',
+        allowExternal: true,
+        include: ['src/**/*.{ts,tsx}', '../packages/page-runtime/src/**/*.ts'],
       },
     }
   };

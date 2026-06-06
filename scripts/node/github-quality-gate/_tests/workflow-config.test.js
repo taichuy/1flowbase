@@ -5,46 +5,32 @@ const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
 
+function readTextFile(...segments) {
+  return fs.readFileSync(path.join(repoRoot, ...segments), "utf8").replace(/\r\n/gu, "\n");
+}
+
 function readVerifyWorkflow() {
-  return fs.readFileSync(
-    path.join(repoRoot, ".github", "workflows", "verify.yml"),
-    "utf8",
-  );
+  return readTextFile(".github", "workflows", "verify.yml");
 }
 
 function readQualityGateWorkflow() {
-  return fs.readFileSync(
-    path.join(repoRoot, ".github", "workflows", "quality-gate.yml"),
-    "utf8",
-  );
+  return readTextFile(".github", "workflows", "quality-gate.yml");
 }
 
 function readContainerImagesWorkflow() {
-  return fs.readFileSync(
-    path.join(repoRoot, ".github", "workflows", "container-images.yml"),
-    "utf8",
-  );
+  return readTextFile(".github", "workflows", "container-images.yml");
 }
 
 function readApiServerDockerfile() {
-  return fs.readFileSync(
-    path.join(repoRoot, "docker", "api-server.Dockerfile"),
-    "utf8",
-  );
+  return readTextFile("docker", "api-server.Dockerfile");
 }
 
 function readQualityGateAction() {
-  return fs.readFileSync(
-    path.join(repoRoot, ".github", "actions", "quality-gate", "action.yml"),
-    "utf8",
-  );
+  return readTextFile(".github", "actions", "quality-gate", "action.yml");
 }
 
 function readGitHubAutomationDocs() {
-  return fs.readFileSync(
-    path.join(repoRoot, ".github", "GITHUB_AUTOMATION.md"),
-    "utf8",
-  );
+  return readTextFile(".github", "GITHUB_AUTOMATION.md");
 }
 
 function readReactDoctorConfig() {
@@ -54,6 +40,10 @@ function readReactDoctorConfig() {
       "utf8",
     ),
   );
+}
+
+function readWebAppViteConfig() {
+  return readTextFile("web", "app", "vite.config.ts");
 }
 
 function extractPushBranches(workflow) {
@@ -515,10 +505,28 @@ test("quality gate action clears stale middleware containers before starting pos
 
   assert.match(
     action,
+    /cp docker\/middleware\.env\.example docker\/middleware\.env/u,
+  );
+  assert.match(
+    action,
     /docker compose -f docker\/docker-compose\.middleware\.yaml down --remove-orphans/u,
   );
   assert.match(
     action,
     /docker-compose -f docker\/docker-compose\.middleware\.yaml down --remove-orphans/u,
   );
+});
+
+test("frontend coverage includes page-runtime package sources and tests", () => {
+  const viteConfig = readWebAppViteConfig();
+
+  assert.match(
+    viteConfig,
+    /\.\.\/packages\/page-runtime\/src\/_tests\/\*\*\/\*\.test\.ts/u,
+  );
+  assert.match(
+    viteConfig,
+    /include:\s*\[[\s\S]*'\.\.\/packages\/page-runtime\/src\/\*\*\/\*\.ts'/u,
+  );
+  assert.match(viteConfig, /allowExternal: true/u);
 });
