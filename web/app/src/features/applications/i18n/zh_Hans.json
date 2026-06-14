@@ -134,7 +134,6 @@
     "full_token_hidden_after_close": "关闭后页面不再显示完整 token。",
     "text": "密钥说明",
     "application_description": "应用简介",
-    "import_dsl_file": "导入 DSL 文件",
     "no_optional_tags": "当前还没有可选标签",
     "only_finished_runs_counted": "仅统计运行已经结束的任务。",
     "continue_execution": "继续执行",

@@ -538,7 +538,8 @@ entries: []
               {
                 model_id: 'gpt-4o-mini',
                 enabled: true,
-                context_window_override_tokens: null
+                context_window_override_tokens: null,
+                supports_multimodal: false
               }
             ],
             included_in_main: true,

@@ -5,7 +5,6 @@ import { AppRouterProvider } from '../app/router';
 import { AppShellFrame } from '../app-shell/AppShellFrame';
 import { createAccountMenuItems } from '../app-shell/account-menu-items';
 import { AgentFlowEditorShell } from '../features/agent-flow/components/editor/AgentFlowEditorShell';
-import { SignInPage } from '../features/auth/pages/SignInPage';
 import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
 import { ToolsPage } from '../features/tools/pages/ToolsPage';
@@ -19,6 +18,7 @@ import {
   seedStyleBoundarySettingsFetch,
   styleBoundaryNodeContributions
 } from './scene-fixtures';
+import { useAuthStore } from '../state/auth-store';
 import type { StyleBoundaryRuntimeScene } from './types';
 
 function getAccountPopupChildren() {
@@ -44,9 +44,13 @@ function renderShellScene(pathname: string, page: ReactNode) {
   return <AppShellFrame pathname={pathname}>{page}</AppShellFrame>;
 }
 
-function renderRouterScene(pathname: string) {
+function renderRouterScene(pathname: string, options: { authenticated?: boolean } = {}) {
   seedStyleBoundaryCommonFetch();
-  seedStyleBoundaryAuth();
+  if (options.authenticated === false) {
+    useAuthStore.getState().setAnonymous();
+  } else {
+    seedStyleBoundaryAuth();
+  }
   window.history.replaceState({}, '', pathname);
 
   return <AppRouterProvider />;
@@ -127,5 +131,5 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     return renderRouterScene('/settings/docs?category=console');
   },
   'page.me': () => renderRouterScene('/me/profile'),
-  'page.sign-in': () => <SignInPage />
+  'page.sign-in': () => renderRouterScene('/sign-in', { authenticated: false })
 };

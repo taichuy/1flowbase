@@ -134,7 +134,6 @@
     "full_token_hidden_after_close": "After closing, the page no longer displays the complete token.",
     "text": "Key description",
     "application_description": "Application introduction",
-    "import_dsl_file": "Import DSL file",
     "no_optional_tags": "There are currently no optional tags",
     "only_finished_runs_counted": "Only tasks that have finished running are counted.",
     "continue_execution": "Continue execution",

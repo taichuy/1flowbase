@@ -7,6 +7,7 @@ const path = require('node:path');
 const {
   collectRepoHygieneFindings,
   main,
+  partitionTrackedWarnings,
   scanSourceFile,
 } = require('../core.js');
 
@@ -175,6 +176,44 @@ test('collectRepoHygieneFindings reports duplicate test titles and oversized fil
     findings.some((finding) => finding.rule === 'test-file-size-pressure'),
     true
   );
+});
+
+test('partitionTrackedWarnings suppresses only issue-tracked advisory findings', () => {
+  const findings = [
+    {
+      severity: 'warning',
+      rule: 'file-size-pressure',
+      file: 'api/crates/control-plane/src/large.rs',
+      line: null,
+      message: 'file is approaching the repository split pressure line',
+      snippet: '1200 lines',
+    },
+    {
+      severity: 'error',
+      rule: 'focused-test',
+      file: 'web/app/src/features/example/_tests/example.test.ts',
+      line: 1,
+      message: 'focused test would make CI execute an incomplete test set',
+      snippet: "test.only('example', () => {})",
+    },
+  ];
+
+  const partitioned = partitionTrackedWarnings(findings, [
+    {
+      rule: 'file-size-pressure',
+      file: 'api/crates/control-plane/src/large.rs',
+      issue: '#901',
+      reason: 'tracked as repo-hygiene debt',
+    },
+  ]);
+
+  assert.deepEqual(
+    partitioned.active.map((finding) => finding.rule),
+    ['focused-test']
+  );
+  assert.equal(partitioned.suppressed.length, 1);
+  assert.equal(partitioned.suppressed[0].issue, '#901');
+  assert.equal(partitioned.suppressed[0].reason, 'tracked as repo-hygiene debt');
 });
 
 test('collectRepoHygieneFindings excludes tmp sandbox tests from formal quality assets', () => {

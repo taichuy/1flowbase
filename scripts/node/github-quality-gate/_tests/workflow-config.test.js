@@ -460,10 +460,15 @@ test("container image workflows keep vulnerability findings as warnings", () => 
   const publishWorkflow = readContainerImagesWorkflow();
   const qualityGateWorkflow = readQualityGateWorkflow();
 
-  assert.match(
-    publishWorkflow,
-    /Enforce CRITICAL Trivy release gate[\s\S]*?output: tmp\/test-governance\/trivy-\$\{\{ matrix\.component \}\}-critical\.json\n\s+exit-code: "0"/u,
-  );
+  for (const component of ["web", "api-server", "plugin-runner"]) {
+    assert.match(
+      publishWorkflow,
+      new RegExp(
+        `Enforce CRITICAL Trivy release gate[\\s\\S]*?output: tmp/test-governance/trivy-${component}-critical\\.json\\n\\s+exit-code: "0"`,
+        "u",
+      ),
+    );
+  }
   assert.match(
     publishWorkflow,
     /scope: container-images\n\s+report_type: cd\n\s+environment: container-images\n\s+publish_issue: "false"/u,

@@ -3,6 +3,7 @@ const path = require('node:path');
 
 const OUTPUT_ROOT = path.join('tmp', 'test-governance');
 const REPORT_FILE = 'repo-hygiene.json';
+const TRACKED_WARNINGS_FILE = path.join('scripts', 'node', 'repo-hygiene', 'tracked-warnings.json');
 const DEFAULT_MAX_FINDINGS = 400;
 const ROOT_ENTRIES = ['api', 'web', 'scripts', 'docker', '.github', 'AGENTS.md', 'test_dir.txt'];
 const SOURCE_EXTENSIONS = new Set([
@@ -160,6 +161,63 @@ function createFinding({ severity = 'warning', rule, file, line = null, message,
     message,
     snippet: snippet.trim(),
   };
+}
+
+function loadTrackedWarnings(repoRoot) {
+  const absolutePath = path.join(repoRoot, TRACKED_WARNINGS_FILE);
+  if (!fs.existsSync(absolutePath)) {
+    return [];
+  }
+
+  const parsed = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${TRACKED_WARNINGS_FILE} must contain an array`);
+  }
+
+  return parsed.map((entry) => {
+    if (
+      !entry
+      || typeof entry.rule !== 'string'
+      || typeof entry.file !== 'string'
+      || typeof entry.issue !== 'string'
+      || typeof entry.reason !== 'string'
+    ) {
+      throw new Error(`${TRACKED_WARNINGS_FILE} entries require rule, file, issue and reason`);
+    }
+
+    return {
+      rule: entry.rule,
+      file: normalizePath(entry.file),
+      issue: entry.issue,
+      reason: entry.reason,
+    };
+  });
+}
+
+function partitionTrackedWarnings(findings, trackedWarnings) {
+  const active = [];
+  const suppressed = [];
+
+  for (const finding of findings) {
+    const tracked = trackedWarnings.find((entry) => (
+      finding.severity === 'warning'
+      && entry.rule === finding.rule
+      && entry.file === finding.file
+    ));
+
+    if (!tracked) {
+      active.push(finding);
+      continue;
+    }
+
+    suppressed.push({
+      ...finding,
+      issue: tracked.issue,
+      reason: tracked.reason,
+    });
+  }
+
+  return { active, suppressed };
 }
 
 function isBenignMarkerLine(line) {
@@ -659,14 +717,18 @@ function parseRepoHygieneCliArgs(argv = []) {
   return options;
 }
 
-function writeReport({ repoRoot, findings, maxFindings }) {
+function writeReport({ repoRoot, findings, suppressed = [], maxFindings }) {
   const outputDir = path.join(repoRoot, OUTPUT_ROOT);
   fs.mkdirSync(outputDir, { recursive: true });
 
   const report = {
     status: findings.some((finding) => finding.severity === 'error') ? 'failed' : 'passed',
-    summary: summarizeFindings(findings),
+    summary: {
+      ...summarizeFindings(findings),
+      suppressedWarnings: suppressed.length,
+    },
     findings: findings.slice(0, maxFindings),
+    suppressed: suppressed.slice(0, maxFindings),
     truncated: findings.length > maxFindings,
   };
 
@@ -695,9 +757,12 @@ async function main(argv = [], deps = {}) {
 
   const repoRoot = deps.repoRoot || getRepoRoot();
   const findings = (deps.collectFindingsImpl || collectRepoHygieneFindings)({ repoRoot });
+  const trackedWarnings = loadTrackedWarnings(repoRoot);
+  const partitioned = partitionTrackedWarnings(findings, trackedWarnings);
   const { report, reportPath } = writeReport({
     repoRoot,
-    findings,
+    findings: partitioned.active,
+    suppressed: partitioned.suppressed,
     maxFindings: options.maxFindings,
   });
 
@@ -707,7 +772,7 @@ async function main(argv = [], deps = {}) {
       + `Report: ${normalizePath(path.relative(repoRoot, reportPath))}\n`
   );
 
-  for (const finding of findings.filter((candidate) => candidate.severity === 'error')) {
+  for (const finding of partitioned.active.filter((candidate) => candidate.severity === 'error')) {
     writeStderr(
       `[repo-hygiene:${finding.rule}] ${finding.file}`
         + `${finding.line ? `:${finding.line}` : ''} ${finding.message}\n`
@@ -722,8 +787,10 @@ module.exports = {
   collectDuplicateTestTitleFindings,
   collectRepoHygieneFindings,
   collectSourceFiles,
+  loadTrackedWarnings,
   main,
   parseRepoHygieneCliArgs,
+  partitionTrackedWarnings,
   scanSourceFile,
   summarizeFindings,
   writeReport,

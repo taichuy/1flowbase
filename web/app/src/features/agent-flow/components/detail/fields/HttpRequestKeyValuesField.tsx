@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import type { FlowBinding, NamedBindingEntry } from '@1flowbase/flow-schema';

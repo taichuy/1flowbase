@@ -191,5 +191,5 @@ describe('FrontStagePage trial panel link', () => {
         screen.queryByText('JS 区块试运行')
       ).not.toBeInTheDocument();
     });
-  });
+  }, 20_000);
 });

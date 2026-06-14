@@ -1,0 +1,68 @@
+[
+  {
+    "rule": "test-file-size-pressure",
+    "file": "api/apps/api-server/src/_tests/application_public_api/anthropic_routes.rs",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  },
+  {
+    "rule": "test-file-size-pressure",
+    "file": "api/apps/api-server/src/_tests/application/application_runtime_routes/logs_routes.rs",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  },
+  {
+    "rule": "file-size-pressure",
+    "file": "api/apps/api-server/src/routes/application_public_api/anthropic.rs",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  },
+  {
+    "rule": "test-file-size-pressure",
+    "file": "api/apps/api-server/src/routes/application_public_api/compat_sse/tests/protocol_projection.rs",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  },
+  {
+    "rule": "file-size-pressure",
+    "file": "api/apps/api-server/src/routes/applications/application_runtime/runtime_debug_artifacts.rs",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  },
+  {
+    "rule": "file-size-pressure",
+    "file": "api/apps/api-server/src/routes/applications/application_runtime/tests.rs",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  },
+  {
+    "rule": "test-file-size-pressure",
+    "file": "api/crates/control-plane/src/_tests/application_public_api/run_service.rs",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  },
+  {
+    "rule": "test-file-size-pressure",
+    "file": "api/crates/orchestration-runtime/src/_tests/execution_engine_tests/human_and_tool_resume/visible_internal_llm_tools.rs",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  },
+  {
+    "rule": "file-size-pressure",
+    "file": "api/crates/orchestration-runtime/src/execution_engine/visible_internal_llm_tools.rs",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  },
+  {
+    "rule": "test-file-size-pressure",
+    "file": "api/crates/storage-durable/postgres/src/_tests/orchestration_runtime_repository_tests/application_logs.rs",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  },
+  {
+    "rule": "directory-pressure",
+    "file": "scripts/node",
+    "issue": "#901",
+    "reason": "Tracked as mechanical repo-hygiene pressure after quality gate triage."
+  }
+]

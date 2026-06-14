@@ -878,7 +878,7 @@ export function seedStyleBoundaryApplicationFetch() {
             label: 'Application Native API',
             operations: [
               {
-                id: 'applicationNativeRun',
+                id: 'application-native-run-operation',
                 method: 'POST',
                 path: '/api/agent/v1/runs',
                 summary: 'Run published application',

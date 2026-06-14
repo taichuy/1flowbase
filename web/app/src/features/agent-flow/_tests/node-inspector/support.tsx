@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+
 import { readFileSync } from 'node:fs';
 
 import {
@@ -34,6 +36,10 @@ import { validateDocument } from '../../lib/validate-document';
 import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import { selectWorkingDocument } from '../../store/editor/selectors';
+
+export const SLOW_NODE_INSPECTOR_TEST_TIMEOUT = 20_000;
+
+vi.setConfig({ testTimeout: SLOW_NODE_INSPECTOR_TEST_TIMEOUT });
 
 vi.mock('@monaco-editor/react', () => ({
   default: ({

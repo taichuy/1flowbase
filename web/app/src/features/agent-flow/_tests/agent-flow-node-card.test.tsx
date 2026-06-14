@@ -106,9 +106,7 @@ describe('AgentFlowNodeCard', () => {
     expect(screen.getByText(/missing_model_provider/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /执行|Execute/ })).not.toBeInTheDocument();
     expect(
-      screen
-        .getByTestId('agent-flow-node-content-node-missing')
-        .closest('.agent-flow-node-card')
+      screen.getByRole('button', { name: /未知节点|Unresolved node/ })
     ).toHaveClass('agent-flow-node-card--type-unresolved_node');
   });
 

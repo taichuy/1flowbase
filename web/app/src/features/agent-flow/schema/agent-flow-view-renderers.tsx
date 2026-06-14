@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+
 import type { FlowNodeDocument } from '@1flowbase/flow-schema';
 import {
   BookOutlined,

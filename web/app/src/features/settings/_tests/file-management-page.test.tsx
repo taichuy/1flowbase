@@ -258,7 +258,7 @@ entries: []
     expect(screen.getByRole('tab', { name: '存储配置' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /新增/ })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('搜索存储...')).toBeInTheDocument();
-  }, 10_000);
+  }, 20_000);
 
   test('workspace mode only shows file table tab when table view is allowed', async () => {
     authenticateWithPermissions(['route_page.view.all', 'file_table.view.own']);

@@ -328,7 +328,7 @@ describe('ApplicationListPage', () => {
     renderPage();
 
     expect(await screen.findByText('客服助手', {}, { timeout: 10_000 })).toBeInTheDocument();
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const input = screen.getByLabelText('导入模板文件') as HTMLInputElement;
     const file = new File([JSON.stringify(template)], 'support-template.json', {
       type: 'application/json'
     });

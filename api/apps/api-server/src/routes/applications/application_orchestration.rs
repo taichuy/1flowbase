@@ -326,7 +326,10 @@ fn to_import_response(imported: ImportAgentFlowTemplateResult) -> ImportAgentFlo
             icon_type: imported.application.icon_type,
             icon_background: imported.application.icon_background,
             created_by: imported.application.created_by.to_string(),
-            updated_at: imported.application.updated_at.format(&Rfc3339).unwrap(),
+            updated_at: match imported.application.updated_at.format(&Rfc3339) {
+                Ok(value) => value,
+                Err(_) => imported.application.updated_at.to_string(),
+            },
         },
         orchestration: to_response(imported.orchestration),
         preview: to_template_preview_response(imported.preview),

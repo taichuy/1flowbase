@@ -465,14 +465,22 @@ export function AgentFlowCanvasFrame({
   }, []);
 
   useEffect(() => {
+    const stopNodeDetailResize = stopNodeDetailResizeRef;
+    const stopDebugConsoleResize = stopDebugConsoleResizeRef;
+    const stopConversationLogResize = stopConversationLogResizeRef;
+    const stopVariablesDockResize = stopVariablesDockResizeRef;
+    const stopHistoryDockResize = stopHistoryDockResizeRef;
+    const stopVariableCacheResize = stopVariableCacheResizeRef;
+    const stopVariableCacheSidebarResize = stopVariableCacheSidebarResizeRef;
+
     return () => {
-      stopNodeDetailResizeRef.current?.();
-      stopDebugConsoleResizeRef.current?.();
-      stopConversationLogResizeRef.current?.();
-      stopVariablesDockResizeRef.current?.();
-      stopHistoryDockResizeRef.current?.();
-      stopVariableCacheResizeRef.current?.();
-      stopVariableCacheSidebarResizeRef.current?.();
+      stopNodeDetailResize.current?.();
+      stopDebugConsoleResize.current?.();
+      stopConversationLogResize.current?.();
+      stopVariablesDockResize.current?.();
+      stopHistoryDockResize.current?.();
+      stopVariableCacheResize.current?.();
+      stopVariableCacheSidebarResize.current?.();
     };
   }, []);
 

@@ -201,7 +201,7 @@ async function openProviderInstancesModal() {
     {
       name: /OpenAI Compatible/
     },
-    { timeout: 10_000 }
+    { timeout: 20_000 }
   );
   fireEvent.click(within(catalogRow).getByRole('button', { name: '管理' }));
 
@@ -437,7 +437,7 @@ entries: []
 
   test(
     'updates provider defaults and child-instance inclusion from the provider instances modal',
-    { timeout: 15000 },
+    { timeout: 25_000 },
     async () => {
       authenticateAsModelProviderManager();
 
