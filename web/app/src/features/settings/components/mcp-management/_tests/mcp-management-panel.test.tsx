@@ -137,9 +137,81 @@ function clickSegmentedOption(root: HTMLElement, label: string) {
   fireEvent.click(option);
 }
 
+function visibleTextEntries(root: HTMLElement, text: string) {
+  return within(root)
+    .getAllByText(text)
+    .filter((entry) => !entry.closest('[hidden]'));
+}
+
 describe('McpManagementPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  test('shows step navigation actions only when the adjacent step exists', async () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+    const dialog = await screen.findByRole('dialog');
+
+    expect(
+      within(dialog).queryByRole('button', { name: /上一步/ })
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: /下一步/ })
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /下一步/ }));
+    expect(
+      within(dialog).getByRole('button', { name: /上一步/ })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: /下一步/ })
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('interface_id')).toBeInTheDocument();
+
+    clickSegmentedOption(dialog, 'preview');
+    expect(
+      within(dialog).getByRole('button', { name: /上一步/ })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: /下一步/ })
+    ).not.toBeInTheDocument();
+  });
+
+  test('shows the selected interface operation in input output and preview steps', async () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+    const dialog = await screen.findByRole('dialog');
+
+    clickSegmentedOption(dialog, 'interface');
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'interface_id' })
+    );
+    await selectAntdOption('create_app');
+
+    clickSegmentedOption(dialog, 'input_mapping');
+    expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(
+      1
+    );
+    expect(visibleTextEntries(dialog, 'operationId')).toHaveLength(0);
+    expect(visibleTextEntries(dialog, 'risk_level')).toHaveLength(0);
+    expect(visibleTextEntries(dialog, 'permission_code')).toHaveLength(0);
+
+    clickSegmentedOption(dialog, 'output_mapping');
+    expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(
+      1
+    );
+
+    clickSegmentedOption(dialog, 'preview');
+    expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(
+      1
+    );
   });
 
   test('loads interface descriptors into dedicated input mappings after the explicit mapping action', async () => {
@@ -152,6 +224,9 @@ describe('McpManagementPanel', () => {
 
     fireEvent.change(within(dialog).getByLabelText('name'), {
       target: { value: 'Create App' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('des_id'), {
+      target: { value: 'des12345' }
     });
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
       target: { value: 'Create app' }
@@ -204,11 +279,12 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('full_description'), {
       target: { value: 'Create app' }
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: '确 定' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
 
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
         expect.objectContaining({
+          des_id: 'des12345',
           input_mapping: {
             interface_parameters: [
               {
@@ -283,7 +359,7 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('full_description'), {
       target: { value: 'Create app' }
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: '确 定' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
 
     expect(mcpManagementApi.createSettingsMcpTool).not.toHaveBeenCalled();
   });
@@ -353,7 +429,7 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('full_description'), {
       target: { value: 'Create app' }
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: '确 定' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
 
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(

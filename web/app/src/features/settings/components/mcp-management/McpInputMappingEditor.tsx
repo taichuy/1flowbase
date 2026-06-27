@@ -207,13 +207,16 @@ function InputMappingLayerSection({
       direction="vertical"
       size="middle"
     >
-      <Flex gap={8} wrap="wrap">
+      <Flex
+        align="center"
+        className="mcp-input-mapping-editor__mapping-action"
+        gap={8}
+      >
         <Select
           aria-label="interface_param"
           placeholder="interface_param"
           options={addableOptions}
           value={pendingInterfaceParam}
-          style={{ minWidth: 220 }}
           onChange={onPendingInterfaceParamChange}
         />
         <Button
