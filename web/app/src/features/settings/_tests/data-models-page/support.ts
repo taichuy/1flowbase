@@ -314,7 +314,7 @@ function settingsDataModel(
     code,
     title,
     status: 'published',
-    api_exposure_status: 'published_not_exposed',
+    api_exposure_status: 'api_exposed_ready',
     runtime_availability: 'available',
     data_source_instance_id: 'main_source',
     source_kind: 'main_source',
@@ -347,6 +347,25 @@ export const contactsModel = settingsDataModel(
     external_resource_key: 'contacts',
     external_table_id: 'crm.contacts',
     physical_table_name: 'dm_contacts'
+  }
+);
+
+const draftOrdersModel = settingsDataModel(
+  'model-draft-orders',
+  'draft_orders',
+  'Draft Orders',
+  [settingsDataModelField('draft-order-title', 'title', 'Title')],
+  {
+    scope_kind: 'workspace',
+    scope_id: 'workspace-1',
+    status: 'draft',
+    api_exposure_status: 'draft',
+    runtime_availability: 'unavailable',
+    data_source_instance_id: 'source-1',
+    source_kind: 'external_source',
+    external_resource_key: 'draft_orders',
+    external_table_id: 'crm.draft_orders',
+    physical_table_name: 'dm_draft_orders'
   }
 );
 
@@ -532,7 +551,9 @@ export function setupDataModelsPageTest() {
   ]);
   dataModelsApi.fetchSettingsDataModels.mockImplementation((sourceId: string) =>
     Promise.resolve(
-      sourceId === 'main_source' ? mainSourceModels : [contactsModel]
+      sourceId === 'main_source'
+        ? mainSourceModels
+        : [contactsModel, draftOrdersModel]
     )
   );
   dataModelsApi.fetchSettingsDataModelScopeGrants.mockResolvedValue([
@@ -575,18 +596,18 @@ export function setupDataModelsPageTest() {
       id: 'finding-2',
       data_model_id: 'model-1',
       severity: 'high',
-      code: 'api_exposed_no_permission',
-      message: 'Permission path is incomplete.',
-      recommended_action: 'Check API key permissions.',
+      code: 'protected_model_exposure_attempt',
+      message: 'Protected model needs review.',
+      recommended_action: 'Review protection settings.',
       can_acknowledge: false
     },
     {
       id: 'finding-3',
       data_model_id: 'model-1',
       severity: 'info',
-      code: 'published_not_exposed',
-      message: 'Published but not exposed.',
-      recommended_action: 'Create API key only if needed.',
+      code: 'field_mapping_notice',
+      message: 'Field mapping is informational.',
+      recommended_action: 'Review field mapping.',
       can_acknowledge: true
     }
   ]);
