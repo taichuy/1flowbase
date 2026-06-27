@@ -32,10 +32,12 @@
     "monaco-editor": "^0.55.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-grid-layout": "^2.2.3",
     "react-i18next": "^17.0.8",
     "react-markdown": "9.1.0",
     "remark-breaks": "4.0.0",
     "remark-gfm": "4.0.1",
+    "vditor": "^3.11.2",
     "zustand": "^5.0.3"
   },
   "scripts": {
