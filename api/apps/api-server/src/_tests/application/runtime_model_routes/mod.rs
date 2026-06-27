@@ -419,64 +419,6 @@ async fn seed_runtime_data_source_instance_with_options(
     data_source_instance_id.to_string()
 }
 
-async fn set_model_grant_permission_profile(database_url: &str, model_id: &str, profile: &str) {
-    let pool = sqlx::PgPool::connect(database_url).await.unwrap();
-    sqlx::query(
-        r#"
-        update scope_data_model_grants
-        set permission_profile = $2
-        where data_model_id = $1
-        "#,
-    )
-    .bind(uuid::Uuid::parse_str(model_id).unwrap())
-    .bind(profile)
-    .execute(&pool)
-    .await
-    .unwrap();
-}
-
-async fn audit_event_count(database_url: &str, event_code: &str) -> i64 {
-    let pool = sqlx::PgPool::connect(database_url).await.unwrap();
-    sqlx::query_scalar("select count(*) from audit_logs where event_code = $1")
-        .bind(event_code)
-        .fetch_one(&pool)
-        .await
-        .unwrap()
-}
-
-async fn create_api_key(
-    app: &axum::Router,
-    cookie: &str,
-    csrf: &str,
-    name: &str,
-    permissions: serde_json::Value,
-) -> String {
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/api-keys")
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "name": name,
-                        "permissions": permissions
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::CREATED);
-    let payload: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    payload["data"]["token"].as_str().unwrap().to_string()
-}
-
 async fn create_user_api_key(app: &axum::Router, cookie: &str, csrf: &str, name: &str) -> String {
     let response = app
         .clone()
@@ -602,39 +544,6 @@ async fn replace_member_roles(
 
 async fn create_orders_model(app: &axum::Router, cookie: &str, csrf: &str) -> String {
     create_model_with_status(app, cookie, csrf, "orders", None).await
-}
-
-async fn create_system_model(app: &axum::Router, cookie: &str, csrf: &str, code: &str) -> String {
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/models")
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "scope_kind": "system",
-                        "code": code,
-                        "title": code
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::CREATED);
-    let payload: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(payload["data"]["scope_kind"], json!("system"));
-    assert_eq!(
-        payload["data"]["scope_id"],
-        json!(domain::SYSTEM_SCOPE_ID.to_string())
-    );
-    payload["data"]["id"].as_str().unwrap().to_string()
 }
 
 async fn create_model_with_status(

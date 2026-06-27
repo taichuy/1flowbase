@@ -176,8 +176,8 @@ fn category_operations_pagination_returns_stable_pages() {
         "openapi": "3.1.0",
         "info": { "title": "T", "version": "1" },
         "paths": {
-            "/api/console/api-keys": {
-                "post": { "operationId": "create_api_key", "summary": "Create API key" }
+            "/api/console/user-api-keys": {
+                "post": { "operationId": "create_user_api_key", "summary": "Create user API key" }
             },
             "/api/console/members": {
                 "get": { "operationId": "list_members", "summary": "List members" }

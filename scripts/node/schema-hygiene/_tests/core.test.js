@@ -918,7 +918,6 @@ test('default schema hygiene config declares issue 1076 identity join scoped rea
   });
 
   for (const tableName of [
-    'api_key_data_model_permissions',
     'application_api_mappings',
     'application_environment_variables',
     'application_tag_bindings',

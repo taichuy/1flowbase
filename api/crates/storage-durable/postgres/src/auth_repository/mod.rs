@@ -4,13 +4,12 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         ApiKeyRepository, AuthRepository, BootstrapRepository, CreateApiKeyInput,
-        UpdateProfileInput, UpdateUserMetaInput, UpsertApiKeyDataModelPermissionInput,
+        UpdateProfileInput, UpdateUserMetaInput,
     },
 };
 use domain::{
-    ActorContext, ApiKeyDataModelPermissionRecord, ApiKeyRecord, AuditLogRecord,
-    AuthenticatorRecord, BoundRole, PermissionDefinition, RoleScopeKind, ScopeContext,
-    TenantRecord, UserRecord,
+    ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticatorRecord, BoundRole,
+    PermissionDefinition, RoleScopeKind, ScopeContext, TenantRecord, UserRecord,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -51,13 +50,15 @@ async fn load_bound_roles(pool: &PgPool, user_id: Uuid) -> Result<Vec<BoundRole>
         .collect())
 }
 
-fn map_api_key_row(row: sqlx::postgres::PgRow) -> ApiKeyRecord {
-    ApiKeyRecord {
+fn map_api_key_row(row: sqlx::postgres::PgRow) -> Result<ApiKeyRecord> {
+    let key_kind = domain::ApiKeyKind::from_db(row.get::<String, _>("key_kind").as_str())
+        .ok_or_else(|| anyhow!("unknown api key kind"))?;
+    Ok(ApiKeyRecord {
         id: row.get("id"),
         name: row.get("name"),
         token_hash: row.get("token_hash"),
         token_prefix: row.get("token_prefix"),
-        key_kind: domain::ApiKeyKind::from_db(row.get::<String, _>("key_kind").as_str()),
+        key_kind,
         application_id: row.get("application_id"),
         role_code: row.get("role_code"),
         creator_user_id: row.get("creator_user_id"),
@@ -71,19 +72,7 @@ fn map_api_key_row(row: sqlx::postgres::PgRow) -> ApiKeyRecord {
         last_used_at: row.get("last_used_at"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
-    }
-}
-
-fn map_api_key_permission_row(row: sqlx::postgres::PgRow) -> ApiKeyDataModelPermissionRecord {
-    ApiKeyDataModelPermissionRecord {
-        api_key_id: row.get("api_key_id"),
-        data_model_id: row.get("data_model_id"),
-        allow_list: row.get("allow_list"),
-        allow_get: row.get("allow_get"),
-        allow_create: row.get("allow_create"),
-        allow_update: row.get("allow_update"),
-        allow_delete: row.get("allow_delete"),
-    }
+    })
 }
 
 pub(crate) async fn map_user_row(pool: &PgPool, row: sqlx::postgres::PgRow) -> Result<UserRecord> {
@@ -876,77 +865,7 @@ impl ApiKeyRepository for PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(map_api_key_row(row))
-    }
-
-    async fn replace_api_key_data_model_permissions(
-        &self,
-        api_key_id: Uuid,
-        permissions: &[UpsertApiKeyDataModelPermissionInput],
-    ) -> Result<Vec<ApiKeyDataModelPermissionRecord>> {
-        let mut tx = self.pool().begin().await?;
-        sqlx::query("delete from api_key_data_model_permissions where api_key_id = $1")
-            .bind(api_key_id)
-            .execute(&mut *tx)
-            .await?;
-
-        for permission in permissions {
-            let inserted = sqlx::query(
-                r#"
-                insert into api_key_data_model_permissions (
-                    id,
-                    api_key_id,
-                    data_model_id,
-                    scope_id,
-                    allow_list,
-                    allow_get,
-                    allow_create,
-                    allow_update,
-                    allow_delete,
-                    created_by,
-                    updated_by
-                )
-                select
-                    $1,
-                    keys.id,
-                    grants.data_model_id,
-                    keys.scope_id,
-                    $4,
-                    $5,
-                    $6,
-                    $7,
-                    $8,
-                    keys.creator_user_id,
-                    keys.creator_user_id
-                from api_keys keys
-                join scope_data_model_grants grants
-                  on grants.scope_kind = keys.scope_kind
-                 and grants.scope_id = keys.scope_id
-                 and grants.data_model_id = $3
-                 and grants.enabled = true
-                where keys.id = $2
-                "#,
-            )
-            .bind(Uuid::now_v7())
-            .bind(permission.api_key_id)
-            .bind(permission.data_model_id)
-            .bind(permission.allow_list)
-            .bind(permission.allow_get)
-            .bind(permission.allow_create)
-            .bind(permission.allow_update)
-            .bind(permission.allow_delete)
-            .execute(&mut *tx)
-            .await?
-            .rows_affected();
-            if inserted != 1 {
-                return Err(anyhow!(
-                    "api_key_data_model_permission scope grant mismatch"
-                ));
-            }
-        }
-        tx.commit().await?;
-
-        self.list_api_key_data_model_permissions(api_key_id).await
+        map_api_key_row(row)
     }
 
     async fn find_api_key_by_token_hash(&self, token_hash: &str) -> Result<Option<ApiKeyRecord>> {
@@ -963,7 +882,7 @@ impl ApiKeyRepository for PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
 
-        Ok(row.map(map_api_key_row))
+        row.map(map_api_key_row).transpose()
     }
 
     async fn mark_api_key_used(&self, api_key_id: Uuid) -> Result<()> {
@@ -1007,7 +926,7 @@ impl ApiKeyRepository for PgControlPlaneStore {
         .fetch_all(self.pool())
         .await?;
 
-        Ok(rows.into_iter().map(map_api_key_row).collect())
+        rows.into_iter().map(map_api_key_row).collect()
     }
 
     async fn revoke_user_api_key(
@@ -1065,7 +984,7 @@ impl ApiKeyRepository for PgControlPlaneStore {
         .fetch_all(self.pool())
         .await?;
 
-        Ok(rows.into_iter().map(map_api_key_row).collect())
+        rows.into_iter().map(map_api_key_row).collect()
     }
 
     async fn revoke_application_api_key(
@@ -1093,25 +1012,5 @@ impl ApiKeyRepository for PgControlPlaneStore {
         }
 
         Ok(())
-    }
-
-    async fn list_api_key_data_model_permissions(
-        &self,
-        api_key_id: Uuid,
-    ) -> Result<Vec<ApiKeyDataModelPermissionRecord>> {
-        let rows = sqlx::query(
-            r#"
-            select api_key_id, data_model_id, allow_list, allow_get, allow_create,
-                   allow_update, allow_delete
-            from api_key_data_model_permissions
-            where api_key_id = $1
-            order by data_model_id asc
-            "#,
-        )
-        .bind(api_key_id)
-        .fetch_all(self.pool())
-        .await?;
-
-        Ok(rows.into_iter().map(map_api_key_permission_row).collect())
     }
 }

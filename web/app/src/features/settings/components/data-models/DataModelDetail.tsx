@@ -31,7 +31,6 @@ import type {
   SettingsDataModelField,
   SettingsDataModelScopeGrant,
   SettingsRuntimeRecordPreview,
-  UpdateSettingsDataModelApiExposureInput,
   UpdateSettingsDataModelFieldInput,
   UpdateSettingsDataModelInput
 } from '../../api/data-models';
@@ -100,7 +99,6 @@ export function DataModelDetail({
   onCreateField,
   onUpdateField,
   onDeleteField,
-  onUpdateApiExposure,
   onSaveGrant
 }: {
   model: SettingsDataModel;
@@ -123,7 +121,6 @@ export function DataModelDetail({
     input: UpdateSettingsDataModelFieldInput
   ) => void;
   onDeleteField: (field: SettingsDataModelField) => void;
-  onUpdateApiExposure: (input: UpdateSettingsDataModelApiExposureInput) => void;
   onSaveGrant: Parameters<typeof DataModelPermissionsTab>[0]['onSave'];
 }) {
   const [modelDrawerOpen, setModelDrawerOpen] = useState(false);
@@ -426,14 +423,7 @@ export function DataModelDetail({
           {
             key: 'api',
             label: 'API',
-            children: (
-              <DataModelApiTab
-                model={model}
-                canManage={canManage}
-                saving={modelSaving}
-                onUpdateApiExposure={onUpdateApiExposure}
-              />
-            )
+            children: <DataModelApiTab model={model} />
           },
           {
             key: 'records',

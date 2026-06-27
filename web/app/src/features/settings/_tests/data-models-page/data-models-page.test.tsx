@@ -226,10 +226,23 @@ describe('Settings data models page', () => {
 
       fireEvent.click(screen.getByRole('tab', { name: 'API' }));
       expect(
-        await screen.findByText('published_not_exposed')
+        await screen.findByText(i18nText('settings', 'auto.api_exposed_ready'))
       ).toBeInTheDocument();
       expect(
-        screen.getByText(i18nText('settings', 'auto.api_exposed_ready'))
+        screen.queryByText('published_not_exposed')
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', {
+          name: '请求 API 暴露'
+        })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', {
+          name: '关闭 API 暴露'
+        })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(i18nText('settings', 'auto.runtime'))
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('combobox', {
@@ -704,72 +717,4 @@ describe('Settings data models page', () => {
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT * 2
   );
 
-  test('requests and closes API exposure without raw ready or unsafe selectors', async () => {
-    renderApp('/settings/data-models?source=source-1');
-
-    await openContactsDataModelEditor();
-    fireEvent.click(screen.getByRole('tab', { name: 'API' }));
-    expect(
-      await screen.findByText('published_not_exposed')
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('combobox', { name: 'api_exposed_ready' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('combobox', { name: 'unsafe_external_source' })
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: '请求 API 暴露' }));
-    await waitFor(() =>
-      expect(
-        dataModelsApi.updateSettingsDataModelApiExposure
-      ).toHaveBeenCalledWith(
-        'model-1',
-        { api_exposure_status: 'api_exposed_no_permission' },
-        'csrf-123'
-      )
-    );
-  }, 20_000);
-
-  test('closes an existing API exposure request from the API tab', async () => {
-    dataModelsApi.fetchSettingsDataModels.mockResolvedValue([
-      {
-        id: 'model-1',
-        scope_kind: 'workspace',
-        scope_id: 'workspace-1',
-        code: 'contacts',
-        title: 'Contacts',
-        status: 'published',
-        api_exposure_status: 'api_exposed_no_permission',
-        runtime_availability: 'available',
-        data_source_instance_id: 'source-1',
-        source_kind: 'external_source',
-        external_resource_key: 'contacts',
-        external_table_id: 'crm.contacts',
-        physical_table_name: 'dm_contacts',
-        acl_namespace: 'data_model.contacts',
-        audit_namespace: 'data_model.contacts',
-        fields: []
-      }
-    ]);
-
-    renderApp('/settings/data-models?source=source-1');
-
-    await openContactsDataModelEditor();
-    fireEvent.click(screen.getByRole('tab', { name: 'API' }));
-    expect(
-      await screen.findByText('api_exposed_no_permission')
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '关闭 API 暴露' }));
-
-    await waitFor(() =>
-      expect(
-        dataModelsApi.updateSettingsDataModelApiExposure
-      ).toHaveBeenCalledWith(
-        'model-1',
-        { api_exposure_status: 'published_not_exposed' },
-        'csrf-123'
-      )
-    );
-  }, 20_000);
 });

@@ -66,6 +66,27 @@ fn runtime_acl_denial_reason(error: &anyhow::Error) -> Option<&'static str> {
     None
 }
 
+#[derive(Debug, Clone, Copy)]
+enum RuntimeModelAction {
+    List,
+    Get,
+    Create,
+    Update,
+    Delete,
+}
+
+impl RuntimeModelAction {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Get => "get",
+            Self::Create => "create",
+            Self::Update => "update",
+            Self::Delete => "delete",
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
 pub struct RuntimeListQueryParams {
     pub filter: Option<String>,
@@ -478,30 +499,11 @@ async fn authenticate_runtime_request(
     )))
 }
 
-fn ensure_api_key_action_allowed(
-    api_key: &control_plane::auth::ApiKeyActor,
-    data_model_id: uuid::Uuid,
-    action: domain::ApiKeyDataModelAction,
-) -> Result<(), ApiError> {
-    if api_key
-        .permissions
-        .iter()
-        .any(|permission| permission.data_model_id == data_model_id && permission.allows(action))
-    {
-        return Ok(());
-    }
-
-    Err(
-        control_plane::errors::ControlPlaneError::PermissionDenied("api_key_action_not_allowed")
-            .into(),
-    )
-}
-
 async fn append_api_key_runtime_audit(
     state: &ApiState,
     credential: &RuntimeCredential,
     model_code: &str,
-    action: domain::ApiKeyDataModelAction,
+    action: RuntimeModelAction,
     event_code: &str,
     reason: Option<&str>,
 ) -> Result<(), ApiError> {
@@ -541,7 +543,7 @@ async fn append_api_key_engine_acl_denied_audit(
     state: &ApiState,
     credential: &RuntimeCredential,
     model_code: &str,
-    action: domain::ApiKeyDataModelAction,
+    action: RuntimeModelAction,
     error: &anyhow::Error,
 ) -> Result<(), ApiError> {
     if let Some(reason) = runtime_acl_denial_reason(error) {
@@ -563,7 +565,7 @@ async fn runtime_authorization(
     state: &ApiState,
     headers: &HeaderMap,
     model_code: &str,
-    action: domain::ApiKeyDataModelAction,
+    _action: RuntimeModelAction,
 ) -> Result<
     (
         RuntimeCredential,
@@ -575,59 +577,7 @@ async fn runtime_authorization(
     let Some(model) = resolve_runtime_model(state, credential.actor(), model_code) else {
         return Ok((credential, None));
     };
-    if let RuntimeCredential::ApiKey(api_key) = &credential {
-        if api_key.api_key.key_kind != domain::ApiKeyKind::DataModelApiKey {
-            let scope_grant =
-                load_runtime_scope_grant(state, credential.actor(), model.model_id).await?;
-            return Ok((credential, scope_grant));
-        }
-        if let Err(error) = ensure_api_key_action_allowed(api_key, model.model_id, action) {
-            append_api_key_runtime_audit(
-                state,
-                &credential,
-                model_code,
-                action,
-                "state_model.api_key_runtime_access_denied",
-                Some("api_key_action_not_allowed"),
-            )
-            .await?;
-            return Err(error);
-        }
-    }
-
-    let scope_grant = match &credential {
-        RuntimeCredential::ApiKey(api_key)
-            if api_key.api_key.key_kind == domain::ApiKeyKind::DataModelApiKey =>
-        {
-            let grant =
-                control_plane::model_definition::ModelDefinitionService::new(state.store.clone())
-                    .load_runtime_scope_grant_for_scope(
-                        api_key.api_key.scope_kind,
-                        api_key.api_key.scope_id,
-                        model.model_id,
-                    )
-                    .await?;
-            if grant.is_none() {
-                append_api_key_runtime_audit(
-                    state,
-                    &credential,
-                    model_code,
-                    action,
-                    "state_model.api_key_runtime_access_denied",
-                    Some("data_model_scope_not_granted"),
-                )
-                .await?;
-                return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
-                    "data_model_scope_not_granted",
-                )
-                .into());
-            }
-            grant
-        }
-        RuntimeCredential::ApiKey(_) | RuntimeCredential::Session(_) => {
-            load_runtime_scope_grant(state, credential.actor(), model.model_id).await?
-        }
-    };
+    let scope_grant = load_runtime_scope_grant(state, credential.actor(), model.model_id).await?;
     Ok((credential, scope_grant))
 }
 
@@ -653,13 +603,8 @@ pub async fn list_records(
     Path(model_code): Path<String>,
     Query(query): Query<RuntimeListQueryParams>,
 ) -> Result<Json<ApiSuccess<RuntimeListResponse>>, ApiError> {
-    let (credential, scope_grant) = runtime_authorization(
-        &state,
-        &headers,
-        &model_code,
-        domain::ApiKeyDataModelAction::List,
-    )
-    .await?;
+    let (credential, scope_grant) =
+        runtime_authorization(&state, &headers, &model_code, RuntimeModelAction::List).await?;
     let cache_metadata =
         runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
     let cache_key = if let Some(metadata) = &cache_metadata {
@@ -708,7 +653,7 @@ pub async fn list_records(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::List,
+                RuntimeModelAction::List,
                 &error,
             )
             .await?;
@@ -738,13 +683,8 @@ pub async fn get_record(
     headers: HeaderMap,
     Path((model_code, record_id)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
-    let (credential, scope_grant) = runtime_authorization(
-        &state,
-        &headers,
-        &model_code,
-        domain::ApiKeyDataModelAction::Get,
-    )
-    .await?;
+    let (credential, scope_grant) =
+        runtime_authorization(&state, &headers, &model_code, RuntimeModelAction::Get).await?;
     let cache_metadata =
         runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
     let cache_key = if let Some(metadata) = &cache_metadata {
@@ -785,7 +725,7 @@ pub async fn get_record(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::Get,
+                RuntimeModelAction::Get,
                 &error,
             )
             .await?;
@@ -860,13 +800,8 @@ pub async fn create_record(
     Path(model_code): Path<String>,
     Json(payload): Json<Value>,
 ) -> Result<(StatusCode, Json<ApiSuccess<Value>>), ApiError> {
-    let (credential, scope_grant) = runtime_authorization(
-        &state,
-        &headers,
-        &model_code,
-        domain::ApiKeyDataModelAction::Create,
-    )
-    .await?;
+    let (credential, scope_grant) =
+        runtime_authorization(&state, &headers, &model_code, RuntimeModelAction::Create).await?;
     require_session_csrf_for_write(&headers, &credential)?;
     let cache_metadata =
         runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
@@ -886,7 +821,7 @@ pub async fn create_record(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::Create,
+                RuntimeModelAction::Create,
                 "state_model.api_key_runtime_write_succeeded",
                 None,
             )
@@ -902,7 +837,7 @@ pub async fn create_record(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::Create,
+                RuntimeModelAction::Create,
                 &error,
             )
             .await?;
@@ -910,7 +845,7 @@ pub async fn create_record(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::Create,
+                RuntimeModelAction::Create,
                 "state_model.api_key_runtime_write_failed",
                 Some(&reason),
             )
@@ -938,13 +873,8 @@ pub async fn update_record(
     Path((model_code, record_id)): Path<(String, String)>,
     Json(payload): Json<Value>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
-    let (credential, scope_grant) = runtime_authorization(
-        &state,
-        &headers,
-        &model_code,
-        domain::ApiKeyDataModelAction::Update,
-    )
-    .await?;
+    let (credential, scope_grant) =
+        runtime_authorization(&state, &headers, &model_code, RuntimeModelAction::Update).await?;
     require_session_csrf_for_write(&headers, &credential)?;
     let cache_metadata =
         runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
@@ -965,7 +895,7 @@ pub async fn update_record(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::Update,
+                RuntimeModelAction::Update,
                 "state_model.api_key_runtime_write_succeeded",
                 None,
             )
@@ -981,7 +911,7 @@ pub async fn update_record(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::Update,
+                RuntimeModelAction::Update,
                 &error,
             )
             .await?;
@@ -989,7 +919,7 @@ pub async fn update_record(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::Update,
+                RuntimeModelAction::Update,
                 "state_model.api_key_runtime_write_failed",
                 Some(&reason),
             )
@@ -1015,13 +945,8 @@ pub async fn delete_record(
     headers: HeaderMap,
     Path((model_code, record_id)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
-    let (credential, scope_grant) = runtime_authorization(
-        &state,
-        &headers,
-        &model_code,
-        domain::ApiKeyDataModelAction::Delete,
-    )
-    .await?;
+    let (credential, scope_grant) =
+        runtime_authorization(&state, &headers, &model_code, RuntimeModelAction::Delete).await?;
     require_session_csrf_for_write(&headers, &credential)?;
     let cache_metadata =
         runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
@@ -1041,7 +966,7 @@ pub async fn delete_record(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::Delete,
+                RuntimeModelAction::Delete,
                 "state_model.api_key_runtime_write_succeeded",
                 None,
             )
@@ -1057,7 +982,7 @@ pub async fn delete_record(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::Delete,
+                RuntimeModelAction::Delete,
                 &error,
             )
             .await?;
@@ -1065,7 +990,7 @@ pub async fn delete_record(
                 &state,
                 &credential,
                 &model_code,
-                domain::ApiKeyDataModelAction::Delete,
+                RuntimeModelAction::Delete,
                 "state_model.api_key_runtime_write_failed",
                 Some(&reason),
             )

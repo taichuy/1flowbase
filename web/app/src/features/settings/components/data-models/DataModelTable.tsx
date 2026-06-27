@@ -20,7 +20,6 @@ import {
   DeleteOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
-  InfoCircleOutlined,
   StopOutlined,
   FileTextOutlined
 } from '@ant-design/icons';
@@ -122,7 +121,12 @@ function getStatusTag(status: string) {
   }
 }
 
-function getApiExposureTag(status: string) {
+function getApiExposureTag(model: SettingsDataModel) {
+  const status =
+    model.status === 'published' && model.runtime_availability === 'available'
+      ? 'api_exposed_ready'
+      : 'published_not_exposed';
+
   switch (status) {
     case 'api_exposed_ready':
       return (
@@ -133,15 +137,6 @@ function getApiExposureTag(status: string) {
         >
           {i18nText("settings", "auto.already_public")}</Tag>
       );
-    case 'api_exposed_no_permission':
-      return (
-        <Tag
-          color="warning"
-          style={{ borderRadius: 6, margin: 0 }}
-          icon={<InfoCircleOutlined />}
-        >
-          {i18nText("settings", "auto.published_unauthorized")}</Tag>
-      );
     case 'published_not_exposed':
       return (
         <Tag
@@ -150,24 +145,6 @@ function getApiExposureTag(status: string) {
           icon={<FileTextOutlined />}
         >
           {i18nText("settings", "auto.undisclosed")}</Tag>
-      );
-    case 'draft':
-      return (
-        <Tag
-          color="default"
-          style={{ borderRadius: 6, margin: 0 }}
-          icon={<EditOutlined />}
-        >
-          {i18nText("settings", "auto.draft")}</Tag>
-      );
-    case 'unsafe_external_source':
-      return (
-        <Tag
-          color="error"
-          style={{ borderRadius: 6, margin: 0 }}
-          icon={<ExclamationCircleOutlined />}
-        >
-          {i18nText("settings", "auto.unsafe_external_source_alt")}</Tag>
       );
     default:
       return <Tag style={{ borderRadius: 6, margin: 0 }}>API {status}</Tag>;
@@ -269,7 +246,7 @@ export function DataModelTable({
       dataIndex: 'api_exposure_status',
       key: 'api_exposure_status',
       width: 200,
-      render: (value: string) => getApiExposureTag(value)
+      render: (_, model) => getApiExposureTag(model)
     },
     {
       title: i18nText("settings", "auto.table_id_alt"),
@@ -500,7 +477,7 @@ export function DataModelTable({
               </Flex>
               <Flex gap={6} style={{ marginTop: 12 }} wrap="wrap">
                 {getStatusTag(model.status)}
-                {getApiExposureTag(model.api_exposure_status)}
+                {getApiExposureTag(model)}
               </Flex>
               <span
                 className="data-model-panel__mobile-actions"

@@ -37,7 +37,6 @@ import {
   settingsDataModelScopeGrantsQueryKey,
   settingsDataSourcesQueryKey,
   updateSettingsDataModel,
-  updateSettingsDataModelApiExposure,
   updateSettingsDataModelField,
   updateSettingsDataModelScopeGrant,
   type CreateSettingsDataModelFieldInput,
@@ -46,7 +45,6 @@ import {
   type SettingsDataModelField,
   type SettingsDataModelScopeGrant,
   type SettingsDataSourceInstance,
-  type UpdateSettingsDataModelApiExposureInput,
   type UpdateSettingsDataModelFieldInput,
   type UpdateSettingsDataModelInput,
   type UpdateSettingsDataModelScopeGrantInput
@@ -252,29 +250,6 @@ export function SettingsDataModelsSection({
     }
   });
 
-  const updateApiExposureMutation = useMutation({
-    mutationFn: ({
-      model,
-      input
-    }: {
-      model: SettingsDataModel;
-      input: UpdateSettingsDataModelApiExposureInput;
-    }) => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
-      return updateSettingsDataModelApiExposure(model.id, input, csrfToken);
-    },
-    onSuccess: async () => {
-      messageApi.success(i18nText("settings", "auto.api_exposure_request_saved"));
-      if (effectiveSourceId) {
-        await queryClient.invalidateQueries({
-          queryKey: settingsDataModelsQueryKey(effectiveSourceId)
-        });
-      }
-    }
-  });
-
   const createFieldMutation = useMutation({
     mutationFn: ({
       model,
@@ -382,7 +357,6 @@ export function SettingsDataModelsSection({
     getErrorMessage(updateModelMutation.error) ??
     getErrorMessage(createModelMutation.error) ??
     getErrorMessage(deleteModelMutation.error) ??
-    getErrorMessage(updateApiExposureMutation.error) ??
     getErrorMessage(createFieldMutation.error) ??
     getErrorMessage(updateFieldMutation.error) ??
     getErrorMessage(deleteFieldMutation.error) ??
@@ -545,10 +519,7 @@ export function SettingsDataModelsSection({
                   advisorLoading={advisorQuery.isLoading}
                   recordPreview={recordPreviewQuery.data}
                   recordPreviewLoading={recordPreviewQuery.isLoading}
-                  modelSaving={
-                    updateModelMutation.isPending ||
-                    updateApiExposureMutation.isPending
-                  }
+                  modelSaving={updateModelMutation.isPending}
                   fieldSaving={
                     createFieldMutation.isPending ||
                     updateFieldMutation.isPending ||
@@ -575,12 +546,6 @@ export function SettingsDataModelsSection({
                   }
                   onDeleteField={(field) =>
                     deleteFieldMutation.mutate({ model: editingModel, field })
-                  }
-                  onUpdateApiExposure={(input) =>
-                    updateApiExposureMutation.mutate({
-                      model: editingModel,
-                      input
-                    })
                   }
                   onSaveGrant={(grant, input) =>
                     saveGrantMutation.mutate({ grant, input })

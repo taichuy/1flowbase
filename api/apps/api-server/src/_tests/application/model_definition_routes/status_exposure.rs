@@ -152,7 +152,7 @@ async fn create_model_route_rejects_invalid_status_without_creating_model() {
 }
 
 #[tokio::test]
-async fn model_definition_routes_compute_ready_exposure_from_persisted_facts() {
+async fn model_definition_routes_derive_ready_exposure_from_published_status() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -187,26 +187,8 @@ async fn model_definition_routes_compute_ready_exposure_from_persisted_facts() {
     let model_id = created["data"]["id"].as_str().unwrap().to_string();
     assert_eq!(
         created["data"]["api_exposure_status"],
-        json!("published_not_exposed")
+        json!("api_exposed_ready")
     );
-
-    create_api_key(
-        &app,
-        &cookie,
-        &csrf,
-        "ready fact key",
-        json!([
-            {
-                "data_model_id": model_id,
-                "list": true,
-                "get": false,
-                "create": false,
-                "update": false,
-                "delete": false
-            }
-        ]),
-    )
-    .await;
 
     let get_response = app
         .clone()
@@ -234,7 +216,7 @@ async fn model_definition_routes_compute_ready_exposure_from_persisted_facts() {
 }
 
 #[tokio::test]
-async fn model_definition_routes_do_not_trust_raw_ready_on_status_update() {
+async fn model_definition_routes_derive_api_exposure_on_status_update() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -300,12 +282,12 @@ async fn model_definition_routes_do_not_trust_raw_ready_on_status_update() {
     assert_eq!(updated["data"]["status"], json!("published"));
     assert_eq!(
         updated["data"]["api_exposure_status"],
-        json!("published_not_exposed")
+        json!("api_exposed_ready")
     );
 }
 
 #[tokio::test]
-async fn model_definition_routes_patch_api_exposure_request_without_status_update() {
+async fn model_definition_routes_ignore_api_exposure_patch_without_status_update() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -369,6 +351,6 @@ async fn model_definition_routes_patch_api_exposure_request_without_status_updat
     assert_eq!(updated["data"]["status"], json!("published"));
     assert_eq!(
         updated["data"]["api_exposure_status"],
-        json!("published_not_exposed")
+        json!("api_exposed_ready")
     );
 }

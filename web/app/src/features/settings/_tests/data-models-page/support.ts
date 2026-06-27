@@ -165,7 +165,6 @@ const dataModelsApi = vi.hoisted(() => ({
   createSettingsDataModel: vi.fn(),
   updateSettingsDataModel: vi.fn(),
   deleteSettingsDataModel: vi.fn(),
-  updateSettingsDataModelApiExposure: vi.fn(),
   fetchSettingsDataModelScopeGrants: vi.fn(),
   createSettingsDataModelField: vi.fn(),
   updateSettingsDataModelField: vi.fn(),
@@ -605,9 +604,6 @@ export function setupDataModelsPageTest() {
   });
   dataModelsApi.deleteSettingsDataModel.mockResolvedValue({
     deleted: true
-  });
-  dataModelsApi.updateSettingsDataModelApiExposure.mockResolvedValue({
-    id: 'model-1'
   });
   dataModelsApi.createSettingsDataModel.mockResolvedValue({
     id: 'model-new'

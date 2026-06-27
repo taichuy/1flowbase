@@ -12,7 +12,6 @@ import {
   fetchConsoleDataModels,
   fetchConsoleDataSourceInstances,
   updateConsoleDataModel,
-  updateConsoleDataModelApiExposure,
   updateConsoleDataModelField,
   updateConsoleDataModelScopeGrant,
   updateConsoleDataSourceDefaults,
@@ -28,7 +27,6 @@ import {
   type CreateConsoleDataModelFieldInput,
   type CreateConsoleDataModelInput,
   type CreateConsoleDataModelScopeGrantInput,
-  type UpdateConsoleDataModelApiExposureInput,
   type UpdateConsoleDataModelFieldInput,
   type UpdateConsoleDataModelInput,
   type UpdateConsoleDataModelScopeGrantInput,
@@ -48,8 +46,6 @@ export type BatchDeleteSettingsDataModelsResult =
   BatchDeleteConsoleDataModelsResult;
 export type CreateSettingsDataModelInput = CreateConsoleDataModelInput;
 export type UpdateSettingsDataModelInput = UpdateConsoleDataModelInput;
-export type UpdateSettingsDataModelApiExposureInput =
-  UpdateConsoleDataModelApiExposureInput;
 export type CreateSettingsDataModelFieldInput =
   CreateConsoleDataModelFieldInput;
 export type UpdateSettingsDataModelFieldInput =
@@ -143,14 +139,6 @@ export function batchDeleteSettingsDataModels(
   csrfToken: string
 ) {
   return batchDeleteConsoleDataModels(input, csrfToken);
-}
-
-export function updateSettingsDataModelApiExposure(
-  modelId: string,
-  input: UpdateSettingsDataModelApiExposureInput,
-  csrfToken: string
-) {
-  return updateConsoleDataModelApiExposure(modelId, input, csrfToken);
 }
 
 export function createSettingsDataModelField(

@@ -187,30 +187,7 @@ pub struct SessionRecord {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
-pub enum ApiKeyDataModelAction {
-    List,
-    Get,
-    Create,
-    Update,
-    Delete,
-}
-
-impl ApiKeyDataModelAction {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::List => "list",
-            Self::Get => "get",
-            Self::Create => "create",
-            Self::Update => "update",
-            Self::Delete => "delete",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
 pub enum ApiKeyKind {
-    DataModelApiKey,
     ApplicationApiKey,
     UserApiKey,
 }
@@ -218,17 +195,16 @@ pub enum ApiKeyKind {
 impl ApiKeyKind {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::DataModelApiKey => "data_model_api_key",
             Self::ApplicationApiKey => "application_api_key",
             Self::UserApiKey => "user_api_key",
         }
     }
 
-    pub fn from_db(value: &str) -> Self {
+    pub fn from_db(value: &str) -> Option<Self> {
         match value {
-            "application_api_key" => Self::ApplicationApiKey,
-            "user_api_key" => Self::UserApiKey,
-            _ => Self::DataModelApiKey,
+            "application_api_key" => Some(Self::ApplicationApiKey),
+            "user_api_key" => Some(Self::UserApiKey),
+            _ => None,
         }
     }
 }
@@ -251,27 +227,4 @@ pub struct ApiKeyRecord {
     pub last_used_at: Option<OffsetDateTime>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ApiKeyDataModelPermissionRecord {
-    pub api_key_id: Uuid,
-    pub data_model_id: Uuid,
-    pub allow_list: bool,
-    pub allow_get: bool,
-    pub allow_create: bool,
-    pub allow_update: bool,
-    pub allow_delete: bool,
-}
-
-impl ApiKeyDataModelPermissionRecord {
-    pub fn allows(&self, action: ApiKeyDataModelAction) -> bool {
-        match action {
-            ApiKeyDataModelAction::List => self.allow_list,
-            ApiKeyDataModelAction::Get => self.allow_get,
-            ApiKeyDataModelAction::Create => self.allow_create,
-            ApiKeyDataModelAction::Update => self.allow_update,
-            ApiKeyDataModelAction::Delete => self.allow_delete,
-        }
-    }
 }

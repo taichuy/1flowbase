@@ -8,10 +8,9 @@ use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        AddModelFieldInput, ApiKeyDataModelReadinessRecord, AuthRepository,
-        CreateModelDefinitionInput, CreateScopeDataModelGrantInput, ModelDefinitionRepository,
-        UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput, UpdateModelFieldInput,
-        UpdateScopeDataModelGrantInput,
+        AddModelFieldInput, AuthRepository, CreateModelDefinitionInput,
+        CreateScopeDataModelGrantInput, ModelDefinitionRepository, UpdateModelDefinitionInput,
+        UpdateModelDefinitionStatusInput, UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
     },
 };
 use sqlx::Row;
@@ -1086,54 +1085,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         .await?;
 
         rows.into_iter().map(map_scope_data_model_grant).collect()
-    }
-
-    async fn list_api_key_data_model_readiness(
-        &self,
-        data_model_id: Uuid,
-    ) -> Result<Vec<ApiKeyDataModelReadinessRecord>> {
-        let rows = sqlx::query(
-            r#"
-            select
-                ak.id as api_key_id,
-                p.data_model_id,
-                ak.scope_kind,
-                ak.scope_id,
-                ak.enabled as key_enabled,
-                ak.expires_at,
-                p.allow_list,
-                p.allow_get,
-                p.allow_create,
-                p.allow_update,
-                p.allow_delete
-            from api_key_data_model_permissions p
-            join api_keys ak on ak.id = p.api_key_id
-            where p.data_model_id = $1
-            order by ak.created_at asc
-            "#,
-        )
-        .bind(data_model_id)
-        .fetch_all(self.pool())
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|row| ApiKeyDataModelReadinessRecord {
-                api_key_id: row.get("api_key_id"),
-                data_model_id: row.get("data_model_id"),
-                scope_kind: domain::DataModelScopeKind::from_db(
-                    row.get::<String, _>("scope_kind").as_str(),
-                ),
-                scope_id: row.get("scope_id"),
-                key_enabled: row.get("key_enabled"),
-                expires_at: row.get("expires_at"),
-                allow_list: row.get("allow_list"),
-                allow_get: row.get("allow_get"),
-                allow_create: row.get("allow_create"),
-                allow_update: row.get("allow_update"),
-                allow_delete: row.get("allow_delete"),
-            })
-            .collect())
     }
 
     async fn append_audit_log(&self, event: &domain::AuditLogRecord) -> Result<()> {

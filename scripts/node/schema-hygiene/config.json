@@ -69,12 +69,6 @@
     "api_keys": {
       "scopeGenerationSource": "existing API key write path stores scope_id from workspace context"
     },
-    "api_key_data_model_permissions": {
-      "category": "join_or_child",
-      "scopeGenerationSource": "api_key_id -> api_keys.scope_id, with data_model_id required to match model_definitions.scope_id",
-      "backfillSource": "api_keys.scope_id after same-scope model_definition verification",
-      "writePathSource": "API key repository writes scope_id from api_keys.scope_id and rejects cross-scope data model grants"
-    },
     "application_conversation_messages": {
       "scopeGenerationSource": "existing conversation message write path copies conversation scope_id"
     },

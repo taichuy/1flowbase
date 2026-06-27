@@ -72,7 +72,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
     assert_eq!(created["data"]["status"], json!("published"));
     assert_eq!(
         created["data"]["api_exposure_status"],
-        json!("published_not_exposed")
+        json!("api_exposed_ready")
     );
     assert_eq!(created["data"]["runtime_availability"], json!("available"));
     let model_id = created["data"]["id"].as_str().unwrap().to_string();

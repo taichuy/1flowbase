@@ -219,25 +219,9 @@ pub struct CreateApiKeyInput {
     pub expires_at: Option<OffsetDateTime>,
 }
 
-#[derive(Debug, Clone)]
-pub struct UpsertApiKeyDataModelPermissionInput {
-    pub api_key_id: Uuid,
-    pub data_model_id: Uuid,
-    pub allow_list: bool,
-    pub allow_get: bool,
-    pub allow_create: bool,
-    pub allow_update: bool,
-    pub allow_delete: bool,
-}
-
 #[async_trait]
 pub trait ApiKeyRepository: Send + Sync {
     async fn create_api_key(&self, input: &CreateApiKeyInput) -> anyhow::Result<ApiKeyRecord>;
-    async fn replace_api_key_data_model_permissions(
-        &self,
-        api_key_id: Uuid,
-        permissions: &[UpsertApiKeyDataModelPermissionInput],
-    ) -> anyhow::Result<Vec<ApiKeyDataModelPermissionRecord>>;
     async fn find_api_key_by_token_hash(
         &self,
         token_hash: &str,
@@ -267,10 +251,6 @@ pub trait ApiKeyRepository: Send + Sync {
         application_id: Uuid,
         creator_user_id: Uuid,
     ) -> anyhow::Result<()>;
-    async fn list_api_key_data_model_permissions(
-        &self,
-        api_key_id: Uuid,
-    ) -> anyhow::Result<Vec<ApiKeyDataModelPermissionRecord>>;
 }
 
 #[async_trait]

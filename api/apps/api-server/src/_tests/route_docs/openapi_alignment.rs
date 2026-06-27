@@ -78,7 +78,6 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
         "/api/console/model-providers/catalog",
         "/api/console/model-providers/options",
         "/api/console/system/runtime-profile",
-        "/api/console/api-keys",
         "/api/console/user-api-keys",
         "/api/console/user-api-keys/role-options",
         "/api/console/user-api-keys/{api_key_id}/revoke",
@@ -161,7 +160,7 @@ async fn openapi_documents_model_mutation_bad_request_responses() {
 }
 
 #[tokio::test]
-async fn openapi_contains_api_key_create_schemas() {
+async fn openapi_omits_legacy_data_model_api_key_create_schemas() {
     let response = app()
         .oneshot(
             Request::builder()
@@ -187,7 +186,10 @@ async fn openapi_contains_api_key_create_schemas() {
         "ApiKeyDataModelPermissionRequest",
         "ApiKeyDataModelPermissionResponse",
     ] {
-        assert!(components.contains_key(schema), "missing schema {schema}");
+        assert!(
+            !components.contains_key(schema),
+            "legacy schema should not be exposed: {schema}"
+        );
     }
 }
 

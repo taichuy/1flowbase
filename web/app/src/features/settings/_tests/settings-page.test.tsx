@@ -251,7 +251,6 @@ const dataModelsApi = vi.hoisted(() => ({
   createSettingsDataModel: vi.fn(),
   updateSettingsDataModel: vi.fn(),
   deleteSettingsDataModel: vi.fn(),
-  updateSettingsDataModelApiExposure: vi.fn(),
   fetchSettingsDataModelScopeGrants: vi.fn(),
   createSettingsDataModelField: vi.fn(),
   updateSettingsDataModelField: vi.fn(),
