@@ -1629,34 +1629,41 @@ function McpToolsTab({
                 }
               />
             </Form.Item>
-            <Form.Item
-              name="des_id"
-              label="des_id"
-              rules={[{ required: true, whitespace: true }]}
-            >
-              <Input
-                addonAfter={
-                  <Tooltip title="随机生成 des_id">
-                    <Button
-                      type="text"
-                      htmlType="button"
-                      size="small"
-                      icon={<ReloadOutlined />}
-                      onClick={() => {
-                        form.setFieldValue('des_id', buildRandomToolIdSeed());
-                      }}
-                    />
-                  </Tooltip>
-                }
-              />
-            </Form.Item>
-            <Form.Item
-              name="des_id_required"
-              label="des_id_required"
-              valuePropName="checked"
-            >
-              <Switch />
-            </Form.Item>
+            <Flex align="flex-start" gap={12} wrap="wrap">
+              <Form.Item
+                className="mcp-management__des-id-field"
+                name="des_id"
+                label="des_id"
+                rules={[{ required: true, whitespace: true }]}
+              >
+                <Input
+                  addonAfter={
+                    <Tooltip title="随机生成 des_id">
+                      <Button
+                        type="text"
+                        htmlType="button"
+                        size="small"
+                        icon={<ReloadOutlined />}
+                        onClick={() => {
+                          form.setFieldValue(
+                            'des_id',
+                            buildRandomToolIdSeed()
+                          );
+                        }}
+                      />
+                    </Tooltip>
+                  }
+                />
+              </Form.Item>
+              <Form.Item
+                className="mcp-management__des-id-required-field"
+                name="des_id_required"
+                label="des_id_required"
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+            </Flex>
             <Form.Item
               name="short_description"
               label="short_description"
@@ -1707,16 +1714,7 @@ function McpToolsTab({
                 );
 
                 if (!selectedInterface) {
-                  return (
-                    <Alert
-                      type="info"
-                      showIcon
-                      message={i18nText(
-                        'settings',
-                        'auto.mcp_interface_source_hint'
-                      )}
-                    />
-                  );
+                  return null;
                 }
 
                 return (

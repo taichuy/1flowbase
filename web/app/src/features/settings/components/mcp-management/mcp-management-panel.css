@@ -60,6 +60,14 @@
   margin-bottom: 16px;
 }
 
+.mcp-management__des-id-field {
+  flex: 1 1 520px;
+}
+
+.mcp-management__des-id-required-field {
+  flex: 0 0 180px;
+}
+
 .mcp-management__schema-editor {
   margin-top: 8px;
 }
