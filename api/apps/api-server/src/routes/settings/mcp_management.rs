@@ -59,7 +59,6 @@ pub struct McpToolResponse {
     pub tool_id: String,
     pub name: String,
     pub short_description: String,
-    pub usage_description: Option<String>,
     pub full_description: String,
     pub interface_id: String,
     #[schema(value_type = Object)]
@@ -217,7 +216,6 @@ pub struct CreateMcpToolBody {
     pub des_id: Option<String>,
     pub name: String,
     pub short_description: String,
-    pub usage_description: Option<String>,
     pub full_description: String,
     pub interface_id: String,
     #[schema(value_type = Object)]
@@ -238,7 +236,6 @@ pub struct UpdateMcpToolBody {
     pub name: String,
     pub des_id: Option<String>,
     pub short_description: String,
-    pub usage_description: Option<String>,
     pub full_description: String,
     pub interface_id: String,
     #[schema(value_type = Object)]
@@ -1546,7 +1543,6 @@ fn to_create_tool_command(
         des_id: body.des_id,
         name: body.name,
         short_description: body.short_description,
-        usage_description: body.usage_description,
         full_description: body.full_description,
         interface_entry,
         input_mapping: body.input_mapping,
@@ -1567,7 +1563,6 @@ fn to_update_tool_command(
         des_id: body.des_id,
         name: body.name,
         short_description: body.short_description,
-        usage_description: body.usage_description,
         full_description: body.full_description,
         interface_entry,
         input_mapping: body.input_mapping,
@@ -1666,7 +1661,6 @@ fn to_tool_response(record: domain::McpToolRecord) -> McpToolResponse {
         tool_id: record.tool_id,
         name: record.name,
         short_description: record.short_description,
-        usage_description: record.usage_description,
         full_description: record.full_description,
         interface_id: record.interface_id,
         parameter_schema: record.parameter_schema,

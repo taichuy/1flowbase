@@ -62,7 +62,6 @@ const styleBoundaryMcpCatalog = {
       tool_id: 'runtime_profile_get',
       name: 'Runtime profile',
       short_description: 'Read runtime profile',
-      usage_description: null,
       full_description: 'Read the current system runtime profile.',
       interface_id: 'get_runtime_profile',
       parameter_schema: {

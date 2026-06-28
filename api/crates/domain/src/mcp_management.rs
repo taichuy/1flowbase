@@ -134,7 +134,6 @@ pub struct McpToolRecord {
     pub tool_id: String,
     pub name: String,
     pub short_description: String,
-    pub usage_description: Option<String>,
     pub full_description: String,
     pub interface_id: String,
     pub parameter_schema: serde_json::Value,

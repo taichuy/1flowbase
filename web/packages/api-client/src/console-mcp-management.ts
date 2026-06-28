@@ -30,7 +30,6 @@ export interface ConsoleMcpTool {
   tool_id: string;
   name: string;
   short_description: string;
-  usage_description: string | null;
   full_description: string;
   interface_id: string;
   parameter_schema: unknown;
@@ -152,7 +151,6 @@ export interface SaveConsoleMcpToolBody {
   des_id: string;
   name: string;
   short_description: string;
-  usage_description: string | null;
   full_description: string;
   interface_id: string;
   parameter_schema: unknown;

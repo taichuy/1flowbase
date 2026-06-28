@@ -219,7 +219,6 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
                         "des_id": "des-runtime-create",
                         "name": "Create order",
                         "short_description": "Create order",
-                        "usage_description": "Create a runtime order record",
                         "full_description": "Create a runtime order record through a concrete Data Model interface.",
                         "interface_id": create_interface_id,
                         "parameter_schema": {},
@@ -242,6 +241,9 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
         create_tool_payload["data"]["interface_id"].as_str(),
         Some(create_interface_id.as_str())
     );
+    assert!(create_tool_payload["data"]
+        .get("usage_description")
+        .is_none());
     assert!(create_tool_payload["data"].get("audit_policy").is_none());
 
     let update_tool_response = app
@@ -258,7 +260,6 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
                         "name": "Update order",
                         "des_id": "des-runtime-update",
                         "short_description": "Update order",
-                        "usage_description": "Update a runtime order record",
                         "full_description": "Update a runtime order record through a concrete Data Model interface.",
                         "interface_id": update_interface_id,
                         "parameter_schema": {},
@@ -281,6 +282,9 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
         update_tool_payload["data"]["interface_id"].as_str(),
         Some(update_interface_id.as_str())
     );
+    assert!(update_tool_payload["data"]
+        .get("usage_description")
+        .is_none());
     assert!(update_tool_payload["data"].get("audit_policy").is_none());
 }
 
@@ -331,7 +335,6 @@ async fn mcp_tool_create_rejects_non_bindable_agent_interface() {
                         "des_id": "des-agent",
                         "name": "Agent run proxy",
                         "short_description": "Agent run proxy",
-                        "usage_description": "Proxy an agent run",
                         "full_description": "This should remain unavailable for MCP binding.",
                         "interface_id": agent_interface_id,
                         "parameter_schema": {},
@@ -483,7 +486,6 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
                         "des_id": "des12345",
                         "name": "Runtime profile",
                         "short_description": "Runtime profile",
-                        "usage_description": "Read runtime profile",
                         "full_description": "Read system runtime topology and locale profile.",
                         "interface_id": "get_runtime_profile",
                         "parameter_schema": { "type": "object", "properties": { "fake": { "type": "string" } } },
@@ -504,6 +506,9 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     let create_tool_payload = response_json(create_tool_response).await;
     let tool_id = create_tool_payload["data"]["tool_id"].as_str().unwrap();
     assert_eq!(tool_id, "runtime_profile");
+    assert!(create_tool_payload["data"]
+        .get("usage_description")
+        .is_none());
     let first_des_id = create_tool_payload["data"]["des_id"].as_str().unwrap();
     assert_eq!(first_des_id, "des12345");
     assert_eq!(
@@ -569,6 +574,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     assert_eq!(get_tool_response.status(), StatusCode::OK);
     let get_tool_payload = response_json(get_tool_response).await;
     assert_eq!(get_tool_payload["data"]["tool_id"].as_str(), Some(tool_id));
+    assert!(get_tool_payload["data"].get("usage_description").is_none());
 
     let refresh_response = app
         .clone()
@@ -701,7 +707,6 @@ async fn mcp_tool_create_requires_tool_id() {
                     json!({
                         "name": "Runtime profile",
                         "short_description": "Runtime profile",
-                        "usage_description": "Read runtime profile",
                         "full_description": "Read system runtime topology and locale profile.",
                         "interface_id": "get_runtime_profile",
                         "parameter_schema": {},

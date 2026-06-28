@@ -131,7 +131,6 @@ type ToolFormValues = {
   des_id: string;
   name: string;
   short_description: string;
-  usage_description: string | null;
   full_description: string;
   interface_id: string;
   input_mapping: McpInputMappingValue;
@@ -1124,7 +1123,6 @@ function McpToolsTab({
         des_id: values.des_id,
         name: values.name,
         short_description: values.short_description,
-        usage_description: values.usage_description,
         full_description: values.full_description,
         interface_id: values.interface_id,
         parameter_schema: selectedInterface?.parameter_schema ?? {},
@@ -1140,7 +1138,6 @@ function McpToolsTab({
           name: body.name,
           des_id: body.des_id,
           short_description: body.short_description,
-          usage_description: body.usage_description,
           full_description: body.full_description,
           interface_id: body.interface_id,
           parameter_schema: body.parameter_schema,
@@ -1327,7 +1324,6 @@ function McpToolsTab({
                   tool_id: record.tool_id,
                   name: record.name,
                   short_description: record.short_description,
-                  usage_description: record.usage_description,
                   full_description: record.full_description,
                   des_id: record.des_id,
                   interface_id: record.interface_id,
@@ -1475,7 +1471,6 @@ function McpToolsTab({
                 tool_id: '',
                 name: '',
                 short_description: '',
-                usage_description: '',
                 full_description: '',
                 des_id: buildRandomToolIdSeed(),
                 interface_id: undefined,
@@ -1847,9 +1842,6 @@ function McpToolsTab({
                   </div>
                 );
               }}
-            </Form.Item>
-            <Form.Item name="usage_description" label="usage_description">
-              <Input.TextArea rows={3} />
             </Form.Item>
             <Form.Item
               name="full_description"

@@ -82,7 +82,6 @@ fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolRecord> {
         tool_id: row.get("tool_id"),
         name: row.get("name"),
         short_description: row.get("short_description"),
-        usage_description: row.get("usage_description"),
         full_description: row.get("full_description"),
         interface_id: row.get("interface_id"),
         parameter_schema: row.get("parameter_schema"),
@@ -415,7 +414,6 @@ impl McpManagementRepository for PgControlPlaneStore {
                 tool_id,
                 name,
                 short_description,
-                usage_description,
                 full_description,
                 interface_id,
                 parameter_schema,
@@ -430,9 +428,9 @@ impl McpManagementRepository for PgControlPlaneStore {
                 created_by,
                 updated_by
             ) values (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9,
-                $10, $11, $12, $13, $14, $15, $16,
-                $17, $18, $18
+                $1, $2, $3, $4, $5, $6, $7, $8,
+                $9, $10, $11, $12, $13, $14, $15,
+                $16, $17, $17
             )
             returning *
             "#,
@@ -442,7 +440,6 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&input.tool_id)
         .bind(&input.name)
         .bind(&input.short_description)
-        .bind(&input.usage_description)
         .bind(&input.full_description)
         .bind(&input.interface_id)
         .bind(&input.parameter_schema)
@@ -468,20 +465,19 @@ impl McpManagementRepository for PgControlPlaneStore {
             set
                 name = $3,
                 short_description = $4,
-                usage_description = $5,
-                full_description = $6,
-                interface_id = $7,
-                parameter_schema = $8,
-                result_schema = $9,
-                input_mapping = $10,
-                output_mapping = $11,
-                permission_code = $12,
-                risk_level = $13,
-                des_id = $14,
-                des_id_required = $15,
-                status = $16,
+                full_description = $5,
+                interface_id = $6,
+                parameter_schema = $7,
+                result_schema = $8,
+                input_mapping = $9,
+                output_mapping = $10,
+                permission_code = $11,
+                risk_level = $12,
+                des_id = $13,
+                des_id_required = $14,
+                status = $15,
                 revision = revision + 1,
-                updated_by = $17,
+                updated_by = $16,
                 updated_at = now()
             where workspace_id = $1 and tool_id = $2
             returning *
@@ -491,7 +487,6 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&input.tool_id)
         .bind(&input.name)
         .bind(&input.short_description)
-        .bind(&input.usage_description)
         .bind(&input.full_description)
         .bind(&input.interface_id)
         .bind(&input.parameter_schema)
