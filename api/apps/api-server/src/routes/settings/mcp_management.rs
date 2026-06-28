@@ -233,7 +233,6 @@ pub struct CreateMcpToolBody {
     pub risk_level: String,
     #[schema(value_type = Object)]
     pub audit_policy: serde_json::Value,
-    pub des_id_required: bool,
     pub status: String,
 }
 
@@ -257,7 +256,6 @@ pub struct UpdateMcpToolBody {
     pub risk_level: String,
     #[schema(value_type = Object)]
     pub audit_policy: serde_json::Value,
-    pub des_id_required: bool,
     pub status: String,
 }
 
@@ -1478,7 +1476,6 @@ fn to_create_tool_command(
         input_mapping: body.input_mapping,
         output_mapping: body.output_mapping,
         audit_policy: body.audit_policy,
-        des_id_required: body.des_id_required,
         status: parse_tool_status(&body.status)?,
     })
 }
@@ -1501,7 +1498,6 @@ fn to_update_tool_command(
         input_mapping: body.input_mapping,
         output_mapping: body.output_mapping,
         audit_policy: body.audit_policy,
-        des_id_required: body.des_id_required,
         status: parse_tool_status(&body.status)?,
     })
 }

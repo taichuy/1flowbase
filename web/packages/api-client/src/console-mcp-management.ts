@@ -163,7 +163,6 @@ export interface SaveConsoleMcpToolBody {
   permission_code: string | null;
   risk_level: string;
   audit_policy: unknown;
-  des_id_required: boolean;
   status: string;
 }
 

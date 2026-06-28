@@ -288,7 +288,6 @@ describe('McpManagementPanel', () => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
         expect.objectContaining({
           des_id: 'des12345',
-          des_id_required: true,
           input_mapping: {
             interface_parameters: [
               {
@@ -325,6 +324,12 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
+    expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        des_id_required: expect.any(Boolean)
+      }),
+      expect.any(String)
+    );
   });
 
   test('blocks saving when the input mapping JSON parse view is invalid', async () => {

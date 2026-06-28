@@ -150,7 +150,6 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
                         "permission_code": "file_storage.manage.all",
                         "risk_level": "low",
                         "audit_policy": { "enabled": true },
-                        "des_id_required": true,
                         "status": "enabled"
                     })
                     .to_string(),
@@ -165,6 +164,10 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     assert_eq!(tool_id, "runtime_profile");
     let first_des_id = create_tool_payload["data"]["des_id"].as_str().unwrap();
     assert_eq!(first_des_id, "des12345");
+    assert_eq!(
+        create_tool_payload["data"]["des_id_required"].as_bool(),
+        Some(false)
+    );
     assert_eq!(
         create_tool_payload["data"]["permission_code"].as_str(),
         Some("system_runtime.view.all")
@@ -366,7 +369,6 @@ async fn mcp_tool_create_requires_tool_id() {
                         "permission_code": null,
                         "risk_level": "low",
                         "audit_policy": { "enabled": true },
-                        "des_id_required": true,
                         "status": "enabled"
                     })
                     .to_string(),

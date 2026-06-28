@@ -156,7 +156,6 @@ describe('console-mcp-management client', () => {
             permission_code: 'system_runtime.view.all',
             risk_level: 'high',
             audit_policy: {},
-            des_id_required: true,
             status: 'draft'
           },
           'csrf-123'
@@ -186,7 +185,6 @@ describe('console-mcp-management client', () => {
             permission_code: 'system_runtime.view.all',
             risk_level: 'high',
             audit_policy: {},
-            des_id_required: true,
             status: 'enabled'
           },
           'csrf-123'

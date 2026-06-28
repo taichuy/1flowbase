@@ -45,7 +45,6 @@ pub struct CreateMcpToolCommand {
     pub input_mapping: serde_json::Value,
     pub output_mapping: serde_json::Value,
     pub audit_policy: serde_json::Value,
-    pub des_id_required: bool,
     pub status: domain::McpToolStatus,
 }
 
@@ -61,7 +60,6 @@ pub struct UpdateMcpToolCommand {
     pub input_mapping: serde_json::Value,
     pub output_mapping: serde_json::Value,
     pub audit_policy: serde_json::Value,
-    pub des_id_required: bool,
     pub status: domain::McpToolStatus,
 }
 
@@ -252,6 +250,7 @@ where
         validate_identifier(&command.tool_id, "tool_id")?;
         let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
+        let des_id_required = input_mapping_requires_des_id(&command.input_mapping);
         self.repository
             .create_mcp_tool(&CreateMcpToolInput {
                 id: Uuid::now_v7(),
@@ -271,7 +270,7 @@ where
                 risk_level: interface.risk_level,
                 audit_policy: command.audit_policy,
                 des_id,
-                des_id_required: command.des_id_required,
+                des_id_required,
                 status: command.status,
             })
             .await
@@ -285,6 +284,7 @@ where
         validate_identifier(&command.tool_id, "tool_id")?;
         let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
+        let des_id_required = input_mapping_requires_des_id(&command.input_mapping);
         self.repository
             .update_mcp_tool(&UpdateMcpToolInput {
                 actor_user_id: command.actor_user_id,
@@ -303,7 +303,7 @@ where
                 risk_level: interface.risk_level,
                 audit_policy: command.audit_policy,
                 des_id,
-                des_id_required: command.des_id_required,
+                des_id_required,
                 status: command.status,
             })
             .await
@@ -706,6 +706,51 @@ fn normalize_des_id(value: Option<String>) -> String {
     }
 }
 
+fn input_mapping_requires_des_id(input_mapping: &serde_json::Value) -> bool {
+    const DES_ID: &str = "des_id";
+
+    let Some(mapping) = input_mapping.as_object() else {
+        return false;
+    };
+
+    let interface_parameter_required = mapping
+        .get("interface_parameters")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|parameters| {
+            parameters.iter().find_map(|parameter| {
+                let parameter = parameter.as_object()?;
+                (parameter.get("name").and_then(serde_json::Value::as_str)
+                    == Some(DES_ID))
+                .then(|| parameter.get("required").and_then(serde_json::Value::as_bool))
+                .flatten()
+            })
+        });
+
+    mapping
+        .get("mappings")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|entries| {
+            entries.iter().find_map(|entry| {
+                let entry = entry.as_object()?;
+                let maps_des_id = entry
+                    .get("interface_param")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(DES_ID)
+                    || entry.get("mcp_param").and_then(serde_json::Value::as_str)
+                        == Some(DES_ID);
+                maps_des_id
+                    .then(|| {
+                        entry.get("required")
+                            .and_then(serde_json::Value::as_bool)
+                            .or(interface_parameter_required)
+                    })
+                    .flatten()
+            })
+        })
+        .or(interface_parameter_required)
+        .unwrap_or(false)
+}
+
 fn path_matches(base_path: &str, candidate: &str) -> bool {
     base_path == "/" || candidate == base_path || candidate.starts_with(&format!("{base_path}/"))
 }
@@ -775,4 +820,56 @@ fn bindable_interface(
         return Err(ControlPlaneError::InvalidInput("interface_id").into());
     }
     Ok(entry)
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::input_mapping_requires_des_id;
+
+    #[test]
+    fn input_mapping_des_id_required_is_derived_from_parameter_mapping() {
+        assert!(!input_mapping_requires_des_id(&json!({})));
+
+        assert!(input_mapping_requires_des_id(&json!({
+            "interface_parameters": [
+                {
+                    "name": "des_id",
+                    "field_type": "string",
+                    "parameter_type": "json_body",
+                    "description": "des_id",
+                    "required": true
+                }
+            ],
+            "mappings": [
+                {
+                    "interface_param": "des_id",
+                    "mcp_param": "des_id",
+                    "description": "des_id",
+                    "required": true
+                }
+            ]
+        })));
+
+        assert!(!input_mapping_requires_des_id(&json!({
+            "interface_parameters": [
+                {
+                    "name": "des_id",
+                    "field_type": "string",
+                    "parameter_type": "json_body",
+                    "description": "des_id",
+                    "required": false
+                }
+            ],
+            "mappings": [
+                {
+                    "interface_param": "des_id",
+                    "mcp_param": "des_id",
+                    "description": "des_id",
+                    "required": false
+                }
+            ]
+        })));
+    }
 }

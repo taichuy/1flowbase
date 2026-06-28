@@ -1135,7 +1135,6 @@ function McpToolsTab({
         permission_code: selectedInterface?.permission_code ?? null,
         risk_level: selectedInterface?.risk_level ?? 'medium',
         audit_policy: parseJsonText(values.audit_policy_text, 'audit_policy'),
-        des_id_required: true,
         status: values.status
       };
       if (editingTool) {
@@ -1153,7 +1152,6 @@ function McpToolsTab({
           permission_code: body.permission_code,
           risk_level: body.risk_level,
           audit_policy: body.audit_policy,
-          des_id_required: body.des_id_required,
           status: body.status
         };
         return updateSettingsMcpTool(
