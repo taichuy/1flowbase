@@ -1,27 +1,19 @@
-import { Alert, Button, Form, Input, Space } from 'antd';
-import { useState } from 'react';
+import { Alert, Button, Checkbox, Form, Input, InputNumber, Space } from 'antd';
+import { useMemo, useState } from 'react';
 
 import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
 import {
   normalizeInputMapping,
-  type McpInputMappingValue
+  type McpInputMappingValue,
+  type McpInputParameterMapping
 } from './mcp-input-mapping-model';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+type DebugField = McpInputParameterMapping & {
+  field_type: string;
+};
 
 function formatJson(value: unknown) {
   return JSON.stringify(value ?? {}, null, 2);
-}
-
-function parseMcpArguments(text: string) {
-  const value = JSON.parse(text || '{}') as unknown;
-  if (!isRecord(value)) {
-    throw new Error('请输入 JSON 对象');
-  }
-
-  return value;
 }
 
 function buildInterfaceArguments(
@@ -38,6 +30,78 @@ function buildInterfaceArguments(
   return interfaceArguments;
 }
 
+function buildDebugFields(inputMapping: McpInputMappingValue): DebugField[] {
+  return inputMapping.mappings.map((mapping) => {
+    const interfaceParameter = inputMapping.interface_parameters.find(
+      (parameter) => parameter.name === mapping.interface_param
+    );
+
+    return {
+      ...mapping,
+      field_type: interfaceParameter?.field_type ?? ''
+    };
+  });
+}
+
+function debugFieldKind(fieldType: string) {
+  const normalized = fieldType.toLowerCase();
+  if (normalized.includes('bool')) {
+    return 'boolean';
+  }
+  if (
+    normalized.includes('int') ||
+    normalized.includes('float') ||
+    normalized.includes('double') ||
+    normalized.includes('number')
+  ) {
+    return 'number';
+  }
+  if (
+    normalized.includes('object') ||
+    normalized.includes('array') ||
+    normalized.includes('json')
+  ) {
+    return 'json';
+  }
+
+  return 'string';
+}
+
+function isBlankValue(value: unknown) {
+  return typeof value === 'undefined' || value === null || value === '';
+}
+
+function buildMcpArguments(
+  fields: DebugField[],
+  argumentValues: Record<string, unknown>
+) {
+  const mcpArguments: Record<string, unknown> = {};
+  for (const field of fields) {
+    const rawValue = argumentValues[field.mcp_param];
+    if (field.required && isBlankValue(rawValue)) {
+      throw new Error(`${field.mcp_param} 是必填参数`);
+    }
+
+    if (isBlankValue(rawValue)) {
+      continue;
+    }
+
+    if (debugFieldKind(field.field_type) === 'json') {
+      try {
+        mcpArguments[field.mcp_param] =
+          typeof rawValue === 'string' ? JSON.parse(rawValue) : rawValue;
+      } catch {
+        throw new Error(`${field.mcp_param} 请输入有效 JSON`);
+      }
+      continue;
+    }
+
+    mcpArguments[field.mcp_param] = rawValue;
+  }
+
+  return mcpArguments;
+}
+
 export function McpToolDebugPanel({
   inputMapping,
   outputMapping
@@ -45,14 +109,30 @@ export function McpToolDebugPanel({
   inputMapping: unknown;
   outputMapping: Record<string, unknown>;
 }) {
-  const [mcpArgumentsText, setMcpArgumentsText] = useState('{}');
+  const normalizedInputMapping = useMemo(
+    () => normalizeInputMapping(inputMapping),
+    [inputMapping]
+  );
+  const debugFields = useMemo(
+    () => buildDebugFields(normalizedInputMapping),
+    [normalizedInputMapping]
+  );
+  const [argumentValues, setArgumentValues] = useState<Record<string, unknown>>(
+    {}
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [debugResult, setDebugResult] = useState<unknown>(null);
 
+  const setArgumentValue = (name: string, value: unknown) => {
+    setArgumentValues((current) => ({
+      ...current,
+      [name]: value
+    }));
+  };
+
   const runDebug = () => {
     try {
-      const mcpArguments = parseMcpArguments(mcpArgumentsText);
-      const normalizedInputMapping = normalizeInputMapping(inputMapping);
+      const mcpArguments = buildMcpArguments(debugFields, argumentValues);
       setDebugResult({
         mcp_arguments: mcpArguments,
         interface_arguments: buildInterfaceArguments(
@@ -68,18 +148,80 @@ export function McpToolDebugPanel({
     }
   };
 
+  const renderFieldInput = (field: DebugField) => {
+    const value = argumentValues[field.mcp_param];
+    const kind = debugFieldKind(field.field_type);
+
+    if (kind === 'boolean') {
+      return (
+        <Checkbox
+          aria-label={field.mcp_param}
+          checked={Boolean(value)}
+          onChange={(event) =>
+            setArgumentValue(field.mcp_param, event.target.checked)
+          }
+        />
+      );
+    }
+
+    if (kind === 'number') {
+      return (
+        <InputNumber
+          aria-label={field.mcp_param}
+          style={{ width: '100%' }}
+          value={typeof value === 'number' ? value : null}
+          onChange={(nextValue) => setArgumentValue(field.mcp_param, nextValue)}
+        />
+      );
+    }
+
+    if (kind === 'json') {
+      return (
+        <Input.TextArea
+          aria-label={field.mcp_param}
+          rows={3}
+          value={typeof value === 'string' ? value : ''}
+          onChange={(event) =>
+            setArgumentValue(field.mcp_param, event.target.value)
+          }
+        />
+      );
+    }
+
+    return (
+      <Input
+        aria-label={field.mcp_param}
+        value={typeof value === 'string' ? value : ''}
+        onChange={(event) =>
+          setArgumentValue(field.mcp_param, event.target.value)
+        }
+      />
+    );
+  };
+
   return (
     <Space className="mcp-tool-debug-panel" direction="vertical" size={12}>
-      <Form.Item label="MCP 参数 JSON">
-        <Input.TextArea
-          aria-label="MCP 参数 JSON"
-          rows={5}
-          value={mcpArgumentsText}
-          onChange={(event) => setMcpArgumentsText(event.target.value)}
-        />
-      </Form.Item>
+      {debugFields.length > 0 ? (
+        debugFields.map((field) => (
+          <Form.Item
+            key={`${field.interface_param}:${field.mcp_param}`}
+            label={field.mcp_param}
+            required={field.required}
+            extra={field.description || undefined}
+          >
+            {renderFieldInput(field)}
+          </Form.Item>
+        ))
+      ) : (
+        <Alert type="info" message="先在 input_mapping 添加 MCP 参数映射" />
+      )}
       <Space>
-        <Button aria-label="运行" type="primary" onClick={runDebug}>
+        <Button
+          aria-label="运行"
+          disabled={debugFields.length === 0}
+          type="primary"
+          onClick={runDebug}
+        >
           运行
         </Button>
       </Space>

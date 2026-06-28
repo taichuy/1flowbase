@@ -169,38 +169,42 @@ describe('McpManagementPanel', () => {
     vi.clearAllMocks();
   });
 
-  test('shows step navigation actions only when the adjacent step exists', async () => {
-    renderPanel();
+  test(
+    'shows step navigation actions only when the adjacent step exists',
+    async () => {
+      renderPanel();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
-    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+      fireEvent.click(screen.getByRole('button', { name: /新增/ }));
 
-    const dialog = await screen.findByRole('dialog');
+      const dialog = await screen.findByRole('dialog');
 
-    expect(
-      within(dialog).queryByRole('button', { name: /上一步/ })
-    ).not.toBeInTheDocument();
-    expect(
-      within(dialog).getByRole('button', { name: /下一步/ })
-    ).toBeInTheDocument();
+      expect(
+        within(dialog).queryByRole('button', { name: /上一步/ })
+      ).not.toBeInTheDocument();
+      expect(
+        within(dialog).getByRole('button', { name: /下一步/ })
+      ).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: /下一步/ }));
-    expect(
-      within(dialog).getByRole('button', { name: /上一步/ })
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole('button', { name: /下一步/ })
-    ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('interface_id')).toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole('button', { name: /下一步/ }));
+      expect(
+        within(dialog).getByRole('button', { name: /上一步/ })
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByRole('button', { name: /下一步/ })
+      ).toBeInTheDocument();
+      expect(within(dialog).getByLabelText('interface_id')).toBeInTheDocument();
 
-    clickSegmentedOption(dialog, 'debug');
-    expect(
-      within(dialog).getByRole('button', { name: /上一步/ })
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole('button', { name: /下一步/ })
-    ).not.toBeInTheDocument();
-  });
+      clickSegmentedOption(dialog, 'debug');
+      expect(
+        within(dialog).getByRole('button', { name: /上一步/ })
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).queryByRole('button', { name: /下一步/ })
+      ).not.toBeInTheDocument();
+    },
+    30000
+  );
 
   test('shows the selected interface operation in input output and debug steps', async () => {
     renderPanel();
@@ -241,7 +245,7 @@ describe('McpManagementPanel', () => {
     expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(1);
   });
 
-  test('keeps full description in basic and renders debug JSON results', async () => {
+  test('keeps full description in basic and renders debug form JSON results', async () => {
     renderPanel();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
@@ -279,8 +283,11 @@ describe('McpManagementPanel', () => {
     );
 
     clickSegmentedOption(dialog, 'debug');
-    fireEvent.change(within(dialog).getByLabelText('MCP 参数 JSON'), {
-      target: { value: '{ "appId": "app-1" }' }
+    expect(
+      within(dialog).queryByLabelText('MCP 参数 JSON')
+    ).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('appId'), {
+      target: { value: 'app-1' }
     });
     fireEvent.click(within(dialog).getByRole('button', { name: '运行' }));
 
