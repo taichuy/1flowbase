@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn update_model_status_forces_draft_exposure_and_downgrades_direct_ready() {
+async fn update_model_status_forces_draft_exposure_and_published_exposure() {
     let service = ModelDefinitionService::for_tests();
     let created = service
         .create_model(CreateModelDefinitionCommand {
@@ -41,12 +41,12 @@ async fn update_model_status_forces_draft_exposure_and_downgrades_direct_ready()
 
     assert_eq!(
         direct_ready.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
+        ApiExposureStatus::ApiExposedReady
     );
 }
 
 #[tokio::test]
-async fn update_model_status_downgrades_raw_ready_without_readiness_facts() {
+async fn update_model_status_derives_ready_from_published_without_readiness_facts() {
     let service = ModelDefinitionService::for_tests();
     let created = service
         .create_model(CreateModelDefinitionCommand {
@@ -75,12 +75,12 @@ async fn update_model_status_downgrades_raw_ready_without_readiness_facts() {
     assert_eq!(updated.status, DataModelStatus::Published);
     assert_eq!(
         updated.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
+        ApiExposureStatus::ApiExposedReady
     );
 }
 
 #[tokio::test]
-async fn get_model_maps_stored_ready_or_no_permission_without_api_key_to_not_exposed() {
+async fn get_model_derives_exposure_from_data_model_status_without_api_key() {
     let actor_user_id = Uuid::now_v7();
     let workspace_id = Uuid::now_v7();
     for stored_status in [
@@ -96,17 +96,34 @@ async fn get_model_maps_stored_ready_or_no_permission_without_api_key_to_not_exp
                 });
         let service = ModelDefinitionService::new(repository);
 
-        let model = service.get_model(actor_user_id, model_id).await.unwrap();
+        let published = service.get_model(actor_user_id, model_id).await.unwrap();
 
         assert_eq!(
-            model.api_exposure_status,
-            ApiExposureStatus::PublishedNotExposed
+            published.api_exposure_status,
+            ApiExposureStatus::ApiExposedReady
         );
     }
+
+    let model_id = Uuid::now_v7();
+    let repository =
+        ScopedModelDefinitionRepository::new(actor_in_workspace(actor_user_id, workspace_id))
+            .with_model(ModelDefinitionRecord {
+                status: DataModelStatus::Disabled,
+                api_exposure_status: ApiExposureStatus::ApiExposedReady,
+                ..model_in_workspace(model_id, workspace_id)
+            });
+    let service = ModelDefinitionService::new(repository);
+
+    let disabled = service.get_model(actor_user_id, model_id).await.unwrap();
+
+    assert_eq!(
+        disabled.api_exposure_status,
+        ApiExposureStatus::PublishedNotExposed
+    );
 }
 
 #[tokio::test]
-async fn get_model_computes_ready_from_api_key_scope_grant_and_audit_facts() {
+async fn get_model_ignores_stored_legacy_exposure_for_visible_exposure() {
     let repository = InMemoryModelDefinitionRepository::default();
     let service = ModelDefinitionService::new(repository.clone());
     let created = service
@@ -122,19 +139,6 @@ async fn get_model_computes_ready_from_api_key_scope_grant_and_audit_facts() {
         })
         .await
         .unwrap();
-    repository.add_api_key_readiness(ApiKeyDataModelReadinessRecord {
-        api_key_id: Uuid::now_v7(),
-        data_model_id: created.id,
-        scope_kind: DataModelScopeKind::Workspace,
-        scope_id: Uuid::nil(),
-        key_enabled: true,
-        expires_at: None,
-        allow_list: true,
-        allow_get: false,
-        allow_create: false,
-        allow_update: false,
-        allow_delete: false,
-    });
 
     let ready = service.get_model(Uuid::nil(), created.id).await.unwrap();
 
@@ -174,7 +178,7 @@ async fn update_model_status_keeps_disabled_effective_exposure_not_ready() {
     assert_eq!(updated.status, DataModelStatus::Disabled);
     assert_eq!(
         updated.api_exposure_status,
-        ApiExposureStatus::ApiExposedNoPermission
+        ApiExposureStatus::PublishedNotExposed
     );
 }
 
@@ -195,19 +199,6 @@ async fn update_model_status_audits_effective_api_exposure_transition() {
         })
         .await
         .unwrap();
-    repository.add_api_key_readiness(ApiKeyDataModelReadinessRecord {
-        api_key_id: Uuid::now_v7(),
-        data_model_id: created.id,
-        scope_kind: DataModelScopeKind::Workspace,
-        scope_id: Uuid::nil(),
-        key_enabled: true,
-        expires_at: None,
-        allow_list: true,
-        allow_get: false,
-        allow_create: false,
-        allow_update: false,
-        allow_delete: false,
-    });
 
     service
         .update_model_status(UpdateModelDefinitionStatusCommand {

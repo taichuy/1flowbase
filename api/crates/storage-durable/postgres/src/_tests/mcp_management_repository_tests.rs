@@ -210,6 +210,7 @@ async fn mcp_management_refreshes_des_id_and_exports_configuration_only() {
             input_mapping: serde_json::json!({}),
             output_mapping: serde_json::json!({}),
             audit_policy: serde_json::json!({"enabled": true}),
+            des_id: None,
             des_id_required: true,
             status: domain::McpToolStatus::Enabled,
         })
@@ -325,6 +326,7 @@ async fn mcp_tool_binding_write_scope_is_limited_to_actor_workspace() {
             input_mapping: serde_json::json!({}),
             output_mapping: serde_json::json!({}),
             audit_policy: serde_json::json!({}),
+            des_id: None,
             des_id_required: true,
             status: domain::McpToolStatus::Enabled,
         })
@@ -410,6 +412,7 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
             input_mapping: serde_json::json!({}),
             output_mapping: serde_json::json!({}),
             audit_policy: serde_json::json!({}),
+            des_id: None,
             des_id_required: true,
             status: domain::McpToolStatus::Enabled,
         })
@@ -427,6 +430,7 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
             input_mapping: serde_json::json!({}),
             output_mapping: serde_json::json!({}),
             audit_policy: serde_json::json!({}),
+            des_id: None,
             des_id_required: true,
             status: domain::McpToolStatus::Disabled,
         })

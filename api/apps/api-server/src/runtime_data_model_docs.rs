@@ -204,22 +204,22 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
             "title": format!("{} Data Model API", model.title),
             "version": "1.0.0"
         },
-        "security": [{ "patBearer": [] }, { "apiKeyBearer": [] }],
+        "security": [{ "patBearer": [] }],
         "paths": {
             records_path: {
                 "get": {
                     "operationId": format!("list_{}_records", model.code),
                     "summary": format!("List {} records", model.title),
-                    "description": "List records with filter, sort, pagination, and relation expansion. PAT uses bound user role permissions; dmk_ compatibility keys require action permission plus an enabled scope grant.",
-                    "security": [{ "patBearer": [] }, { "apiKeyBearer": [] }],
+                    "description": "List records with filter, sort, pagination, and relation expansion. PAT uses bound user role permissions plus an enabled scope grant.",
+                    "security": [{ "patBearer": [] }],
                     "parameters": runtime_list_parameters(),
                     "responses": runtime_responses(&schema_ref, true)
                 },
                 "post": {
                     "operationId": format!("create_{}_record", model.code),
                     "summary": format!("Create {} record", model.title),
-                    "description": "Create a record. PAT uses bound user role permissions; dmk_ compatibility keys require write permission, scope permission, and audit logging.",
-                    "security": [{ "patBearer": [] }, { "apiKeyBearer": [] }],
+                    "description": "Create a record. PAT uses bound user role permissions, scope permission, and audit logging.",
+                    "security": [{ "patBearer": [] }],
                     "requestBody": json_request_body(&create_schema_ref),
                     "responses": runtime_responses(&schema_ref, false)
                 }
@@ -228,15 +228,15 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
                 "get": {
                     "operationId": format!("get_{}_record", model.code),
                     "summary": format!("Get {} record", model.title),
-                    "security": [{ "patBearer": [] }, { "apiKeyBearer": [] }],
+                    "security": [{ "patBearer": [] }],
                     "parameters": [id_parameter(), expand_parameter()],
                     "responses": runtime_responses(&schema_ref, false)
                 },
                 "patch": {
                     "operationId": format!("update_{}_record", model.code),
                     "summary": format!("Update {} record", model.title),
-                    "description": "Update a record. PAT uses bound user role permissions; dmk_ compatibility keys require write permission, scope permission, and audit logging.",
-                    "security": [{ "patBearer": [] }, { "apiKeyBearer": [] }],
+                    "description": "Update a record. PAT uses bound user role permissions, scope permission, and audit logging.",
+                    "security": [{ "patBearer": [] }],
                     "parameters": [id_parameter()],
                     "requestBody": json_request_body(&update_schema_ref),
                     "responses": runtime_responses(&schema_ref, false)
@@ -244,8 +244,8 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
                 "delete": {
                     "operationId": format!("delete_{}_record", model.code),
                     "summary": format!("Delete {} record", model.title),
-                    "description": "Delete a record. PAT uses bound user role permissions; dmk_ compatibility keys require delete permission, scope permission, and audit logging.",
-                    "security": [{ "patBearer": [] }, { "apiKeyBearer": [] }],
+                    "description": "Delete a record. PAT uses bound user role permissions, scope permission, and audit logging.",
+                    "security": [{ "patBearer": [] }],
                     "parameters": [id_parameter()],
                     "responses": runtime_delete_responses()
                 }
@@ -258,12 +258,6 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
                     "scheme": "bearer",
                     "bearerFormat": "pat_ user API key",
                     "description": "Use Authorization: Bearer pat_... for user API key requests. PAT uses the bound user's role permissions."
-                },
-                "apiKeyBearer": {
-                    "type": "http",
-                    "scheme": "bearer",
-                    "bearerFormat": "dmk_ data model API key",
-                    "description": "Compatibility path: use Authorization: Bearer dmk_... for Data Model runtime key action permissions."
                 }
             },
             "schemas": {
@@ -280,7 +274,7 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
             "source_kind": model.source_kind.as_str(),
             "protected": model.protection.is_protected
         },
-        "x-scope-permission-note": "Runtime Data Model APIs accept pat_ user API keys with bound user role permissions. dmk_ data model API keys remain a compatibility path and require action permission plus an enabled owner or scope_all scope grant for the request scope.",
+        "x-scope-permission-note": "Runtime Data Model APIs accept pat_ user API keys with bound user role permissions and require an enabled owner or scope_all scope grant for the request scope.",
         "x-external-source-safety-limits": external_source_safety_limits(model)
     })
 }
@@ -313,7 +307,7 @@ pub fn build_category_openapi(models: &[domain::ModelDefinitionRecord]) -> Value
             "title": DATA_MODEL_DOCS_CATEGORY_LABEL,
             "version": "1.0.0"
         },
-        "security": [{ "patBearer": [] }, { "apiKeyBearer": [] }],
+        "security": [{ "patBearer": [] }],
         "paths": Value::Object(paths),
         "components": {
             "securitySchemes": {
@@ -322,12 +316,6 @@ pub fn build_category_openapi(models: &[domain::ModelDefinitionRecord]) -> Value
                     "scheme": "bearer",
                     "bearerFormat": "pat_ user API key",
                     "description": "Use Authorization: Bearer pat_... for user API key requests. PAT uses the bound user's role permissions."
-                },
-                "apiKeyBearer": {
-                    "type": "http",
-                    "scheme": "bearer",
-                    "bearerFormat": "dmk_ data model API key",
-                    "description": "Compatibility path: use Authorization: Bearer dmk_... for Data Model runtime key action permissions."
                 }
             },
             "schemas": Value::Object(schemas)

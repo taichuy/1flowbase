@@ -11,9 +11,9 @@ use uuid::Uuid;
 use crate::{
     errors::ControlPlaneError,
     ports::{
-        AddModelFieldInput, ApiKeyDataModelReadinessRecord, CreateModelDefinitionInput,
-        CreateScopeDataModelGrantInput, ModelDefinitionRepository, UpdateModelDefinitionInput,
-        UpdateModelDefinitionStatusInput, UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
+        AddModelFieldInput, CreateModelDefinitionInput, CreateScopeDataModelGrantInput,
+        ModelDefinitionRepository, UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput,
+        UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
     },
 };
 
@@ -28,7 +28,6 @@ pub struct InMemoryModelDefinitionRepository {
     data_source_defaults: Arc<Mutex<HashMap<(Uuid, Uuid), domain::DataSourceDefaults>>>,
     main_source_defaults: Arc<Mutex<HashMap<Uuid, domain::DataSourceDefaults>>>,
     grants: Arc<Mutex<Vec<domain::ScopeDataModelGrantRecord>>>,
-    api_key_readiness: Arc<Mutex<Vec<ApiKeyDataModelReadinessRecord>>>,
     audit_logs: Arc<Mutex<Vec<domain::AuditLogRecord>>>,
 }
 
@@ -45,16 +44,8 @@ impl InMemoryModelDefinitionRepository {
             )]))),
             main_source_defaults: Arc::default(),
             grants: Arc::default(),
-            api_key_readiness: Arc::default(),
             audit_logs: Arc::default(),
         }
-    }
-
-    pub fn add_api_key_readiness(&self, readiness: ApiKeyDataModelReadinessRecord) {
-        self.api_key_readiness
-            .lock()
-            .expect("in-memory api key readiness lock poisoned")
-            .push(readiness);
     }
 
     pub fn with_main_source_defaults(defaults: domain::DataSourceDefaults) -> Self {
@@ -63,7 +54,6 @@ impl InMemoryModelDefinitionRepository {
             data_source_defaults: Arc::default(),
             main_source_defaults: Arc::new(Mutex::new(HashMap::from([(Uuid::nil(), defaults)]))),
             grants: Arc::default(),
-            api_key_readiness: Arc::default(),
             audit_logs: Arc::default(),
         }
     }
@@ -436,20 +426,6 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
             .expect("in-memory grant lock poisoned")
             .iter()
             .filter(|grant| grant.scope_kind == scope_kind && grant.scope_id == scope_id)
-            .cloned()
-            .collect())
-    }
-
-    async fn list_api_key_data_model_readiness(
-        &self,
-        data_model_id: Uuid,
-    ) -> Result<Vec<ApiKeyDataModelReadinessRecord>> {
-        Ok(self
-            .api_key_readiness
-            .lock()
-            .expect("in-memory api key readiness lock poisoned")
-            .iter()
-            .filter(|readiness| readiness.data_model_id == data_model_id)
             .cloned()
             .collect())
     }

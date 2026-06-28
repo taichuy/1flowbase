@@ -226,14 +226,70 @@ describe('Settings data models page', () => {
 
       fireEvent.click(screen.getByRole('tab', { name: 'API' }));
       expect(
-        await screen.findByText('published_not_exposed')
+        await screen.findByText(i18nText('settings', 'auto.api_exposed_ready'))
       ).toBeInTheDocument();
       expect(
-        screen.getByText(i18nText('settings', 'auto.api_exposed_ready'))
+        screen.queryByText('published_not_exposed')
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', {
+          name: '请求 API 暴露'
+        })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', {
+          name: '关闭 API 暴露'
+        })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(i18nText('settings', 'auto.runtime'))
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('combobox', {
           name: i18nText('settings', 'auto.api_exposed_ready')
+        })
+      ).not.toBeInTheDocument();
+    },
+    SLOW_SETTINGS_PAGE_TEST_TIMEOUT
+  );
+
+  test(
+    'shows draft API exposure from the backend DTO in the table and API tab',
+    async () => {
+      renderApp('/settings/data-models?source=source-1');
+
+      expect(
+        await screen.findByText(
+          'Draft Orders',
+          {},
+          { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+        )
+      ).toBeInTheDocument();
+      const draftRow = screen
+        .getAllByRole('row')
+        .find((row) => within(row).queryByText('Draft Orders'));
+      expect(draftRow).toBeInstanceOf(HTMLElement);
+      expect(
+        within(draftRow as HTMLElement).getAllByText(
+          i18nText('settings', 'auto.draft')
+        ).length
+      ).toBeGreaterThanOrEqual(2);
+
+      const editorDialog = await openDataModelEditorByTitle('Draft Orders');
+      fireEvent.click(screen.getByRole('tab', { name: 'API' }));
+      expect(
+        await within(editorDialog).findByTestId(
+          'data-model-api-exposure-status'
+        )
+      ).toHaveTextContent('draft');
+      expect(
+        screen.queryByRole('button', {
+          name: '请求 API 暴露'
+        })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', {
+          name: '关闭 API 暴露'
         })
       ).not.toBeInTheDocument();
     },
@@ -438,82 +494,86 @@ describe('Settings data models page', () => {
     );
   }, 20_000);
 
-  test('manages Data Model fields through the field drawer with delete confirmation', async () => {
-    renderApp('/settings/data-models?source=source-1');
+  test(
+    'manages Data Model fields through the field drawer with delete confirmation',
+    async () => {
+      renderApp('/settings/data-models?source=source-1');
 
-    const editorDialog = await openContactsDataModelEditor();
-    fireEvent.click(
-      within(editorDialog).getByRole('button', { name: '新增字段' })
-    );
-    expect(await screen.findByLabelText('字段 Code')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('字段 Code'), {
-      target: { value: 'company_name' }
-    });
-    fireEvent.change(screen.getByLabelText('字段标题'), {
-      target: { value: 'Company Name' }
-    });
-    fireEvent.change(screen.getByLabelText('外部字段映射 Key'), {
-      target: { value: 'properties.company_name' }
-    });
-    fireEvent.click(screen.getByRole('checkbox', { name: '必填' }));
-    fireEvent.click(screen.getByRole('button', { name: '创建字段' }));
+      const editorDialog = await openContactsDataModelEditor();
+      fireEvent.click(
+        within(editorDialog).getByRole('button', { name: '新增字段' })
+      );
+      expect(await screen.findByLabelText('字段 Code')).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('字段 Code'), {
+        target: { value: 'company_name' }
+      });
+      fireEvent.change(screen.getByLabelText('字段标题'), {
+        target: { value: 'Company Name' }
+      });
+      fireEvent.change(screen.getByLabelText('外部字段映射 Key'), {
+        target: { value: 'properties.company_name' }
+      });
+      fireEvent.click(screen.getByRole('checkbox', { name: '必填' }));
+      fireEvent.click(screen.getByRole('button', { name: '创建字段' }));
 
-    await waitFor(() =>
-      expect(dataModelsApi.createSettingsDataModelField).toHaveBeenCalledWith(
-        'model-1',
-        expect.objectContaining({
-          code: 'company_name',
-          title: 'Company Name',
-          external_field_key: 'properties.company_name',
-          field_kind: 'string',
-          is_required: true,
-          is_unique: false,
-          default_value: null,
-          display_interface: 'input',
-          display_options: {},
-          relation_target_model_id: null,
-          relation_options: {}
-        }),
-        'csrf-123'
-      )
-    );
+      await waitFor(() =>
+        expect(dataModelsApi.createSettingsDataModelField).toHaveBeenCalledWith(
+          'model-1',
+          expect.objectContaining({
+            code: 'company_name',
+            title: 'Company Name',
+            external_field_key: 'properties.company_name',
+            field_kind: 'string',
+            is_required: true,
+            is_unique: false,
+            default_value: null,
+            display_interface: 'input',
+            display_options: {},
+            relation_target_model_id: null,
+            relation_options: {}
+          }),
+          'csrf-123'
+        )
+      );
 
-    fireEvent.click(await screen.findByText('Email'));
-    expect(await screen.findByText('编辑字段')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('字段标题'), {
-      target: { value: 'Primary Email' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: '保存字段' }));
+      fireEvent.click(await screen.findByText('Email'));
+      expect(await screen.findByText('编辑字段')).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('字段标题'), {
+        target: { value: 'Primary Email' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: '保存字段' }));
 
-    await waitFor(() =>
-      expect(dataModelsApi.updateSettingsDataModelField).toHaveBeenCalledWith(
-        'model-1',
-        'field-1',
-        expect.objectContaining({
-          title: 'Primary Email',
-          is_required: true,
-          is_unique: true,
-          display_interface: 'input',
-          display_options: {},
-          relation_options: {}
-        }),
-        'csrf-123'
-      )
-    );
+      await waitFor(() =>
+        expect(dataModelsApi.updateSettingsDataModelField).toHaveBeenCalledWith(
+          'model-1',
+          'field-1',
+          expect.objectContaining({
+            title: 'Primary Email',
+            is_required: true,
+            is_unique: true,
+            display_interface: 'input',
+            display_options: {},
+            relation_options: {}
+          }),
+          'csrf-123'
+        )
+      );
 
-    fireEvent.click(await screen.findByText('Email'));
-    fireEvent.click(screen.getByRole('button', { name: '删除字段' }));
-    expect(await screen.findByText('确认删除字段')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '删除' }));
+      fireEvent.click(await screen.findByText('Email'));
+      fireEvent.click(screen.getByRole('button', { name: '删除字段' }));
+      expect(await screen.findByText('确认删除字段')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '删除' }));
 
-    await waitFor(() =>
-      expect(dataModelsApi.deleteSettingsDataModelField).toHaveBeenCalledWith(
-        'model-1',
-        'field-1',
-        'csrf-123'
-      )
-    );
-  }, SLOW_SETTINGS_PAGE_TEST_TIMEOUT * 2);
+      await waitFor(() =>
+        expect(dataModelsApi.deleteSettingsDataModelField).toHaveBeenCalledWith(
+          'model-1',
+          'field-1',
+          'csrf-123'
+        )
+      );
+    },
+    SLOW_SETTINGS_PAGE_TEST_TIMEOUT * 2
+  );
 
   test('keeps main source field creation focused on basic field settings', async () => {
     renderApp('/settings/data-models?source=main_source');
@@ -676,9 +736,20 @@ describe('Settings data models page', () => {
       fireEvent.change(screen.getByLabelText('选项 2 存储值'), {
         target: { value: 'paid' }
       });
+      const selectDropdownOption = async (name: string) => {
+        let option: Element | undefined;
+        await waitFor(() => {
+          option = Array.from(
+            document.querySelectorAll('.ant-select-item-option-content')
+          ).find((element) => element.textContent === name);
+          expect(option).toBeInstanceOf(HTMLElement);
+        });
+        expect(option).toBeInstanceOf(HTMLElement);
+        fireEvent.click(option as HTMLElement);
+      };
       fireEvent.mouseDown(screen.getByLabelText('默认值'));
-      fireEvent.click(await screen.findByText('草稿'));
-      fireEvent.click(await screen.findByText('已支付'));
+      await selectDropdownOption('草稿');
+      await selectDropdownOption('已支付');
       fireEvent.click(screen.getByRole('button', { name: '创建字段' }));
 
       await waitFor(() =>
@@ -703,73 +774,4 @@ describe('Settings data models page', () => {
     },
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT * 2
   );
-
-  test('requests and closes API exposure without raw ready or unsafe selectors', async () => {
-    renderApp('/settings/data-models?source=source-1');
-
-    await openContactsDataModelEditor();
-    fireEvent.click(screen.getByRole('tab', { name: 'API' }));
-    expect(
-      await screen.findByText('published_not_exposed')
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('combobox', { name: 'api_exposed_ready' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('combobox', { name: 'unsafe_external_source' })
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: '请求 API 暴露' }));
-    await waitFor(() =>
-      expect(
-        dataModelsApi.updateSettingsDataModelApiExposure
-      ).toHaveBeenCalledWith(
-        'model-1',
-        { api_exposure_status: 'api_exposed_no_permission' },
-        'csrf-123'
-      )
-    );
-  }, 20_000);
-
-  test('closes an existing API exposure request from the API tab', async () => {
-    dataModelsApi.fetchSettingsDataModels.mockResolvedValue([
-      {
-        id: 'model-1',
-        scope_kind: 'workspace',
-        scope_id: 'workspace-1',
-        code: 'contacts',
-        title: 'Contacts',
-        status: 'published',
-        api_exposure_status: 'api_exposed_no_permission',
-        runtime_availability: 'available',
-        data_source_instance_id: 'source-1',
-        source_kind: 'external_source',
-        external_resource_key: 'contacts',
-        external_table_id: 'crm.contacts',
-        physical_table_name: 'dm_contacts',
-        acl_namespace: 'data_model.contacts',
-        audit_namespace: 'data_model.contacts',
-        fields: []
-      }
-    ]);
-
-    renderApp('/settings/data-models?source=source-1');
-
-    await openContactsDataModelEditor();
-    fireEvent.click(screen.getByRole('tab', { name: 'API' }));
-    expect(
-      await screen.findByText('api_exposed_no_permission')
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '关闭 API 暴露' }));
-
-    await waitFor(() =>
-      expect(
-        dataModelsApi.updateSettingsDataModelApiExposure
-      ).toHaveBeenCalledWith(
-        'model-1',
-        { api_exposure_status: 'published_not_exposed' },
-        'csrf-123'
-      )
-    );
-  }, 20_000);
 });

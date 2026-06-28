@@ -137,6 +137,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
                 .body(Body::from(
                     json!({
                         "tool_id": "runtime_profile",
+                        "des_id": "des12345",
                         "name": "Runtime profile",
                         "short_description": "Runtime profile",
                         "usage_description": "Read runtime profile",
@@ -163,7 +164,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     let tool_id = create_tool_payload["data"]["tool_id"].as_str().unwrap();
     assert_eq!(tool_id, "runtime_profile");
     let first_des_id = create_tool_payload["data"]["des_id"].as_str().unwrap();
-    assert_eq!(first_des_id.len(), 8);
+    assert_eq!(first_des_id, "des12345");
     assert_eq!(
         create_tool_payload["data"]["permission_code"].as_str(),
         Some("system_runtime.view.all")

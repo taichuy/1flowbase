@@ -1,23 +1,8 @@
 use anyhow::Result;
 use domain::ScopeDataModelPermissionProfile;
-use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{errors::ControlPlaneError, ports::ApiKeyDataModelReadinessRecord};
-
-pub(super) struct ApiExposureReadinessFacts {
-    pub(super) has_active_api_key: bool,
-    pub(super) has_ready_path: bool,
-}
-
-pub(super) struct ApiExposureAdvisorFacts {
-    pub(super) has_active_api_key: bool,
-    pub(super) has_ready_path: bool,
-    pub(super) has_action_permission: bool,
-    pub(super) has_write_permission: bool,
-    pub(super) has_usable_scope_filter: bool,
-    pub(super) audit_configured: bool,
-}
+use crate::errors::ControlPlaneError;
 
 pub(super) fn advisor_finding(
     data_model_id: Uuid,
@@ -59,22 +44,6 @@ pub(super) fn has_duplicate_or_risky_field_configuration(
     }
 
     false
-}
-
-pub(super) fn active_api_key_readiness(readiness: &ApiKeyDataModelReadinessRecord) -> bool {
-    readiness.key_enabled
-        && readiness
-            .expires_at
-            .is_none_or(|expires_at| expires_at > OffsetDateTime::now_utc())
-}
-
-pub(super) fn api_key_runtime_can_use_grant_profile(
-    permission_profile: ScopeDataModelPermissionProfile,
-) -> bool {
-    match permission_profile {
-        ScopeDataModelPermissionProfile::Owner | ScopeDataModelPermissionProfile::ScopeAll => true,
-        ScopeDataModelPermissionProfile::SystemAll => false,
-    }
 }
 
 pub(super) fn external_source_is_unsafe(model: &domain::ModelDefinitionRecord) -> bool {

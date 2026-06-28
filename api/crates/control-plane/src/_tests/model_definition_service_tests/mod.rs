@@ -5,9 +5,9 @@ use control_plane::model_definition::{
     UpdateModelDefinitionStatusCommand, UpdateModelFieldCommand, UpdateScopeDataModelGrantCommand,
 };
 use control_plane::ports::{
-    AddModelFieldInput, ApiKeyDataModelReadinessRecord, CreateModelDefinitionInput,
-    CreateScopeDataModelGrantInput, ModelDefinitionRepository, UpdateModelDefinitionInput,
-    UpdateModelDefinitionStatusInput, UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
+    AddModelFieldInput, CreateModelDefinitionInput, CreateScopeDataModelGrantInput,
+    ModelDefinitionRepository, UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput,
+    UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
 };
 use domain::{
     ActorContext, ApiExposureStatus, AuditLogRecord, DataModelOwnerKind, DataModelProtection,
@@ -27,7 +27,6 @@ struct ScopedModelDefinitionRepository {
     models: Arc<Mutex<HashMap<Uuid, ModelDefinitionRecord>>>,
     data_source_defaults: Arc<Mutex<HashMap<(Uuid, Uuid), DataSourceDefaults>>>,
     grants: Arc<Mutex<Vec<ScopeDataModelGrantRecord>>>,
-    api_key_readiness: Arc<Mutex<Vec<ApiKeyDataModelReadinessRecord>>>,
     audit_logs: Arc<Mutex<Vec<AuditLogRecord>>>,
 }
 
@@ -38,7 +37,6 @@ impl ScopedModelDefinitionRepository {
             models: Arc::default(),
             data_source_defaults: Arc::default(),
             grants: Arc::default(),
-            api_key_readiness: Arc::default(),
             audit_logs: Arc::default(),
         }
     }
@@ -361,20 +359,6 @@ impl ModelDefinitionRepository for ScopedModelDefinitionRepository {
             .expect("grant lock poisoned")
             .iter()
             .filter(|grant| grant.scope_kind == scope_kind && grant.scope_id == scope_id)
-            .cloned()
-            .collect())
-    }
-
-    async fn list_api_key_data_model_readiness(
-        &self,
-        data_model_id: Uuid,
-    ) -> anyhow::Result<Vec<ApiKeyDataModelReadinessRecord>> {
-        Ok(self
-            .api_key_readiness
-            .lock()
-            .expect("api key readiness lock poisoned")
-            .iter()
-            .filter(|readiness| readiness.data_model_id == data_model_id)
             .cloned()
             .collect())
     }

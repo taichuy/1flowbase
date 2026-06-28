@@ -434,11 +434,23 @@ async fn migration_smoke_creates_identity_join_scoped_readiness_without_replacin
         .await
         .unwrap();
 
+    let legacy_permission_table_exists: bool = sqlx::query_scalar(
+        r#"
+        select exists(
+            select 1
+            from information_schema.tables
+            where table_schema = $1
+              and table_name = 'api_key_data_model_permissions'
+        )
+        "#,
+    )
+    .bind(&schema)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!legacy_permission_table_exists);
+
     for (table, expected_primary_key_columns) in [
-        (
-            "api_key_data_model_permissions",
-            vec!["api_key_id", "data_model_id"],
-        ),
         ("application_api_mappings", vec!["application_id"]),
         (
             "application_environment_variables",

@@ -16,10 +16,9 @@ use std::collections::BTreeMap;
 
 use async_trait::async_trait;
 use domain::{
-    ActorContext, ApiKeyDataModelPermissionRecord, ApiKeyRecord, AuditLogRecord,
-    AuthenticatorRecord, DataModelScopeKind, ModelDefinitionRecord, ModelFieldKind,
-    ModelFieldRecord, PermissionDefinition, RoleTemplate, ScopeContext, SessionRecord,
-    TenantRecord, UserRecord, WorkspaceRecord,
+    ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticatorRecord, DataModelScopeKind,
+    ModelDefinitionRecord, ModelFieldKind, ModelFieldRecord, PermissionDefinition, RoleTemplate,
+    ScopeContext, SessionRecord, TenantRecord, UserRecord, WorkspaceRecord,
 };
 use plugin_framework::provider_contract::{
     ProviderBalanceResult, ProviderInvocationInput, ProviderInvocationResult,

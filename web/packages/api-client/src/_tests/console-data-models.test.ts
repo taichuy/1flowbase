@@ -20,7 +20,6 @@ import {
   fetchConsoleRuntimeModelRecord,
   fetchConsoleRuntimeModelRecords,
   updateConsoleDataModel,
-  updateConsoleDataModelApiExposure,
   updateConsoleDataModelField,
   updateConsoleDataModelScopeGrant,
   updateConsoleRuntimeModelRecord,
@@ -151,25 +150,6 @@ describe('console-data-models client', () => {
       body: {
         filterByTk: ['model-1', 'model-2'],
         confirmed: true
-      },
-      csrfToken: 'csrf-123'
-    });
-  });
-
-  test('updates API exposure requests through the model patch route', async () => {
-    await expect(
-      updateConsoleDataModelApiExposure(
-        'model-1',
-        {
-          api_exposure_status: 'api_exposed_no_permission'
-        },
-        'csrf-123'
-      )
-    ).resolves.toMatchObject({
-      path: '/api/console/models/model-1',
-      method: 'PATCH',
-      body: {
-        api_exposure_status: 'api_exposed_no_permission'
       },
       csrfToken: 'csrf-123'
     });

@@ -143,6 +143,7 @@ describe('console-mcp-management client', () => {
         createConsoleMcpTool(
           {
             tool_id: 'get_runtime',
+            des_id: 'des12345',
             name: 'Get Runtime',
             short_description: 'Runtime profile',
             usage_description: null,
@@ -173,6 +174,7 @@ describe('console-mcp-management client', () => {
           'runtime.get',
           {
             name: 'Get Runtime',
+            des_id: 'des12345',
             short_description: 'Runtime profile',
             usage_description: null,
             full_description: 'Read runtime profile',

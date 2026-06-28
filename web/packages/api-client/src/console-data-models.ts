@@ -175,13 +175,6 @@ export interface BatchDeleteConsoleDataModelsResult {
   deleted_ids: string[];
 }
 
-export interface UpdateConsoleDataModelApiExposureInput {
-  api_exposure_status: Exclude<
-    ConsoleApiExposureStatus,
-    'api_exposed_ready' | 'unsafe_external_source'
-  >;
-}
-
 export interface CreateConsoleDataModelFieldInput {
   code: string;
   title: string;
@@ -410,21 +403,6 @@ export function batchDeleteConsoleDataModels(
   return apiFetch<BatchDeleteConsoleDataModelsResult>({
     path: '/api/console/models:batchDelete',
     method: 'POST',
-    body: input,
-    csrfToken,
-    baseUrl
-  });
-}
-
-export function updateConsoleDataModelApiExposure(
-  modelId: string,
-  input: UpdateConsoleDataModelApiExposureInput,
-  csrfToken: string,
-  baseUrl?: string
-) {
-  return apiFetch<ConsoleDataModel>({
-    path: `/api/console/models/${modelId}`,
-    method: 'PATCH',
     body: input,
     csrfToken,
     baseUrl

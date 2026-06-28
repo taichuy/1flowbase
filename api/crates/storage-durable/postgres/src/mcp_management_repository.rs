@@ -481,10 +481,11 @@ impl McpManagementRepository for PgControlPlaneStore {
                 permission_code = $12,
                 risk_level = $13,
                 audit_policy = $14,
-                des_id_required = $15,
-                status = $16,
+                des_id = $15,
+                des_id_required = $16,
+                status = $17,
                 revision = revision + 1,
-                updated_by = $17,
+                updated_by = $18,
                 updated_at = now()
             where workspace_id = $1 and tool_id = $2
             returning *
@@ -504,6 +505,7 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&input.permission_code)
         .bind(input.risk_level.as_str())
         .bind(&input.audit_policy)
+        .bind(&input.des_id)
         .bind(input.des_id_required)
         .bind(input.status.as_str())
         .bind(input.actor_user_id)

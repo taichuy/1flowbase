@@ -2,8 +2,10 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  LeftOutlined,
   PlusOutlined,
   ReloadOutlined,
+  RightOutlined,
   SaveOutlined,
   SettingOutlined
 } from '@ant-design/icons';
@@ -126,6 +128,7 @@ type BindingFormValues = {
 
 type ToolFormValues = {
   tool_id: string;
+  des_id: string;
   name: string;
   short_description: string;
   usage_description: string | null;
@@ -137,6 +140,13 @@ type ToolFormValues = {
   des_id_required: boolean;
   status: string;
 };
+const TOOL_FORM_STEPS = [
+  { title: 'basic', label: 'basic', value: 'basic' },
+  { title: 'interface', label: 'interface', value: 'interface' },
+  { title: 'input', label: 'input_mapping', value: 'input' },
+  { title: 'output', label: 'output_mapping', value: 'output' },
+  { title: 'description', label: 'preview', value: 'description' }
+];
 type MetaToolConfigFormValues = Omit<
   ConsoleMcpMetaToolConfig,
   'list_return_fields'
@@ -166,6 +176,20 @@ function schemaRecord(value: unknown): Record<string, unknown> {
 
 function interfaceOptionLabel(entry: ConsoleMcpInterfaceCapability) {
   return `${entry.method} ${entry.path}`;
+}
+
+function SelectedInterfaceOperationTitle({
+  selectedInterface
+}: {
+  selectedInterface: ConsoleMcpInterfaceCapability | undefined;
+}) {
+  if (!selectedInterface) {
+    return null;
+  }
+
+  return (
+    <Typography.Text>{interfaceOptionLabel(selectedInterface)}</Typography.Text>
+  );
 }
 
 function schemaMappingHasContent(value: unknown): boolean {
@@ -1099,6 +1123,7 @@ function McpToolsTab({
       const outputMapping = schemaRecord(form.getFieldValue('output_mapping'));
       const body: SaveConsoleMcpToolBody = {
         tool_id: editingTool ? editingTool.tool_id : values.tool_id,
+        des_id: values.des_id,
         name: values.name,
         short_description: values.short_description,
         usage_description: values.usage_description,
@@ -1265,6 +1290,12 @@ function McpToolsTab({
       (desIdRequired === undefined || tool.des_id_required === desIdRequired)
     );
   });
+  const toolStepIndex = Math.max(
+    0,
+    TOOL_FORM_STEPS.findIndex((entry) => entry.value === step)
+  );
+  const previousToolStep = TOOL_FORM_STEPS[toolStepIndex - 1];
+  const nextToolStep = TOOL_FORM_STEPS[toolStepIndex + 1];
 
   const tableColumns = useMemo<Array<DataTableColumn<ConsoleMcpTool>>>(
     () => [
@@ -1303,6 +1334,7 @@ function McpToolsTab({
                   short_description: record.short_description,
                   usage_description: record.usage_description,
                   full_description: record.full_description,
+                  des_id: record.des_id,
                   interface_id: record.interface_id,
                   audit_policy_text: stringifyJson(record.audit_policy),
                   des_id_required: record.des_id_required,
@@ -1452,6 +1484,7 @@ function McpToolsTab({
                 short_description: '',
                 usage_description: '',
                 full_description: '',
+                des_id: buildRandomToolIdSeed(),
                 interface_id: undefined,
                 audit_policy_text: '{"enabled":true}',
                 des_id_required: true,
@@ -1482,6 +1515,8 @@ function McpToolsTab({
       />
       <Modal
         width={840}
+        className="mcp-management__tool-modal"
+        centered
         open={modalOpen}
         title={
           editingTool
@@ -1491,37 +1526,57 @@ function McpToolsTab({
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={saveToolMutation.isPending}
+        footer={
+          <Space>
+            {previousToolStep ? (
+              <Button
+                icon={<LeftOutlined />}
+                disabled={saveToolMutation.isPending}
+                onClick={() => setStep(previousToolStep.value)}
+              >
+                上一步
+              </Button>
+            ) : null}
+            {nextToolStep ? (
+              <Button
+                icon={<RightOutlined />}
+                disabled={saveToolMutation.isPending}
+                onClick={() => setStep(nextToolStep.value)}
+              >
+                下一步
+              </Button>
+            ) : null}
+            <Button onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button
+              type="primary"
+              loading={saveToolMutation.isPending}
+              onClick={() => form.submit()}
+            >
+              OK
+            </Button>
+          </Space>
+        }
       >
         <Steps
           size="small"
-          current={[
-            'basic',
-            'interface',
-            'input',
-            'output',
-            'description'
-          ].indexOf(step)}
-          items={['basic', 'interface', 'input', 'output', 'description'].map(
-            (key) => ({
-              title: key
-            })
-          )}
+          current={toolStepIndex}
+          items={TOOL_FORM_STEPS.map((entry) => ({
+            title: entry.title
+          }))}
         />
         <Segmented
           block
           className="mcp-management__segmented"
           value={step}
-          options={[
-            { label: 'basic', value: 'basic' },
-            { label: 'interface', value: 'interface' },
-            { label: 'input_mapping', value: 'input' },
-            { label: 'output_mapping', value: 'output' },
-            { label: 'preview', value: 'description' }
-          ]}
+          options={TOOL_FORM_STEPS.map((entry) => ({
+            label: entry.label,
+            value: entry.value
+          }))}
           onChange={(value) => setStep(String(value))}
         />
         <Form
           form={form}
+          className="mcp-management__tool-form"
           layout="vertical"
           onFinish={(values) => saveToolMutation.mutate(values)}
           onValuesChange={(changedValues, values) => {
@@ -1574,6 +1629,41 @@ function McpToolsTab({
                 }
               />
             </Form.Item>
+            <Flex align="flex-start" gap={12} wrap="wrap">
+              <Form.Item
+                className="mcp-management__des-id-field"
+                name="des_id"
+                label="des_id"
+                rules={[{ required: true, whitespace: true }]}
+              >
+                <Input
+                  addonAfter={
+                    <Tooltip title="随机生成 des_id">
+                      <Button
+                        type="text"
+                        htmlType="button"
+                        size="small"
+                        icon={<ReloadOutlined />}
+                        onClick={() => {
+                          form.setFieldValue(
+                            'des_id',
+                            buildRandomToolIdSeed()
+                          );
+                        }}
+                      />
+                    </Tooltip>
+                  }
+                />
+              </Form.Item>
+              <Form.Item
+                className="mcp-management__des-id-required-field"
+                name="des_id_required"
+                label="des_id_required"
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+            </Flex>
             <Form.Item
               name="short_description"
               label="short_description"
@@ -1624,16 +1714,7 @@ function McpToolsTab({
                 );
 
                 if (!selectedInterface) {
-                  return (
-                    <Alert
-                      type="info"
-                      showIcon
-                      message={i18nText(
-                        'settings',
-                        'auto.mcp_interface_source_hint'
-                      )}
-                    />
-                  );
+                  return null;
                 }
 
                 return (
@@ -1672,9 +1753,9 @@ function McpToolsTab({
 
                   return (
                     <Flex justify="space-between" align="center" gap={12}>
-                      <Typography.Text type="secondary">
-                        input_mapping
-                      </Typography.Text>
+                      <SelectedInterfaceOperationTitle
+                        selectedInterface={selectedInterface}
+                      />
                       <Button
                         disabled={!selectedInterface}
                         onClick={() =>
@@ -1729,9 +1810,9 @@ function McpToolsTab({
 
                   return (
                     <Flex justify="space-between" align="center" gap={12}>
-                      <Typography.Text type="secondary">
-                        output_mapping
-                      </Typography.Text>
+                      <SelectedInterfaceOperationTitle
+                        selectedInterface={selectedInterface}
+                      />
                       <Button
                         disabled={!selectedInterface}
                         onClick={() =>
@@ -1741,7 +1822,10 @@ function McpToolsTab({
                           )
                         }
                       >
-                        {i18nText('settings', 'auto.mcp_get_interface_result')}
+                        {i18nText(
+                          'settings',
+                          'auto.mcp_get_interface_result'
+                        )}
                       </Button>
                     </Flex>
                   );
@@ -1768,6 +1852,27 @@ function McpToolsTab({
             </div>
           ) : null}
           <div hidden={step !== 'description'}>
+            <Form.Item
+              noStyle
+              shouldUpdate={(previous, current) =>
+                previous.interface_id !== current.interface_id
+              }
+            >
+              {({ getFieldValue }) => {
+                const selectedInterface = interfaceCapabilities.find(
+                  (entry) =>
+                    entry.interface_id === getFieldValue('interface_id')
+                );
+
+                return (
+                  <div className="mcp-management__selected-operation">
+                    <SelectedInterfaceOperationTitle
+                      selectedInterface={selectedInterface}
+                    />
+                  </div>
+                );
+              }}
+            </Form.Item>
             <Form.Item name="usage_description" label="usage_description">
               <Input.TextArea rows={3} />
             </Form.Item>
@@ -1784,13 +1889,6 @@ function McpToolsTab({
               rules={[{ required: true }]}
             >
               <Input.TextArea rows={4} />
-            </Form.Item>
-            <Form.Item
-              name="des_id_required"
-              label="des_id_required"
-              valuePropName="checked"
-            >
-              <Switch />
             </Form.Item>
             <Form.Item noStyle shouldUpdate>
               {({ getFieldsValue }) => {

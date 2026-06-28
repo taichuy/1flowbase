@@ -54,31 +54,6 @@ pub struct UpdateScopeDataModelGrantInput {
 }
 
 #[derive(Debug, Clone)]
-pub struct ApiKeyDataModelReadinessRecord {
-    pub api_key_id: Uuid,
-    pub data_model_id: Uuid,
-    pub scope_kind: DataModelScopeKind,
-    pub scope_id: Uuid,
-    pub key_enabled: bool,
-    pub expires_at: Option<time::OffsetDateTime>,
-    pub allow_list: bool,
-    pub allow_get: bool,
-    pub allow_create: bool,
-    pub allow_update: bool,
-    pub allow_delete: bool,
-}
-
-impl ApiKeyDataModelReadinessRecord {
-    pub fn has_any_action_permission(&self) -> bool {
-        self.allow_list
-            || self.allow_get
-            || self.allow_create
-            || self.allow_update
-            || self.allow_delete
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct AddModelFieldInput {
     pub actor_user_id: Uuid,
     pub model_id: Uuid,
@@ -209,12 +184,6 @@ pub trait ModelDefinitionRepository: Send + Sync {
         _scope_id: Uuid,
     ) -> anyhow::Result<Vec<domain::ScopeDataModelGrantRecord>> {
         anyhow::bail!("list_scope_data_model_grants is not implemented")
-    }
-    async fn list_api_key_data_model_readiness(
-        &self,
-        _data_model_id: Uuid,
-    ) -> anyhow::Result<Vec<ApiKeyDataModelReadinessRecord>> {
-        Ok(Vec::new())
     }
     async fn append_audit_log(&self, event: &AuditLogRecord) -> anyhow::Result<()>;
 }

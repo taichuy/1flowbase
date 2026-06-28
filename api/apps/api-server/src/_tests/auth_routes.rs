@@ -358,8 +358,7 @@ async fn console_user_api_key_rejects_expired_disabled_key_and_disabled_user() {
 async fn console_user_api_key_rejects_dmk_on_console_and_pat_on_application_public_api() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let model_id = create_minimal_model(&app, &cookie, &csrf, "auth_route_key_isolation").await;
-    let dmk_token = create_data_model_api_key(&app, &cookie, &csrf, &model_id).await;
+    let dmk_token = "dmk_legacy_token";
     let pat_token = create_user_api_key(&app, &cookie, &csrf, "application public isolation").await;
 
     let console_with_dmk = app
@@ -458,10 +457,9 @@ async fn public_auth_sign_in_handles_cors_preflight() {
 }
 
 #[tokio::test]
-async fn console_api_key_create_returns_plaintext_token_once() {
+async fn console_api_keys_route_is_not_registered() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let model_id = create_minimal_model(&app, &cookie, &csrf, "auth_route_api_key_orders").await;
 
     let response = app
         .oneshot(
@@ -474,47 +472,6 @@ async fn console_api_key_create_returns_plaintext_token_once() {
                 .body(Body::from(
                     json!({
                         "name": "console route key",
-                        "permissions": [
-                            {
-                                "data_model_id": model_id,
-                                "list": true,
-                                "get": true,
-                                "create": false,
-                                "update": false,
-                                "delete": false
-                            }
-                        ]
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::CREATED);
-    let payload: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    let token = payload["data"]["token"].as_str().unwrap();
-    assert!(token.starts_with("dmk_"));
-    assert_eq!(payload["data"]["name"], json!("console route key"));
-    assert_eq!(payload["data"]["permissions"][0]["list"], json!(true));
-    assert!(payload["data"]["token_hash"].is_null());
-}
-
-#[tokio::test]
-async fn console_api_key_create_requires_session() {
-    let app = test_app().await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/api-keys")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "name": "missing session",
                         "permissions": []
                     })
                     .to_string(),
@@ -524,90 +481,7 @@ async fn console_api_key_create_requires_session() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    let payload: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(payload["code"], json!("not_authenticated"));
-}
-
-#[tokio::test]
-async fn console_api_key_create_requires_state_model_manage_permission() {
-    let app = test_app().await;
-    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let member_id = create_member(
-        &app,
-        &root_cookie,
-        &root_csrf,
-        "api-key-no-manage",
-        "temp-pass",
-    )
-    .await;
-    create_role(&app, &root_cookie, &root_csrf, "api_key_no_manage").await;
-    replace_role_permissions(&app, &root_cookie, &root_csrf, "api_key_no_manage", &[]).await;
-    replace_member_roles(
-        &app,
-        &root_cookie,
-        &root_csrf,
-        &member_id,
-        &["api_key_no_manage"],
-    )
-    .await;
-    let (member_cookie, member_csrf) =
-        login_and_capture_cookie(&app, "api-key-no-manage", "temp-pass").await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/api-keys")
-                .header("cookie", member_cookie)
-                .header("x-csrf-token", member_csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "name": "forbidden key",
-                        "permissions": []
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
-    let payload: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(payload["code"], json!("permission_denied"));
-}
-
-async fn create_minimal_model(app: &axum::Router, cookie: &str, csrf: &str, code: &str) -> String {
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/models")
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "scope_kind": "workspace",
-                        "code": code,
-                        "title": code
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::CREATED);
-    let payload: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    payload["data"]["id"].as_str().unwrap().to_string()
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 async fn create_user_api_key(app: &axum::Router, cookie: &str, csrf: &str, name: &str) -> String {
@@ -700,47 +574,4 @@ async fn disable_user_api_key(pool: &PgPool, token: &str) {
         .execute(pool)
         .await
         .unwrap();
-}
-
-async fn create_data_model_api_key(
-    app: &axum::Router,
-    cookie: &str,
-    csrf: &str,
-    model_id: &str,
-) -> String {
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/api-keys")
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "name": "legacy data model key",
-                        "permissions": [
-                            {
-                                "data_model_id": model_id,
-                                "list": true,
-                                "get": true,
-                                "create": false,
-                                "update": false,
-                                "delete": false
-                            }
-                        ]
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let status = response.status();
-    let payload: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(status, StatusCode::CREATED, "{payload}");
-    payload["data"]["token"].as_str().unwrap().to_string()
 }

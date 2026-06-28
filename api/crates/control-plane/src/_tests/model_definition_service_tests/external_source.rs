@@ -1,51 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn api_key_readiness_treats_system_all_as_not_ready_for_non_root_runtime_actor() {
-    let repository = InMemoryModelDefinitionRepository::default();
-    let service = ModelDefinitionService::new(repository.clone());
-    let created = service
-        .create_model(CreateModelDefinitionCommand {
-            actor_user_id: Uuid::nil(),
-            scope_kind: DataModelScopeKind::System,
-            data_source_instance_id: None,
-            external_resource_key: None,
-            external_table_id: None,
-            code: "system_all_api_key_orders".into(),
-            title: "System All API Key Orders".into(),
-            status: None,
-        })
-        .await
-        .unwrap();
-
-    repository.replace_grant_permission_profile_for_tests(
-        created.id,
-        domain::ScopeDataModelPermissionProfile::SystemAll,
-    );
-    repository.add_api_key_readiness(ApiKeyDataModelReadinessRecord {
-        api_key_id: Uuid::now_v7(),
-        data_model_id: created.id,
-        scope_kind: DataModelScopeKind::System,
-        scope_id: SYSTEM_SCOPE_ID,
-        key_enabled: true,
-        expires_at: None,
-        allow_list: true,
-        allow_get: false,
-        allow_create: false,
-        allow_update: false,
-        allow_delete: false,
-    });
-
-    let effective = service.get_model(Uuid::nil(), created.id).await.unwrap();
-
-    assert_eq!(
-        effective.api_exposure_status,
-        ApiExposureStatus::ApiExposedNoPermission
-    );
-}
-
-#[tokio::test]
-async fn external_model_missing_scope_filter_capability_is_unsafe_without_or_with_api_key_path() {
+async fn external_model_missing_scope_filter_capability_keeps_published_exposure_visible() {
     let model_id = Uuid::now_v7();
     let mut model = model_in_workspace(model_id, Uuid::nil());
     model.data_source_instance_id = Some(Uuid::now_v7());
@@ -66,36 +22,11 @@ async fn external_model_missing_scope_filter_capability_is_unsafe_without_or_wit
             ));
     let service = ModelDefinitionService::new(repository.clone());
 
-    let unsafe_without_key = service.get_model(Uuid::nil(), model_id).await.unwrap();
+    let unsafe_external = service.get_model(Uuid::nil(), model_id).await.unwrap();
 
     assert_eq!(
-        unsafe_without_key.api_exposure_status,
-        ApiExposureStatus::UnsafeExternalSource
-    );
-
-    repository
-        .api_key_readiness
-        .lock()
-        .expect("api key readiness lock poisoned")
-        .push(ApiKeyDataModelReadinessRecord {
-            api_key_id: Uuid::now_v7(),
-            data_model_id: model_id,
-            scope_kind: DataModelScopeKind::Workspace,
-            scope_id: Uuid::nil(),
-            key_enabled: true,
-            expires_at: None,
-            allow_list: true,
-            allow_get: true,
-            allow_create: false,
-            allow_update: false,
-            allow_delete: false,
-        });
-
-    let effective = service.get_model(Uuid::nil(), model_id).await.unwrap();
-
-    assert_eq!(
-        effective.api_exposure_status,
-        ApiExposureStatus::UnsafeExternalSource
+        unsafe_external.api_exposure_status,
+        ApiExposureStatus::ApiExposedReady
     );
 }
 
@@ -121,23 +52,6 @@ async fn external_model_with_scope_filter_capability_can_be_api_exposed_ready() 
                 Uuid::nil(),
             ));
     let service = ModelDefinitionService::new(repository.clone());
-    repository
-        .api_key_readiness
-        .lock()
-        .expect("api key readiness lock poisoned")
-        .push(ApiKeyDataModelReadinessRecord {
-            api_key_id: Uuid::now_v7(),
-            data_model_id: model_id,
-            scope_kind: DataModelScopeKind::Workspace,
-            scope_id: Uuid::nil(),
-            key_enabled: true,
-            expires_at: None,
-            allow_list: true,
-            allow_get: false,
-            allow_create: false,
-            allow_update: false,
-            allow_delete: false,
-        });
 
     let effective = service.get_model(Uuid::nil(), model_id).await.unwrap();
 
@@ -158,7 +72,7 @@ async fn external_model_with_scope_filter_capability_can_be_api_exposed_ready() 
 #[tokio::test]
 async fn main_source_ready_path_is_not_blocked_by_external_source_safety() {
     let repository = InMemoryModelDefinitionRepository::default();
-    let service = ModelDefinitionService::new(repository.clone());
+    let service = ModelDefinitionService::new(repository);
     let created = service
         .create_model(CreateModelDefinitionCommand {
             actor_user_id: Uuid::nil(),
@@ -172,20 +86,6 @@ async fn main_source_ready_path_is_not_blocked_by_external_source_safety() {
         })
         .await
         .unwrap();
-
-    repository.add_api_key_readiness(ApiKeyDataModelReadinessRecord {
-        api_key_id: Uuid::now_v7(),
-        data_model_id: created.id,
-        scope_kind: DataModelScopeKind::Workspace,
-        scope_id: Uuid::nil(),
-        key_enabled: true,
-        expires_at: None,
-        allow_list: true,
-        allow_get: false,
-        allow_create: false,
-        allow_update: false,
-        allow_delete: false,
-    });
 
     let effective = service.get_model(Uuid::nil(), created.id).await.unwrap();
 

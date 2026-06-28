@@ -150,6 +150,7 @@ export interface SaveConsoleMcpGroupBody {
 
 export interface SaveConsoleMcpToolBody {
   tool_id: string;
+  des_id: string;
   name: string;
   short_description: string;
   usage_description: string | null;

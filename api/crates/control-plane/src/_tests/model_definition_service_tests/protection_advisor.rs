@@ -174,7 +174,7 @@ async fn root_can_override_protected_data_model_enforcement() {
 }
 
 #[tokio::test]
-async fn advisor_findings_report_exposure_protection_permission_and_field_risks() {
+async fn advisor_findings_report_protection_and_field_risks() {
     let actor_user_id = Uuid::now_v7();
     let actor_workspace_id = Uuid::now_v7();
     let model_id = Uuid::now_v7();
@@ -204,23 +204,6 @@ async fn advisor_findings_report_exposure_protection_permission_and_field_risks(
     let repository =
         ScopedModelDefinitionRepository::new(actor_in_workspace(actor_user_id, actor_workspace_id))
             .with_model(model);
-    repository
-        .api_key_readiness
-        .lock()
-        .expect("api key readiness lock poisoned")
-        .push(ApiKeyDataModelReadinessRecord {
-            api_key_id: Uuid::now_v7(),
-            data_model_id: model_id,
-            scope_kind: DataModelScopeKind::Workspace,
-            scope_id: actor_workspace_id,
-            key_enabled: true,
-            expires_at: None,
-            allow_list: false,
-            allow_get: false,
-            allow_create: true,
-            allow_update: false,
-            allow_delete: false,
-        });
     let service = ModelDefinitionService::new(repository);
 
     let findings = service
@@ -232,9 +215,6 @@ async fn advisor_findings_report_exposure_protection_permission_and_field_risks(
         .map(|finding| finding.code.as_str())
         .collect::<Vec<_>>();
 
-    assert!(codes.contains(&"api_exposed_no_permission"));
-    assert!(codes.contains(&"missing_audit_for_write_api"));
-    assert!(codes.contains(&"missing_scope_filter"));
     assert!(codes.contains(&"protected_model_exposure_attempt"));
     assert!(codes.contains(&"duplicate_risky_field_configuration"));
     assert!(findings
@@ -243,25 +223,14 @@ async fn advisor_findings_report_exposure_protection_permission_and_field_risks(
 }
 
 #[tokio::test]
-async fn advisor_findings_report_published_not_exposed_and_unsafe_external_source() {
+async fn advisor_findings_report_unsafe_external_source() {
     let actor_user_id = Uuid::now_v7();
     let actor_workspace_id = Uuid::now_v7();
-    let not_exposed_id = Uuid::now_v7();
     let unsafe_external_id = Uuid::now_v7();
     let repository =
         ScopedModelDefinitionRepository::new(actor_in_workspace(actor_user_id, actor_workspace_id))
-            .with_model(system_model(not_exposed_id))
             .with_model(unsafe_external_system_model(unsafe_external_id));
     let service = ModelDefinitionService::new(repository);
-
-    let not_exposed = service
-        .advisor_findings(actor_user_id, not_exposed_id)
-        .await
-        .unwrap();
-    assert!(not_exposed.iter().any(|finding| {
-        finding.code == "published_not_exposed"
-            && finding.severity == domain::DataModelAdvisorSeverity::Info
-    }));
 
     let unsafe_external = service
         .advisor_findings(actor_user_id, unsafe_external_id)

@@ -36,6 +36,7 @@ pub struct UpsertMcpGroupCommand {
 pub struct CreateMcpToolCommand {
     pub actor_user_id: Uuid,
     pub tool_id: String,
+    pub des_id: Option<String>,
     pub name: String,
     pub short_description: String,
     pub usage_description: Option<String>,
@@ -51,6 +52,7 @@ pub struct CreateMcpToolCommand {
 pub struct UpdateMcpToolCommand {
     pub actor_user_id: Uuid,
     pub tool_id: String,
+    pub des_id: Option<String>,
     pub name: String,
     pub short_description: String,
     pub usage_description: Option<String>,
@@ -248,6 +250,7 @@ where
     ) -> Result<domain::McpToolRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
         validate_identifier(&command.tool_id, "tool_id")?;
+        let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
         self.repository
             .create_mcp_tool(&CreateMcpToolInput {
@@ -267,7 +270,7 @@ where
                 permission_code: interface.permission_code,
                 risk_level: interface.risk_level,
                 audit_policy: command.audit_policy,
-                des_id: generate_short_id(),
+                des_id,
                 des_id_required: command.des_id_required,
                 status: command.status,
             })
@@ -280,6 +283,7 @@ where
     ) -> Result<domain::McpToolRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
         validate_identifier(&command.tool_id, "tool_id")?;
+        let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
         self.repository
             .update_mcp_tool(&UpdateMcpToolInput {
@@ -298,6 +302,7 @@ where
                 permission_code: interface.permission_code,
                 risk_level: interface.risk_level,
                 audit_policy: command.audit_policy,
+                des_id,
                 des_id_required: command.des_id_required,
                 status: command.status,
             })
@@ -690,6 +695,15 @@ fn generate_short_id() -> String {
         output.push(ALPHABET[index] as char);
     }
     output
+}
+
+fn normalize_des_id(value: Option<String>) -> String {
+    let trimmed = value.unwrap_or_default().trim().to_owned();
+    if trimmed.is_empty() {
+        generate_short_id()
+    } else {
+        trimmed
+    }
 }
 
 fn path_matches(base_path: &str, candidate: &str) -> bool {

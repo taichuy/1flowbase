@@ -15,7 +15,7 @@ use control_plane::{
         },
         ApplicationPublicApiTestHarness,
     },
-    auth::{ApiKeyService, CreateApiKeyCommand},
+    auth::ApiKeyService,
     ports::{
         ApplicationJsDependencySelectionRepository, FlowRepository,
         ReplaceApplicationJsDependencySelectionInput,
@@ -387,26 +387,13 @@ async fn application_public_api_root_has_no_global_view_every_users_key_list_pat
 }
 
 #[tokio::test]
-async fn application_public_api_dmk_keys_still_authenticate_only_for_data_model_runtime() {
+async fn application_public_api_rejects_legacy_data_model_api_key_tokens() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Support Bot");
     let repository = harness.repository();
-    let data_model_key_service = ApiKeyService::new(repository.clone());
+    let user_api_key_service = ApiKeyService::new(repository.clone());
     let application_key_service = ApplicationApiKeyService::new(repository);
 
-    let dmk = data_model_key_service
-        .create_api_key(CreateApiKeyCommand {
-            actor_user_id: actor_user_id(),
-            tenant_id: Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa),
-            current_workspace_id: Uuid::from_u128(0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb),
-            name: "Data Model runtime".into(),
-            scope_kind: None,
-            scope_id: None,
-            expires_at: None,
-            permissions: Vec::new(),
-        })
-        .await
-        .unwrap();
     let apk = application_key_service
         .create_api_key(CreateApplicationApiKeyCommand {
             actor_user_id: actor_user_id(),
@@ -417,22 +404,21 @@ async fn application_public_api_dmk_keys_still_authenticate_only_for_data_model_
         .await
         .unwrap();
 
-    assert!(dmk.token.starts_with("dmk_"));
     assert!(apk.token.starts_with("sk-"));
-    data_model_key_service
-        .authenticate_bearer_token(&dmk.token)
-        .await
-        .unwrap();
     application_key_service
         .authenticate_bearer_token(&apk.token)
         .await
         .unwrap();
-    assert!(data_model_key_service
-        .authenticate_bearer_token(&apk.token)
+    assert!(user_api_key_service
+        .authenticate_bearer_token("dmk_legacy_token")
         .await
         .is_err());
     assert!(application_key_service
-        .authenticate_bearer_token(&dmk.token)
+        .authenticate_bearer_token("dmk_legacy_token")
+        .await
+        .is_err());
+    assert!(user_api_key_service
+        .authenticate_bearer_token(&apk.token)
         .await
         .is_err());
     assert!(application_key_service

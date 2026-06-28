@@ -134,7 +134,13 @@ async fn replace_member_roles(
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
-async fn create_model(app: &axum::Router, cookie: &str, csrf: &str, code: &str) -> String {
+async fn create_model(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    code: &str,
+    status: &str,
+) -> String {
     let response = app
         .clone()
         .oneshot(
@@ -148,7 +154,8 @@ async fn create_model(app: &axum::Router, cookie: &str, csrf: &str, code: &str) 
                     json!({
                         "scope_kind": "workspace",
                         "code": code,
-                        "title": code
+                        "title": code,
+                        "status": status
                     })
                     .to_string(),
                 ))
@@ -231,43 +238,6 @@ async fn create_scope_grant(
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
     payload["data"]["id"].as_str().unwrap().to_string()
-}
-
-async fn create_api_key(app: &axum::Router, cookie: &str, csrf: &str, model_id: &str) -> String {
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/api-keys")
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "name": "docs dynamic data model key",
-                        "scope_kind": "system",
-                        "scope_id": domain::SYSTEM_SCOPE_ID,
-                        "permissions": [{
-                            "data_model_id": model_id,
-                            "list": true,
-                            "get": true,
-                            "create": true,
-                            "update": true,
-                            "delete": true
-                        }]
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::CREATED);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let payload: Value = serde_json::from_slice(&body).unwrap();
-    payload["data"]["token"].as_str().unwrap().to_string()
 }
 
 #[tokio::test]
@@ -532,7 +502,7 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     let (app, _database_url) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
-    let ready_model_id = create_model(&app, &cookie, &csrf, "docs_ready_orders").await;
+    let ready_model_id = create_model(&app, &cookie, &csrf, "docs_ready_orders", "published").await;
     create_model_field(
         &app,
         &cookie,
@@ -554,9 +524,7 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     )
     .await;
     create_scope_grant(&app, &cookie, &csrf, &ready_model_id).await;
-    create_api_key(&app, &cookie, &csrf, &ready_model_id).await;
-
-    let hidden_model_id = create_model(&app, &cookie, &csrf, "docs_hidden_orders").await;
+    let hidden_model_id = create_model(&app, &cookie, &csrf, "docs_hidden_orders", "draft").await;
     assert_ne!(ready_model_id, hidden_model_id);
 
     let catalog_response = app
@@ -742,10 +710,7 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
             .get("created_at")
             .is_none()
     );
-    assert_eq!(
-        operation_spec["components"]["securitySchemes"]["apiKeyBearer"]["scheme"],
-        json!("bearer")
-    );
+    assert!(operation_spec["components"]["securitySchemes"]["apiKeyBearer"].is_null());
     assert_eq!(
         operation_spec["components"]["securitySchemes"]["patBearer"]["scheme"],
         json!("bearer")

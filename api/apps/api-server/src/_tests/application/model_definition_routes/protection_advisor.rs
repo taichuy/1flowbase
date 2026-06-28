@@ -242,7 +242,7 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
         .iter()
         .map(|finding| finding["code"].as_str().unwrap())
         .collect::<Vec<_>>();
-    assert!(finding_codes.contains(&"published_not_exposed"));
+    assert!(finding_codes.contains(&"protected_model_exposure_attempt"));
 
     let docs_response = app
         .oneshot(
@@ -281,17 +281,14 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
         docs["components"]["schemas"]["AdvisorDocOrdersRecord"]["properties"]["status"]["type"],
         json!("string")
     );
-    assert_eq!(
-        docs["components"]["securitySchemes"]["apiKeyBearer"]["description"],
-        json!("Compatibility path: use Authorization: Bearer dmk_... for Data Model runtime key action permissions.")
-    );
+    assert!(docs["components"]["securitySchemes"]["apiKeyBearer"].is_null());
     assert_eq!(
         docs["components"]["securitySchemes"]["patBearer"]["scheme"],
         json!("bearer")
     );
     assert_eq!(
         docs["x-data-model"]["api_exposure_status"],
-        json!("published_not_exposed")
+        json!("api_exposed_ready")
     );
     assert!(docs["x-scope-permission-note"]
         .as_str()

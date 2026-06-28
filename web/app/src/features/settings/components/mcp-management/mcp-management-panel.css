@@ -34,6 +34,40 @@
   margin: 16px 0;
 }
 
+.mcp-management__tool-modal .ant-modal-content {
+  display: flex;
+  height: min(700px, calc(100vh - 120px));
+  flex-direction: column;
+}
+
+.mcp-management__tool-modal .ant-modal-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mcp-management__tool-form {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+.mcp-management__selected-operation {
+  margin-bottom: 16px;
+}
+
+.mcp-management__des-id-field {
+  flex: 1 1 520px;
+}
+
+.mcp-management__des-id-required-field {
+  flex: 0 0 180px;
+}
+
 .mcp-management__schema-editor {
   margin-top: 8px;
 }
@@ -88,6 +122,15 @@
 
 .mcp-input-mapping-editor .ant-select {
   width: 100%;
+}
+
+.mcp-input-mapping-editor__mapping-action .ant-select {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.mcp-input-mapping-editor__mapping-action .ant-btn {
+  flex: 0 0 auto;
 }
 
 .mcp-management__schema-editor .agent-flow-json-schema-settings {

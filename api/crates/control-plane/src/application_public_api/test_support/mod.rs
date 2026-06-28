@@ -20,7 +20,7 @@ use crate::ports::{
     CreateFlowRunInput, DeleteApplicationInput, FlowRepository, ReplaceApplicationApiMappingInput,
     ReplaceApplicationEnvironmentVariablesInput, ReplaceApplicationJsDependencySelectionInput,
     SetApplicationApiEnabledInput, UpdateApplicationInput, UpdateProfileInput,
-    UpsertApiKeyDataModelPermissionInput, UpsertCompiledPlanInput,
+    UpsertCompiledPlanInput,
 };
 
 const TEST_TENANT_ID: Uuid = Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
@@ -31,7 +31,6 @@ const TEST_ROOT_USER_ID: Uuid = Uuid::from_u128(0x333333333333333333333333333333
 struct ApplicationPublicApiTestRepositoryInner {
     applications: HashMap<Uuid, domain::ApplicationRecord>,
     api_keys: HashMap<Uuid, domain::ApiKeyRecord>,
-    permissions: HashMap<Uuid, Vec<domain::ApiKeyDataModelPermissionRecord>>,
     conversations:
         HashMap<(Uuid, Uuid, String, String), conversations::ApplicationPublicConversationRecord>,
     run_conversations: HashMap<Uuid, Uuid>,

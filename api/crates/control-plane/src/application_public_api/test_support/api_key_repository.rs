@@ -31,31 +31,6 @@ impl ApiKeyRepository for ApplicationPublicApiTestRepository {
         Ok(api_key)
     }
 
-    async fn replace_api_key_data_model_permissions(
-        &self,
-        api_key_id: Uuid,
-        permissions: &[UpsertApiKeyDataModelPermissionInput],
-    ) -> Result<Vec<domain::ApiKeyDataModelPermissionRecord>> {
-        let records = permissions
-            .iter()
-            .map(|permission| domain::ApiKeyDataModelPermissionRecord {
-                api_key_id,
-                data_model_id: permission.data_model_id,
-                allow_list: permission.allow_list,
-                allow_get: permission.allow_get,
-                allow_create: permission.allow_create,
-                allow_update: permission.allow_update,
-                allow_delete: permission.allow_delete,
-            })
-            .collect::<Vec<_>>();
-        self.inner
-            .lock()
-            .expect("application public api test repo mutex poisoned")
-            .permissions
-            .insert(api_key_id, records.clone());
-        Ok(records)
-    }
-
     async fn find_api_key_by_token_hash(
         &self,
         token_hash: &str,
@@ -189,19 +164,5 @@ impl ApiKeyRepository for ApplicationPublicApiTestRepository {
         }
         inner.api_keys.remove(&api_key_id);
         Ok(())
-    }
-
-    async fn list_api_key_data_model_permissions(
-        &self,
-        api_key_id: Uuid,
-    ) -> Result<Vec<domain::ApiKeyDataModelPermissionRecord>> {
-        Ok(self
-            .inner
-            .lock()
-            .expect("application public api test repo mutex poisoned")
-            .permissions
-            .get(&api_key_id)
-            .cloned()
-            .unwrap_or_default())
     }
 }
