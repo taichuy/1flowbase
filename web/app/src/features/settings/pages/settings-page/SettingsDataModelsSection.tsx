@@ -13,7 +13,6 @@ import {
   Alert,
   Breadcrumb,
   Button,
-  Drawer,
   Flex,
   Tag,
   Typography,
@@ -27,12 +26,10 @@ import {
   deleteSettingsDataModel,
   deleteSettingsDataModelField,
   fetchSettingsDataModelAdvisorFindings,
-  fetchSettingsDataModelRecordPreview,
   fetchSettingsDataModelScopeGrants,
   fetchSettingsDataModels,
   fetchSettingsDataSourceInstances,
   settingsDataModelAdvisorFindingsQueryKey,
-  settingsDataModelRecordPreviewQueryKey,
   settingsDataModelsQueryKey,
   settingsDataModelScopeGrantsQueryKey,
   settingsDataSourcesQueryKey,
@@ -50,6 +47,7 @@ import {
   type UpdateSettingsDataModelScopeGrantInput
 } from '../../api/data-models';
 import { DataModelDetail } from '../../components/data-models/DataModelDetail';
+import { DataModelDetailDrawer } from '../../components/data-models/DataModelDetailDrawer';
 import { DataModelTable } from '../../components/data-models/DataModelTable';
 import { DataSourcePanel } from '../../components/data-models/DataSourcePanel';
 import '../../components/data-models/data-model-panel.css';
@@ -176,13 +174,6 @@ export function SettingsDataModelsSection({
     queryKey: settingsDataModelAdvisorFindingsQueryKey(editingModel?.id ?? ''),
     queryFn: () =>
       fetchSettingsDataModelAdvisorFindings(editingModel?.id ?? ''),
-    enabled: Boolean(editingModel)
-  });
-
-  const recordPreviewQuery = useQuery({
-    queryKey: settingsDataModelRecordPreviewQueryKey(editingModel?.code ?? ''),
-    queryFn: () =>
-      fetchSettingsDataModelRecordPreview(editingModel?.code ?? ''),
     enabled: Boolean(editingModel)
   });
 
@@ -353,7 +344,6 @@ export function SettingsDataModelsSection({
     getErrorMessage(modelsQuery.error) ??
     getErrorMessage(scopeGrantsQuery.error) ??
     getErrorMessage(advisorQuery.error) ??
-    getErrorMessage(recordPreviewQuery.error) ??
     getErrorMessage(updateModelMutation.error) ??
     getErrorMessage(createModelMutation.error) ??
     getErrorMessage(deleteModelMutation.error) ??
@@ -498,13 +488,11 @@ export function SettingsDataModelsSection({
               }
             />
 
-            <Drawer
+            <DataModelDetailDrawer
               title={
                 editingModel ? i18nText("settings", "auto.edit_item", { value1: editingModel.title }) : i18nText("settings", "auto.edit_data_model")
               }
               open={Boolean(editingModel)}
-              width={980}
-              destroyOnHidden
               onClose={() => setEditingModelId(null)}
             >
               {editingModel ? (
@@ -517,19 +505,11 @@ export function SettingsDataModelsSection({
                   grantsSaving={saveGrantMutation.isPending}
                   advisorFindings={advisorQuery.data ?? []}
                   advisorLoading={advisorQuery.isLoading}
-                  recordPreview={recordPreviewQuery.data}
-                  recordPreviewLoading={recordPreviewQuery.isLoading}
                   modelSaving={updateModelMutation.isPending}
                   fieldSaving={
                     createFieldMutation.isPending ||
                     updateFieldMutation.isPending ||
                     deleteFieldMutation.isPending
-                  }
-                  onUpdateModelStatus={(status) =>
-                    updateModelMutation.mutate({
-                      model: editingModel,
-                      input: { status }
-                    })
                   }
                   onUpdateModel={(input) =>
                     updateModelMutation.mutate({ model: editingModel, input })
@@ -552,7 +532,7 @@ export function SettingsDataModelsSection({
                   }
                 />
               ) : null}
-            </Drawer>
+            </DataModelDetailDrawer>
           </Flex>
         ) : (
           <DataSourcePanel

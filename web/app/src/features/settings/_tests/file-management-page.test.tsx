@@ -311,6 +311,71 @@ describe('File management settings page', () => {
     });
   });
 
+  test('root mode creates a local storage with public base url in config_json', async () => {
+    authenticateWithPermissions([], 'root');
+
+    renderApp('/settings/files');
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: /新增/ }))[0]
+    );
+
+    fireEvent.change(await screen.findByLabelText('存储标识'), {
+      target: { value: 'local-public' }
+    });
+    fireEvent.change(screen.getByLabelText('名称'), {
+      target: { value: 'Local Public' }
+    });
+    fireEvent.change(screen.getByLabelText('公开访问 URL'), {
+      target: { value: 'https://cdn.example.com/files' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => {
+      expect(fileManagementApi.createSettingsFileStorage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'local-public',
+          title: 'Local Public',
+          driver_type: 'local',
+          config_json: expect.objectContaining({
+            public_base_url: 'https://cdn.example.com/files'
+          })
+        }),
+        'csrf-123'
+      );
+    });
+  });
+
+  test('root mode shows existing public base url when editing local storage', async () => {
+    authenticateWithPermissions([], 'root');
+    fileManagementApi.fetchSettingsFileStorages.mockResolvedValue([
+      {
+        id: 'storage-1',
+        code: 'local-default',
+        title: 'Local Default',
+        driver_type: 'local',
+        enabled: true,
+        is_default: true,
+        health_status: 'ready',
+        last_health_error: null,
+        config_json: {
+          root_path: '/srv/files',
+          public_base_url: 'https://cdn.example.com/files'
+        },
+        rule_json: {}
+      }
+    ]);
+
+    renderApp('/settings/files');
+
+    expect(await screen.findByText('Local Default')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('编辑'));
+
+    expect(
+      await screen.findByDisplayValue('https://cdn.example.com/files')
+    ).toBeInTheDocument();
+  });
+
   test('root mode opens the file table create drawer', async () => {
     authenticateWithPermissions([], 'root');
 

@@ -148,6 +148,7 @@ where fields.data_model_id = definitions.id
 insert into model_fields (
     id,
     data_model_id,
+    scope_id,
     code,
     title,
     physical_column_name,
@@ -174,6 +175,7 @@ select
         substr(md5(definitions.id::text || ':' || fields.code), 21, 12)
     )::uuid,
     definitions.id,
+    definitions.scope_id,
     fields.code,
     fields.title,
     fields.physical_column_name,

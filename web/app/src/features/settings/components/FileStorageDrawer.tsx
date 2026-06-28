@@ -52,7 +52,8 @@ const DRIVER_TYPE_OPTIONS = [
 
 const DRIVER_FIELDS: Record<string, { key: string; label: string; type: 'string' | 'number' }[]> = {
   local: [
-    { key: 'root_path', label: i18nText("settings", "auto.root_directory_path"), type: 'string' }
+    { key: 'root_path', label: i18nText("settings", "auto.root_directory_path"), type: 'string' },
+    { key: 'public_base_url', label: i18nText("settings", "auto.public_base_url"), type: 'string' }
   ],
   s3: [
     { key: 'endpoint', label: 'Endpoint', type: 'string' },
@@ -82,7 +83,8 @@ const DRIVER_FIELDS: Record<string, { key: string; label: string; type: 'string'
     { key: 'bucket', label: 'Bucket', type: 'string' },
     { key: 'access_key_id', label: 'Access Key ID', type: 'string' },
     { key: 'secret_access_key', label: 'Secret Access Key', type: 'string' },
-    { key: 'force_path_style', label: 'Force Path Style', type: 'string' }
+    { key: 'force_path_style', label: 'Force Path Style', type: 'string' },
+    { key: 'public_base_url', label: i18nText("settings", "auto.public_base_url"), type: 'string' }
   ]
 };
 

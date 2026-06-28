@@ -3,7 +3,6 @@ import { useState } from 'react';
 import {
   Button,
   Flex,
-  Select,
   Table,
   Tabs,
   Tag,
@@ -13,13 +12,6 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import {
   LockOutlined,
-  TagOutlined,
-  CodeOutlined,
-  DatabaseOutlined,
-  CloudServerOutlined,
-  InteractionOutlined,
-  TableOutlined,
-  DeploymentUnitOutlined,
   PlusOutlined,
   EditOutlined
 } from '@ant-design/icons';
@@ -30,7 +22,6 @@ import type {
   SettingsDataModelAdvisorFinding,
   SettingsDataModelField,
   SettingsDataModelScopeGrant,
-  SettingsRuntimeRecordPreview,
   UpdateSettingsDataModelFieldInput,
   UpdateSettingsDataModelInput
 } from '../../api/data-models';
@@ -38,15 +29,8 @@ import { DataModelAdvisorTab } from './DataModelAdvisorTab';
 import { DataModelApiTab } from './DataModelApiTab';
 import { DataModelFieldDrawer } from './DataModelFieldDrawer';
 import { DataModelFormDrawer } from './DataModelFormDrawer';
-import { DataModelHelpTooltip } from './DataModelHelpTooltip';
-import { dataModelStatusHelp } from './data-model-help-text';
 import { DataModelPermissionsTab } from './DataModelPermissionsTab';
-import { DataModelRecordPreview } from './DataModelRecordPreview';
 import { i18nText } from '../../../../shared/i18n/text';
-
-const dataModelStatusOptions = ['draft', 'published', 'disabled', 'broken'].map(
-  (value) => ({ label: value, value })
-);
 
 function getFieldKindTag(kind: string) {
   let color = 'default';
@@ -90,11 +74,8 @@ export function DataModelDetail({
   grantsSaving,
   advisorFindings,
   advisorLoading,
-  recordPreview,
-  recordPreviewLoading,
   modelSaving,
   fieldSaving,
-  onUpdateModelStatus,
   onUpdateModel,
   onCreateField,
   onUpdateField,
@@ -109,11 +90,8 @@ export function DataModelDetail({
   grantsSaving: boolean;
   advisorFindings: SettingsDataModelAdvisorFinding[];
   advisorLoading: boolean;
-  recordPreview: SettingsRuntimeRecordPreview | undefined;
-  recordPreviewLoading: boolean;
   modelSaving: boolean;
   fieldSaving: boolean;
-  onUpdateModelStatus: (status: SettingsDataModel['status']) => void;
   onUpdateModel: (input: UpdateSettingsDataModelInput) => void;
   onCreateField: (input: CreateSettingsDataModelFieldInput) => void;
   onUpdateField: (
@@ -237,48 +215,50 @@ export function DataModelDetail({
   const relationFields = model.fields.filter(
     (field) => field.relation_target_model_id
   );
-  const summaryItems = [
-    {
-      key: 'title',
-      label: i18nText("settings", "auto.title"),
-      value: model.title,
-      strong: true,
-      icon: <TagOutlined />
-    },
-    { key: 'code', label: 'Code', value: model.code, icon: <CodeOutlined /> },
-    {
-      key: 'source',
-      label: i18nText("settings", "auto.source"),
-      value: model.source_kind === 'main_source' ? i18nText("settings", "auto.built_in_data_source") : i18nText("settings", "auto.external_data_source"),
-      icon:
-        model.source_kind === 'main_source' ? (
-          <DatabaseOutlined />
-        ) : (
-          <CloudServerOutlined />
-        )
-    },
-    {
-      key: 'runtime',
-      label: 'Runtime',
-      value: model.runtime_availability,
-      icon: <InteractionOutlined />
-    },
+  const summaryRows = [
+    [
+      {
+        key: 'title',
+        label: i18nText("settings", "auto.title"),
+        value: model.title
+      },
+      {
+        key: 'source',
+        label: i18nText("settings", "auto.source"),
+        value: model.source_kind === 'main_source' ? i18nText("settings", "auto.built_in_data_source") : i18nText("settings", "auto.external_data_source")
+      }
+    ],
+    [
+      { key: 'code', label: 'Code', value: model.code },
+      {
+        key: 'runtime',
+        label: 'Runtime',
+        value: model.runtime_availability
+      }
+    ],
+    [
+      {
+        key: 'table',
+        label: i18nText("settings", "auto.physical_table"),
+        value: model.physical_table_name
+      },
+      {
+        key: 'status',
+        label: i18nText("settings", "auto.status"),
+        value: model.status
+      }
+    ],
     ...(model.source_kind === 'external_source'
       ? [
-          {
-            key: 'external_table_id',
-            label: i18nText("settings", "auto.table_id_alt"),
-            value: model.external_table_id ?? '-',
-            icon: <TableOutlined />
-          }
+          [
+            {
+              key: 'external_table_id',
+              label: i18nText("settings", "auto.table_id_alt"),
+              value: model.external_table_id ?? '-'
+            }
+          ]
         ]
-      : []),
-    {
-      key: 'table',
-      label: i18nText("settings", "auto.physical_table"),
-      value: model.physical_table_name,
-      icon: <DeploymentUnitOutlined />
-    }
+      : [])
   ];
 
   return (
@@ -287,24 +267,29 @@ export function DataModelDetail({
         className="data-model-panel__meta-grid"
         data-testid="data-model-detail-summary"
       >
-        {summaryItems.map((item) => (
+        {summaryRows.map((row, index) => (
           <div
-            key={item.key}
-            className="data-model-panel__meta-card"
-            data-testid="data-model-summary-item"
+            key={`summary-row-${index}`}
+            className="data-model-panel__meta-row"
+            data-testid="data-model-summary-row"
           >
-            <div className="data-model-panel__meta-card-header">
-              {item.icon}
-              <span className="data-model-panel__meta-card-label">
-                {item.label}：
-              </span>
-            </div>
-            <Typography.Text
-              strong
-              className="data-model-panel__meta-card-value"
-            >
-              {item.value}
-            </Typography.Text>
+            {row.map((item) => (
+              <div
+                key={item.key}
+                className="data-model-panel__meta-card"
+                data-testid="data-model-summary-item"
+              >
+                <span className="data-model-panel__meta-card-label">
+                  {item.label}：
+                </span>
+                <Typography.Text
+                  strong
+                  className="data-model-panel__meta-card-value"
+                >
+                  {item.value}
+                </Typography.Text>
+              </div>
+            ))}
           </div>
         ))}
       </div>
@@ -313,26 +298,6 @@ export function DataModelDetail({
         className="data-model-panel__detail-actions"
         data-testid="data-model-detail-actions"
       >
-        <div className="data-model-panel__status-control">
-          <div
-            className="data-model-panel__status-label"
-            data-testid="data-model-status-label"
-          >
-            <label htmlFor="data-model-status-select">{i18nText("settings", "auto.status_alt")}</label>
-            <DataModelHelpTooltip
-              label={i18nText("settings", "auto.data_model_status")}
-              title={dataModelStatusHelp}
-            />
-          </div>
-          <Select
-            id="data-model-status-select"
-            value={model.status}
-            options={dataModelStatusOptions}
-            disabled={!canManage || modelSaving}
-            virtual={false}
-            onChange={(value) => onUpdateModelStatus(value)}
-          />
-        </div>
         <Button disabled={!canManage} onClick={() => setModelDrawerOpen(true)}>
           {i18nText("settings", "auto.edit")}</Button>
       </div>
@@ -426,18 +391,8 @@ export function DataModelDetail({
             children: <DataModelApiTab model={model} />
           },
           {
-            key: 'records',
-            label: i18nText("settings", "auto.record_preview"),
-            children: (
-              <DataModelRecordPreview
-                preview={recordPreview}
-                loading={recordPreviewLoading}
-              />
-            )
-          },
-          {
             key: 'advisor',
-            label: 'Advisor',
+            label: i18nText("settings", "auto.risk_warnings"),
             children: (
               <DataModelAdvisorTab
                 findings={advisorFindings}

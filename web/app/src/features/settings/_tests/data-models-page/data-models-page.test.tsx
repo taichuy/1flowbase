@@ -146,7 +146,7 @@ describe('Settings data models page', () => {
   );
 
   test(
-    'selects a Data Model and exposes detail tabs with safe status controls',
+    'selects a Data Model and exposes detail tabs with status metadata',
     async () => {
       renderApp('/settings/data-models?source=source-1');
 
@@ -164,13 +164,18 @@ describe('Settings data models page', () => {
       expect(within(detailSummary).getByText('Code：')).toBeInTheDocument();
       expect(within(detailSummary).getByText('Contacts')).toBeInTheDocument();
       expect(within(detailSummary).getByText('contacts')).toBeInTheDocument();
-      expect(
-        within(detailSummary).getAllByTestId('data-model-summary-item')
-      ).toHaveLength(6);
+      const summaryRows = within(detailSummary).getAllByTestId(
+        'data-model-summary-row'
+      );
+      expect(summaryRows).toHaveLength(4);
+      expect(within(summaryRows[0]).getByText('标题：')).toBeInTheDocument();
+      expect(within(summaryRows[0]).getByText('来源：')).toBeInTheDocument();
+      expect(within(summaryRows[1]).getByText('Code：')).toBeInTheDocument();
+      expect(within(summaryRows[1]).getByText('Runtime：')).toBeInTheDocument();
+      expect(within(summaryRows[2]).getByText('物理表：')).toBeInTheDocument();
+      expect(within(summaryRows[2]).getByText('状态：')).toBeInTheDocument();
+      expect(within(summaryRows[2]).getByText('published')).toBeInTheDocument();
       expect(within(detailSummary).getByText('表 ID：')).toBeInTheDocument();
-      expect(
-        within(detailSummary).queryByText('状态：')
-      ).not.toBeInTheDocument();
       const detailActions = within(editorDialog).getByTestId(
         'data-model-detail-actions'
       );
@@ -185,44 +190,26 @@ describe('Settings data models page', () => {
           name: /编\s*辑/
         })
       ).toBeInTheDocument();
-      const statusSelect = within(detailActions).getByRole('combobox', {
-        name: /状态/
-      });
-      expect(statusSelect).toBeInTheDocument();
-      const statusLabel = within(detailActions).getByTestId(
-        'data-model-status-label'
-      );
-      expect(statusLabel).toHaveTextContent('状态：');
       expect(
-        within(statusLabel).getByLabelText('Data Model 状态说明')
-      ).toBeInTheDocument();
+        within(detailActions).queryByRole('combobox', {
+          name: /状态/
+        })
+      ).not.toBeInTheDocument();
+      expect(
+        within(detailActions).queryByText('状态：')
+      ).not.toBeInTheDocument();
+      expect(
+        within(editorDialog).queryByRole('combobox', {
+          name: /状态/
+        })
+      ).not.toBeInTheDocument();
       expect(screen.getByRole('tab', { name: '关系' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: '权限' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'API' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: '记录预览' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Advisor' })).toBeInTheDocument();
-
-      fireEvent.mouseDown(statusSelect);
       expect(
-        await screen.findByRole('option', { name: 'draft' })
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole('option', { name: 'published' })
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole('option', { name: 'disabled' })
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole('option', { name: 'broken' })
-      ).toBeInTheDocument();
-      expect(
-        within(editorDialog).getByLabelText('Data Model 状态说明')
-      ).toBeInTheDocument();
-      expect(
-        within(editorDialog).getByText(
-          /broken: 当前定义、运行依赖或外部资源异常/
-        )
-      ).toBeInTheDocument();
+        screen.queryByRole('tab', { name: '记录预览' })
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: '风险提示' })).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: 'API' }));
       expect(
@@ -249,6 +236,29 @@ describe('Settings data models page', () => {
           name: i18nText('settings', 'auto.api_exposed_ready')
         })
       ).not.toBeInTheDocument();
+    },
+    SLOW_SETTINGS_PAGE_TEST_TIMEOUT
+  );
+
+  test(
+    'resizes the Data Model detail drawer from its left edge',
+    async () => {
+      renderApp('/settings/data-models?source=source-1');
+
+      const editorDialog = await openContactsDataModelEditor();
+      const resizeHandle = screen.getByRole('separator', {
+        name: '调整 Data Model 详情宽度'
+      });
+      const drawerWrapper = editorDialog.closest('.ant-drawer-content-wrapper');
+
+      expect(drawerWrapper).toBeInstanceOf(HTMLElement);
+      expect(drawerWrapper).toHaveStyle({ width: '980px' });
+
+      fireEvent.mouseDown(resizeHandle, { clientX: 44 });
+      fireEvent.mouseMove(document, { clientX: 144 });
+      fireEvent.mouseUp(document);
+
+      expect(drawerWrapper).toHaveStyle({ width: '880px' });
     },
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT
   );
@@ -296,7 +306,7 @@ describe('Settings data models page', () => {
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT
   );
 
-  test('shows editable grants, record preview, and Advisor severities', async () => {
+  test('shows editable grants and localized advisor findings without record preview', async () => {
     renderApp('/settings/data-models?source=source-1');
 
     await openContactsDataModelEditor();
@@ -310,17 +320,30 @@ describe('Settings data models page', () => {
       expect(dataModelsApi.updateSettingsDataModelScopeGrant).toHaveBeenCalled()
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: '记录预览' }));
-    expect(await screen.findByText('person@example.com')).toBeInTheDocument();
     expect(
       dataModelsApi.fetchSettingsDataModelRecordPreview
-    ).toHaveBeenCalledWith('contacts');
+    ).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Advisor' }));
+    fireEvent.click(screen.getByRole('tab', { name: '风险提示' }));
     const advisorTab = await screen.findByTestId('data-model-advisor-tab');
-    expect(within(advisorTab).getByText('blocking')).toBeInTheDocument();
-    expect(within(advisorTab).getByText('high')).toBeInTheDocument();
-    expect(within(advisorTab).getByText('info')).toBeInTheDocument();
+    expect(within(advisorTab).getByText('阻塞')).toBeInTheDocument();
+    expect(within(advisorTab).getByText('高')).toBeInTheDocument();
+    expect(within(advisorTab).getByText('提示')).toBeInTheDocument();
+    expect(
+      within(advisorTab).getByText('外部数据源缺少作用域过滤')
+    ).toBeInTheDocument();
+    expect(
+      within(advisorTab).getByText('受保护模型暴露尝试')
+    ).toBeInTheDocument();
+    expect(
+      within(advisorTab).getByText('字段映射提示')
+    ).toBeInTheDocument();
+    expect(
+      within(advisorTab).getByText('请启用作用域过滤。')
+    ).toBeInTheDocument();
+    expect(
+      within(advisorTab).queryByText('protected_model_exposure_attempt')
+    ).not.toBeInTheDocument();
   }, 20_000);
 
   test('creates Data Models from the data source section', async () => {
