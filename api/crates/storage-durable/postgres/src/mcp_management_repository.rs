@@ -91,7 +91,6 @@ fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolRecord> {
         output_mapping: row.get("output_mapping"),
         permission_code: row.get("permission_code"),
         risk_level: parse_risk_level(row.get::<String, _>("risk_level").as_str())?,
-        audit_policy: row.get("audit_policy"),
         des_id: row.get("des_id"),
         des_id_required: row.get("des_id_required"),
         status: parse_tool_status(row.get::<String, _>("status").as_str())?,
@@ -425,7 +424,6 @@ impl McpManagementRepository for PgControlPlaneStore {
                 output_mapping,
                 permission_code,
                 risk_level,
-                audit_policy,
                 des_id,
                 des_id_required,
                 status,
@@ -433,8 +431,8 @@ impl McpManagementRepository for PgControlPlaneStore {
                 updated_by
             ) values (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9,
-                $10, $11, $12, $13, $14, $15, $16, $17,
-                $18, $19, $19
+                $10, $11, $12, $13, $14, $15, $16,
+                $17, $18, $18
             )
             returning *
             "#,
@@ -453,7 +451,6 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&input.output_mapping)
         .bind(&input.permission_code)
         .bind(input.risk_level.as_str())
-        .bind(&input.audit_policy)
         .bind(&input.des_id)
         .bind(input.des_id_required)
         .bind(input.status.as_str())
@@ -480,12 +477,11 @@ impl McpManagementRepository for PgControlPlaneStore {
                 output_mapping = $11,
                 permission_code = $12,
                 risk_level = $13,
-                audit_policy = $14,
-                des_id = $15,
-                des_id_required = $16,
-                status = $17,
+                des_id = $14,
+                des_id_required = $15,
+                status = $16,
                 revision = revision + 1,
-                updated_by = $18,
+                updated_by = $17,
                 updated_at = now()
             where workspace_id = $1 and tool_id = $2
             returning *
@@ -504,7 +500,6 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&input.output_mapping)
         .bind(&input.permission_code)
         .bind(input.risk_level.as_str())
-        .bind(&input.audit_policy)
         .bind(&input.des_id)
         .bind(input.des_id_required)
         .bind(input.status.as_str())

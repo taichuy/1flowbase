@@ -44,7 +44,6 @@ pub struct CreateMcpToolCommand {
     pub interface_entry: domain::McpInterfaceCatalogEntry,
     pub input_mapping: serde_json::Value,
     pub output_mapping: serde_json::Value,
-    pub audit_policy: serde_json::Value,
     pub status: domain::McpToolStatus,
 }
 
@@ -59,7 +58,6 @@ pub struct UpdateMcpToolCommand {
     pub interface_entry: domain::McpInterfaceCatalogEntry,
     pub input_mapping: serde_json::Value,
     pub output_mapping: serde_json::Value,
-    pub audit_policy: serde_json::Value,
     pub status: domain::McpToolStatus,
 }
 
@@ -268,7 +266,6 @@ where
                 output_mapping: command.output_mapping,
                 permission_code: interface.permission_code,
                 risk_level: interface.risk_level,
-                audit_policy: command.audit_policy,
                 des_id,
                 des_id_required,
                 status: command.status,
@@ -301,7 +298,6 @@ where
                 output_mapping: command.output_mapping,
                 permission_code: interface.permission_code,
                 risk_level: interface.risk_level,
-                audit_policy: command.audit_policy,
                 des_id,
                 des_id_required,
                 status: command.status,

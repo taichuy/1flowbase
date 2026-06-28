@@ -39,7 +39,6 @@ export interface ConsoleMcpTool {
   output_mapping: unknown;
   permission_code: string | null;
   risk_level: string;
-  audit_policy: unknown;
   des_id: string;
   des_id_required: boolean;
   status: string;
@@ -162,7 +161,6 @@ export interface SaveConsoleMcpToolBody {
   output_mapping: unknown;
   permission_code: string | null;
   risk_level: string;
-  audit_policy: unknown;
   status: string;
 }
 

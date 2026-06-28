@@ -143,7 +143,6 @@ pub struct McpToolRecord {
     pub output_mapping: serde_json::Value,
     pub permission_code: Option<String>,
     pub risk_level: McpRiskLevel,
-    pub audit_policy: serde_json::Value,
     pub des_id: String,
     pub des_id_required: bool,
     pub status: McpToolStatus,

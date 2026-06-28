@@ -91,7 +91,6 @@ const styleBoundaryMcpCatalog = {
       output_mapping: { type: 'object' },
       permission_code: null,
       risk_level: 'low',
-      audit_policy: { enabled: true },
       des_id: 'Abc_1234',
       des_id_required: true,
       status: 'enabled',

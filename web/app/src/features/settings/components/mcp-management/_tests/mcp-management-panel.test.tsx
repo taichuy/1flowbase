@@ -217,17 +217,13 @@ describe('McpManagementPanel', () => {
     await selectAntdOption('create_app');
 
     clickSegmentedOption(dialog, 'input_mapping');
-    expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(
-      1
-    );
+    expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(1);
     expect(visibleTextEntries(dialog, 'operationId')).toHaveLength(0);
     expect(visibleTextEntries(dialog, 'risk_level')).toHaveLength(0);
     expect(visibleTextEntries(dialog, 'permission_code')).toHaveLength(0);
 
     clickSegmentedOption(dialog, 'output_mapping');
-    expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(
-      1
-    );
+    expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(1);
 
     fireEvent.click(
       within(dialog).getByRole('button', { name: '获取返回结构' })
@@ -242,9 +238,7 @@ describe('McpManagementPanel', () => {
     ).not.toBeInTheDocument();
 
     clickSegmentedOption(dialog, 'preview');
-    expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(
-      1
-    );
+    expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(1);
   });
 
   test('loads interface descriptors into dedicated input mappings after the explicit mapping action', async () => {
@@ -294,16 +288,12 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('combobox', { name: 'interface_param' })
     );
     await selectAntdOption('app_id');
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: /添加映射/ })
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: /添加映射/ }));
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_param' })
     );
     await selectAntdOption('display_name');
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: /添加映射/ })
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: /添加映射/ }));
     expect(within(dialog).getByLabelText('mcp_param app_id')).toHaveValue(
       'app_id'
     );
@@ -312,6 +302,10 @@ describe('McpManagementPanel', () => {
     });
 
     clickSegmentedOption(dialog, 'preview');
+    expect(
+      within(dialog).queryByText('mcp.get(tool_id)')
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('audit_policy')).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('full_description'), {
       target: { value: 'Create app' }
     });
@@ -360,6 +354,12 @@ describe('McpManagementPanel', () => {
     expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
       expect.not.objectContaining({
         des_id_required: expect.any(Boolean)
+      }),
+      expect.any(String)
+    );
+    expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        audit_policy: expect.anything()
       }),
       expect.any(String)
     );
@@ -447,9 +447,9 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('button', { name: /添加 des_id/ })
     );
 
-    expect(within(dialog).getAllByDisplayValue('des_id').length).toBeGreaterThan(
-      1
-    );
+    expect(
+      within(dialog).getAllByDisplayValue('des_id').length
+    ).toBeGreaterThan(1);
     expect(within(dialog).getByLabelText('mcp_param des_id')).toHaveValue(
       'des_id'
     );
@@ -547,9 +547,7 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('combobox', { name: 'interface_param' })
     );
     await selectAntdOption('user_id');
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: /添加映射/ })
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: /添加映射/ }));
     fireEvent.change(within(dialog).getByLabelText('mcp_param user_id'), {
       target: { value: 'userId' }
     });

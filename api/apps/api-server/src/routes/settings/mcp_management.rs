@@ -72,8 +72,6 @@ pub struct McpToolResponse {
     pub output_mapping: serde_json::Value,
     pub permission_code: Option<String>,
     pub risk_level: String,
-    #[schema(value_type = Object)]
-    pub audit_policy: serde_json::Value,
     pub des_id: String,
     pub des_id_required: bool,
     pub status: String,
@@ -232,8 +230,6 @@ pub struct CreateMcpToolBody {
     pub output_mapping: serde_json::Value,
     pub permission_code: Option<String>,
     pub risk_level: String,
-    #[schema(value_type = Object)]
-    pub audit_policy: serde_json::Value,
     pub status: String,
 }
 
@@ -255,8 +251,6 @@ pub struct UpdateMcpToolBody {
     pub output_mapping: serde_json::Value,
     pub permission_code: Option<String>,
     pub risk_level: String,
-    #[schema(value_type = Object)]
-    pub audit_policy: serde_json::Value,
     pub status: String,
 }
 
@@ -1557,7 +1551,6 @@ fn to_create_tool_command(
         interface_entry,
         input_mapping: body.input_mapping,
         output_mapping: body.output_mapping,
-        audit_policy: body.audit_policy,
         status: parse_tool_status(&body.status)?,
     })
 }
@@ -1579,7 +1572,6 @@ fn to_update_tool_command(
         interface_entry,
         input_mapping: body.input_mapping,
         output_mapping: body.output_mapping,
-        audit_policy: body.audit_policy,
         status: parse_tool_status(&body.status)?,
     })
 }
@@ -1683,7 +1675,6 @@ fn to_tool_response(record: domain::McpToolRecord) -> McpToolResponse {
         output_mapping: record.output_mapping,
         permission_code: record.permission_code,
         risk_level: record.risk_level.as_str().into(),
-        audit_policy: record.audit_policy,
         des_id: record.des_id,
         des_id_required: record.des_id_required,
         status: record.status.as_str().into(),

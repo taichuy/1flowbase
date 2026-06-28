@@ -228,7 +228,6 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
                         "output_mapping": {},
                         "permission_code": null,
                         "risk_level": "medium",
-                        "audit_policy": { "enabled": true },
                         "status": "enabled"
                     })
                     .to_string(),
@@ -243,6 +242,7 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
         create_tool_payload["data"]["interface_id"].as_str(),
         Some(create_interface_id.as_str())
     );
+    assert!(create_tool_payload["data"].get("audit_policy").is_none());
 
     let update_tool_response = app
         .clone()
@@ -267,7 +267,6 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
                         "output_mapping": {},
                         "permission_code": null,
                         "risk_level": "medium",
-                        "audit_policy": { "enabled": true },
                         "status": "enabled"
                     })
                     .to_string(),
@@ -282,6 +281,7 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
         update_tool_payload["data"]["interface_id"].as_str(),
         Some(update_interface_id.as_str())
     );
+    assert!(update_tool_payload["data"].get("audit_policy").is_none());
 }
 
 #[tokio::test]
@@ -340,7 +340,6 @@ async fn mcp_tool_create_rejects_non_bindable_agent_interface() {
                         "output_mapping": {},
                         "permission_code": null,
                         "risk_level": "low",
-                        "audit_policy": { "enabled": true },
                         "status": "enabled"
                     })
                     .to_string(),
@@ -493,7 +492,6 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
                         "output_mapping": {},
                         "permission_code": "file_storage.manage.all",
                         "risk_level": "low",
-                        "audit_policy": { "enabled": true },
                         "status": "enabled"
                     })
                     .to_string(),
@@ -712,7 +710,6 @@ async fn mcp_tool_create_requires_tool_id() {
                         "output_mapping": {},
                         "permission_code": null,
                         "risk_level": "low",
-                        "audit_policy": { "enabled": true },
                         "status": "enabled"
                     })
                     .to_string(),
