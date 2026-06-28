@@ -68,6 +68,10 @@
   margin-top: 8px;
 }
 
+.mcp-tool-debug-panel {
+  width: 100%;
+}
+
 .mcp-input-mapping-editor__stack {
   width: 100%;
 }

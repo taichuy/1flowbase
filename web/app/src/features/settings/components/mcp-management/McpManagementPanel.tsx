@@ -92,6 +92,7 @@ import {
   type McpInputMappingValue
 } from './mcp-input-mapping-model';
 import { McpInputMappingEditor } from './McpInputMappingEditor';
+import { McpToolDebugPanel } from './McpToolDebugPanel';
 import { JsonSchemaInlineEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel';
 import {
   createInitialMcpInstancesState,
@@ -142,7 +143,7 @@ const TOOL_FORM_STEPS = [
   { title: 'interface', label: 'interface', value: 'interface' },
   { title: 'input', label: 'input_mapping', value: 'input' },
   { title: 'output', label: 'output_mapping', value: 'output' },
-  { title: 'description', label: 'preview', value: 'description' }
+  { title: 'debug', label: 'debug', value: 'debug' }
 ];
 type MetaToolConfigFormValues = Omit<
   ConsoleMcpMetaToolConfig,
@@ -1644,6 +1645,13 @@ function McpToolsTab({
               <Input />
             </Form.Item>
             <Form.Item
+              name="full_description"
+              label="full_description"
+              rules={[{ required: true }]}
+            >
+              <Input.TextArea rows={4} />
+            </Form.Item>
+            <Form.Item
               name="status"
               label="status"
               rules={[{ required: true }]}
@@ -1821,11 +1829,13 @@ function McpToolsTab({
               </Form.Item>
             </div>
           ) : null}
-          <div hidden={step !== 'description'}>
+          {step === 'debug' ? (
             <Form.Item
               noStyle
               shouldUpdate={(previous, current) =>
-                previous.interface_id !== current.interface_id
+                previous.interface_id !== current.interface_id ||
+                previous.input_mapping !== current.input_mapping ||
+                previous.output_mapping !== current.output_mapping
               }
             >
               {({ getFieldValue }) => {
@@ -1835,22 +1845,23 @@ function McpToolsTab({
                 );
 
                 return (
-                  <div className="mcp-management__selected-operation">
-                    <SelectedInterfaceOperationTitle
-                      selectedInterface={selectedInterface}
+                  <div>
+                    <div className="mcp-management__selected-operation">
+                      <SelectedInterfaceOperationTitle
+                        selectedInterface={selectedInterface}
+                      />
+                    </div>
+                    <McpToolDebugPanel
+                      inputMapping={getFieldValue('input_mapping')}
+                      outputMapping={schemaRecord(
+                        getFieldValue('output_mapping')
+                      )}
                     />
                   </div>
                 );
               }}
             </Form.Item>
-            <Form.Item
-              name="full_description"
-              label="full_description"
-              rules={[{ required: true }]}
-            >
-              <Input.TextArea rows={6} />
-            </Form.Item>
-          </div>
+          ) : null}
         </Form>
       </Modal>
     </Space>

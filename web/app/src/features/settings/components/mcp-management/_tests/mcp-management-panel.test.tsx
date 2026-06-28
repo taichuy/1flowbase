@@ -193,7 +193,7 @@ describe('McpManagementPanel', () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText('interface_id')).toBeInTheDocument();
 
-    clickSegmentedOption(dialog, 'preview');
+    clickSegmentedOption(dialog, 'debug');
     expect(
       within(dialog).getByRole('button', { name: /上一步/ })
     ).toBeInTheDocument();
@@ -202,7 +202,7 @@ describe('McpManagementPanel', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('shows the selected interface operation in input output and preview steps', async () => {
+  test('shows the selected interface operation in input output and debug steps', async () => {
     renderPanel();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
@@ -237,8 +237,57 @@ describe('McpManagementPanel', () => {
       within(dialog).queryByDisplayValue('properties')
     ).not.toBeInTheDocument();
 
-    clickSegmentedOption(dialog, 'preview');
+    clickSegmentedOption(dialog, 'debug');
     expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(1);
+  });
+
+  test('keeps full description in basic and renders debug JSON results', async () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByLabelText('full_description')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('debug').length).toBeGreaterThan(0);
+    expect(within(dialog).queryByText('preview')).not.toBeInTheDocument();
+
+    clickSegmentedOption(dialog, 'interface');
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'interface_id' })
+    );
+    await selectAntdOption('create_app');
+
+    clickSegmentedOption(dialog, 'input_mapping');
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '获取接口参数' })
+    );
+    fireEvent.click(await within(dialog).findByText('映射层'));
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'interface_param' })
+    );
+    await selectAntdOption('app_id');
+    fireEvent.click(within(dialog).getByRole('button', { name: /添加映射/ }));
+    fireEvent.change(within(dialog).getByLabelText('mcp_param app_id'), {
+      target: { value: 'appId' }
+    });
+
+    clickSegmentedOption(dialog, 'output_mapping');
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '获取返回结构' })
+    );
+
+    clickSegmentedOption(dialog, 'debug');
+    fireEvent.change(within(dialog).getByLabelText('MCP 参数 JSON'), {
+      target: { value: '{ "appId": "app-1" }' }
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: '运行' }));
+
+    const debugResult = within(dialog).getByLabelText('返回值 JSON');
+    expect(debugResult).toHaveTextContent('"app_id": "app-1"');
+    expect(debugResult).toHaveTextContent('"output_mapping"');
+    expect(debugResult).toHaveTextContent('"run_id"');
   });
 
   test('loads interface descriptors into dedicated input mappings after the explicit mapping action', async () => {
@@ -259,6 +308,9 @@ describe('McpManagementPanel', () => {
       target: { value: 'des12345' }
     });
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
+      target: { value: 'Create app' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('full_description'), {
       target: { value: 'Create app' }
     });
     clickSegmentedOption(dialog, 'interface');
@@ -301,14 +353,11 @@ describe('McpManagementPanel', () => {
       target: { value: 'appId' }
     });
 
-    clickSegmentedOption(dialog, 'preview');
+    clickSegmentedOption(dialog, 'debug');
     expect(
       within(dialog).queryByText('mcp.get(tool_id)')
     ).not.toBeInTheDocument();
     expect(within(dialog).queryByText('audit_policy')).not.toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('full_description'), {
-      target: { value: 'Create app' }
-    });
     fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
 
     await waitFor(() => {
@@ -379,6 +428,9 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
       target: { value: 'Create app' }
     });
+    fireEvent.change(within(dialog).getByLabelText('full_description'), {
+      target: { value: 'Create app' }
+    });
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_id' })
@@ -404,10 +456,7 @@ describe('McpManagementPanel', () => {
       target: { value: '{"interface_parameters":' }
     });
 
-    clickSegmentedOption(dialog, 'preview');
-    fireEvent.change(within(dialog).getByLabelText('full_description'), {
-      target: { value: 'Create app' }
-    });
+    clickSegmentedOption(dialog, 'debug');
     fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
 
     expect(mcpManagementApi.createSettingsMcpTool).not.toHaveBeenCalled();
@@ -430,6 +479,9 @@ describe('McpManagementPanel', () => {
       target: { value: 'Create App' }
     });
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
+      target: { value: 'Create app' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('full_description'), {
       target: { value: 'Create app' }
     });
     clickSegmentedOption(dialog, 'interface');
@@ -462,10 +514,7 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('button', { name: /添加 des_id/ })
     ).toBeDisabled();
 
-    clickSegmentedOption(dialog, 'preview');
-    fireEvent.change(within(dialog).getByLabelText('full_description'), {
-      target: { value: 'Create app' }
-    });
+    clickSegmentedOption(dialog, 'debug');
     fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
 
     await waitFor(() => {
@@ -515,6 +564,9 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
       target: { value: 'Create app' }
     });
+    fireEvent.change(within(dialog).getByLabelText('full_description'), {
+      target: { value: 'Create app' }
+    });
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_id' })
@@ -555,10 +607,7 @@ describe('McpManagementPanel', () => {
       target: { value: 'User id' }
     });
 
-    clickSegmentedOption(dialog, 'preview');
-    fireEvent.change(within(dialog).getByLabelText('full_description'), {
-      target: { value: 'Create app' }
-    });
+    clickSegmentedOption(dialog, 'debug');
     fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
 
     await waitFor(() => {
