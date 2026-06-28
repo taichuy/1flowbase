@@ -1,3 +1,5 @@
+pub(crate) mod identity_binding;
+
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use control_plane::{
@@ -14,6 +16,10 @@ use domain::{
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use self::identity_binding::{
+    insert_password_local_identities, replace_password_local_contact_identities,
+    upsert_password_local_identities,
+};
 use crate::{
     mappers::{
         auth_mapper::{PgAuthMapper, StoredAuthenticatorRow},
@@ -102,6 +108,26 @@ pub(crate) async fn map_user_row(pool: &PgPool, row: sqlx::postgres::PgRow) -> R
         session_version: row.get("session_version"),
         roles,
     }))
+}
+
+async fn find_user_by_account(pool: &PgPool, account: &str) -> Result<Option<UserRecord>> {
+    let row = sqlx::query(
+        r#"
+        select id, account, email, phone, password_hash, name, nickname, avatar_url,
+               introduction, preferred_locale, meta, default_display_role, email_login_enabled, phone_login_enabled,
+               status, session_version
+        from users
+        where lower(account) = $1
+        "#,
+    )
+    .bind(account.trim().to_lowercase())
+    .fetch_optional(pool)
+    .await?;
+
+    match row {
+        Some(row) => Ok(Some(map_user_row(pool, row).await?)),
+        None => Ok(None),
+    }
 }
 
 #[async_trait]
@@ -405,8 +431,12 @@ impl BootstrapRepository for PgControlPlaneStore {
         name: &str,
         nickname: &str,
     ) -> Result<UserRecord> {
-        if let Some(user) = self.find_user_for_password_login(account).await? {
-            return Ok(user);
+        if let Some(user) = find_user_by_account(self.pool(), account).await? {
+            upsert_password_local_identities(self.pool(), &user).await?;
+            return self
+                .find_user_by_id(user.id)
+                .await?
+                .ok_or_else(|| anyhow!("root user missing after identity reconciliation"));
         }
 
         let user_id = Uuid::now_v7();
@@ -429,6 +459,8 @@ impl BootstrapRepository for PgControlPlaneStore {
         .bind(nickname)
         .execute(&mut *tx)
         .await?;
+
+        insert_password_local_identities(&mut tx, user_id, account, email, None, None).await?;
 
         sqlx::query(
             "insert into workspace_memberships (id, workspace_id, user_id, introduction) values ($1, $2, $3, '') on conflict (workspace_id, user_id) do nothing",
@@ -483,27 +515,45 @@ impl AuthRepository for PgControlPlaneStore {
 
     async fn find_user_for_password_login(&self, identifier: &str) -> Result<Option<UserRecord>> {
         let lowered = identifier.trim().to_lowercase();
-        let row = sqlx::query(
+        let rows = sqlx::query(
             r#"
             select
               u.id, u.account, u.email, u.phone, u.password_hash, u.name, u.nickname, u.avatar_url,
               u.introduction, u.preferred_locale, u.meta, u.default_display_role, u.email_login_enabled, u.phone_login_enabled,
               u.status, u.session_version
-            from users u
-            where lower(u.account) = $1
-               or (u.email_login_enabled = true and lower(u.email) = $1)
-               or (u.phone_login_enabled = true and lower(coalesce(u.phone, '')) = $1)
-            limit 1
+            from user_auth_identities i
+            join users u on u.id = i.user_id
+            where i.authenticator_name = $1
+              and lower(i.subject_value) = $2
+              and (
+                i.subject_type = $3
+                or (i.subject_type = $4 and u.email_login_enabled = true)
+                or (i.subject_type = $5 and u.phone_login_enabled = true)
+              )
             "#,
         )
+        .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME)
         .bind(lowered)
-        .fetch_optional(self.pool())
+        .bind(domain::AUTH_SUBJECT_TYPE_ACCOUNT)
+        .bind(domain::AUTH_SUBJECT_TYPE_EMAIL)
+        .bind(domain::AUTH_SUBJECT_TYPE_PHONE)
+        .fetch_all(self.pool())
         .await?;
 
-        match row {
-            Some(row) => Ok(Some(map_user_row(self.pool(), row).await?)),
-            None => Ok(None),
+        let Some(first_user_id) = rows.first().map(|row| row.get::<Uuid, _>("id")) else {
+            return Ok(None);
+        };
+        if rows
+            .iter()
+            .any(|row| row.get::<Uuid, _>("id") != first_user_id)
+        {
+            return Ok(None);
         }
+
+        let Some(row) = rows.into_iter().next() else {
+            return Ok(None);
+        };
+        Ok(Some(map_user_row(self.pool(), row).await?))
     }
 
     async fn find_user_by_id(&self, user_id: Uuid) -> Result<Option<UserRecord>> {
@@ -704,6 +754,7 @@ impl AuthRepository for PgControlPlaneStore {
     }
 
     async fn update_profile(&self, input: &UpdateProfileInput) -> Result<UserRecord> {
+        let mut tx = self.pool().begin().await?;
         let row = sqlx::query(
             r#"
             update users
@@ -731,8 +782,18 @@ impl AuthRepository for PgControlPlaneStore {
         .bind(&input.introduction)
         .bind(&input.preferred_locale)
         .bind(input.actor_user_id)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *tx)
         .await?;
+
+        replace_password_local_contact_identities(
+            &mut tx,
+            input.user_id,
+            &input.email,
+            input.phone.as_deref(),
+            input.actor_user_id,
+        )
+        .await?;
+        tx.commit().await?;
 
         map_user_row(self.pool(), row).await
     }

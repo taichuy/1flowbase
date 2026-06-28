@@ -2,7 +2,7 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         AuthRepository, CreateMemberInput, CreateWorkspaceRoleInput, MemberRepository,
-        RoleRepository, UpdateWorkspaceRoleInput,
+        RoleRepository, UpdateProfileInput, UpdateWorkspaceRoleInput,
     },
 };
 use domain::{AuditLogRecord, PermissionDefinition, RoleScopeKind, UserStatus};
@@ -133,6 +133,36 @@ async fn create_member(
     .unwrap()
 }
 
+async fn create_member_with_login_options(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    actor_user_id: Uuid,
+    account: &str,
+    email: &str,
+    phone: Option<&str>,
+    email_login_enabled: bool,
+    phone_login_enabled: bool,
+) -> domain::UserRecord {
+    <PgControlPlaneStore as MemberRepository>::create_member_with_default_role(
+        store,
+        &CreateMemberInput {
+            actor_user_id,
+            workspace_id,
+            account: account.to_string(),
+            email: email.to_string(),
+            phone: phone.map(str::to_string),
+            password_hash: "member-hash".to_string(),
+            name: account.to_string(),
+            nickname: account.to_string(),
+            introduction: String::new(),
+            email_login_enabled,
+            phone_login_enabled,
+        },
+    )
+    .await
+    .unwrap()
+}
+
 #[tokio::test]
 async fn create_member_with_default_role_assigns_default_role_and_login_identities() {
     let (store, workspace_id, actor_user_id) = bootstrapped_store().await;
@@ -222,6 +252,235 @@ async fn create_member_with_default_role_assigns_default_role_and_login_identiti
             ("phone".to_string(), "18800001111".to_string()),
         ]
     );
+}
+
+#[tokio::test]
+async fn password_login_resolves_member_from_auth_identity_subjects() {
+    let (store, workspace_id, actor_user_id) = bootstrapped_store().await;
+    let member = create_member_with_login_options(
+        &store,
+        workspace_id,
+        actor_user_id,
+        "identity-member",
+        "identity-member@example.com",
+        Some("18800002222"),
+        true,
+        true,
+    )
+    .await;
+
+    sqlx::query(
+        r#"
+        update users
+        set account = 'renamed-identity-member',
+            email = 'renamed-identity-member@example.com',
+            phone = '18800003333'
+        where id = $1
+        "#,
+    )
+    .bind(member.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    for identifier in [
+        "identity-member",
+        "identity-member@example.com",
+        "18800002222",
+    ] {
+        let resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+            &store, identifier,
+        )
+        .await
+        .unwrap()
+        .expect("identity subject should resolve the renamed user");
+        assert_eq!(resolved.id, member.id);
+    }
+}
+
+#[tokio::test]
+async fn password_login_does_not_fallback_to_user_fields_without_identity() {
+    let (store, workspace_id, actor_user_id) = bootstrapped_store().await;
+    let member = create_member(&store, workspace_id, actor_user_id, "missing-identity").await;
+
+    sqlx::query("delete from user_auth_identities where user_id = $1 and subject_type = 'account'")
+        .bind(member.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    let resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+        &store,
+        "missing-identity",
+    )
+    .await
+    .unwrap();
+    assert!(resolved.is_none());
+}
+
+#[tokio::test]
+async fn password_login_rejects_ambiguous_identity_subjects() {
+    let (store, workspace_id, actor_user_id) = bootstrapped_store().await;
+    let first = create_member_with_login_options(
+        &store,
+        workspace_id,
+        actor_user_id,
+        "shared-login-subject",
+        "first-shared@example.com",
+        None,
+        true,
+        false,
+    )
+    .await;
+    let second = create_member_with_login_options(
+        &store,
+        workspace_id,
+        actor_user_id,
+        "second-shared",
+        "shared-login-subject",
+        None,
+        true,
+        false,
+    )
+    .await;
+    assert_ne!(first.id, second.id);
+
+    let resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+        &store,
+        "shared-login-subject",
+    )
+    .await
+    .unwrap();
+    assert!(resolved.is_none());
+}
+
+#[tokio::test]
+async fn password_login_applies_email_and_phone_flags_at_identity_resolution() {
+    let (store, workspace_id, actor_user_id) = bootstrapped_store().await;
+    let member = create_member_with_login_options(
+        &store,
+        workspace_id,
+        actor_user_id,
+        "flagged-identity",
+        "flagged-identity@example.com",
+        Some("18800004444"),
+        false,
+        false,
+    )
+    .await;
+
+    let account = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+        &store,
+        "flagged-identity",
+    )
+    .await
+    .unwrap()
+    .expect("account identity should not be gated by email/phone flags");
+    assert_eq!(account.id, member.id);
+
+    let email = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+        &store,
+        "flagged-identity@example.com",
+    )
+    .await
+    .unwrap();
+    let phone = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+        &store,
+        "18800004444",
+    )
+    .await
+    .unwrap();
+    assert!(email.is_none());
+    assert!(phone.is_none());
+}
+
+#[tokio::test]
+async fn member_profile_update_replaces_password_local_contact_identities() {
+    let (store, workspace_id, actor_user_id) = bootstrapped_store().await;
+    let member = create_member_with_login_options(
+        &store,
+        workspace_id,
+        actor_user_id,
+        "profile-identity",
+        "profile-identity@example.com",
+        Some("18800005555"),
+        true,
+        true,
+    )
+    .await;
+
+    <PgControlPlaneStore as MemberRepository>::update_member_profile(
+        &store,
+        &control_plane::ports::UpdateMemberInput {
+            actor_user_id,
+            user_id: member.id,
+            name: "Profile Identity".to_string(),
+            nickname: "Profile Identity".to_string(),
+            email: "profile-identity-next@example.com".to_string(),
+            phone: Some("18800006666".to_string()),
+            introduction: String::new(),
+        },
+    )
+    .await
+    .unwrap();
+
+    for identifier in ["profile-identity@example.com", "18800005555"] {
+        let resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+            &store, identifier,
+        )
+        .await
+        .unwrap();
+        assert!(resolved.is_none());
+    }
+
+    for identifier in ["profile-identity-next@example.com", "18800006666"] {
+        let resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+            &store, identifier,
+        )
+        .await
+        .unwrap()
+        .expect("updated contact identity should resolve the member");
+        assert_eq!(resolved.id, member.id);
+    }
+}
+
+#[tokio::test]
+async fn self_profile_update_replaces_password_local_email_identity() {
+    let (store, _workspace_id, actor_user_id) = bootstrapped_store().await;
+
+    <PgControlPlaneStore as AuthRepository>::update_profile(
+        &store,
+        &UpdateProfileInput {
+            actor_user_id,
+            user_id: actor_user_id,
+            name: "Root Next".to_string(),
+            nickname: "Root Next".to_string(),
+            email: "root-next@example.com".to_string(),
+            phone: None,
+            avatar_url: None,
+            introduction: String::new(),
+            preferred_locale: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let old_email = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+        &store,
+        "root@example.com",
+    )
+    .await
+    .unwrap();
+    assert!(old_email.is_none());
+
+    let new_email = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+        &store,
+        "root-next@example.com",
+    )
+    .await
+    .unwrap()
+    .expect("updated self email identity should resolve root");
+    assert_eq!(new_email.id, actor_user_id);
 }
 
 #[tokio::test]

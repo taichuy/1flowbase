@@ -10,6 +10,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tower::ServiceExt;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn console_user_api_key_create_list_and_revoke_hides_plaintext_after_creation() {
@@ -426,6 +427,50 @@ async fn public_auth_sign_in_sets_cookie_and_returns_wrapped_payload() {
     assert!(payload["data"]["current_workspace_id"].is_string());
     assert!(payload["data"]["effective_display_role"].is_string());
     assert!(payload["meta"].is_null());
+}
+
+#[tokio::test]
+async fn public_auth_sign_in_resolves_password_local_identity_subject() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let member_id = create_member(&app, &cookie, &csrf, "identity-route-member", "temp-pass").await;
+    let member_id = Uuid::parse_str(&member_id).unwrap();
+    let pool = PgPool::connect(&database_url).await.unwrap();
+
+    sqlx::query(
+        r#"
+        update user_auth_identities
+        set subject_value = 'identity-route-subject'
+        where user_id = $1
+          and authenticator_name = 'password-local'
+          and subject_type = 'account'
+        "#,
+    )
+    .bind(member_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/auth/providers/password-local/sign-in")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "identifier": "identity-route-subject",
+                        "password": "temp-pass"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().get("set-cookie").is_some());
 }
 
 #[tokio::test]

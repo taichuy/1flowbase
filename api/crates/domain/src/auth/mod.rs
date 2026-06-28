@@ -166,6 +166,71 @@ pub struct AuthenticatorRecord {
     pub options: serde_json::Value,
 }
 
+pub const PASSWORD_LOCAL_AUTHENTICATOR_NAME: &str = "password-local";
+pub const AUTH_SUBJECT_TYPE_ACCOUNT: &str = "account";
+pub const AUTH_SUBJECT_TYPE_EMAIL: &str = "email";
+pub const AUTH_SUBJECT_TYPE_PHONE: &str = "phone";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExternalIdentityClaim {
+    pub authenticator_name: String,
+    pub subject_type: String,
+    pub subject_value: String,
+    pub issuer: Option<String>,
+    pub realm: Option<String>,
+    pub profile: serde_json::Value,
+    pub verified: bool,
+    pub metadata: serde_json::Value,
+}
+
+pub fn password_local_identity_claims(
+    account: &str,
+    email: &str,
+    phone: Option<&str>,
+) -> Vec<ExternalIdentityClaim> {
+    let mut claims = vec![
+        password_local_identity_claim(AUTH_SUBJECT_TYPE_ACCOUNT, account),
+        password_local_identity_claim(AUTH_SUBJECT_TYPE_EMAIL, email),
+    ];
+    if let Some(phone) = phone {
+        claims.push(password_local_identity_claim(
+            AUTH_SUBJECT_TYPE_PHONE,
+            phone,
+        ));
+    }
+    claims
+}
+
+pub fn password_local_contact_identity_claims(
+    email: &str,
+    phone: Option<&str>,
+) -> Vec<ExternalIdentityClaim> {
+    let mut claims = vec![password_local_identity_claim(
+        AUTH_SUBJECT_TYPE_EMAIL,
+        email,
+    )];
+    if let Some(phone) = phone {
+        claims.push(password_local_identity_claim(
+            AUTH_SUBJECT_TYPE_PHONE,
+            phone,
+        ));
+    }
+    claims
+}
+
+fn password_local_identity_claim(subject_type: &str, subject_value: &str) -> ExternalIdentityClaim {
+    ExternalIdentityClaim {
+        authenticator_name: PASSWORD_LOCAL_AUTHENTICATOR_NAME.to_string(),
+        subject_type: subject_type.to_string(),
+        subject_value: subject_value.to_string(),
+        issuer: None,
+        realm: None,
+        profile: serde_json::json!({}),
+        verified: true,
+        metadata: serde_json::json!({}),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UserAuthIdentity {
     pub user_id: Uuid,
