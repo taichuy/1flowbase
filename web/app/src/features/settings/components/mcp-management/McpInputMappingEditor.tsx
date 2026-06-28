@@ -20,20 +20,30 @@ import {
   normalizeInputMapping
 } from './mcp-input-mapping-model';
 
+const DES_ID_PARAMETER_NAME = 'des_id';
+
 function stringifyMapping(value: McpInputMappingValue) {
   return JSON.stringify(value, null, 2);
 }
 
 function mappingFromInterfaceParameter(
-  parameter: McpInputInterfaceParameter,
-  desId: string
+  parameter: McpInputInterfaceParameter
 ): McpInputParameterMapping {
   return {
     interface_param: parameter.name,
-    des_id: desId,
     mcp_param: parameter.name,
     description: parameter.description,
     required: parameter.required
+  };
+}
+
+function desIdInterfaceParameter(): McpInputInterfaceParameter {
+  return {
+    name: DES_ID_PARAMETER_NAME,
+    field_type: 'string',
+    parameter_type: 'json_body',
+    description: DES_ID_PARAMETER_NAME,
+    required: true
   };
 }
 
@@ -189,19 +199,23 @@ function InputMappingLayerSection({
   pendingInterfaceParam,
   onPendingInterfaceParamChange,
   onAddMapping,
+  onAddDesIdMapping,
   onUpdateMapping,
-  onRemoveMapping
+  onRemoveMapping,
+  desIdMappingDisabled
 }: {
   mapping: McpInputMappingValue;
   addableOptions: Array<{ label: string; value: string }>;
   pendingInterfaceParam: string | undefined;
   onPendingInterfaceParamChange: (value: string | undefined) => void;
   onAddMapping: (interfaceParam: string | undefined) => void;
+  onAddDesIdMapping: () => void;
   onUpdateMapping: (
     index: number,
     patch: Partial<McpInputParameterMapping>
   ) => void;
   onRemoveMapping: (index: number) => void;
+  desIdMappingDisabled: boolean;
 }) {
   return (
     <Space
@@ -227,6 +241,13 @@ function InputMappingLayerSection({
           onClick={() => onAddMapping(pendingInterfaceParam)}
         >
           {i18nText('settings', 'auto.add_mapping')}
+        </Button>
+        <Button
+          icon={<PlusOutlined />}
+          disabled={desIdMappingDisabled}
+          onClick={onAddDesIdMapping}
+        >
+          {i18nText('settings', 'auto.add_des_id_mapping')}
         </Button>
       </Flex>
       {mapping.mappings.length > 0 ? (
@@ -310,13 +331,11 @@ function InputMappingJsonSection({
 
 export function McpInputMappingEditor({
   value,
-  desId,
   resetKey,
   onChange,
   onValidityChange
 }: {
   value: unknown;
-  desId: string;
   resetKey?: string | number | null;
   onChange: (value: McpInputMappingValue) => void;
   onValidityChange?: (valid: boolean) => void;
@@ -428,12 +447,27 @@ export function McpInputMappingEditor({
 
     emit({
       ...mapping,
-      mappings: [
-        ...mapping.mappings,
-        mappingFromInterfaceParameter(parameter, desId)
-      ]
+      mappings: [...mapping.mappings, mappingFromInterfaceParameter(parameter)]
     });
     setPendingInterfaceParam(undefined);
+  }
+
+  function addDesIdMapping() {
+    if (mappedParameters.has(DES_ID_PARAMETER_NAME)) {
+      return;
+    }
+
+    const existingParameter = mapping.interface_parameters.find(
+      (entry) => entry.name === DES_ID_PARAMETER_NAME
+    );
+    const parameter = existingParameter ?? desIdInterfaceParameter();
+
+    emit({
+      interface_parameters: existingParameter
+        ? mapping.interface_parameters
+        : [...mapping.interface_parameters, parameter],
+      mappings: [...mapping.mappings, mappingFromInterfaceParameter(parameter)]
+    });
   }
 
   function removeMapping(index: number) {
@@ -501,8 +535,12 @@ export function McpInputMappingEditor({
                 pendingInterfaceParam={pendingInterfaceParam}
                 onPendingInterfaceParamChange={setPendingInterfaceParam}
                 onAddMapping={addMapping}
+                onAddDesIdMapping={addDesIdMapping}
                 onUpdateMapping={updateMapping}
                 onRemoveMapping={removeMapping}
+                desIdMappingDisabled={mappedParameters.has(
+                  DES_ID_PARAMETER_NAME
+                )}
               />
             )
           },

@@ -626,6 +626,7 @@
     "parameter_type": "Parameter type",
     "json_request_body": "JSON request body",
     "add_mapping": "Add mapping",
+    "add_des_id_mapping": "Add des_id",
     "interface_param": "Interface parameter",
     "mcp_param": "MCP parameter",
     "json_parse": "JSON parse",

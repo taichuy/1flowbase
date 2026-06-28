@@ -626,6 +626,7 @@
     "parameter_type": "参数类型",
     "json_request_body": "JSON 请求体",
     "add_mapping": "添加映射",
+    "add_des_id_mapping": "添加 des_id",
     "interface_param": "接口参数",
     "mcp_param": "MCP 参数",
     "json_parse": "JSON 解析",

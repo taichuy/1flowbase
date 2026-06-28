@@ -305,14 +305,12 @@ describe('McpManagementPanel', () => {
             mappings: [
               {
                 interface_param: 'app_id',
-                des_id: 'des12345',
                 mcp_param: 'appId',
                 description: 'Application id',
                 required: true
               },
               {
                 interface_param: 'display_name',
-                des_id: 'des12345',
                 mcp_param: 'display_name',
                 description: 'Display name',
                 required: false
@@ -364,6 +362,89 @@ describe('McpManagementPanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
 
     expect(mcpManagementApi.createSettingsMcpTool).not.toHaveBeenCalled();
+  });
+
+  test('adds the des_id mapping from the mapping layer shortcut', async () => {
+    renderPanel([
+      {
+        ...interfaceCapabilities[0],
+        parameter_descriptors: []
+      }
+    ]);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.change(within(dialog).getByLabelText('name'), {
+      target: { value: 'Create App' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('short_description'), {
+      target: { value: 'Create app' }
+    });
+    clickSegmentedOption(dialog, 'interface');
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'interface_id' })
+    );
+    await selectAntdOption('create_app');
+
+    clickSegmentedOption(dialog, 'input_mapping');
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '获取接口参数' })
+    );
+    fireEvent.click(await within(dialog).findByText('映射层'));
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /添加 des_id/ })
+    );
+
+    expect(within(dialog).getAllByDisplayValue('des_id').length).toBeGreaterThan(
+      1
+    );
+    expect(within(dialog).getByLabelText('mcp_param des_id')).toHaveValue(
+      'des_id'
+    );
+    for (const checkbox of within(dialog).getAllByLabelText(
+      'required des_id'
+    )) {
+      expect(checkbox).toBeChecked();
+    }
+    expect(
+      within(dialog).getByRole('button', { name: /添加 des_id/ })
+    ).toBeDisabled();
+
+    clickSegmentedOption(dialog, 'preview');
+    fireEvent.change(within(dialog).getByLabelText('full_description'), {
+      target: { value: 'Create app' }
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+
+    await waitFor(() => {
+      expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input_mapping: {
+            interface_parameters: [
+              {
+                name: 'des_id',
+                field_type: 'string',
+                parameter_type: 'json_body',
+                description: 'des_id',
+                required: true
+              }
+            ],
+            mappings: [
+              {
+                interface_param: 'des_id',
+                mcp_param: 'des_id',
+                description: 'des_id',
+                required: true
+              }
+            ]
+          }
+        }),
+        expect.any(String)
+      );
+    });
   });
 
   test('allows manually adding interface parameters and mappings when descriptors are empty', async () => {
@@ -449,7 +530,6 @@ describe('McpManagementPanel', () => {
             mappings: [
               {
                 interface_param: 'user_id',
-                des_id: expect.any(String),
                 mcp_param: 'userId',
                 description: 'User id',
                 required: true
