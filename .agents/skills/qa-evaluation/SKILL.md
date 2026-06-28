@@ -1,6 +1,6 @@
 ---
 name: qa-evaluation
-description: Evidence-driven QA evaluation for 1flowbase dev acceptance, PR merge gates, project health gates, regression, delivery, full-project audits, quality gate routing, i18n/multilingual key-value hygiene, frontend/backend contract, status, boundary and runtime checks, scope/error-handling acceptance, hotspot/churn prevention reviews, and maintainability/dead-abstraction warnings. Use when Codex must report verifiable findings and risks instead of directly implementing or fixing.
+description: Evidence-driven QA evaluation for 1flowbase dev acceptance, PR merge gates, project health gates, regression, stale or incompatible test expectation triage, delivery, full-project audits, quality gate routing, i18n/multilingual key-value hygiene, frontend/backend contract, status, boundary and runtime checks, scope/error-handling acceptance, hotspot/churn prevention reviews, and maintainability/dead-abstraction warnings. Use when Codex must report verifiable findings and risks instead of directly implementing or fixing.
 ---
 
 # QA Evaluation
@@ -43,6 +43,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - `Maintainability`: 检查是否为了拆分而拆分、把完整业务流程拆成多个只调用一次的微型私有方法、引入无领域责任的 helper / utils / manager / adapter，或让主业务路径需要频繁跳转才读懂。单个方法超过约 80 行只是调查信号，不是自动 blocker；业务流程连贯且可读时不要强行要求拆分。
 - `Error handling`: 检查静默 fallback、默认值兜底、吞错、泛化错误、绕过逻辑和无业务语义防御代码。只有错误路径真实存在且符合当前边界时才建议错误处理；不应该发生的状态优先暴露问题、收敛状态来源或修正数据流。
 - `Scope and boundary`: 检查实现是否只覆盖已确认范围，是否顺手重构无关逻辑，是否为了局部方便破坏领域模型、状态模型、权限模型、contract 或前后端职责边界，是否把复杂度扩散到多个调用点或隐式约定里。
+- `Test compatibility`: 失败测试必须先对照当前 spec / ADR / 已确认验收预期 / 后端 DTO contract / 用户任务边界。旧测试不是兼容要求本身；若旧断言与新确认行为冲突，报告为过期测试期望或测试债，要求更新 / 删除对应测试证据，不得为了让旧测试通过添加 legacy alias、fallback、回退路径或弱化状态 / contract。无法证明新行为已被确认时，只能写 `未验证，不下确定结论`。
 
 ## Quick Reference
 
@@ -54,6 +55,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - `PR Merge Gate` 追求合并信心：优先 GitHub Actions / artifact / beta 质量门禁结果，报告 blocker、warning、advisory、资源耗时和合并风险
 - `Project Health Gate` 追求维护者感知：先按 `references/project-evaluation-checklist.md` 建质量维度矩阵，再读取远端完整门禁、artifact、warningFiles、beta 质量工作区产物和必要本地证据，输出全局快照、风险热力图、趋势、轮转深挖和维护建议
 - `Project Health Gate` 不得只围绕当前失败脚本或错误报告展开；脚本失败必须先归入对应质量维度、硬性门禁失败、warning 或未覆盖项，再进入 findings
+- 失败测试必须分流为产品回归、contract 破坏、测试环境问题或旧测试期望过期；只有当前 spec / contract / 验收预期仍支持旧断言时，才把失败作为 blocker。旧测试与新 contract 不兼容时，QA 报告要求更新测试，不要求实现兼容旧断言
 - 评估前先读 `.memory/AGENTS.md`、`.memory/user-memory.md`、项目记忆、反馈记忆和相关 spec
 - 仓库质量门禁“怎么选、怎么组合、各自覆盖什么”看 `references/repo-quality-gates.md`
 - 多语言 key / value hygiene、warning 解释和修复边界看 `references/i18n-hygiene-gate.md`
@@ -120,6 +122,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - 只挑视觉问题，不看契约和状态
 - 只看当前改动点，不看被影响的其他消费者
 - 后端接口验收只报告 cargo / clippy 通过，没有对照预期 response、认证态、状态副作用或错误 shape 的证据
+- 把旧测试断言当成必须兼容的产品 contract，为了消除失败添加 legacy alias、fallback、回退路径或削弱状态一致性
 - 为了通过 QA、i18n hygiene 或视觉一致性检查而改用户可见文案值
 - 把 maintainability warning 当成已授权清理，未经用户同意就删除或重构
 - 把静默 fallback、默认值兜底、吞错或无语义防御代码当成稳定性改进
