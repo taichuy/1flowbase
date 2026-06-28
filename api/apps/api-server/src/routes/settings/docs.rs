@@ -103,57 +103,6 @@ fn parse_data_model_docs_operation_id(
         .map_err(|_| ControlPlaneError::InvalidInput("operation_id").into())
 }
 
-async fn ready_data_model_docs_models(
-    state: &ApiState,
-    actor_user_id: Uuid,
-) -> Result<Vec<domain::ModelDefinitionRecord>, ApiError> {
-    let models = match ModelDefinitionService::new(state.store.clone())
-        .list_models(actor_user_id)
-        .await
-    {
-        Ok(models) => models,
-        Err(error) => {
-            if let Some(ControlPlaneError::PermissionDenied(_)) =
-                error.downcast_ref::<ControlPlaneError>()
-            {
-                return Ok(vec![]);
-            }
-            return Err(error.into());
-        }
-    };
-    let mut models = models
-        .into_iter()
-        .filter(|model| model.api_exposure_status == domain::ApiExposureStatus::ApiExposedReady)
-        .collect::<Vec<_>>();
-    models.sort_by(|left, right| left.code.cmp(&right.code));
-    Ok(models)
-}
-
-async fn ready_data_model_docs_model(
-    state: &ApiState,
-    actor_user_id: Uuid,
-    model_id: Uuid,
-) -> Result<Option<domain::ModelDefinitionRecord>, ApiError> {
-    let model = match ModelDefinitionService::new(state.store.clone())
-        .get_model(actor_user_id, model_id)
-        .await
-    {
-        Ok(model) => model,
-        Err(error) => {
-            if let Some(ControlPlaneError::PermissionDenied(_) | ControlPlaneError::NotFound(_)) =
-                error.downcast_ref::<ControlPlaneError>()
-            {
-                return Ok(None);
-            }
-            return Err(error.into());
-        }
-    };
-    if model.api_exposure_status != domain::ApiExposureStatus::ApiExposedReady {
-        return Ok(None);
-    }
-    Ok(Some(model))
-}
-
 pub async fn get_docs_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -163,7 +112,7 @@ pub async fn get_docs_catalog(
         .map_err(ControlPlaneError::PermissionDenied)?;
 
     let mut catalog = state.api_docs.catalog().clone();
-    let models = ready_data_model_docs_models(&state, context.user.id).await?;
+    let models = runtime_data_model_docs::ready_models(&state, context.user.id).await?;
     if let Some(category) = runtime_data_model_docs::build_category(&models) {
         catalog.categories.push(category);
     }
@@ -182,7 +131,7 @@ pub async fn get_category_operations(
         .map_err(ControlPlaneError::PermissionDenied)?;
 
     if category_id == runtime_data_model_docs::DATA_MODEL_DOCS_CATEGORY_ID {
-        let models = ready_data_model_docs_models(&state, context.user.id).await?;
+        let models = runtime_data_model_docs::ready_models(&state, context.user.id).await?;
         if models.is_empty() {
             return Err(ControlPlaneError::NotFound("category_id").into());
         }
@@ -218,7 +167,7 @@ pub async fn get_category_openapi(
         .map_err(ControlPlaneError::PermissionDenied)?;
 
     if category_id == runtime_data_model_docs::DATA_MODEL_DOCS_CATEGORY_ID {
-        let models = ready_data_model_docs_models(&state, context.user.id).await?;
+        let models = runtime_data_model_docs::ready_models(&state, context.user.id).await?;
         if models.is_empty() {
             return Err(ControlPlaneError::NotFound("category_id").into());
         }
@@ -246,7 +195,8 @@ pub async fn get_operation_openapi(
         .map_err(ControlPlaneError::PermissionDenied)?;
 
     if let Some((model_id, kind)) = parse_data_model_docs_operation_id(&operation_id)? {
-        let Some(model) = ready_data_model_docs_model(&state, context.user.id, model_id).await?
+        let Some(model) =
+            runtime_data_model_docs::ready_model(&state, context.user.id, model_id).await?
         else {
             return Err(ControlPlaneError::NotFound("operation_id").into());
         };

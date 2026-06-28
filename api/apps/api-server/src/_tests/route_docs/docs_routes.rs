@@ -553,13 +553,15 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         .cloned()
         .expect("dynamic data model api category should exist");
     assert_eq!(dynamic_category["label"], json!("Data Model APIs"));
-    assert_eq!(dynamic_category["operation_count"], json!(5));
+    assert!(dynamic_category["operation_count"]
+        .as_u64()
+        .is_some_and(|count| count >= 5));
 
     let operations_response = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/docs/categories/data-model-apis/operations")
+                .uri("/api/console/docs/categories/data-model-apis/operations?q=docs_ready_orders")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

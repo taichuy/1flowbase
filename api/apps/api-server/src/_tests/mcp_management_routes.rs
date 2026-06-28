@@ -10,6 +10,350 @@ async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
 
+async fn create_exposed_published_model(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    code: &str,
+) -> String {
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/models")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "scope_kind": "workspace",
+                        "code": code,
+                        "title": code,
+                        "status": "published"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let create_payload = response_json(create_response).await;
+    let model_id = create_payload["data"]["id"].as_str().unwrap().to_string();
+
+    let field_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/console/models/{model_id}/fields"))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "code": "order_title",
+                        "title": "order_title",
+                        "field_kind": "string",
+                        "is_required": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(field_response.status(), StatusCode::CREATED);
+
+    let grant_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/console/models/{model_id}/scope-grants"))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "scope_kind": "system",
+                        "scope_id": domain::SYSTEM_SCOPE_ID,
+                        "enabled": true,
+                        "permission_profile": "scope_all"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(grant_response.status(), StatusCode::CREATED);
+
+    model_id
+}
+
+#[tokio::test]
+async fn mcp_interface_capabilities_include_bindable_runtime_data_model_crud_operations() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let model_id =
+        create_exposed_published_model(&app, &root_cookie, &root_csrf, "mcp_ready_orders").await;
+    let hidden_model_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/models")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "scope_kind": "workspace",
+                        "code": "mcp_hidden_orders",
+                        "title": "mcp_hidden_orders",
+                        "status": "draft"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(hidden_model_response.status(), StatusCode::CREATED);
+
+    let interface_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/mcp/interface-capabilities?bindable_only=true")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(interface_response.status(), StatusCode::OK);
+    let interface_payload = response_json(interface_response).await;
+    let entries = interface_payload["data"].as_array().unwrap();
+
+    for (method, path, suffix, risk_level) in [
+        (
+            "GET",
+            "/api/runtime/models/mcp_ready_orders/records",
+            "list_records",
+            "low",
+        ),
+        (
+            "POST",
+            "/api/runtime/models/mcp_ready_orders/records",
+            "create_record",
+            "high",
+        ),
+        (
+            "GET",
+            "/api/runtime/models/mcp_ready_orders/records/{id}",
+            "get_record",
+            "low",
+        ),
+        (
+            "PATCH",
+            "/api/runtime/models/mcp_ready_orders/records/{id}",
+            "update_record",
+            "high",
+        ),
+        (
+            "DELETE",
+            "/api/runtime/models/mcp_ready_orders/records/{id}",
+            "delete_record",
+            "critical",
+        ),
+    ] {
+        let entry = entries
+            .iter()
+            .find(|entry| entry["method"] == json!(method) && entry["path"] == json!(path))
+            .unwrap_or_else(|| panic!("missing bindable runtime interface {method} {path}"));
+        assert_eq!(
+            entry["interface_id"],
+            json!(format!("data_model__{model_id}__{suffix}"))
+        );
+        assert_eq!(entry["bindable"], json!(true));
+        assert_eq!(entry["risk_level"], json!(risk_level));
+        assert_ne!(
+            entry["path"],
+            json!("/api/runtime/models/{model_code}/records")
+        );
+        assert_ne!(
+            entry["path"],
+            json!("/api/runtime/models/{model_code}/records/{id}")
+        );
+    }
+    assert!(!entries.iter().any(|entry| entry["path"]
+        .as_str()
+        .is_some_and(|path| path.contains("mcp_hidden_orders"))));
+}
+
+#[tokio::test]
+async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let model_id =
+        create_exposed_published_model(&app, &root_cookie, &root_csrf, "mcp_tool_orders").await;
+    let create_interface_id = format!("data_model__{model_id}__create_record");
+    let update_interface_id = format!("data_model__{model_id}__update_record");
+
+    let create_tool_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/tools")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "tool_id": "mcp_tool_orders_create",
+                        "des_id": "des-runtime-create",
+                        "name": "Create order",
+                        "short_description": "Create order",
+                        "usage_description": "Create a runtime order record",
+                        "full_description": "Create a runtime order record through a concrete Data Model interface.",
+                        "interface_id": create_interface_id,
+                        "parameter_schema": {},
+                        "result_schema": {},
+                        "input_mapping": {},
+                        "output_mapping": {},
+                        "permission_code": null,
+                        "risk_level": "medium",
+                        "audit_policy": { "enabled": true },
+                        "status": "enabled"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_tool_response.status(), StatusCode::CREATED);
+    let create_tool_payload = response_json(create_tool_response).await;
+    assert_eq!(
+        create_tool_payload["data"]["interface_id"].as_str(),
+        Some(create_interface_id.as_str())
+    );
+
+    let update_tool_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/mcp/tools/mcp_tool_orders_create")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "name": "Update order",
+                        "des_id": "des-runtime-update",
+                        "short_description": "Update order",
+                        "usage_description": "Update a runtime order record",
+                        "full_description": "Update a runtime order record through a concrete Data Model interface.",
+                        "interface_id": update_interface_id,
+                        "parameter_schema": {},
+                        "result_schema": {},
+                        "input_mapping": {},
+                        "output_mapping": {},
+                        "permission_code": null,
+                        "risk_level": "medium",
+                        "audit_policy": { "enabled": true },
+                        "status": "enabled"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_tool_response.status(), StatusCode::OK);
+    let update_tool_payload = response_json(update_tool_response).await;
+    assert_eq!(
+        update_tool_payload["data"]["interface_id"].as_str(),
+        Some(update_interface_id.as_str())
+    );
+}
+
+#[tokio::test]
+async fn mcp_tool_create_rejects_non_bindable_agent_interface() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let interface_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/mcp/interface-capabilities")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(interface_response.status(), StatusCode::OK);
+    let interface_payload = response_json(interface_response).await;
+    let agent_interface = interface_payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| {
+            entry["path"]
+                .as_str()
+                .is_some_and(|path| path.starts_with("/api/agent/"))
+        })
+        .expect("MCP interface catalog should expose /api/agent entries as non-bindable");
+    assert_eq!(agent_interface["bindable"], json!(false));
+    let agent_interface_id = agent_interface["interface_id"].as_str().unwrap();
+
+    let create_tool_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/tools")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "tool_id": "agent_run_proxy",
+                        "des_id": "des-agent",
+                        "name": "Agent run proxy",
+                        "short_description": "Agent run proxy",
+                        "usage_description": "Proxy an agent run",
+                        "full_description": "This should remain unavailable for MCP binding.",
+                        "interface_id": agent_interface_id,
+                        "parameter_schema": {},
+                        "result_schema": {},
+                        "input_mapping": {},
+                        "output_mapping": {},
+                        "permission_code": null,
+                        "risk_level": "low",
+                        "audit_policy": { "enabled": true },
+                        "status": "enabled"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_tool_response.status(), StatusCode::BAD_REQUEST);
+    let create_tool_payload = response_json(create_tool_response).await;
+    assert_eq!(create_tool_payload["code"].as_str(), Some("interface_id"));
+}
+
 #[tokio::test]
 async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instance() {
     let app = test_app().await;

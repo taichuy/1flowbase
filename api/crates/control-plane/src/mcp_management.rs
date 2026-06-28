@@ -719,10 +719,13 @@ fn input_mapping_requires_des_id(input_mapping: &serde_json::Value) -> bool {
         .and_then(|parameters| {
             parameters.iter().find_map(|parameter| {
                 let parameter = parameter.as_object()?;
-                (parameter.get("name").and_then(serde_json::Value::as_str)
-                    == Some(DES_ID))
-                .then(|| parameter.get("required").and_then(serde_json::Value::as_bool))
-                .flatten()
+                (parameter.get("name").and_then(serde_json::Value::as_str) == Some(DES_ID))
+                    .then(|| {
+                        parameter
+                            .get("required")
+                            .and_then(serde_json::Value::as_bool)
+                    })
+                    .flatten()
             })
         });
 
@@ -736,11 +739,11 @@ fn input_mapping_requires_des_id(input_mapping: &serde_json::Value) -> bool {
                     .get("interface_param")
                     .and_then(serde_json::Value::as_str)
                     == Some(DES_ID)
-                    || entry.get("mcp_param").and_then(serde_json::Value::as_str)
-                        == Some(DES_ID);
+                    || entry.get("mcp_param").and_then(serde_json::Value::as_str) == Some(DES_ID);
                 maps_des_id
                     .then(|| {
-                        entry.get("required")
+                        entry
+                            .get("required")
                             .and_then(serde_json::Value::as_bool)
                             .or(interface_parameter_required)
                     })

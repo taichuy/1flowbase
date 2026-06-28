@@ -1,7 +1,11 @@
+use control_plane::{errors::ControlPlaneError, model_definition::ModelDefinitionService};
 use serde_json::{json, Value};
+use uuid::Uuid;
 
-use crate::openapi_docs::{
-    DocsCatalogCategory, DocsCatalogCategoryOperations, DocsCatalogOperation,
+use crate::{
+    app_state::ApiState,
+    error_response::ApiError,
+    openapi_docs::{DocsCatalogCategory, DocsCatalogCategoryOperations, DocsCatalogOperation},
 };
 
 pub const DATA_MODEL_DOCS_CATEGORY_ID: &str = "data-model-apis";
@@ -125,6 +129,57 @@ pub fn parse_operation_id(
         _ => return Err("unknown operation kind"),
     };
     Ok(Some((model_id, kind)))
+}
+
+pub async fn ready_models(
+    state: &ApiState,
+    actor_user_id: Uuid,
+) -> Result<Vec<domain::ModelDefinitionRecord>, ApiError> {
+    let models = match ModelDefinitionService::new(state.store.clone())
+        .list_models(actor_user_id)
+        .await
+    {
+        Ok(models) => models,
+        Err(error) => {
+            if let Some(ControlPlaneError::PermissionDenied(_)) =
+                error.downcast_ref::<ControlPlaneError>()
+            {
+                return Ok(vec![]);
+            }
+            return Err(error.into());
+        }
+    };
+    let mut models = models
+        .into_iter()
+        .filter(|model| model.api_exposure_status == domain::ApiExposureStatus::ApiExposedReady)
+        .collect::<Vec<_>>();
+    models.sort_by(|left, right| left.code.cmp(&right.code));
+    Ok(models)
+}
+
+pub async fn ready_model(
+    state: &ApiState,
+    actor_user_id: Uuid,
+    model_id: Uuid,
+) -> Result<Option<domain::ModelDefinitionRecord>, ApiError> {
+    let model = match ModelDefinitionService::new(state.store.clone())
+        .get_model(actor_user_id, model_id)
+        .await
+    {
+        Ok(model) => model,
+        Err(error) => {
+            if let Some(ControlPlaneError::PermissionDenied(_) | ControlPlaneError::NotFound(_)) =
+                error.downcast_ref::<ControlPlaneError>()
+            {
+                return Ok(None);
+            }
+            return Err(error.into());
+        }
+    };
+    if model.api_exposure_status != domain::ApiExposureStatus::ApiExposedReady {
+        return Ok(None);
+    }
+    Ok(Some(model))
 }
 
 pub fn records_path(model: &domain::ModelDefinitionRecord) -> String {

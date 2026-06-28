@@ -23,6 +23,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_docs::{ApiDocsRegistry, DocsCatalogOperation},
     response::ApiSuccess,
+    runtime_data_model_docs,
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -381,7 +382,7 @@ pub async fn list_mcp_interface_capabilities(
     McpManagementService::new(state.store.clone())
         .authorize_interface_catalog_view(context.user.id)
         .await?;
-    let mut entries = mcp_interface_catalog_entries(&state.api_docs);
+    let mut entries = mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
     if query.bindable_only.unwrap_or(false) {
         entries.retain(|entry| entry.bindable);
     }
@@ -568,7 +569,8 @@ pub async fn create_mcp_tool(
 ) -> Result<(StatusCode, Json<ApiSuccess<McpToolResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let interface_entry = bindable_mcp_interface(&state.api_docs, &body.interface_id)?;
+    let interface_entry =
+        bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
     let record = McpManagementService::new(state.store.clone())
         .create_tool(to_create_tool_command(
             context.user.id,
@@ -604,7 +606,8 @@ pub async fn update_mcp_tool(
 ) -> Result<Json<ApiSuccess<McpToolResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let interface_entry = bindable_mcp_interface(&state.api_docs, &body.interface_id)?;
+    let interface_entry =
+        bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
     let record = McpManagementService::new(state.store.clone())
         .update_tool(to_update_tool_command(
             context.user.id,
@@ -791,7 +794,28 @@ fn parse_tool_status(value: &str) -> Result<domain::McpToolStatus, ApiError> {
     }
 }
 
-fn mcp_interface_catalog_entries(
+#[derive(Clone, Copy)]
+enum McpInterfaceCapabilitySource {
+    StaticApiDocs,
+    RuntimeDataModelCrud,
+}
+
+struct McpInterfaceScopePolicy {
+    bindable: bool,
+    disabled_reason: Option<&'static str>,
+}
+
+async fn mcp_interface_catalog_entries(
+    state: &ApiState,
+    actor_user_id: Uuid,
+) -> Result<Vec<domain::McpInterfaceCatalogEntry>, ApiError> {
+    let mut entries = static_mcp_interface_catalog_entries(&state.api_docs);
+    let models = runtime_data_model_docs::ready_models(state, actor_user_id).await?;
+    entries.extend(runtime_data_model_mcp_interface_catalog_entries(&models));
+    Ok(entries)
+}
+
+fn static_mcp_interface_catalog_entries(
     api_docs: &ApiDocsRegistry,
 ) -> Vec<domain::McpInterfaceCatalogEntry> {
     let mut entries = Vec::new();
@@ -805,7 +829,11 @@ fn mcp_interface_catalog_entries(
             let Some(spec) = api_docs.operation_spec(&operation.id) else {
                 continue;
             };
-            let Some(entry) = mcp_interface_entry_from_operation(operation, spec) else {
+            let Some(entry) = mcp_interface_entry_from_operation(
+                operation,
+                spec,
+                McpInterfaceCapabilitySource::StaticApiDocs,
+            ) else {
                 continue;
             };
             entries.push(entry);
@@ -815,11 +843,41 @@ fn mcp_interface_catalog_entries(
     entries
 }
 
-fn bindable_mcp_interface(
-    api_docs: &ApiDocsRegistry,
+fn runtime_data_model_mcp_interface_catalog_entries(
+    models: &[domain::ModelDefinitionRecord],
+) -> Vec<domain::McpInterfaceCatalogEntry> {
+    let category_operations = runtime_data_model_docs::build_category_operations(models);
+    let mut entries = Vec::new();
+
+    for operation in &category_operations.operations {
+        let Ok(Some((model_id, kind))) = runtime_data_model_docs::parse_operation_id(&operation.id)
+        else {
+            continue;
+        };
+        let Some(model) = models.iter().find(|model| model.id == model_id) else {
+            continue;
+        };
+        let spec = runtime_data_model_docs::build_operation_openapi(model, kind);
+        let Some(entry) = mcp_interface_entry_from_operation(
+            operation,
+            &spec,
+            McpInterfaceCapabilitySource::RuntimeDataModelCrud,
+        ) else {
+            continue;
+        };
+        entries.push(entry);
+    }
+
+    entries
+}
+
+async fn bindable_mcp_interface(
+    state: &ApiState,
+    actor_user_id: Uuid,
     interface_id: &str,
 ) -> Result<domain::McpInterfaceCatalogEntry, ApiError> {
-    let entry = mcp_interface_catalog_entries(api_docs)
+    let entry = mcp_interface_catalog_entries(state, actor_user_id)
+        .await?
         .into_iter()
         .find(|entry| entry.interface_id == interface_id)
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
@@ -836,10 +894,11 @@ fn bindable_mcp_interface(
 fn mcp_interface_entry_from_operation(
     operation: &DocsCatalogOperation,
     spec: &Value,
+    source: McpInterfaceCapabilitySource,
 ) -> Option<domain::McpInterfaceCatalogEntry> {
     let operation_node = openapi_operation_node(spec, operation)?;
     let path_item_node = openapi_path_item_node(spec, operation)?;
-    let bindable = operation.path.starts_with("/api/console/");
+    let scope_policy = mcp_interface_scope_policy(operation, source);
 
     Some(domain::McpInterfaceCatalogEntry {
         interface_id: operation.id.clone(),
@@ -863,13 +922,36 @@ fn mcp_interface_entry_from_operation(
         permission_code: operation_permission_code(&operation.method, &operation.path),
         security: operation_security(spec, operation_node),
         risk_level: operation_risk_level(&operation.method),
+        bindable: scope_policy.bindable,
+        disabled_reason: scope_policy.disabled_reason.map(str::to_string),
+    })
+}
+
+fn mcp_interface_scope_policy(
+    operation: &DocsCatalogOperation,
+    source: McpInterfaceCapabilitySource,
+) -> McpInterfaceScopePolicy {
+    let bindable = match source {
+        McpInterfaceCapabilitySource::StaticApiDocs => operation.path.starts_with("/api/console/"),
+        McpInterfaceCapabilitySource::RuntimeDataModelCrud => {
+            runtime_data_model_crud_path_is_concrete(&operation.path)
+        }
+    };
+
+    McpInterfaceScopePolicy {
         bindable,
         disabled_reason: if bindable {
             None
         } else {
-            Some("unsupported_mcp_interface_scope".into())
+            Some("unsupported_mcp_interface_scope")
         },
-    })
+    }
+}
+
+fn runtime_data_model_crud_path_is_concrete(path: &str) -> bool {
+    path.starts_with("/api/runtime/models/")
+        && !path.contains("{model_code}")
+        && (path.ends_with("/records") || path.ends_with("/records/{id}"))
 }
 
 fn openapi_operation_node<'a>(
@@ -1852,6 +1934,7 @@ mod tests {
         let json_entry = mcp_interface_entry_from_operation(
             &operation("create_widget", "POST", "/api/console/widgets/{widget_id}"),
             &spec,
+            McpInterfaceCapabilitySource::StaticApiDocs,
         )
         .expect("JSON operation should become an MCP interface entry");
         assert!(json_entry
@@ -1885,6 +1968,7 @@ mod tests {
         let form_entry = mcp_interface_entry_from_operation(
             &operation("upload_widget", "POST", "/api/console/uploads"),
             &spec,
+            McpInterfaceCapabilitySource::StaticApiDocs,
         )
         .expect("form operation should become an MCP interface entry");
         assert!(form_entry
