@@ -86,6 +86,7 @@ import {
   buildReadableToolId
 } from './mcp-management-view-model';
 import {
+  applyInputMappingDesId,
   buildInputMappingFromInterface,
   inputMappingHasContent,
   normalizeInputMapping,
@@ -1117,8 +1118,9 @@ function McpToolsTab({
       const selectedInterface = interfaceCapabilities.find(
         (entry) => entry.interface_id === values.interface_id
       );
-      const inputMapping = normalizeInputMapping(
-        form.getFieldValue('input_mapping')
+      const inputMapping = applyInputMappingDesId(
+        form.getFieldValue('input_mapping'),
+        values.des_id
       );
       const outputMapping = schemaRecord(form.getFieldValue('output_mapping'));
       const body: SaveConsoleMcpToolBody = {
@@ -1142,6 +1144,7 @@ function McpToolsTab({
       if (editingTool) {
         const updateBody = {
           name: body.name,
+          des_id: body.des_id,
           short_description: body.short_description,
           usage_description: body.usage_description,
           full_description: body.full_description,
@@ -1777,6 +1780,7 @@ function McpToolsTab({
               <Form.Item
                 noStyle
                 shouldUpdate={(previous, current) =>
+                  previous.des_id !== current.des_id ||
                   previous.input_mapping !== current.input_mapping
                 }
               >
@@ -1784,6 +1788,7 @@ function McpToolsTab({
                   <div className="mcp-management__input-mapping-editor">
                     <McpInputMappingEditor
                       resetKey={`input:${schemaEditorRevision}`}
+                      desId={String(getFieldValue('des_id') ?? '')}
                       value={getFieldValue('input_mapping')}
                       onChange={setInputMappingValue}
                       onValidityChange={setInputMappingValidity}

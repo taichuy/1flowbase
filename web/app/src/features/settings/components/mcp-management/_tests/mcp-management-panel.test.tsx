@@ -305,12 +305,14 @@ describe('McpManagementPanel', () => {
             mappings: [
               {
                 interface_param: 'app_id',
+                des_id: 'des12345',
                 mcp_param: 'appId',
                 description: 'Application id',
                 required: true
               },
               {
                 interface_param: 'display_name',
+                des_id: 'des12345',
                 mcp_param: 'display_name',
                 description: 'Display name',
                 required: false
@@ -447,6 +449,7 @@ describe('McpManagementPanel', () => {
             mappings: [
               {
                 interface_param: 'user_id',
+                des_id: expect.any(String),
                 mcp_param: 'userId',
                 description: 'User id',
                 required: true

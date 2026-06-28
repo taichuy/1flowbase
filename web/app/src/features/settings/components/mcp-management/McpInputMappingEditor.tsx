@@ -25,10 +25,12 @@ function stringifyMapping(value: McpInputMappingValue) {
 }
 
 function mappingFromInterfaceParameter(
-  parameter: McpInputInterfaceParameter
+  parameter: McpInputInterfaceParameter,
+  desId: string
 ): McpInputParameterMapping {
   return {
     interface_param: parameter.name,
+    des_id: desId,
     mcp_param: parameter.name,
     description: parameter.description,
     required: parameter.required
@@ -308,11 +310,13 @@ function InputMappingJsonSection({
 
 export function McpInputMappingEditor({
   value,
+  desId,
   resetKey,
   onChange,
   onValidityChange
 }: {
   value: unknown;
+  desId: string;
   resetKey?: string | number | null;
   onChange: (value: McpInputMappingValue) => void;
   onValidityChange?: (valid: boolean) => void;
@@ -424,7 +428,10 @@ export function McpInputMappingEditor({
 
     emit({
       ...mapping,
-      mappings: [...mapping.mappings, mappingFromInterfaceParameter(parameter)]
+      mappings: [
+        ...mapping.mappings,
+        mappingFromInterfaceParameter(parameter, desId)
+      ]
     });
     setPendingInterfaceParam(undefined);
   }

@@ -14,6 +14,7 @@ export type McpInputInterfaceParameter = {
 
 export type McpInputParameterMapping = {
   interface_param: string;
+  des_id: string;
   mcp_param: string;
   description: string;
   required: boolean;
@@ -78,6 +79,7 @@ function normalizeMapping(value: unknown): McpInputParameterMapping | null {
 
   return {
     interface_param: interfaceParam,
+    des_id: stringValue(value.des_id),
     mcp_param: stringValue(value.mcp_param) || interfaceParam,
     description: stringValue(value.description),
     required: booleanValue(value.required)
@@ -144,6 +146,21 @@ export function buildInputMappingFromInterface(
       const mapping = currentMappings.get(parameter.name);
       return mapping ? [mapping] : [];
     })
+  };
+}
+
+export function applyInputMappingDesId(
+  value: unknown,
+  desId: string
+): McpInputMappingValue {
+  const mapping = normalizeInputMapping(value);
+
+  return {
+    ...mapping,
+    mappings: mapping.mappings.map((entry) => ({
+      ...entry,
+      des_id: desId
+    }))
   };
 }
 
