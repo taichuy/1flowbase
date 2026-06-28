@@ -220,7 +220,8 @@
   border-left: 1px solid var(--ant-color-border-secondary);
 }
 
-.mcp-management__schema-editor .agent-flow-json-schema-settings__editor {
+.mcp-management__schema-editor .agent-flow-json-schema-settings__editor,
+.mcp-management__input-mapping-editor .agent-flow-json-schema-settings__editor {
   height: 300px;
   overflow: hidden;
   border: 1px solid var(--ant-color-border);
@@ -228,6 +229,8 @@
 }
 
 .mcp-management__schema-editor
+  .agent-flow-json-schema-settings__editor-loading,
+.mcp-management__input-mapping-editor
   .agent-flow-json-schema-settings__editor-loading {
   display: flex;
   height: 100%;

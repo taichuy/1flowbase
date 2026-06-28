@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -27,6 +28,26 @@ const mcpManagementApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/mcp-management', () => mcpManagementApi);
+vi.mock('@monaco-editor/react', () => ({
+  __esModule: true,
+  default: ({
+    'aria-label': ariaLabel,
+    options,
+    value,
+    onChange
+  }: {
+    'aria-label'?: string;
+    options?: { ariaLabel?: string };
+    value?: string;
+    onChange?: (value?: string) => void;
+  }) => (
+    <textarea
+      aria-label={ariaLabel ?? options?.ariaLabel}
+      value={value ?? ''}
+      onChange={(event) => onChange?.(event.target.value)}
+    />
+  )
+}));
 
 import { AppProviders } from '../../../../../app/AppProviders';
 import { McpManagementPanel } from '../McpManagementPanel';
@@ -208,6 +229,18 @@ describe('McpManagementPanel', () => {
       1
     );
 
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '获取返回结构' })
+    );
+    expect(within(dialog).getByDisplayValue('run_id')).toBeInTheDocument();
+    expect(within(dialog).queryByDisplayValue('type')).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByDisplayValue('required')
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByDisplayValue('properties')
+    ).not.toBeInTheDocument();
+
     clickSegmentedOption(dialog, 'preview');
     expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(
       1
@@ -357,9 +390,16 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('button', { name: '获取接口参数' })
     );
     fireEvent.click(await within(dialog).findByText('JSON 解析'));
-    const editor = await within(dialog).findByRole('textbox', {
-      name: 'input_mapping JSON'
+    await act(async () => {
+      await vi.dynamicImportSettled();
     });
+    const editor = await within(dialog).findByRole(
+      'textbox',
+      {
+        name: 'input_mapping JSON'
+      },
+      { timeout: 5000 }
+    );
     fireEvent.change(editor, {
       target: { value: '{"interface_parameters":' }
     });

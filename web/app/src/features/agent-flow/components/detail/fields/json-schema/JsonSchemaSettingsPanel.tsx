@@ -74,6 +74,7 @@ function JsonSchemaCodeEditor({
     <div className="agent-flow-json-schema-settings__editor">
       <Suspense fallback={<JsonSchemaEditorFallback />}>
         <MonacoEditor
+          aria-label={ariaLabel}
           defaultLanguage="json"
           height="100%"
           language="json"
@@ -185,6 +186,7 @@ interface JsonSchemaEditorContentProps {
   className?: string;
   live?: boolean;
   resetKey?: string | number | null;
+  structureMode?: 'schema' | 'fields';
   parseSchemaInput?: (input: string) => JsonSchemaEditorResult;
   onChange?: (schema: Record<string, unknown>) => void;
   onValidityChange?: (valid: boolean) => void;
@@ -201,6 +203,7 @@ export const JsonSchemaEditorContent = forwardRef<
     className,
     live = false,
     resetKey,
+    structureMode = 'schema',
     parseSchemaInput = parseJsonSchemaInput,
     onChange,
     onValidityChange
@@ -633,6 +636,22 @@ export const JsonSchemaEditorContent = forwardRef<
   function renderSchemaStructureRows() {
     const currentSchema = schemaFromRows(schemaRoot, schemaRows, schemaBase);
 
+    if (structureMode === 'fields') {
+      return (
+        <>
+          {renderSchemaRows(schemaRows)}
+          <Button
+            aria-label={i18nText('agentFlow', 'auto.add_schema_field')}
+            icon={<PlusOutlined />}
+            type="dashed"
+            onClick={() => addSchemaRow()}
+          >
+            {i18nText('agentFlow', 'auto.add_schema_field')}
+          </Button>
+        </>
+      );
+    }
+
     if (schemaRoot === 'array') {
       const itemSchema = isRecord(currentSchema.items)
         ? currentSchema.items
@@ -992,6 +1011,7 @@ export function JsonSchemaInlineEditor({
   schema,
   fallbackRootType = 'object',
   resetKey,
+  structureMode,
   parseSchemaInput,
   onChange,
   onValidityChange
@@ -999,6 +1019,7 @@ export function JsonSchemaInlineEditor({
   schema: Record<string, unknown>;
   fallbackRootType?: JsonSchemaRootType;
   resetKey?: string | number | null;
+  structureMode?: 'schema' | 'fields';
   parseSchemaInput?: (input: string) => JsonSchemaEditorResult;
   onChange: (schema: Record<string, unknown>) => void;
   onValidityChange?: (valid: boolean) => void;
@@ -1012,6 +1033,7 @@ export function JsonSchemaInlineEditor({
       parseSchemaInput={parseSchemaInput}
       resetKey={resetKey}
       schema={schema}
+      structureMode={structureMode}
       onChange={onChange}
       onValidityChange={onValidityChange}
     />

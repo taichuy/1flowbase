@@ -1825,6 +1825,7 @@ function McpToolsTab({
                       fallbackRootType="object"
                       resetKey={`output:${schemaEditorRevision}`}
                       schema={schemaRecord(getFieldValue('output_mapping'))}
+                      structureMode="fields"
                       onChange={setOutputMappingValue}
                       onValidityChange={setOutputMappingValidity}
                     />

@@ -13,6 +13,7 @@ import {
 import { useMemo, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
+import { InlineJsonCodeEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel';
 import {
   type McpInputInterfaceParameter,
   type McpInputMappingValue,
@@ -316,11 +317,11 @@ function InputMappingJsonSection({
 }) {
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
-      <Input.TextArea
-        aria-label="input_mapping JSON"
-        rows={12}
+      <InlineJsonCodeEditor
+        ariaLabel="input_mapping JSON"
+        className="mcp-input-mapping-editor__json"
         value={jsonDraft.text}
-        onChange={(event) => onUpdateJsonText(event.target.value)}
+        onChange={onUpdateJsonText}
       />
       <Typography.Text type={jsonDraft.error ? 'danger' : 'secondary'}>
         {jsonDraft.error || i18nText('settings', 'auto.support_json_parse')}
