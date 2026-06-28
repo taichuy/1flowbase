@@ -46,6 +46,8 @@ export function ApiDocsOperationListPane({
   onOperationScroll,
   onQueryStateChange
 }: ApiDocsOperationListPaneProps) {
+  const hasOperationSearch = operationSearch.trim().length > 0;
+
   if (categoriesLength === 0) {
     return (
       <section
@@ -105,7 +107,7 @@ export function ApiDocsOperationListPane({
     );
   }
 
-  if (loading) {
+  if (loading && !hasOperationSearch) {
     return (
       <section
         className="api-docs-panel__pane"
@@ -196,10 +198,14 @@ export function ApiDocsOperationListPane({
         data-testid="api-docs-operation-list-scroll-area"
         onScroll={onOperationScroll}
       >
-        {!operations.length ? (
+        {loading ? (
+          <div className="api-docs-panel__pane-state">
+            <Spin size="large" />
+          </div>
+        ) : !operations.length ? (
           <Empty
             description={
-              operationSearch.trim()
+              hasOperationSearch
                 ? i18nText('sharedUi', 'auto.no_matching_interface')
                 : selectedCategoryId
                   ? i18nText(

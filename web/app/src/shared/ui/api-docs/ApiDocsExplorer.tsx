@@ -289,6 +289,7 @@ export function ApiDocsExplorer<TAuthenticationSnapshot = unknown>({
         (lastPage.offset ?? 0) + lastPage.operations.length
       );
     },
+    placeholderData: (previousData) => previousData,
     enabled: Boolean(selectedCategoryId)
   });
 

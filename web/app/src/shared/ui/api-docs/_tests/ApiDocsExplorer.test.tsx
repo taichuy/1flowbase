@@ -219,6 +219,71 @@ describe('ApiDocsExplorer', () => {
     );
   });
 
+  test('keeps the operation search input focused while the filtered list reloads', async () => {
+    const fetchCategoryOperations = vi.fn(
+      (
+        categoryId: string,
+        request?: { offset?: number; limit?: number; q?: string | null }
+      ) =>
+        Promise.resolve({
+          ...operationsByCategory[
+            categoryId as keyof typeof operationsByCategory
+          ],
+          total: operationsByCategory[
+            categoryId as keyof typeof operationsByCategory
+          ].operations.length,
+          offset: request?.offset ?? 0,
+          limit: request?.limit ?? 20,
+          has_more: false,
+          next_offset: null
+        })
+    );
+
+    render(
+      <AppProviders>
+        <ApiDocsExplorer
+          queryState={{
+            categoryId: 'application-native-api',
+            operationId: null
+          }}
+          onQueryStateChange={vi.fn()}
+          catalogQueryKey={['api-docs', 'catalog', 'search-focus']}
+          fetchCatalog={() => Promise.resolve(catalog)}
+          categoryOperationsQueryKey={(categoryId) => [
+            'api-docs',
+            'category',
+            categoryId,
+            'search-focus'
+          ]}
+          fetchCategoryOperations={fetchCategoryOperations}
+          operationSpecQueryKey={(operationId) => [
+            'api-docs',
+            'operation',
+            operationId,
+            'search-focus'
+          ]}
+          fetchOperationSpec={() => Promise.resolve({})}
+          baseServerUrl="http://127.0.0.1:3100"
+        />
+      </AppProviders>
+    );
+
+    const searchInput = await screen.findByRole('textbox', {
+      name: '搜索接口'
+    });
+    searchInput.focus();
+    fireEvent.change(searchInput, { target: { value: 's' } });
+
+    expect(searchInput).toHaveFocus();
+    await waitFor(() => {
+      expect(fetchCategoryOperations).toHaveBeenCalledWith(
+        'application-native-api',
+        { offset: 0, limit: 20, q: 's' }
+      );
+    });
+    expect(searchInput).toHaveFocus();
+  });
+
   test('shows all operations by default when no category is selected and aggregation is enabled', async () => {
     const fetchCategoryOperations = vi.fn((categoryId: string) =>
       Promise.resolve(
