@@ -1,4 +1,5 @@
 import {
+  enableConsoleAuthCenterAuthenticator,
   fetchConsoleAuthCenterOverview,
   type ConsoleAuthCenterOverview
 } from '@1flowbase/api-client';
@@ -13,4 +14,11 @@ export const settingsAuthCenterOverviewQueryKey = [
 
 export function fetchSettingsAuthCenterOverview() {
   return fetchConsoleAuthCenterOverview();
+}
+
+export function enableSettingsAuthCenterAuthenticator(
+  authenticatorName: string,
+  csrfToken: string
+) {
+  return enableConsoleAuthCenterAuthenticator(authenticatorName, csrfToken);
 }

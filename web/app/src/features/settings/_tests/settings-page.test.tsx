@@ -87,7 +87,8 @@ const personalAccessTokensApi = vi.hoisted(() => ({
 
 const authCenterApi = vi.hoisted(() => ({
   settingsAuthCenterOverviewQueryKey: ['settings', 'auth-center', 'overview'],
-  fetchSettingsAuthCenterOverview: vi.fn()
+  fetchSettingsAuthCenterOverview: vi.fn(),
+  enableSettingsAuthCenterAuthenticator: vi.fn()
 }));
 
 const modelProvidersApi = vi.hoisted(() => ({
@@ -447,10 +448,15 @@ describe('SettingsPage', () => {
           auth_type: 'password-local',
           title: 'Password',
           enabled: true,
-          is_builtin: true
+          is_builtin: true,
+          config_schema: [],
+          config_values: {}
         }
       ]
     });
+    authCenterApi.enableSettingsAuthCenterAuthenticator.mockResolvedValue(
+      undefined
+    );
     modelProvidersApi.fetchSettingsModelProviderCatalog.mockResolvedValue([]);
     modelProvidersApi.fetchSettingsModelProviderInstances.mockResolvedValue([]);
     modelProvidersApi.fetchSettingsModelProviderOptions.mockResolvedValue({
@@ -762,8 +768,40 @@ describe('SettingsPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('renders auth center as an independent settings route', async () => {
-    authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
+  test('renders auth center actions and opens configuration drawer', async () => {
+    authenticateWithPermissions([
+      'route_page.view.all',
+      'user.view.all',
+      'user.manage.all'
+    ]);
+    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
+      default_authenticator_name: 'password-local',
+      authenticators: [
+        {
+          name: 'oidc-main',
+          auth_type: 'oidc',
+          title: 'OIDC',
+          enabled: false,
+          is_builtin: false,
+          config_schema: [
+            {
+              key: 'issuer_url',
+              label: 'issuer_url',
+              type: 'string'
+            },
+            {
+              key: 'allow_signup',
+              label: 'allow_signup',
+              type: 'boolean'
+            }
+          ],
+          config_values: {
+            issuer_url: 'https://idp.example.com',
+            allow_signup: true
+          }
+        }
+      ]
+    });
 
     renderApp('/settings/auth-center');
 
@@ -771,9 +809,57 @@ describe('SettingsPage', () => {
       expect(window.location.pathname).toBe('/settings/auth-center');
     });
     expect(
-      await screen.findByRole('heading', { name: '认证中心' })
+      screen.queryByRole('heading', { name: '认证中心' })
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText('oidc-main')).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '操作' })
     ).toBeInTheDocument();
-    expect(screen.getAllByText('password-local').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '启用' }));
+    await waitFor(() => {
+      expect(
+        authCenterApi.enableSettingsAuthCenterAuthenticator
+      ).toHaveBeenCalledWith('oidc-main', 'csrf-123');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    expect(
+      await screen.findByRole('dialog', { name: 'OIDC 配置' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('issuer_url')).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue('https://idp.example.com')
+    ).toBeInTheDocument();
+    expect(screen.getByText('allow_signup')).toBeInTheDocument();
+    expect(screen.getByRole('switch')).toBeChecked();
+  });
+
+  test('opens auth center configuration drawer when config fields are absent', async () => {
+    authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
+    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
+      default_authenticator_name: 'password-local',
+      authenticators: [
+        {
+          name: 'password-local',
+          auth_type: 'password-local',
+          title: 'Password',
+          enabled: true,
+          is_builtin: true
+        }
+      ]
+    });
+
+    renderApp('/settings/auth-center');
+
+    const editButton = await screen.findByRole('button', { name: '编辑' });
+    fireEvent.click(editButton);
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Password 配置' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('配置')).toBeInTheDocument();
+    expect(screen.getByText('否')).toBeInTheDocument();
   });
 
   test('renders API key for signed-in users without management permissions', async () => {
