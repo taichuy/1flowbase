@@ -222,6 +222,9 @@ describe('McpManagementPanel', () => {
 
     const dialog = await screen.findByRole('dialog');
 
+    expect(
+      within(dialog).queryByLabelText('des_id_required')
+    ).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('name'), {
       target: { value: 'Create App' }
     });
@@ -285,6 +288,7 @@ describe('McpManagementPanel', () => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
         expect.objectContaining({
           des_id: 'des12345',
+          des_id_required: true,
           input_mapping: {
             interface_parameters: [
               {

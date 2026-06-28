@@ -137,7 +137,6 @@ type ToolFormValues = {
   input_mapping: McpInputMappingValue;
   output_mapping: Record<string, unknown>;
   audit_policy_text: string;
-  des_id_required: boolean;
   status: string;
 };
 const TOOL_FORM_STEPS = [
@@ -1136,7 +1135,7 @@ function McpToolsTab({
         permission_code: selectedInterface?.permission_code ?? null,
         risk_level: selectedInterface?.risk_level ?? 'medium',
         audit_policy: parseJsonText(values.audit_policy_text, 'audit_policy'),
-        des_id_required: values.des_id_required,
+        des_id_required: true,
         status: values.status
       };
       if (editingTool) {
@@ -1338,7 +1337,6 @@ function McpToolsTab({
                   des_id: record.des_id,
                   interface_id: record.interface_id,
                   audit_policy_text: stringifyJson(record.audit_policy),
-                  des_id_required: record.des_id_required,
                   status: record.status
                 });
                 form.setFieldValue(
@@ -1488,7 +1486,6 @@ function McpToolsTab({
                 des_id: buildRandomToolIdSeed(),
                 interface_id: undefined,
                 audit_policy_text: '{"enabled":true}',
-                des_id_required: true,
                 status: 'draft'
               });
               form.setFieldValue('input_mapping', {
@@ -1630,41 +1627,27 @@ function McpToolsTab({
                 }
               />
             </Form.Item>
-            <Flex align="flex-start" gap={12} wrap="wrap">
-              <Form.Item
-                className="mcp-management__des-id-field"
-                name="des_id"
-                label="des_id"
-                rules={[{ required: true, whitespace: true }]}
-              >
-                <Input
-                  addonAfter={
-                    <Tooltip title="随机生成 des_id">
-                      <Button
-                        type="text"
-                        htmlType="button"
-                        size="small"
-                        icon={<ReloadOutlined />}
-                        onClick={() => {
-                          form.setFieldValue(
-                            'des_id',
-                            buildRandomToolIdSeed()
-                          );
-                        }}
-                      />
-                    </Tooltip>
-                  }
-                />
-              </Form.Item>
-              <Form.Item
-                className="mcp-management__des-id-required-field"
-                name="des_id_required"
-                label="des_id_required"
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
-            </Flex>
+            <Form.Item
+              name="des_id"
+              label="des_id"
+              rules={[{ required: true, whitespace: true }]}
+            >
+              <Input
+                addonAfter={
+                  <Tooltip title="随机生成 des_id">
+                    <Button
+                      type="text"
+                      htmlType="button"
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      onClick={() => {
+                        form.setFieldValue('des_id', buildRandomToolIdSeed());
+                      }}
+                    />
+                  </Tooltip>
+                }
+              />
+            </Form.Item>
             <Form.Item
               name="short_description"
               label="short_description"
@@ -1902,9 +1885,6 @@ function McpToolsTab({
                     </Descriptions.Item>
                     <Descriptions.Item label="interface_id">
                       {values.interface_id}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="des_id_required">
-                      {String(values.des_id_required)}
                     </Descriptions.Item>
                   </Descriptions>
                 );
