@@ -22,13 +22,21 @@ fn user_and_role_metadata_templates_match_system_table_contract() {
         user_codes,
         vec![
             "id",
-            "username",
-            "display_name",
+            "account",
             "email",
+            "phone",
+            "name",
+            "nickname",
+            "avatar_url",
+            "introduction",
+            "preferred_locale",
+            "meta",
+            "default_display_role",
+            "email_login_enabled",
+            "phone_login_enabled",
             "status",
-            "role_codes",
-            "created_time",
-            "last_login_at",
+            "created_at",
+            "updated_at",
         ]
     );
 
@@ -40,12 +48,20 @@ fn user_and_role_metadata_templates_match_system_table_contract() {
     assert_eq!(
         role_codes,
         vec![
+            "id",
+            "scope_id",
+            "scope_kind",
+            "workspace_id",
             "code",
             "name",
-            "scope_kind",
+            "introduction",
             "is_builtin",
+            "is_editable",
+            "auto_grant_new_permissions",
             "is_default_member_role",
-            "created_time",
+            "system_kind",
+            "created_at",
+            "updated_at",
         ]
     );
 }
@@ -97,8 +113,18 @@ async fn bootstrap_creates_builtin_user_and_role_models_once() {
         domain::DataModelOwnerKind::Core
     );
     assert!(roles.protection.is_protected);
-    assert_eq!(users.fields.len(), 8);
-    assert_eq!(roles.fields.len(), 6);
+    assert_eq!(users.physical_table_name, "users");
+    assert_eq!(roles.physical_table_name, "roles");
+    assert_eq!(users.fields.len(), 16);
+    assert_eq!(roles.fields.len(), 14);
+    assert!(users
+        .fields
+        .iter()
+        .all(|field| field.is_system && !field.is_writable));
+    assert!(roles
+        .fields
+        .iter()
+        .all(|field| field.is_system && !field.is_writable));
 
     let grants = ModelDefinitionRepository::list_scope_data_model_grants(
         &repository,
@@ -109,7 +135,7 @@ async fn bootstrap_creates_builtin_user_and_role_models_once() {
     .unwrap();
     assert_eq!(grants.len(), 2);
     assert!(grants.iter().all(|grant| {
-        grant.permission_profile == ScopeDataModelPermissionProfile::ScopeAll
+        grant.permission_profile == ScopeDataModelPermissionProfile::SystemAll
             && (grant.data_model_id == users.id || grant.data_model_id == roles.id)
     }));
 }
@@ -142,12 +168,12 @@ async fn bootstrap_repairs_existing_partial_system_metadata_models() {
             model_id: partial_users.id,
             physical_column_name: None,
             external_field_key: None,
-            code: "username".into(),
-            title: "用户名".into(),
+            code: "account".into(),
+            title: "账号".into(),
             field_kind: ModelFieldKind::String,
             is_system: false,
             is_writable: true,
-            apply_physical_schema: true,
+            apply_physical_schema: false,
             is_required: true,
             is_unique: true,
             default_value: None,
@@ -177,10 +203,10 @@ async fn bootstrap_repairs_existing_partial_system_metadata_models() {
         .map(|field| field.code.as_str())
         .collect::<Vec<_>>();
 
-    assert_eq!(user_field_codes.len(), 8);
+    assert_eq!(user_field_codes.len(), 16);
     assert!(user_field_codes.contains(&"id"));
-    assert!(user_field_codes.contains(&"username"));
-    assert!(user_field_codes.contains(&"created_time"));
+    assert!(user_field_codes.contains(&"account"));
+    assert!(user_field_codes.contains(&"created_at"));
 
     let grants = ModelDefinitionRepository::list_scope_data_model_grants(
         &repository,

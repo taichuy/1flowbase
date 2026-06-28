@@ -36,7 +36,10 @@ use self::{
         insert_model_definition, insert_model_definition_after_failure, load_model_definition,
         load_model_definition_for_update, load_model_definition_with_lock,
     },
-    naming::{build_physical_column_name, build_physical_table_name, nullable_actor_user_id},
+    naming::{
+        build_physical_column_name, build_physical_table_name, is_registered_system_table,
+        nullable_actor_user_id, registered_system_table_name,
+    },
 };
 
 async fn ensure_workspace_data_source_belongs_to_scope(
@@ -276,7 +279,14 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             external_capability_snapshot: input.external_capability_snapshot.clone(),
             code: input.code.clone(),
             title: input.title.clone(),
-            physical_table_name: build_physical_table_name(input.scope_kind, &input.code),
+            physical_table_name: registered_system_table_name(
+                input.scope_kind,
+                input.source_kind,
+                &input.protection,
+                &input.code,
+            )
+            .map(str::to_string)
+            .unwrap_or_else(|| build_physical_table_name(input.scope_kind, &input.code)),
             acl_namespace: format!("state_model.{}", input.code),
             audit_namespace: format!("audit.state_model.{}", input.code),
             fields: vec![],
@@ -302,7 +312,9 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             )
             .await?;
             if model.source_kind == domain::DataModelSourceKind::MainSource {
-                create_runtime_model_table(&mut tx, &model).await?;
+                if !is_registered_system_table(&model) {
+                    create_runtime_model_table(&mut tx, &model).await?;
+                }
                 for field in &model.fields {
                     insert_model_field(
                         &mut tx,
@@ -573,6 +585,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             .await?;
             if model.source_kind == domain::DataModelSourceKind::MainSource
                 && input.apply_physical_schema
+                && !is_registered_system_table(&model)
             {
                 match field.field_kind {
                     domain::ModelFieldKind::ManyToOne => {

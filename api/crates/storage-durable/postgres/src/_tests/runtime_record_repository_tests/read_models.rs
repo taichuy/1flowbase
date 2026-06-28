@@ -67,6 +67,188 @@ async fn runtime_record_repository_registers_builtin_runtime_read_models() {
 }
 
 #[tokio::test]
+async fn runtime_record_repository_lists_registered_system_tables_from_physical_tables() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let workspace_id = Uuid::now_v7();
+    let actor_user_id = Uuid::now_v7();
+    let attachment_id = Uuid::now_v7();
+    let role_id = Uuid::now_v7();
+
+    insert_workspace(&store, workspace_id).await;
+    insert_user(&store, actor_user_id, "registered-system-table").await;
+    let storage = FileManagementRepository::create_file_storage(
+        &store,
+        &CreateFileStorageInput {
+            storage_id: Uuid::now_v7(),
+            actor_user_id,
+            code: format!("local_{}", Uuid::now_v7().simple()),
+            title: "Local".into(),
+            driver_type: "local".into(),
+            enabled: true,
+            is_default: true,
+            config_json: json!({ "root_path": "/tmp/1flowbase-tests", "public_base_url": null }),
+            rule_json: json!({}),
+        },
+    )
+    .await
+    .unwrap();
+
+    FileManagementBootstrapService::new(store.clone())
+        .ensure_builtin_attachments(actor_user_id, storage.id, "attachments")
+        .await
+        .unwrap();
+    SystemMetadataBootstrapService::new(store.clone())
+        .ensure_builtin_user_and_role_models(actor_user_id)
+        .await
+        .unwrap();
+
+    sqlx::query(
+        r#"
+        insert into roles (
+            id, scope_id, scope_kind, workspace_id, code, name, introduction,
+            is_builtin, is_editable, auto_grant_new_permissions,
+            is_default_member_role, system_kind, created_by, updated_by
+        ) values (
+            $1, $2, 'workspace', $2, 'qa_reviewer', 'QA Reviewer', '',
+            true, false, false, false, null, $3, $3
+        )
+        "#,
+    )
+    .bind(role_id)
+    .bind(workspace_id)
+    .bind(actor_user_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into attachments (
+            id, scope_id, title, filename, extname, size, mimetype, path,
+            meta, storage_id, created_by, updated_by
+        ) values (
+            $1, $2, 'Contract Evidence', 'contract.txt', 'txt', 12,
+            'text/plain', 'workspace/attachments/contract.txt', '{"source":"test"}',
+            $3, $4, $4
+        )
+        "#,
+    )
+    .bind(attachment_id)
+    .bind(workspace_id)
+    .bind(storage.id)
+    .bind(actor_user_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let metadata = store.list_runtime_model_metadata().await.unwrap();
+    let users = metadata
+        .iter()
+        .find(|model| model.model_code == "users")
+        .expect("users metadata should be registered");
+    let roles = metadata
+        .iter()
+        .find(|model| model.model_code == "roles")
+        .expect("roles metadata should be registered");
+    let attachments = metadata
+        .iter()
+        .find(|model| model.model_code == "attachments")
+        .expect("attachments metadata should be registered");
+
+    assert_eq!(users.physical_table_name, "users");
+    assert_eq!(roles.physical_table_name, "roles");
+    assert_eq!(attachments.physical_table_name, "attachments");
+    assert!(users
+        .fields
+        .iter()
+        .all(|field| field.code != "password_hash"));
+    assert!(users
+        .fields
+        .iter()
+        .all(|field| field.code != "session_version"));
+
+    let user_page = RuntimeRecordRepository::list_records(
+        &store,
+        users,
+        RuntimeListQuery {
+            scope_id: None,
+            owner_user_id: None,
+            filter: domain::ResourceFilterExpr::Field {
+                field: "account".into(),
+                operator: domain::ResourceFilterOperator::Includes,
+                value: json!("registered-system-table"),
+            },
+            sorts: vec![],
+            expand_relations: vec![],
+            page: 1,
+            page_size: 20,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(user_page.total, 1);
+    assert_eq!(user_page.items[0]["id"], json!(actor_user_id.to_string()));
+    assert!(user_page.items[0].get("password_hash").is_none());
+    assert!(user_page.items[0].get("session_version").is_none());
+
+    let role_page = RuntimeRecordRepository::list_records(
+        &store,
+        roles,
+        RuntimeListQuery {
+            scope_id: Some(workspace_id),
+            owner_user_id: None,
+            filter: domain::ResourceFilterExpr::Field {
+                field: "code".into(),
+                operator: domain::ResourceFilterOperator::Eq,
+                value: json!("qa_reviewer"),
+            },
+            sorts: vec![],
+            expand_relations: vec![],
+            page: 1,
+            page_size: 20,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(role_page.total, 1);
+    assert_eq!(role_page.items[0]["id"], json!(role_id.to_string()));
+    assert_eq!(
+        role_page.items[0]["scope_id"],
+        json!(workspace_id.to_string())
+    );
+
+    let attachment_page = RuntimeRecordRepository::list_records(
+        &store,
+        attachments,
+        RuntimeListQuery {
+            scope_id: Some(workspace_id),
+            owner_user_id: None,
+            filter: domain::ResourceFilterExpr::Field {
+                field: "filename".into(),
+                operator: domain::ResourceFilterOperator::Eq,
+                value: json!("contract.txt"),
+            },
+            sorts: vec![],
+            expand_relations: vec![],
+            page: 1,
+            page_size: 20,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(attachment_page.total, 1);
+    assert_eq!(
+        attachment_page.items[0]["id"],
+        json!(attachment_id.to_string())
+    );
+    assert_eq!(
+        attachment_page.items[0]["path"],
+        json!("workspace/attachments/contract.txt")
+    );
+}
+
+#[tokio::test]
 async fn runtime_record_repository_lists_application_run_logs_as_scoped_read_model() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();

@@ -20,6 +20,19 @@ use domain::{
     ScopeDataModelGrantRecord,
 };
 
+fn memory_physical_table_name(input: &CreateModelDefinitionInput) -> String {
+    if input.scope_kind == domain::DataModelScopeKind::System
+        && input.source_kind == domain::DataModelSourceKind::MainSource
+        && input.protection.owner_kind == domain::DataModelOwnerKind::Core
+        && input.protection.is_protected
+        && matches!(input.code.as_str(), "attachments" | "users" | "roles")
+    {
+        return input.code.clone();
+    }
+
+    format!("rtm_{}_{}", input.scope_kind.as_str(), input.code)
+}
+
 #[derive(Clone, Default)]
 pub struct MemoryProvisioningRepository {
     models: Arc<Mutex<HashMap<Uuid, ModelDefinitionRecord>>>,
@@ -173,7 +186,7 @@ impl ModelDefinitionRepository for MemoryProvisioningRepository {
             scope_id: input.scope_id,
             code: input.code.clone(),
             title: input.title.clone(),
-            physical_table_name: format!("rtm_{}_{}", input.scope_kind.as_str(), input.code),
+            physical_table_name: memory_physical_table_name(input),
             acl_namespace: format!("state_model.{}", input.code),
             audit_namespace: format!("audit.state_model.{}", input.code),
             fields: vec![],
