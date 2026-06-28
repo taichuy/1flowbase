@@ -10,6 +10,9 @@ use domain::{ActorContext, AuditLogRecord};
 use uuid::Uuid;
 
 use crate::{
+    auth_repository::identity_binding::{
+        insert_password_local_identities, replace_password_local_contact_identities,
+    },
     auth_repository::map_user_row,
     repositories::{
         is_root_user, tenant_id_for_workspace, workspace_id_for_user, PgControlPlaneStore,
@@ -88,31 +91,15 @@ impl MemberRepository for PgControlPlaneStore {
         .execute(&mut *tx)
         .await?;
 
-        for (subject_type, subject_value) in [
-            ("account", Some(input.account.as_str())),
-            ("email", Some(input.email.as_str())),
-            ("phone", input.phone.as_deref()),
-        ] {
-            if let Some(subject_value) = subject_value {
-                sqlx::query(
-                    r#"
-                    insert into user_auth_identities (
-                        id, user_id, authenticator_name, subject_type, subject_value, metadata,
-                        created_by, updated_by
-                    )
-                    values ($1, $2, 'password-local', $3, $4, '{}'::jsonb, $5, $5)
-                    on conflict (authenticator_name, subject_type, lower(subject_value)) do nothing
-                    "#,
-                )
-                .bind(Uuid::now_v7())
-                .bind(user_id)
-                .bind(subject_type)
-                .bind(subject_value)
-                .bind(input.actor_user_id)
-                .execute(&mut *tx)
-                .await?;
-            }
-        }
+        insert_password_local_identities(
+            &mut tx,
+            user_id,
+            &input.account,
+            &input.email,
+            input.phone.as_deref(),
+            Some(input.actor_user_id),
+        )
+        .await?;
 
         sqlx::query(
             r#"
@@ -137,6 +124,7 @@ impl MemberRepository for PgControlPlaneStore {
     }
 
     async fn update_member_profile(&self, input: &UpdateMemberInput) -> Result<domain::UserRecord> {
+        let mut tx = self.pool().begin().await?;
         let row = sqlx::query(
             r#"
             update users
@@ -160,9 +148,19 @@ impl MemberRepository for PgControlPlaneStore {
         .bind(&input.phone)
         .bind(&input.introduction)
         .bind(input.actor_user_id)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *tx)
         .await?
         .ok_or(ControlPlaneError::NotFound("user"))?;
+
+        replace_password_local_contact_identities(
+            &mut tx,
+            input.user_id,
+            &input.email,
+            input.phone.as_deref(),
+            input.actor_user_id,
+        )
+        .await?;
+        tx.commit().await?;
 
         map_user_row(self.pool(), row).await
     }

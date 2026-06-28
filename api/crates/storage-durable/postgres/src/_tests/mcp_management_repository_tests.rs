@@ -108,6 +108,28 @@ fn runtime_profile_interface() -> domain::McpInterfaceCatalogEntry {
     }
 }
 
+fn des_id_required_input_mapping() -> serde_json::Value {
+    serde_json::json!({
+        "interface_parameters": [
+            {
+                "name": "des_id",
+                "field_type": "string",
+                "parameter_type": "json_body",
+                "description": "des_id",
+                "required": true
+            }
+        ],
+        "mappings": [
+            {
+                "interface_param": "des_id",
+                "mcp_param": "des_id",
+                "description": "des_id",
+                "required": true
+            }
+        ]
+    })
+}
+
 #[tokio::test]
 async fn mcp_management_catalog_read_does_not_seed_default_instance() {
     let (store, workspace, actor) = seed_store().await;
@@ -207,11 +229,10 @@ async fn mcp_management_refreshes_des_id_and_exports_configuration_only() {
             usage_description: Some("Use only after checking status.".into()),
             full_description: "Restarts a selected worker through the backend interface.".into(),
             interface_entry: runtime_profile_interface(),
-            input_mapping: serde_json::json!({}),
+            input_mapping: des_id_required_input_mapping(),
             output_mapping: serde_json::json!({}),
             audit_policy: serde_json::json!({"enabled": true}),
             des_id: None,
-            des_id_required: true,
             status: domain::McpToolStatus::Enabled,
         })
         .await
@@ -327,7 +348,6 @@ async fn mcp_tool_binding_write_scope_is_limited_to_actor_workspace() {
             output_mapping: serde_json::json!({}),
             audit_policy: serde_json::json!({}),
             des_id: None,
-            des_id_required: true,
             status: domain::McpToolStatus::Enabled,
         })
         .await
@@ -413,7 +433,6 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
             output_mapping: serde_json::json!({}),
             audit_policy: serde_json::json!({}),
             des_id: None,
-            des_id_required: true,
             status: domain::McpToolStatus::Enabled,
         })
         .await
@@ -431,7 +450,6 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
             output_mapping: serde_json::json!({}),
             audit_policy: serde_json::json!({}),
             des_id: None,
-            des_id_required: true,
             status: domain::McpToolStatus::Disabled,
         })
         .await

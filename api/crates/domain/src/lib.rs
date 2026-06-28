@@ -30,8 +30,11 @@ pub use application::{
 };
 pub use audit::AuditLogRecord;
 pub use auth::{
-    ActorContext, ApiKeyKind, ApiKeyRecord, AuthenticatorRecord, BoundRole, PermissionDefinition,
-    RoleScopeKind, RoleTemplate, SessionRecord, UserAuthIdentity, UserRecord, UserStatus,
+    password_local_contact_identity_claims, password_local_identity_claims, ActorContext,
+    ApiKeyKind, ApiKeyRecord, AuthenticatorRecord, BoundRole, ExternalIdentityClaim,
+    PermissionDefinition, RoleScopeKind, RoleTemplate, SessionRecord, UserAuthIdentity, UserRecord,
+    UserStatus, AUTH_SUBJECT_TYPE_ACCOUNT, AUTH_SUBJECT_TYPE_EMAIL, AUTH_SUBJECT_TYPE_PHONE,
+    PASSWORD_LOCAL_AUTHENTICATOR_NAME,
 };
 pub use base::BaseFields;
 pub use data_source::{

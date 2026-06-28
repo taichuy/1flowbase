@@ -1,4 +1,8 @@
-use domain::{ActorContext, BoundRole, RoleScopeKind, UserRecord, UserStatus};
+use domain::{
+    password_local_identity_claims, ActorContext, BoundRole, RoleScopeKind, UserRecord, UserStatus,
+    AUTH_SUBJECT_TYPE_ACCOUNT, AUTH_SUBJECT_TYPE_EMAIL, AUTH_SUBJECT_TYPE_PHONE,
+    PASSWORD_LOCAL_AUTHENTICATOR_NAME,
+};
 use uuid::Uuid;
 
 fn sample_user(default_display_role: Option<&str>, roles: &[&str]) -> UserRecord {
@@ -42,4 +46,20 @@ fn root_actor_short_circuits_permission_checks() {
     let actor = ActorContext::root(Uuid::now_v7(), Uuid::now_v7(), "root");
 
     assert!(actor.has_permission("role_permission.manage.all"));
+}
+
+#[test]
+fn password_local_identity_claims_cover_account_email_and_phone() {
+    let claims = password_local_identity_claims("alice", "alice@example.com", Some("18800001111"));
+
+    assert_eq!(claims.len(), 3);
+    assert!(claims.iter().all(|claim| {
+        claim.authenticator_name == PASSWORD_LOCAL_AUTHENTICATOR_NAME && claim.verified
+    }));
+    assert_eq!(claims[0].subject_type, AUTH_SUBJECT_TYPE_ACCOUNT);
+    assert_eq!(claims[0].subject_value, "alice");
+    assert_eq!(claims[1].subject_type, AUTH_SUBJECT_TYPE_EMAIL);
+    assert_eq!(claims[1].subject_value, "alice@example.com");
+    assert_eq!(claims[2].subject_type, AUTH_SUBJECT_TYPE_PHONE);
+    assert_eq!(claims[2].subject_value, "18800001111");
 }

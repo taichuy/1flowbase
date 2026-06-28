@@ -857,6 +857,25 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
             .name,
         "password-local"
     );
+    let root_identities: Vec<(String, String)> = sqlx::query_as(
+        r#"
+        select subject_type, subject_value
+        from user_auth_identities
+        where user_id = $1
+        order by subject_type asc
+        "#,
+    )
+    .bind(root.id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        root_identities,
+        vec![
+            ("account".to_string(), "root".to_string()),
+            ("email".to_string(), "root@example.com".to_string()),
+        ]
+    );
 }
 
 #[tokio::test]
