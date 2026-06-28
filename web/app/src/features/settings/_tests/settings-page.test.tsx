@@ -85,6 +85,11 @@ const personalAccessTokensApi = vi.hoisted(() => ({
   revokeSettingsPersonalAccessToken: vi.fn()
 }));
 
+const authCenterApi = vi.hoisted(() => ({
+  settingsAuthCenterOverviewQueryKey: ['settings', 'auth-center', 'overview'],
+  fetchSettingsAuthCenterOverview: vi.fn()
+}));
+
 const modelProvidersApi = vi.hoisted(() => ({
   settingsModelProviderCatalogQueryKey: [
     'settings',
@@ -266,6 +271,7 @@ vi.mock('../api/roles', () => rolesApi);
 vi.mock('../api/permissions', () => permissionsApi);
 vi.mock('../api/api-docs', () => docsApi);
 vi.mock('../api/personal-access-tokens', () => personalAccessTokensApi);
+vi.mock('../api/auth-center', () => authCenterApi);
 vi.mock('../api/model-providers', () => modelProvidersApi);
 vi.mock('../api/plugins', () => pluginsApi);
 vi.mock('../api/system-runtime', () => systemRuntimeApi);
@@ -433,6 +439,18 @@ describe('SettingsPage', () => {
     personalAccessTokensApi.revokeSettingsPersonalAccessToken.mockResolvedValue(
       undefined
     );
+    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
+      default_authenticator_name: 'password-local',
+      authenticators: [
+        {
+          name: 'password-local',
+          auth_type: 'password-local',
+          title: 'Password',
+          enabled: true,
+          is_builtin: true
+        }
+      ]
+    });
     modelProvidersApi.fetchSettingsModelProviderCatalog.mockResolvedValue([]);
     modelProvidersApi.fetchSettingsModelProviderInstances.mockResolvedValue([]);
     modelProvidersApi.fetchSettingsModelProviderOptions.mockResolvedValue({
@@ -742,6 +760,20 @@ describe('SettingsPage', () => {
     expect(
       screen.queryByRole('button', { name: '新建用户' })
     ).not.toBeInTheDocument();
+  });
+
+  test('renders auth center as an independent settings route', async () => {
+    authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
+
+    renderApp('/settings/auth-center');
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/settings/auth-center');
+    });
+    expect(
+      await screen.findByRole('heading', { name: '认证中心' })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('password-local').length).toBeGreaterThan(0);
   });
 
   test('renders API key for signed-in users without management permissions', async () => {

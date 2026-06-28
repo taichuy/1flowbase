@@ -6,6 +6,7 @@ import { RolePermissionPanel } from '../../components/RolePermissionPanel';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { SystemRuntimePanel } from '../../components/SystemRuntimePanel';
 import type { SettingsSectionKey } from '../../lib/settings-sections';
+import { SettingsAuthCenterSection } from './SettingsAuthCenterSection';
 import { SettingsDataModelsSection } from './SettingsDataModelsSection';
 import { SettingsFilesSection } from './SettingsFilesSection';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -136,6 +137,12 @@ export function SettingsSectionBody({
       return (
         <SettingsSectionBoundary>
           <PersonalAccessTokensPanel />
+        </SettingsSectionBoundary>
+      );
+    case 'auth-center':
+      return (
+        <SettingsSectionBoundary>
+          <SettingsAuthCenterSection />
         </SettingsSectionBoundary>
       );
     case 'docs':

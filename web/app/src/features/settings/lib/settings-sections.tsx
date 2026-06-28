@@ -3,6 +3,7 @@ import type { SectionNavItem } from '../../../shared/ui/section-page-layout/Sect
 export type SettingsSectionKey =
   | 'docs'
   | 'api-key-authentication'
+  | 'auth-center'
   | 'system-runtime'
   | 'host-infrastructure'
   | 'memory-observation'
@@ -37,6 +38,12 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
     labelKey: 'auto.api_key_authentication',
     to: '/settings/api-key-authentication',
     requiredPermissions: []
+  },
+  {
+    key: 'auth-center',
+    labelKey: 'auto.auth_center',
+    to: '/settings/auth-center',
+    requiredPermissions: ['user.view.all']
   },
   {
     key: 'system-runtime',

@@ -89,6 +89,7 @@ use utoipa::OpenApi;
         crate::routes::session::delete_session,
         crate::routes::session::revoke_all_sessions,
         crate::routes::session::switch_workspace,
+        crate::routes::auth_center::get_auth_center_overview,
         crate::routes::system::get_release_status,
         crate::routes::system::get_runtime_profile,
         crate::routes::me::get_me,

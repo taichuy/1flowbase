@@ -79,6 +79,10 @@ impl PgControlPlaneStore {
         AuthRepository::find_authenticator(self, name).await
     }
 
+    pub async fn list_authenticators(&self) -> Result<Vec<AuthenticatorRecord>> {
+        AuthRepository::list_authenticators(self).await
+    }
+
     pub async fn find_user_for_password_login(
         &self,
         identifier: &str,

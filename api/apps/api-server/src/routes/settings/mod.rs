@@ -1,3 +1,4 @@
+pub mod auth_center;
 pub mod docs;
 pub mod file_storages;
 pub mod file_tables;
