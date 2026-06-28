@@ -1,5 +1,10 @@
-use control_plane::ports::{
-    AddModelFieldInput, CreateModelDefinitionInput, ModelDefinitionRepository,
+use control_plane::{
+    file_management::FileManagementBootstrapService,
+    ports::{
+        AddModelFieldInput, CreateFileStorageInput, CreateModelDefinitionInput,
+        FileManagementRepository, ModelDefinitionRepository,
+    },
+    system_metadata::SystemMetadataBootstrapService,
 };
 use domain::{DataModelScopeKind, ModelFieldKind, DEFAULT_SCOPE_ID};
 use runtime_core::runtime_engine::RuntimeModelError;

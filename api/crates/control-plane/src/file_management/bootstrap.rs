@@ -39,6 +39,8 @@ struct ProvisionFileTableInput {
     bound_storage_id: Uuid,
     is_builtin: bool,
     is_default: bool,
+    protection: domain::DataModelProtection,
+    grant_permission_profile: domain::ScopeDataModelPermissionProfile,
 }
 
 async fn provision_file_table<R>(
@@ -60,7 +62,7 @@ where
             external_capability_snapshot: None,
             status: domain::DataModelStatus::Published,
             api_exposure_status: domain::ApiExposureStatus::PublishedNotExposed,
-            protection: domain::DataModelProtection::default(),
+            protection: input.protection.clone(),
             code: input.code,
             title: input.title,
         })
@@ -71,14 +73,14 @@ where
             .add_model_field(&AddModelFieldInput {
                 actor_user_id: input.actor_user_id,
                 model_id: model.id,
-                physical_column_name: None,
+                physical_column_name: input.is_builtin.then_some(field.code.clone()),
                 external_field_key: None,
                 code: field.code,
                 title: field.title,
                 field_kind: field.field_kind,
                 is_system: false,
                 is_writable: true,
-                apply_physical_schema: true,
+                apply_physical_schema: !input.is_builtin,
                 is_required: field.is_required,
                 is_unique: false,
                 default_value: None,
@@ -101,7 +103,7 @@ where
             scope_id: input.grant_scope_id,
             data_model_id: published.id,
             enabled: true,
-            permission_profile: domain::ScopeDataModelPermissionProfile::ScopeAll,
+            permission_profile: input.grant_permission_profile,
             created_by: Some(input.actor_user_id),
         })
         .await?;
@@ -159,6 +161,12 @@ where
                 bound_storage_id: default_storage_id,
                 is_builtin: true,
                 is_default: true,
+                protection: domain::DataModelProtection {
+                    owner_kind: domain::DataModelOwnerKind::Core,
+                    owner_id: None,
+                    is_protected: true,
+                },
+                grant_permission_profile: domain::ScopeDataModelPermissionProfile::SystemAll,
             },
         )
         .await
@@ -192,6 +200,8 @@ where
                 bound_storage_id: command.default_storage_id,
                 is_builtin: false,
                 is_default: false,
+                protection: domain::DataModelProtection::default(),
+                grant_permission_profile: domain::ScopeDataModelPermissionProfile::ScopeAll,
             },
         )
         .await

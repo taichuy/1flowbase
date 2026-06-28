@@ -60,6 +60,12 @@ async fn bootstrap_creates_builtin_attachments_once() {
     .expect("builtin attachments should create a model definition");
     assert_eq!(model.scope_kind, DataModelScopeKind::System);
     assert_eq!(model.scope_id, SYSTEM_SCOPE_ID);
+    assert_eq!(model.physical_table_name, "attachments");
+    assert_eq!(
+        model.protection.owner_kind,
+        domain::DataModelOwnerKind::Core
+    );
+    assert!(model.protection.is_protected);
 
     let grants = ModelDefinitionRepository::list_scope_data_model_grants(
         &repository,
@@ -72,7 +78,7 @@ async fn bootstrap_creates_builtin_attachments_once() {
     assert_eq!(grants[0].data_model_id, model.id);
     assert_eq!(
         grants[0].permission_profile,
-        ScopeDataModelPermissionProfile::ScopeAll
+        ScopeDataModelPermissionProfile::SystemAll
     );
 }
 

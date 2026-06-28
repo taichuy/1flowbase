@@ -258,6 +258,43 @@ async fn model_definition_repository_creates_scope_bound_metadata_without_publis
 }
 
 #[tokio::test]
+async fn model_definition_repository_binds_core_system_models_to_registered_tables() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+
+    for code in ["attachments", "users", "roles"] {
+        let created = ModelDefinitionRepository::create_model_definition(
+            &store,
+            &CreateModelDefinitionInput {
+                actor_user_id: Uuid::nil(),
+                scope_kind: DataModelScopeKind::System,
+                scope_id: SYSTEM_SCOPE_ID,
+                data_source_instance_id: None,
+                source_kind: DataModelSourceKind::MainSource,
+                external_resource_key: None,
+                external_table_id: None,
+                external_capability_snapshot: None,
+                code: code.into(),
+                title: code.into(),
+                status: DataModelStatus::Published,
+                api_exposure_status: ApiExposureStatus::PublishedNotExposed,
+                protection: DataModelProtection {
+                    owner_kind: domain::DataModelOwnerKind::Core,
+                    owner_id: None,
+                    is_protected: true,
+                },
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(created.physical_table_name, code);
+        assert!(!created.physical_table_name.starts_with("rtm_system_"));
+    }
+}
+
+#[tokio::test]
 async fn model_definition_repository_persists_status_exposure_owner_and_scope_grants() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();

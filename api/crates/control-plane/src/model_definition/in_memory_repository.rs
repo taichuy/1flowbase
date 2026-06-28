@@ -18,7 +18,7 @@ use crate::{
 };
 
 use super::{
-    naming::{build_physical_column_name, build_physical_table_name},
+    naming::{build_physical_column_name, build_physical_table_name, registered_system_table_name},
     service::ModelDefinitionService,
 };
 
@@ -191,7 +191,14 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
             external_capability_snapshot: input.external_capability_snapshot.clone(),
             code: input.code.clone(),
             title: input.title.clone(),
-            physical_table_name: build_physical_table_name(input.scope_kind, &input.code),
+            physical_table_name: registered_system_table_name(
+                input.scope_kind,
+                input.source_kind,
+                &input.protection,
+                &input.code,
+            )
+            .map(str::to_string)
+            .unwrap_or_else(|| build_physical_table_name(input.scope_kind, &input.code)),
             acl_namespace: format!("state_model.{}", input.code),
             audit_namespace: format!("audit.state_model.{}", input.code),
             fields: vec![],
