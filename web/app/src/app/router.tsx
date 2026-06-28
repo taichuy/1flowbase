@@ -354,6 +354,13 @@ const settingsApiKeyAuthenticationRoute = createRoute({
   component: () => renderSettingsRoute('api-key-authentication')
 });
 
+const settingsAuthCenterRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/auth-center',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('auth-center')
+});
+
 const settingsSystemRuntimeRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/system-runtime',
@@ -479,6 +486,7 @@ const routeTree = rootRoute.addChildren([
     settingsIndexRoute,
     settingsDocsRoute,
     settingsApiKeyAuthenticationRoute,
+    settingsAuthCenterRoute,
     settingsSystemRuntimeRoute,
     settingsHostInfrastructureRoute,
     settingsMemoryObservationRoute,

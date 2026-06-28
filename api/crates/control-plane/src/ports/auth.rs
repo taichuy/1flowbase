@@ -162,6 +162,13 @@ pub trait BootstrapRepository: Send + Sync {
 #[async_trait]
 pub trait AuthRepository: Send + Sync {
     async fn find_authenticator(&self, name: &str) -> anyhow::Result<Option<AuthenticatorRecord>>;
+    async fn list_authenticators(&self) -> anyhow::Result<Vec<AuthenticatorRecord>> {
+        Ok(self
+            .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME)
+            .await?
+            .into_iter()
+            .collect())
+    }
     async fn find_user_for_password_login(
         &self,
         identifier: &str,

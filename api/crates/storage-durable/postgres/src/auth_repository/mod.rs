@@ -513,6 +513,32 @@ impl AuthRepository for PgControlPlaneStore {
         }))
     }
 
+    async fn list_authenticators(&self) -> Result<Vec<AuthenticatorRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select name, auth_type, title, enabled, is_builtin, options
+            from authenticators
+            order by sort_order asc, name asc
+            "#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                PgAuthMapper::to_authenticator_record(StoredAuthenticatorRow {
+                    name: row.get("name"),
+                    auth_type: row.get("auth_type"),
+                    title: row.get("title"),
+                    enabled: row.get("enabled"),
+                    is_builtin: row.get("is_builtin"),
+                    options: row.get("options"),
+                })
+            })
+            .collect())
+    }
+
     async fn find_user_for_password_login(&self, identifier: &str) -> Result<Option<UserRecord>> {
         let lowered = identifier.trim().to_lowercase();
         let rows = sqlx::query(

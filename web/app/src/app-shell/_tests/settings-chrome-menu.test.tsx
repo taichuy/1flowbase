@@ -58,6 +58,7 @@ describe('createSettingsChromeMenuItems', () => {
     });
 
     expect(labels).toContain('数据源');
+    expect(labels).toContain('认证中心');
     expect(labels).not.toContain(undefined);
   });
 
