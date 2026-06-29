@@ -23,7 +23,7 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/create")
                 .header("cookie", &manager_cookie)
                 .header("x-csrf-token", &manager_csrf)
                 .header("content-type", "application/json")
@@ -46,7 +46,7 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/create")
                 .header("cookie", &admin_cookie)
                 .header("x-csrf-token", &admin_csrf)
                 .header("content-type", "application/json")
@@ -69,7 +69,7 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/create")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -87,7 +87,7 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/list")
                 .header("cookie", &manager_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -107,7 +107,7 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/list")
                 .header("cookie", &admin_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -124,7 +124,7 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/list")
                 .header("cookie", &root_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -141,9 +141,7 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!(
-                    "/api/runtime/models/orders/records/{admin_record_id}"
-                ))
+                .uri(format!("/api/runtime/models/orders/get/{admin_record_id}"))
                 .header("cookie", &manager_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -158,7 +156,7 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
             Request::builder()
                 .method("GET")
                 .uri(format!(
-                    "/api/runtime/models/orders/records/{manager_record_id}"
+                    "/api/runtime/models/orders/get/{manager_record_id}"
                 ))
                 .header("cookie", &admin_cookie)
                 .body(Body::empty())
@@ -172,9 +170,7 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!(
-                    "/api/runtime/models/orders/records/{admin_record_id}"
-                ))
+                .uri(format!("/api/runtime/models/orders/get/{admin_record_id}"))
                 .header("cookie", &root_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -217,9 +213,7 @@ async fn runtime_model_routes_gate_crud_by_model_status_changes() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!(
-                    "/api/runtime/models/{model_code}/records/{record_id}"
-                ))
+                .uri(format!("/api/runtime/models/{model_code}/get/{record_id}"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

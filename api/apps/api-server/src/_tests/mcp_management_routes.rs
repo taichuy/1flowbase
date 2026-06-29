@@ -142,31 +142,31 @@ async fn mcp_interface_capabilities_include_bindable_runtime_data_model_crud_ope
     for (method, path, suffix, risk_level) in [
         (
             "GET",
-            "/api/runtime/models/mcp_ready_orders/records",
+            "/api/runtime/models/mcp_ready_orders/list",
             "list_records",
             "low",
         ),
         (
             "POST",
-            "/api/runtime/models/mcp_ready_orders/records",
+            "/api/runtime/models/mcp_ready_orders/create",
             "create_record",
             "high",
         ),
         (
             "GET",
-            "/api/runtime/models/mcp_ready_orders/records/{id}",
+            "/api/runtime/models/mcp_ready_orders/get/{id}",
             "get_record",
             "low",
         ),
         (
             "PATCH",
-            "/api/runtime/models/mcp_ready_orders/records/{id}",
+            "/api/runtime/models/mcp_ready_orders/update/{id}",
             "update_record",
             "high",
         ),
         (
             "DELETE",
-            "/api/runtime/models/mcp_ready_orders/records/{id}",
+            "/api/runtime/models/mcp_ready_orders/delete/{id}",
             "delete_record",
             "critical",
         ),
@@ -183,11 +183,11 @@ async fn mcp_interface_capabilities_include_bindable_runtime_data_model_crud_ope
         assert_eq!(entry["risk_level"], json!(risk_level));
         assert_ne!(
             entry["path"],
-            json!("/api/runtime/models/{model_code}/records")
+            json!("/api/runtime/models/{model_code}/list")
         );
         assert_ne!(
             entry["path"],
-            json!("/api/runtime/models/{model_code}/records/{id}")
+            json!("/api/runtime/models/{model_code}/get/{id}")
         );
     }
     assert!(!entries.iter().any(|entry| entry["path"]

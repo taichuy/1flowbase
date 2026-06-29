@@ -245,12 +245,16 @@ function encodedPathSegment(value: string) {
   return encodeURIComponent(value);
 }
 
-function runtimeModelRecordsPath(modelCode: string) {
-  return `/api/runtime/models/${encodedPathSegment(modelCode)}/records`;
+function runtimeModelActionPath(modelCode: string, action: string) {
+  return `/api/runtime/models/${encodedPathSegment(modelCode)}/${action}`;
 }
 
-function runtimeModelRecordPath(modelCode: string, recordId: string) {
-  return `${runtimeModelRecordsPath(modelCode)}/${encodedPathSegment(recordId)}`;
+function runtimeModelRecordActionPath(
+  modelCode: string,
+  action: string,
+  recordId: string
+) {
+  return `${runtimeModelActionPath(modelCode, action)}/${encodedPathSegment(recordId)}`;
 }
 
 function serializeRuntimeRecordFilter(
@@ -510,7 +514,7 @@ export function fetchConsoleDataModelRecordPreview(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleRuntimeRecordPreview>({
-    path: appendRuntimeRecordsQuery(runtimeModelRecordsPath(modelCode), {
+    path: appendRuntimeRecordsQuery(runtimeModelActionPath(modelCode, 'list'), {
       page: 1,
       page_size: 20
     }),
@@ -524,7 +528,10 @@ export function fetchConsoleRuntimeModelRecords(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleRuntimeRecordPreview>({
-    path: appendRuntimeRecordsQuery(runtimeModelRecordsPath(modelCode), input),
+    path: appendRuntimeRecordsQuery(
+      runtimeModelActionPath(modelCode, 'list'),
+      input
+    ),
     baseUrl
   });
 }
@@ -535,7 +542,7 @@ export function fetchConsoleRuntimeModelRecord(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleRuntimeModelRecord>({
-    path: runtimeModelRecordPath(modelCode, recordId),
+    path: runtimeModelRecordActionPath(modelCode, 'get', recordId),
     baseUrl
   });
 }
@@ -547,7 +554,7 @@ export function createConsoleRuntimeModelRecord(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleRuntimeModelRecord>({
-    path: runtimeModelRecordsPath(modelCode),
+    path: runtimeModelActionPath(modelCode, 'create'),
     method: 'POST',
     body: input,
     csrfToken,
@@ -563,7 +570,7 @@ export function updateConsoleRuntimeModelRecord(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleRuntimeModelRecord>({
-    path: runtimeModelRecordPath(modelCode, recordId),
+    path: runtimeModelRecordActionPath(modelCode, 'update', recordId),
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -578,7 +585,7 @@ export function deleteConsoleRuntimeModelRecord(
   baseUrl?: string
 ) {
   return apiFetch<{ deleted: true }>({
-    path: runtimeModelRecordPath(modelCode, recordId),
+    path: runtimeModelRecordActionPath(modelCode, 'delete', recordId),
     method: 'DELETE',
     csrfToken,
     baseUrl

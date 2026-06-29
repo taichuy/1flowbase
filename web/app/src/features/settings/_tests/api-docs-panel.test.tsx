@@ -597,9 +597,9 @@ describe('ApiDocsPanel', () => {
   test('normalizes Scalar deep links into raw endpoint paths before copying', () => {
     expect(
       normalizeScalarClipboardText(
-        'http://192.168.184.130:3100/settings/docs?category=runtime&operation=create_record#tag/crateroutesruntime_models/POST/api/runtime/models/{model_code}/records'
+        'http://192.168.184.130:3100/settings/docs?category=runtime&operation=create_record#tag/crateroutesruntime_models/POST/api/runtime/models/{model_code}/create'
       )
-    ).toBe('/api/runtime/models/{model_code}/records');
+    ).toBe('/api/runtime/models/{model_code}/create');
     expect(
       normalizeScalarClipboardText(
         'http://192.168.184.130:3100/settings/docs?category=runtime#GET/api/runtime/jobs'

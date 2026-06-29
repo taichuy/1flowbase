@@ -456,7 +456,7 @@ async fn list_records_with_api_key(
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/runtime/models/{model_code}/records"))
+                .uri(format!("/api/runtime/models/{model_code}/list"))
                 .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
@@ -624,7 +624,7 @@ async fn create_runtime_record(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/runtime/models/{model_code}/records"))
+                .uri(format!("/api/runtime/models/{model_code}/create"))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -649,21 +649,19 @@ async fn assert_runtime_crud_blocked(
     let requests = [
         Request::builder()
             .method("GET")
-            .uri(format!("/api/runtime/models/{model_code}/records"))
+            .uri(format!("/api/runtime/models/{model_code}/list"))
             .header("cookie", cookie)
             .body(Body::empty())
             .unwrap(),
         Request::builder()
             .method("GET")
-            .uri(format!(
-                "/api/runtime/models/{model_code}/records/{record_id}"
-            ))
+            .uri(format!("/api/runtime/models/{model_code}/get/{record_id}"))
             .header("cookie", cookie)
             .body(Body::empty())
             .unwrap(),
         Request::builder()
             .method("POST")
-            .uri(format!("/api/runtime/models/{model_code}/records"))
+            .uri(format!("/api/runtime/models/{model_code}/create"))
             .header("cookie", cookie)
             .header("x-csrf-token", csrf)
             .header("content-type", "application/json")
@@ -672,7 +670,7 @@ async fn assert_runtime_crud_blocked(
         Request::builder()
             .method("PATCH")
             .uri(format!(
-                "/api/runtime/models/{model_code}/records/{record_id}"
+                "/api/runtime/models/{model_code}/update/{record_id}"
             ))
             .header("cookie", cookie)
             .header("x-csrf-token", csrf)
@@ -682,7 +680,7 @@ async fn assert_runtime_crud_blocked(
         Request::builder()
             .method("DELETE")
             .uri(format!(
-                "/api/runtime/models/{model_code}/records/{record_id}"
+                "/api/runtime/models/{model_code}/delete/{record_id}"
             ))
             .header("cookie", cookie)
             .header("x-csrf-token", csrf)

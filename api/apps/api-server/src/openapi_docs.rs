@@ -354,8 +354,11 @@ fn derive_category(path: &str, operation_id: &str) -> (String, String, bool) {
 fn should_hide_generic_runtime_model_crud(path: &str) -> bool {
     matches!(
         path,
-        "/api/runtime/models/{model_code}/records"
-            | "/api/runtime/models/{model_code}/records/{id}"
+        "/api/runtime/models/{model_code}/list"
+            | "/api/runtime/models/{model_code}/get/{id}"
+            | "/api/runtime/models/{model_code}/create"
+            | "/api/runtime/models/{model_code}/update/{id}"
+            | "/api/runtime/models/{model_code}/delete/{id}"
     )
 }
 

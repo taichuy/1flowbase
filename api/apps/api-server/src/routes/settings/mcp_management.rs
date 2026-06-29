@@ -942,7 +942,11 @@ fn mcp_interface_scope_policy(
 fn runtime_data_model_crud_path_is_concrete(path: &str) -> bool {
     path.starts_with("/api/runtime/models/")
         && !path.contains("{model_code}")
-        && (path.ends_with("/records") || path.ends_with("/records/{id}"))
+        && (path.ends_with("/list")
+            || path.ends_with("/create")
+            || path.ends_with("/get/{id}")
+            || path.ends_with("/update/{id}")
+            || path.ends_with("/delete/{id}"))
 }
 
 fn openapi_operation_node<'a>(

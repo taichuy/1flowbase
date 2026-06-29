@@ -214,13 +214,19 @@ fn registry_excludes_generic_runtime_model_crud_from_public_docs_catalog() {
         "openapi": "3.1.0",
         "info": { "title": "T", "version": "1" },
         "paths": {
-            "/api/runtime/models/{model_code}/records": {
-                "get": { "operationId": "list_records", "summary": "List runtime model records" },
+            "/api/runtime/models/{model_code}/list": {
+                "get": { "operationId": "list_records", "summary": "List runtime model records" }
+            },
+            "/api/runtime/models/{model_code}/create": {
                 "post": { "operationId": "create_record", "summary": "Create runtime model record" }
             },
-            "/api/runtime/models/{model_code}/records/{id}": {
-                "get": { "operationId": "get_record", "summary": "Get runtime model record" },
-                "patch": { "operationId": "update_record", "summary": "Update runtime model record" },
+            "/api/runtime/models/{model_code}/get/{id}": {
+                "get": { "operationId": "get_record", "summary": "Get runtime model record" }
+            },
+            "/api/runtime/models/{model_code}/update/{id}": {
+                "patch": { "operationId": "update_record", "summary": "Update runtime model record" }
+            },
+            "/api/runtime/models/{model_code}/delete/{id}": {
                 "delete": { "operationId": "delete_record", "summary": "Delete runtime model record" }
             },
             "/api/runtime/jobs": {
