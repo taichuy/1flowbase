@@ -25,21 +25,18 @@ pub(super) fn normalize_api_exposure_for_status(
     status: domain::DataModelStatus,
     exposure: domain::ApiExposureStatus,
 ) -> Result<domain::ApiExposureStatus> {
-    let effective_exposure = if status == domain::DataModelStatus::Draft {
-        domain::ApiExposureStatus::Draft
-    } else {
-        exposure
-    };
-    if domain::ApiExposureStatus::validate_for_status(
-        status,
-        effective_exposure,
-        domain::ApiExposureReadiness::default(),
-    )
-    .is_rejected()
-    {
-        Err(ControlPlaneError::InvalidInput("api_exposure_status").into())
-    } else {
-        Ok(effective_exposure)
+    match status {
+        domain::DataModelStatus::Draft => Ok(domain::ApiExposureStatus::Draft),
+        domain::DataModelStatus::Published => {
+            if exposure == domain::ApiExposureStatus::Draft {
+                Err(ControlPlaneError::InvalidInput("api_exposure_status").into())
+            } else {
+                Ok(exposure)
+            }
+        }
+        domain::DataModelStatus::Disabled | domain::DataModelStatus::Broken => {
+            Ok(domain::ApiExposureStatus::PublishedNotExposed)
+        }
     }
 }
 

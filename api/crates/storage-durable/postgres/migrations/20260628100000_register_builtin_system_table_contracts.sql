@@ -197,17 +197,3 @@ do update set
     sort_order = excluded.sort_order,
     availability_status = 'available',
     updated_at = now();
-
-update scope_data_model_grants grants
-set enabled = true,
-    permission_profile = 'system_all',
-    updated_at = now()
-from model_definitions definitions
-join builtin_system_tables tables on tables.code = definitions.code
-where grants.data_model_id = definitions.id
-  and grants.scope_kind = 'system'
-  and grants.scope_id = '00000000-0000-0000-0000-000000000000'::uuid
-  and definitions.scope_kind = 'system'
-  and definitions.scope_id = '00000000-0000-0000-0000-000000000000'::uuid
-  and definitions.data_source_instance_id is null
-  and definitions.source_kind = 'main_source';

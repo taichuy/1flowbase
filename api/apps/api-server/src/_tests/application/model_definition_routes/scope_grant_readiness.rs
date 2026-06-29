@@ -36,7 +36,7 @@ async fn model_definition_scope_grant_routes_do_not_drive_api_exposure_status() 
     let model_id = created["data"]["id"].as_str().unwrap().to_string();
     assert_eq!(
         created["data"]["api_exposure_status"],
-        json!("api_exposed_ready")
+        json!("published_not_exposed")
     );
 
     let create_grant_response = app
@@ -121,7 +121,7 @@ async fn model_definition_scope_grant_routes_do_not_drive_api_exposure_status() 
     .unwrap();
     assert_eq!(
         model_payload["data"]["api_exposure_status"],
-        json!("api_exposed_ready")
+        json!("published_not_exposed")
     );
     assert_eq!(
         audit_event_count(&database_url, "state_model.scope_grant_created").await,

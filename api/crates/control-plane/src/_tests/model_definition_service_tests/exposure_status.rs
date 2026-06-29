@@ -46,7 +46,7 @@ async fn update_model_status_forces_draft_exposure_and_published_exposure() {
 }
 
 #[tokio::test]
-async fn update_model_status_derives_ready_from_published_without_readiness_facts() {
+async fn update_model_status_persists_explicit_ready_exposure_for_published_model() {
     let service = ModelDefinitionService::for_tests();
     let created = service
         .create_model(CreateModelDefinitionCommand {
@@ -80,7 +80,7 @@ async fn update_model_status_derives_ready_from_published_without_readiness_fact
 }
 
 #[tokio::test]
-async fn get_model_derives_exposure_from_data_model_status_without_api_key() {
+async fn get_model_preserves_published_api_exposure_metadata() {
     let actor_user_id = Uuid::now_v7();
     let workspace_id = Uuid::now_v7();
     for stored_status in [
@@ -98,10 +98,7 @@ async fn get_model_derives_exposure_from_data_model_status_without_api_key() {
 
         let published = service.get_model(actor_user_id, model_id).await.unwrap();
 
-        assert_eq!(
-            published.api_exposure_status,
-            ApiExposureStatus::ApiExposedReady
-        );
+        assert_eq!(published.api_exposure_status, stored_status);
     }
 
     let model_id = Uuid::now_v7();
@@ -123,7 +120,7 @@ async fn get_model_derives_exposure_from_data_model_status_without_api_key() {
 }
 
 #[tokio::test]
-async fn get_model_ignores_stored_legacy_exposure_for_visible_exposure() {
+async fn get_model_keeps_default_published_exposure_not_exposed() {
     let repository = InMemoryModelDefinitionRepository::default();
     let service = ModelDefinitionService::new(repository.clone());
     let created = service
@@ -140,11 +137,11 @@ async fn get_model_ignores_stored_legacy_exposure_for_visible_exposure() {
         .await
         .unwrap();
 
-    let ready = service.get_model(Uuid::nil(), created.id).await.unwrap();
+    let not_exposed = service.get_model(Uuid::nil(), created.id).await.unwrap();
 
     assert_eq!(
-        ready.api_exposure_status,
-        ApiExposureStatus::ApiExposedReady
+        not_exposed.api_exposure_status,
+        ApiExposureStatus::PublishedNotExposed
     );
 }
 

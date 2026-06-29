@@ -72,7 +72,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
     assert_eq!(created["data"]["status"], json!("published"));
     assert_eq!(
         created["data"]["api_exposure_status"],
-        json!("api_exposed_ready")
+        json!("published_not_exposed")
     );
     assert_eq!(created["data"]["runtime_availability"], json!("available"));
     assert_eq!(created["data"]["builtin_kind"], serde_json::Value::Null);
