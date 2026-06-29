@@ -2,13 +2,14 @@
 memory_type: project
 title: System-level MCP issue tree redesigned
 created_at: 2026-06-07 17
-updated_at: 2026-06-22 22
+updated_at: 2026-06-29 09
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/770
   - https://github.com/taichuy/1flowbase/issues/771
   - https://github.com/taichuy/1flowbase/issues/772
   - https://github.com/taichuy/1flowbase/issues/773
+  - https://github.com/taichuy/1flowbase/issues/1163
 status: issue_tree_discussion
 keywords:
   - MCP management
@@ -56,6 +57,11 @@ keywords:
 - L3 #1047 `[讨论]前端 Tool 配置表格、多字段筛选与多步弹窗接 API`
 - L3 #1048 `[讨论]前端 MCP 实例列表、目录树编辑与接口对接`
 - L3 #1049 `[讨论]MCP 配置 tab 与元工具默认配置接口对接`
+- L3 #1163 `[待开发]MCP 接口参数 descriptor 跟随 OpenAPI 嵌套 schema`
+
+## 2026-06-29 follow-up
+
+用户确认 MCP Tool 配置的接口参数应跟随 OpenAPI schema，而不是跟随 Scalar 页面展示或 curl example。AI 已创建 ready L3 #1163，作为 #772 的 closed historical MCP workstream follow-up；范围是后端递归生成 OpenAPI nested request body descriptor、前端消费 descriptor、映射下拉 / 全部 / debug 支持 nested path，并在 debug / 参数构造中还原 nested JSON。
 
 ## Issue 数量
 
