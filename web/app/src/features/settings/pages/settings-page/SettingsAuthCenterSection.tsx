@@ -240,7 +240,6 @@ export function SettingsAuthCenterSection() {
       );
     },
     onSuccess: async (authenticator) => {
-      setSelectedAuthenticatorName(authenticator.name);
       queryClient.setQueryData<SettingsAuthCenterOverview>(
         settingsAuthCenterOverviewQueryKey,
         (overview) =>
@@ -253,6 +252,7 @@ export function SettingsAuthCenterSection() {
               }
             : overview
       );
+      setSelectedAuthenticatorName(null);
       await queryClient.invalidateQueries({
         queryKey: settingsAuthCenterOverviewQueryKey
       });

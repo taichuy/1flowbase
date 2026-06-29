@@ -895,7 +895,7 @@ describe('SettingsPage', () => {
     expect(within(dialog).getByRole('switch', { name: '启用' })).toBeChecked();
   });
 
-  test('submits auth center config and refreshes the open drawer', async () => {
+  test('submits auth center config, refreshes the list, and closes the drawer', async () => {
     authenticateWithPermissions([
       'route_page.view.all',
       'user.view.all',
@@ -998,8 +998,8 @@ describe('SettingsPage', () => {
     expect(screen.getByText('OIDC Login')).toBeInTheDocument();
     await waitFor(() => {
       expect(
-        within(dialog).getByDisplayValue('Primary OIDC login')
-      ).toBeInTheDocument();
+        screen.queryByRole('dialog', { name: 'OIDC Login 配置' })
+      ).not.toBeInTheDocument();
     });
   });
 
