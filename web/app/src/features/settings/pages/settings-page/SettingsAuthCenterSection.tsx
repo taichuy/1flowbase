@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
-  Descriptions,
   Drawer,
   Flex,
   Form,
@@ -40,11 +39,16 @@ type AuthenticatorConfigFormValues = {
 function authCenterConfigFormValues(
   row: AuthenticatorRow
 ): AuthenticatorConfigFormValues {
+  const description =
+    typeof row.config_values.description === 'string'
+      ? row.config_values.description
+      : null;
+
   return {
-    name: row.config_values.name,
-    title: row.config_values.title,
-    enabled: row.config_values.enabled,
-    description: row.config_values.description ?? null
+    name: row.name,
+    title: row.title,
+    enabled: row.enabled,
+    description
   };
 }
 
@@ -105,14 +109,6 @@ function AuthenticatorConfigDrawer({
           size={16}
           className="settings-auth-center-drawer"
         >
-          <Descriptions size="small" column={1}>
-            <Descriptions.Item label={i18nText('settings', 'auto.name')}>
-              {authenticator.name}
-            </Descriptions.Item>
-            <Descriptions.Item label={i18nText('settings', 'auto.kind')}>
-              {authenticator.auth_type}
-            </Descriptions.Item>
-          </Descriptions>
           {accessErrorMessage ? (
             <Alert type="error" showIcon message={accessErrorMessage} />
           ) : null}
@@ -124,17 +120,20 @@ function AuthenticatorConfigDrawer({
             layout="vertical"
             onFinish={(values) => onSubmit(authenticator.name, values)}
           >
-            <Form.Item name="name" label={i18nText('settings', 'auto.name')}>
+            <Form.Item
+              name="name"
+              label={i18nText('settings', 'auto.identifier')}
+            >
               <Input disabled readOnly />
             </Form.Item>
             <Form.Item
               name="title"
-              label={i18nText('settings', 'auto.title')}
+              label={i18nText('settings', 'auto.name')}
               rules={[
                 {
                   required: true,
                   message: i18nText('settings', 'auto.please_fill_in', {
-                    value1: i18nText('settings', 'auto.title')
+                    value1: i18nText('settings', 'auto.name')
                   })
                 }
               ]}
@@ -259,17 +258,12 @@ export function SettingsAuthCenterSection() {
   });
   const authenticatorColumns: ColumnsType<AuthenticatorRow> = [
     {
-      title: i18nText('settings', 'auto.name'),
+      title: i18nText('settings', 'auto.identifier'),
       dataIndex: 'name',
       key: 'name'
     },
     {
-      title: i18nText('settings', 'auto.kind'),
-      dataIndex: 'auth_type',
-      key: 'auth_type'
-    },
-    {
-      title: i18nText('settings', 'auto.title'),
+      title: i18nText('settings', 'auto.name'),
       dataIndex: 'title',
       key: 'title'
     },

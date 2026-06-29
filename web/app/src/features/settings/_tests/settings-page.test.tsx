@@ -806,9 +806,6 @@ describe('SettingsPage', () => {
             }
           ],
           config_values: {
-            name: 'oidc-main',
-            title: 'OIDC',
-            enabled: false,
             description: 'Primary OIDC',
             extension_config: {
               issuer_url: 'https://idp.example.com',
@@ -833,6 +830,9 @@ describe('SettingsPage', () => {
       screen.getByRole('columnheader', { name: '启用' })
     ).toBeInTheDocument();
     expect(
+      screen.queryByRole('columnheader', { name: '类型' })
+    ).not.toBeInTheDocument();
+    expect(
       screen.getByRole('columnheader', { name: '操作' })
     ).toBeInTheDocument();
 
@@ -846,13 +846,53 @@ describe('SettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: 'OIDC 配置' });
     expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('名称')).toBeDisabled();
+    expect(within(dialog).queryByText('类型')).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText('标识')).toBeDisabled();
     expect(within(dialog).getByDisplayValue('oidc-main')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('标题')).toHaveValue('OIDC');
+    expect(within(dialog).getByLabelText('名称')).toHaveValue('OIDC');
     expect(within(dialog).getByLabelText('说明')).toHaveValue('Primary OIDC');
     expect(
       within(dialog).getByRole('switch', { name: '启用' })
     ).not.toBeChecked();
+  });
+
+  test('initializes auth center config form from authenticator fields', async () => {
+    authenticateWithPermissions([
+      'route_page.view.all',
+      'user.view.all',
+      'user.manage.all'
+    ]);
+    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
+      default_authenticator_name: 'password-local',
+      authenticators: [
+        {
+          name: 'password-local',
+          auth_type: 'password-local',
+          title: 'Password',
+          enabled: true,
+          is_builtin: true,
+          config_schema: [],
+          config_values: {
+            description: 'Local password authentication',
+            extension_config: {}
+          }
+        }
+      ]
+    });
+
+    renderApp('/settings/auth-center');
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Password 配置' });
+
+    expect(within(dialog).getByLabelText('标识')).toHaveValue(
+      'password-local'
+    );
+    expect(within(dialog).getByLabelText('名称')).toHaveValue('Password');
+    expect(within(dialog).getByLabelText('说明')).toHaveValue(
+      'Local password authentication'
+    );
+    expect(within(dialog).getByRole('switch', { name: '启用' })).toBeChecked();
   });
 
   test('submits auth center config and refreshes the open drawer', async () => {
@@ -930,9 +970,9 @@ describe('SettingsPage', () => {
     fireEvent.click(editButton);
     const dialog = await screen.findByRole('dialog', { name: 'OIDC 配置' });
 
-    expect(within(dialog).getByLabelText('名称')).toBeDisabled();
+    expect(within(dialog).getByLabelText('标识')).toBeDisabled();
     expect(within(dialog).getByDisplayValue('oidc-main')).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('标题'), {
+    fireEvent.change(within(dialog).getByLabelText('名称'), {
       target: { value: 'OIDC Login' }
     });
     fireEvent.change(within(dialog).getByLabelText('说明'), {
@@ -996,7 +1036,7 @@ describe('SettingsPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
-    fireEvent.change(within(dialog).getByLabelText('标题'), {
+    fireEvent.change(within(dialog).getByLabelText('名称'), {
       target: { value: 'OIDC Login' }
     });
     fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
@@ -1036,7 +1076,7 @@ describe('SettingsPage', () => {
     expect(
       within(dialog).getByText('需要认证器管理权限。')
     ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('标题')).toBeDisabled();
+    expect(within(dialog).getByLabelText('名称')).toBeDisabled();
     expect(within(dialog).getByRole('switch', { name: '启用' })).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: /保\s*存/ })).toBeDisabled();
   });
@@ -1076,7 +1116,7 @@ describe('SettingsPage', () => {
     expect(
       within(dialog).getByText('缺少安全校验令牌，请刷新页面后重试。')
     ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('标题')).toBeDisabled();
+    expect(within(dialog).getByLabelText('名称')).toBeDisabled();
     expect(within(dialog).getByRole('switch', { name: '启用' })).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: /保\s*存/ })).toBeDisabled();
   });
@@ -1113,7 +1153,7 @@ describe('SettingsPage', () => {
       await screen.findByRole('dialog', { name: 'Password 配置' })
     ).toBeInTheDocument();
     expect(screen.getByLabelText('名称')).toBeDisabled();
-    expect(screen.getByLabelText('标题')).toHaveValue('Password');
+    expect(screen.getByLabelText('名称')).toHaveValue('Password');
     expect(screen.getByRole('switch', { name: '启用' })).toBeChecked();
   });
 

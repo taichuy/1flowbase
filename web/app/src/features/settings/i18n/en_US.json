@@ -162,7 +162,7 @@
     "required": "Required",
     "preset_models": "Preset models:",
     "leave_blank_retain_key_click_show_view_modify_value": "Leave it blank to retain the current key; click Show to view and modify the current value.",
-    "identifier": "logo",
+    "identifier": "Identifier",
     "not_reachable": "Not reachable",
     "email_login": "Email login",
     "suppliers_available_yet": "No suppliers available yet",
