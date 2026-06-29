@@ -31,6 +31,30 @@ impl PgControlPlaneStore {
         BootstrapRepository::upsert_authenticator(self, authenticator).await
     }
 
+    pub async fn update_authenticator_config(
+        &self,
+        authenticator: &AuthenticatorRecord,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            update authenticators
+            set title = $2,
+                enabled = $3,
+                options = $4,
+                updated_at = now()
+            where name = $1
+            "#,
+        )
+        .bind(&authenticator.name)
+        .bind(&authenticator.title)
+        .bind(authenticator.enabled)
+        .bind(&authenticator.options)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn upsert_permission_catalog(
         &self,
         permissions: &[PermissionDefinition],

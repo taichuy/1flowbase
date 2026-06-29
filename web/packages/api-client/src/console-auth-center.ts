@@ -4,6 +4,19 @@ export interface ConsoleAuthCenterConfigField {
   key: string;
   label: string;
   type: string;
+  control?: string;
+  read_only?: boolean;
+  required?: boolean;
+  pattern?: string;
+}
+
+export interface ConsoleAuthCenterAuthenticatorConfigValues {
+  name: string;
+  title: string;
+  enabled: boolean;
+  description?: string | null;
+  extension_config?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface ConsoleAuthCenterAuthenticator {
@@ -13,7 +26,14 @@ export interface ConsoleAuthCenterAuthenticator {
   enabled: boolean;
   is_builtin: boolean;
   config_schema: ConsoleAuthCenterConfigField[];
-  config_values: Record<string, unknown>;
+  config_values: ConsoleAuthCenterAuthenticatorConfigValues;
+}
+
+export interface ConsoleAuthCenterAuthenticatorConfigInput {
+  name?: string;
+  title: string;
+  enabled: boolean;
+  description?: string | null;
 }
 
 export interface ConsoleAuthCenterOverview {
@@ -36,6 +56,21 @@ export function enableConsoleAuthCenterAuthenticator(
   return apiFetch<ConsoleAuthCenterAuthenticator>({
     path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorName)}/actions/enable`,
     method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleAuthCenterAuthenticatorConfig(
+  authenticatorName: string,
+  input: ConsoleAuthCenterAuthenticatorConfigInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleAuthCenterAuthenticator> {
+  return apiFetch<ConsoleAuthCenterAuthenticator>({
+    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorName)}/config`,
+    method: 'PUT',
+    body: input,
     csrfToken,
     baseUrl
   });

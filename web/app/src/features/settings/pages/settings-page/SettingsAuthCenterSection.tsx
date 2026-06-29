@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -9,7 +9,6 @@ import {
   Flex,
   Form,
   Input,
-  InputNumber,
   Space,
   Switch,
   Table,
@@ -24,54 +23,67 @@ import {
   enableSettingsAuthCenterAuthenticator,
   fetchSettingsAuthCenterOverview,
   settingsAuthCenterOverviewQueryKey,
+  updateSettingsAuthCenterAuthenticatorConfig,
   type SettingsAuthCenterOverview
 } from '../../api/auth-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 
 type AuthenticatorRow = SettingsAuthCenterOverview['authenticators'][number];
 
-function isPrimitiveConfigValue(
-  value: unknown
-): value is string | number | boolean | null {
-  return (
-    value == null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  );
-}
+type AuthenticatorConfigFormValues = {
+  name: string;
+  title: string;
+  enabled: boolean;
+  description: string | null;
+};
 
-function authCenterConfigFormValues(row: AuthenticatorRow) {
-  // @field-contract-compat source=ConsoleAuthCenterAuthenticator.config_values alias=missing remove_by=2026-07-31
-  const configValues = row.config_values ?? {};
-
-  return Object.fromEntries(
-    Object.entries(configValues).filter(([, value]) =>
-      isPrimitiveConfigValue(value)
-    )
-  );
-}
-
-function authCenterConfigSchema(row: AuthenticatorRow) {
-  // @field-contract-compat source=ConsoleAuthCenterAuthenticator.config_schema alias=missing remove_by=2026-07-31
-  return row.config_schema ?? [];
+function authCenterConfigFormValues(
+  row: AuthenticatorRow
+): AuthenticatorConfigFormValues {
+  return {
+    name: row.config_values.name,
+    title: row.config_values.title,
+    enabled: row.config_values.enabled,
+    description: row.config_values.description ?? null
+  };
 }
 
 function AuthenticatorConfigDrawer({
   authenticator,
   open,
-  onClose
+  canManageAuthenticators,
+  hasCsrfToken,
+  submitting,
+  errorMessage,
+  onClose,
+  onSubmit
 }: {
   authenticator: AuthenticatorRow | null;
   open: boolean;
+  canManageAuthenticators: boolean;
+  hasCsrfToken: boolean;
+  submitting: boolean;
+  errorMessage: string | null;
   onClose: () => void;
+  onSubmit: (
+    authenticatorName: string,
+    values: AuthenticatorConfigFormValues
+  ) => void;
 }) {
-  const configValues = authenticator
-    ? authCenterConfigFormValues(authenticator)
-    : {};
-  const configSchema = authenticator
-    ? authCenterConfigSchema(authenticator)
-    : [];
+  const [form] = Form.useForm<AuthenticatorConfigFormValues>();
+  const accessErrorMessage = !canManageAuthenticators
+    ? i18nText('settings', 'auto.auth_center_manage_permission_required')
+    : !hasCsrfToken
+      ? i18nText('settings', 'auto.auth_center_csrf_required')
+      : null;
+
+  useEffect(() => {
+    if (authenticator) {
+      form.setFieldsValue(authCenterConfigFormValues(authenticator));
+    } else {
+      form.resetFields();
+    }
+  }, [authenticator, form]);
 
   return (
     <Drawer
@@ -101,33 +113,63 @@ function AuthenticatorConfigDrawer({
               {authenticator.auth_type}
             </Descriptions.Item>
           </Descriptions>
-          <Form layout="vertical" disabled initialValues={configValues}>
-            {configSchema.length > 0 ? (
-              configSchema.map((field) => (
-                <Form.Item
-                  key={field.key}
-                  name={field.key}
-                  label={field.label}
-                  valuePropName={field.type === 'boolean' ? 'checked' : 'value'}
-                >
-                  {field.type === 'boolean' ? (
-                    <Switch />
-                  ) : field.type === 'number' ? (
-                    <InputNumber className="settings-auth-center-drawer__number" />
-                  ) : (
-                    <Input />
-                  )}
-                </Form.Item>
-              ))
-            ) : (
-              <Descriptions size="small" column={1}>
-                <Descriptions.Item
-                  label={i18nText('settings', 'auto.configuration_alt')}
-                >
-                  {i18nText('settings', 'auto.no')}
-                </Descriptions.Item>
-              </Descriptions>
-            )}
+          {accessErrorMessage ? (
+            <Alert type="error" showIcon message={accessErrorMessage} />
+          ) : null}
+          {errorMessage ? (
+            <Alert type="error" showIcon message={errorMessage} />
+          ) : null}
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={(values) => onSubmit(authenticator.name, values)}
+          >
+            <Form.Item name="name" label={i18nText('settings', 'auto.name')}>
+              <Input disabled readOnly />
+            </Form.Item>
+            <Form.Item
+              name="title"
+              label={i18nText('settings', 'auto.title')}
+              rules={[
+                {
+                  required: true,
+                  message: i18nText('settings', 'auto.please_fill_in', {
+                    value1: i18nText('settings', 'auto.title')
+                  })
+                }
+              ]}
+            >
+              <Input disabled={!canManageAuthenticators || !hasCsrfToken} />
+            </Form.Item>
+            <Form.Item
+              name="description"
+              label={i18nText('settings', 'auto.description')}
+            >
+              <Input.TextArea
+                rows={4}
+                disabled={!canManageAuthenticators || !hasCsrfToken}
+              />
+            </Form.Item>
+            <Form.Item
+              name="enabled"
+              label={i18nText('settings', 'auto.enabled')}
+              valuePropName="checked"
+            >
+              <Switch disabled={!canManageAuthenticators || !hasCsrfToken} />
+            </Form.Item>
+            <Flex justify="end" gap="small">
+              <Button onClick={onClose}>
+                {i18nText('settings', 'auto.cancel')}
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={submitting}
+                disabled={accessErrorMessage != null}
+              >
+                {i18nText('settings', 'auto.save')}
+              </Button>
+            </Flex>
           </Form>
         </Space>
       ) : null}
@@ -136,8 +178,9 @@ function AuthenticatorConfigDrawer({
 }
 
 export function SettingsAuthCenterSection() {
-  const [selectedAuthenticator, setSelectedAuthenticator] =
-    useState<AuthenticatorRow | null>(null);
+  const [selectedAuthenticatorName, setSelectedAuthenticatorName] = useState<
+    string | null
+  >(null);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
@@ -149,6 +192,12 @@ export function SettingsAuthCenterSection() {
     queryKey: settingsAuthCenterOverviewQueryKey,
     queryFn: fetchSettingsAuthCenterOverview
   });
+  const selectedAuthenticator =
+    selectedAuthenticatorName && overviewQuery.data
+      ? (overviewQuery.data.authenticators.find(
+          (row) => row.name === selectedAuthenticatorName
+        ) ?? null)
+      : null;
   const enableMutation = useMutation({
     mutationFn: (authenticatorName: string) => {
       if (!csrfToken) {
@@ -160,6 +209,49 @@ export function SettingsAuthCenterSection() {
       );
     },
     onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: settingsAuthCenterOverviewQueryKey
+      });
+    }
+  });
+  const configMutation = useMutation({
+    mutationFn: (input: {
+      authenticatorName: string;
+      values: AuthenticatorConfigFormValues;
+    }) => {
+      if (!canManageAuthenticators) {
+        throw new Error(
+          i18nText('settings', 'auto.auth_center_manage_permission_required')
+        );
+      }
+      if (!csrfToken) {
+        throw new Error(i18nText('settings', 'auto.auth_center_csrf_required'));
+      }
+      return updateSettingsAuthCenterAuthenticatorConfig(
+        input.authenticatorName,
+        {
+          name: input.values.name,
+          title: input.values.title,
+          enabled: input.values.enabled,
+          description: input.values.description
+        },
+        csrfToken
+      );
+    },
+    onSuccess: async (authenticator) => {
+      setSelectedAuthenticatorName(authenticator.name);
+      queryClient.setQueryData<SettingsAuthCenterOverview>(
+        settingsAuthCenterOverviewQueryKey,
+        (overview) =>
+          overview
+            ? {
+                ...overview,
+                authenticators: overview.authenticators.map((row) =>
+                  row.name === authenticator.name ? authenticator : row
+                )
+              }
+            : overview
+      );
       await queryClient.invalidateQueries({
         queryKey: settingsAuthCenterOverviewQueryKey
       });
@@ -227,7 +319,10 @@ export function SettingsAuthCenterSection() {
           <Button
             type="link"
             size="small"
-            onClick={() => setSelectedAuthenticator(row)}
+            onClick={() => {
+              configMutation.reset();
+              setSelectedAuthenticatorName(row.name);
+            }}
           >
             {i18nText('settings', 'auto.edit')}
           </Button>
@@ -265,8 +360,22 @@ export function SettingsAuthCenterSection() {
       ) : null}
       <AuthenticatorConfigDrawer
         authenticator={selectedAuthenticator}
-        open={selectedAuthenticator != null}
-        onClose={() => setSelectedAuthenticator(null)}
+        open={selectedAuthenticatorName != null}
+        canManageAuthenticators={canManageAuthenticators}
+        hasCsrfToken={csrfToken != null}
+        submitting={configMutation.isPending}
+        errorMessage={
+          configMutation.isError
+            ? i18nText('settings', 'auto.auth_center_config_update_failed')
+            : null
+        }
+        onClose={() => {
+          configMutation.reset();
+          setSelectedAuthenticatorName(null);
+        }}
+        onSubmit={(authenticatorName, values) => {
+          configMutation.mutate({ authenticatorName, values });
+        }}
       />
     </SettingsSectionSurface>
   );

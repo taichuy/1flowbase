@@ -3,7 +3,8 @@ import * as transport from '../transport';
 
 import {
   enableConsoleAuthCenterAuthenticator,
-  fetchConsoleAuthCenterOverview
+  fetchConsoleAuthCenterOverview,
+  updateConsoleAuthCenterAuthenticatorConfig
 } from '../console-auth-center';
 
 describe('console auth center client', () => {
@@ -24,6 +25,31 @@ describe('console auth center client', () => {
       path: '/api/console/settings/auth-center/authenticators/password-local/actions/enable',
       method: 'POST',
       csrfToken: 'csrf-123'
+    });
+  });
+
+  test('updates an auth center authenticator config without extension_config', async () => {
+    await expect(
+      updateConsoleAuthCenterAuthenticatorConfig(
+        'oidc-main',
+        {
+          name: 'oidc-main',
+          title: 'OIDC Login',
+          enabled: true,
+          description: 'Primary OIDC login'
+        },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/auth-center/authenticators/oidc-main/config',
+      method: 'PUT',
+      csrfToken: 'csrf-123',
+      body: {
+        name: 'oidc-main',
+        title: 'OIDC Login',
+        enabled: true,
+        description: 'Primary OIDC login'
+      }
     });
   });
 });

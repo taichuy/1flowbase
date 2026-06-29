@@ -24,6 +24,43 @@ pub struct BootstrapService<R> {
     repository: R,
 }
 
+fn password_local_authenticator_options() -> serde_json::Value {
+    serde_json::json!({
+        "description": "Local password authentication",
+        "config_form_schema": [
+            {
+                "key": "name",
+                "label": "Authenticator identifier",
+                "type": "string",
+                "read_only": true,
+                "required": true,
+                "pattern": "^[A-Za-z0-9_]+$"
+            },
+            {
+                "key": "title",
+                "label": "Authenticator title",
+                "type": "string",
+                "required": true
+            },
+            {
+                "key": "description",
+                "label": "Description",
+                "type": "string",
+                "control": "textarea",
+                "read_only": false,
+                "required": false
+            },
+            {
+                "key": "enabled",
+                "label": "Enabled",
+                "type": "boolean",
+                "control": "switch"
+            }
+        ],
+        "extension_config": {}
+    })
+}
+
 impl<R> BootstrapService<R>
 where
     R: BootstrapRepository,
@@ -40,7 +77,7 @@ where
                 title: "Password".into(),
                 enabled: true,
                 is_builtin: true,
-                options: serde_json::json!({}),
+                options: password_local_authenticator_options(),
             })
             .await?;
         self.repository

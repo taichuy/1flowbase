@@ -25,6 +25,7 @@ struct MemoryBootstrapRepositoryInner {
     root_tenant_upserts: AtomicUsize,
     workspace_upserts: AtomicUsize,
     root_user_creates: AtomicUsize,
+    authenticators: RwLock<Vec<AuthenticatorRecord>>,
     root_tenant: RwLock<Option<TenantRecord>>,
     workspace: RwLock<Option<WorkspaceRecord>>,
     root_user: RwLock<Option<UserRecord>>,
@@ -46,14 +47,32 @@ impl MemoryBootstrapRepository {
     pub fn workspace_upserts(&self) -> usize {
         self.inner.workspace_upserts.load(Ordering::SeqCst)
     }
+
+    pub async fn authenticator(&self, name: &str) -> Option<AuthenticatorRecord> {
+        self.inner
+            .authenticators
+            .read()
+            .await
+            .iter()
+            .find(|authenticator| authenticator.name == name)
+            .cloned()
+    }
 }
 
 #[async_trait]
 impl BootstrapRepository for MemoryBootstrapRepository {
-    async fn upsert_authenticator(&self, _authenticator: &AuthenticatorRecord) -> Result<()> {
+    async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
         self.inner
             .authenticator_upserts
             .fetch_add(1, Ordering::SeqCst);
+        let mut authenticators = self.inner.authenticators.write().await;
+        match authenticators
+            .iter_mut()
+            .find(|stored| stored.name == authenticator.name)
+        {
+            Some(stored) => *stored = authenticator.clone(),
+            None => authenticators.push(authenticator.clone()),
+        }
         Ok(())
     }
 

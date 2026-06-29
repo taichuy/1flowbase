@@ -1,6 +1,8 @@
 import {
   enableConsoleAuthCenterAuthenticator,
   fetchConsoleAuthCenterOverview,
+  updateConsoleAuthCenterAuthenticatorConfig,
+  type ConsoleAuthCenterAuthenticatorConfigInput,
   type ConsoleAuthCenterOverview
 } from '@1flowbase/api-client';
 
@@ -21,4 +23,16 @@ export function enableSettingsAuthCenterAuthenticator(
   csrfToken: string
 ) {
   return enableConsoleAuthCenterAuthenticator(authenticatorName, csrfToken);
+}
+
+export function updateSettingsAuthCenterAuthenticatorConfig(
+  authenticatorName: string,
+  input: ConsoleAuthCenterAuthenticatorConfigInput,
+  csrfToken: string
+) {
+  return updateConsoleAuthCenterAuthenticatorConfig(
+    authenticatorName,
+    input,
+    csrfToken
+  );
 }

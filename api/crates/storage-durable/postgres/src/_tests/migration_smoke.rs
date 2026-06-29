@@ -879,6 +879,164 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
 }
 
 #[tokio::test]
+async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+
+    store
+        .upsert_authenticator(&domain::AuthenticatorRecord {
+            name: "password-local".into(),
+            auth_type: "password-local".into(),
+            title: "Password".into(),
+            enabled: true,
+            is_builtin: true,
+            options: serde_json::json!({
+                "description": "Local password authentication",
+                "config_form_schema": [
+                    {
+                        "key": "description",
+                        "label": "Description",
+                        "type": "string",
+                        "control": "textarea",
+                        "read_only": false,
+                        "required": false
+                    }
+                ],
+                "extension_config": {}
+            }),
+        })
+        .await
+        .unwrap();
+
+    let mut saved = store
+        .find_authenticator("password-local")
+        .await
+        .unwrap()
+        .unwrap();
+    saved.title = "Custom Password".into();
+    saved.enabled = false;
+    saved.options = serde_json::json!({
+        "description": "Custom local password",
+        "config_form_schema": [
+            {
+                "key": "description",
+                "label": "Custom Description",
+                "type": "string",
+                "control": "textarea",
+                "read_only": false,
+                "required": false
+            }
+        ],
+        "extension_config": {
+            "lockout_after_attempts": 5
+        }
+    });
+    store.update_authenticator_config(&saved).await.unwrap();
+
+    store
+        .upsert_authenticator(&domain::AuthenticatorRecord {
+            name: "password-local".into(),
+            auth_type: "password-local".into(),
+            title: "Password".into(),
+            enabled: true,
+            is_builtin: true,
+            options: serde_json::json!({
+                "description": "Local password authentication",
+                "config_form_schema": [
+                    {
+                        "key": "description",
+                        "label": "Description",
+                        "type": "string",
+                        "control": "textarea",
+                        "read_only": false,
+                        "required": false
+                    }
+                ],
+                "extension_config": {}
+            }),
+        })
+        .await
+        .unwrap();
+
+    let after_bootstrap = store
+        .find_authenticator("password-local")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after_bootstrap.title, "Custom Password");
+    assert!(!after_bootstrap.enabled);
+    assert_eq!(
+        after_bootstrap.options["description"],
+        serde_json::json!("Custom local password")
+    );
+    assert_eq!(
+        after_bootstrap.options["config_form_schema"][0]["label"],
+        serde_json::json!("Custom Description")
+    );
+    assert_eq!(
+        after_bootstrap.options["extension_config"],
+        serde_json::json!({
+            "lockout_after_attempts": 5
+        })
+    );
+}
+
+#[tokio::test]
+async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+
+    store
+        .upsert_authenticator(&domain::AuthenticatorRecord {
+            name: "oidc-main".into(),
+            auth_type: "oidc".into(),
+            title: "OIDC".into(),
+            enabled: false,
+            is_builtin: false,
+            options: serde_json::json!({
+                "description": "Old OIDC",
+                "extension_config": {
+                    "issuer_url": "https://old.example.com"
+                }
+            }),
+        })
+        .await
+        .unwrap();
+
+    store
+        .upsert_authenticator(&domain::AuthenticatorRecord {
+            name: "oidc-main".into(),
+            auth_type: "oidc".into(),
+            title: "OIDC Login".into(),
+            enabled: true,
+            is_builtin: false,
+            options: serde_json::json!({
+                "description": "New OIDC",
+                "extension_config": {
+                    "issuer_url": "https://new.example.com"
+                }
+            }),
+        })
+        .await
+        .unwrap();
+
+    let oidc = store
+        .find_authenticator("oidc-main")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(oidc.title, "OIDC Login");
+    assert!(oidc.enabled);
+    assert_eq!(oidc.options["description"], serde_json::json!("New OIDC"));
+    assert_eq!(
+        oidc.options["extension_config"]["issuer_url"],
+        serde_json::json!("https://new.example.com")
+    );
+}
+
+#[tokio::test]
 async fn migration_smoke_creates_plugin_trust_columns_and_constraints() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();

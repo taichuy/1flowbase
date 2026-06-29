@@ -139,10 +139,40 @@ impl BootstrapRepository for PgControlPlaneStore {
             values ($1, $2, $3, $4, $5, $6, 0, $7)
             on conflict (name) do update
               set auth_type = excluded.auth_type,
-                  title = excluded.title,
-                  enabled = excluded.enabled,
+                  title = case
+                    when authenticators.name = 'password-local' then authenticators.title
+                    else excluded.title
+                  end,
+                  enabled = case
+                    when authenticators.name = 'password-local' then authenticators.enabled
+                    else excluded.enabled
+                  end,
                   is_builtin = excluded.is_builtin,
-                  options = excluded.options,
+                  options = case
+                    when authenticators.name <> 'password-local' then excluded.options
+                    else
+                    case
+                      when jsonb_typeof(authenticators.options) = 'object' then authenticators.options
+                      else '{}'::jsonb
+                    end
+                    || jsonb_strip_nulls(jsonb_build_object(
+                      'description',
+                        case
+                          when authenticators.options ? 'description' then null
+                          else excluded.options -> 'description'
+                        end,
+                      'config_form_schema',
+                        case
+                          when authenticators.options ? 'config_form_schema' then null
+                          else excluded.options -> 'config_form_schema'
+                        end,
+                      'extension_config',
+                        case
+                          when authenticators.options ? 'extension_config' then null
+                          else excluded.options -> 'extension_config'
+                        end
+                    ))
+                  end,
                   updated_at = now()
             "#,
         )

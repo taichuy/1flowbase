@@ -88,7 +88,8 @@ const personalAccessTokensApi = vi.hoisted(() => ({
 const authCenterApi = vi.hoisted(() => ({
   settingsAuthCenterOverviewQueryKey: ['settings', 'auth-center', 'overview'],
   fetchSettingsAuthCenterOverview: vi.fn(),
-  enableSettingsAuthCenterAuthenticator: vi.fn()
+  enableSettingsAuthCenterAuthenticator: vi.fn(),
+  updateSettingsAuthCenterAuthenticatorConfig: vi.fn()
 }));
 
 const modelProvidersApi = vi.hoisted(() => ({
@@ -450,11 +451,20 @@ describe('SettingsPage', () => {
           enabled: true,
           is_builtin: true,
           config_schema: [],
-          config_values: {}
+          config_values: {
+            name: 'password-local',
+            title: 'Password',
+            enabled: true,
+            description: null,
+            extension_config: {}
+          }
         }
       ]
     });
     authCenterApi.enableSettingsAuthCenterAuthenticator.mockResolvedValue(
+      undefined
+    );
+    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
       undefined
     );
     modelProvidersApi.fetchSettingsModelProviderCatalog.mockResolvedValue([]);
@@ -796,8 +806,14 @@ describe('SettingsPage', () => {
             }
           ],
           config_values: {
-            issuer_url: 'https://idp.example.com',
-            allow_signup: true
+            name: 'oidc-main',
+            title: 'OIDC',
+            enabled: false,
+            description: 'Primary OIDC',
+            extension_config: {
+              issuer_url: 'https://idp.example.com',
+              allow_signup: true
+            }
           }
         }
       ]
@@ -830,15 +846,242 @@ describe('SettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: 'OIDC 配置' });
     expect(dialog).toBeInTheDocument();
-    expect(screen.getByText('issuer_url')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('名称')).toBeDisabled();
+    expect(within(dialog).getByDisplayValue('oidc-main')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('标题')).toHaveValue('OIDC');
+    expect(within(dialog).getByLabelText('说明')).toHaveValue('Primary OIDC');
     expect(
-      screen.getByDisplayValue('https://idp.example.com')
-    ).toBeInTheDocument();
-    expect(screen.getByText('allow_signup')).toBeInTheDocument();
-    expect(within(dialog).getByRole('switch')).toBeChecked();
+      within(dialog).getByRole('switch', { name: '启用' })
+    ).not.toBeChecked();
   });
 
-  test('opens auth center configuration drawer when config fields are absent', async () => {
+  test('submits auth center config and refreshes the open drawer', async () => {
+    authenticateWithPermissions([
+      'route_page.view.all',
+      'user.view.all',
+      'user.manage.all'
+    ]);
+    authCenterApi.fetchSettingsAuthCenterOverview
+      .mockResolvedValueOnce({
+        default_authenticator_name: 'oidc-main',
+        authenticators: [
+          {
+            name: 'oidc-main',
+            auth_type: 'oidc',
+            title: 'OIDC',
+            enabled: false,
+            is_builtin: false,
+            config_schema: [],
+            config_values: {
+              name: 'oidc-main',
+              title: 'OIDC',
+              enabled: false,
+              description: 'Old description',
+              extension_config: {
+                issuer_url: 'https://idp.example.com'
+              }
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        default_authenticator_name: 'oidc-main',
+        authenticators: [
+          {
+            name: 'oidc-main',
+            auth_type: 'oidc',
+            title: 'OIDC Login',
+            enabled: true,
+            is_builtin: false,
+            config_schema: [],
+            config_values: {
+              name: 'oidc-main',
+              title: 'OIDC Login',
+              enabled: true,
+              description: 'Primary OIDC login',
+              extension_config: {
+                issuer_url: 'https://idp.example.com'
+              }
+            }
+          }
+        ]
+      });
+    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue({
+      name: 'oidc-main',
+      auth_type: 'oidc',
+      title: 'OIDC Login',
+      enabled: true,
+      is_builtin: false,
+      config_schema: [],
+      config_values: {
+        name: 'oidc-main',
+        title: 'OIDC Login',
+        enabled: true,
+        description: 'Primary OIDC login',
+        extension_config: {
+          issuer_url: 'https://idp.example.com'
+        }
+      }
+    });
+
+    renderApp('/settings/auth-center');
+
+    const editButton = await screen.findByRole('button', { name: '编辑' });
+    fireEvent.click(editButton);
+    const dialog = await screen.findByRole('dialog', { name: 'OIDC 配置' });
+
+    expect(within(dialog).getByLabelText('名称')).toBeDisabled();
+    expect(within(dialog).getByDisplayValue('oidc-main')).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('标题'), {
+      target: { value: 'OIDC Login' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('说明'), {
+      target: { value: 'Primary OIDC login' }
+    });
+    fireEvent.click(within(dialog).getByRole('switch', { name: '启用' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => {
+      expect(
+        authCenterApi.updateSettingsAuthCenterAuthenticatorConfig
+      ).toHaveBeenCalledWith(
+        'oidc-main',
+        {
+          name: 'oidc-main',
+          title: 'OIDC Login',
+          enabled: true,
+          description: 'Primary OIDC login'
+        },
+        'csrf-123'
+      );
+    });
+    expect(screen.getByText('OIDC Login')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(dialog).getByDisplayValue('Primary OIDC login')
+      ).toBeInTheDocument();
+    });
+  });
+
+  test('shows auth center config errors in the drawer', async () => {
+    authenticateWithPermissions([
+      'route_page.view.all',
+      'user.view.all',
+      'user.manage.all'
+    ]);
+    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
+      default_authenticator_name: 'oidc-main',
+      authenticators: [
+        {
+          name: 'oidc-main',
+          auth_type: 'oidc',
+          title: 'OIDC',
+          enabled: true,
+          is_builtin: false,
+          config_schema: [],
+          config_values: {
+            name: 'oidc-main',
+            title: 'OIDC',
+            enabled: true,
+            description: 'Old description'
+          }
+        }
+      ]
+    });
+    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockRejectedValue(
+      new Error('permission denied')
+    );
+
+    renderApp('/settings/auth-center');
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
+    fireEvent.change(within(dialog).getByLabelText('标题'), {
+      target: { value: 'OIDC Login' }
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    expect(
+      await within(dialog).findByText('认证器配置保存失败')
+    ).toBeInTheDocument();
+  });
+
+  test('shows auth center manage permission error in the drawer', async () => {
+    authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
+    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
+      default_authenticator_name: 'oidc-main',
+      authenticators: [
+        {
+          name: 'oidc-main',
+          auth_type: 'oidc',
+          title: 'OIDC',
+          enabled: true,
+          is_builtin: false,
+          config_schema: [],
+          config_values: {
+            name: 'oidc-main',
+            title: 'OIDC',
+            enabled: true,
+            description: 'Old description'
+          }
+        }
+      ]
+    });
+
+    renderApp('/settings/auth-center');
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
+
+    expect(
+      within(dialog).getByText('需要认证器管理权限。')
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('标题')).toBeDisabled();
+    expect(within(dialog).getByRole('switch', { name: '启用' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+  });
+
+  test('shows auth center csrf error in the drawer', async () => {
+    authenticateWithPermissions([
+      'route_page.view.all',
+      'user.view.all',
+      'user.manage.all'
+    ]);
+    useAuthStore.setState({ csrfToken: null });
+    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
+      default_authenticator_name: 'oidc-main',
+      authenticators: [
+        {
+          name: 'oidc-main',
+          auth_type: 'oidc',
+          title: 'OIDC',
+          enabled: true,
+          is_builtin: false,
+          config_schema: [],
+          config_values: {
+            name: 'oidc-main',
+            title: 'OIDC',
+            enabled: true,
+            description: 'Old description'
+          }
+        }
+      ]
+    });
+
+    renderApp('/settings/auth-center');
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
+
+    expect(
+      within(dialog).getByText('缺少安全校验令牌，请刷新页面后重试。')
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('标题')).toBeDisabled();
+    expect(within(dialog).getByRole('switch', { name: '启用' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+  });
+
+  test('opens auth center configuration drawer when extension config fields are absent', async () => {
     authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_name: 'password-local',
@@ -848,7 +1091,15 @@ describe('SettingsPage', () => {
           auth_type: 'password-local',
           title: 'Password',
           enabled: true,
-          is_builtin: true
+          is_builtin: true,
+          config_schema: [],
+          config_values: {
+            name: 'password-local',
+            title: 'Password',
+            enabled: true,
+            description: null,
+            extension_config: {}
+          }
         }
       ]
     });
@@ -861,8 +1112,9 @@ describe('SettingsPage', () => {
     expect(
       await screen.findByRole('dialog', { name: 'Password 配置' })
     ).toBeInTheDocument();
-    expect(screen.getByText('配置')).toBeInTheDocument();
-    expect(screen.getByText('否')).toBeInTheDocument();
+    expect(screen.getByLabelText('名称')).toBeDisabled();
+    expect(screen.getByLabelText('标题')).toHaveValue('Password');
+    expect(screen.getByRole('switch', { name: '启用' })).toBeChecked();
   });
 
   test('renders API key for signed-in users without management permissions', async () => {
