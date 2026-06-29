@@ -66,6 +66,14 @@ async fn bootstrap_creates_builtin_attachments_once() {
         domain::DataModelOwnerKind::Core
     );
     assert!(model.protection.is_protected);
+    let field_codes = model
+        .fields
+        .iter()
+        .map(|field| field.code.as_str())
+        .collect::<Vec<_>>();
+    assert!(field_codes.contains(&"id"));
+    assert!(field_codes.contains(&"scope_id"));
+    assert!(field_codes.contains(&"filename"));
 
     let grants = ModelDefinitionRepository::list_scope_data_model_grants(
         &repository,

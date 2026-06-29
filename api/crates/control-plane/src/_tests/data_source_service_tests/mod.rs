@@ -754,6 +754,7 @@ impl ModelDefinitionRepository for InMemoryDataSourceRepository {
             data_model_id: input.model_id,
             code: input.code.clone(),
             title: input.title.clone(),
+            description: input.description.clone(),
             physical_column_name: input
                 .physical_column_name
                 .clone()

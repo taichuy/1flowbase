@@ -4,6 +4,7 @@ pub mod application;
 pub mod audit;
 pub mod auth;
 pub mod base;
+pub mod builtin_data_model;
 pub mod data_source;
 pub mod file_management;
 pub mod flow;
@@ -37,6 +38,12 @@ pub use auth::{
     PASSWORD_LOCAL_AUTHENTICATOR_NAME,
 };
 pub use base::BaseFields;
+pub use builtin_data_model::{
+    builtin_contract_for_model, builtin_data_model_contract, data_model_capabilities,
+    data_model_field_capabilities, BuiltinDataModelContract, BuiltinDataModelFieldContract,
+    BuiltinDataModelKind, DataModelCapabilities, DataModelFieldCapabilities,
+    DataModelFieldOwnership, DataModelRecordCapabilities,
+};
 pub use data_source::{
     data_source_secret_ref, DataSourceCatalogCacheRecord, DataSourceCatalogRefreshStatus,
     DataSourceDefaults, DataSourceInstanceRecord, DataSourceInstanceStatus,

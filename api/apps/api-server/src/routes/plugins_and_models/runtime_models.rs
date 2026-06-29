@@ -49,6 +49,9 @@ fn map_runtime_error(error: anyhow::Error) -> ApiError {
             }
             runtime_core::runtime_engine::RuntimeModelError::Disabled(_) => "model_disabled",
             runtime_core::runtime_engine::RuntimeModelError::Broken(_) => "model_broken",
+            runtime_core::runtime_engine::RuntimeModelError::RecordActionNotAllowed { .. } => {
+                "runtime_model_record_action_not_allowed"
+            }
         };
         return control_plane::errors::ControlPlaneError::Conflict(code).into();
     }

@@ -114,39 +114,52 @@ export function DataModelDetail({
       dataIndex: 'title',
       key: 'title',
       render: (value: string, field) => {
-        const disabled =
-          field.is_system === true || field.is_writable === false;
+        const canUpdatePresentation =
+          field.capabilities.can_update_presentation_metadata;
         return (
-          <Space size={8}>
-            <button
-              type="button"
-              className={`data-model-panel__field-title-btn ${disabled ? 'disabled' : ''}`}
-              disabled={disabled}
-              onClick={() =>
-                setFieldDrawerState({ open: true, mode: 'edit', field })
-              }
-            >
-              <Typography.Text
-                strong={!disabled}
-                style={{
-                  color: disabled
-                    ? 'var(--ant-color-text-secondary)'
-                    : 'var(--brand-primary)'
-                }}
+          <Space direction="vertical" size={2}>
+            <Space size={8}>
+              <button
+                type="button"
+                className={`data-model-panel__field-title-btn ${canUpdatePresentation ? '' : 'disabled'}`}
+                disabled={!canUpdatePresentation}
+                onClick={() =>
+                  setFieldDrawerState({ open: true, mode: 'edit', field })
+                }
               >
-                {value}
-              </Typography.Text>
-            </button>
-            {disabled && (
-              <Tag
-                style={{ borderRadius: 6, margin: 0, fontSize: 10 }}
-                icon={<LockOutlined style={{ fontSize: 10 }} />}
-              >
-                {i18nText("settings", "auto.read_only")}</Tag>
-            )}
+                <Typography.Text
+                  strong={canUpdatePresentation}
+                  style={{
+                    color: canUpdatePresentation
+                      ? 'var(--brand-primary)'
+                      : 'var(--ant-color-text-secondary)'
+                  }}
+                >
+                  {value}
+                </Typography.Text>
+              </button>
+              {!canUpdatePresentation && (
+                <Tag
+                  style={{ borderRadius: 6, margin: 0, fontSize: 10 }}
+                  icon={<LockOutlined style={{ fontSize: 10 }} />}
+                >
+                  {i18nText("settings", "auto.read_only")}</Tag>
+              )}
+            </Space>
           </Space>
         );
       }
+    },
+    {
+      title: i18nText("settings", "auto.description"),
+      dataIndex: 'description',
+      key: 'description',
+      render: (value: string | null) =>
+        value ? (
+          <Typography.Text type="secondary">{value}</Typography.Text>
+        ) : (
+          <span style={{ color: 'var(--text-tertiary)' }}>-</span>
+        )
     },
     {
       title: 'Code',
@@ -200,8 +213,7 @@ export function DataModelDetail({
           style={{ padding: 0 }}
           disabled={
             !canManage ||
-            field.is_system === true ||
-            field.is_writable === false
+            !field.capabilities.can_update_presentation_metadata
           }
           onClick={() =>
             setFieldDrawerState({ open: true, mode: 'edit', field })
@@ -313,7 +325,9 @@ export function DataModelDetail({
                   <Button
                     type="primary"
                     icon={<PlusOutlined aria-hidden="true" />}
-                    disabled={!canManage}
+                    disabled={
+                      !canManage || !model.capabilities.can_add_user_field
+                    }
                     onClick={() =>
                       setFieldDrawerState({
                         open: true,

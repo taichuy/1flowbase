@@ -63,6 +63,7 @@ const enumOptionLabelHelp = i18nText("settings", "auto.displayed_value_used_inte
 interface FieldFormValues {
   code: string;
   title: string;
+  description?: string;
   external_field_key?: string;
   field_kind: string;
   is_required: boolean;
@@ -284,6 +285,22 @@ export function DataModelFieldDrawer({
   const showsRelationSettings = isRelationFieldKind(selectedFieldKind);
   const showsEnumSettings = selectedFieldKind === 'enum';
   const showsDefaultValue = !showsRelationSettings;
+  const canUpdatePresentation =
+    mode === 'create'
+      ? canManage
+      : Boolean(
+          canManage && field?.capabilities.can_update_presentation_metadata
+        );
+  const canUpdatePhysical =
+    mode === 'create'
+      ? canManage
+      : Boolean(canManage && field?.capabilities.can_update_physical_metadata);
+  const canSubmit =
+    mode === 'create'
+      ? canManage
+      : canUpdatePresentation || canUpdatePhysical;
+  const canDeleteField =
+    mode === 'edit' && Boolean(canManage && field?.capabilities.can_delete);
 
   useEffect(() => {
     if (!open) {
@@ -295,6 +312,7 @@ export function DataModelFieldDrawer({
       form.setFieldsValue({
         code: field.code,
         title: field.title,
+        description: field.description ?? '',
         external_field_key: field.external_field_key ?? '',
         field_kind: field.field_kind,
         is_required: field.is_required,
@@ -318,6 +336,7 @@ export function DataModelFieldDrawer({
     form.setFieldsValue({
       code: '',
       title: '',
+      description: '',
       external_field_key: '',
       field_kind: 'string',
       is_required: false,
@@ -408,6 +427,7 @@ export function DataModelFieldDrawer({
     if (mode === 'edit' && field) {
       onUpdate(field, {
         title: values.title,
+        description: values.description?.trim() || null,
         is_required: values.is_required,
         is_unique: values.is_unique,
         default_value: defaultValue,
@@ -422,6 +442,7 @@ export function DataModelFieldDrawer({
     onCreate({
       code: values.code,
       title: values.title,
+      description: values.description?.trim() || null,
       external_field_key: isExternalModel ? values.external_field_key || null : null,
       field_kind: values.field_kind,
       is_required: values.is_required,
@@ -455,16 +476,27 @@ export function DataModelFieldDrawer({
   function renderDefaultValueControl() {
     if (selectedFieldKind === 'enum') {
       if (selectedEnumDisplayFormat === 'radio') {
-        return <Radio.Group options={defaultEnumOptions} />;
+        return (
+          <Radio.Group
+            disabled={!canUpdatePhysical}
+            options={defaultEnumOptions}
+          />
+        );
       }
 
       if (selectedEnumDisplayFormat === 'checkbox_group') {
-        return <Checkbox.Group options={defaultEnumOptions} />;
+        return (
+          <Checkbox.Group
+            disabled={!canUpdatePhysical}
+            options={defaultEnumOptions}
+          />
+        );
       }
 
       return (
         <Select
           allowClear
+          disabled={!canUpdatePhysical}
           mode={selectedEnumDisplayFormat === 'multi_select' ? 'multiple' : undefined}
           options={defaultEnumOptions}
         />
@@ -475,6 +507,7 @@ export function DataModelFieldDrawer({
       return (
         <Select
           allowClear
+          disabled={!canUpdatePhysical}
           options={[
             { label: i18nText("settings", "auto.yes"), value: true },
             { label: i18nText("settings", "auto.no"), value: false }
@@ -484,11 +517,18 @@ export function DataModelFieldDrawer({
     }
 
     if (selectedFieldKind === 'json') {
-      return <Input.TextArea rows={3} placeholder='{ "key": "value" }' />;
+      return (
+        <Input.TextArea
+          rows={3}
+          disabled={!canUpdatePhysical}
+          placeholder='{ "key": "value" }'
+        />
+      );
     }
 
     return (
       <Input
+        disabled={!canUpdatePhysical}
         type={selectedFieldKind === 'number' ? 'number' : undefined}
         placeholder={
           selectedFieldKind === 'datetime'
@@ -506,10 +546,14 @@ export function DataModelFieldDrawer({
         <Typography.Title level={5}>{i18nText("settings", "auto.rules")}</Typography.Title>
         <Space size="large">
           <Form.Item name="is_required" valuePropName="checked">
-            <Checkbox>{i18nText("settings", "auto.required")}</Checkbox>
+            <Checkbox disabled={!canUpdatePhysical}>
+              {i18nText("settings", "auto.required")}
+            </Checkbox>
           </Form.Item>
           <Form.Item name="is_unique" valuePropName="checked">
-            <Checkbox>{i18nText("settings", "auto.only")}</Checkbox>
+            <Checkbox disabled={!canUpdatePhysical}>
+              {i18nText("settings", "auto.only")}
+            </Checkbox>
           </Form.Item>
         </Space>
         {showsDefaultValue ? (
@@ -534,13 +578,13 @@ export function DataModelFieldDrawer({
         extra={
           <Space>
             {mode === 'edit' ? (
-              <Button danger disabled={!canManage || saving} onClick={confirmDelete}>
+              <Button danger disabled={!canDeleteField || saving} onClick={confirmDelete}>
                 {i18nText("settings", "auto.delete_field")}</Button>
             ) : null}
             <Button
               type="primary"
               loading={saving}
-              disabled={!canManage}
+              disabled={!canSubmit}
               onClick={handleSubmit}
             >
               {mode === 'create' ? i18nText("settings", "auto.create_fields") : i18nText("settings", "auto.save_field")}
@@ -551,7 +595,6 @@ export function DataModelFieldDrawer({
         <Form
           form={form}
           layout="vertical"
-          disabled={!canManage}
           initialValues={{
             field_kind: 'string',
             is_required: false,
@@ -567,21 +610,30 @@ export function DataModelFieldDrawer({
             label={i18nText("settings", "auto.field_title")}
             rules={[{ required: true, message: i18nText("settings", "auto.enter_field_title") }]}
           >
-            <Input />
+            <Input disabled={!canUpdatePresentation} />
+          </Form.Item>
+          <Form.Item
+            name="description"
+            label={i18nText("settings", "auto.description")}
+          >
+            <Input.TextArea rows={3} disabled={!canUpdatePresentation} />
           </Form.Item>
           <Form.Item
             name="code"
             label={i18nText("settings", "auto.field_code")}
             rules={[{ required: true, message: i18nText("settings", "auto.enter_field_code") }]}
           >
-            <Input disabled={mode === 'edit'} />
+            <Input disabled={mode === 'edit' || !canUpdatePhysical} />
           </Form.Item>
           <Form.Item
             name="field_kind"
             label={i18nText("settings", "auto.field_type")}
             rules={[{ required: true, message: i18nText("settings", "auto.select_field_type") }]}
           >
-            <Select options={fieldKindOptions} disabled={mode === 'edit'} />
+            <Select
+              options={fieldKindOptions}
+              disabled={mode === 'edit' || !canUpdatePhysical}
+            />
           </Form.Item>
 
           {isExternalModel ? (
@@ -596,7 +648,7 @@ export function DataModelFieldDrawer({
                 }
               ]}
             >
-              <Input disabled={mode === 'edit'} />
+              <Input disabled={mode === 'edit' || !canUpdatePhysical} />
             </Form.Item>
           ) : null}
 
@@ -613,6 +665,7 @@ export function DataModelFieldDrawer({
               >
                 <Select
                   options={enumDisplayFormatOptions}
+                  disabled={!canUpdatePresentation}
                   onChange={(value) => {
                     const currentDefaultValue = form.getFieldValue('default_value_input');
                     if (isMultipleEnumDisplayFormat(value)) {
@@ -676,6 +729,7 @@ export function DataModelFieldDrawer({
                             >
                               <Input
                                 aria-label={i18nText("settings", "auto.option_stores_value", { value1: index + 1 })}
+                                disabled={!canUpdatePresentation}
                                 placeholder="value"
                               />
                             </Form.Item>
@@ -688,6 +742,7 @@ export function DataModelFieldDrawer({
                             >
                               <Input
                                 aria-label={i18nText("settings", "auto.option_display_value", { value1: index + 1 })}
+                                disabled={!canUpdatePresentation}
                                 placeholder="label"
                               />
                             </Form.Item>
@@ -697,7 +752,7 @@ export function DataModelFieldDrawer({
                             type="text"
                             aria-label={i18nText("settings", "auto.delete_option", { value1: index + 1 })}
                             icon={<DeleteOutlined />}
-                            disabled={fields.length <= 1}
+                            disabled={fields.length <= 1 || !canUpdatePresentation}
                             onClick={() => remove(name)}
                             className="data-model-panel__enum-options-action"
                           />
@@ -707,6 +762,7 @@ export function DataModelFieldDrawer({
                         block
                         aria-label={i18nText("settings", "auto.add_options")}
                         icon={<PlusOutlined />}
+                        disabled={!canUpdatePresentation}
                         onClick={() => add(createDefaultEnumOption())}
                         className="data-model-panel__enum-add"
                       >
@@ -736,7 +792,7 @@ export function DataModelFieldDrawer({
               >
                 <Select
                   allowClear
-                  disabled={mode === 'edit'}
+                  disabled={mode === 'edit' || !canUpdatePhysical}
                   options={relationTargetOptions}
                 />
               </Form.Item>
@@ -750,21 +806,25 @@ export function DataModelFieldDrawer({
             <>
               {showsEnumSettings ? null : (
                 <Form.Item name="display_interface" label={i18nText("settings", "auto.display_control")}>
-                  <Select allowClear options={displayInterfaceOptions} />
+                  <Select
+                    allowClear
+                    disabled={!canUpdatePresentation}
+                    options={displayInterfaceOptions}
+                  />
                 </Form.Item>
               )}
               <Form.Item
                 name="display_options_json"
                 label={i18nText("settings", "auto.display_control_configuration_json")}
               >
-                <Input.TextArea rows={3} />
+                <Input.TextArea rows={3} disabled={!canUpdatePresentation} />
               </Form.Item>
               {showsRelationSettings ? (
                 <Form.Item
                   name="relation_options_json"
                   label={i18nText("settings", "auto.relationship_configuration_json")}
                 >
-                  <Input.TextArea rows={3} />
+                  <Input.TextArea rows={3} disabled={!canUpdatePresentation} />
                 </Form.Item>
               ) : null}
             </>

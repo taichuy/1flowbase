@@ -153,6 +153,7 @@ fn runtime_engine_for_model(model: &ModelDefinitionRecord) -> Arc<RuntimeEngine>
         physical_table_name: model.physical_table_name.clone(),
         scope_column_name: "scope_id".into(),
         fields: model.fields.clone(),
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: ResourceDescriptor::runtime_model(&model.code, model.scope_kind),
     }]);
 

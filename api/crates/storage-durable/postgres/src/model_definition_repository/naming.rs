@@ -1,8 +1,5 @@
-use uuid::Uuid;
-
 use crate::physical_schema_repository::sanitize_identifier_fragment;
-
-const REGISTERED_SYSTEM_TABLE_CODES: [&str; 3] = ["attachments", "users", "roles"];
+use uuid::Uuid;
 
 pub(super) fn registered_system_table_name(
     scope_kind: domain::DataModelScopeKind,
@@ -18,9 +15,7 @@ pub(super) fn registered_system_table_name(
         return None;
     }
 
-    REGISTERED_SYSTEM_TABLE_CODES
-        .into_iter()
-        .find(|registered_code| *registered_code == code)
+    domain::builtin_data_model_contract(code).map(|contract| contract.physical_table_name)
 }
 
 pub(super) fn is_registered_system_table(model: &domain::ModelDefinitionRecord) -> bool {

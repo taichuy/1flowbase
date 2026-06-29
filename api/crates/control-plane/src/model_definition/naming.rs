@@ -4,8 +4,6 @@ use uuid::Uuid;
 
 use crate::errors::ControlPlaneError;
 
-const REGISTERED_SYSTEM_TABLE_CODES: [&str; 3] = ["attachments", "users", "roles"];
-
 pub(super) fn registered_system_table_name(
     scope_kind: domain::DataModelScopeKind,
     source_kind: domain::DataModelSourceKind,
@@ -20,30 +18,25 @@ pub(super) fn registered_system_table_name(
         return None;
     }
 
-    REGISTERED_SYSTEM_TABLE_CODES
-        .into_iter()
-        .find(|registered_code| *registered_code == code)
+    domain::builtin_data_model_contract(code).map(|contract| contract.physical_table_name)
 }
 
 pub(super) fn normalize_api_exposure_for_status(
     status: domain::DataModelStatus,
     exposure: domain::ApiExposureStatus,
 ) -> Result<domain::ApiExposureStatus> {
-    let effective_exposure = if status == domain::DataModelStatus::Draft {
-        domain::ApiExposureStatus::Draft
-    } else {
-        exposure
-    };
-    if domain::ApiExposureStatus::validate_for_status(
-        status,
-        effective_exposure,
-        domain::ApiExposureReadiness::default(),
-    )
-    .is_rejected()
-    {
-        Err(ControlPlaneError::InvalidInput("api_exposure_status").into())
-    } else {
-        Ok(effective_exposure)
+    match status {
+        domain::DataModelStatus::Draft => Ok(domain::ApiExposureStatus::Draft),
+        domain::DataModelStatus::Published => {
+            if exposure == domain::ApiExposureStatus::Draft {
+                Err(ControlPlaneError::InvalidInput("api_exposure_status").into())
+            } else {
+                Ok(exposure)
+            }
+        }
+        domain::DataModelStatus::Disabled | domain::DataModelStatus::Broken => {
+            Ok(domain::ApiExposureStatus::PublishedNotExposed)
+        }
     }
 }
 

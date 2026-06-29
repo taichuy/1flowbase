@@ -291,6 +291,7 @@ async fn model_definition_repository_binds_core_system_models_to_registered_tabl
 
         assert_eq!(created.physical_table_name, code);
         assert!(!created.physical_table_name.starts_with("rtm_system_"));
+        assert!(created.fields.is_empty());
     }
 }
 
@@ -824,6 +825,7 @@ async fn model_definition_repository_deletes_external_source_field_without_local
             external_field_key: Some("properties.email".into()),
             code: "email".into(),
             title: "Email".into(),
+            description: None,
             field_kind: ModelFieldKind::String,
             is_system: false,
             is_writable: true,

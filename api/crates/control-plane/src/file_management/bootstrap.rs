@@ -1,5 +1,5 @@
 use anyhow::Result;
-use domain::{DataModelScopeKind, FileTableScopeKind, SYSTEM_SCOPE_ID};
+use domain::{DataModelScopeKind, FileTableScopeKind, ModelFieldKind, SYSTEM_SCOPE_ID};
 use uuid::Uuid;
 
 use crate::{
@@ -43,6 +43,48 @@ struct ProvisionFileTableInput {
     grant_permission_profile: domain::ScopeDataModelPermissionProfile,
 }
 
+fn builtin_attachment_readonly_fields(
+) -> [(&'static str, &'static str, ModelFieldKind, bool, bool); 6] {
+    [
+        ("id", "id", ModelFieldKind::String, true, true),
+        (
+            "scope_id",
+            "scope_id",
+            ModelFieldKind::ManyToOne,
+            true,
+            false,
+        ),
+        (
+            "created_by",
+            "created_by",
+            ModelFieldKind::String,
+            true,
+            false,
+        ),
+        (
+            "updated_by",
+            "updated_by",
+            ModelFieldKind::String,
+            true,
+            false,
+        ),
+        (
+            "created_at",
+            "created_at",
+            ModelFieldKind::Datetime,
+            true,
+            false,
+        ),
+        (
+            "updated_at",
+            "updated_at",
+            ModelFieldKind::Datetime,
+            true,
+            false,
+        ),
+    ]
+}
+
 async fn provision_file_table<R>(
     repository: &R,
     input: ProvisionFileTableInput,
@@ -68,6 +110,35 @@ where
         })
         .await?;
 
+    if input.is_builtin {
+        for (code, title, field_kind, is_required, is_unique) in
+            builtin_attachment_readonly_fields()
+        {
+            repository
+                .add_model_field(&AddModelFieldInput {
+                    actor_user_id: input.actor_user_id,
+                    model_id: model.id,
+                    physical_column_name: Some(code.to_string()),
+                    external_field_key: None,
+                    code: code.to_string(),
+                    title: title.to_string(),
+                    description: None,
+                    field_kind,
+                    is_system: true,
+                    is_writable: false,
+                    apply_physical_schema: false,
+                    is_required,
+                    is_unique,
+                    default_value: None,
+                    display_interface: None,
+                    display_options: serde_json::json!({}),
+                    relation_target_model_id: None,
+                    relation_options: serde_json::json!({}),
+                })
+                .await?;
+        }
+    }
+
     for field in attachments_template_fields() {
         repository
             .add_model_field(&AddModelFieldInput {
@@ -77,6 +148,7 @@ where
                 external_field_key: None,
                 code: field.code,
                 title: field.title,
+                description: None,
                 field_kind: field.field_kind,
                 is_system: false,
                 is_writable: true,
@@ -144,6 +216,55 @@ where
             .await?
         {
             return Ok(existing);
+        }
+
+        if let Some(existing_model) = self
+            .repository
+            .list_model_definitions(SYSTEM_SCOPE_ID)
+            .await?
+            .into_iter()
+            .find(|model| {
+                model.code == default_code
+                    && domain::builtin_contract_for_model(model)
+                        .is_some_and(|contract| contract.code == "attachments")
+            })
+        {
+            let grants = self
+                .repository
+                .list_scope_data_model_grants(DataModelScopeKind::System, SYSTEM_SCOPE_ID)
+                .await?;
+            if !grants
+                .iter()
+                .any(|grant| grant.data_model_id == existing_model.id)
+            {
+                self.repository
+                    .create_scope_data_model_grant(&CreateScopeDataModelGrantInput {
+                        grant_id: Uuid::now_v7(),
+                        scope_kind: DataModelScopeKind::System,
+                        scope_id: SYSTEM_SCOPE_ID,
+                        data_model_id: existing_model.id,
+                        enabled: true,
+                        permission_profile: domain::ScopeDataModelPermissionProfile::SystemAll,
+                        created_by: Some(actor_user_id),
+                    })
+                    .await?;
+            }
+
+            return self
+                .repository
+                .create_file_table_registration(&CreateFileTableRegistrationInput {
+                    file_table_id: Uuid::now_v7(),
+                    actor_user_id,
+                    code: existing_model.code,
+                    title: existing_model.title,
+                    scope_kind: FileTableScopeKind::System,
+                    scope_id: SYSTEM_SCOPE_ID,
+                    model_definition_id: existing_model.id,
+                    bound_storage_id: default_storage_id,
+                    is_builtin: true,
+                    is_default: true,
+                })
+                .await;
         }
 
         provision_file_table(

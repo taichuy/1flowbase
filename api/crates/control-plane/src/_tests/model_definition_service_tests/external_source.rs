@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn external_model_missing_scope_filter_capability_keeps_published_exposure_visible() {
+async fn external_model_missing_scope_filter_capability_keeps_stored_exposure_metadata() {
     let model_id = Uuid::now_v7();
     let mut model = model_in_workspace(model_id, Uuid::nil());
     model.data_source_instance_id = Some(Uuid::now_v7());
@@ -26,7 +26,7 @@ async fn external_model_missing_scope_filter_capability_keeps_published_exposure
 
     assert_eq!(
         unsafe_external.api_exposure_status,
-        ApiExposureStatus::ApiExposedReady
+        ApiExposureStatus::PublishedNotExposed
     );
 }
 
@@ -34,6 +34,7 @@ async fn external_model_missing_scope_filter_capability_keeps_published_exposure
 async fn external_model_with_scope_filter_capability_can_be_api_exposed_ready() {
     let model_id = Uuid::now_v7();
     let mut model = model_in_workspace(model_id, Uuid::nil());
+    model.api_exposure_status = ApiExposureStatus::ApiExposedReady;
     model.data_source_instance_id = Some(Uuid::now_v7());
     model.source_kind = domain::DataModelSourceKind::ExternalSource;
     model.external_resource_key = Some("contacts".into());
@@ -70,7 +71,7 @@ async fn external_model_with_scope_filter_capability_can_be_api_exposed_ready() 
 }
 
 #[tokio::test]
-async fn main_source_ready_path_is_not_blocked_by_external_source_safety() {
+async fn main_source_default_exposure_stays_user_metadata() {
     let repository = InMemoryModelDefinitionRepository::default();
     let service = ModelDefinitionService::new(repository);
     let created = service
@@ -91,7 +92,7 @@ async fn main_source_ready_path_is_not_blocked_by_external_source_safety() {
 
     assert_eq!(
         effective.api_exposure_status,
-        ApiExposureStatus::ApiExposedReady
+        ApiExposureStatus::PublishedNotExposed
     );
 }
 
@@ -223,6 +224,7 @@ async fn external_add_field_requires_external_field_key_and_main_source_rejects_
             model_id: external_model.id,
             code: "email".into(),
             title: "Email".into(),
+            description: None,
             external_field_key: None,
             field_kind: ModelFieldKind::String,
             is_required: false,
@@ -258,6 +260,7 @@ async fn external_add_field_requires_external_field_key_and_main_source_rejects_
             model_id: main_model.id,
             code: "email".into(),
             title: "Email".into(),
+            description: None,
             external_field_key: Some("properties.email".into()),
             field_kind: ModelFieldKind::String,
             is_required: false,

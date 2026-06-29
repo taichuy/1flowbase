@@ -204,6 +204,59 @@ const consoleError = console.error;
 let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
+const manageableModelCapabilities: SettingsDataModel['capabilities'] = {
+  can_delete: true,
+  can_add_user_field: true,
+  can_update_lifecycle_status: true,
+  record: {
+    can_list: true,
+    can_get: true,
+    can_create: true,
+    can_update: true,
+    can_delete: true
+  }
+};
+
+const protectedBuiltinModelCapabilities: SettingsDataModel['capabilities'] = {
+  can_delete: false,
+  can_add_user_field: true,
+  can_update_lifecycle_status: false,
+  record: {
+    can_list: true,
+    can_get: true,
+    can_create: true,
+    can_update: true,
+    can_delete: true
+  }
+};
+
+const readOnlyRuntimeModelCapabilities: SettingsDataModel['capabilities'] = {
+  can_delete: false,
+  can_add_user_field: false,
+  can_update_lifecycle_status: false,
+  record: {
+    can_list: true,
+    can_get: true,
+    can_create: false,
+    can_update: false,
+    can_delete: false
+  }
+};
+
+const manageableFieldCapabilities: SettingsDataModelField['capabilities'] = {
+  ownership: 'user_added',
+  can_update_presentation_metadata: true,
+  can_update_physical_metadata: true,
+  can_delete: true
+};
+
+const systemFieldCapabilities: SettingsDataModelField['capabilities'] = {
+  ownership: 'system_owned',
+  can_update_presentation_metadata: true,
+  can_update_physical_metadata: false,
+  can_delete: false
+};
+
 function authenticate() {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
@@ -283,6 +336,7 @@ function settingsDataModelField(
     id,
     code,
     title,
+    description: null,
     physical_column_name: code,
     external_field_key: null,
     field_kind: fieldKind,
@@ -296,8 +350,22 @@ function settingsDataModelField(
     relation_target_model_id: null,
     relation_options: {},
     sort_order: 0,
+    capabilities: manageableFieldCapabilities,
     ...overrides
   };
+}
+
+function systemSettingsDataModelField(
+  id: string,
+  code: string,
+  title: string,
+  fieldKind = 'string',
+  overrides: Partial<SettingsDataModelField> = {}
+): SettingsDataModelField {
+  return settingsDataModelField(id, code, title, fieldKind, {
+    capabilities: systemFieldCapabilities,
+    ...overrides
+  });
 }
 
 function settingsDataModel(
@@ -324,6 +392,8 @@ function settingsDataModel(
     acl_namespace: `data_model.${code}`,
     audit_namespace: `data_model.${code}`,
     fields,
+    builtin_kind: null,
+    capabilities: manageableModelCapabilities,
     ...overrides
   };
 }
@@ -334,6 +404,7 @@ export const contactsModel = settingsDataModel(
   'Contacts',
   [
     settingsDataModelField('field-1', 'email', 'Email', 'string', {
+      description: 'Primary contact email',
       external_field_key: 'email',
       is_required: true,
       is_unique: true
@@ -370,16 +441,36 @@ const draftOrdersModel = settingsDataModel(
 );
 
 const mainSourceModels = [
-  settingsDataModel('model-attachments', 'attachments', 'Attachments', [
-    settingsDataModelField('attachment-name', 'name', '文件名'),
-    settingsDataModelField('attachment-size', 'size', '文件大小', 'integer')
-  ]),
+  settingsDataModel(
+    'model-attachments',
+    'attachments',
+    'Attachments',
+    [
+      systemSettingsDataModelField('attachment-name', 'name', '文件名', 'string', {
+        description: '附件原始文件名',
+        is_required: true
+      }),
+      systemSettingsDataModelField(
+        'attachment-size',
+        'size',
+        '文件大小',
+        'number',
+        {
+          is_required: true
+        }
+      )
+    ],
+    {
+      builtin_kind: 'core',
+      capabilities: protectedBuiltinModelCapabilities
+    }
+  ),
   settingsDataModel('model-users', 'users', '用户', [
-    settingsDataModelField('user-username', 'username', '用户名', 'string', {
+    systemSettingsDataModelField('user-username', 'username', '用户名', 'string', {
       is_required: true,
       is_unique: true
     }),
-    settingsDataModelField(
+    systemSettingsDataModelField(
       'user-display-name',
       'display_name',
       '显示名称',
@@ -388,14 +479,14 @@ const mainSourceModels = [
         is_required: true
       }
     ),
-    settingsDataModelField('user-email', 'email', '邮箱', 'string', {
+    systemSettingsDataModelField('user-email', 'email', '邮箱', 'string', {
       is_unique: true
     }),
-    settingsDataModelField('user-status', 'status', '状态', 'string', {
+    systemSettingsDataModelField('user-status', 'status', '状态', 'string', {
       is_required: true
     }),
-    settingsDataModelField('user-role-codes', 'role_codes', '角色', 'json'),
-    settingsDataModelField(
+    systemSettingsDataModelField('user-role-codes', 'role_codes', '角色', 'json'),
+    systemSettingsDataModelField(
       'user-created-at',
       'created_time',
       '创建时间',
@@ -404,22 +495,25 @@ const mainSourceModels = [
         is_required: true
       }
     ),
-    settingsDataModelField(
+    systemSettingsDataModelField(
       'user-last-login-at',
       'last_login_at',
       '最后登录时间',
       'datetime'
     )
-  ]),
+  ], {
+    builtin_kind: 'core',
+    capabilities: protectedBuiltinModelCapabilities
+  }),
   settingsDataModel('model-roles', 'roles', '角色', [
-    settingsDataModelField('role-code', 'code', '角色标识', 'string', {
+    systemSettingsDataModelField('role-code', 'code', '角色标识', 'string', {
       is_required: true,
       is_unique: true
     }),
-    settingsDataModelField('role-name', 'name', '角色名称', 'string', {
+    systemSettingsDataModelField('role-name', 'name', '角色名称', 'string', {
       is_required: true
     }),
-    settingsDataModelField(
+    systemSettingsDataModelField(
       'role-scope-kind',
       'scope_kind',
       '作用域',
@@ -428,7 +522,7 @@ const mainSourceModels = [
         is_required: true
       }
     ),
-    settingsDataModelField(
+    systemSettingsDataModelField(
       'role-builtin',
       'is_builtin',
       '内置角色',
@@ -437,14 +531,14 @@ const mainSourceModels = [
         is_required: true
       }
     ),
-    settingsDataModelField(
+    systemSettingsDataModelField(
       'role-default-member',
       'is_default_member_role',
       '默认成员角色',
       'boolean',
       { is_required: true }
     ),
-    settingsDataModelField(
+    systemSettingsDataModelField(
       'role-created-at',
       'created_time',
       '创建时间',
@@ -453,7 +547,24 @@ const mainSourceModels = [
         is_required: true
       }
     )
-  ])
+  ], {
+    builtin_kind: 'core',
+    capabilities: protectedBuiltinModelCapabilities
+  }),
+  settingsDataModel(
+    'model-runtime-logs',
+    'runtime_logs',
+    'Runtime Logs',
+    [
+      systemSettingsDataModelField('runtime-log-level', 'level', 'Level', 'string', {
+        description: 'Runtime log level'
+      })
+    ],
+    {
+      builtin_kind: 'runtime_read',
+      capabilities: readOnlyRuntimeModelCapabilities
+    }
+  )
 ];
 
 export function setupDataModelsPageTest() {

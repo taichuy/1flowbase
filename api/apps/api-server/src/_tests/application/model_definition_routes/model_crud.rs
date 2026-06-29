@@ -72,9 +72,19 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
     assert_eq!(created["data"]["status"], json!("published"));
     assert_eq!(
         created["data"]["api_exposure_status"],
-        json!("api_exposed_ready")
+        json!("published_not_exposed")
     );
     assert_eq!(created["data"]["runtime_availability"], json!("available"));
+    assert_eq!(created["data"]["builtin_kind"], serde_json::Value::Null);
+    assert_eq!(created["data"]["capabilities"]["can_delete"], json!(true));
+    assert_eq!(
+        created["data"]["capabilities"]["can_add_user_field"],
+        json!(true)
+    );
+    assert_eq!(
+        created["data"]["capabilities"]["record"]["can_create"],
+        json!(true)
+    );
     let model_id = created["data"]["id"].as_str().unwrap().to_string();
 
     let list_main_source_models = app
@@ -103,6 +113,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
     assert!(model_codes.contains(&"attachments"));
     assert!(model_codes.contains(&"users"));
     assert!(model_codes.contains(&"roles"));
+    assert!(model_codes.contains(&"application_run_log_summaries"));
     assert!(models.iter().any(|model| {
         model["id"].as_str() == Some(&model_id)
             && model["source_kind"].as_str() == Some("main_source")
@@ -111,6 +122,77 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         model["data_source_instance_id"].is_null()
             && model["source_kind"].as_str() == Some("main_source")
     }));
+    let users_model = models
+        .iter()
+        .find(|model| model["code"] == json!("users"))
+        .expect("users builtin model should be listed");
+    assert_eq!(users_model["builtin_kind"], json!("core"));
+    assert_eq!(users_model["capabilities"]["can_delete"], json!(false));
+    assert_eq!(
+        users_model["capabilities"]["can_add_user_field"],
+        json!(true)
+    );
+    assert_eq!(
+        users_model["capabilities"]["can_update_lifecycle_status"],
+        json!(false)
+    );
+    let account_field = users_model["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|field| field["code"] == json!("account"))
+        .expect("users.account field should be listed");
+    assert_eq!(account_field["description"], serde_json::Value::Null);
+    assert_eq!(
+        account_field["capabilities"]["ownership"],
+        json!("system_owned")
+    );
+    assert_eq!(
+        account_field["capabilities"]["can_update_presentation_metadata"],
+        json!(true)
+    );
+    assert_eq!(
+        account_field["capabilities"]["can_update_physical_metadata"],
+        json!(false)
+    );
+    assert_eq!(account_field["capabilities"]["can_delete"], json!(false));
+
+    let runtime_logs_model = models
+        .iter()
+        .find(|model| model["code"] == json!("application_run_log_summaries"))
+        .expect("runtime read model should be listed");
+    assert_eq!(runtime_logs_model["builtin_kind"], json!("runtime_read"));
+    assert_eq!(
+        runtime_logs_model["capabilities"]["record"]["can_create"],
+        json!(false)
+    );
+    let runtime_logs_model_id = runtime_logs_model["id"].as_str().unwrap();
+    let delete_runtime_logs = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/models/{runtime_logs_model_id}?confirmed=true"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(delete_runtime_logs.status(), StatusCode::BAD_REQUEST);
+    let delete_runtime_logs_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(delete_runtime_logs.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        delete_runtime_logs_payload["code"],
+        json!("builtin_data_model")
+    );
 
     let field_response = app
         .clone()
@@ -125,6 +207,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
                     json!({
                         "code": "status",
                         "title": "Status",
+                        "description": "Payment lifecycle state",
                         "field_kind": "enum",
                         "is_required": true,
                         "is_unique": false,
@@ -146,6 +229,18 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
     )
     .unwrap();
     let field_id = created_field["data"]["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        created_field["data"]["description"],
+        json!("Payment lifecycle state")
+    );
+    assert_eq!(
+        created_field["data"]["capabilities"]["ownership"],
+        json!("user_added")
+    );
+    assert_eq!(
+        created_field["data"]["capabilities"]["can_update_physical_metadata"],
+        json!(true)
+    );
 
     let agent_flow_options_response = app
         .clone()
@@ -253,6 +348,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
                 .body(Body::from(
                     json!({
                         "title": "Lifecycle Status",
+                        "description": "Shown on payment forms",
                         "is_required": true,
                         "is_unique": false,
                         "default_value": "draft",
@@ -268,6 +364,16 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .unwrap();
 
     assert_eq!(update_field_response.status(), StatusCode::OK);
+    let updated_field: serde_json::Value = serde_json::from_slice(
+        &to_bytes(update_field_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        updated_field["data"]["description"],
+        json!("Shown on payment forms")
+    );
 
     let create_after_field_update = app
         .clone()

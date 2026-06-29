@@ -4,13 +4,14 @@ use uuid::Uuid;
 
 use crate::ports::{
     AddModelFieldInput, CreateModelDefinitionInput, CreateScopeDataModelGrantInput,
-    ModelDefinitionRepository,
+    ModelDefinitionRepository, ReconcileSystemModelDefinitionInput, ReconcileSystemModelFieldInput,
 };
 
 #[derive(Debug, Clone)]
 pub struct SystemMetadataFieldTemplate {
     pub code: &'static str,
     pub title: &'static str,
+    pub description: Option<&'static str>,
     pub physical_column_name: Option<&'static str>,
     pub field_kind: ModelFieldKind,
     pub is_system: bool,
@@ -38,6 +39,7 @@ fn readonly_system_table_field(
     SystemMetadataFieldTemplate {
         code,
         title,
+        description: None,
         physical_column_name: Some(physical_column_name),
         field_kind,
         is_system: true,
@@ -54,6 +56,22 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
         title: "用户",
         fields: vec![
             readonly_system_table_field("id", "用户 ID", "id", ModelFieldKind::String, true, true),
+            readonly_system_table_field(
+                "created_by",
+                "创建人",
+                "created_by",
+                ModelFieldKind::String,
+                true,
+                false,
+            ),
+            readonly_system_table_field(
+                "updated_by",
+                "更新人",
+                "updated_by",
+                ModelFieldKind::String,
+                true,
+                false,
+            ),
             readonly_system_table_field(
                 "account",
                 "账号",
@@ -185,6 +203,22 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
         fields: vec![
             readonly_system_table_field("id", "角色 ID", "id", ModelFieldKind::String, true, true),
             readonly_system_table_field(
+                "created_by",
+                "创建人",
+                "created_by",
+                ModelFieldKind::String,
+                true,
+                false,
+            ),
+            readonly_system_table_field(
+                "updated_by",
+                "更新人",
+                "updated_by",
+                ModelFieldKind::String,
+                true,
+                false,
+            ),
+            readonly_system_table_field(
                 "scope_id",
                 "作用域 ID",
                 "scope_id",
@@ -296,21 +330,37 @@ pub fn system_metadata_templates() -> Vec<SystemMetadataModelTemplate> {
     vec![user_metadata_template(), role_metadata_template()]
 }
 
-const BUILTIN_RUNTIME_READ_MODEL_CODES: [&str; 7] = [
-    "application_run_log_summaries",
-    "application_conversations",
-    "application_conversation_messages",
-    "node_runs",
-    "flow_run_events",
-    "flow_run_checkpoints",
-    "flow_run_callback_tasks",
-];
-
 fn registered_system_table_protection() -> domain::DataModelProtection {
     domain::DataModelProtection {
         owner_kind: domain::DataModelOwnerKind::Core,
         owner_id: None,
         is_protected: true,
+    }
+}
+
+fn seed_string_if_empty(existing: &str, seed: &str) -> String {
+    if existing.trim().is_empty() {
+        seed.to_string()
+    } else {
+        existing.to_string()
+    }
+}
+
+fn seed_description_if_empty(
+    existing: &Option<String>,
+    seed: Option<&'static str>,
+) -> Option<String> {
+    match existing {
+        Some(value) if !value.trim().is_empty() => Some(value.clone()),
+        _ => seed.map(str::to_string),
+    }
+}
+
+fn seed_json_object_if_empty(existing: &serde_json::Value) -> serde_json::Value {
+    match existing {
+        serde_json::Value::Null => serde_json::json!({}),
+        serde_json::Value::Object(object) if object.is_empty() => serde_json::json!({}),
+        _ => existing.clone(),
     }
 }
 
@@ -353,10 +403,8 @@ where
         let mut ensured = Vec::new();
 
         for model in models.into_iter().filter(|model| {
-            model.scope_kind == DataModelScopeKind::System
-                && model.scope_id == SYSTEM_SCOPE_ID
-                && model.source_kind == domain::DataModelSourceKind::MainSource
-                && BUILTIN_RUNTIME_READ_MODEL_CODES.contains(&model.code.as_str())
+            domain::builtin_contract_for_model(model)
+                .is_some_and(|contract| contract.kind == domain::BuiltinDataModelKind::RuntimeRead)
         }) {
             if let Some(existing) = existing_grants
                 .iter()
@@ -445,21 +493,30 @@ where
         existing: domain::ModelDefinitionRecord,
         template: SystemMetadataModelTemplate,
     ) -> Result<domain::ModelDefinitionRecord> {
-        self.ensure_template_fields(actor_user_id, existing.id, &existing.fields, &template)
+        let reconciled = self
+            .repository
+            .reconcile_system_model_definition(&ReconcileSystemModelDefinitionInput {
+                actor_user_id,
+                model_id: existing.id,
+                title: seed_string_if_empty(&existing.title, template.title),
+                physical_table_name: template.code.to_string(),
+                status: domain::DataModelStatus::Published,
+                api_exposure_status: existing.api_exposure_status,
+                protection: registered_system_table_protection(),
+            })
             .await?;
 
-        let published = if existing.status == domain::DataModelStatus::Published {
-            existing
-        } else {
-            self.repository
-                .publish_model_definition(actor_user_id, existing.id)
-                .await?
-        };
-
-        self.ensure_system_scope_grant(actor_user_id, published.id)
+        self.ensure_template_fields(actor_user_id, reconciled.id, &reconciled.fields, &template)
             .await?;
 
-        Ok(published)
+        self.ensure_system_scope_grant(actor_user_id, reconciled.id)
+            .await?;
+
+        Ok(self
+            .repository
+            .get_model_definition(SYSTEM_SCOPE_ID, reconciled.id)
+            .await?
+            .unwrap_or(reconciled))
     }
 
     async fn ensure_template_fields(
@@ -469,32 +526,65 @@ where
         existing_fields: &[domain::ModelFieldRecord],
         template: &SystemMetadataModelTemplate,
     ) -> Result<()> {
-        for field in template.fields.iter().filter(|field| {
-            !existing_fields
+        for (sort_order, field) in template.fields.iter().enumerate() {
+            let physical_column_name = field.physical_column_name.map(str::to_string);
+            let Some(physical_column_name) = physical_column_name else {
+                continue;
+            };
+            if let Some(existing) = existing_fields
                 .iter()
-                .any(|existing| existing.code == field.code)
-        }) {
-            self.repository
-                .add_model_field(&AddModelFieldInput {
-                    actor_user_id,
-                    model_id,
-                    physical_column_name: field.physical_column_name.map(str::to_string),
-                    external_field_key: None,
-                    code: field.code.to_string(),
-                    title: field.title.to_string(),
-                    field_kind: field.field_kind,
-                    is_system: field.is_system,
-                    is_writable: field.is_writable,
-                    apply_physical_schema: field.apply_physical_schema,
-                    is_required: field.is_required,
-                    is_unique: field.is_unique,
-                    default_value: None,
-                    display_interface: None,
-                    display_options: serde_json::json!({}),
-                    relation_target_model_id: None,
-                    relation_options: serde_json::json!({}),
-                })
-                .await?;
+                .find(|existing| existing.code == field.code)
+            {
+                self.repository
+                    .reconcile_system_model_field(&ReconcileSystemModelFieldInput {
+                        actor_user_id,
+                        model_id,
+                        field_id: existing.id,
+                        title: seed_string_if_empty(&existing.title, field.title),
+                        description: seed_description_if_empty(
+                            &existing.description,
+                            field.description,
+                        ),
+                        physical_column_name,
+                        external_field_key: None,
+                        field_kind: field.field_kind,
+                        is_system: field.is_system,
+                        is_writable: field.is_writable,
+                        is_required: field.is_required,
+                        is_unique: field.is_unique,
+                        default_value: None,
+                        display_interface: existing.display_interface.clone(),
+                        display_options: seed_json_object_if_empty(&existing.display_options),
+                        relation_target_model_id: None,
+                        relation_options: serde_json::json!({}),
+                        sort_order: sort_order as i32,
+                        availability_status: domain::MetadataAvailabilityStatus::Available,
+                    })
+                    .await?;
+            } else {
+                self.repository
+                    .add_model_field(&AddModelFieldInput {
+                        actor_user_id,
+                        model_id,
+                        physical_column_name: Some(physical_column_name),
+                        external_field_key: None,
+                        code: field.code.to_string(),
+                        title: field.title.to_string(),
+                        description: field.description.map(str::to_string),
+                        field_kind: field.field_kind,
+                        is_system: field.is_system,
+                        is_writable: field.is_writable,
+                        apply_physical_schema: field.apply_physical_schema,
+                        is_required: field.is_required,
+                        is_unique: field.is_unique,
+                        default_value: None,
+                        display_interface: None,
+                        display_options: serde_json::json!({}),
+                        relation_target_model_id: None,
+                        relation_options: serde_json::json!({}),
+                    })
+                    .await?;
+            }
         }
 
         Ok(())

@@ -164,6 +164,7 @@ describe('console-data-models client', () => {
         {
           code: 'email',
           title: 'Email',
+          description: 'Primary email address',
           field_kind: 'string',
           is_required: true,
           is_unique: false,
@@ -178,6 +179,9 @@ describe('console-data-models client', () => {
     ).resolves.toMatchObject({
       path: '/api/console/models/model-1/fields',
       method: 'POST',
+      body: expect.objectContaining({
+        description: 'Primary email address'
+      }),
       csrfToken: 'csrf-123'
     });
 
@@ -187,6 +191,7 @@ describe('console-data-models client', () => {
         'field-1',
         {
           title: 'Email',
+          description: null,
           is_required: false,
           is_unique: true,
           default_value: null,
@@ -199,6 +204,9 @@ describe('console-data-models client', () => {
     ).resolves.toMatchObject({
       path: '/api/console/models/model-1/fields/field-1',
       method: 'PATCH',
+      body: expect.objectContaining({
+        description: null
+      }),
       csrfToken: 'csrf-123'
     });
 

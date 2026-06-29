@@ -37,8 +37,6 @@ pub struct ModelDefinitionService<R> {
     repository: R,
 }
 
-const NON_DELETABLE_MAIN_SOURCE_MODEL_CODES: [&str; 3] = ["attachments", "users", "roles"];
-
 pub fn runtime_scope_grant_from_record(
     grant: &domain::ScopeDataModelGrantRecord,
 ) -> runtime_core::runtime_acl::RuntimeScopeGrant {
@@ -93,16 +91,23 @@ fn ensure_protected_model_override_authorized(
 }
 
 fn ensure_model_deletable(model: &domain::ModelDefinitionRecord) -> Result<(), ControlPlaneError> {
-    if model.source_kind == domain::DataModelSourceKind::MainSource
-        && NON_DELETABLE_MAIN_SOURCE_MODEL_CODES.contains(&model.code.as_str())
-    {
+    if !domain::data_model_capabilities(model).can_delete {
         return Err(ControlPlaneError::InvalidInput("builtin_data_model"));
     }
 
     Ok(())
 }
 
-fn ensure_field_mutable(
+fn field_changes_physical_metadata(
+    field: &domain::ModelFieldRecord,
+    command: &UpdateModelFieldCommand,
+) -> bool {
+    field.is_required != command.is_required
+        || field.is_unique != command.is_unique
+        || field.default_value != command.default_value
+}
+
+fn ensure_field_deletable(
     model: &domain::ModelDefinitionRecord,
     field_id: Uuid,
 ) -> Result<(), ControlPlaneError> {
@@ -111,27 +116,20 @@ fn ensure_field_mutable(
         .iter()
         .find(|field| field.id == field_id)
         .ok_or(ControlPlaneError::NotFound("model_field"))?;
-    if field.is_system || !field.is_writable {
+    let capabilities = domain::data_model_field_capabilities(model, field);
+    if !capabilities.can_delete {
         return Err(ControlPlaneError::InvalidInput("model_field"));
     }
 
     Ok(())
 }
 
-fn is_registered_system_table(model: &domain::ModelDefinitionRecord) -> bool {
-    model.scope_kind == DataModelScopeKind::System
-        && model.scope_id == domain::SYSTEM_SCOPE_ID
-        && model.source_kind == domain::DataModelSourceKind::MainSource
-        && model.protection.owner_kind == domain::DataModelOwnerKind::Core
-        && model.protection.is_protected
-}
-
-fn ensure_not_registered_system_table_physical_field_mutation(
+fn ensure_field_can_be_added(
     model: &domain::ModelDefinitionRecord,
 ) -> Result<(), ControlPlaneError> {
-    if is_registered_system_table(model) {
+    if !domain::data_model_capabilities(model).can_add_user_field {
         return Err(ControlPlaneError::InvalidInput(
-            "registered_system_table_physical_fields_readonly",
+            "builtin_data_model_fields_readonly",
         ));
     }
 
@@ -147,21 +145,23 @@ fn ensure_field_update_allowed(
         .iter()
         .find(|field| field.id == command.field_id)
         .ok_or(ControlPlaneError::NotFound("model_field"))?;
+    let capabilities = domain::data_model_field_capabilities(model, field);
 
-    if is_registered_system_table(model) {
-        if field.is_required != command.is_required
-            || field.is_unique != command.is_unique
-            || field.default_value != command.default_value
-        {
+    if field_changes_physical_metadata(field, command) {
+        if !capabilities.can_update_physical_metadata {
             return Err(ControlPlaneError::InvalidInput(
-                "registered_system_table_physical_fields_readonly",
+                "builtin_data_model_physical_fields_readonly",
             ));
         }
-
-        return Ok(());
     }
 
-    if field.is_system || !field.is_writable {
+    if !capabilities.can_update_presentation_metadata
+        && (field.title != command.title
+            || field.description != command.description
+            || field.display_interface != command.display_interface
+            || field.display_options != command.display_options
+            || field.relation_options != command.relation_options)
+    {
         return Err(ControlPlaneError::InvalidInput("model_field"));
     }
 
@@ -350,8 +350,18 @@ where
             .get_model_definition(actor.current_workspace_id, command.model_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
-        ensure_protected_model_override_authorized(&actor, &previous_model)?;
-        let previous_effective = self.effective_api_exposure_status(&previous_model);
+        if !domain::data_model_capabilities(&previous_model).can_update_lifecycle_status
+            && previous_model.status != command.status
+        {
+            return Err(ControlPlaneError::InvalidInput(
+                "builtin_data_model_lifecycle_status_readonly",
+            )
+            .into());
+        }
+        if domain::builtin_contract_for_model(&previous_model).is_none() {
+            ensure_protected_model_override_authorized(&actor, &previous_model)?;
+        }
+        let previous_api_exposure_status = previous_model.api_exposure_status;
 
         let candidate = domain::ModelDefinitionRecord {
             status: command.status,
@@ -383,7 +393,7 @@ where
             ))
             .await?;
         let model = self.with_effective_exposure(model).await?;
-        if previous_effective != model.api_exposure_status {
+        if previous_api_exposure_status != model.api_exposure_status {
             self.repository
                 .append_audit_log(&audit_log(
                     Some(actor.current_workspace_id),
@@ -392,7 +402,7 @@ where
                     Some(command.model_id),
                     "state_model.api_exposure_status_changed",
                     serde_json::json!({
-                        "from": previous_effective.as_str(),
+                        "from": previous_api_exposure_status.as_str(),
                         "to": model.api_exposure_status.as_str(),
                         "status": model.status.as_str(),
                     }),
@@ -523,7 +533,7 @@ where
             .get_model_definition(actor.current_workspace_id, command.model_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
-        ensure_not_registered_system_table_physical_field_mutation(&model)?;
+        ensure_field_can_be_added(&model)?;
         let external_field_key =
             normalize_external_field_key(model.source_kind, command.external_field_key.as_deref())?;
 
@@ -534,6 +544,7 @@ where
                 model_id: command.model_id,
                 code: command.code,
                 title: command.title,
+                description: command.description,
                 physical_column_name: None,
                 external_field_key,
                 field_kind: command.field_kind,
@@ -577,9 +588,9 @@ where
             .get_model_definition(actor.current_workspace_id, command.model_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
-        let is_registered_system_table = is_registered_system_table(&model);
+        let is_builtin_data_model = domain::builtin_contract_for_model(&model).is_some();
         ensure_field_update_allowed(&model, &command)?;
-        if !is_registered_system_table {
+        if !is_builtin_data_model {
             ensure_protected_model_override_authorized(&actor, &model)?;
         }
 
@@ -590,6 +601,7 @@ where
                 model_id: command.model_id,
                 field_id: command.field_id,
                 title: command.title,
+                description: command.description,
                 is_required: command.is_required,
                 is_unique: command.is_unique,
                 default_value: command.default_value,
@@ -718,9 +730,10 @@ where
             .get_model_definition(actor.current_workspace_id, command.model_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
-        ensure_not_registered_system_table_physical_field_mutation(&model)?;
-        ensure_protected_model_override_authorized(&actor, &model)?;
-        ensure_field_mutable(&model, command.field_id)?;
+        if domain::builtin_contract_for_model(&model).is_none() {
+            ensure_protected_model_override_authorized(&actor, &model)?;
+        }
+        ensure_field_deletable(&model, command.field_id)?;
 
         self.repository
             .delete_model_field(command.actor_user_id, command.model_id, command.field_id)
@@ -1008,7 +1021,7 @@ where
         &self,
         mut model: domain::ModelDefinitionRecord,
     ) -> Result<domain::ModelDefinitionRecord> {
-        model.api_exposure_status = self.effective_api_exposure_status(&model);
+        model.api_exposure_status = self.normalized_api_exposure_for_status(&model);
         Ok(model)
     }
 
@@ -1016,19 +1029,7 @@ where
         &self,
         model: &domain::ModelDefinitionRecord,
     ) -> domain::ApiExposureStatus {
-        self.effective_api_exposure_status(model)
-    }
-
-    fn effective_api_exposure_status(
-        &self,
-        model: &domain::ModelDefinitionRecord,
-    ) -> domain::ApiExposureStatus {
-        match model.status {
-            domain::DataModelStatus::Draft => domain::ApiExposureStatus::Draft,
-            domain::DataModelStatus::Published => domain::ApiExposureStatus::ApiExposedReady,
-            domain::DataModelStatus::Disabled | domain::DataModelStatus::Broken => {
-                domain::ApiExposureStatus::PublishedNotExposed
-            }
-        }
+        normalize_api_exposure_for_status(model.status, model.api_exposure_status)
+            .unwrap_or_else(|_| domain::ApiExposureStatus::default_for_status(model.status))
     }
 }

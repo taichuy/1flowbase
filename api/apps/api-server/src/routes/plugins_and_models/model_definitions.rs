@@ -56,6 +56,7 @@ pub struct UpdateModelDefinitionBody {
 pub struct CreateModelFieldBody {
     pub code: String,
     pub title: String,
+    pub description: Option<String>,
     pub external_field_key: Option<String>,
     pub field_kind: String,
     #[serde(default)]
@@ -74,6 +75,7 @@ pub struct CreateModelFieldBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateModelFieldBody {
     pub title: String,
+    pub description: Option<String>,
     #[serde(default)]
     pub is_required: bool,
     #[serde(default)]
@@ -128,10 +130,36 @@ pub struct BatchDeleteModelDefinitionsBody {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct DataModelRecordCapabilitiesResponse {
+    pub can_list: bool,
+    pub can_get: bool,
+    pub can_create: bool,
+    pub can_update: bool,
+    pub can_delete: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DataModelCapabilitiesResponse {
+    pub can_delete: bool,
+    pub can_add_user_field: bool,
+    pub can_update_lifecycle_status: bool,
+    pub record: DataModelRecordCapabilitiesResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelFieldCapabilitiesResponse {
+    pub ownership: String,
+    pub can_update_presentation_metadata: bool,
+    pub can_update_physical_metadata: bool,
+    pub can_delete: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ModelFieldResponse {
     pub id: String,
     pub code: String,
     pub title: String,
+    pub description: Option<String>,
     pub physical_column_name: String,
     pub external_field_key: Option<String>,
     pub field_kind: String,
@@ -148,6 +176,7 @@ pub struct ModelFieldResponse {
     #[schema(value_type = Object)]
     pub relation_options: serde_json::Value,
     pub sort_order: i32,
+    pub capabilities: ModelFieldCapabilitiesResponse,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -167,6 +196,8 @@ pub struct ModelDefinitionResponse {
     pub physical_table_name: String,
     pub acl_namespace: String,
     pub audit_namespace: String,
+    pub builtin_kind: Option<String>,
+    pub capabilities: DataModelCapabilitiesResponse,
     pub fields: Vec<ModelFieldResponse>,
 }
 
@@ -259,11 +290,50 @@ fn default_true() -> bool {
     true
 }
 
-fn to_model_field_response(field: domain::ModelFieldRecord) -> ModelFieldResponse {
+fn to_record_capabilities_response(
+    capabilities: domain::DataModelRecordCapabilities,
+) -> DataModelRecordCapabilitiesResponse {
+    DataModelRecordCapabilitiesResponse {
+        can_list: capabilities.can_list,
+        can_get: capabilities.can_get,
+        can_create: capabilities.can_create,
+        can_update: capabilities.can_update,
+        can_delete: capabilities.can_delete,
+    }
+}
+
+fn to_model_capabilities_response(
+    capabilities: domain::DataModelCapabilities,
+) -> DataModelCapabilitiesResponse {
+    DataModelCapabilitiesResponse {
+        can_delete: capabilities.can_delete,
+        can_add_user_field: capabilities.can_add_user_field,
+        can_update_lifecycle_status: capabilities.can_update_lifecycle_status,
+        record: to_record_capabilities_response(capabilities.record),
+    }
+}
+
+fn to_field_capabilities_response(
+    capabilities: domain::DataModelFieldCapabilities,
+) -> ModelFieldCapabilitiesResponse {
+    ModelFieldCapabilitiesResponse {
+        ownership: capabilities.ownership.as_str().to_string(),
+        can_update_presentation_metadata: capabilities.can_update_presentation_metadata,
+        can_update_physical_metadata: capabilities.can_update_physical_metadata,
+        can_delete: capabilities.can_delete,
+    }
+}
+
+fn to_model_field_response(
+    model: &domain::ModelDefinitionRecord,
+    field: domain::ModelFieldRecord,
+) -> ModelFieldResponse {
+    let capabilities = domain::data_model_field_capabilities(model, &field);
     ModelFieldResponse {
         id: field.id.to_string(),
         code: field.code,
         title: field.title,
+        description: field.description,
         physical_column_name: field.physical_column_name,
         external_field_key: field.external_field_key,
         field_kind: field.field_kind.as_str().to_string(),
@@ -277,12 +347,23 @@ fn to_model_field_response(field: domain::ModelFieldRecord) -> ModelFieldRespons
         relation_target_model_id: field.relation_target_model_id.map(|id| id.to_string()),
         relation_options: field.relation_options,
         sort_order: field.sort_order,
+        capabilities: to_field_capabilities_response(capabilities),
     }
 }
 
 pub(super) fn to_model_definition_response(
     model: domain::ModelDefinitionRecord,
 ) -> ModelDefinitionResponse {
+    let builtin_kind =
+        domain::builtin_contract_for_model(&model).map(|contract| contract.kind.as_str().into());
+    let capabilities = domain::data_model_capabilities(&model);
+    let fields = model
+        .fields
+        .iter()
+        .cloned()
+        .map(|field| to_model_field_response(&model, field))
+        .collect();
+
     ModelDefinitionResponse {
         id: model.id.to_string(),
         scope_kind: model.scope_kind.as_str().to_string(),
@@ -299,11 +380,9 @@ pub(super) fn to_model_definition_response(
         physical_table_name: model.physical_table_name,
         acl_namespace: model.acl_namespace,
         audit_namespace: model.audit_namespace,
-        fields: model
-            .fields
-            .into_iter()
-            .map(to_model_field_response)
-            .collect(),
+        builtin_kind,
+        capabilities: to_model_capabilities_response(capabilities),
+        fields,
     }
 }
 
@@ -788,13 +867,15 @@ pub async fn create_field(
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelFieldResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let model_id = helpers::parse_uuid(&model_id, "model_id")?;
 
     let field = mutation_service(&state)
         .add_field(AddModelFieldCommand {
             actor_user_id: context.user.id,
-            model_id: helpers::parse_uuid(&model_id, "model_id")?,
+            model_id,
             code: body.code,
             title: body.title,
+            description: body.description,
             external_field_key: body.external_field_key,
             field_kind: parse_field_kind(&body.field_kind)?,
             is_required: body.is_required,
@@ -810,10 +891,13 @@ pub async fn create_field(
             relation_options: body.relation_options,
         })
         .await?;
+    let model = ModelDefinitionService::new(state.store.clone())
+        .get_model(context.user.id, model_id)
+        .await?;
 
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_model_field_response(field))),
+        Json(ApiSuccess::new(to_model_field_response(&model, field))),
     ))
 }
 
@@ -835,13 +919,16 @@ pub async fn update_field(
 ) -> Result<Json<ApiSuccess<ModelFieldResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let model_id = helpers::parse_uuid(&model_id, "model_id")?;
+    let field_id = helpers::parse_uuid(&field_id, "field_id")?;
 
     let field = mutation_service(&state)
         .update_field(UpdateModelFieldCommand {
             actor_user_id: context.user.id,
-            model_id: helpers::parse_uuid(&model_id, "model_id")?,
-            field_id: helpers::parse_uuid(&field_id, "field_id")?,
+            model_id,
+            field_id,
             title: body.title,
+            description: body.description,
             is_required: body.is_required,
             is_unique: body.is_unique,
             default_value: body.default_value,
@@ -850,8 +937,13 @@ pub async fn update_field(
             relation_options: body.relation_options,
         })
         .await?;
+    let model = ModelDefinitionService::new(state.store.clone())
+        .get_model(context.user.id, model_id)
+        .await?;
 
-    Ok(Json(ApiSuccess::new(to_model_field_response(field))))
+    Ok(Json(ApiSuccess::new(to_model_field_response(
+        &model, field,
+    ))))
 }
 
 #[utoipa::path(

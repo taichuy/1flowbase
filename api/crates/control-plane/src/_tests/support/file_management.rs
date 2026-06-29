@@ -26,9 +26,10 @@ fn memory_physical_table_name(input: &CreateModelDefinitionInput) -> String {
         && input.source_kind == domain::DataModelSourceKind::MainSource
         && input.protection.owner_kind == domain::DataModelOwnerKind::Core
         && input.protection.is_protected
-        && matches!(input.code.as_str(), "attachments" | "users" | "roles")
     {
-        return input.code.clone();
+        if let Some(contract) = domain::builtin_data_model_contract(&input.code) {
+            return contract.physical_table_name.to_string();
+        }
     }
 
     format!("rtm_{}_{}", input.scope_kind.as_str(), input.code)
@@ -307,6 +308,7 @@ impl ModelDefinitionRepository for MemoryFileManagementRepository {
             data_model_id: input.model_id,
             code: input.code.clone(),
             title: input.title.clone(),
+            description: input.description.clone(),
             physical_column_name: input
                 .physical_column_name
                 .clone()
@@ -340,6 +342,7 @@ impl ModelDefinitionRepository for MemoryFileManagementRepository {
             .find(|field| field.id == input.field_id)
             .expect("field should exist for updates");
         field.title = input.title.clone();
+        field.description = input.description.clone();
         field.is_required = input.is_required;
         field.is_unique = input.is_unique;
         field.default_value = input.default_value.clone();

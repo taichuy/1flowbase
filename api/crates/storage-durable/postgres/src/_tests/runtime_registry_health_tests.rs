@@ -142,6 +142,7 @@ async fn seed_external_runtime_model(
             external_field_key: Some("email_address".into()),
             code: "email".into(),
             title: "Email".into(),
+            description: None,
             field_kind: domain::ModelFieldKind::String,
             is_system: false,
             is_writable: true,

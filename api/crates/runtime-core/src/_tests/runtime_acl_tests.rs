@@ -48,6 +48,7 @@ fn system_model_metadata(model_id: Uuid) -> ModelMetadata {
         physical_table_name: "rtm_system_orders".into(),
         scope_column_name: "scope_id".into(),
         fields: vec![],
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: ResourceDescriptor::runtime_model("orders", domain::DataModelScopeKind::System),
     }
 }

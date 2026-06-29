@@ -152,7 +152,7 @@ async fn create_model_route_rejects_invalid_status_without_creating_model() {
 }
 
 #[tokio::test]
-async fn model_definition_routes_derive_ready_exposure_from_published_status() {
+async fn model_definition_routes_return_stored_default_exposure_for_published_status() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -187,7 +187,7 @@ async fn model_definition_routes_derive_ready_exposure_from_published_status() {
     let model_id = created["data"]["id"].as_str().unwrap().to_string();
     assert_eq!(
         created["data"]["api_exposure_status"],
-        json!("api_exposed_ready")
+        json!("published_not_exposed")
     );
 
     let get_response = app
@@ -211,12 +211,12 @@ async fn model_definition_routes_derive_ready_exposure_from_published_status() {
     .unwrap();
     assert_eq!(
         ready["data"]["api_exposure_status"],
-        json!("api_exposed_ready")
+        json!("published_not_exposed")
     );
 }
 
 #[tokio::test]
-async fn model_definition_routes_derive_api_exposure_on_status_update() {
+async fn model_definition_routes_persist_explicit_api_exposure_on_status_update() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -287,7 +287,7 @@ async fn model_definition_routes_derive_api_exposure_on_status_update() {
 }
 
 #[tokio::test]
-async fn model_definition_routes_ignore_api_exposure_patch_without_status_update() {
+async fn model_definition_routes_persist_api_exposure_patch_without_status_update() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -351,6 +351,6 @@ async fn model_definition_routes_ignore_api_exposure_patch_without_status_update
     assert_eq!(updated["data"]["status"], json!("published"));
     assert_eq!(
         updated["data"]["api_exposure_status"],
-        json!("api_exposed_ready")
+        json!("api_exposed_no_permission")
     );
 }

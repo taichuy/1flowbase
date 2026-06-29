@@ -290,13 +290,11 @@ set
     external_resource_key = null,
     external_table_id = null,
     external_capability_snapshot = null,
-    title = models.title,
     physical_table_name = models.physical_table_name,
     acl_namespace = 'state_model.' || models.code,
     audit_namespace = 'audit.state_model.' || models.code,
     availability_status = 'available',
     status = 'published',
-    api_exposure_status = 'published_not_exposed',
     owner_kind = 'core',
     owner_id = null,
     is_protected = true,
@@ -466,7 +464,6 @@ where not exists (
 
 update model_fields target
 set
-    title = fields.title,
     physical_column_name = fields.physical_column_name,
     external_field_key = null,
     field_kind = fields.field_kind,
@@ -475,8 +472,6 @@ set
     is_required = fields.is_required,
     is_unique = fields.is_unique,
     default_value = null,
-    display_interface = null,
-    display_options = '{}'::jsonb,
     relation_target_model_id = null,
     relation_options = '{}'::jsonb,
     sort_order = fields.sort_order,
@@ -542,7 +537,4 @@ select
     null
 from hashed_model_scope_grants
 on conflict (scope_kind, scope_id, data_model_id)
-do update set
-    enabled = true,
-    permission_profile = excluded.permission_profile,
-    updated_at = now();
+do nothing;

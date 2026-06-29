@@ -6,7 +6,7 @@ use control_plane::{
     },
     system_metadata::SystemMetadataBootstrapService,
 };
-use domain::{DataModelScopeKind, ModelFieldKind, DEFAULT_SCOPE_ID};
+use domain::{DataModelScopeKind, ModelFieldKind, DEFAULT_SCOPE_ID, SYSTEM_SCOPE_ID};
 use runtime_core::runtime_engine::RuntimeModelError;
 use runtime_core::runtime_record_repository::{
     RuntimeListQuery, RuntimeRecordRepository, RuntimeSortInput,

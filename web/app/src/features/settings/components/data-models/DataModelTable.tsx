@@ -76,19 +76,10 @@ const apiExposureOptions = [
   }
 ] satisfies Array<{ label: string; value: DefaultApiExposureStatus }>;
 
-const builtinMainSourceModelCodes = new Set(['attachments', 'users', 'roles']);
-
 function toDefaultApiExposureStatus(
   status: SettingsDataSourceInstance['default_api_exposure_status']
 ): DefaultApiExposureStatus {
   return status === 'api_exposed_ready' ? 'published_not_exposed' : status;
-}
-
-function isBuiltinMainSourceModel(model: SettingsDataModel) {
-  return (
-    model.source_kind === 'main_source' &&
-    builtinMainSourceModelCodes.has(model.code)
-  );
 }
 
 function getStatusTag(status: string) {
@@ -301,7 +292,7 @@ export function DataModelTable({
       key: 'actions',
       width: 160,
       render: (_, model) => {
-        const canDeleteModel = !isBuiltinMainSourceModel(model);
+        const canDeleteModel = model.capabilities.can_delete;
 
         return (
           <Space size={12}>
@@ -545,7 +536,7 @@ export function DataModelTable({
                     >
                       {i18nText('settings', 'auto.edit')}
                     </Button>
-                    {!isBuiltinMainSourceModel(model) ? (
+                    {model.capabilities.can_delete ? (
                       <Button
                         danger
                         type="link"

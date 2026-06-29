@@ -665,6 +665,7 @@ fn append_scope_clause(
 }
 
 fn to_runtime_model_metadata(model: domain::ModelDefinitionRecord) -> ModelMetadata {
+    let record_capabilities = domain::data_model_capabilities(&model).record;
     ModelMetadata {
         model_id: model.id,
         model_code: model.code.clone(),
@@ -681,6 +682,7 @@ fn to_runtime_model_metadata(model: domain::ModelDefinitionRecord) -> ModelMetad
             .into_iter()
             .filter(|field| field.availability_status.is_healthy())
             .collect(),
+        record_capabilities,
         resource: runtime_core::resource_descriptor::ResourceDescriptor::runtime_model(
             &model.code,
             model.scope_kind,
@@ -1121,6 +1123,7 @@ fn to_model_field_record(row: PgRow) -> domain::ModelFieldRecord {
         data_model_id: row.get("data_model_id"),
         code: row.get("code"),
         title: row.get("title"),
+        description: row.get("description"),
         physical_column_name: row.get("physical_column_name"),
         external_field_key: row.get("external_field_key"),
         field_kind: domain::ModelFieldKind::from_db(row.get("field_kind")),

@@ -22,6 +22,8 @@ fn user_and_role_metadata_templates_match_system_table_contract() {
         user_codes,
         vec![
             "id",
+            "created_by",
+            "updated_by",
             "account",
             "email",
             "phone",
@@ -49,6 +51,8 @@ fn user_and_role_metadata_templates_match_system_table_contract() {
         role_codes,
         vec![
             "id",
+            "created_by",
+            "updated_by",
             "scope_id",
             "scope_kind",
             "workspace_id",
@@ -64,6 +68,23 @@ fn user_and_role_metadata_templates_match_system_table_contract() {
             "updated_at",
         ]
     );
+
+    let mut user_contract_codes = domain::builtin_data_model_contract("users")
+        .expect("users builtin contract")
+        .system_field_codes
+        .to_vec();
+    let mut role_contract_codes = domain::builtin_data_model_contract("roles")
+        .expect("roles builtin contract")
+        .system_field_codes
+        .to_vec();
+    let mut sorted_user_codes = user_codes;
+    let mut sorted_role_codes = role_codes;
+    sorted_user_codes.sort_unstable();
+    sorted_role_codes.sort_unstable();
+    user_contract_codes.sort_unstable();
+    role_contract_codes.sort_unstable();
+    assert_eq!(sorted_user_codes, user_contract_codes);
+    assert_eq!(sorted_role_codes, role_contract_codes);
 }
 
 #[tokio::test]
@@ -115,8 +136,8 @@ async fn bootstrap_creates_builtin_user_and_role_models_once() {
     assert!(roles.protection.is_protected);
     assert_eq!(users.physical_table_name, "users");
     assert_eq!(roles.physical_table_name, "roles");
-    assert_eq!(users.fields.len(), 16);
-    assert_eq!(roles.fields.len(), 14);
+    assert_eq!(users.fields.len(), 18);
+    assert_eq!(roles.fields.len(), 16);
     assert!(users
         .fields
         .iter()
@@ -166,19 +187,43 @@ async fn bootstrap_repairs_existing_partial_system_metadata_models() {
         .add_model_field(&AddModelFieldInput {
             actor_user_id,
             model_id: partial_users.id,
-            physical_column_name: None,
+            physical_column_name: Some("wrong_account_column".into()),
             external_field_key: None,
             code: "account".into(),
-            title: "账号".into(),
-            field_kind: ModelFieldKind::String,
+            title: "Custom account title".into(),
+            description: Some("User edited account description".into()),
+            field_kind: ModelFieldKind::Text,
+            is_system: true,
+            is_writable: true,
+            apply_physical_schema: false,
+            is_required: false,
+            is_unique: false,
+            default_value: None,
+            display_interface: Some("input".into()),
+            display_options: serde_json::json!({ "width": 240 }),
+            relation_target_model_id: None,
+            relation_options: serde_json::json!({ "stale": true }),
+        })
+        .await
+        .unwrap();
+    repository
+        .add_model_field(&AddModelFieldInput {
+            actor_user_id,
+            model_id: partial_users.id,
+            physical_column_name: None,
+            external_field_key: None,
+            code: "custom_note".into(),
+            title: "Custom note".into(),
+            description: Some("User-added field".into()),
+            field_kind: ModelFieldKind::Text,
             is_system: false,
             is_writable: true,
             apply_physical_schema: false,
-            is_required: true,
-            is_unique: true,
+            is_required: false,
+            is_unique: false,
             default_value: None,
-            display_interface: None,
-            display_options: serde_json::json!({}),
+            display_interface: Some("textarea".into()),
+            display_options: serde_json::json!({ "rows": 4 }),
             relation_target_model_id: None,
             relation_options: serde_json::json!({}),
         })
@@ -203,10 +248,49 @@ async fn bootstrap_repairs_existing_partial_system_metadata_models() {
         .map(|field| field.code.as_str())
         .collect::<Vec<_>>();
 
-    assert_eq!(user_field_codes.len(), 16);
+    assert_eq!(user_field_codes.len(), 19);
     assert!(user_field_codes.contains(&"id"));
     assert!(user_field_codes.contains(&"account"));
     assert!(user_field_codes.contains(&"created_at"));
+    assert!(user_field_codes.contains(&"custom_note"));
+    assert_eq!(repaired_users.physical_table_name, "users");
+    assert_eq!(
+        repaired_users.protection.owner_kind,
+        domain::DataModelOwnerKind::Core
+    );
+    assert!(repaired_users.protection.is_protected);
+    assert_eq!(repaired_users.status, DataModelStatus::Published);
+
+    let account_field = repaired_users
+        .fields
+        .iter()
+        .find(|field| field.code == "account")
+        .expect("account field should remain");
+    assert_eq!(account_field.title, "Custom account title");
+    assert_eq!(
+        account_field.description.as_deref(),
+        Some("User edited account description")
+    );
+    assert_eq!(account_field.display_interface.as_deref(), Some("input"));
+    assert_eq!(
+        account_field.display_options,
+        serde_json::json!({ "width": 240 })
+    );
+    assert_eq!(account_field.physical_column_name, "account");
+    assert_eq!(account_field.field_kind, ModelFieldKind::String);
+    assert!(account_field.is_system);
+    assert!(!account_field.is_writable);
+    assert!(account_field.is_required);
+    assert!(account_field.is_unique);
+    assert_eq!(account_field.relation_options, serde_json::json!({}));
+
+    let custom_note_field = repaired_users
+        .fields
+        .iter()
+        .find(|field| field.code == "custom_note")
+        .expect("user-added field should not be removed");
+    assert!(!custom_note_field.is_system);
+    assert_eq!(custom_note_field.title, "Custom note");
 
     let grants = ModelDefinitionRepository::list_scope_data_model_grants(
         &repository,

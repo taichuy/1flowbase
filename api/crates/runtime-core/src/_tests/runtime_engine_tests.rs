@@ -113,6 +113,52 @@ async fn runtime_engine_runs_full_crud_against_repository_and_scope_context() {
 }
 
 #[tokio::test]
+async fn runtime_engine_rejects_record_writes_when_model_capability_is_read_only() {
+    let mut metadata = status_model_metadata("application_run_log_summaries");
+    metadata.record_capabilities = domain::DataModelRecordCapabilities::read_only();
+    let model_id = metadata.model_id;
+    let engine = RuntimeEngine::for_tests_with_models(vec![metadata]);
+    let actor = ActorContext::root(Uuid::nil(), Uuid::nil(), "root");
+    let grant = scope_grant(model_id, Uuid::nil());
+
+    for error in [
+        engine
+            .create_record(RuntimeCreateInput {
+                actor: actor.clone(),
+                model_code: "application_run_log_summaries".into(),
+                payload: json!({ "title": "blocked" }),
+                scope_grant: Some(grant.clone()),
+            })
+            .await
+            .unwrap_err(),
+        engine
+            .update_record(RuntimeUpdateInput {
+                actor: actor.clone(),
+                model_code: "application_run_log_summaries".into(),
+                record_id: "record-1".into(),
+                payload: json!({ "title": "blocked" }),
+                scope_grant: Some(grant.clone()),
+            })
+            .await
+            .unwrap_err(),
+        engine
+            .delete_record(RuntimeDeleteInput {
+                actor,
+                model_code: "application_run_log_summaries".into(),
+                record_id: "record-1".into(),
+                scope_grant: Some(grant),
+            })
+            .await
+            .unwrap_err(),
+    ] {
+        assert!(matches!(
+            error.downcast_ref::<RuntimeModelError>(),
+            Some(RuntimeModelError::RecordActionNotAllowed { .. })
+        ));
+    }
+}
+
+#[tokio::test]
 async fn external_source_runtime_crud_dispatches_to_data_source_backend_after_acl_scope_resolution()
 {
     let backend = Arc::new(CapturingDataSourceBackend::default());
@@ -384,6 +430,7 @@ async fn runtime_engine_uses_fixed_system_scope_id_for_system_models() {
         physical_table_name: "rtm_system_demo_orders".into(),
         scope_column_name: "scope_id".into(),
         fields: vec![],
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: ResourceDescriptor::runtime_model(model_code, domain::DataModelScopeKind::System),
     }]);
 
@@ -430,6 +477,7 @@ async fn runtime_engine_prefers_workspace_metadata_before_system_fallback() {
         physical_table_name: "rtm_workspace_demo_orders".into(),
         scope_column_name: "scope_id".into(),
         fields: vec![],
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: ResourceDescriptor::runtime_model(
             model_code,
             domain::DataModelScopeKind::Workspace,
@@ -447,6 +495,7 @@ async fn runtime_engine_prefers_workspace_metadata_before_system_fallback() {
         physical_table_name: "rtm_system_demo_orders".into(),
         scope_column_name: "scope_id".into(),
         fields: vec![],
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: ResourceDescriptor::runtime_model(model_code, domain::DataModelScopeKind::System),
     };
     engine
@@ -573,6 +622,7 @@ fn status_model_metadata(model_code: &str) -> ModelMetadata {
         physical_table_name: format!("rtm_workspace_demo_{model_code}"),
         scope_column_name: "scope_id".into(),
         fields: vec![],
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: ResourceDescriptor::runtime_model(
             model_code,
             domain::DataModelScopeKind::Workspace,
@@ -602,6 +652,7 @@ fn external_model_metadata(
                 data_model_id: model_id,
                 code: "email".into(),
                 title: "Email".into(),
+                description: None,
                 physical_column_name: "email".into(),
                 external_field_key: Some("contact_email".into()),
                 field_kind: domain::ModelFieldKind::String,
@@ -622,6 +673,7 @@ fn external_model_metadata(
                 data_model_id: model_id,
                 code: "created_at".into(),
                 title: "Created At".into(),
+                description: None,
                 physical_column_name: "created_at".into(),
                 external_field_key: Some("created_at_utc".into()),
                 field_kind: domain::ModelFieldKind::String,
@@ -642,6 +694,7 @@ fn external_model_metadata(
                 data_model_id: model_id,
                 code: "name".into(),
                 title: "Name".into(),
+                description: None,
                 physical_column_name: "name".into(),
                 external_field_key: Some("display_name".into()),
                 field_kind: domain::ModelFieldKind::String,
@@ -658,6 +711,7 @@ fn external_model_metadata(
                 availability_status: domain::MetadataAvailabilityStatus::Available,
             },
         ],
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: ResourceDescriptor::runtime_model(
             "external_contacts",
             domain::DataModelScopeKind::Workspace,
