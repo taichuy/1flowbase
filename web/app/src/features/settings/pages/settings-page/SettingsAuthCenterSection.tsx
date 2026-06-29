@@ -104,6 +104,23 @@ function AuthenticatorConfigDrawer({
       open={open}
       onClose={onClose}
       destroyOnClose
+      footer={
+        authenticator ? (
+          <Flex justify="end" gap="small">
+            <Button onClick={onClose}>
+              {i18nText('settings', 'auto.cancel')}
+            </Button>
+            <Button
+              type="primary"
+              loading={submitting}
+              disabled={accessErrorMessage != null}
+              onClick={() => form.submit()}
+            >
+              {i18nText('settings', 'auto.save')}
+            </Button>
+          </Flex>
+        ) : null
+      }
     >
       {authenticator ? (
         <Space
@@ -158,19 +175,6 @@ function AuthenticatorConfigDrawer({
             >
               <Switch disabled={!canManageAuthenticators || !hasCsrfToken} />
             </Form.Item>
-            <Flex justify="end" gap="small">
-              <Button onClick={onClose}>
-                {i18nText('settings', 'auto.cancel')}
-              </Button>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={submitting}
-                disabled={accessErrorMessage != null}
-              >
-                {i18nText('settings', 'auto.save')}
-              </Button>
-            </Flex>
           </Form>
         </Space>
       ) : null}

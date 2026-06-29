@@ -893,6 +893,11 @@ describe('SettingsPage', () => {
       'Local password authentication'
     );
     expect(within(dialog).getByRole('switch', { name: '启用' })).toBeChecked();
+    expect(
+      within(dialog).getByRole('button', { name: /保\s*存/ }).closest(
+        '.ant-drawer-footer'
+      )
+    ).not.toBeNull();
   });
 
   test('submits auth center config, refreshes the list, and closes the drawer', async () => {
