@@ -16,6 +16,7 @@ pub struct ModelMetadata {
     pub physical_table_name: String,
     pub scope_column_name: String,
     pub fields: Vec<domain::ModelFieldRecord>,
+    pub record_capabilities: domain::DataModelRecordCapabilities,
     pub resource: ResourceDescriptor,
 }
 

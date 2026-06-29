@@ -21,6 +21,32 @@ export type ConsoleDataModelPermissionProfile =
   | 'scope_all'
   | 'system_all';
 
+export type ConsoleDataModelBuiltinKind = 'core' | 'runtime_read';
+
+export type ConsoleDataModelFieldOwnership = 'system_owned' | 'user_added';
+
+export interface ConsoleDataModelRecordCapabilities {
+  can_list: boolean;
+  can_get: boolean;
+  can_create: boolean;
+  can_update: boolean;
+  can_delete: boolean;
+}
+
+export interface ConsoleDataModelCapabilities {
+  can_delete: boolean;
+  can_add_user_field: boolean;
+  can_update_lifecycle_status: boolean;
+  record: ConsoleDataModelRecordCapabilities;
+}
+
+export interface ConsoleDataModelFieldCapabilities {
+  ownership: ConsoleDataModelFieldOwnership;
+  can_update_presentation_metadata: boolean;
+  can_update_physical_metadata: boolean;
+  can_delete: boolean;
+}
+
 export interface ConsoleDataSourceInstance {
   id: string;
   source_kind: ConsoleDataSourceKind;
@@ -42,6 +68,7 @@ export interface ConsoleDataModelField {
   id: string;
   code: string;
   title: string;
+  description: string | null;
   physical_column_name: string;
   external_field_key: string | null;
   field_kind: string;
@@ -55,6 +82,7 @@ export interface ConsoleDataModelField {
   relation_target_model_id: string | null;
   relation_options: Record<string, unknown>;
   sort_order: number;
+  capabilities: ConsoleDataModelFieldCapabilities;
 }
 
 export interface ConsoleDataModel {
@@ -73,6 +101,8 @@ export interface ConsoleDataModel {
   physical_table_name: string;
   acl_namespace: string;
   audit_namespace: string;
+  builtin_kind: ConsoleDataModelBuiltinKind | null;
+  capabilities: ConsoleDataModelCapabilities;
   fields: ConsoleDataModelField[];
 }
 
@@ -178,6 +208,7 @@ export interface BatchDeleteConsoleDataModelsResult {
 export interface CreateConsoleDataModelFieldInput {
   code: string;
   title: string;
+  description?: string | null;
   external_field_key?: string | null;
   field_kind: string;
   is_required: boolean;
@@ -191,6 +222,7 @@ export interface CreateConsoleDataModelFieldInput {
 
 export interface UpdateConsoleDataModelFieldInput {
   title: string;
+  description?: string | null;
   is_required: boolean;
   is_unique: boolean;
   default_value: unknown | null;

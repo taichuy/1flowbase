@@ -26,6 +26,17 @@ pub struct UpdateModelDefinitionInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct ReconcileSystemModelDefinitionInput {
+    pub actor_user_id: Uuid,
+    pub model_id: Uuid,
+    pub title: String,
+    pub physical_table_name: String,
+    pub status: domain::DataModelStatus,
+    pub api_exposure_status: domain::ApiExposureStatus,
+    pub protection: domain::DataModelProtection,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpdateModelDefinitionStatusInput {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
@@ -59,6 +70,7 @@ pub struct AddModelFieldInput {
     pub model_id: Uuid,
     pub code: String,
     pub title: String,
+    pub description: Option<String>,
     pub physical_column_name: Option<String>,
     pub external_field_key: Option<String>,
     pub field_kind: ModelFieldKind,
@@ -80,12 +92,36 @@ pub struct UpdateModelFieldInput {
     pub model_id: Uuid,
     pub field_id: Uuid,
     pub title: String,
+    pub description: Option<String>,
     pub is_required: bool,
     pub is_unique: bool,
     pub default_value: Option<serde_json::Value>,
     pub display_interface: Option<String>,
     pub display_options: serde_json::Value,
     pub relation_options: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReconcileSystemModelFieldInput {
+    pub actor_user_id: Uuid,
+    pub model_id: Uuid,
+    pub field_id: Uuid,
+    pub title: String,
+    pub description: Option<String>,
+    pub physical_column_name: String,
+    pub external_field_key: Option<String>,
+    pub field_kind: ModelFieldKind,
+    pub is_system: bool,
+    pub is_writable: bool,
+    pub is_required: bool,
+    pub is_unique: bool,
+    pub default_value: Option<serde_json::Value>,
+    pub display_interface: Option<String>,
+    pub display_options: serde_json::Value,
+    pub relation_target_model_id: Option<Uuid>,
+    pub relation_options: serde_json::Value,
+    pub sort_order: i32,
+    pub availability_status: domain::MetadataAvailabilityStatus,
 }
 
 #[async_trait]
@@ -124,6 +160,12 @@ pub trait ModelDefinitionRepository: Send + Sync {
         &self,
         input: &UpdateModelDefinitionInput,
     ) -> anyhow::Result<ModelDefinitionRecord>;
+    async fn reconcile_system_model_definition(
+        &self,
+        _input: &ReconcileSystemModelDefinitionInput,
+    ) -> anyhow::Result<ModelDefinitionRecord> {
+        anyhow::bail!("reconcile_system_model_definition is not implemented")
+    }
     async fn update_model_definition_status(
         &self,
         _input: &UpdateModelDefinitionStatusInput,
@@ -136,6 +178,12 @@ pub trait ModelDefinitionRepository: Send + Sync {
         &self,
         input: &UpdateModelFieldInput,
     ) -> anyhow::Result<ModelFieldRecord>;
+    async fn reconcile_system_model_field(
+        &self,
+        _input: &ReconcileSystemModelFieldInput,
+    ) -> anyhow::Result<ModelFieldRecord> {
+        anyhow::bail!("reconcile_system_model_field is not implemented")
+    }
     async fn delete_model_definition(
         &self,
         actor_user_id: Uuid,

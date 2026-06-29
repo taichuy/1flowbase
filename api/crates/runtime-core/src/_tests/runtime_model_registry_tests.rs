@@ -84,6 +84,7 @@ fn model_metadata_with_status(
         physical_table_name: format!("rtm_workspace_demo_{model_code}"),
         scope_column_name: "scope_id".into(),
         fields: vec![],
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: runtime_core::resource_descriptor::ResourceDescriptor::runtime_model(
             model_code,
             domain::DataModelScopeKind::Workspace,

@@ -426,6 +426,7 @@ pub struct ModelFieldRecord {
     pub data_model_id: Uuid,
     pub code: String,
     pub title: String,
+    pub description: Option<String>,
     pub physical_column_name: String,
     pub external_field_key: Option<String>,
     pub field_kind: ModelFieldKind,

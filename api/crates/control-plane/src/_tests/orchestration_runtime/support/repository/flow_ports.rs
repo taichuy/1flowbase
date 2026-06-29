@@ -39,6 +39,7 @@ fn test_data_model_field(
         data_model_id: Uuid::nil(),
         code: code.to_string(),
         title: code.to_string(),
+        description: None,
         physical_column_name: code.to_string(),
         external_field_key: None,
         field_kind,

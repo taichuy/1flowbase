@@ -20,6 +20,7 @@ fn model_field_mapper_preserves_runtime_and_external_field_flags() {
         data_model_id,
         code: "owner_id".into(),
         title: "Owner".into(),
+        description: Some("Owner relation".into()),
         physical_column_name: "owner_id".into(),
         external_field_key: Some("owner.id".into()),
         field_kind: "many_to_one".into(),
@@ -38,6 +39,7 @@ fn model_field_mapper_preserves_runtime_and_external_field_flags() {
 
     assert_eq!(record.id, field_id);
     assert_eq!(record.data_model_id, data_model_id);
+    assert_eq!(record.description.as_deref(), Some("Owner relation"));
     assert_eq!(record.external_field_key.as_deref(), Some("owner.id"));
     assert!(matches!(record.field_kind, ModelFieldKind::ManyToOne));
     assert!(record.is_system);
@@ -71,6 +73,7 @@ fn model_definition_mapper_preserves_scope_source_exposure_and_protection() {
         data_model_id: model_id,
         code: "email".into(),
         title: "Email".into(),
+        description: None,
         physical_column_name: "email".into(),
         external_field_key: None,
         field_kind: "string".into(),

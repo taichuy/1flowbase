@@ -4,8 +4,6 @@ use uuid::Uuid;
 
 use crate::errors::ControlPlaneError;
 
-const REGISTERED_SYSTEM_TABLE_CODES: [&str; 3] = ["attachments", "users", "roles"];
-
 pub(super) fn registered_system_table_name(
     scope_kind: domain::DataModelScopeKind,
     source_kind: domain::DataModelSourceKind,
@@ -20,9 +18,7 @@ pub(super) fn registered_system_table_name(
         return None;
     }
 
-    REGISTERED_SYSTEM_TABLE_CODES
-        .into_iter()
-        .find(|registered_code| *registered_code == code)
+    domain::builtin_data_model_contract(code).map(|contract| contract.physical_table_name)
 }
 
 pub(super) fn normalize_api_exposure_for_status(

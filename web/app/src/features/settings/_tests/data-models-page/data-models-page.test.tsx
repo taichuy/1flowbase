@@ -68,7 +68,7 @@ describe('Settings data models page', () => {
   );
 
   test(
-    'shows built-in user and role metadata in the main data source editor',
+    'uses backend capabilities for built-in model management entrances',
     async () => {
       renderApp('/settings/data-models');
 
@@ -94,9 +94,13 @@ describe('Settings data models page', () => {
       const rolesRow = screen
         .getAllByRole('row')
         .find((row) => within(row).queryByText('roles'));
+      const runtimeLogsRow = screen
+        .getAllByRole('row')
+        .find((row) => within(row).queryByText('runtime_logs'));
       expect(attachmentsRow).toBeInstanceOf(HTMLElement);
       expect(usersRow).toBeInstanceOf(HTMLElement);
       expect(rolesRow).toBeInstanceOf(HTMLElement);
+      expect(runtimeLogsRow).toBeInstanceOf(HTMLElement);
       expect(
         within(attachmentsRow as HTMLElement).queryByRole('button', {
           name: '删除数据表 Attachments'
@@ -110,6 +114,11 @@ describe('Settings data models page', () => {
       expect(
         within(rolesRow as HTMLElement).queryByRole('button', {
           name: '删除数据表 角色'
+        })
+      ).not.toBeInTheDocument();
+      expect(
+        within(runtimeLogsRow as HTMLElement).queryByRole('button', {
+          name: '删除数据表 Runtime Logs'
         })
       ).not.toBeInTheDocument();
       expect(
@@ -141,6 +150,65 @@ describe('Settings data models page', () => {
       expect(
         within(editorDialog).getByText('默认成员角色')
       ).toBeInTheDocument();
+
+      const detailActions = within(editorDialog).getByTestId(
+        'data-model-detail-actions'
+      );
+      fireEvent.click(
+        within(detailActions).getByRole('button', { name: /编\s*辑/ })
+      );
+      expect(await screen.findByText('编辑 Data Model')).toBeInTheDocument();
+      const statusInput = screen
+        .getAllByLabelText('状态')
+        .find((element) => element instanceof HTMLInputElement);
+      expect(statusInput).toBeInstanceOf(HTMLInputElement);
+      expect(statusInput).toBeDisabled();
+      fireEvent.change(screen.getByLabelText('标题'), {
+        target: { value: '系统角色' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: '保存' }));
+      await waitFor(() =>
+        expect(dataModelsApi.updateSettingsDataModel).toHaveBeenCalledWith(
+          'model-roles',
+          expect.not.objectContaining({
+            status: expect.anything()
+          }),
+          'csrf-123'
+        )
+      );
+
+    },
+    SLOW_SETTINGS_PAGE_TEST_TIMEOUT
+  );
+
+  test(
+    'keeps runtime log model structural management read-only by backend capability',
+    async () => {
+      renderApp('/settings/data-models?source=main_source');
+
+      const editorDialog = await openDataModelEditorByTitle('Runtime Logs');
+      expect(
+        within(editorDialog).getByRole('button', { name: '新增字段' })
+      ).toBeDisabled();
+      expect(within(editorDialog).getByText('Level')).toBeInTheDocument();
+      const levelRow = within(editorDialog)
+        .getAllByRole('row')
+        .find((row) => within(row).queryByText('Level'));
+      expect(levelRow).toBeInstanceOf(HTMLElement);
+      expect(
+        within(levelRow as HTMLElement).getByRole('button', { name: '编辑' })
+      ).toBeEnabled();
+      fireEvent.click(
+        within(levelRow as HTMLElement).getByRole('button', { name: '编辑' })
+      );
+      expect(await screen.findByText('编辑字段')).toBeInTheDocument();
+      expect(screen.getByLabelText('字段标题')).toBeEnabled();
+      expect(screen.getByLabelText('说明')).toBeEnabled();
+      expect(screen.getByLabelText('字段 Code')).toBeDisabled();
+      expect(screen.getByLabelText('字段类型')).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: '删除字段' })
+      ).toBeDisabled();
     },
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT
   );
@@ -523,6 +591,9 @@ describe('Settings data models page', () => {
       renderApp('/settings/data-models?source=source-1');
 
       const editorDialog = await openContactsDataModelEditor();
+      expect(
+        within(editorDialog).getByText('Primary contact email')
+      ).toBeInTheDocument();
       fireEvent.click(
         within(editorDialog).getByRole('button', { name: '新增字段' })
       );
@@ -532,6 +603,9 @@ describe('Settings data models page', () => {
       });
       fireEvent.change(screen.getByLabelText('字段标题'), {
         target: { value: 'Company Name' }
+      });
+      fireEvent.change(screen.getByLabelText('说明'), {
+        target: { value: 'Company name from CRM' }
       });
       fireEvent.change(screen.getByLabelText('外部字段映射 Key'), {
         target: { value: 'properties.company_name' }
@@ -545,6 +619,7 @@ describe('Settings data models page', () => {
           expect.objectContaining({
             code: 'company_name',
             title: 'Company Name',
+            description: 'Company name from CRM',
             external_field_key: 'properties.company_name',
             field_kind: 'string',
             is_required: true,
@@ -564,6 +639,9 @@ describe('Settings data models page', () => {
       fireEvent.change(screen.getByLabelText('字段标题'), {
         target: { value: 'Primary Email' }
       });
+      fireEvent.change(screen.getByLabelText('说明'), {
+        target: { value: 'Primary login email' }
+      });
       fireEvent.click(screen.getByRole('button', { name: '保存字段' }));
 
       await waitFor(() =>
@@ -572,6 +650,7 @@ describe('Settings data models page', () => {
           'field-1',
           expect.objectContaining({
             title: 'Primary Email',
+            description: 'Primary login email',
             is_required: true,
             is_unique: true,
             display_interface: 'input',
@@ -596,6 +675,61 @@ describe('Settings data models page', () => {
       );
     },
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT * 2
+  );
+
+  test(
+    'keeps system field physical metadata and deletion disabled by capability',
+    async () => {
+      renderApp('/settings/data-models?source=main_source');
+
+      const editorDialog = await openDataModelEditorByTitle('Attachments');
+      expect(within(editorDialog).getByText('附件原始文件名')).toBeInTheDocument();
+      fireEvent.click(within(editorDialog).getByText('文件名'));
+
+      expect(await screen.findByText('编辑字段')).toBeInTheDocument();
+      expect(screen.getByLabelText('字段标题')).toBeEnabled();
+      expect(screen.getByLabelText('说明')).toBeEnabled();
+      expect(screen.getByLabelText('字段 Code')).toBeDisabled();
+      expect(screen.getByLabelText('字段类型')).toBeDisabled();
+      expect(
+        screen.getByRole('checkbox', { name: '必填' })
+      ).toBeDisabled();
+      expect(
+        screen.getByRole('checkbox', { name: '唯一' })
+      ).toBeDisabled();
+      expect(screen.getByLabelText('默认值')).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: '删除字段' })
+      ).toBeDisabled();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: '高级显示设置' })
+      );
+      expect(screen.getByLabelText('显示控件')).toBeEnabled();
+      expect(screen.getByLabelText('显示控件配置 JSON')).toBeEnabled();
+      fireEvent.change(screen.getByLabelText('说明'), {
+        target: { value: '用户可见的附件文件名' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: '保存字段' }));
+
+      await waitFor(() =>
+        expect(dataModelsApi.updateSettingsDataModelField).toHaveBeenCalledWith(
+          'model-attachments',
+          'attachment-name',
+          expect.objectContaining({
+            title: '文件名',
+            description: '用户可见的附件文件名',
+            is_required: true,
+            is_unique: false,
+            display_interface: 'input',
+            display_options: {},
+            relation_options: {}
+          }),
+          'csrf-123'
+        )
+      );
+    },
+    SLOW_SETTINGS_PAGE_TEST_TIMEOUT
   );
 
   test('keeps main source field creation focused on basic field settings', async () => {

@@ -42,7 +42,6 @@ set physical_table_name = tables.physical_table_name,
     is_protected = true,
     availability_status = 'available',
     status = 'published',
-    api_exposure_status = 'published_not_exposed',
     updated_at = now()
 from builtin_system_tables tables
 where definitions.scope_kind = 'system'
@@ -71,19 +70,20 @@ insert into builtin_system_table_fields (
 )
 values
     ('attachments', 'id', 'id', 'id', 'string', true, false, true, true, 0),
-    ('attachments', 'created_by', 'created_by', 'created_by', 'string', true, false, true, false, 1),
-    ('attachments', 'updated_by', 'updated_by', 'updated_by', 'string', true, false, true, false, 2),
-    ('attachments', 'created_at', 'created_at', 'created_at', 'datetime', true, false, true, false, 3),
-    ('attachments', 'updated_at', 'updated_at', 'updated_at', 'datetime', true, false, true, false, 4),
-    ('attachments', 'title', '标题', 'title', 'string', false, true, false, false, 5),
-    ('attachments', 'filename', '文件名', 'filename', 'string', false, true, true, false, 6),
-    ('attachments', 'extname', '扩展名', 'extname', 'string', false, true, false, false, 7),
-    ('attachments', 'size', '大小', 'size', 'number', false, true, true, false, 8),
-    ('attachments', 'mimetype', 'MIME 类型', 'mimetype', 'string', false, true, true, false, 9),
-    ('attachments', 'path', '存储路径', 'path', 'string', false, true, true, false, 10),
-    ('attachments', 'meta', '元数据', 'meta', 'json', false, true, true, false, 11),
-    ('attachments', 'url', '缓存地址', 'url', 'string', false, true, false, false, 12),
-    ('attachments', 'storage_id', '存储器 ID', 'storage_id', 'string', false, true, true, false, 13),
+    ('attachments', 'scope_id', 'scope_id', 'scope_id', 'many_to_one', true, false, true, false, 1),
+    ('attachments', 'created_by', 'created_by', 'created_by', 'string', true, false, true, false, 2),
+    ('attachments', 'updated_by', 'updated_by', 'updated_by', 'string', true, false, true, false, 3),
+    ('attachments', 'created_at', 'created_at', 'created_at', 'datetime', true, false, true, false, 4),
+    ('attachments', 'updated_at', 'updated_at', 'updated_at', 'datetime', true, false, true, false, 5),
+    ('attachments', 'title', '标题', 'title', 'string', false, true, false, false, 6),
+    ('attachments', 'filename', '文件名', 'filename', 'string', false, true, true, false, 7),
+    ('attachments', 'extname', '扩展名', 'extname', 'string', false, true, false, false, 8),
+    ('attachments', 'size', '大小', 'size', 'number', false, true, true, false, 9),
+    ('attachments', 'mimetype', 'MIME 类型', 'mimetype', 'string', false, true, true, false, 10),
+    ('attachments', 'path', '存储路径', 'path', 'string', false, true, true, false, 11),
+    ('attachments', 'meta', '元数据', 'meta', 'json', false, true, true, false, 12),
+    ('attachments', 'url', '缓存地址', 'url', 'string', false, true, false, false, 13),
+    ('attachments', 'storage_id', '存储器 ID', 'storage_id', 'string', false, true, true, false, 14),
 
     ('users', 'id', 'id', 'id', 'string', true, false, true, true, 0),
     ('users', 'created_by', 'created_by', 'created_by', 'string', true, false, true, false, 1),
@@ -129,21 +129,6 @@ set title = excluded.title,
     is_required = excluded.is_required,
     is_unique = excluded.is_unique,
     sort_order = excluded.sort_order;
-
-delete from model_fields fields
-using model_definitions definitions
-join builtin_system_tables tables on tables.code = definitions.code
-where fields.data_model_id = definitions.id
-  and definitions.scope_kind = 'system'
-  and definitions.scope_id = '00000000-0000-0000-0000-000000000000'::uuid
-  and definitions.data_source_instance_id is null
-  and definitions.source_kind = 'main_source'
-  and not exists (
-      select 1
-      from builtin_system_table_fields desired
-      where desired.model_code = definitions.code
-        and desired.code = fields.code
-  );
 
 insert into model_fields (
     id,
@@ -200,7 +185,6 @@ where definitions.scope_kind = 'system'
   and definitions.source_kind = 'main_source'
 on conflict (data_model_id, code)
 do update set
-    title = excluded.title,
     physical_column_name = excluded.physical_column_name,
     external_field_key = null,
     field_kind = excluded.field_kind,
@@ -209,10 +193,7 @@ do update set
     is_required = excluded.is_required,
     is_unique = excluded.is_unique,
     default_value = null,
-    display_interface = null,
-    display_options = '{}'::jsonb,
     relation_target_model_id = null,
-    relation_options = '{}'::jsonb,
     sort_order = excluded.sort_order,
     availability_status = 'available',
     updated_at = now();

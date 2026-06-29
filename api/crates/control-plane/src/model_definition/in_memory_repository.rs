@@ -12,8 +12,9 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         AddModelFieldInput, CreateModelDefinitionInput, CreateScopeDataModelGrantInput,
-        ModelDefinitionRepository, UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput,
-        UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
+        ModelDefinitionRepository, ReconcileSystemModelDefinitionInput,
+        ReconcileSystemModelFieldInput, UpdateModelDefinitionInput,
+        UpdateModelDefinitionStatusInput, UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
     },
 };
 
@@ -227,6 +228,22 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
         Ok(model.clone())
     }
 
+    async fn reconcile_system_model_definition(
+        &self,
+        input: &ReconcileSystemModelDefinitionInput,
+    ) -> Result<domain::ModelDefinitionRecord> {
+        let mut models = self.models.lock().expect("in-memory model lock poisoned");
+        let model = models
+            .get_mut(&input.model_id)
+            .ok_or(ControlPlaneError::NotFound("model_definition"))?;
+        model.title = input.title.clone();
+        model.physical_table_name = input.physical_table_name.clone();
+        model.status = input.status;
+        model.api_exposure_status = input.api_exposure_status;
+        model.protection = input.protection.clone();
+        Ok(model.clone())
+    }
+
     async fn update_model_definition_status(
         &self,
         input: &UpdateModelDefinitionStatusInput,
@@ -258,6 +275,7 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
             data_model_id: input.model_id,
             code: input.code.clone(),
             title: input.title.clone(),
+            description: input.description.clone(),
             physical_column_name: input
                 .physical_column_name
                 .clone()
@@ -294,6 +312,7 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
             .find(|field| field.id == input.field_id)
             .ok_or(ControlPlaneError::NotFound("model_field"))?;
         field.title = input.title.clone();
+        field.description = input.description.clone();
         field.is_required = input.is_required;
         field.is_unique = input.is_unique;
         field.default_value = input.default_value.clone();
@@ -301,6 +320,38 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
         field.display_options = input.display_options.clone();
         field.relation_options = input.relation_options.clone();
 
+        Ok(field.clone())
+    }
+
+    async fn reconcile_system_model_field(
+        &self,
+        input: &ReconcileSystemModelFieldInput,
+    ) -> Result<domain::ModelFieldRecord> {
+        let mut models = self.models.lock().expect("in-memory model lock poisoned");
+        let model = models
+            .get_mut(&input.model_id)
+            .ok_or(ControlPlaneError::NotFound("model_definition"))?;
+        let field = model
+            .fields
+            .iter_mut()
+            .find(|field| field.id == input.field_id)
+            .ok_or(ControlPlaneError::NotFound("model_field"))?;
+        field.title = input.title.clone();
+        field.description = input.description.clone();
+        field.physical_column_name = input.physical_column_name.clone();
+        field.external_field_key = input.external_field_key.clone();
+        field.field_kind = input.field_kind;
+        field.is_system = input.is_system;
+        field.is_writable = input.is_writable;
+        field.is_required = input.is_required;
+        field.is_unique = input.is_unique;
+        field.default_value = input.default_value.clone();
+        field.display_interface = input.display_interface.clone();
+        field.display_options = input.display_options.clone();
+        field.relation_target_model_id = input.relation_target_model_id;
+        field.relation_options = input.relation_options.clone();
+        field.sort_order = input.sort_order;
+        field.availability_status = input.availability_status;
         Ok(field.clone())
     }
 

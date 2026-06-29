@@ -122,6 +122,11 @@ pub enum RuntimeModelError {
     Disabled(String),
     #[error("runtime model broken: {0}")]
     Broken(String),
+    #[error("runtime model record action not allowed: {model_code}:{action}")]
+    RecordActionNotAllowed {
+        model_code: String,
+        action: &'static str,
+    },
 }
 
 impl RuntimeModelError {
@@ -140,6 +145,13 @@ impl RuntimeModelError {
     pub fn broken(model_code: impl Into<String>) -> Self {
         Self::Broken(model_code.into())
     }
+
+    pub fn record_action_not_allowed(model_code: impl Into<String>, action: &'static str) -> Self {
+        Self::RecordActionNotAllowed {
+            model_code: model_code.into(),
+            action,
+        }
+    }
 }
 
 pub fn ensure_runtime_model_available(
@@ -155,6 +167,34 @@ pub fn ensure_runtime_model_available(
             Err(RuntimeModelError::disabled(model_code).into())
         }
         RuntimeDataModelAvailability::Broken => Err(RuntimeModelError::broken(model_code).into()),
+    }
+}
+
+fn ensure_runtime_record_action_allowed(
+    metadata: &ModelMetadata,
+    action: RuntimeDataAction,
+) -> Result<()> {
+    let allowed = match action {
+        RuntimeDataAction::View => {
+            metadata.record_capabilities.can_list || metadata.record_capabilities.can_get
+        }
+        RuntimeDataAction::Create => metadata.record_capabilities.can_create,
+        RuntimeDataAction::Edit => metadata.record_capabilities.can_update,
+        RuntimeDataAction::Delete => metadata.record_capabilities.can_delete,
+    };
+    if allowed {
+        Ok(())
+    } else {
+        Err(RuntimeModelError::record_action_not_allowed(
+            &metadata.model_code,
+            match action {
+                RuntimeDataAction::View => "view",
+                RuntimeDataAction::Create => "create",
+                RuntimeDataAction::Edit => "update",
+                RuntimeDataAction::Delete => "delete",
+            },
+        )
+        .into())
     }
 }
 
@@ -227,6 +267,7 @@ impl RuntimeEngine {
     pub async fn list_records(&self, input: RuntimeListInput) -> Result<RuntimeListResult> {
         let metadata =
             self.load_available_metadata(&input.model_code, input.actor.current_workspace_id)?;
+        ensure_runtime_record_action_allowed(&metadata, RuntimeDataAction::View)?;
         let access_scope = resolve_access_scope(
             &input.actor,
             RuntimeDataAction::View,
@@ -258,6 +299,7 @@ impl RuntimeEngine {
     pub async fn get_record(&self, input: RuntimeGetInput) -> Result<Option<Value>> {
         let metadata =
             self.load_available_metadata(&input.model_code, input.actor.current_workspace_id)?;
+        ensure_runtime_record_action_allowed(&metadata, RuntimeDataAction::View)?;
         let access_scope = resolve_access_scope(
             &input.actor,
             RuntimeDataAction::View,
@@ -291,6 +333,7 @@ impl RuntimeEngine {
     pub async fn create_record(&self, input: RuntimeCreateInput) -> Result<Value> {
         let metadata =
             self.load_available_metadata(&input.model_code, input.actor.current_workspace_id)?;
+        ensure_runtime_record_action_allowed(&metadata, RuntimeDataAction::Create)?;
         let access_scope = resolve_access_scope(
             &input.actor,
             RuntimeDataAction::Create,
@@ -330,6 +373,7 @@ impl RuntimeEngine {
     pub async fn update_record(&self, input: RuntimeUpdateInput) -> Result<Value> {
         let metadata =
             self.load_available_metadata(&input.model_code, input.actor.current_workspace_id)?;
+        ensure_runtime_record_action_allowed(&metadata, RuntimeDataAction::Edit)?;
         let access_scope = resolve_access_scope(
             &input.actor,
             RuntimeDataAction::Edit,
@@ -369,6 +413,7 @@ impl RuntimeEngine {
     pub async fn delete_record(&self, input: RuntimeDeleteInput) -> Result<Value> {
         let metadata =
             self.load_available_metadata(&input.model_code, input.actor.current_workspace_id)?;
+        ensure_runtime_record_action_allowed(&metadata, RuntimeDataAction::Delete)?;
         let access_scope = resolve_access_scope(
             &input.actor,
             RuntimeDataAction::Delete,
@@ -1084,6 +1129,7 @@ fn test_model_metadata() -> ModelMetadata {
                 data_model_id: Uuid::nil(),
                 code: "title".into(),
                 title: "Title".into(),
+                description: None,
                 physical_column_name: "title".into(),
                 external_field_key: None,
                 field_kind: domain::ModelFieldKind::String,
@@ -1104,6 +1150,7 @@ fn test_model_metadata() -> ModelMetadata {
                 data_model_id: Uuid::nil(),
                 code: "status".into(),
                 title: "Status".into(),
+                description: None,
                 physical_column_name: "status".into(),
                 external_field_key: None,
                 field_kind: domain::ModelFieldKind::Enum,
@@ -1120,6 +1167,7 @@ fn test_model_metadata() -> ModelMetadata {
                 availability_status: domain::MetadataAvailabilityStatus::Available,
             },
         ],
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: crate::resource_descriptor::ResourceDescriptor::runtime_model(
             "orders",
             domain::DataModelScopeKind::Workspace,

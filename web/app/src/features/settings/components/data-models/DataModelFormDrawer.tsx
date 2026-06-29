@@ -55,6 +55,10 @@ export function DataModelFormDrawer({
     mode === 'edit'
       ? model?.source_kind === 'external_source'
       : source?.source_kind === 'external_source';
+  const canUpdateLifecycleStatus =
+    mode === 'create'
+      ? true
+      : Boolean(model?.capabilities.can_update_lifecycle_status);
 
   useEffect(() => {
     if (!open) {
@@ -85,11 +89,16 @@ export function DataModelFormDrawer({
     const values = await form.validateFields();
 
     if (mode === 'edit' && model) {
-      onUpdate(model, {
+      const input: UpdateSettingsDataModelInput = {
         title: values.title,
-        status: values.status,
         external_table_id: isExternalModel ? values.external_table_id : null
-      });
+      };
+
+      if (canUpdateLifecycleStatus) {
+        input.status = values.status;
+      }
+
+      onUpdate(model, input);
       onClose();
       return;
     }
@@ -157,7 +166,11 @@ export function DataModelFormDrawer({
           }
           rules={[{ required: true, message: i18nText("settings", "auto.select_status") }]}
         >
-          <Select aria-label={i18nText("settings", "auto.status")} options={dataModelStatusOptions} />
+          <Select
+            aria-label={i18nText("settings", "auto.status")}
+            disabled={!canUpdateLifecycleStatus}
+            options={dataModelStatusOptions}
+          />
         </Form.Item>
         <Form.Item name="data_source_instance_id" label={i18nText("settings", "auto.data_source")}>
           <Input disabled />

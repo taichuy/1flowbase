@@ -90,6 +90,7 @@ async fn add_field_rebuilds_runtime_registry_once() {
             model_id: seeded.id,
             code: "status".into(),
             title: "Status".into(),
+            description: None,
             external_field_key: None,
             field_kind: ModelFieldKind::Enum,
             is_required: true,

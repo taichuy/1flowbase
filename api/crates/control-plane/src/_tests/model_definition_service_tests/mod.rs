@@ -197,9 +197,38 @@ impl ModelDefinitionRepository for ScopedModelDefinitionRepository {
 
     async fn add_model_field(
         &self,
-        _input: &AddModelFieldInput,
+        input: &AddModelFieldInput,
     ) -> anyhow::Result<ModelFieldRecord> {
-        unimplemented!("not needed for scoped service tests")
+        let mut models = self.models.lock().expect("model lock poisoned");
+        let model = models.get_mut(&input.model_id).ok_or(
+            control_plane::errors::ControlPlaneError::NotFound("model_definition"),
+        )?;
+        let field = ModelFieldRecord {
+            id: Uuid::now_v7(),
+            data_model_id: input.model_id,
+            code: input.code.clone(),
+            title: input.title.clone(),
+            description: input.description.clone(),
+            physical_column_name: input
+                .physical_column_name
+                .clone()
+                .unwrap_or_else(|| input.code.replace('-', "_")),
+            external_field_key: input.external_field_key.clone(),
+            field_kind: input.field_kind,
+            is_system: input.is_system,
+            is_writable: input.is_writable,
+            is_required: input.is_required,
+            is_unique: input.is_unique,
+            default_value: input.default_value.clone(),
+            display_interface: input.display_interface.clone(),
+            display_options: input.display_options.clone(),
+            relation_target_model_id: input.relation_target_model_id,
+            relation_options: input.relation_options.clone(),
+            sort_order: model.fields.len() as i32,
+            availability_status: domain::MetadataAvailabilityStatus::Available,
+        };
+        model.fields.push(field.clone());
+        Ok(field)
     }
 
     async fn update_model_field(
@@ -218,6 +247,7 @@ impl ModelDefinitionRepository for ScopedModelDefinitionRepository {
                 "model_field",
             ))?;
         field.title = input.title.clone();
+        field.description = input.description.clone();
         field.is_required = input.is_required;
         field.is_unique = input.is_unique;
         field.default_value = input.default_value.clone();
@@ -423,6 +453,7 @@ fn protected_extension_model(model_id: Uuid) -> ModelDefinitionRecord {
             data_model_id: model_id,
             code: "email".into(),
             title: "Email".into(),
+            description: None,
             physical_column_name: "email".into(),
             external_field_key: Some("email".into()),
             field_kind: ModelFieldKind::String,

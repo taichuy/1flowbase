@@ -22,6 +22,7 @@ pub(super) async fn insert_model_field(
             data_model_id,
             code,
             title,
+            description,
             physical_column_name,
             external_field_key,
             field_kind,
@@ -40,13 +41,14 @@ pub(super) async fn insert_model_field(
             created_by,
             updated_by
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, (select scope_id from model_definitions where id = $2), $19, $19)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, (select scope_id from model_definitions where id = $2), $20, $20)
         "#,
     )
     .bind(field.id)
     .bind(field.data_model_id)
     .bind(&field.code)
     .bind(&field.title)
+    .bind(&field.description)
     .bind(&field.physical_column_name)
     .bind(&field.external_field_key)
     .bind(field.field_kind.as_str())
@@ -77,6 +79,7 @@ pub(super) async fn load_fields_by_model_id(
             data_model_id,
             code,
             title,
+            description,
             physical_column_name,
             external_field_key,
             field_kind,
@@ -112,6 +115,7 @@ pub(super) async fn load_fields_for_model(
             data_model_id,
             code,
             title,
+            description,
             physical_column_name,
             external_field_key,
             field_kind,
@@ -150,6 +154,7 @@ pub(super) async fn load_model_field_for_update(
             data_model_id,
             code,
             title,
+            description,
             physical_column_name,
             external_field_key,
             field_kind,
@@ -226,6 +231,7 @@ pub(super) async fn insert_model_field_after_failure(
             data_model_id,
             code,
             title,
+            description,
             physical_column_name,
             external_field_key,
             field_kind,
@@ -244,7 +250,7 @@ pub(super) async fn insert_model_field_after_failure(
             created_by,
             updated_by
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, (select scope_id from model_definitions where id = $2), $19, $19)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, (select scope_id from model_definitions where id = $2), $20, $20)
         on conflict (id) do update
         set availability_status = excluded.availability_status,
             updated_by = excluded.updated_by,
@@ -255,6 +261,7 @@ pub(super) async fn insert_model_field_after_failure(
     .bind(field.data_model_id)
     .bind(&field.code)
     .bind(&field.title)
+    .bind(&field.description)
     .bind(&field.physical_column_name)
     .bind(&field.external_field_key)
     .bind(field.field_kind.as_str())
@@ -295,6 +302,7 @@ fn to_model_field_record(row: sqlx::postgres::PgRow) -> domain::ModelFieldRecord
         data_model_id: row.get("data_model_id"),
         code: row.get("code"),
         title: row.get("title"),
+        description: row.get("description"),
         physical_column_name: row.get("physical_column_name"),
         external_field_key: row.get("external_field_key"),
         field_kind: row.get("field_kind"),

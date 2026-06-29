@@ -9,8 +9,10 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         AddModelFieldInput, AuthRepository, CreateModelDefinitionInput,
-        CreateScopeDataModelGrantInput, ModelDefinitionRepository, UpdateModelDefinitionInput,
-        UpdateModelDefinitionStatusInput, UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
+        CreateScopeDataModelGrantInput, ModelDefinitionRepository,
+        ReconcileSystemModelDefinitionInput, ReconcileSystemModelFieldInput,
+        UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput, UpdateModelFieldInput,
+        UpdateScopeDataModelGrantInput,
     },
 };
 use sqlx::Row;
@@ -79,6 +81,7 @@ async fn ensure_workspace_data_source_belongs_to_scope(
 fn platform_runtime_field_records(model_id: Uuid) -> Vec<domain::ModelFieldRecord> {
     [
         ("id", domain::ModelFieldKind::String),
+        ("scope_id", domain::ModelFieldKind::ManyToOne),
         ("created_by", domain::ModelFieldKind::String),
         ("updated_by", domain::ModelFieldKind::String),
         ("created_at", domain::ModelFieldKind::Datetime),
@@ -92,6 +95,7 @@ fn platform_runtime_field_records(model_id: Uuid) -> Vec<domain::ModelFieldRecor
             data_model_id: model_id,
             code: code.to_string(),
             title: code.to_string(),
+            description: None,
             physical_column_name: code.to_string(),
             external_field_key: None,
             field_kind,
@@ -295,7 +299,9 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             api_exposure_status: input.api_exposure_status,
             protection: input.protection.clone(),
         };
-        if model.source_kind == domain::DataModelSourceKind::MainSource {
+        if model.source_kind == domain::DataModelSourceKind::MainSource
+            && !is_registered_system_table(&model)
+        {
             model.fields = platform_runtime_field_records(model.id);
         }
         let before_snapshot = serde_json::json!({});
@@ -449,6 +455,89 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         ))
     }
 
+    async fn reconcile_system_model_definition(
+        &self,
+        input: &ReconcileSystemModelDefinitionInput,
+    ) -> Result<domain::ModelDefinitionRecord> {
+        let row = sqlx::query(
+            r#"
+            update model_definitions
+            set title = $2,
+                physical_table_name = $3,
+                status = $4,
+                api_exposure_status = $5,
+                owner_kind = $6,
+                owner_id = $7,
+                is_protected = $8,
+                availability_status = 'available',
+                updated_by = $9,
+                updated_at = now()
+            where id = $1
+            returning
+                id,
+                scope_kind,
+                scope_id,
+                data_source_instance_id,
+                source_kind,
+                external_resource_key,
+                external_table_id,
+                external_capability_snapshot,
+                code,
+                title,
+                physical_table_name,
+                acl_namespace,
+                audit_namespace,
+                availability_status,
+                status,
+                api_exposure_status,
+                owner_kind,
+                owner_id,
+                is_protected
+            "#,
+        )
+        .bind(input.model_id)
+        .bind(&input.title)
+        .bind(&input.physical_table_name)
+        .bind(input.status.as_str())
+        .bind(input.api_exposure_status.as_str())
+        .bind(input.protection.owner_kind.as_str())
+        .bind(&input.protection.owner_id)
+        .bind(input.protection.is_protected)
+        .bind(nullable_actor_user_id(input.actor_user_id))
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(ControlPlaneError::NotFound("model_definition"))?;
+        let fields_by_model_id = load_fields_by_model_id(self.pool()).await?;
+
+        Ok(PgModelDefinitionMapper::to_model_definition_record(
+            StoredModelDefinitionRow {
+                id: row.get("id"),
+                scope_kind: row.get("scope_kind"),
+                scope_id: row.get("scope_id"),
+                data_source_instance_id: row.get("data_source_instance_id"),
+                source_kind: row.get("source_kind"),
+                external_resource_key: row.get("external_resource_key"),
+                external_table_id: row.get("external_table_id"),
+                external_capability_snapshot: row.get("external_capability_snapshot"),
+                code: row.get("code"),
+                title: row.get("title"),
+                physical_table_name: row.get("physical_table_name"),
+                acl_namespace: row.get("acl_namespace"),
+                audit_namespace: row.get("audit_namespace"),
+                availability_status: row.get("availability_status"),
+                status: row.get("status"),
+                api_exposure_status: row.get("api_exposure_status"),
+                owner_kind: row.get("owner_kind"),
+                owner_id: row.get("owner_id"),
+                is_protected: row.get("is_protected"),
+                fields: fields_by_model_id
+                    .get(&input.model_id)
+                    .cloned()
+                    .unwrap_or_default(),
+            },
+        ))
+    }
+
     async fn update_model_definition_status(
         &self,
         input: &UpdateModelDefinitionStatusInput,
@@ -556,6 +645,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             data_model_id: model.id,
             code: input.code.clone(),
             title: input.title.clone(),
+            description: input.description.clone(),
             physical_column_name,
             external_field_key: input.external_field_key.clone(),
             field_kind: input.field_kind,
@@ -585,7 +675,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             .await?;
             if model.source_kind == domain::DataModelSourceKind::MainSource
                 && input.apply_physical_schema
-                && !is_registered_system_table(&model)
             {
                 match field.field_kind {
                     domain::ModelFieldKind::ManyToOne => {
@@ -669,6 +758,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         let before_snapshot = serde_json::to_value(&existing)?;
         let updated = domain::ModelFieldRecord {
             title: input.title.clone(),
+            description: input.description.clone(),
             is_required: input.is_required,
             is_unique: input.is_unique,
             default_value: input.default_value.clone(),
@@ -686,13 +776,14 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 update model_fields
                 set
                     title = $3,
-                    is_required = $4,
-                    is_unique = $5,
-                    default_value = $6,
-                    display_interface = $7,
-                    display_options = $8,
-                    relation_options = $9,
-                    updated_by = $10,
+                    description = $4,
+                    is_required = $5,
+                    is_unique = $6,
+                    default_value = $7,
+                    display_interface = $8,
+                    display_options = $9,
+                    relation_options = $10,
+                    updated_by = $11,
                     updated_at = now()
                 where id = $1
                   and data_model_id = $2
@@ -701,6 +792,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             .bind(input.field_id)
             .bind(input.model_id)
             .bind(&updated.title)
+            .bind(&updated.description)
             .bind(updated.is_required)
             .bind(updated.is_unique)
             .bind(&updated.default_value)
@@ -753,6 +845,106 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 Err(error)
             }
         }
+    }
+
+    async fn reconcile_system_model_field(
+        &self,
+        input: &ReconcileSystemModelFieldInput,
+    ) -> Result<domain::ModelFieldRecord> {
+        let row = sqlx::query(
+            r#"
+            update model_fields
+            set
+                title = $3,
+                description = $4,
+                physical_column_name = $5,
+                external_field_key = $6,
+                field_kind = $7,
+                is_system = $8,
+                is_writable = $9,
+                is_required = $10,
+                is_unique = $11,
+                default_value = $12,
+                display_interface = $13,
+                display_options = $14,
+                relation_target_model_id = $15,
+                relation_options = $16,
+                sort_order = $17,
+                availability_status = $18,
+                updated_by = $19,
+                updated_at = now()
+            where id = $1
+              and data_model_id = $2
+            returning
+                id,
+                data_model_id,
+                code,
+                title,
+                description,
+                physical_column_name,
+                external_field_key,
+                field_kind,
+                is_system,
+                is_writable,
+                is_required,
+                is_unique,
+                default_value,
+                display_interface,
+                display_options,
+                relation_target_model_id,
+                relation_options,
+                sort_order,
+                availability_status
+            "#,
+        )
+        .bind(input.field_id)
+        .bind(input.model_id)
+        .bind(&input.title)
+        .bind(&input.description)
+        .bind(&input.physical_column_name)
+        .bind(&input.external_field_key)
+        .bind(input.field_kind.as_str())
+        .bind(input.is_system)
+        .bind(input.is_writable)
+        .bind(input.is_required)
+        .bind(input.is_unique)
+        .bind(&input.default_value)
+        .bind(&input.display_interface)
+        .bind(&input.display_options)
+        .bind(input.relation_target_model_id)
+        .bind(&input.relation_options)
+        .bind(input.sort_order)
+        .bind(input.availability_status.as_str())
+        .bind(nullable_actor_user_id(input.actor_user_id))
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(ControlPlaneError::NotFound("model_field"))?;
+
+        Ok(domain::ModelFieldRecord {
+            id: row.get("id"),
+            data_model_id: row.get("data_model_id"),
+            code: row.get("code"),
+            title: row.get("title"),
+            description: row.get("description"),
+            physical_column_name: row.get("physical_column_name"),
+            external_field_key: row.get("external_field_key"),
+            field_kind: domain::ModelFieldKind::from_db(
+                row.get::<String, _>("field_kind").as_str(),
+            ),
+            is_system: row.get("is_system"),
+            is_writable: row.get("is_writable"),
+            is_required: row.get("is_required"),
+            is_unique: row.get("is_unique"),
+            default_value: row.get("default_value"),
+            display_interface: row.get("display_interface"),
+            display_options: row.get("display_options"),
+            relation_target_model_id: row.get("relation_target_model_id"),
+            relation_options: row.get("relation_options"),
+            sort_order: row.get("sort_order"),
+            availability_status: domain::MetadataAvailabilityStatus::from_db(
+                row.get::<String, _>("availability_status").as_str(),
+            ),
+        })
     }
 
     async fn delete_model_definition(&self, actor_user_id: Uuid, model_id: Uuid) -> Result<()> {
