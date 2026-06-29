@@ -196,6 +196,48 @@ async fn mcp_interface_capabilities_include_bindable_runtime_data_model_crud_ope
 }
 
 #[tokio::test]
+async fn mcp_interface_capabilities_include_system_table_create_parameters() {
+    let app = test_app().await;
+    let (root_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let interface_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/mcp/interface-capabilities?bindable_only=true")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(interface_response.status(), StatusCode::OK);
+    let interface_payload = response_json(interface_response).await;
+    let entries = interface_payload["data"].as_array().unwrap();
+    let roles_create_interface = entries
+        .iter()
+        .find(|entry| {
+            entry["method"] == json!("POST")
+                && entry["path"] == json!("/api/runtime/models/roles/create")
+        })
+        .expect("roles create should be exposed as a bindable runtime interface");
+    let descriptor_names = roles_create_interface["parameter_descriptors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|descriptor| descriptor["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+
+    for expected in ["id", "scope_id", "scope_kind", "code", "name"] {
+        assert!(
+            descriptor_names.contains(&expected),
+            "missing roles create descriptor {expected}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

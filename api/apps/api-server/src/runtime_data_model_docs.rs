@@ -567,9 +567,6 @@ fn record_write_schema(model: &domain::ModelDefinitionRecord, include_required: 
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
     for field in &model.fields {
-        if field.is_system || !field.is_writable {
-            continue;
-        }
         properties.insert(field.code.clone(), field_schema(field));
         if include_required && field.is_required {
             required.push(Value::String(field.code.clone()));

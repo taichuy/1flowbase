@@ -350,42 +350,74 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
     ) -> Result<Value> {
         let payload = payload_object(payload)?;
         let table_name = quote_identifier(&metadata.physical_table_name)?;
-        let scope_column_name = quote_identifier(&metadata.scope_column_name)?;
-        let record_id = Uuid::now_v7();
+        let generated_record_id = Uuid::now_v7();
         let actor_user_id = nullable_actor_user_id(actor_user_id);
+        let mut declared_physical_columns = HashSet::with_capacity(payload.len());
+        let mut payload_record_id = None;
+        let mut payload_scope_id = None;
         let mut declared_fields = Vec::with_capacity(payload.len());
         for (field_code, value) in &payload {
             let field = metadata
                 .field_by_code(field_code)
                 .ok_or_else(|| anyhow!("undeclared field code: {field_code}"))?;
-            ensure_writable_runtime_field(field)?;
+            if !declared_physical_columns.insert(field.physical_column_name.clone()) {
+                return Err(anyhow!(
+                    "duplicate physical field column: {}",
+                    field.physical_column_name
+                ));
+            }
+            if field.physical_column_name == "id" {
+                payload_record_id = Some(json_uuid(value)?);
+            }
+            if field.physical_column_name == metadata.scope_column_name {
+                payload_scope_id = Some(json_uuid(value)?);
+            }
             declared_fields.push((field, value));
         }
+        let record_id = payload_record_id.unwrap_or(generated_record_id);
+        let uses_scope_column = metadata_uses_scope_column(metadata);
+        let lookup_scope_id = uses_scope_column.then_some(payload_scope_id.unwrap_or(scope_id));
+        let mut insert_columns = Vec::with_capacity(declared_fields.len() + 4);
+        if !declared_physical_columns.contains("id") {
+            insert_columns.push(RuntimeInsertColumn::GeneratedRecordId(generated_record_id));
+        }
+        if uses_scope_column && !declared_physical_columns.contains(&metadata.scope_column_name) {
+            insert_columns.push(RuntimeInsertColumn::ScopeId {
+                physical_column_name: metadata.scope_column_name.clone(),
+                scope_id,
+            });
+        }
+        if !declared_physical_columns.contains("created_by") {
+            insert_columns.push(RuntimeInsertColumn::CreatedBy(actor_user_id));
+        }
+        if !declared_physical_columns.contains("updated_by") {
+            insert_columns.push(RuntimeInsertColumn::UpdatedBy(actor_user_id));
+        }
+        insert_columns.extend(
+            declared_fields
+                .into_iter()
+                .map(|(field, value)| RuntimeInsertColumn::PayloadField { field, value }),
+        );
 
-        let mut builder = QueryBuilder::<Postgres>::new(format!(
-            "insert into {table_name} (id, {scope_column_name}, created_by, updated_by"
-        ));
-        for (field, _) in &declared_fields {
-            builder.push(", ");
-            builder.push(quote_identifier(&field.physical_column_name)?);
+        let mut builder = QueryBuilder::<Postgres>::new(format!("insert into {table_name} ("));
+        for (index, column) in insert_columns.iter().enumerate() {
+            if index > 0 {
+                builder.push(", ");
+            }
+            builder.push(quote_identifier(runtime_insert_column_name(column))?);
         }
         builder.push(") values (");
-        builder.push_bind(record_id);
-        builder.push(", ");
-        builder.push_bind(scope_id);
-        builder.push(", ");
-        builder.push_bind(actor_user_id);
-        builder.push(", ");
-        builder.push_bind(actor_user_id);
-        for (field, value) in declared_fields {
-            builder.push(", ");
-            push_field_value(&mut builder, field, value)?;
+        for (index, column) in insert_columns.iter().enumerate() {
+            if index > 0 {
+                builder.push(", ");
+            }
+            push_runtime_insert_column_value(&mut builder, column)?;
         }
         builder.push(")");
         self.run_runtime_query(metadata, builder.build().execute(self.pool()))
             .await?;
 
-        self.get_record(metadata, Some(scope_id), None, &record_id.to_string())
+        self.get_record(metadata, lookup_scope_id, None, &record_id.to_string())
             .await?
             .ok_or_else(|| anyhow!("runtime record not found after create"))
     }
@@ -402,7 +434,12 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         let payload = payload_object(payload)?;
         if payload.is_empty() {
             return self
-                .get_record(metadata, scope_id, owner_user_id, record_id)
+                .get_record(
+                    metadata,
+                    metadata_scope_filter(metadata, scope_id),
+                    owner_user_id,
+                    record_id,
+                )
                 .await?
                 .ok_or_else(|| anyhow!("runtime record not found"));
         }
@@ -411,36 +448,74 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         let scope_column_name = quote_identifier(&metadata.scope_column_name)?;
         let record_id = parse_record_id(record_id)?;
         let actor_user_id = nullable_actor_user_id(actor_user_id);
+        let mut declared_physical_columns = HashSet::with_capacity(payload.len());
+        let mut lookup_record_id = record_id;
+        let mut payload_scope_id = None;
         let mut declared_fields = Vec::with_capacity(payload.len());
         for (field_code, value) in &payload {
             let field = metadata
                 .field_by_code(field_code)
                 .ok_or_else(|| anyhow!("undeclared field code: {field_code}"))?;
-            ensure_writable_runtime_field(field)?;
+            if !declared_physical_columns.insert(field.physical_column_name.clone()) {
+                return Err(anyhow!(
+                    "duplicate physical field column: {}",
+                    field.physical_column_name
+                ));
+            }
+            if field.physical_column_name == "id" {
+                lookup_record_id = json_uuid(value)?;
+            }
+            if field.physical_column_name == metadata.scope_column_name {
+                payload_scope_id = Some(json_uuid(value)?);
+            }
             declared_fields.push((field, value));
         }
 
-        let mut builder =
-            QueryBuilder::<Postgres>::new(format!("update {table_name} set updated_by = "));
-        builder.push_bind(actor_user_id);
-        builder.push(", updated_at = now()");
+        let mut builder = QueryBuilder::<Postgres>::new(format!("update {table_name} set "));
+        let mut assignment_count = 0;
+        if !declared_physical_columns.contains("updated_by") {
+            builder.push("updated_by = ");
+            builder.push_bind(actor_user_id);
+            assignment_count += 1;
+        }
+        if !declared_physical_columns.contains("updated_at") {
+            if assignment_count > 0 {
+                builder.push(", ");
+            }
+            builder.push("updated_at = now()");
+            assignment_count += 1;
+        }
         for (field, value) in declared_fields {
-            builder.push(", ");
+            if assignment_count > 0 {
+                builder.push(", ");
+            }
             builder.push(quote_identifier(&field.physical_column_name)?);
             builder.push(" = ");
             push_field_value(&mut builder, field, value)?;
+            assignment_count += 1;
         }
         builder.push(" where true");
-        append_scope_clause(&mut builder, &scope_column_name, scope_id);
+        append_scope_clause(
+            &mut builder,
+            &scope_column_name,
+            metadata_scope_filter(metadata, scope_id),
+        );
         append_owner_scope_clause(&mut builder, owner_user_id);
         builder.push(" and id = ");
         builder.push_bind(record_id);
         self.run_runtime_query(metadata, builder.build().execute(self.pool()))
             .await?;
 
-        self.get_record(metadata, scope_id, owner_user_id, &record_id.to_string())
-            .await?
-            .ok_or_else(|| anyhow!("runtime record not found after update"))
+        let lookup_scope_id =
+            payload_scope_id.or_else(|| metadata_scope_filter(metadata, scope_id));
+        self.get_record(
+            metadata,
+            lookup_scope_id,
+            owner_user_id,
+            &lookup_record_id.to_string(),
+        )
+        .await?
+        .ok_or_else(|| anyhow!("runtime record not found after update"))
     }
 
     async fn delete_record(
@@ -455,11 +530,14 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         let record_id = parse_record_id(record_id)?;
         let mut builder =
             QueryBuilder::<Postgres>::new(format!("delete from {table_name} where true"));
-        append_scope_clause(&mut builder, &scope_column_name, scope_id);
+        append_scope_clause(
+            &mut builder,
+            &scope_column_name,
+            metadata_scope_filter(metadata, scope_id),
+        );
         append_owner_scope_clause(&mut builder, owner_user_id);
         builder.push(" and id = ");
         builder.push_bind(record_id);
-
         let result = self
             .run_runtime_query(metadata, builder.build().execute(self.pool()))
             .await?;
@@ -787,12 +865,66 @@ fn projected_select_list(metadata: &ModelMetadata) -> Result<String> {
     Ok(columns.join(", "))
 }
 
-fn ensure_writable_runtime_field(field: &domain::ModelFieldRecord) -> Result<()> {
-    if field.is_system || !field.is_writable {
-        return Err(anyhow!("field is read-only: {}", field.code));
-    }
+enum RuntimeInsertColumn<'a> {
+    GeneratedRecordId(Uuid),
+    ScopeId {
+        physical_column_name: String,
+        scope_id: Uuid,
+    },
+    CreatedBy(Option<Uuid>),
+    UpdatedBy(Option<Uuid>),
+    PayloadField {
+        field: &'a domain::ModelFieldRecord,
+        value: &'a Value,
+    },
+}
 
+fn runtime_insert_column_name<'a>(column: &'a RuntimeInsertColumn<'a>) -> &'a str {
+    match column {
+        RuntimeInsertColumn::GeneratedRecordId(_) => "id",
+        RuntimeInsertColumn::ScopeId {
+            physical_column_name,
+            ..
+        } => physical_column_name.as_str(),
+        RuntimeInsertColumn::CreatedBy(_) => "created_by",
+        RuntimeInsertColumn::UpdatedBy(_) => "updated_by",
+        RuntimeInsertColumn::PayloadField { field, .. } => &field.physical_column_name,
+    }
+}
+
+fn push_runtime_insert_column_value(
+    builder: &mut QueryBuilder<Postgres>,
+    column: &RuntimeInsertColumn<'_>,
+) -> Result<()> {
+    match column {
+        RuntimeInsertColumn::GeneratedRecordId(record_id) => {
+            builder.push_bind(*record_id);
+        }
+        RuntimeInsertColumn::ScopeId { scope_id, .. } => {
+            builder.push_bind(*scope_id);
+        }
+        RuntimeInsertColumn::CreatedBy(actor_user_id)
+        | RuntimeInsertColumn::UpdatedBy(actor_user_id) => {
+            builder.push_bind(*actor_user_id);
+        }
+        RuntimeInsertColumn::PayloadField { field, value } => {
+            push_field_value(builder, field, value)?;
+        }
+    };
     Ok(())
+}
+
+fn metadata_uses_scope_column(metadata: &ModelMetadata) -> bool {
+    metadata
+        .fields
+        .iter()
+        .any(|field| field.physical_column_name == metadata.scope_column_name)
+}
+
+fn metadata_scope_filter(metadata: &ModelMetadata, scope_id: Option<Uuid>) -> Option<Uuid> {
+    metadata_uses_scope_column(metadata)
+        .then_some(scope_id)
+        .flatten()
 }
 
 fn push_field_value(
@@ -804,6 +936,13 @@ fn push_field_value(
         builder.push_bind(json_uuid(value)?);
         return Ok(());
     }
+    if matches!(
+        field.physical_column_name.as_str(),
+        "created_by" | "updated_by"
+    ) {
+        builder.push_bind(json_nullable_uuid(value)?);
+        return Ok(());
+    }
 
     match field.field_kind {
         domain::ModelFieldKind::String
@@ -813,7 +952,7 @@ fn push_field_value(
         domain::ModelFieldKind::Number => builder.push_bind(json_number(value)?),
         domain::ModelFieldKind::Boolean => builder.push_bind(json_bool(value)?),
         domain::ModelFieldKind::Json => builder.push_bind(value.clone()),
-        domain::ModelFieldKind::ManyToOne => builder.push_bind(json_uuid(value)?),
+        domain::ModelFieldKind::ManyToOne => builder.push_bind(json_nullable_uuid(value)?),
         domain::ModelFieldKind::OneToMany => {
             return Err(anyhow!("one_to_many cannot be persisted directly"))
         }
@@ -938,6 +1077,13 @@ fn json_uuid(value: &Value) -> Result<Uuid> {
             .as_str()
             .ok_or_else(|| anyhow!("expected uuid string value"))?,
     )
+}
+
+fn json_nullable_uuid(value: &Value) -> Result<Option<Uuid>> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    json_uuid(value).map(Some)
 }
 
 fn nullable_actor_user_id(actor_user_id: Uuid) -> Option<Uuid> {

@@ -249,6 +249,62 @@ async fn runtime_record_repository_lists_registered_system_tables_from_physical_
 }
 
 #[tokio::test]
+async fn runtime_record_repository_writes_api_exposed_system_table_fields() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let actor_user_id = Uuid::now_v7();
+
+    insert_user(&store, actor_user_id, "system-table-writer").await;
+    SystemMetadataBootstrapService::new(store.clone())
+        .ensure_builtin_user_and_role_models(actor_user_id)
+        .await
+        .unwrap();
+
+    let metadata = store.list_runtime_model_metadata().await.unwrap();
+    let roles = metadata
+        .iter()
+        .find(|model| model.model_code == "roles")
+        .expect("roles metadata should be registered");
+    assert!(roles.fields.iter().all(|field| !field.is_writable));
+
+    let role_id = Uuid::now_v7();
+    let created = RuntimeRecordRepository::create_record(
+        &store,
+        roles,
+        actor_user_id,
+        domain::SYSTEM_SCOPE_ID,
+        json!({
+            "id": role_id.to_string(),
+            "created_by": actor_user_id.to_string(),
+            "updated_by": actor_user_id.to_string(),
+            "created_at": "2026-06-29T00:00:00Z",
+            "updated_at": "2026-06-29T00:00:00Z",
+            "scope_id": domain::SYSTEM_SCOPE_ID.to_string(),
+            "scope_kind": "system",
+            "code": format!("runtime_api_role_{}", role_id.simple()),
+            "name": "Runtime API Role",
+            "introduction": "created through runtime API",
+            "is_builtin": false,
+            "is_editable": true,
+            "auto_grant_new_permissions": false,
+            "is_default_member_role": false,
+            "system_kind": "runtime_api"
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(created["id"], json!(role_id.to_string()));
+    assert_eq!(
+        created["scope_id"],
+        json!(domain::SYSTEM_SCOPE_ID.to_string())
+    );
+    assert_eq!(created["scope_kind"], json!("system"));
+    assert_eq!(created["name"], json!("Runtime API Role"));
+}
+
+#[tokio::test]
 async fn runtime_record_repository_lists_application_run_logs_as_scoped_read_model() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();

@@ -718,7 +718,14 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     );
     assert_eq!(
         create_spec["components"]["schemas"]["DocsReadyOrdersRecordCreateInput"]["required"],
-        json!(["order_title"])
+        json!([
+            "id",
+            "created_by",
+            "updated_by",
+            "created_at",
+            "updated_at",
+            "order_title"
+        ])
     );
     assert_eq!(
         create_spec["components"]["schemas"]["DocsReadyOrdersRecordCreateInput"]["properties"]
@@ -730,14 +737,96 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
             ["paid_at"]["format"],
         json!("date-time")
     );
-    assert!(
+    assert_eq!(
         create_spec["components"]["schemas"]["DocsReadyOrdersRecordCreateInput"]["properties"]
-            .get("created_at")
-            .is_none()
+            ["created_at"]["format"],
+        json!("date-time")
     );
     assert!(operation_spec["components"]["securitySchemes"]["apiKeyBearer"].is_null());
     assert_eq!(
         operation_spec["components"]["securitySchemes"]["patBearer"]["scheme"],
         json!("bearer")
+    );
+}
+
+#[tokio::test]
+async fn docs_routes_include_api_exposed_system_table_create_fields() {
+    let app = test_app().await;
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let operations_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/docs/categories/data-model-apis/operations?q=roles")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(operations_response.status(), StatusCode::OK);
+    let operations_payload: Value = serde_json::from_slice(
+        &to_bytes(operations_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let operations = operations_payload["data"]["operations"].as_array().unwrap();
+    let create_operation = operations
+        .iter()
+        .find(|operation| {
+            operation["method"] == json!("POST")
+                && operation["path"] == json!("/api/runtime/models/roles/create")
+        })
+        .expect("roles create operation should exist");
+    let create_operation_id = create_operation["id"].as_str().unwrap();
+
+    let create_spec_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/docs/operations/{create_operation_id}/openapi.json"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_spec_response.status(), StatusCode::OK);
+    let create_spec: Value = serde_json::from_slice(
+        &to_bytes(create_spec_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let properties = &create_spec["components"]["schemas"]["RolesRecordCreateInput"]["properties"];
+    for expected in ["id", "scope_id", "scope_kind", "code", "name"] {
+        assert!(
+            properties.get(expected).is_some(),
+            "missing roles create schema field {expected}"
+        );
+    }
+    assert_eq!(
+        create_spec["components"]["schemas"]["RolesRecordCreateInput"]["required"],
+        json!([
+            "id",
+            "created_by",
+            "updated_by",
+            "created_at",
+            "updated_at",
+            "scope_id",
+            "scope_kind",
+            "code",
+            "name",
+            "introduction",
+            "is_builtin",
+            "is_editable",
+            "auto_grant_new_permissions",
+            "is_default_member_role"
+        ])
     );
 }
