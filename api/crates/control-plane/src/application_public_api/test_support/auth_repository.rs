@@ -8,6 +8,7 @@ impl AuthRepository for ApplicationPublicApiTestRepository {
 
     async fn find_user_for_password_login(
         &self,
+        _authenticator_name: &str,
         _identifier: &str,
     ) -> Result<Option<domain::UserRecord>> {
         anyhow::bail!("find_user_for_password_login not implemented")

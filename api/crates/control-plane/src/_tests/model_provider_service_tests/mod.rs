@@ -266,7 +266,11 @@ impl AuthRepository for MemoryModelProviderRepository {
         Ok(None)
     }
 
-    async fn find_user_for_password_login(&self, _identifier: &str) -> Result<Option<UserRecord>> {
+    async fn find_user_for_password_login(
+        &self,
+        _authenticator_name: &str,
+        _identifier: &str,
+    ) -> Result<Option<UserRecord>> {
         Ok(None)
     }
 

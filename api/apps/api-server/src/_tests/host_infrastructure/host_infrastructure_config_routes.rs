@@ -104,10 +104,14 @@ migrations: []
 #[tokio::test]
 async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pending_restart() {
     let (state, _database_url) = test_api_state_with_database_url().await;
-    let root = AuthRepository::find_user_for_password_login(&state.store, "root")
-        .await
-        .unwrap()
-        .unwrap();
+    let root = AuthRepository::find_user_for_password_login(
+        &state.store,
+        domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME,
+        "root",
+    )
+    .await
+    .unwrap()
+    .unwrap();
     let install_root =
         std::env::temp_dir().join(format!("host-infra-config-route-{}", Uuid::now_v7()));
     write_host_extension_fixture(&install_root);

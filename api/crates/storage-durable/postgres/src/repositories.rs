@@ -109,9 +109,10 @@ impl PgControlPlaneStore {
 
     pub async fn find_user_for_password_login(
         &self,
+        authenticator_name: &str,
         identifier: &str,
     ) -> Result<Option<UserRecord>> {
-        AuthRepository::find_user_for_password_login(self, identifier).await
+        AuthRepository::find_user_for_password_login(self, authenticator_name, identifier).await
     }
 
     pub async fn find_user_by_id(&self, user_id: Uuid) -> Result<Option<UserRecord>> {

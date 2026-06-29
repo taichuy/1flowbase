@@ -569,7 +569,11 @@ impl AuthRepository for PgControlPlaneStore {
             .collect())
     }
 
-    async fn find_user_for_password_login(&self, identifier: &str) -> Result<Option<UserRecord>> {
+    async fn find_user_for_password_login(
+        &self,
+        authenticator_name: &str,
+        identifier: &str,
+    ) -> Result<Option<UserRecord>> {
         let lowered = identifier.trim().to_lowercase();
         let rows = sqlx::query(
             r#"
@@ -588,7 +592,7 @@ impl AuthRepository for PgControlPlaneStore {
               )
             "#,
         )
-        .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME)
+        .bind(authenticator_name)
         .bind(lowered)
         .bind(domain::AUTH_SUBJECT_TYPE_ACCOUNT)
         .bind(domain::AUTH_SUBJECT_TYPE_EMAIL)

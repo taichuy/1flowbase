@@ -36,6 +36,7 @@ impl AuthRepository for MemoryNodeContributionRepository {
 
     async fn find_user_for_password_login(
         &self,
+        _authenticator_name: &str,
         _identifier: &str,
     ) -> Result<Option<domain::UserRecord>> {
         Ok(None)

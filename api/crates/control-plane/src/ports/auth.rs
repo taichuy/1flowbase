@@ -171,6 +171,7 @@ pub trait AuthRepository: Send + Sync {
     }
     async fn find_user_for_password_login(
         &self,
+        authenticator_name: &str,
         identifier: &str,
     ) -> anyhow::Result<Option<UserRecord>>;
     async fn find_user_by_id(&self, user_id: Uuid) -> anyhow::Result<Option<UserRecord>>;

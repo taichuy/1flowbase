@@ -120,10 +120,14 @@ async fn seed_pending_restart_host_extension(
     installed_root: &Path,
     version: &str,
 ) -> Uuid {
-    let actor = AuthRepository::find_user_for_password_login(&state.store, "root")
-        .await
-        .unwrap()
-        .unwrap();
+    let actor = AuthRepository::find_user_for_password_login(
+        &state.store,
+        domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME,
+        "root",
+    )
+    .await
+    .unwrap()
+    .unwrap();
     let manifest_fingerprint = compute_manifest_fingerprint(&installed_root.join("manifest.yaml"))
         .await
         .unwrap();

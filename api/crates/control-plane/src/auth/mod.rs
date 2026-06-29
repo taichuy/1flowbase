@@ -28,6 +28,11 @@ pub struct LoginResult {
     pub session: SessionRecord,
 }
 
+pub struct AuthenticatorAuthentication {
+    pub user: domain::UserRecord,
+    pub external_identity_claim: Option<domain::ExternalIdentityClaim>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserApiKeyExpirationPolicy {
     ThirtyDays,
@@ -96,10 +101,11 @@ pub trait AuthenticatorProvider: Send + Sync {
     fn auth_type(&self) -> &'static str;
     async fn authenticate(
         &self,
+        authenticator: &domain::AuthenticatorRecord,
         identifier: &str,
         password: &str,
         repository: &dyn AuthRepository,
-    ) -> Result<domain::UserRecord>;
+    ) -> Result<AuthenticatorAuthentication>;
 }
 
 pub struct PasswordLocalAuthenticator;
@@ -112,12 +118,13 @@ impl AuthenticatorProvider for PasswordLocalAuthenticator {
 
     async fn authenticate(
         &self,
+        authenticator: &domain::AuthenticatorRecord,
         identifier: &str,
         password: &str,
         repository: &dyn AuthRepository,
-    ) -> Result<domain::UserRecord> {
+    ) -> Result<AuthenticatorAuthentication> {
         let user = repository
-            .find_user_for_password_login(identifier)
+            .find_user_for_password_login(&authenticator.name, identifier)
             .await?
             .ok_or(ControlPlaneError::NotAuthenticated)?;
         let parsed = PasswordHash::new(&user.password_hash)
@@ -125,7 +132,10 @@ impl AuthenticatorProvider for PasswordLocalAuthenticator {
         Argon2::default()
             .verify_password(password.as_bytes(), &parsed)
             .map_err(|_| ControlPlaneError::NotAuthenticated)?;
-        Ok(user)
+        Ok(AuthenticatorAuthentication {
+            user,
+            external_identity_claim: None,
+        })
     }
 }
 
@@ -137,8 +147,14 @@ impl AuthenticatorRegistry {
     pub fn new() -> Self {
         let password_provider: Arc<dyn AuthenticatorProvider> =
             Arc::new(PasswordLocalAuthenticator);
-        let mut providers = HashMap::new();
-        providers.insert(password_provider.auth_type().to_string(), password_provider);
+        Self::from_providers(vec![password_provider])
+    }
+
+    pub fn from_providers(providers: Vec<Arc<dyn AuthenticatorProvider>>) -> Self {
+        let providers = providers
+            .into_iter()
+            .map(|provider| (provider.auth_type().to_string(), provider))
+            .collect();
         Self { providers }
     }
 
@@ -379,9 +395,17 @@ where
     S: SessionStore,
 {
     pub fn new(repository: R, issuer: SessionIssuer<S>) -> Self {
+        Self::with_registry(repository, issuer, AuthenticatorRegistry::new())
+    }
+
+    pub fn with_registry(
+        repository: R,
+        issuer: SessionIssuer<S>,
+        registry: AuthenticatorRegistry,
+    ) -> Self {
         Self {
             repository,
-            registry: AuthenticatorRegistry::new(),
+            registry,
             issuer,
         }
     }
@@ -400,9 +424,23 @@ where
             .registry
             .provider(&authenticator.auth_type)
             .ok_or(ControlPlaneError::NotFound("auth_provider"))?;
-        let user = provider
-            .authenticate(&command.identifier, &command.password, &self.repository)
+        let authentication = provider
+            .authenticate(
+                &authenticator,
+                &command.identifier,
+                &command.password,
+                &self.repository,
+            )
             .await?;
+        if authentication
+            .external_identity_claim
+            .as_ref()
+            .is_some_and(|claim| claim.authenticator_name != authenticator.name)
+        {
+            return Err(ControlPlaneError::NotAuthenticated.into());
+        }
+
+        let user = authentication.user;
         if matches!(user.status, UserStatus::Disabled) {
             return Err(ControlPlaneError::PermissionDenied("user_disabled").into());
         }
