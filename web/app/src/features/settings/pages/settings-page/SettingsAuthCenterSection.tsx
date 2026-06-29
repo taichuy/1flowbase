@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -31,12 +31,24 @@ import './auth-center-panel.css';
 
 type AuthenticatorRow = SettingsAuthCenterOverview['authenticators'][number];
 
+const DEFAULT_AUTH_CENTER_DRAWER_WIDTH = 520;
+const MIN_AUTH_CENTER_DRAWER_WIDTH = 480;
+const MAX_AUTH_CENTER_DRAWER_WIDTH = 960;
+const KEYBOARD_RESIZE_STEP = 40;
+
 type AuthenticatorConfigFormValues = {
   name: string;
   title: string;
   enabled: boolean;
   description: string | null;
 };
+
+function clampAuthCenterDrawerWidth(width: number) {
+  return Math.min(
+    MAX_AUTH_CENTER_DRAWER_WIDTH,
+    Math.max(MIN_AUTH_CENTER_DRAWER_WIDTH, width)
+  );
+}
 
 function authCenterConfigFormValues(
   row: AuthenticatorRow
@@ -77,11 +89,46 @@ function AuthenticatorConfigDrawer({
   ) => void;
 }) {
   const [form] = Form.useForm<AuthenticatorConfigFormValues>();
+  const [drawerWidth, setDrawerWidth] = useState(
+    DEFAULT_AUTH_CENTER_DRAWER_WIDTH
+  );
+  const dragStartRef = useRef<{ pointerX: number; width: number } | null>(
+    null
+  );
   const accessErrorMessage = !canManageAuthenticators
     ? i18nText('settings', 'auto.auth_center_manage_permission_required')
     : !hasCsrfToken
       ? i18nText('settings', 'auto.auth_center_csrf_required')
       : null;
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      const dragStart = dragStartRef.current;
+      if (!dragStart) {
+        return;
+      }
+
+      setDrawerWidth(
+        clampAuthCenterDrawerWidth(
+          dragStart.width + dragStart.pointerX - event.clientX
+        )
+      );
+    };
+
+    const handleMouseUp = () => {
+      dragStartRef.current = null;
+      document.body.classList.remove('settings-auth-center--resizing-drawer');
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.classList.remove('settings-auth-center--resizing-drawer');
+    };
+  }, []);
 
   useEffect(() => {
     if (authenticator) {
@@ -100,10 +147,11 @@ function AuthenticatorConfigDrawer({
             })
           : i18nText('settings', 'auto.configuration_alt')
       }
-      width={520}
+      width={drawerWidth}
       open={open}
       onClose={onClose}
       destroyOnClose
+      rootClassName="settings-auth-center-drawer-shell"
       footer={
         authenticator ? (
           <Flex justify="start" gap="small">
@@ -123,60 +171,114 @@ function AuthenticatorConfigDrawer({
       }
     >
       {authenticator ? (
-        <Space
-          direction="vertical"
-          size={16}
-          className="settings-auth-center-drawer"
-        >
-          {accessErrorMessage ? (
-            <Alert type="error" showIcon message={accessErrorMessage} />
-          ) : null}
-          {errorMessage ? (
-            <Alert type="error" showIcon message={errorMessage} />
-          ) : null}
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={(values) => onSubmit(authenticator.name, values)}
+        <>
+          <div
+            aria-label="调整认证器配置抽屉宽度"
+            aria-orientation="vertical"
+            aria-valuemax={MAX_AUTH_CENTER_DRAWER_WIDTH}
+            aria-valuemin={MIN_AUTH_CENTER_DRAWER_WIDTH}
+            aria-valuenow={drawerWidth}
+            className="settings-auth-center-drawer__resize-handle"
+            role="separator"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                setDrawerWidth((currentWidth) =>
+                  clampAuthCenterDrawerWidth(
+                    currentWidth + KEYBOARD_RESIZE_STEP
+                  )
+                );
+                return;
+              }
+
+              if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                setDrawerWidth((currentWidth) =>
+                  clampAuthCenterDrawerWidth(
+                    currentWidth - KEYBOARD_RESIZE_STEP
+                  )
+                );
+                return;
+              }
+
+              if (event.key === 'Home') {
+                event.preventDefault();
+                setDrawerWidth(MIN_AUTH_CENTER_DRAWER_WIDTH);
+                return;
+              }
+
+              if (event.key === 'End') {
+                event.preventDefault();
+                setDrawerWidth(MAX_AUTH_CENTER_DRAWER_WIDTH);
+              }
+            }}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              dragStartRef.current = {
+                pointerX: event.clientX,
+                width: drawerWidth
+              };
+              document.body.classList.add(
+                'settings-auth-center--resizing-drawer'
+              );
+            }}
+          />
+          <Space
+            direction="vertical"
+            size={16}
+            className="settings-auth-center-drawer"
           >
-            <Form.Item
-              name="name"
-              label={i18nText('settings', 'auto.identifier')}
+            {accessErrorMessage ? (
+              <Alert type="error" showIcon message={accessErrorMessage} />
+            ) : null}
+            {errorMessage ? (
+              <Alert type="error" showIcon message={errorMessage} />
+            ) : null}
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={(values) => onSubmit(authenticator.name, values)}
             >
-              <Input disabled readOnly />
-            </Form.Item>
-            <Form.Item
-              name="title"
-              label={i18nText('settings', 'auto.name')}
-              rules={[
-                {
-                  required: true,
-                  message: i18nText('settings', 'auto.please_fill_in', {
-                    value1: i18nText('settings', 'auto.name')
-                  })
-                }
-              ]}
-            >
-              <Input disabled={!canManageAuthenticators || !hasCsrfToken} />
-            </Form.Item>
-            <Form.Item
-              name="description"
-              label={i18nText('settings', 'auto.description')}
-            >
-              <Input.TextArea
-                rows={4}
-                disabled={!canManageAuthenticators || !hasCsrfToken}
-              />
-            </Form.Item>
-            <Form.Item
-              name="enabled"
-              label={i18nText('settings', 'auto.enabled')}
-              valuePropName="checked"
-            >
-              <Switch disabled={!canManageAuthenticators || !hasCsrfToken} />
-            </Form.Item>
-          </Form>
-        </Space>
+              <Form.Item
+                name="name"
+                label={i18nText('settings', 'auto.identifier')}
+              >
+                <Input disabled readOnly />
+              </Form.Item>
+              <Form.Item
+                name="title"
+                label={i18nText('settings', 'auto.name')}
+                rules={[
+                  {
+                    required: true,
+                    message: i18nText('settings', 'auto.please_fill_in', {
+                      value1: i18nText('settings', 'auto.name')
+                    })
+                  }
+                ]}
+              >
+                <Input disabled={!canManageAuthenticators || !hasCsrfToken} />
+              </Form.Item>
+              <Form.Item
+                name="description"
+                label={i18nText('settings', 'auto.description')}
+              >
+                <Input.TextArea
+                  rows={4}
+                  disabled={!canManageAuthenticators || !hasCsrfToken}
+                />
+              </Form.Item>
+              <Form.Item
+                name="enabled"
+                label={i18nText('settings', 'auto.enabled')}
+                valuePropName="checked"
+              >
+                <Switch disabled={!canManageAuthenticators || !hasCsrfToken} />
+              </Form.Item>
+            </Form>
+          </Space>
+        </>
       ) : null}
     </Drawer>
   );

@@ -893,6 +893,24 @@ describe('SettingsPage', () => {
       'Local password authentication'
     );
     expect(within(dialog).getByRole('switch', { name: '启用' })).toBeChecked();
+    const resizeHandle = within(dialog).getByRole('separator', {
+      name: '调整认证器配置抽屉宽度'
+    });
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
+    fireEvent.mouseDown(resizeHandle, { clientX: 500 });
+    expect(document.body).toHaveClass('settings-auth-center--resizing-drawer');
+    fireEvent.mouseMove(document, { clientX: 460 });
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '560');
+    fireEvent.mouseUp(document);
+    expect(document.body).not.toHaveClass(
+      'settings-auth-center--resizing-drawer'
+    );
+    fireEvent.keyDown(resizeHandle, { key: 'ArrowLeft' });
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '600');
+    fireEvent.keyDown(resizeHandle, { key: 'Home' });
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '480');
+    fireEvent.keyDown(resizeHandle, { key: 'End' });
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '960');
     const footer = within(dialog)
       .getByRole('button', { name: /保\s*存/ })
       .closest('.ant-drawer-footer');
