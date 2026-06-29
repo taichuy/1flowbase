@@ -106,10 +106,7 @@ function AuthenticatorConfigDrawer({
       destroyOnClose
       footer={
         authenticator ? (
-          <Flex justify="end" gap="small">
-            <Button onClick={onClose}>
-              {i18nText('settings', 'auto.cancel')}
-            </Button>
+          <Flex justify="start" gap="small">
             <Button
               type="primary"
               loading={submitting}
@@ -117,6 +114,9 @@ function AuthenticatorConfigDrawer({
               onClick={() => form.submit()}
             >
               {i18nText('settings', 'auto.save')}
+            </Button>
+            <Button onClick={onClose}>
+              {i18nText('settings', 'auto.cancel')}
             </Button>
           </Flex>
         ) : null

@@ -893,11 +893,16 @@ describe('SettingsPage', () => {
       'Local password authentication'
     );
     expect(within(dialog).getByRole('switch', { name: '启用' })).toBeChecked();
-    expect(
-      within(dialog).getByRole('button', { name: /保\s*存/ }).closest(
-        '.ant-drawer-footer'
-      )
-    ).not.toBeNull();
+    const footer = within(dialog)
+      .getByRole('button', { name: /保\s*存/ })
+      .closest('.ant-drawer-footer');
+    expect(footer).not.toBeNull();
+    expect(footer?.querySelector('.ant-flex-justify-start')).not.toBeNull();
+    const footerButtons = within(footer as HTMLElement).getAllByRole('button');
+    expect(footerButtons.map((button) => button.textContent)).toEqual([
+      '保 存',
+      '取 消'
+    ]);
   });
 
   test('submits auth center config, refreshes the list, and closes the drawer', async () => {
