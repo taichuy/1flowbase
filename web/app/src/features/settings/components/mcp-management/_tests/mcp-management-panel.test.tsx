@@ -7,6 +7,7 @@ import {
   within
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 
 const mcpManagementApi = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
@@ -52,7 +53,7 @@ vi.mock('@monaco-editor/react', () => ({
 import { AppProviders } from '../../../../../app/AppProviders';
 import { McpManagementPanel } from '../McpManagementPanel';
 
-const interfaceCapabilities = [
+const interfaceCapabilities: ConsoleMcpInterfaceCapability[] = [
   {
     interface_id: 'create_app',
     method: 'POST',
@@ -104,7 +105,7 @@ const interfaceCapabilities = [
   }
 ];
 
-const publishApplicationApiCapability = {
+const publishApplicationApiCapability: ConsoleMcpInterfaceCapability = {
   ...interfaceCapabilities[0],
   interface_id: 'publish_application_api',
   method: 'POST',
@@ -184,7 +185,7 @@ const publishApplicationApiCapability = {
 };
 
 function renderPanel(
-  capabilities: typeof interfaceCapabilities = interfaceCapabilities
+  capabilities: ConsoleMcpInterfaceCapability[] = interfaceCapabilities
 ) {
   return render(
     <AppProviders>
@@ -360,9 +361,7 @@ describe('McpManagementPanel', () => {
     );
 
     clickSegmentedOption(dialog, 'debug');
-    expect(
-      dialog.querySelector('.mcp-tool-debug-panel__fields')
-    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('appId')).toBeInTheDocument();
     expect(
       within(dialog).queryByLabelText('MCP 参数 JSON')
     ).not.toBeInTheDocument();
@@ -533,15 +532,33 @@ describe('McpManagementPanel', () => {
     );
 
     expect(
-      within(dialog).getByDisplayValue('mapping.input.query_target')
+      within(dialog).getByLabelText('field_group mapping')
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByDisplayValue('mapping.output.answer_selector')
+      within(dialog).getByLabelText('field_group mapping.input')
     ).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText('field_group mapping.output')
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByDisplayValue('query_target')
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByDisplayValue('answer_selector')
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByDisplayValue('mapping.input.query_target')
+    ).not.toBeInTheDocument();
 
     fireEvent.click(await within(dialog).findByText('映射层'));
     fireEvent.click(within(dialog).getByRole('button', { name: '全部' }));
 
+    expect(
+      within(dialog).getAllByLabelText('field_group mapping.input').length
+    ).toBeGreaterThan(0);
+    expect(
+      within(dialog).getAllByDisplayValue('query_target').length
+    ).toBeGreaterThan(0);
     expect(
       within(dialog).getByLabelText('mcp_param mapping.input.query_target')
     ).toHaveValue('mapping.input.query_target');

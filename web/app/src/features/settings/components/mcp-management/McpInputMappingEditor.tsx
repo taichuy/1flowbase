@@ -10,7 +10,7 @@ import {
   Tabs,
   Typography
 } from 'antd';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { InlineJsonCodeEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel';
@@ -91,6 +91,157 @@ type JsonDraftState = {
   error: string;
 };
 
+type ParameterDisplayPath = {
+  parentPath: string[];
+  leafName: string;
+};
+
+type NestedParameterGroupRow = {
+  kind: 'group';
+  key: string;
+  path: string;
+  label: string;
+  depth: number;
+};
+
+type NestedParameterFieldRow<T> = {
+  kind: 'field';
+  key: string;
+  item: T;
+  index: number;
+};
+
+type NestedParameterRow<T> =
+  | NestedParameterGroupRow
+  | NestedParameterFieldRow<T>;
+
+function parameterDisplayPath(name: string): ParameterDisplayPath {
+  const parts = name.split('.').filter(Boolean);
+
+  if (parts.length <= 1) {
+    return {
+      parentPath: [],
+      leafName: name
+    };
+  }
+
+  return {
+    parentPath: parts.slice(0, -1),
+    leafName: parts[parts.length - 1]
+  };
+}
+
+function composeParameterName(parentPath: string[], leafName: string) {
+  return parentPath.length > 0 ? [...parentPath, leafName].join('.') : leafName;
+}
+
+function parameterOptionLabel(name: string) {
+  const displayPath = parameterDisplayPath(name);
+
+  return displayPath.parentPath.length > 0
+    ? [...displayPath.parentPath, displayPath.leafName].join(' / ')
+    : displayPath.leafName;
+}
+
+function nestedParameterRows<T>(
+  items: T[],
+  nameOf: (item: T) => string
+): Array<NestedParameterRow<T>> {
+  let previousParentPath: string[] = [];
+  const rows: Array<NestedParameterRow<T>> = [];
+
+  items.forEach((item, index) => {
+    const name = nameOf(item);
+    const displayPath = parameterDisplayPath(name);
+    let sharedDepth = 0;
+
+    while (
+      sharedDepth < displayPath.parentPath.length &&
+      previousParentPath[sharedDepth] === displayPath.parentPath[sharedDepth]
+    ) {
+      sharedDepth += 1;
+    }
+
+    for (
+      let depth = sharedDepth;
+      depth < displayPath.parentPath.length;
+      depth += 1
+    ) {
+      const path = displayPath.parentPath.slice(0, depth + 1).join('.');
+      rows.push({
+        kind: 'group',
+        key: `group:${index}:${path}`,
+        path,
+        label: displayPath.parentPath[depth],
+        depth
+      });
+    }
+
+    rows.push({
+      kind: 'field',
+      key: `field:${index}:${name}`,
+      item,
+      index
+    });
+    previousParentPath = displayPath.parentPath;
+  });
+
+  return rows;
+}
+
+function parameterDepthStyle(depth: number): CSSProperties {
+  return { '--mcp-field-depth': depth } as CSSProperties;
+}
+
+function ParameterGroupRow({ row }: { row: NestedParameterGroupRow }) {
+  return (
+    <div
+      aria-label={`field_group ${row.path}`}
+      className="mcp-input-mapping-editor__field-group"
+      style={parameterDepthStyle(row.depth)}
+    >
+      <span>{row.label}</span>
+    </div>
+  );
+}
+
+function ParameterNameCell({
+  name,
+  ariaLabel,
+  readOnly,
+  onChange
+}: {
+  name: string;
+  ariaLabel: string;
+  readOnly?: boolean;
+  onChange?: (name: string) => void;
+}) {
+  const displayPath = parameterDisplayPath(name);
+
+  return (
+    <div
+      className="mcp-input-mapping-editor__field-name"
+      style={parameterDepthStyle(displayPath.parentPath.length)}
+    >
+      {displayPath.parentPath.length > 0 ? (
+        <Typography.Text className="mcp-input-mapping-editor__field-prefix">
+          {displayPath.parentPath.join(' / ')}
+        </Typography.Text>
+      ) : null}
+      <Input
+        aria-label={ariaLabel}
+        readOnly={readOnly}
+        value={displayPath.leafName}
+        onChange={(event) =>
+          onChange?.(
+            composeParameterName(displayPath.parentPath, event.target.value)
+          )
+        }
+      />
+    </div>
+  );
+}
+
 function jsonDraftState(
   resetKey: string | number | null | undefined,
   serializedMapping: string
@@ -117,6 +268,11 @@ function InputMappingInterfaceSection({
   ) => void;
   onRemoveInterfaceParameter: (index: number) => void;
 }) {
+  const rows = nestedParameterRows(
+    mapping.interface_parameters,
+    (parameter) => parameter.name
+  );
+
   return (
     <Space
       className="mcp-input-mapping-editor__stack"
@@ -137,55 +293,61 @@ function InputMappingInterfaceSection({
             <span>{i18nText('settings', 'auto.required')}</span>
             <span />
           </div>
-          {mapping.interface_parameters.map((parameter, index) => (
-            <div
-              className="mcp-input-mapping-editor__row"
-              key={`${parameter.name}:${index}`}
-            >
-              <Input
-                aria-label={`field_name ${index + 1}`}
-                value={parameter.name}
-                onChange={(event) =>
-                  onUpdateInterfaceParameter(index, {
-                    name: event.target.value
-                  })
-                }
-              />
-              <Input
-                aria-label={`field_type ${parameter.name || index + 1}`}
-                value={parameter.field_type}
-                onChange={(event) =>
-                  onUpdateInterfaceParameter(index, {
-                    field_type: event.target.value
-                  })
-                }
-              />
-              <Select
-                aria-label={`parameter_type ${parameter.name || index + 1}`}
-                options={parameterTypeOptions()}
-                value={parameter.parameter_type}
-                onChange={(nextParameterType) =>
-                  onUpdateInterfaceParameter(index, {
-                    parameter_type: nextParameterType
-                  })
-                }
-              />
-              <Checkbox
-                aria-label={`required ${parameter.name || index + 1}`}
-                checked={parameter.required}
-                onChange={(event) =>
-                  onUpdateInterfaceParameter(index, {
-                    required: event.target.checked
-                  })
-                }
-              />
-              <Button
-                aria-label={`delete_field ${parameter.name || index + 1}`}
-                icon={<DeleteOutlined />}
-                onClick={() => onRemoveInterfaceParameter(index)}
-              />
-            </div>
-          ))}
+          {rows.map((row) => {
+            if (row.kind === 'group') {
+              return <ParameterGroupRow key={row.key} row={row} />;
+            }
+
+            const parameter = row.item;
+            const index = row.index;
+
+            return (
+              <div className="mcp-input-mapping-editor__row" key={row.key}>
+                <ParameterNameCell
+                  ariaLabel={`field_name ${index + 1}`}
+                  name={parameter.name}
+                  onChange={(name) =>
+                    onUpdateInterfaceParameter(index, {
+                      name
+                    })
+                  }
+                />
+                <Input
+                  aria-label={`field_type ${parameter.name || index + 1}`}
+                  value={parameter.field_type}
+                  onChange={(event) =>
+                    onUpdateInterfaceParameter(index, {
+                      field_type: event.target.value
+                    })
+                  }
+                />
+                <Select
+                  aria-label={`parameter_type ${parameter.name || index + 1}`}
+                  options={parameterTypeOptions()}
+                  value={parameter.parameter_type}
+                  onChange={(nextParameterType) =>
+                    onUpdateInterfaceParameter(index, {
+                      parameter_type: nextParameterType
+                    })
+                  }
+                />
+                <Checkbox
+                  aria-label={`required ${parameter.name || index + 1}`}
+                  checked={parameter.required}
+                  onChange={(event) =>
+                    onUpdateInterfaceParameter(index, {
+                      required: event.target.checked
+                    })
+                  }
+                />
+                <Button
+                  aria-label={`delete_field ${parameter.name || index + 1}`}
+                  icon={<DeleteOutlined />}
+                  onClick={() => onRemoveInterfaceParameter(index)}
+                />
+              </div>
+            );
+          })}
         </div>
       ) : (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -216,6 +378,11 @@ function InputMappingLayerSection({
   ) => void;
   onRemoveMapping: (index: number) => void;
 }) {
+  const rows = nestedParameterRows(
+    mapping.mappings,
+    (entry) => entry.interface_param
+  );
+
   return (
     <Space
       className="mcp-input-mapping-editor__stack"
@@ -260,46 +427,59 @@ function InputMappingLayerSection({
             <span>{i18nText('settings', 'auto.required')}</span>
             <span />
           </div>
-          {mapping.mappings.map((entry, index) => (
-            <div
-              className="mcp-input-mapping-editor__mapping-row"
-              key={`${entry.interface_param}:${index}`}
-            >
-              <Input readOnly value={entry.interface_param} />
-              <Input
-                aria-label={`mcp_param ${entry.interface_param}`}
-                value={entry.mcp_param}
-                onChange={(event) =>
-                  onUpdateMapping(index, {
-                    mcp_param: event.target.value
-                  })
-                }
-              />
-              <Input
-                aria-label={`description ${entry.interface_param}`}
-                value={entry.description}
-                onChange={(event) =>
-                  onUpdateMapping(index, {
-                    description: event.target.value
-                  })
-                }
-              />
-              <Checkbox
-                aria-label={`required ${entry.interface_param}`}
-                checked={entry.required}
-                onChange={(event) =>
-                  onUpdateMapping(index, {
-                    required: event.target.checked
-                  })
-                }
-              />
-              <Button
-                aria-label={`delete_mapping ${entry.interface_param}`}
-                icon={<DeleteOutlined />}
-                onClick={() => onRemoveMapping(index)}
-              />
-            </div>
-          ))}
+          {rows.map((row) => {
+            if (row.kind === 'group') {
+              return <ParameterGroupRow key={row.key} row={row} />;
+            }
+
+            const entry = row.item;
+            const index = row.index;
+
+            return (
+              <div
+                className="mcp-input-mapping-editor__mapping-row"
+                key={row.key}
+              >
+                <ParameterNameCell
+                  ariaLabel={`interface_param ${entry.interface_param}`}
+                  name={entry.interface_param}
+                  readOnly
+                />
+                <Input
+                  aria-label={`mcp_param ${entry.interface_param}`}
+                  value={entry.mcp_param}
+                  onChange={(event) =>
+                    onUpdateMapping(index, {
+                      mcp_param: event.target.value
+                    })
+                  }
+                />
+                <Input
+                  aria-label={`description ${entry.interface_param}`}
+                  value={entry.description}
+                  onChange={(event) =>
+                    onUpdateMapping(index, {
+                      description: event.target.value
+                    })
+                  }
+                />
+                <Checkbox
+                  aria-label={`required ${entry.interface_param}`}
+                  checked={entry.required}
+                  onChange={(event) =>
+                    onUpdateMapping(index, {
+                      required: event.target.checked
+                    })
+                  }
+                />
+                <Button
+                  aria-label={`delete_mapping ${entry.interface_param}`}
+                  icon={<DeleteOutlined />}
+                  onClick={() => onRemoveMapping(index)}
+                />
+              </div>
+            );
+          })}
         </div>
       ) : (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -552,7 +732,10 @@ export function McpInputMappingEditor({
       !mappedParameters.has(entry.name) &&
       entry.name !== DES_ID_PARAMETER_NAME
     ) {
-      addableOptions.push({ label: entry.name, value: entry.name });
+      addableOptions.push({
+        label: parameterOptionLabel(entry.name),
+        value: entry.name
+      });
     }
   }
   if (!mappedParameters.has(DES_ID_PARAMETER_NAME)) {

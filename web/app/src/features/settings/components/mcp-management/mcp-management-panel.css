@@ -149,6 +149,41 @@
   margin-bottom: 8px;
 }
 
+.mcp-input-mapping-editor__field-group {
+  grid-column: 1 / -1;
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  padding-left: calc(var(--mcp-field-depth, 0) * 18px);
+  color: var(--ant-color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mcp-input-mapping-editor__field-group span {
+  display: inline-flex;
+  align-items: center;
+  border-left: 2px solid var(--ant-color-border-secondary);
+  padding-left: 8px;
+}
+
+.mcp-input-mapping-editor__field-name {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: calc(var(--mcp-field-depth, 0) * 18px);
+}
+
+.mcp-input-mapping-editor__field-prefix {
+  overflow: hidden;
+  color: var(--ant-color-text-tertiary);
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .mcp-input-mapping-editor .ant-select {
   width: 100%;
 }
@@ -265,8 +300,7 @@
   border-radius: 6px;
 }
 
-.mcp-management__schema-editor
-  .agent-flow-json-schema-settings__editor-loading,
+.mcp-management__schema-editor .agent-flow-json-schema-settings__editor-loading,
 .mcp-management__input-mapping-editor
   .agent-flow-json-schema-settings__editor-loading {
   display: flex;
