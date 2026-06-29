@@ -583,6 +583,8 @@
       "web/app/src/shared/ui/scrollable-surface/scrollable-surface.css",
       "web/app/src/features/settings/pages/SettingsPage.tsx",
       "web/app/src/features/settings/pages/settings-page/SettingsEmptyState.tsx",
+      "web/app/src/features/settings/pages/settings-page/SettingsAuthCenterSection.tsx",
+      "web/app/src/features/settings/pages/settings-page/auth-center-panel.css",
       "web/app/src/features/settings/pages/settings-page/SettingsDataModelsSection.tsx",
       "web/app/src/features/settings/pages/settings-page/SettingsModelProvidersSection.tsx",
       "web/app/src/features/settings/pages/settings-page/SettingsNavigation.tsx",

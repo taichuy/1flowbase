@@ -27,6 +27,8 @@ import {
 } from '../../api/auth-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 
+import './auth-center-panel.css';
+
 type AuthenticatorRow = SettingsAuthCenterOverview['authenticators'][number];
 
 type AuthenticatorConfigFormValues = {

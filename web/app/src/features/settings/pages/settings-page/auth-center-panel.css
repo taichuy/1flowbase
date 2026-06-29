@@ -1,0 +1,8 @@
+.settings-auth-center-drawer {
+  width: 100%;
+}
+
+.settings-auth-center-drawer .ant-space-item,
+.settings-auth-center-drawer .ant-form {
+  width: 100%;
+}
