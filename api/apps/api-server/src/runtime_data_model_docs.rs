@@ -60,13 +60,6 @@ impl RuntimeDataModelDocsOperationKind {
         }
     }
 
-    fn record_scoped(self) -> bool {
-        matches!(
-            self,
-            Self::GetRecord | Self::UpdateRecord | Self::DeleteRecord
-        )
-    }
-
     fn summary(self, model: &domain::ModelDefinitionRecord) -> String {
         match self {
             Self::ListRecords => format!("List {} records", model.title),
@@ -182,22 +175,36 @@ pub async fn ready_model(
     Ok(Some(model))
 }
 
-pub fn records_path(model: &domain::ModelDefinitionRecord) -> String {
-    format!("/api/runtime/models/{}/records", model.code)
+pub fn list_path(model: &domain::ModelDefinitionRecord) -> String {
+    format!("/api/runtime/models/{}/list", model.code)
 }
 
-pub fn record_path(model: &domain::ModelDefinitionRecord) -> String {
-    format!("/api/runtime/models/{}/records/{{id}}", model.code)
+pub fn get_path(model: &domain::ModelDefinitionRecord) -> String {
+    format!("/api/runtime/models/{}/get/{{id}}", model.code)
+}
+
+pub fn create_path(model: &domain::ModelDefinitionRecord) -> String {
+    format!("/api/runtime/models/{}/create", model.code)
+}
+
+pub fn update_path(model: &domain::ModelDefinitionRecord) -> String {
+    format!("/api/runtime/models/{}/update/{{id}}", model.code)
+}
+
+pub fn delete_path(model: &domain::ModelDefinitionRecord) -> String {
+    format!("/api/runtime/models/{}/delete/{{id}}", model.code)
 }
 
 pub fn operation_path(
     model: &domain::ModelDefinitionRecord,
     kind: RuntimeDataModelDocsOperationKind,
 ) -> String {
-    if kind.record_scoped() {
-        record_path(model)
-    } else {
-        records_path(model)
+    match kind {
+        RuntimeDataModelDocsOperationKind::ListRecords => list_path(model),
+        RuntimeDataModelDocsOperationKind::CreateRecord => create_path(model),
+        RuntimeDataModelDocsOperationKind::GetRecord => get_path(model),
+        RuntimeDataModelDocsOperationKind::UpdateRecord => update_path(model),
+        RuntimeDataModelDocsOperationKind::DeleteRecord => delete_path(model),
     }
 }
 
@@ -244,8 +251,11 @@ pub fn build_category_operations(
 }
 
 pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
-    let records_path = records_path(model);
-    let record_path = record_path(model);
+    let list_path = list_path(model);
+    let get_path = get_path(model);
+    let create_path = create_path(model);
+    let update_path = update_path(model);
+    let delete_path = delete_path(model);
     let schema_name = record_schema_name(&model.code);
     let create_schema_name = format!("{schema_name}CreateInput");
     let update_schema_name = format!("{schema_name}UpdateInput");
@@ -261,7 +271,7 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
         },
         "security": [{ "patBearer": [] }],
         "paths": {
-            records_path: {
+            list_path: {
                 "get": {
                     "operationId": format!("list_{}_records", model.code),
                     "summary": format!("List {} records", model.title),
@@ -269,7 +279,9 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
                     "security": [{ "patBearer": [] }],
                     "parameters": runtime_list_parameters(),
                     "responses": runtime_responses(&schema_ref, true)
-                },
+                }
+            },
+            create_path: {
                 "post": {
                     "operationId": format!("create_{}_record", model.code),
                     "summary": format!("Create {} record", model.title),
@@ -279,14 +291,16 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
                     "responses": runtime_responses(&schema_ref, false)
                 }
             },
-            record_path: {
+            get_path: {
                 "get": {
                     "operationId": format!("get_{}_record", model.code),
                     "summary": format!("Get {} record", model.title),
                     "security": [{ "patBearer": [] }],
                     "parameters": [id_parameter(), expand_parameter()],
                     "responses": runtime_responses(&schema_ref, false)
-                },
+                }
+            },
+            update_path: {
                 "patch": {
                     "operationId": format!("update_{}_record", model.code),
                     "summary": format!("Update {} record", model.title),
@@ -295,7 +309,9 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
                     "parameters": [id_parameter()],
                     "requestBody": json_request_body(&update_schema_ref),
                     "responses": runtime_responses(&schema_ref, false)
-                },
+                }
+            },
+            delete_path: {
                 "delete": {
                     "operationId": format!("delete_{}_record", model.code),
                     "summary": format!("Delete {} record", model.title),

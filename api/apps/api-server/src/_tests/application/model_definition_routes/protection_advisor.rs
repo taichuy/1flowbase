@@ -266,16 +266,14 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
     .unwrap();
 
     assert_eq!(docs["openapi"], json!("3.1.0"));
-    assert!(docs["paths"]["/api/runtime/models/advisor_doc_orders/records"]["get"].is_object());
-    assert!(docs["paths"]["/api/runtime/models/advisor_doc_orders/records"]["post"].is_object());
+    assert!(docs["paths"]["/api/runtime/models/advisor_doc_orders/list"]["get"].is_object());
+    assert!(docs["paths"]["/api/runtime/models/advisor_doc_orders/create"]["post"].is_object());
+    assert!(docs["paths"]["/api/runtime/models/advisor_doc_orders/get/{id}"]["get"].is_object());
     assert!(
-        docs["paths"]["/api/runtime/models/advisor_doc_orders/records/{id}"]["get"].is_object()
+        docs["paths"]["/api/runtime/models/advisor_doc_orders/update/{id}"]["patch"].is_object()
     );
     assert!(
-        docs["paths"]["/api/runtime/models/advisor_doc_orders/records/{id}"]["patch"].is_object()
-    );
-    assert!(
-        docs["paths"]["/api/runtime/models/advisor_doc_orders/records/{id}"]["delete"].is_object()
+        docs["paths"]["/api/runtime/models/advisor_doc_orders/delete/{id}"]["delete"].is_object()
     );
     assert_eq!(
         docs["components"]["schemas"]["AdvisorDocOrdersRecord"]["properties"]["status"]["type"],
@@ -299,12 +297,12 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
         .unwrap()
         .contains("scope filter"));
     assert_eq!(
-        docs["paths"]["/api/runtime/models/advisor_doc_orders/records"]["get"]["parameters"][0]
+        docs["paths"]["/api/runtime/models/advisor_doc_orders/list"]["get"]["parameters"][0]
             ["name"],
         json!("filter")
     );
     assert!(
-        docs["paths"]["/api/runtime/models/advisor_doc_orders/records"]["get"]["responses"]["403"]
+        docs["paths"]["/api/runtime/models/advisor_doc_orders/list"]["get"]["responses"]["403"]
             .is_object()
     );
 }

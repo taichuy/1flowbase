@@ -1196,7 +1196,7 @@ export function seedStyleBoundaryApplicationFetch() {
     if (
       method.toUpperCase() === 'GET' &&
       requestUrl.pathname ===
-        '/api/runtime/models/application_run_log_summaries/records'
+        '/api/runtime/models/application_run_log_summaries/list'
     ) {
       return new Response(
         JSON.stringify({

@@ -7,7 +7,7 @@ use std::{
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::get,
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -157,14 +157,11 @@ fn runtime_list_response(model_code: &str, items: Vec<Value>, total: i64) -> Run
 
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
-        .route(
-            "/models/:model_code/records",
-            get(list_records).post(create_record),
-        )
-        .route(
-            "/models/:model_code/records/:id",
-            get(get_record).patch(update_record).delete(delete_record),
-        )
+        .route("/models/:model_code/list", get(list_records))
+        .route("/models/:model_code/get/:id", get(get_record))
+        .route("/models/:model_code/create", post(create_record))
+        .route("/models/:model_code/update/:id", patch(update_record))
+        .route("/models/:model_code/delete/:id", delete(delete_record))
 }
 
 fn parse_filter(filter: Option<&str>) -> Result<domain::ResourceFilterExpr, ApiError> {
@@ -593,7 +590,7 @@ fn require_session_csrf_for_write(
 
 #[utoipa::path(
     get,
-    path = "/api/runtime/models/{model_code}/records",
+    path = "/api/runtime/models/{model_code}/list",
     params(("model_code" = String, Path, description = "Runtime model code")),
     responses((status = 200, body = RuntimeListResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
 )]
@@ -671,7 +668,7 @@ pub async fn list_records(
 
 #[utoipa::path(
     get,
-    path = "/api/runtime/models/{model_code}/records/{id}",
+    path = "/api/runtime/models/{model_code}/get/{id}",
     params(
         ("model_code" = String, Path, description = "Runtime model code"),
         ("id" = String, Path, description = "Runtime record id")
@@ -789,7 +786,7 @@ mod tests {
 
 #[utoipa::path(
     post,
-    path = "/api/runtime/models/{model_code}/records",
+    path = "/api/runtime/models/{model_code}/create",
     request_body = RuntimeRecordEnvelope,
     params(("model_code" = String, Path, description = "Runtime model code")),
     responses((status = 201, body = RuntimeRecordEnvelope), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
@@ -859,7 +856,7 @@ pub async fn create_record(
 
 #[utoipa::path(
     patch,
-    path = "/api/runtime/models/{model_code}/records/{id}",
+    path = "/api/runtime/models/{model_code}/update/{id}",
     request_body = RuntimeRecordEnvelope,
     params(
         ("model_code" = String, Path, description = "Runtime model code"),
@@ -933,7 +930,7 @@ pub async fn update_record(
 
 #[utoipa::path(
     delete,
-    path = "/api/runtime/models/{model_code}/records/{id}",
+    path = "/api/runtime/models/{model_code}/delete/{id}",
     params(
         ("model_code" = String, Path, description = "Runtime model code"),
         ("id" = String, Path, description = "Runtime record id")

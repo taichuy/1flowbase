@@ -68,7 +68,7 @@ async fn create_model_route_persists_draft_status_atomically_without_manage_perm
     for request in [
         Request::builder()
             .method("POST")
-            .uri("/api/runtime/models/atomic_draft_orders/records")
+            .uri("/api/runtime/models/atomic_draft_orders/create")
             .header("cookie", &root_cookie)
             .header("x-csrf-token", &root_csrf)
             .header("content-type", "application/json")
@@ -76,7 +76,7 @@ async fn create_model_route_persists_draft_status_atomically_without_manage_perm
             .unwrap(),
         Request::builder()
             .method("GET")
-            .uri("/api/runtime/models/atomic_draft_orders/records")
+            .uri("/api/runtime/models/atomic_draft_orders/list")
             .header("cookie", &root_cookie)
             .body(Body::empty())
             .unwrap(),

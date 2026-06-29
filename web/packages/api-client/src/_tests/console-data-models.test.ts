@@ -27,7 +27,9 @@ import {
 } from '../console-data-models';
 
 describe('console-data-models client', () => {
-  vi.spyOn(transport, 'apiFetch').mockImplementation(async (input) => input as never);
+  vi.spyOn(transport, 'apiFetch').mockImplementation(
+    async (input) => input as never
+  );
 
   test('updateConsoleDataSourceDefaults patches defaults with CSRF', async () => {
     await expect(
@@ -262,7 +264,7 @@ describe('console-data-models client', () => {
     await expect(
       fetchConsoleDataModelRecordPreview('orders')
     ).resolves.toMatchObject({
-      path: '/api/runtime/models/orders/records?page=1&page_size=20'
+      path: '/api/runtime/models/orders/list?page=1&page_size=20'
     });
 
     await expect(
@@ -289,7 +291,7 @@ describe('console-data-models client', () => {
         expand: ['customer', 'line items']
       })
     ).resolves.toMatchObject({
-      path: '/api/runtime/models/sales%2Forders/records?page=2&page_size=50&filter=%7B%22status%22%3A%7B%22%24eq%22%3A%22needs+review%22%7D%7D&sort=created_at%3Adesc&expand=customer%2Cline+items'
+      path: '/api/runtime/models/sales%2Forders/list?page=2&page_size=50&filter=%7B%22status%22%3A%7B%22%24eq%22%3A%22needs+review%22%7D%7D&sort=created_at%3Adesc&expand=customer%2Cline+items'
     });
   });
 
@@ -297,7 +299,7 @@ describe('console-data-models client', () => {
     await expect(
       fetchConsoleRuntimeModelRecord('sales/orders', 'record/1')
     ).resolves.toMatchObject({
-      path: '/api/runtime/models/sales%2Forders/records/record%2F1'
+      path: '/api/runtime/models/sales%2Forders/get/record%2F1'
     });
   });
 
@@ -312,7 +314,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/runtime/models/sales%2Forders/records',
+      path: '/api/runtime/models/sales%2Forders/create',
       method: 'POST',
       body: {
         title: 'Needs review',
@@ -331,7 +333,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/runtime/models/sales%2Forders/records/record%2F1',
+      path: '/api/runtime/models/sales%2Forders/update/record%2F1',
       method: 'PATCH',
       body: {
         title: 'Approved'
@@ -342,7 +344,7 @@ describe('console-data-models client', () => {
     await expect(
       deleteConsoleRuntimeModelRecord('sales/orders', 'record/1', 'csrf-123')
     ).resolves.toMatchObject({
-      path: '/api/runtime/models/sales%2Forders/records/record%2F1',
+      path: '/api/runtime/models/sales%2Forders/delete/record%2F1',
       method: 'DELETE',
       csrfToken: 'csrf-123'
     });

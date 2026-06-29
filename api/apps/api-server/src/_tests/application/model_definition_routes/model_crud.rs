@@ -190,7 +190,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/create")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -229,7 +229,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/create")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -274,7 +274,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/create")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -342,7 +342,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/create")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -358,7 +358,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/list")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

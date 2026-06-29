@@ -13,7 +13,7 @@ async fn runtime_model_routes_create_fetch_update_delete_and_filter_records() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/create")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -39,7 +39,7 @@ async fn runtime_model_routes_create_fetch_update_delete_and_filter_records() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/orders/records?filter=%7B%22status%22%3A%7B%22%24eq%22%3A%22draft%22%7D%7D&sort=title:desc")
+                .uri("/api/runtime/models/orders/list?filter=%7B%22status%22%3A%7B%22%24eq%22%3A%22draft%22%7D%7D&sort=title:desc")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -54,7 +54,7 @@ async fn runtime_model_routes_create_fetch_update_delete_and_filter_records() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/orders/records?filter=%7B%22status%22%3A%7B%22%24startsWith%22%3A%22dra%22%7D%7D")
+                .uri("/api/runtime/models/orders/list?filter=%7B%22status%22%3A%7B%22%24startsWith%22%3A%22dra%22%7D%7D")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -69,7 +69,7 @@ async fn runtime_model_routes_create_fetch_update_delete_and_filter_records() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/runtime/models/orders/records/{record_id}"))
+                .uri(format!("/api/runtime/models/orders/get/{record_id}"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -83,7 +83,7 @@ async fn runtime_model_routes_create_fetch_update_delete_and_filter_records() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/runtime/models/orders/records/{record_id}"))
+                .uri(format!("/api/runtime/models/orders/update/{record_id}"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -96,12 +96,57 @@ async fn runtime_model_routes_create_fetch_update_delete_and_filter_records() {
         .unwrap();
     assert_eq!(update_response.status(), StatusCode::OK);
 
+    for old_route_request in [
+        Request::builder()
+            .method("GET")
+            .uri("/api/runtime/models/orders/records")
+            .header("cookie", &cookie)
+            .body(Body::empty())
+            .unwrap(),
+        Request::builder()
+            .method("POST")
+            .uri("/api/runtime/models/orders/records")
+            .header("cookie", &cookie)
+            .header("x-csrf-token", &csrf)
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({ "title": "legacy", "status": "draft" }).to_string(),
+            ))
+            .unwrap(),
+        Request::builder()
+            .method("GET")
+            .uri(format!("/api/runtime/models/orders/records/{record_id}"))
+            .header("cookie", &cookie)
+            .body(Body::empty())
+            .unwrap(),
+        Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/runtime/models/orders/records/{record_id}"))
+            .header("cookie", &cookie)
+            .header("x-csrf-token", &csrf)
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({ "title": "legacy", "status": "draft" }).to_string(),
+            ))
+            .unwrap(),
+        Request::builder()
+            .method("DELETE")
+            .uri(format!("/api/runtime/models/orders/records/{record_id}"))
+            .header("cookie", &cookie)
+            .header("x-csrf-token", &csrf)
+            .body(Body::empty())
+            .unwrap(),
+    ] {
+        let old_route_response = app.clone().oneshot(old_route_request).await.unwrap();
+        assert_eq!(old_route_response.status(), StatusCode::NOT_FOUND);
+    }
+
     let delete_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/runtime/models/orders/records/{record_id}"))
+                .uri(format!("/api/runtime/models/orders/delete/{record_id}"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())
@@ -118,7 +163,7 @@ async fn runtime_model_routes_create_fetch_update_delete_and_filter_records() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/orders/records")
+                .uri("/api/runtime/models/orders/list")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -151,7 +196,7 @@ async fn runtime_model_routes_cache_main_source_reads_and_invalidate_after_write
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/cache_orders/records")
+                .uri("/api/runtime/models/cache_orders/create")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -174,7 +219,7 @@ async fn runtime_model_routes_cache_main_source_reads_and_invalidate_after_write
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/cache_orders/records")
+                .uri("/api/runtime/models/cache_orders/list")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -187,9 +232,7 @@ async fn runtime_model_routes_cache_main_source_reads_and_invalidate_after_write
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!(
-                    "/api/runtime/models/cache_orders/records/{record_id}"
-                ))
+                .uri(format!("/api/runtime/models/cache_orders/get/{record_id}"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -206,7 +249,7 @@ async fn runtime_model_routes_cache_main_source_reads_and_invalidate_after_write
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/cache_orders/records")
+                .uri("/api/runtime/models/cache_orders/list")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -226,9 +269,7 @@ async fn runtime_model_routes_cache_main_source_reads_and_invalidate_after_write
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!(
-                    "/api/runtime/models/cache_orders/records/{record_id}"
-                ))
+                .uri(format!("/api/runtime/models/cache_orders/get/{record_id}"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -246,7 +287,7 @@ async fn runtime_model_routes_cache_main_source_reads_and_invalidate_after_write
             Request::builder()
                 .method("PATCH")
                 .uri(format!(
-                    "/api/runtime/models/cache_orders/records/{record_id}"
+                    "/api/runtime/models/cache_orders/update/{record_id}"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -265,9 +306,7 @@ async fn runtime_model_routes_cache_main_source_reads_and_invalidate_after_write
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!(
-                    "/api/runtime/models/cache_orders/records/{record_id}"
-                ))
+                .uri(format!("/api/runtime/models/cache_orders/get/{record_id}"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -348,7 +387,7 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/external_runtime_contacts/records")
+                .uri("/api/runtime/models/external_runtime_contacts/list")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -383,7 +422,7 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/external_runtime_contacts/records/contact-1")
+                .uri("/api/runtime/models/external_runtime_contacts/get/contact-1")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -405,7 +444,7 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/external_runtime_contacts/records")
+                .uri("/api/runtime/models/external_runtime_contacts/create")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -435,7 +474,7 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/api/runtime/models/external_runtime_contacts/records/contact-1")
+                .uri("/api/runtime/models/external_runtime_contacts/update/contact-1")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -463,7 +502,7 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/api/runtime/models/external_runtime_contacts/records/contact-1")
+                .uri("/api/runtime/models/external_runtime_contacts/delete/contact-1")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())
@@ -618,7 +657,7 @@ async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unava
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/runtime/models/{model_code}/records"))
+                    .uri(format!("/api/runtime/models/{model_code}/list"))
                     .header("cookie", &cookie)
                     .body(Body::empty())
                     .unwrap(),

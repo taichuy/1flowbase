@@ -580,11 +580,24 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         .unwrap()
         .to_vec();
     assert_eq!(operations.len(), 5);
-    assert!(operations.iter().all(|operation| {
-        operation["path"]
-            .as_str()
-            .is_some_and(|path| path.contains("/api/runtime/models/docs_ready_orders/records"))
-    }));
+    for (method, path) in [
+        ("GET", "/api/runtime/models/docs_ready_orders/list"),
+        ("GET", "/api/runtime/models/docs_ready_orders/get/{id}"),
+        ("POST", "/api/runtime/models/docs_ready_orders/create"),
+        ("PATCH", "/api/runtime/models/docs_ready_orders/update/{id}"),
+        (
+            "DELETE",
+            "/api/runtime/models/docs_ready_orders/delete/{id}",
+        ),
+    ] {
+        assert!(
+            operations
+                .iter()
+                .any(|operation| operation["method"] == json!(method)
+                    && operation["path"] == json!(path)),
+            "missing dynamic data model operation {method} {path}"
+        );
+    }
     assert!(!operations.iter().any(|operation| {
         operation["path"]
             .as_str()
@@ -610,21 +623,31 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     )
     .unwrap();
     assert!(
-        category_spec["paths"]["/api/runtime/models/docs_ready_orders/records"]["get"].is_object()
+        category_spec["paths"]["/api/runtime/models/docs_ready_orders/list"]["get"].is_object()
     );
     assert!(
-        category_spec["paths"]["/api/runtime/models/docs_ready_orders/records/{id}"]["patch"]
+        category_spec["paths"]["/api/runtime/models/docs_ready_orders/create"]["post"].is_object()
+    );
+    assert!(
+        category_spec["paths"]["/api/runtime/models/docs_ready_orders/get/{id}"]["get"].is_object()
+    );
+    assert!(
+        category_spec["paths"]["/api/runtime/models/docs_ready_orders/update/{id}"]["patch"]
+            .is_object()
+    );
+    assert!(
+        category_spec["paths"]["/api/runtime/models/docs_ready_orders/delete/{id}"]["delete"]
             .is_object()
     );
     assert!(category_spec["paths"]
-        .get("/api/runtime/models/docs_hidden_orders/records")
+        .get("/api/runtime/models/docs_hidden_orders/list")
         .is_none());
 
     let list_operation = operations
         .iter()
         .find(|operation| {
             operation["method"] == json!("GET")
-                && operation["path"] == json!("/api/runtime/models/docs_ready_orders/records")
+                && operation["path"] == json!("/api/runtime/models/docs_ready_orders/list")
         })
         .expect("list operation should exist");
     let list_operation_id = list_operation["id"].as_str().unwrap();
@@ -650,19 +673,19 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     )
     .unwrap();
     assert!(
-        operation_spec["paths"]["/api/runtime/models/docs_ready_orders/records"]["get"].is_object()
+        operation_spec["paths"]["/api/runtime/models/docs_ready_orders/list"]["get"].is_object()
     );
     assert!(operation_spec["paths"]
-        .get("/api/runtime/models/{model_code}/records")
+        .get("/api/runtime/models/{model_code}/list")
         .is_none());
-    assert!(
-        operation_spec["paths"]["/api/runtime/models/docs_ready_orders/records"]["post"].is_null()
-    );
+    assert!(operation_spec["paths"]
+        .get("/api/runtime/models/docs_ready_orders/create")
+        .is_none());
     let create_operation = operations
         .iter()
         .find(|operation| {
             operation["method"] == json!("POST")
-                && operation["path"] == json!("/api/runtime/models/docs_ready_orders/records")
+                && operation["path"] == json!("/api/runtime/models/docs_ready_orders/create")
         })
         .expect("create operation should exist");
     let create_operation_id = create_operation["id"].as_str().unwrap();
@@ -687,7 +710,7 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
             .unwrap(),
     )
     .unwrap();
-    let create_body_schema = &create_spec["paths"]["/api/runtime/models/docs_ready_orders/records"]
+    let create_body_schema = &create_spec["paths"]["/api/runtime/models/docs_ready_orders/create"]
         ["post"]["requestBody"]["content"]["application/json"]["schema"];
     assert_eq!(
         create_body_schema["$ref"],
