@@ -1,13 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
-  Drawer,
   Flex,
-  Form,
-  Input,
   Space,
   Switch,
   Table,
@@ -17,6 +14,11 @@ import type { ColumnsType } from 'antd/es/table';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
+import {
+  SchemaFormDrawer,
+  type SchemaFormValues
+} from '../../../../shared/schema-ui/form-drawer/SchemaFormDrawer';
+import type { PluginFormSchema } from '../../../../shared/schema-ui/contracts/plugin-form-schema';
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import {
   enableSettingsAuthCenterAuthenticator,
@@ -52,7 +54,7 @@ function clampAuthCenterDrawerWidth(width: number) {
 
 function authCenterConfigFormValues(
   row: AuthenticatorRow
-): AuthenticatorConfigFormValues {
+): SchemaFormValues {
   const description =
     typeof row.config_values.description === 'string'
       ? row.config_values.description
@@ -63,6 +65,49 @@ function authCenterConfigFormValues(
     title: row.title,
     enabled: row.enabled,
     description
+  };
+}
+
+function authCenterConfigFormSchema(): PluginFormSchema {
+  return {
+    schema_version: '1.0.0',
+    fields: [
+      {
+        key: 'name',
+        label: i18nText('settings', 'auto.identifier'),
+        type: 'string',
+        read_only: true
+      },
+      {
+        key: 'title',
+        label: i18nText('settings', 'auto.name'),
+        type: 'string',
+        required: true
+      },
+      {
+        key: 'description',
+        label: i18nText('settings', 'auto.description'),
+        type: 'string',
+        control: 'textarea'
+      },
+      {
+        key: 'enabled',
+        label: i18nText('settings', 'auto.enabled'),
+        type: 'boolean'
+      }
+    ]
+  };
+}
+
+function toAuthenticatorConfigFormValues(
+  values: SchemaFormValues
+): AuthenticatorConfigFormValues {
+  return {
+    name: String(values.name ?? ''),
+    title: String(values.title ?? ''),
+    enabled: Boolean(values.enabled),
+    description:
+      typeof values.description === 'string' ? values.description : null
   };
 }
 
@@ -86,9 +131,8 @@ function AuthenticatorConfigDrawer({
   onSubmit: (
     authenticatorName: string,
     values: AuthenticatorConfigFormValues
-  ) => void;
+  ) => Promise<void>;
 }) {
-  const [form] = Form.useForm<AuthenticatorConfigFormValues>();
   const [drawerWidth, setDrawerWidth] = useState(
     DEFAULT_AUTH_CENTER_DRAWER_WIDTH
   );
@@ -100,6 +144,11 @@ function AuthenticatorConfigDrawer({
     : !hasCsrfToken
       ? i18nText('settings', 'auto.auth_center_csrf_required')
       : null;
+  const initialValues = useMemo(
+    () => (authenticator ? authCenterConfigFormValues(authenticator) : {}),
+    [authenticator]
+  );
+  const schema = useMemo(() => authCenterConfigFormSchema(), []);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -130,48 +179,40 @@ function AuthenticatorConfigDrawer({
     };
   }, []);
 
-  useEffect(() => {
-    if (authenticator) {
-      form.setFieldsValue(authCenterConfigFormValues(authenticator));
-    } else {
-      form.resetFields();
-    }
-  }, [authenticator, form]);
+  const statusMessages = [
+    accessErrorMessage
+      ? {
+          key: 'access-error',
+          message: accessErrorMessage,
+          type: 'error' as const
+        }
+      : null,
+    errorMessage
+      ? {
+          key: 'submit-error',
+          message: errorMessage,
+          type: 'error' as const
+        }
+      : null
+  ].filter((message) => message != null);
 
-  return (
-    <Drawer
+  return authenticator ? (
+    <SchemaFormDrawer
+      bodyClassName="settings-auth-center-drawer"
+      disabled={accessErrorMessage != null}
+      initialValues={initialValues}
+      open={open}
+      rootClassName="settings-auth-center-drawer-shell"
+      schema={schema}
+      statusMessages={statusMessages}
+      submitting={submitting}
       title={
-        authenticator
-          ? i18nText('settings', 'auto.configuration', {
-              value1: authenticator.title
-            })
-          : i18nText('settings', 'auto.configuration_alt')
+        i18nText('settings', 'auto.configuration', {
+          value1: authenticator.title
+        })
       }
       width={drawerWidth}
-      open={open}
-      onClose={onClose}
-      destroyOnClose
-      rootClassName="settings-auth-center-drawer-shell"
-      footer={
-        authenticator ? (
-          <Flex justify="start" gap="small">
-            <Button
-              type="primary"
-              loading={submitting}
-              disabled={accessErrorMessage != null}
-              onClick={() => form.submit()}
-            >
-              {i18nText('settings', 'auto.save')}
-            </Button>
-            <Button onClick={onClose}>
-              {i18nText('settings', 'auto.cancel')}
-            </Button>
-          </Flex>
-        ) : null
-      }
-    >
-      {authenticator ? (
-        <>
+      leadingContent={
           <div
             aria-label="调整认证器配置抽屉宽度"
             aria-orientation="vertical"
@@ -224,64 +265,13 @@ function AuthenticatorConfigDrawer({
               );
             }}
           />
-          <Space
-            direction="vertical"
-            size={16}
-            className="settings-auth-center-drawer"
-          >
-            {accessErrorMessage ? (
-              <Alert type="error" showIcon message={accessErrorMessage} />
-            ) : null}
-            {errorMessage ? (
-              <Alert type="error" showIcon message={errorMessage} />
-            ) : null}
-            <Form
-              form={form}
-              layout="vertical"
-              onFinish={(values) => onSubmit(authenticator.name, values)}
-            >
-              <Form.Item
-                name="name"
-                label={i18nText('settings', 'auto.identifier')}
-              >
-                <Input disabled readOnly />
-              </Form.Item>
-              <Form.Item
-                name="title"
-                label={i18nText('settings', 'auto.name')}
-                rules={[
-                  {
-                    required: true,
-                    message: i18nText('settings', 'auto.please_fill_in', {
-                      value1: i18nText('settings', 'auto.name')
-                    })
-                  }
-                ]}
-              >
-                <Input disabled={!canManageAuthenticators || !hasCsrfToken} />
-              </Form.Item>
-              <Form.Item
-                name="description"
-                label={i18nText('settings', 'auto.description')}
-              >
-                <Input.TextArea
-                  rows={4}
-                  disabled={!canManageAuthenticators || !hasCsrfToken}
-                />
-              </Form.Item>
-              <Form.Item
-                name="enabled"
-                label={i18nText('settings', 'auto.enabled')}
-                valuePropName="checked"
-              >
-                <Switch disabled={!canManageAuthenticators || !hasCsrfToken} />
-              </Form.Item>
-            </Form>
-          </Space>
-        </>
-      ) : null}
-    </Drawer>
-  );
+      }
+      onCancel={onClose}
+      onSubmit={(values) =>
+        onSubmit(authenticator.name, toAuthenticatorConfigFormValues(values))
+      }
+    />
+  ) : null;
 }
 
 export function SettingsAuthCenterSection() {
@@ -475,8 +465,24 @@ export function SettingsAuthCenterSection() {
           configMutation.reset();
           setSelectedAuthenticatorName(null);
         }}
-        onSubmit={(authenticatorName, values) => {
-          configMutation.mutate({ authenticatorName, values });
+        onSubmit={async (authenticatorName, values) => {
+          await new Promise<void>((resolve, reject) => {
+            configMutation.mutate(
+              { authenticatorName, values },
+              {
+                onError: () =>
+                  reject(
+                    new Error(
+                      i18nText(
+                        'settings',
+                        'auto.auth_center_config_update_failed'
+                      )
+                    )
+                  ),
+                onSuccess: () => resolve()
+              }
+            );
+          });
         }}
       />
     </SettingsSectionSurface>

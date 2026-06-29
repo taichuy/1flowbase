@@ -1,0 +1,37 @@
+.schema-form-drawer .ant-drawer-body {
+  overflow: auto;
+}
+
+.schema-form-drawer__title {
+  line-height: 1.35;
+}
+
+.schema-form-drawer__subtitle {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.schema-form-drawer__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.schema-form-drawer__footer {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.schema-form-drawer__number {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .schema-form-drawer__footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

@@ -50,6 +50,51 @@
     ]
   },
   {
+    "id": "component.schema-form-drawer",
+    "kind": "component",
+    "title": "Schema Form Drawer",
+    "impactFiles": [
+      "web/app/src/shared/schema-ui/contracts/plugin-form-schema.ts",
+      "web/app/src/shared/schema-ui/form-drawer/SchemaFormDrawer.tsx",
+      "web/app/src/shared/schema-ui/form-drawer/schema-form-drawer.css",
+      "web/app/src/shared/schema-ui/i18n/en_US.json",
+      "web/app/src/shared/schema-ui/i18n/zh_Hans.json",
+      "web/app/src/style-boundary/renderers.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "drawer-body",
+        "selector": ".schema-form-drawer .ant-drawer-body",
+        "propertyAssertions": [
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      },
+      {
+        "id": "form-body",
+        "selector": ".schema-form-drawer__body",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "footer",
+        "selector": ".schema-form-drawer__footer",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "id": "page.home",
     "kind": "page",
     "title": "Home Page",

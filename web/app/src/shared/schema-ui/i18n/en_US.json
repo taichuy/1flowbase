@@ -1,6 +1,15 @@
 {
   "auto": {
+    "cancel": "Cancel",
     "close": "Close",
-    "close_named_panel": "Close {{value1}}"
+    "close_named_panel": "Close {{value1}}",
+    "discard_changes": "Discard changes",
+    "discard_unsaved_changes_content": "This form has unsaved changes. Closing it will discard them.",
+    "discard_unsaved_changes_title": "Discard unsaved changes?",
+    "field_pattern_invalid": "{{value1}} format is invalid",
+    "field_required": "{{value1}} is required",
+    "keep_editing": "Keep editing",
+    "save": "Save",
+    "submit_failed": "Save failed"
   }
 }

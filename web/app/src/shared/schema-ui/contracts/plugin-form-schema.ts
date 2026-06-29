@@ -25,11 +25,13 @@ export interface PluginFormFieldSchema {
   order?: number;
   advanced?: boolean;
   required?: boolean;
+  read_only?: boolean;
   send_mode?: 'always' | 'optional' | string;
   enabled_by_default?: boolean;
   description?: string;
   placeholder?: string;
   default_value?: PluginFormValue;
+  pattern?: string;
   min?: number;
   max?: number;
   step?: number;

@@ -7,6 +7,7 @@ import { createAccountMenuItems } from '../app-shell/account-menu-items';
 import { AgentFlowEditorShell } from '../features/agent-flow/components/editor/AgentFlowEditorShell';
 import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
+import { SchemaFormDrawer } from '../shared/schema-ui/form-drawer/SchemaFormDrawer';
 import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import {
   createStyleBoundaryFrontstagePageContent,
@@ -89,6 +90,48 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
       selectable={false}
       items={createAccountMenuItems()}
       openKeys={['account']}
+    />
+  ),
+  'component.schema-form-drawer': () => (
+    <SchemaFormDrawer
+      open
+      title="Password 配置"
+      schema={{
+        schema_version: '1.0.0',
+        fields: [
+          {
+            key: 'name',
+            label: '标识',
+            type: 'string',
+            read_only: true
+          },
+          {
+            key: 'title',
+            label: '名称',
+            type: 'string',
+            required: true
+          },
+          {
+            key: 'description',
+            label: '说明',
+            type: 'string',
+            control: 'textarea'
+          },
+          {
+            key: 'enabled',
+            label: '启用',
+            type: 'boolean'
+          }
+        ]
+      }}
+      initialValues={{
+        name: 'password-local',
+        title: 'Password',
+        description: 'Local password authentication',
+        enabled: true
+      }}
+      onCancel={() => undefined}
+      onSubmit={() => undefined}
     />
   ),
   'page.home': () => {

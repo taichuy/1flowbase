@@ -1,6 +1,15 @@
 {
   "auto": {
+    "cancel": "取消",
     "close": "关闭",
-    "close_named_panel": "关闭{{value1}}"
+    "close_named_panel": "关闭{{value1}}",
+    "discard_changes": "放弃更改",
+    "discard_unsaved_changes_content": "当前表单还有未保存的更改，关闭后这些更改将丢失。",
+    "discard_unsaved_changes_title": "放弃未保存的更改？",
+    "field_pattern_invalid": "{{value1}}格式不正确",
+    "field_required": "{{value1}}不能为空",
+    "keep_editing": "继续编辑",
+    "save": "保存",
+    "submit_failed": "保存失败"
   }
 }
