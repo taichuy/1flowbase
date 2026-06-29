@@ -366,6 +366,11 @@ export function SettingsAuthCenterSection() {
       key: 'title'
     },
     {
+      title: i18nText('settings', 'auto.auth_center_description'),
+      key: 'description',
+      render: (_, row) => row.config_values.description || '-'
+    },
+    {
       title: i18nText('settings', 'auto.status'),
       dataIndex: 'enabled',
       key: 'enabled',

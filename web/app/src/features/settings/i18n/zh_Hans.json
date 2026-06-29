@@ -133,6 +133,7 @@
     "permissions": "权限 {{value1}}",
     "already_public": "已公开",
     "enabled_alt": "已启用",
+    "auth_center_description": "描述",
     "data_capacity": "数据容量",
     "current": "当前",
     "description": "说明",

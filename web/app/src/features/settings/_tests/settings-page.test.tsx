@@ -830,6 +830,10 @@ describe('SettingsPage', () => {
       screen.getByRole('columnheader', { name: '启用' })
     ).toBeInTheDocument();
     expect(
+      screen.getByRole('columnheader', { name: '描述' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Primary OIDC')).toBeInTheDocument();
+    expect(
       screen.queryByRole('columnheader', { name: '类型' })
     ).not.toBeInTheDocument();
     expect(

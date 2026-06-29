@@ -133,6 +133,7 @@
     "permissions": "Permissions {{value1}}",
     "already_public": "Already public",
     "enabled_alt": "Enabled",
+    "auth_center_description": "Description",
     "data_capacity": "Data capacity",
     "current": "current",
     "description": "Description",
