@@ -104,6 +104,85 @@ const interfaceCapabilities = [
   }
 ];
 
+const publishApplicationApiCapability = {
+  ...interfaceCapabilities[0],
+  interface_id: 'publish_application_api',
+  method: 'POST',
+  path: '/api/console/applications/{application_id}/api-publications',
+  name: 'Publish application API',
+  short_description: 'Publish application API',
+  parameter_schema: {
+    type: 'object',
+    properties: {
+      application_id: { type: 'string' },
+      api_enabled: { type: 'boolean' },
+      mapping: {
+        type: 'object',
+        properties: {
+          input: {
+            type: 'object',
+            properties: {
+              query_target: { type: 'string' },
+              history_target: { type: 'string' }
+            },
+            required: ['query_target']
+          },
+          output: {
+            type: 'object',
+            properties: {
+              answer_selector: { type: 'string' }
+            }
+          }
+        },
+        required: ['input', 'output']
+      }
+    },
+    required: ['application_id', 'api_enabled', 'mapping']
+  },
+  parameter_descriptors: [
+    {
+      name: 'application_id',
+      field_type: 'string',
+      parameter_type: 'url' as const,
+      description: 'Application id',
+      required: true,
+      schema: { type: 'string' }
+    },
+    {
+      name: 'api_enabled',
+      field_type: 'boolean',
+      parameter_type: 'json_body' as const,
+      description: 'API enabled',
+      required: true,
+      schema: { type: 'boolean' }
+    },
+    {
+      name: 'mapping.input.query_target',
+      field_type: 'string',
+      parameter_type: 'json_body' as const,
+      description: 'Query target',
+      required: true,
+      schema: { type: 'string' }
+    },
+    {
+      name: 'mapping.input.history_target',
+      field_type: 'string',
+      parameter_type: 'json_body' as const,
+      description: 'History target',
+      required: false,
+      schema: { type: 'string' }
+    },
+    {
+      name: 'mapping.output.answer_selector',
+      field_type: 'string',
+      parameter_type: 'json_body' as const,
+      description: 'Answer selector',
+      required: false,
+      schema: { type: 'string' }
+    }
+  ]
+};
+
 function renderPanel(
   capabilities: typeof interfaceCapabilities = interfaceCapabilities
 ) {
@@ -169,42 +248,38 @@ describe('McpManagementPanel', () => {
     vi.clearAllMocks();
   });
 
-  test(
-    'shows step navigation actions only when the adjacent step exists',
-    async () => {
-      renderPanel();
+  test('shows step navigation actions only when the adjacent step exists', async () => {
+    renderPanel();
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
-      fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
 
-      const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('dialog');
 
-      expect(
-        within(dialog).queryByRole('button', { name: /上一步/ })
-      ).not.toBeInTheDocument();
-      expect(
-        within(dialog).getByRole('button', { name: /下一步/ })
-      ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: /上一步/ })
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: /下一步/ })
+    ).toBeInTheDocument();
 
-      fireEvent.click(within(dialog).getByRole('button', { name: /下一步/ }));
-      expect(
-        within(dialog).getByRole('button', { name: /上一步/ })
-      ).toBeInTheDocument();
-      expect(
-        within(dialog).getByRole('button', { name: /下一步/ })
-      ).toBeInTheDocument();
-      expect(within(dialog).getByLabelText('interface_id')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /下一步/ }));
+    expect(
+      within(dialog).getByRole('button', { name: /上一步/ })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: /下一步/ })
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('interface_id')).toBeInTheDocument();
 
-      clickSegmentedOption(dialog, 'debug');
-      expect(
-        within(dialog).getByRole('button', { name: /上一步/ })
-      ).toBeInTheDocument();
-      expect(
-        within(dialog).queryByRole('button', { name: /下一步/ })
-      ).not.toBeInTheDocument();
-    },
-    30000
-  );
+    clickSegmentedOption(dialog, 'debug');
+    expect(
+      within(dialog).getByRole('button', { name: /上一步/ })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: /下一步/ })
+    ).not.toBeInTheDocument();
+  }, 30000);
 
   test('shows the selected interface operation in input output and debug steps', async () => {
     renderPanel();
@@ -253,7 +328,9 @@ describe('McpManagementPanel', () => {
 
     const dialog = await screen.findByRole('dialog');
 
-    expect(within(dialog).getByLabelText('full_description')).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText('full_description')
+    ).toBeInTheDocument();
     expect(within(dialog).getAllByText('debug').length).toBeGreaterThan(0);
     expect(within(dialog).queryByText('preview')).not.toBeInTheDocument();
 
@@ -424,6 +501,174 @@ describe('McpManagementPanel', () => {
     );
   });
 
+  test('uses nested interface descriptors for mapping and debug interface arguments', async () => {
+    renderPanel([publishApplicationApiCapability]);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.change(within(dialog).getByLabelText('name'), {
+      target: { value: 'Publish Application API' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('des_id'), {
+      target: { value: 'des12345' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('short_description'), {
+      target: { value: 'Publish application API' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('full_description'), {
+      target: { value: 'Publish application API' }
+    });
+    clickSegmentedOption(dialog, 'interface');
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'interface_id' })
+    );
+    await selectAntdOption('publish_application_api');
+
+    clickSegmentedOption(dialog, 'input_mapping');
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '获取接口参数' })
+    );
+
+    expect(
+      within(dialog).getByDisplayValue('mapping.input.query_target')
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByDisplayValue('mapping.output.answer_selector')
+    ).toBeInTheDocument();
+
+    fireEvent.click(await within(dialog).findByText('映射层'));
+    fireEvent.click(within(dialog).getByRole('button', { name: '全部' }));
+
+    expect(
+      within(dialog).getByLabelText('mcp_param mapping.input.query_target')
+    ).toHaveValue('mapping.input.query_target');
+    expect(within(dialog).getByLabelText('mcp_param des_id')).toHaveValue(
+      'des_id'
+    );
+    expect(within(dialog).getByRole('button', { name: '全部' })).toBeDisabled();
+
+    clickSegmentedOption(dialog, 'debug');
+    fireEvent.change(within(dialog).getByLabelText('application_id'), {
+      target: { value: 'app-1' }
+    });
+    fireEvent.click(within(dialog).getByLabelText('api_enabled'));
+    fireEvent.change(
+      within(dialog).getByLabelText('mapping.input.query_target'),
+      {
+        target: { value: 'inputs.query' }
+      }
+    );
+    const desIdDebugFields = within(dialog).getAllByLabelText('des_id');
+    fireEvent.change(desIdDebugFields[desIdDebugFields.length - 1], {
+      target: { value: 'des-1' }
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: '运行' }));
+
+    const debugResult = within(dialog).getByLabelText('返回值 JSON');
+    expect(debugResult).toHaveTextContent('"mapping"');
+    expect(debugResult).toHaveTextContent('"input"');
+    expect(debugResult).toHaveTextContent('"query_target": "inputs.query"');
+    expect(debugResult).not.toHaveTextContent('"mapping.input.query_target"');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+
+    await waitFor(() => {
+      expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
+        expect.objectContaining({
+          des_id: 'des12345',
+          input_mapping: {
+            interface_parameters: [
+              {
+                name: 'application_id',
+                field_type: 'string',
+                parameter_type: 'url',
+                description: 'Application id',
+                required: true
+              },
+              {
+                name: 'api_enabled',
+                field_type: 'boolean',
+                parameter_type: 'json_body',
+                description: 'API enabled',
+                required: true
+              },
+              {
+                name: 'mapping.input.query_target',
+                field_type: 'string',
+                parameter_type: 'json_body',
+                description: 'Query target',
+                required: true
+              },
+              {
+                name: 'mapping.input.history_target',
+                field_type: 'string',
+                parameter_type: 'json_body',
+                description: 'History target',
+                required: false
+              },
+              {
+                name: 'mapping.output.answer_selector',
+                field_type: 'string',
+                parameter_type: 'json_body',
+                description: 'Answer selector',
+                required: false
+              },
+              {
+                name: 'des_id',
+                field_type: 'string',
+                parameter_type: 'json_body',
+                description: 'des_id',
+                required: true
+              }
+            ],
+            mappings: [
+              {
+                interface_param: 'application_id',
+                mcp_param: 'application_id',
+                description: 'Application id',
+                required: true
+              },
+              {
+                interface_param: 'api_enabled',
+                mcp_param: 'api_enabled',
+                description: 'API enabled',
+                required: true
+              },
+              {
+                interface_param: 'mapping.input.query_target',
+                mcp_param: 'mapping.input.query_target',
+                description: 'Query target',
+                required: true
+              },
+              {
+                interface_param: 'mapping.input.history_target',
+                mcp_param: 'mapping.input.history_target',
+                description: 'History target',
+                required: false
+              },
+              {
+                interface_param: 'mapping.output.answer_selector',
+                mcp_param: 'mapping.output.answer_selector',
+                description: 'Answer selector',
+                required: false
+              },
+              {
+                interface_param: 'des_id',
+                mcp_param: 'des_id',
+                description: 'des_id',
+                required: true
+              }
+            ]
+          }
+        }),
+        expect.any(String)
+      );
+    });
+  });
+
   test('blocks saving when the input mapping JSON parse view is invalid', async () => {
     renderPanel();
 
@@ -512,9 +757,7 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('combobox', { name: 'interface_param' })
     );
     await selectAntdOption('des_id');
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '添加' })
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: '添加' }));
 
     expect(
       within(dialog).getAllByDisplayValue('des_id').length
@@ -527,9 +770,7 @@ describe('McpManagementPanel', () => {
     )) {
       expect(checkbox).toBeChecked();
     }
-    expect(
-      within(dialog).getByRole('button', { name: '添加' })
-    ).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: '添加' })).toBeDisabled();
 
     clickSegmentedOption(dialog, 'debug');
     fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
@@ -595,9 +836,9 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).getByLabelText('mcp_param app_id')).toHaveValue(
       'app_id'
     );
-    expect(
-      within(dialog).getByLabelText('mcp_param display_name')
-    ).toHaveValue('display_name');
+    expect(within(dialog).getByLabelText('mcp_param display_name')).toHaveValue(
+      'display_name'
+    );
     expect(within(dialog).getByLabelText('mcp_param des_id')).toHaveValue(
       'des_id'
     );
@@ -723,18 +964,15 @@ describe('McpManagementPanel', () => {
 
     const desIdOptions = await screen.findAllByText((text, element) => {
       return Boolean(
-        text === 'des_id' &&
-          element?.matches('.ant-select-item-option-content')
+        text === 'des_id' && element?.matches('.ant-select-item-option-content')
       );
     });
-    const applicationIdOptions = await screen.findAllByText(
-      (text, element) => {
-        return Boolean(
-          text === 'application_id' &&
-            element?.matches('.ant-select-item-option-content')
-        );
-      }
-    );
+    const applicationIdOptions = await screen.findAllByText((text, element) => {
+      return Boolean(
+        text === 'application_id' &&
+        element?.matches('.ant-select-item-option-content')
+      );
+    });
 
     expect(desIdOptions).toHaveLength(1);
     expect(applicationIdOptions).toHaveLength(2);

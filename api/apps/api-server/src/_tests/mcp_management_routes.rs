@@ -470,6 +470,39 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         application_api_docs_interface["permission_code"].as_str(),
         Some("application.view.all")
     );
+    let publish_application_api_interface = interface_payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["interface_id"].as_str() == Some("publish_application_api"))
+        .expect("MCP interface catalog should expose publish application API");
+    assert!(publish_application_api_interface["parameter_descriptors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |descriptor| descriptor["name"].as_str() == Some("application_id")
+                && descriptor["parameter_type"].as_str() == Some("url")
+                && descriptor["required"].as_bool() == Some(true)
+        ));
+    assert!(publish_application_api_interface["parameter_descriptors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |descriptor| descriptor["name"].as_str() == Some("mapping.input.query_target")
+                && descriptor["parameter_type"].as_str() == Some("json_body")
+                && descriptor["required"].as_bool() == Some(true)
+        ));
+    assert!(publish_application_api_interface["parameter_descriptors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |descriptor| descriptor["name"].as_str() == Some("mapping.output.answer_selector")
+                && descriptor["parameter_type"].as_str() == Some("json_body")
+                && descriptor["required"].as_bool() == Some(false)
+        ));
 
     let create_tool_response = app
         .clone()

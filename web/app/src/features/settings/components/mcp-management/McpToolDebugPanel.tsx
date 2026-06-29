@@ -16,14 +16,64 @@ function formatJson(value: unknown) {
   return JSON.stringify(value ?? {}, null, 2);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function setArgumentPathValue(
+  target: Record<string, unknown>,
+  path: string,
+  value: unknown
+) {
+  const segments = path.split('.').filter(Boolean);
+  if (segments.length === 0) {
+    return;
+  }
+
+  let cursor = target;
+  for (const segment of segments.slice(0, -1)) {
+    const current = cursor[segment];
+    if (!isRecord(current)) {
+      cursor[segment] = {};
+    }
+    cursor = cursor[segment] as Record<string, unknown>;
+  }
+  cursor[segments[segments.length - 1]] = value;
+}
+
+function getArgumentPathValue(source: Record<string, unknown>, path: string) {
+  const segments = path.split('.').filter(Boolean);
+  if (segments.length === 0) {
+    return { exists: false, value: undefined };
+  }
+
+  let cursor: unknown = source;
+  for (const segment of segments) {
+    if (
+      !isRecord(cursor) ||
+      !Object.prototype.hasOwnProperty.call(cursor, segment)
+    ) {
+      return { exists: false, value: undefined };
+    }
+    cursor = cursor[segment];
+  }
+
+  return { exists: true, value: cursor };
+}
+
 function buildInterfaceArguments(
   inputMapping: McpInputMappingValue,
   mcpArguments: Record<string, unknown>
 ) {
   const interfaceArguments: Record<string, unknown> = {};
   for (const mapping of inputMapping.mappings) {
-    if (Object.prototype.hasOwnProperty.call(mcpArguments, mapping.mcp_param)) {
-      interfaceArguments[mapping.interface_param] = mcpArguments[mapping.mcp_param];
+    const mcpArgument = getArgumentPathValue(mcpArguments, mapping.mcp_param);
+    if (mcpArgument.exists) {
+      setArgumentPathValue(
+        interfaceArguments,
+        mapping.interface_param,
+        mcpArgument.value
+      );
     }
   }
 
@@ -88,15 +138,18 @@ function buildMcpArguments(
 
     if (debugFieldKind(field.field_type) === 'json') {
       try {
-        mcpArguments[field.mcp_param] =
-          typeof rawValue === 'string' ? JSON.parse(rawValue) : rawValue;
+        setArgumentPathValue(
+          mcpArguments,
+          field.mcp_param,
+          typeof rawValue === 'string' ? JSON.parse(rawValue) : rawValue
+        );
       } catch {
         throw new Error(`${field.mcp_param} 请输入有效 JSON`);
       }
       continue;
     }
 
-    mcpArguments[field.mcp_param] = rawValue;
+    setArgumentPathValue(mcpArguments, field.mcp_param, rawValue);
   }
 
   return mcpArguments;

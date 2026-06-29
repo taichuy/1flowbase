@@ -1207,14 +1207,6 @@ fn schema_property_descriptors(
     parameter_type: McpParameterType,
     request_body_required: bool,
 ) -> Vec<McpParameterDescriptor> {
-    let required_fields = schema
-        .get("required")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .collect::<BTreeSet<_>>();
-
     let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
         return vec![McpParameterDescriptor {
             name: "body".into(),
@@ -1226,20 +1218,64 @@ fn schema_property_descriptors(
         }];
     };
 
-    properties
-        .iter()
-        .map(|(name, property_schema)| {
-            let schema = property_schema.clone();
-            McpParameterDescriptor {
-                name: name.clone(),
-                field_type: schema_field_type(&schema),
-                parameter_type,
-                description: schema_description(&schema),
-                required: required_fields.contains(name.as_str()),
-                schema,
+    let required_fields = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    let mut descriptors = Vec::new();
+    for (name, property_schema) in properties {
+        append_schema_property_descriptors(
+            &mut descriptors,
+            name.clone(),
+            property_schema.clone(),
+            parameter_type,
+            required_fields.contains(name.as_str()),
+        );
+    }
+
+    descriptors
+}
+
+fn append_schema_property_descriptors(
+    descriptors: &mut Vec<McpParameterDescriptor>,
+    path: String,
+    schema: Value,
+    parameter_type: McpParameterType,
+    required: bool,
+) {
+    if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
+        if !properties.is_empty() {
+            let required_fields = schema
+                .get("required")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect::<BTreeSet<_>>();
+            for (name, property_schema) in properties {
+                append_schema_property_descriptors(
+                    descriptors,
+                    format!("{path}.{name}"),
+                    property_schema.clone(),
+                    parameter_type,
+                    required && required_fields.contains(name.as_str()),
+                );
             }
-        })
-        .collect()
+            return;
+        }
+    }
+
+    descriptors.push(McpParameterDescriptor {
+        name: path,
+        field_type: schema_field_type(&schema),
+        parameter_type,
+        description: schema_description(&schema),
+        required,
+        schema,
+    });
 }
 
 fn operation_response_schema(spec: &Value, operation_node: &Value) -> Value {
@@ -1968,5 +2004,127 @@ mod tests {
             .any(|descriptor| descriptor.name == "label"
                 && descriptor.parameter_type == McpParameterType::Form
                 && !descriptor.required));
+    }
+
+    #[test]
+    fn mcp_interface_descriptors_expand_nested_json_body_schema_properties() {
+        let spec = json!({
+            "paths": {
+                "/api/console/applications/{application_id}/api-publications": {
+                    "parameters": [
+                        {
+                            "name": "application_id",
+                            "in": "path",
+                            "required": true,
+                            "schema": { "type": "string" }
+                        }
+                    ],
+                    "post": {
+                        "operationId": "publish_application_api",
+                        "requestBody": {
+                            "required": true,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "required": ["api_enabled", "mapping"],
+                                        "properties": {
+                                            "api_enabled": { "type": "boolean" },
+                                            "mapping": {
+                                                "type": "object",
+                                                "required": ["input", "output"],
+                                                "properties": {
+                                                    "input": {
+                                                        "type": "object",
+                                                        "required": ["query_target"],
+                                                        "properties": {
+                                                            "query_target": {
+                                                                "type": "string",
+                                                                "description": "Query target"
+                                                            },
+                                                            "history_target": { "type": "string" }
+                                                        }
+                                                    },
+                                                    "output": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "answer_selector": { "type": "string" },
+                                                            "usage_selector": { "type": "string" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "ok",
+                                "content": {
+                                    "application/json": {
+                                        "schema": { "type": "object" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let entry = mcp_interface_entry_from_operation(
+            &operation(
+                "publish_application_api",
+                "POST",
+                "/api/console/applications/{application_id}/api-publications",
+            ),
+            &spec,
+            McpInterfaceCapabilitySource::StaticApiDocs,
+        )
+        .expect("publish operation should become an MCP interface entry");
+
+        let descriptor = |name: &str| {
+            entry
+                .parameter_descriptors
+                .iter()
+                .find(|descriptor| descriptor.name == name)
+                .unwrap_or_else(|| panic!("missing descriptor {name}"))
+        };
+
+        assert_eq!(
+            entry
+                .parameter_descriptors
+                .iter()
+                .map(|descriptor| descriptor.name.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "application_id",
+                "api_enabled",
+                "mapping.input.query_target",
+                "mapping.input.history_target",
+                "mapping.output.answer_selector",
+                "mapping.output.usage_selector",
+            ]
+        );
+        assert_eq!(
+            descriptor("mapping.input.query_target").parameter_type,
+            McpParameterType::JsonBody
+        );
+        assert_eq!(
+            descriptor("mapping.input.query_target").field_type,
+            "string"
+        );
+        assert_eq!(
+            descriptor("mapping.input.query_target")
+                .description
+                .as_deref(),
+            Some("Query target")
+        );
+        assert!(descriptor("api_enabled").required);
+        assert!(descriptor("mapping.input.query_target").required);
+        assert!(!descriptor("mapping.input.history_target").required);
+        assert!(!descriptor("mapping.output.answer_selector").required);
     }
 }
