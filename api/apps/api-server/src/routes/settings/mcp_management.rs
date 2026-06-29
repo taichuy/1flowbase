@@ -1232,7 +1232,7 @@ fn schema_property_descriptors(
             name.clone(),
             property_schema.clone(),
             parameter_type,
-            required_fields.contains(name.as_str()),
+            request_body_required && required_fields.contains(name.as_str()),
         );
     }
 
@@ -1924,6 +1924,7 @@ mod tests {
                     "post": {
                         "operationId": "upload_widget",
                         "requestBody": {
+                            "required": true,
                             "content": {
                                 "multipart/form-data": {
                                     "schema": {
@@ -2070,6 +2071,47 @@ mod tests {
                             }
                         }
                     }
+                },
+                "/api/console/optional-publications": {
+                    "post": {
+                        "operationId": "optional_publish_application_api",
+                        "requestBody": {
+                            "required": false,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "required": ["mapping"],
+                                        "properties": {
+                                            "mapping": {
+                                                "type": "object",
+                                                "required": ["input"],
+                                                "properties": {
+                                                    "input": {
+                                                        "type": "object",
+                                                        "required": ["query_target"],
+                                                        "properties": {
+                                                            "query_target": { "type": "string" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "ok",
+                                "content": {
+                                    "application/json": {
+                                        "schema": { "type": "object" }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -2126,5 +2168,71 @@ mod tests {
         assert!(descriptor("mapping.input.query_target").required);
         assert!(!descriptor("mapping.input.history_target").required);
         assert!(!descriptor("mapping.output.answer_selector").required);
+
+        let optional_entry = mcp_interface_entry_from_operation(
+            &operation(
+                "optional_publish_application_api",
+                "POST",
+                "/api/console/optional-publications",
+            ),
+            &spec,
+            McpInterfaceCapabilitySource::StaticApiDocs,
+        )
+        .expect("optional publish operation should become an MCP interface entry");
+        let optional_descriptor = optional_entry
+            .parameter_descriptors
+            .iter()
+            .find(|descriptor| descriptor.name == "mapping.input.query_target")
+            .expect("optional body should still expose nested descriptor");
+        assert!(!optional_descriptor.required);
+    }
+
+    #[test]
+    fn mcp_interface_descriptors_keep_non_object_json_body_fallback() {
+        let spec = json!({
+            "paths": {
+                "/api/console/raw-body": {
+                    "post": {
+                        "operationId": "submit_raw_body",
+                        "requestBody": {
+                            "required": true,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "string",
+                                        "description": "Raw body"
+                                    }
+                                }
+                            }
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "ok",
+                                "content": {
+                                    "application/json": {
+                                        "schema": { "type": "object" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let entry = mcp_interface_entry_from_operation(
+            &operation("submit_raw_body", "POST", "/api/console/raw-body"),
+            &spec,
+            McpInterfaceCapabilitySource::StaticApiDocs,
+        )
+        .expect("raw body operation should become an MCP interface entry");
+
+        assert_eq!(entry.parameter_descriptors.len(), 1);
+        let descriptor = &entry.parameter_descriptors[0];
+        assert_eq!(descriptor.name, "body");
+        assert_eq!(descriptor.field_type, "string");
+        assert_eq!(descriptor.parameter_type, McpParameterType::JsonBody);
+        assert_eq!(descriptor.description.as_deref(), Some("Raw body"));
+        assert!(descriptor.required);
     }
 }
