@@ -1,5 +1,8 @@
 use super::*;
 
+const RUNTIME_READ_MODELS_MIGRATION_SQL: &str =
+    include_str!("../../../migrations/20260529123000_register_runtime_builtin_read_models.sql");
+
 #[tokio::test]
 async fn runtime_record_repository_registers_builtin_runtime_read_models() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
@@ -64,6 +67,58 @@ async fn runtime_record_repository_registers_builtin_runtime_read_models() {
     assert!(!node_field_codes.contains(&"input_payload"));
     assert!(!node_field_codes.contains(&"output_payload"));
     assert!(!node_field_codes.contains(&"debug_payload"));
+}
+
+#[tokio::test]
+async fn runtime_read_model_migration_preserves_existing_scope_grant_metadata() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+
+    let model_id: Uuid = sqlx::query_scalar(
+        "select id from model_definitions where code = 'application_run_log_summaries'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        update scope_data_model_grants
+        set enabled = false,
+            permission_profile = 'owner'
+        where scope_kind = 'system'
+          and scope_id = $1
+          and data_model_id = $2
+        "#,
+    )
+    .bind(SYSTEM_SCOPE_ID)
+    .bind(model_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    sqlx::raw_sql(RUNTIME_READ_MODELS_MIGRATION_SQL)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    let (enabled, permission_profile): (bool, String) = sqlx::query_as(
+        r#"
+        select enabled, permission_profile
+        from scope_data_model_grants
+        where scope_kind = 'system'
+          and scope_id = $1
+          and data_model_id = $2
+        "#,
+    )
+    .bind(SYSTEM_SCOPE_ID)
+    .bind(model_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+
+    assert!(!enabled);
+    assert_eq!(permission_profile, "owner");
 }
 
 #[tokio::test]

@@ -537,7 +537,4 @@ select
     null
 from hashed_model_scope_grants
 on conflict (scope_kind, scope_id, data_model_id)
-do update set
-    enabled = true,
-    permission_profile = excluded.permission_profile,
-    updated_at = now();
+do nothing;
