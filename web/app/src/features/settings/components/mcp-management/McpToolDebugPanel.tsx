@@ -202,16 +202,19 @@ export function McpToolDebugPanel({
   return (
     <Space className="mcp-tool-debug-panel" direction="vertical" size={12}>
       {debugFields.length > 0 ? (
-        debugFields.map((field) => (
-          <Form.Item
-            key={`${field.interface_param}:${field.mcp_param}`}
-            label={field.mcp_param}
-            required={field.required}
-            extra={field.description || undefined}
-          >
-            {renderFieldInput(field)}
-          </Form.Item>
-        ))
+        <div className="mcp-tool-debug-panel__fields">
+          {debugFields.map((field) => (
+            <Form.Item
+              className="mcp-tool-debug-panel__field"
+              key={`${field.interface_param}:${field.mcp_param}`}
+              label={field.mcp_param}
+              required={field.required}
+              extra={field.description || undefined}
+            >
+              {renderFieldInput(field)}
+            </Form.Item>
+          ))}
+        </div>
       ) : (
         <Alert type="info" message="先在 input_mapping 添加 MCP 参数映射" />
       )}

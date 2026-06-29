@@ -200,6 +200,7 @@ function InputMappingLayerSection({
   pendingInterfaceParam,
   onPendingInterfaceParamChange,
   onAddMapping,
+  onAddAllMappings,
   onUpdateMapping,
   onRemoveMapping
 }: {
@@ -208,6 +209,7 @@ function InputMappingLayerSection({
   pendingInterfaceParam: string | undefined;
   onPendingInterfaceParamChange: (value: string | undefined) => void;
   onAddMapping: (interfaceParam: string | undefined) => void;
+  onAddAllMappings: () => void;
   onUpdateMapping: (
     index: number,
     patch: Partial<McpInputParameterMapping>
@@ -233,11 +235,20 @@ function InputMappingLayerSection({
           onChange={onPendingInterfaceParamChange}
         />
         <Button
-          icon={<PlusOutlined />}
+          aria-label="添加"
+          autoInsertSpace={false}
           disabled={!pendingInterfaceParam}
           onClick={() => onAddMapping(pendingInterfaceParam)}
         >
-          {i18nText('settings', 'auto.add_mapping')}
+          添加
+        </Button>
+        <Button
+          aria-label="全部"
+          autoInsertSpace={false}
+          disabled={addableOptions.length === 0}
+          onClick={onAddAllMappings}
+        >
+          <span>全部</span>
         </Button>
       </Flex>
       {mapping.mappings.length > 0 ? (
@@ -466,6 +477,42 @@ export function McpInputMappingEditor({
     });
   }
 
+  function addAllMappings() {
+    const nextMappedParameters = new Set(mappedParameters);
+    const nextInterfaceParameters = [...mapping.interface_parameters];
+    const nextMappings = [...mapping.mappings];
+
+    for (const parameter of mapping.interface_parameters) {
+      if (
+        !parameter.name ||
+        parameter.name === DES_ID_PARAMETER_NAME ||
+        nextMappedParameters.has(parameter.name)
+      ) {
+        continue;
+      }
+
+      nextMappings.push(mappingFromInterfaceParameter(parameter));
+      nextMappedParameters.add(parameter.name);
+    }
+
+    if (!nextMappedParameters.has(DES_ID_PARAMETER_NAME)) {
+      const existingParameter = mapping.interface_parameters.find(
+        (entry) => entry.name === DES_ID_PARAMETER_NAME
+      );
+      const parameter = existingParameter ?? desIdInterfaceParameter();
+      if (!existingParameter) {
+        nextInterfaceParameters.push(parameter);
+      }
+      nextMappings.push(mappingFromInterfaceParameter(parameter));
+    }
+
+    emit({
+      interface_parameters: nextInterfaceParameters,
+      mappings: nextMappings
+    });
+    setPendingInterfaceParam(undefined);
+  }
+
   function removeMapping(index: number) {
     emit({
       ...mapping,
@@ -499,26 +546,20 @@ export function McpInputMappingEditor({
     mapping.mappings.map((entry) => entry.interface_param)
   );
   const addableOptions: Array<{ label: string; value: string }> = [];
-  const addableOptionNames = new Set<string>();
   for (const entry of mapping.interface_parameters) {
     if (
       entry.name &&
       !mappedParameters.has(entry.name) &&
-      !addableOptionNames.has(entry.name)
+      entry.name !== DES_ID_PARAMETER_NAME
     ) {
       addableOptions.push({ label: entry.name, value: entry.name });
-      addableOptionNames.add(entry.name);
     }
   }
-  if (
-    !mappedParameters.has(DES_ID_PARAMETER_NAME) &&
-    !addableOptionNames.has(DES_ID_PARAMETER_NAME)
-  ) {
+  if (!mappedParameters.has(DES_ID_PARAMETER_NAME)) {
     addableOptions.push({
       label: DES_ID_PARAMETER_NAME,
       value: DES_ID_PARAMETER_NAME
     });
-    addableOptionNames.add(DES_ID_PARAMETER_NAME);
   }
 
   return (
@@ -547,6 +588,7 @@ export function McpInputMappingEditor({
                 pendingInterfaceParam={pendingInterfaceParam}
                 onPendingInterfaceParamChange={setPendingInterfaceParam}
                 onAddMapping={addMapping}
+                onAddAllMappings={addAllMappings}
                 onUpdateMapping={updateMapping}
                 onRemoveMapping={removeMapping}
               />

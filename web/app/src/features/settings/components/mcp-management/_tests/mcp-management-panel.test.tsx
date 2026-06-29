@@ -272,7 +272,7 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('combobox', { name: 'interface_param' })
     );
     await selectAntdOption('app_id');
-    fireEvent.click(within(dialog).getByRole('button', { name: /添加映射/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '添加' }));
     fireEvent.change(within(dialog).getByLabelText('mcp_param app_id'), {
       target: { value: 'appId' }
     });
@@ -283,6 +283,9 @@ describe('McpManagementPanel', () => {
     );
 
     clickSegmentedOption(dialog, 'debug');
+    expect(
+      dialog.querySelector('.mcp-tool-debug-panel__fields')
+    ).toBeInTheDocument();
     expect(
       within(dialog).queryByLabelText('MCP 参数 JSON')
     ).not.toBeInTheDocument();
@@ -347,12 +350,12 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('combobox', { name: 'interface_param' })
     );
     await selectAntdOption('app_id');
-    fireEvent.click(within(dialog).getByRole('button', { name: /添加映射/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '添加' }));
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_param' })
     );
     await selectAntdOption('display_name');
-    fireEvent.click(within(dialog).getByRole('button', { name: /添加映射/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '添加' }));
     expect(within(dialog).getByLabelText('mcp_param app_id')).toHaveValue(
       'app_id'
     );
@@ -510,7 +513,7 @@ describe('McpManagementPanel', () => {
     );
     await selectAntdOption('des_id');
     fireEvent.click(
-      within(dialog).getByRole('button', { name: /添加映射/ })
+      within(dialog).getByRole('button', { name: '添加' })
     );
 
     expect(
@@ -525,7 +528,7 @@ describe('McpManagementPanel', () => {
       expect(checkbox).toBeChecked();
     }
     expect(
-      within(dialog).getByRole('button', { name: /添加映射/ })
+      within(dialog).getByRole('button', { name: '添加' })
     ).toBeDisabled();
 
     clickSegmentedOption(dialog, 'debug');
@@ -559,11 +562,117 @@ describe('McpManagementPanel', () => {
     });
   });
 
+  test('adds all remaining mapping parameters from the mapping layer', async () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.change(within(dialog).getByLabelText('name'), {
+      target: { value: 'Create App' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('short_description'), {
+      target: { value: 'Create app' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('full_description'), {
+      target: { value: 'Create app' }
+    });
+    clickSegmentedOption(dialog, 'interface');
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'interface_id' })
+    );
+    await selectAntdOption('create_app');
+
+    clickSegmentedOption(dialog, 'input_mapping');
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '获取接口参数' })
+    );
+    fireEvent.click(await within(dialog).findByText('映射层'));
+    fireEvent.click(within(dialog).getByRole('button', { name: '全部' }));
+
+    expect(within(dialog).getByLabelText('mcp_param app_id')).toHaveValue(
+      'app_id'
+    );
+    expect(
+      within(dialog).getByLabelText('mcp_param display_name')
+    ).toHaveValue('display_name');
+    expect(within(dialog).getByLabelText('mcp_param des_id')).toHaveValue(
+      'des_id'
+    );
+    expect(within(dialog).getByRole('button', { name: '全部' })).toBeDisabled();
+
+    clickSegmentedOption(dialog, 'debug');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+
+    await waitFor(() => {
+      expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input_mapping: {
+            interface_parameters: [
+              {
+                name: 'app_id',
+                field_type: 'string',
+                parameter_type: 'url',
+                description: 'Application id',
+                required: true
+              },
+              {
+                name: 'display_name',
+                field_type: 'string',
+                parameter_type: 'json_body',
+                description: 'Display name',
+                required: false
+              },
+              {
+                name: 'des_id',
+                field_type: 'string',
+                parameter_type: 'json_body',
+                description: 'des_id',
+                required: true
+              }
+            ],
+            mappings: [
+              {
+                interface_param: 'app_id',
+                mcp_param: 'app_id',
+                description: 'Application id',
+                required: true
+              },
+              {
+                interface_param: 'display_name',
+                mcp_param: 'display_name',
+                description: 'Display name',
+                required: false
+              },
+              {
+                interface_param: 'des_id',
+                mcp_param: 'des_id',
+                description: 'des_id',
+                required: true
+              }
+            ]
+          }
+        }),
+        expect.any(String)
+      );
+    });
+  });
+
   test('shows des_id once when interface parameters already include it', async () => {
     renderPanel([
       {
         ...interfaceCapabilities[0],
         parameter_descriptors: [
+          {
+            name: 'application_id',
+            field_type: 'string',
+            parameter_type: 'json_body' as const,
+            description: 'Application id',
+            required: true,
+            schema: { type: 'string' }
+          },
           {
             name: 'application_id',
             field_type: 'string',
@@ -618,8 +727,17 @@ describe('McpManagementPanel', () => {
           element?.matches('.ant-select-item-option-content')
       );
     });
+    const applicationIdOptions = await screen.findAllByText(
+      (text, element) => {
+        return Boolean(
+          text === 'application_id' &&
+            element?.matches('.ant-select-item-option-content')
+        );
+      }
+    );
 
     expect(desIdOptions).toHaveLength(1);
+    expect(applicationIdOptions).toHaveLength(2);
   });
 
   test('allows manually adding interface parameters and mappings when descriptors are empty', async () => {
@@ -676,7 +794,7 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('combobox', { name: 'interface_param' })
     );
     await selectAntdOption('user_id');
-    fireEvent.click(within(dialog).getByRole('button', { name: /添加映射/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '添加' }));
     fireEvent.change(within(dialog).getByLabelText('mcp_param user_id'), {
       target: { value: 'userId' }
     });

@@ -72,6 +72,39 @@
   width: 100%;
 }
 
+.mcp-tool-debug-panel__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mcp-tool-debug-panel__field {
+  margin-bottom: 0;
+}
+
+.mcp-tool-debug-panel__field .ant-form-item-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.mcp-tool-debug-panel__field .ant-form-item-label {
+  min-width: 0;
+  padding-bottom: 0;
+  text-align: left;
+  white-space: normal;
+}
+
+.mcp-tool-debug-panel__field .ant-form-item-label > label {
+  min-height: 32px;
+  align-items: center;
+}
+
+.mcp-tool-debug-panel__field .ant-form-item-control {
+  min-width: 0;
+}
+
 .mcp-input-mapping-editor__stack {
   width: 100%;
 }
@@ -265,5 +298,14 @@
 
   .mcp-input-mapping-editor {
     overflow-x: auto;
+  }
+
+  .mcp-tool-debug-panel__field .ant-form-item-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .mcp-tool-debug-panel__field .ant-form-item-label {
+    padding-bottom: 0;
   }
 }
