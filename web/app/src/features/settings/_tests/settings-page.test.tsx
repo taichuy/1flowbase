@@ -811,12 +811,16 @@ describe('SettingsPage', () => {
     expect(
       screen.queryByRole('heading', { name: '认证中心' })
     ).not.toBeInTheDocument();
+    expect(screen.queryByText('password-local')).not.toBeInTheDocument();
     expect(await screen.findByText('oidc-main')).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '启用' })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: '操作' })
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '启用' }));
+    fireEvent.click(screen.getByRole('switch'));
     await waitFor(() => {
       expect(
         authCenterApi.enableSettingsAuthCenterAuthenticator
@@ -824,15 +828,14 @@ describe('SettingsPage', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    expect(
-      await screen.findByRole('dialog', { name: 'OIDC 配置' })
-    ).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: 'OIDC 配置' });
+    expect(dialog).toBeInTheDocument();
     expect(screen.getByText('issuer_url')).toBeInTheDocument();
     expect(
       screen.getByDisplayValue('https://idp.example.com')
     ).toBeInTheDocument();
     expect(screen.getByText('allow_signup')).toBeInTheDocument();
-    expect(screen.getByRole('switch')).toBeChecked();
+    expect(within(dialog).getByRole('switch')).toBeChecked();
   });
 
   test('opens auth center configuration drawer when config fields are absent', async () => {

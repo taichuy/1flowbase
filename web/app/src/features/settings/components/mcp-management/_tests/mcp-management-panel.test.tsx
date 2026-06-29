@@ -469,7 +469,7 @@ describe('McpManagementPanel', () => {
     expect(mcpManagementApi.createSettingsMcpTool).not.toHaveBeenCalled();
   });
 
-  test('adds the des_id mapping from the mapping layer shortcut', async () => {
+  test('adds the des_id mapping from the mapping layer dropdown option', async () => {
     renderPanel([
       {
         ...interfaceCapabilities[0],
@@ -502,8 +502,15 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('button', { name: '获取接口参数' })
     );
     fireEvent.click(await within(dialog).findByText('映射层'));
+    expect(
+      within(dialog).queryByRole('button', { name: /添加 des_id/ })
+    ).not.toBeInTheDocument();
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'interface_param' })
+    );
+    await selectAntdOption('des_id');
     fireEvent.click(
-      within(dialog).getByRole('button', { name: /添加 des_id/ })
+      within(dialog).getByRole('button', { name: /添加映射/ })
     );
 
     expect(
@@ -518,7 +525,7 @@ describe('McpManagementPanel', () => {
       expect(checkbox).toBeChecked();
     }
     expect(
-      within(dialog).getByRole('button', { name: /添加 des_id/ })
+      within(dialog).getByRole('button', { name: /添加映射/ })
     ).toBeDisabled();
 
     clickSegmentedOption(dialog, 'debug');
@@ -550,6 +557,69 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
+  });
+
+  test('shows des_id once when interface parameters already include it', async () => {
+    renderPanel([
+      {
+        ...interfaceCapabilities[0],
+        parameter_descriptors: [
+          {
+            name: 'application_id',
+            field_type: 'string',
+            parameter_type: 'json_body' as const,
+            description: 'Application id',
+            required: true,
+            schema: { type: 'string' }
+          },
+          {
+            name: 'des_id',
+            field_type: 'string',
+            parameter_type: 'json_body' as const,
+            description: 'des_id',
+            required: true,
+            schema: { type: 'string' }
+          },
+          {
+            name: 'des_id',
+            field_type: 'string',
+            parameter_type: 'json_body' as const,
+            description: 'des_id',
+            required: true,
+            schema: { type: 'string' }
+          }
+        ]
+      }
+    ]);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+    const dialog = await screen.findByRole('dialog');
+
+    clickSegmentedOption(dialog, 'interface');
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'interface_id' })
+    );
+    await selectAntdOption('create_app');
+
+    clickSegmentedOption(dialog, 'input_mapping');
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '获取接口参数' })
+    );
+    fireEvent.click(await within(dialog).findByText('映射层'));
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'interface_param' })
+    );
+
+    const desIdOptions = await screen.findAllByText((text, element) => {
+      return Boolean(
+        text === 'des_id' &&
+          element?.matches('.ant-select-item-option-content')
+      );
+    });
+
+    expect(desIdOptions).toHaveLength(1);
   });
 
   test('allows manually adding interface parameters and mappings when descriptors are empty', async () => {

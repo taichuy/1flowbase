@@ -201,21 +201,29 @@ export function SettingsAuthCenterSection() {
           : i18nText('settings', 'auto.no')
     },
     {
+      title: i18nText('settings', 'auto.enabled'),
+      dataIndex: 'enabled',
+      key: 'enable',
+      render: (enabled: boolean, row) => (
+        <Switch
+          checked={enabled}
+          disabled={enabled || !csrfToken || !canManageAuthenticators}
+          loading={
+            enableMutation.isPending && enableMutation.variables === row.name
+          }
+          onChange={(checked) => {
+            if (checked && !enabled) {
+              enableMutation.mutate(row.name);
+            }
+          }}
+        />
+      )
+    },
+    {
       title: i18nText('settings', 'auto.operation'),
       key: 'operation',
       render: (_, row) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            disabled={row.enabled || !csrfToken || !canManageAuthenticators}
-            loading={
-              enableMutation.isPending && enableMutation.variables === row.name
-            }
-            onClick={() => enableMutation.mutate(row.name)}
-          >
-            {i18nText('settings', 'auto.enabled')}
-          </Button>
           <Button
             type="link"
             size="small"
@@ -246,28 +254,6 @@ export function SettingsAuthCenterSection() {
       ) : null}
       {overviewQuery.data ? (
         <Flex vertical gap="large">
-          <Descriptions
-            bordered
-            size="small"
-            column={{ xs: 1, sm: 2, lg: 3 }}
-            items={[
-              {
-                key: 'default-authenticator',
-                label: i18nText('settings', 'auto.default_authenticator'),
-                children: overviewQuery.data.default_authenticator_name
-              },
-              {
-                key: 'authenticators',
-                label: i18nText('settings', 'auto.authenticators'),
-                children: overviewQuery.data.authenticators.length
-              },
-              {
-                key: 'sensitive-options',
-                label: i18nText('settings', 'auto.sensitive_options'),
-                children: i18nText('settings', 'auto.not_returned')
-              }
-            ]}
-          />
           <Table
             rowKey="name"
             columns={authenticatorColumns}
