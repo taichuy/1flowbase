@@ -159,6 +159,12 @@ const dataModelsApi = vi.hoisted(() => ({
     'record-preview',
     modelCode
   ]),
+  settingsDataModelOpenApiQueryKey: vi.fn((modelId: string) => [
+    'settings',
+    'data-models',
+    'openapi',
+    modelId
+  ]),
   fetchSettingsDataSourceInstances: vi.fn(),
   updateSettingsDataSourceDefaults: vi.fn(),
   fetchSettingsDataModels: vi.fn(),
@@ -172,7 +178,8 @@ const dataModelsApi = vi.hoisted(() => ({
   createSettingsDataModelScopeGrant: vi.fn(),
   updateSettingsDataModelScopeGrant: vi.fn(),
   fetchSettingsDataModelAdvisorFindings: vi.fn(),
-  fetchSettingsDataModelRecordPreview: vi.fn()
+  fetchSettingsDataModelRecordPreview: vi.fn(),
+  fetchSettingsDataModelOpenApiDocument: vi.fn()
 }));
 
 vi.mock('../../api/members', () => membersApi);
@@ -730,6 +737,64 @@ export function setupDataModelsPageTest() {
       }
     ],
     total: 1
+  });
+  dataModelsApi.fetchSettingsDataModelOpenApiDocument.mockResolvedValue({
+    openapi: '3.1.0',
+    info: {
+      title: 'Contacts Data Model API',
+      version: '1.0.0'
+    },
+    paths: {},
+    components: {
+      schemas: {
+        ContactsRecord: {
+          type: 'object',
+          required: ['email', 'remote_id'],
+          properties: {
+            email: {
+              type: 'string',
+              title: 'Email'
+            },
+            first_name: {
+              type: 'string',
+              title: 'First name'
+            },
+            remote_id: {
+              type: 'string',
+              title: 'Remote ID',
+              readOnly: true
+            }
+          }
+        },
+        ContactsRecordCreateInput: {
+          type: 'object',
+          required: ['email'],
+          properties: {
+            email: {
+              type: 'string',
+              title: 'Email'
+            },
+            first_name: {
+              type: 'string',
+              title: 'First name'
+            }
+          }
+        },
+        ContactsRecordUpdateInput: {
+          type: 'object',
+          properties: {
+            email: {
+              type: 'string',
+              title: 'Email'
+            },
+            first_name: {
+              type: 'string',
+              title: 'First name'
+            }
+          }
+        }
+      }
+    }
   });
   dataModelsApi.updateSettingsDataModel.mockResolvedValue({
     id: 'model-1'

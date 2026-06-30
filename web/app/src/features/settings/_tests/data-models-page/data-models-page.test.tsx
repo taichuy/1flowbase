@@ -299,6 +299,30 @@ describe('Settings data models page', () => {
       expect(
         screen.getByText(i18nText('settings', 'auto.runtime'))
       ).toBeInTheDocument();
+      const fieldValidationGroups = await within(editorDialog).findByTestId(
+        'data-model-api-field-validation-groups'
+      );
+      expect(
+        within(fieldValidationGroups).getByText('请求创建必传字段')
+      ).toBeInTheDocument();
+      expect(
+        within(fieldValidationGroups).getByText('可选输入字段')
+      ).toBeInTheDocument();
+      expect(
+        within(fieldValidationGroups).getByText('系统生成/只读字段')
+      ).toBeInTheDocument();
+      expect(
+        within(fieldValidationGroups).getByText('Email')
+      ).toBeInTheDocument();
+      expect(
+        within(fieldValidationGroups).getByText('First name')
+      ).toBeInTheDocument();
+      expect(
+        within(fieldValidationGroups).getByText('Remote ID')
+      ).toBeInTheDocument();
+      expect(
+        dataModelsApi.fetchSettingsDataModelOpenApiDocument
+      ).toHaveBeenCalledWith('model-1');
       expect(
         screen.queryByRole('combobox', {
           name: i18nText('settings', 'auto.api_exposed_ready')

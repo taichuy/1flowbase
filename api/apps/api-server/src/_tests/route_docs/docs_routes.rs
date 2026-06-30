@@ -170,6 +170,31 @@ async fn create_model(
     payload["data"]["id"].as_str().unwrap().to_string()
 }
 
+async fn expose_model_api(app: &axum::Router, cookie: &str, csrf: &str, model_id: &str) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/console/models/{model_id}"))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "status": "published",
+                        "api_exposure_status": "api_exposed_ready"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
 async fn create_model_field(
     app: &axum::Router,
     cookie: &str,
@@ -238,6 +263,34 @@ async fn create_scope_grant(
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
     payload["data"]["id"].as_str().unwrap().to_string()
+}
+
+async fn find_model_id_by_code(app: &axum::Router, cookie: &str, code: &str) -> String {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/models?filter=%7B%22code%22%3A%7B%22%24eq%22%3A%22{code}%22%7D%7D"
+                ))
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: Value = serde_json::from_slice(&body).unwrap();
+    payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|model| model["code"] == json!(code))
+        .and_then(|model| model["id"].as_str())
+        .expect("model should exist")
+        .to_string()
 }
 
 #[tokio::test]
@@ -524,6 +577,7 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     )
     .await;
     create_scope_grant(&app, &cookie, &csrf, &ready_model_id).await;
+    expose_model_api(&app, &cookie, &csrf, &ready_model_id).await;
     let hidden_model_id = create_model(&app, &cookie, &csrf, "docs_hidden_orders", "draft").await;
     assert_ne!(ready_model_id, hidden_model_id);
 
@@ -718,30 +772,100 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     );
     assert_eq!(
         create_spec["components"]["schemas"]["DocsReadyOrdersRecordCreateInput"]["required"],
-        json!([
-            "id",
-            "created_by",
-            "updated_by",
-            "created_at",
-            "updated_at",
-            "order_title"
-        ])
+        json!(["order_title"])
     );
+    let create_input_properties =
+        &create_spec["components"]["schemas"]["DocsReadyOrdersRecordCreateInput"]["properties"];
+    for readonly_field in [
+        "id",
+        "scope_id",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at",
+    ] {
+        assert!(
+            create_input_properties.get(readonly_field).is_none(),
+            "create input schema should not expose readonly field {readonly_field}"
+        );
+    }
     assert_eq!(
-        create_spec["components"]["schemas"]["DocsReadyOrdersRecordCreateInput"]["properties"]
-            ["order_title"]["type"],
+        create_input_properties["order_title"]["type"],
         json!("string")
     );
     assert_eq!(
-        create_spec["components"]["schemas"]["DocsReadyOrdersRecordCreateInput"]["properties"]
-            ["paid_at"]["format"],
+        create_input_properties["paid_at"]["format"],
         json!("date-time")
     );
     assert_eq!(
-        create_spec["components"]["schemas"]["DocsReadyOrdersRecordCreateInput"]["properties"]
-            ["created_at"]["format"],
+        create_spec["components"]["schemas"]["DocsReadyOrdersRecord"]["properties"]["created_at"]
+            ["format"],
         json!("date-time")
     );
+
+    let update_operation = operations
+        .iter()
+        .find(|operation| {
+            operation["method"] == json!("PATCH")
+                && operation["path"] == json!("/api/runtime/models/docs_ready_orders/update/{id}")
+        })
+        .expect("update operation should exist");
+    let update_operation_id = update_operation["id"].as_str().unwrap();
+    let update_spec_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/docs/operations/{update_operation_id}/openapi.json"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_spec_response.status(), StatusCode::OK);
+    let update_spec: Value = serde_json::from_slice(
+        &to_bytes(update_spec_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let update_body_schema = &update_spec["paths"]
+        ["/api/runtime/models/docs_ready_orders/update/{id}"]["patch"]["requestBody"]["content"]
+        ["application/json"]["schema"];
+    assert_eq!(
+        update_body_schema["$ref"],
+        json!("#/components/schemas/DocsReadyOrdersRecordUpdateInput")
+    );
+    assert_eq!(
+        update_spec["components"]["schemas"]["DocsReadyOrdersRecordUpdateInput"]["required"],
+        json!([])
+    );
+    let update_input_properties =
+        &update_spec["components"]["schemas"]["DocsReadyOrdersRecordUpdateInput"]["properties"];
+    assert_eq!(
+        update_input_properties["order_title"]["type"],
+        json!("string")
+    );
+    assert_eq!(
+        update_input_properties["paid_at"]["format"],
+        json!("date-time")
+    );
+    for readonly_field in [
+        "id",
+        "scope_id",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at",
+    ] {
+        assert!(
+            update_input_properties.get(readonly_field).is_none(),
+            "update input schema should not expose readonly field {readonly_field}"
+        );
+    }
+
     assert!(operation_spec["components"]["securitySchemes"]["apiKeyBearer"].is_null());
     assert_eq!(
         operation_spec["components"]["securitySchemes"]["patBearer"]["scheme"],
@@ -750,44 +874,17 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
 }
 
 #[tokio::test]
-async fn docs_routes_include_api_exposed_system_table_create_fields() {
+async fn docs_routes_data_model_write_schema_omits_readonly_system_fields() {
     let app = test_app().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
-
-    let operations_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/console/docs/categories/data-model-apis/operations?q=roles")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(operations_response.status(), StatusCode::OK);
-    let operations_payload: Value = serde_json::from_slice(
-        &to_bytes(operations_response.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    let operations = operations_payload["data"]["operations"].as_array().unwrap();
-    let create_operation = operations
-        .iter()
-        .find(|operation| {
-            operation["method"] == json!("POST")
-                && operation["path"] == json!("/api/runtime/models/roles/create")
-        })
-        .expect("roles create operation should exist");
-    let create_operation_id = create_operation["id"].as_str().unwrap();
+    let roles_model_id = find_model_id_by_code(&app, &cookie, "roles").await;
 
     let create_spec_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/docs/operations/{create_operation_id}/openapi.json"
+                    "/api/console/docs/data-models/{roles_model_id}/openapi.json"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
@@ -804,29 +901,19 @@ async fn docs_routes_include_api_exposed_system_table_create_fields() {
     .unwrap();
 
     let properties = &create_spec["components"]["schemas"]["RolesRecordCreateInput"]["properties"];
-    for expected in ["id", "scope_id", "scope_kind", "code", "name"] {
+    for readonly_field in ["id", "created_by", "updated_by", "created_at", "updated_at"] {
         assert!(
-            properties.get(expected).is_some(),
-            "missing roles create schema field {expected}"
+            properties.get(readonly_field).is_none(),
+            "roles create input schema should not expose readonly field {readonly_field}"
         );
     }
-    assert_eq!(
-        create_spec["components"]["schemas"]["RolesRecordCreateInput"]["required"],
-        json!([
-            "id",
-            "created_by",
-            "updated_by",
-            "created_at",
-            "updated_at",
-            "scope_id",
-            "scope_kind",
-            "code",
-            "name",
-            "introduction",
-            "is_builtin",
-            "is_editable",
-            "auto_grant_new_permissions",
-            "is_default_member_role"
-        ])
-    );
+    let required = create_spec["components"]["schemas"]["RolesRecordCreateInput"]["required"]
+        .as_array()
+        .expect("roles create input required should be an array");
+    for readonly_field in ["id", "created_by", "updated_by", "created_at", "updated_at"] {
+        assert!(
+            !required.contains(&json!(readonly_field)),
+            "roles create input required should not include readonly field {readonly_field}"
+        );
+    }
 }
