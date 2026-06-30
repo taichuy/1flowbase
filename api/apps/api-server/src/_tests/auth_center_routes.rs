@@ -1,6 +1,7 @@
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
     replace_role_permissions, test_api_state_with_database_url, test_app,
+    test_app_with_database_url,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -8,7 +9,9 @@ use axum::{
 };
 use domain::AuthenticatorRecord;
 use serde_json::json;
+use sqlx::PgPool;
 use tower::ServiceExt;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn console_auth_center_overview_lists_authenticators_with_schema_form_values() {
@@ -21,6 +24,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
             title: "OIDC".to_string(),
             enabled: false,
             is_builtin: false,
+            sort_order: 0,
             options: json!({
                 "description": "Corporate OIDC",
                 "config_form_schema": [
@@ -74,6 +78,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     assert_eq!(password_local["title"], json!("Password"));
     assert_eq!(password_local["enabled"], json!(true));
     assert_eq!(password_local["is_builtin"], json!(true));
+    assert_eq!(password_local["sort_order"], json!(0));
     assert_eq!(
         password_local["config_values"]["description"],
         json!("Local password authentication")
@@ -111,6 +116,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
         .find(|authenticator| authenticator["name"] == "oidc-main")
         .expect("custom authenticator should be visible in auth center overview");
     assert_eq!(oidc["enabled"], json!(false));
+    assert_eq!(oidc["sort_order"], json!(0));
     assert_eq!(
         oidc["config_values"]["description"],
         json!("Corporate OIDC")
@@ -139,6 +145,401 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
             "issuer_url": "https://idp.example.com"
         })
     );
+    assert_eq!(
+        payload["data"]["supported_auth_types"],
+        json!(["password-local"])
+    );
+}
+
+#[tokio::test]
+async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/auth-center/authenticators")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "name": "staff_password",
+                        "auth_type": "password-local",
+                        "title": "Staff Password",
+                        "description": "Staff-only password login",
+                        "enabled": true,
+                        "sort_order": 20
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let created: serde_json::Value =
+        serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(created["data"]["name"], json!("staff_password"));
+    assert_eq!(created["data"]["auth_type"], json!("password-local"));
+    assert_eq!(created["data"]["sort_order"], json!(20));
+    assert_eq!(
+        created["data"]["config_values"]["description"],
+        json!("Staff-only password login")
+    );
+
+    let copy = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/auth-center/authenticators/staff_password/copy")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "name": "staff_password_backup",
+                        "title": "Staff Password Backup",
+                        "sort_order": 30
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(copy.status(), StatusCode::CREATED);
+    let copied: serde_json::Value =
+        serde_json::from_slice(&to_bytes(copy.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(copied["data"]["name"], json!("staff_password_backup"));
+    assert_eq!(copied["data"]["auth_type"], json!("password-local"));
+    assert_eq!(copied["data"]["title"], json!("Staff Password Backup"));
+    assert_eq!(copied["data"]["enabled"], json!(false));
+    assert_eq!(copied["data"]["sort_order"], json!(30));
+    assert_eq!(
+        copied["data"]["config_values"]["description"],
+        json!("Staff-only password login")
+    );
+
+    let reorder = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/settings/auth-center/authenticators/order")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "names": [
+                            "staff_password_backup",
+                            "password-local",
+                            "staff_password"
+                        ]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reorder.status(), StatusCode::OK);
+    let reordered: serde_json::Value =
+        serde_json::from_slice(&to_bytes(reorder.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let names = reordered["data"]["authenticators"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|authenticator| authenticator["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec!["staff_password_backup", "password-local", "staff_password"]
+    );
+    assert_eq!(
+        reordered["data"]["authenticators"][0]["sort_order"],
+        json!(0)
+    );
+    assert_eq!(
+        reordered["data"]["authenticators"][1]["sort_order"],
+        json!(10)
+    );
+    assert_eq!(
+        reordered["data"]["authenticators"][2]["sort_order"],
+        json!(20)
+    );
+
+    let delete = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/console/settings/auth-center/authenticators/staff_password_backup")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(delete.status(), StatusCode::NO_CONTENT);
+
+    let overview = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/settings/auth-center/overview")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(overview.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(payload["data"]["authenticators"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|authenticator| authenticator["name"] != "staff_password_backup"));
+}
+
+#[tokio::test]
+async fn console_auth_center_lifecycle_rejects_unsafe_inputs() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let unknown_type = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/auth-center/authenticators")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "name": "unknown_type",
+                        "auth_type": "oidc",
+                        "title": "OIDC",
+                        "enabled": true,
+                        "sort_order": 20
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unknown_type.status(), StatusCode::BAD_REQUEST);
+    let unknown_type_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(unknown_type.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(unknown_type_payload["code"], json!("auth_type"));
+
+    let builtin_delete = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/console/settings/auth-center/authenticators/password-local")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(builtin_delete.status(), StatusCode::BAD_REQUEST);
+    let builtin_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(builtin_delete.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(builtin_payload["code"], json!("builtin_authenticator"));
+
+    sqlx::query(
+        r#"
+        insert into authenticators (id, name, auth_type, title, enabled, is_builtin, sort_order, options)
+        values ($1, 'bound_password', 'password-local', 'Bound Password', true, false, 40, '{}')
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into user_auth_identities (id, user_id, authenticator_name, subject_type, subject_value, metadata)
+        select $1, id, 'bound_password', 'account', account, '{}'
+        from users
+        where account = 'root'
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let bound_delete = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/console/settings/auth-center/authenticators/bound_password")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bound_delete.status(), StatusCode::CONFLICT);
+    let bound_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(bound_delete.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        bound_payload["code"],
+        json!("authenticator_identity_bindings")
+    );
+
+    for (names, expected_code) in [
+        (
+            json!(["password-local", "password-local", "bound_password"]),
+            "authenticator_order_duplicate",
+        ),
+        (json!(["password-local"]), "authenticator_order_missing"),
+        (
+            json!(["password-local", "bound_password", "missing_password"]),
+            "authenticator_order_unknown",
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/console/settings/auth-center/authenticators/order")
+                    .header("cookie", &root_cookie)
+                    .header("x-csrf-token", &root_csrf)
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "names": names }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let payload: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        assert_eq!(payload["code"], json!(expected_code));
+    }
+}
+
+#[tokio::test]
+async fn console_auth_center_create_requires_session_csrf_and_manage_permission() {
+    let app = test_app().await;
+    let body = json!({
+        "name": "staff_password",
+        "auth_type": "password-local",
+        "title": "Staff Password",
+        "enabled": true,
+        "sort_order": 20
+    })
+    .to_string();
+
+    let missing_session = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/auth-center/authenticators")
+                .header("content-type", "application/json")
+                .body(Body::from(body.clone()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_session.status(), StatusCode::UNAUTHORIZED);
+
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let missing_csrf = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/auth-center/authenticators")
+                .header("cookie", &root_cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(body.clone()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_csrf.status(), StatusCode::UNAUTHORIZED);
+
+    let member_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "auth-center-create-viewer",
+        "temp-pass",
+    )
+    .await;
+    create_role(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "auth_center_create_view_only",
+    )
+    .await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "auth_center_create_view_only",
+        &["user.view.all"],
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["auth_center_create_view_only"],
+    )
+    .await;
+    let (member_cookie, member_csrf) =
+        login_and_capture_cookie(&app, "auth-center-create-viewer", "temp-pass").await;
+
+    let missing_manage_permission = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/auth-center/authenticators")
+                .header("cookie", &member_cookie)
+                .header("x-csrf-token", &member_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_manage_permission.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -191,6 +592,7 @@ async fn console_auth_center_enable_authenticator_requires_user_manage_permissio
             title: "OIDC".to_string(),
             enabled: false,
             is_builtin: false,
+            sort_order: 10,
             options: json!({}),
         })
         .await
@@ -246,6 +648,7 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
             title: "OIDC".to_string(),
             enabled: false,
             is_builtin: false,
+            sort_order: 10,
             options: json!({
                 "description": "Corporate OIDC",
                 "config_form_schema": [

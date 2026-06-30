@@ -81,6 +81,11 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
         "/api/console/user-api-keys",
         "/api/console/user-api-keys/role-options",
         "/api/console/user-api-keys/{api_key_id}/revoke",
+        "/api/public/auth/login-instances",
+        "/api/console/settings/auth-center/authenticators",
+        "/api/console/settings/auth-center/authenticators/{name}/copy",
+        "/api/console/settings/auth-center/authenticators/{name}",
+        "/api/console/settings/auth-center/authenticators/order",
         "/api/runtime/models/{model_code}/list",
         "/api/runtime/models/{model_code}/get/{id}",
         "/api/runtime/models/{model_code}/create",
@@ -98,6 +103,38 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
             "expected openapi to contain path {route}, got: {:?}",
             paths.keys().collect::<Vec<_>>()
         );
+    }
+}
+
+#[tokio::test]
+async fn openapi_contains_auth_center_lifecycle_schemas() {
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: Value = serde_json::from_slice(&body).unwrap();
+    let components = payload["components"]["schemas"]
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+
+    for schema in [
+        "CreateAuthCenterAuthenticatorBody",
+        "CopyAuthCenterAuthenticatorBody",
+        "ReorderAuthCenterAuthenticatorsBody",
+        "PublicLoginInstanceResponse",
+        "PublicLoginInstancesResponse",
+    ] {
+        assert!(components.contains_key(schema), "missing schema {schema}");
     }
 }
 

@@ -206,6 +206,7 @@ fn authenticator(name: &str, auth_type: &str) -> AuthenticatorRecord {
         title: name.to_string(),
         enabled: true,
         is_builtin: false,
+        sort_order: 0,
         options: serde_json::json!({}),
     }
 }

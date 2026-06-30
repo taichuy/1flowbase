@@ -12,6 +12,31 @@ export interface PasswordSignInResponse {
   current_workspace_id: string;
 }
 
+export interface PublicLoginInstance {
+  name: string;
+  auth_type: string;
+  title: string;
+  description?: string | null;
+  sort_order: number;
+  flow: string;
+  sign_in_path: string;
+  public_options: Record<string, unknown>;
+}
+
+export interface PublicLoginInstancesResponse {
+  default_authenticator_name: string;
+  login_instances: PublicLoginInstance[];
+}
+
+export function fetchPublicLoginInstances(
+  baseUrl?: string
+): Promise<PublicLoginInstancesResponse> {
+  return apiFetch<PublicLoginInstancesResponse>({
+    path: '/api/public/auth/login-instances',
+    baseUrl
+  });
+}
+
 export function signInWithPassword(
   input: PasswordSignInInput,
   baseUrl?: string

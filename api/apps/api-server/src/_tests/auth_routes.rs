@@ -430,6 +430,111 @@ async fn public_auth_sign_in_sets_cookie_and_returns_wrapped_payload() {
 }
 
 #[tokio::test]
+async fn public_auth_login_instances_lists_enabled_supported_instances_without_sensitive_options() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+
+    sqlx::query("update authenticators set sort_order = 10 where name = 'password-local'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"
+        insert into authenticators (id, name, auth_type, title, enabled, is_builtin, sort_order, options)
+        values
+          (
+            $1,
+            'staff_password',
+            'password-local',
+            'Staff Password',
+            true,
+            false,
+            0,
+            '{
+              "description": "Staff login",
+              "extension_config": {"secret": "do-not-leak"},
+              "config_form_schema": [{"key": "secret", "type": "string"}],
+              "public_options": {"identifier_label": "Staff account"}
+            }'::jsonb
+          ),
+          (
+            $2,
+            'disabled_password',
+            'password-local',
+            'Disabled Password',
+            false,
+            false,
+            20,
+            '{"description": "Disabled login"}'::jsonb
+          ),
+          (
+            $3,
+            'unsupported_oidc',
+            'oidc',
+            'Unsupported OIDC',
+            true,
+            false,
+            30,
+            '{"description": "Unsupported login"}'::jsonb
+          )
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/public/auth/login-instances")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        payload["data"]["default_authenticator_name"],
+        json!("staff_password")
+    );
+    let instances = payload["data"]["login_instances"].as_array().unwrap();
+    let names = instances
+        .iter()
+        .map(|instance| instance["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(names, vec!["staff_password", "password-local"]);
+
+    let staff = &instances[0];
+    assert_eq!(staff["auth_type"], json!("password-local"));
+    assert_eq!(staff["title"], json!("Staff Password"));
+    assert_eq!(staff["description"], json!("Staff login"));
+    assert_eq!(staff["sort_order"], json!(0));
+    assert_eq!(staff["flow"], json!("password"));
+    assert_eq!(
+        staff["sign_in_path"],
+        json!("/api/public/auth/providers/password-local/sign-in")
+    );
+    assert_eq!(
+        staff["public_options"],
+        json!({ "identifier_label": "Staff account" })
+    );
+    assert!(staff.get("options").is_none());
+    assert!(staff.get("config_schema").is_none());
+    assert!(staff.get("config_values").is_none());
+    assert!(staff.get("extension_config").is_none());
+    assert!(!serde_json::to_string(staff)
+        .unwrap()
+        .contains("do-not-leak"));
+}
+
+#[tokio::test]
 async fn public_auth_sign_in_rejects_disabled_authenticator() {
     let (app, database_url) = test_app_with_database_url().await;
     let pool = PgPool::connect(&database_url).await.unwrap();

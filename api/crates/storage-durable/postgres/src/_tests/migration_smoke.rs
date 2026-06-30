@@ -825,6 +825,7 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
             title: "Password".into(),
             enabled: true,
             is_builtin: true,
+            sort_order: 0,
             options: serde_json::json!({}),
         })
         .await
@@ -891,6 +892,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
             title: "Password".into(),
             enabled: true,
             is_builtin: true,
+            sort_order: 0,
             options: serde_json::json!({
                 "description": "Local password authentication",
                 "config_form_schema": [
@@ -941,6 +943,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
             title: "Password".into(),
             enabled: true,
             is_builtin: true,
+            sort_order: 0,
             options: serde_json::json!({
                 "description": "Local password authentication",
                 "config_form_schema": [
@@ -995,6 +998,7 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
             title: "OIDC".into(),
             enabled: false,
             is_builtin: false,
+            sort_order: 10,
             options: serde_json::json!({
                 "description": "Old OIDC",
                 "extension_config": {
@@ -1012,6 +1016,7 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
             title: "OIDC Login".into(),
             enabled: true,
             is_builtin: false,
+            sort_order: 20,
             options: serde_json::json!({
                 "description": "New OIDC",
                 "extension_config": {

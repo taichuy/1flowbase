@@ -50,6 +50,7 @@ async fn bootstrapped_store() -> (PgControlPlaneStore, Uuid, Uuid) {
             title: "Password".into(),
             enabled: true,
             is_builtin: true,
+            sort_order: 0,
             options: serde_json::json!({}),
         })
         .await
@@ -391,6 +392,7 @@ async fn password_login_filters_identity_subjects_by_authenticator_instance() {
             title: "Staff Password".into(),
             enabled: true,
             is_builtin: false,
+            sort_order: 10,
             options: serde_json::json!({}),
         })
         .await

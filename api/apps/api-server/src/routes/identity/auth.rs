@@ -8,6 +8,7 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use control_plane::auth::{AuthKernel, LoginCommand, SessionIssuer};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use utoipa::ToSchema;
 
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
@@ -17,6 +18,24 @@ pub struct AuthProviderResponse {
     pub name: String,
     pub auth_type: String,
     pub title: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PublicLoginInstanceResponse {
+    pub name: String,
+    pub auth_type: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub sort_order: i32,
+    pub flow: String,
+    pub sign_in_path: String,
+    pub public_options: Map<String, Value>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PublicLoginInstancesResponse {
+    pub default_authenticator_name: String,
+    pub login_instances: Vec<PublicLoginInstanceResponse>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -36,7 +55,42 @@ pub struct LoginResponse {
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/providers", get(list_providers))
+        .route("/login-instances", get(list_login_instances))
         .route("/providers/password-local/sign-in", post(sign_in))
+}
+
+fn public_authenticator_description(options: &Value) -> Option<String> {
+    options
+        .get("description")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn public_authenticator_options(options: &Value) -> Map<String, Value> {
+    options
+        .get("public_options")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn to_public_login_instance(
+    authenticator: domain::AuthenticatorRecord,
+) -> Option<PublicLoginInstanceResponse> {
+    if !authenticator.enabled || authenticator.auth_type != "password-local" {
+        return None;
+    }
+
+    Some(PublicLoginInstanceResponse {
+        name: authenticator.name,
+        auth_type: authenticator.auth_type,
+        title: authenticator.title,
+        description: public_authenticator_description(&authenticator.options),
+        sort_order: authenticator.sort_order,
+        flow: "password".to_string(),
+        sign_in_path: "/api/public/auth/providers/password-local/sign-in".to_string(),
+        public_options: public_authenticator_options(&authenticator.options),
+    })
 }
 
 #[utoipa::path(
@@ -58,6 +112,32 @@ pub async fn list_providers(
         });
 
     Ok(Json(ApiSuccess::new(provider.into_iter().collect())))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/public/auth/login-instances",
+    responses((status = 200, body = PublicLoginInstancesResponse))
+)]
+pub async fn list_login_instances(
+    State(state): State<Arc<ApiState>>,
+) -> Result<Json<ApiSuccess<PublicLoginInstancesResponse>>, ApiError> {
+    let login_instances = state
+        .store
+        .list_authenticators()
+        .await?
+        .into_iter()
+        .filter_map(to_public_login_instance)
+        .collect::<Vec<_>>();
+    let default_authenticator_name = login_instances
+        .first()
+        .map(|instance| instance.name.clone())
+        .unwrap_or_else(|| domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME.to_string());
+
+    Ok(Json(ApiSuccess::new(PublicLoginInstancesResponse {
+        default_authenticator_name,
+        login_instances,
+    })))
 }
 
 #[utoipa::path(
