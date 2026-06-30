@@ -46,6 +46,11 @@ const PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS: &[&str] = &[
     ),
     include_str!("../../../migrations/20260422193000_add_model_provider_configured_models.sql"),
     include_str!("../../../migrations/20260422223000_create_model_provider_routings.sql"),
+    include_str!("../../../migrations/20260630114000_migrate_authenticator_identity_ids.sql"),
+    include_str!("../../../migrations/20260630114500_remove_authenticator_name_config_key.sql"),
+    include_str!(
+        "../../../migrations/20260630115000_normalize_password_local_authenticator_id.sql"
+    ),
 ];
 
 const MAIN_INSTANCE_AGGREGATION_MIGRATION_SQL: &str = include_str!(

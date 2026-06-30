@@ -122,6 +122,7 @@ create table if not exists user_role_bindings (
 
 create table if not exists authenticators (
   id uuid primary key,
+  name text not null unique,
   auth_type text not null,
   title text not null,
   enabled boolean not null default true,
@@ -137,7 +138,7 @@ create table if not exists authenticators (
 create table if not exists user_auth_identities (
   id uuid primary key,
   user_id uuid not null references users(id) on delete cascade,
-  authenticator_id uuid not null references authenticators(id) on delete cascade,
+  authenticator_name text not null references authenticators(name) on delete cascade,
   subject_type text not null,
   subject_value text not null,
   metadata jsonb not null default '{}'::jsonb,
@@ -148,7 +149,7 @@ create table if not exists user_auth_identities (
 );
 
 create unique index if not exists user_auth_identities_subject_uidx
-  on user_auth_identities (authenticator_id, subject_type, lower(subject_value));
+  on user_auth_identities (authenticator_name, subject_type, lower(subject_value));
 
 create table if not exists audit_logs (
   id uuid primary key,
