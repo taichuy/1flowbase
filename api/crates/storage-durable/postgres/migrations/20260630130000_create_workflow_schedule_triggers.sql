@@ -19,3 +19,6 @@ create unique index if not exists workflow_schedule_triggers_application_id_uidx
 
 create index if not exists workflow_schedule_triggers_scope_updated_id_idx
     on workflow_schedule_triggers (scope_id, updated_at, id);
+
+create index if not exists workflow_schedule_triggers_scope_created_id_idx
+    on workflow_schedule_triggers (scope_id, created_at, id);

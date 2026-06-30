@@ -17,15 +17,56 @@ function writeFile(repoRoot, relativePath, content) {
   fs.writeFileSync(absolutePath, content, 'utf8');
 }
 
-function createRepoWithMigration(sql) {
+function createRepoWithMigrations(migrations) {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-schema-hygiene-'));
-  writeFile(
-    repoRoot,
-    'api/crates/storage-durable/postgres/migrations/20260101000000_fixture.sql',
-    sql
-  );
+  for (const [fileName, sql] of Object.entries(migrations)) {
+    writeFile(
+      repoRoot,
+      `api/crates/storage-durable/postgres/migrations/${fileName}`,
+      sql
+    );
+  }
   return repoRoot;
 }
+
+function createRepoWithMigration(sql) {
+  return createRepoWithMigrations({
+    '20260101000000_fixture.sql': sql,
+  });
+}
+
+test('evaluateSchemaHygiene reports duplicate PostgreSQL migration versions', () => {
+  const repoRoot = createRepoWithMigrations({
+    '20260101000000_create_events.sql': `
+      create table scoped_events (
+        id uuid primary key,
+        scope_id uuid not null,
+        payload jsonb not null default '{}'::jsonb,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+
+      create index scoped_events_scope_created_idx
+        on scoped_events (scope_id, created_at desc, id desc);
+    `,
+    '20260101000000_backfill_events.sql': `
+      update scoped_events set updated_at = now();
+    `,
+  });
+
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({ inventory });
+  const duplicate = report.findings.find((finding) => (
+    finding.rule === 'postgres-migration-version-duplicate'
+  ));
+
+  assert.ok(duplicate);
+  assert.equal(duplicate.severity, 'error');
+  assert.equal(report.summary.migrationErrors, 1);
+  assert.match(duplicate.message, /20260101000000/u);
+  assert.match(duplicate.message, /20260101000000_create_events\.sql/u);
+  assert.match(duplicate.message, /20260101000000_backfill_events\.sql/u);
+});
 
 test('collectSchemaInventory reads tables, columns, constraints, indexes, FKs, and JSONB fields from migrations', () => {
   const repoRoot = createRepoWithMigration(`
