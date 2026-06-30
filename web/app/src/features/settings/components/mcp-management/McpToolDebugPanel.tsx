@@ -17,6 +17,10 @@ import {
   type McpInputMappingValue,
   type McpInputParameterMapping
 } from './mcp-input-mapping-model';
+import type {
+  ExecuteSettingsMcpToolDebugBody,
+  SettingsMcpToolDebugExecuteResponse
+} from '../../api/mcp-management';
 
 type DebugField = McpInputParameterMapping & {
   field_type: string;
@@ -49,45 +53,6 @@ function setArgumentPathValue(
     cursor = cursor[segment] as Record<string, unknown>;
   }
   cursor[segments[segments.length - 1]] = value;
-}
-
-function getArgumentPathValue(source: Record<string, unknown>, path: string) {
-  const segments = path.split('.').filter(Boolean);
-  if (segments.length === 0) {
-    return { exists: false, value: undefined };
-  }
-
-  let cursor: unknown = source;
-  for (const segment of segments) {
-    if (
-      !isRecord(cursor) ||
-      !Object.prototype.hasOwnProperty.call(cursor, segment)
-    ) {
-      return { exists: false, value: undefined };
-    }
-    cursor = cursor[segment];
-  }
-
-  return { exists: true, value: cursor };
-}
-
-function buildInterfaceArguments(
-  inputMapping: McpInputMappingValue,
-  mcpArguments: Record<string, unknown>
-) {
-  const interfaceArguments: Record<string, unknown> = {};
-  for (const mapping of inputMapping.mappings) {
-    const mcpArgument = getArgumentPathValue(mcpArguments, mapping.mcp_param);
-    if (mcpArgument.exists) {
-      setArgumentPathValue(
-        interfaceArguments,
-        mapping.interface_param,
-        mcpArgument.value
-      );
-    }
-  }
-
-  return interfaceArguments;
 }
 
 function buildDebugFields(inputMapping: McpInputMappingValue): DebugField[] {
@@ -175,11 +140,20 @@ function buildMcpArguments(
 }
 
 export function McpToolDebugPanel({
+  csrfToken = '',
+  executeDebug,
   inputMapping,
+  interfaceId,
   operationLabel,
   outputMapping
 }: {
+  csrfToken?: string;
+  executeDebug?: (
+    body: ExecuteSettingsMcpToolDebugBody,
+    csrfToken: string
+  ) => Promise<SettingsMcpToolDebugExecuteResponse>;
   inputMapping: unknown;
+  interfaceId?: string | null;
   operationLabel?: string | null;
   outputMapping: Record<string, unknown>;
 }) {
@@ -196,6 +170,7 @@ export function McpToolDebugPanel({
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [debugResult, setDebugResult] = useState<unknown>(null);
+  const [debugRunning, setDebugRunning] = useState(false);
 
   const setArgumentValue = (name: string, value: unknown) => {
     setArgumentValues((current) => ({
@@ -204,21 +179,29 @@ export function McpToolDebugPanel({
     }));
   };
 
-  const runDebug = () => {
+  const runDebug = async () => {
     try {
+      if (!interfaceId || !executeDebug) {
+        throw new Error('interface_id 是必填参数');
+      }
       const mcpArguments = buildMcpArguments(debugFields, argumentValues);
-      setDebugResult({
-        mcp_arguments: mcpArguments,
-        interface_arguments: buildInterfaceArguments(
-          normalizedInputMapping,
-          mcpArguments
-        ),
-        output_mapping: outputMapping
-      });
+      setDebugRunning(true);
+      const result = await executeDebug(
+        {
+          interface_id: interfaceId,
+          mcp_arguments: mcpArguments,
+          input_mapping: normalizedInputMapping,
+          output_mapping: outputMapping
+        },
+        csrfToken
+      );
+      setDebugResult(result);
       setErrorMessage(null);
     } catch (error) {
       setDebugResult(null);
       setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDebugRunning(false);
     }
   };
 
@@ -290,9 +273,10 @@ export function McpToolDebugPanel({
         ) : null}
         <Button
           aria-label="运行"
-          disabled={debugFields.length === 0}
+          disabled={debugFields.length === 0 || !interfaceId || !executeDebug}
+          loading={debugRunning}
           type="primary"
-          onClick={runDebug}
+          onClick={() => void runDebug()}
         >
           运行
         </Button>

@@ -547,6 +547,11 @@ where
         Ok(())
     }
 
+    pub async fn authorize_debug_execute(&self, actor_user_id: Uuid) -> Result<()> {
+        self.authorize_manage(actor_user_id).await?;
+        Ok(())
+    }
+
     pub async fn export_workspace_catalog(
         &self,
         actor_user_id: Uuid,

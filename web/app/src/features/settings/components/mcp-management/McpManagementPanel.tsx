@@ -61,6 +61,7 @@ import {
   deleteSettingsMcpInstance,
   deleteSettingsMcpTool,
   deleteSettingsMcpToolBinding,
+  executeSettingsMcpToolDebug,
   exportSettingsMcpCatalog,
   exportSettingsMcpInstanceDirectory,
   refreshSettingsMcpToolDescription,
@@ -1846,6 +1847,9 @@ function McpToolsTab({
                 return (
                   <div>
                     <McpToolDebugPanel
+                      csrfToken={csrfToken}
+                      executeDebug={executeSettingsMcpToolDebug}
+                      interfaceId={getFieldValue('interface_id')}
                       inputMapping={getFieldValue('input_mapping')}
                       operationLabel={
                         selectedInterface

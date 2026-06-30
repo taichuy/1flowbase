@@ -6,6 +6,7 @@ import {
   deleteConsoleMcpInstance,
   deleteConsoleMcpTool,
   deleteConsoleMcpToolBinding,
+  executeConsoleMcpToolDebug,
   exportConsoleMcpCatalog,
   exportConsoleMcpInstanceDirectory,
   fetchConsoleMcpCatalog,
@@ -18,6 +19,8 @@ import {
   upsertConsoleMcpGroup,
   type ConsoleMcpCatalog,
   type ConsoleMcpInterfaceCapability,
+  type ConsoleMcpToolDebugExecuteResponse,
+  type ExecuteConsoleMcpToolDebugBody,
   type SaveConsoleMcpGroupBody,
   type SaveConsoleMcpInstanceBody,
   type SaveConsoleMcpToolBindingBody,
@@ -28,6 +31,9 @@ import {
 
 export type SettingsMcpCatalog = ConsoleMcpCatalog;
 export type SettingsMcpInterfaceCapability = ConsoleMcpInterfaceCapability;
+export type ExecuteSettingsMcpToolDebugBody = ExecuteConsoleMcpToolDebugBody;
+export type SettingsMcpToolDebugExecuteResponse =
+  ConsoleMcpToolDebugExecuteResponse;
 
 export const settingsMcpCatalogQueryKey = [
   'settings',
@@ -116,6 +122,13 @@ export function refreshSettingsMcpToolDescription(
   csrfToken: string
 ) {
   return refreshConsoleMcpToolDescription(toolId, csrfToken);
+}
+
+export function executeSettingsMcpToolDebug(
+  body: ExecuteSettingsMcpToolDebugBody,
+  csrfToken: string
+) {
+  return executeConsoleMcpToolDebug(body, csrfToken);
 }
 
 export function createSettingsMcpToolBinding(
