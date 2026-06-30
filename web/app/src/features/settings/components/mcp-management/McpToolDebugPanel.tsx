@@ -1,4 +1,14 @@
-import { Alert, Button, Checkbox, Form, Input, InputNumber, Space } from 'antd';
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Flex,
+  Form,
+  Input,
+  InputNumber,
+  Space,
+  Typography
+} from 'antd';
 import { useMemo, useState } from 'react';
 
 import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
@@ -93,6 +103,15 @@ function buildDebugFields(inputMapping: McpInputMappingValue): DebugField[] {
   });
 }
 
+function debugFieldExtra(field: DebugField) {
+  const description = field.description.trim();
+  if (!description || description === field.mcp_param) {
+    return undefined;
+  }
+
+  return description;
+}
+
 function debugFieldKind(fieldType: string) {
   const normalized = fieldType.toLowerCase();
   if (normalized.includes('bool')) {
@@ -157,9 +176,11 @@ function buildMcpArguments(
 
 export function McpToolDebugPanel({
   inputMapping,
+  operationLabel,
   outputMapping
 }: {
   inputMapping: unknown;
+  operationLabel?: string | null;
   outputMapping: Record<string, unknown>;
 }) {
   const normalizedInputMapping = useMemo(
@@ -254,24 +275,19 @@ export function McpToolDebugPanel({
 
   return (
     <Space className="mcp-tool-debug-panel" direction="vertical" size={12}>
-      {debugFields.length > 0 ? (
-        <div className="mcp-tool-debug-panel__fields">
-          {debugFields.map((field) => (
-            <Form.Item
-              className="mcp-tool-debug-panel__field"
-              key={`${field.interface_param}:${field.mcp_param}`}
-              label={field.mcp_param}
-              required={field.required}
-              extra={field.description || undefined}
-            >
-              {renderFieldInput(field)}
-            </Form.Item>
-          ))}
-        </div>
-      ) : (
-        <Alert type="info" message="先在 input_mapping 添加 MCP 参数映射" />
-      )}
-      <Space>
+      <Flex
+        className="mcp-tool-debug-panel__header"
+        align="center"
+        aria-label="调试操作"
+        gap={12}
+        justify={operationLabel ? 'space-between' : 'flex-end'}
+        role="group"
+      >
+        {operationLabel ? (
+          <Typography.Text className="mcp-tool-debug-panel__operation" ellipsis>
+            {operationLabel}
+          </Typography.Text>
+        ) : null}
         <Button
           aria-label="运行"
           disabled={debugFields.length === 0}
@@ -280,7 +296,24 @@ export function McpToolDebugPanel({
         >
           运行
         </Button>
-      </Space>
+      </Flex>
+      {debugFields.length > 0 ? (
+        <div className="mcp-tool-debug-panel__fields">
+          {debugFields.map((field) => (
+            <Form.Item
+              className="mcp-tool-debug-panel__field"
+              key={`${field.interface_param}:${field.mcp_param}`}
+              label={field.mcp_param}
+              required={field.required}
+              extra={debugFieldExtra(field)}
+            >
+              {renderFieldInput(field)}
+            </Form.Item>
+          ))}
+        </div>
+      ) : (
+        <Alert type="info" message="先在 input_mapping 添加 MCP 参数映射" />
+      )}
       {errorMessage ? <Alert type="error" message={errorMessage} /> : null}
       {debugResult ? (
         <JsonPreviewBlock

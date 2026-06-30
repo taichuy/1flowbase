@@ -791,6 +791,7 @@
       "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
       "web/app/src/features/settings/components/settings-section-surface.css",
       "web/app/src/features/settings/components/mcp-management/McpManagementPanel.tsx",
+      "web/app/src/features/settings/components/mcp-management/McpToolDebugPanel.tsx",
       "web/app/src/features/settings/components/mcp-management/mcp-management-panel.css",
       "web/app/src/features/settings/components/mcp-management/mcp-management-view-model.ts",
       "web/app/src/features/settings/api/mcp-management.ts",

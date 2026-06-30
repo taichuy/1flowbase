@@ -52,6 +52,7 @@ vi.mock('@monaco-editor/react', () => ({
 
 import { AppProviders } from '../../../../../app/AppProviders';
 import { McpManagementPanel } from '../McpManagementPanel';
+import { McpToolDebugPanel } from '../McpToolDebugPanel';
 
 const interfaceCapabilities: ConsoleMcpInterfaceCapability[] = [
   {
@@ -374,6 +375,43 @@ describe('McpManagementPanel', () => {
     expect(debugResult).toHaveTextContent('"app_id": "app-1"');
     expect(debugResult).toHaveTextContent('"output_mapping"');
     expect(debugResult).toHaveTextContent('"run_id"');
+  });
+
+  test('renders debug operation and run action in one row without duplicate field-name help text', () => {
+    render(
+      <McpToolDebugPanel
+        operationLabel="POST /api/runtime/models/users/create"
+        inputMapping={{
+          interface_parameters: [
+            {
+              name: 'des_id',
+              field_type: 'string',
+              parameter_type: 'json_body',
+              description: 'des_id',
+              required: true
+            }
+          ],
+          mappings: [
+            {
+              interface_param: 'des_id',
+              mcp_param: 'des_id',
+              description: 'des_id',
+              required: true
+            }
+          ]
+        }}
+        outputMapping={{ type: 'object' }}
+      />
+    );
+
+    const header = screen.getByRole('group', { name: '调试操作' });
+    expect(
+      within(header).getByText('POST /api/runtime/models/users/create')
+    ).toBeInTheDocument();
+    expect(
+      within(header).getByRole('button', { name: '运行' })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('des_id')).toHaveLength(1);
   });
 
   test('loads interface descriptors into dedicated input mappings after the explicit mapping action', async () => {

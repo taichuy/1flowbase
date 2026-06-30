@@ -11,7 +11,6 @@ import {
 } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert,
   Button,
   Descriptions,
   Divider,
@@ -1846,13 +1845,13 @@ function McpToolsTab({
 
                 return (
                   <div>
-                    <div className="mcp-management__selected-operation">
-                      <SelectedInterfaceOperationTitle
-                        selectedInterface={selectedInterface}
-                      />
-                    </div>
                     <McpToolDebugPanel
                       inputMapping={getFieldValue('input_mapping')}
+                      operationLabel={
+                        selectedInterface
+                          ? interfaceOptionLabel(selectedInterface)
+                          : null
+                      }
                       outputMapping={schemaRecord(
                         getFieldValue('output_mapping')
                       )}

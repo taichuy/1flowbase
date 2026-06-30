@@ -56,10 +56,6 @@
   padding-right: 4px;
 }
 
-.mcp-management__selected-operation {
-  margin-bottom: 16px;
-}
-
 .mcp-management__schema-editor {
   margin-top: 8px;
 }
@@ -70,6 +66,14 @@
 
 .mcp-tool-debug-panel {
   width: 100%;
+}
+
+.mcp-tool-debug-panel__header {
+  width: 100%;
+}
+
+.mcp-tool-debug-panel__operation {
+  min-width: 0;
 }
 
 .mcp-tool-debug-panel__fields {
