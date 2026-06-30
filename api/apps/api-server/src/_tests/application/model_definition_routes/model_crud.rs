@@ -210,6 +210,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
                         "description": "Payment lifecycle state",
                         "field_kind": "enum",
                         "is_required": true,
+                        "api_required": true,
                         "is_unique": false,
                         "display_interface": "select",
                         "display_options": { "options": ["draft", "paid"] }
@@ -233,6 +234,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         created_field["data"]["description"],
         json!("Payment lifecycle state")
     );
+    assert_eq!(created_field["data"]["api_required"], json!(true));
     assert_eq!(
         created_field["data"]["capabilities"]["ownership"],
         json!("user_added")
@@ -279,6 +281,33 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
     assert_eq!(status_field["valueType"], json!("enum"));
     assert_eq!(status_field["required"], json!(true));
     assert_eq!(status_field["writable"], json!(true));
+
+    let missing_api_required_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/runtime/models/orders/create")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        missing_api_required_response.status(),
+        StatusCode::BAD_REQUEST
+    );
+    let missing_api_required_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(missing_api_required_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(missing_api_required_payload["code"], json!("api_required"));
 
     let create_runtime_record = app
         .clone()
@@ -350,6 +379,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
                         "title": "Lifecycle Status",
                         "description": "Shown on payment forms",
                         "is_required": true,
+                        "api_required": false,
                         "is_unique": false,
                         "default_value": "draft",
                         "display_interface": "select",
@@ -374,6 +404,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         updated_field["data"]["description"],
         json!("Shown on payment forms")
     );
+    assert_eq!(updated_field["data"]["api_required"], json!(false));
 
     let create_after_field_update = app
         .clone()

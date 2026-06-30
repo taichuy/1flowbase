@@ -433,6 +433,7 @@ pub struct ModelFieldRecord {
     pub is_system: bool,
     pub is_writable: bool,
     pub is_required: bool,
+    pub api_required: bool,
     pub is_unique: bool,
     pub default_value: Option<Value>,
     pub display_interface: Option<String>,

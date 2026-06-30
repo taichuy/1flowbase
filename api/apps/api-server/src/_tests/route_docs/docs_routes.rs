@@ -203,6 +203,7 @@ async fn create_model_field(
     code: &str,
     field_kind: &str,
     is_required: bool,
+    api_required: bool,
 ) {
     let response = app
         .clone()
@@ -218,7 +219,8 @@ async fn create_model_field(
                         "code": code,
                         "title": code,
                         "field_kind": field_kind,
-                        "is_required": is_required
+                        "is_required": is_required,
+                        "api_required": api_required
                     })
                     .to_string(),
                 ))
@@ -564,6 +566,7 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         "order_title",
         "string",
         true,
+        false,
     )
     .await;
     create_model_field(
@@ -574,6 +577,7 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         "paid_at",
         "datetime",
         false,
+        true,
     )
     .await;
     create_scope_grant(&app, &cookie, &csrf, &ready_model_id).await;
@@ -772,7 +776,7 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     );
     assert_eq!(
         create_spec["components"]["schemas"]["DocsReadyOrdersRecordCreateInput"]["required"],
-        json!(["order_title"])
+        json!(["paid_at"])
     );
     let create_input_properties =
         &create_spec["components"]["schemas"]["DocsReadyOrdersRecordCreateInput"]["properties"];

@@ -149,6 +149,7 @@ async fn seed_external_runtime_model(
             is_writable: true,
             apply_physical_schema: true,
             is_required: false,
+            api_required: false,
             is_unique: false,
             default_value: None,
             display_interface: Some("input".into()),

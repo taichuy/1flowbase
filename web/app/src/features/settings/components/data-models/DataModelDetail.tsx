@@ -402,7 +402,26 @@ export function DataModelDetail({
           {
             key: 'api',
             label: 'API',
-            children: <DataModelApiTab model={model} />
+            children: (
+              <DataModelApiTab
+                model={model}
+                canManage={canManage}
+                saving={fieldSaving}
+                onUpdateApiRequired={(field, apiRequired) =>
+                  onUpdateField(field, {
+                    title: field.title,
+                    description: field.description,
+                    is_required: field.is_required,
+                    api_required: apiRequired,
+                    is_unique: field.is_unique,
+                    default_value: field.default_value,
+                    display_interface: field.display_interface,
+                    display_options: field.display_options,
+                    relation_options: field.relation_options
+                  })
+                }
+              />
+            )
           },
           {
             key: 'advisor',

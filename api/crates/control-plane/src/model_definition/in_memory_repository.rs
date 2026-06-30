@@ -285,6 +285,7 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
             is_system: input.is_system,
             is_writable: input.is_writable,
             is_required: input.is_required,
+            api_required: input.api_required,
             is_unique: input.is_unique,
             default_value: input.default_value.clone(),
             display_interface: input.display_interface.clone(),
@@ -314,6 +315,7 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
         field.title = input.title.clone();
         field.description = input.description.clone();
         field.is_required = input.is_required;
+        field.api_required = input.api_required;
         field.is_unique = input.is_unique;
         field.default_value = input.default_value.clone();
         field.display_interface = input.display_interface.clone();
@@ -344,6 +346,7 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
         field.is_system = input.is_system;
         field.is_writable = input.is_writable;
         field.is_required = input.is_required;
+        field.api_required = input.api_required;
         field.is_unique = input.is_unique;
         field.default_value = input.default_value.clone();
         field.display_interface = input.display_interface.clone();

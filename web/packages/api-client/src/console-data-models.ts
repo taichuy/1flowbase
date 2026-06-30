@@ -75,6 +75,7 @@ export interface ConsoleDataModelField {
   is_system: boolean;
   is_writable: boolean;
   is_required: boolean;
+  api_required: boolean;
   is_unique: boolean;
   default_value: unknown | null;
   display_interface: string | null;
@@ -212,6 +213,7 @@ export interface CreateConsoleDataModelFieldInput {
   external_field_key?: string | null;
   field_kind: string;
   is_required: boolean;
+  api_required?: boolean;
   is_unique: boolean;
   default_value: unknown | null;
   display_interface: string | null;
@@ -224,6 +226,7 @@ export interface UpdateConsoleDataModelFieldInput {
   title: string;
   description?: string | null;
   is_required: boolean;
+  api_required?: boolean;
   is_unique: boolean;
   default_value: unknown | null;
   display_interface: string | null;

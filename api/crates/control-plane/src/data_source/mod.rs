@@ -653,6 +653,7 @@ where
                     is_writable: true,
                     apply_physical_schema: false,
                     is_required: schema.required.unwrap_or(false),
+                    api_required: schema.required.unwrap_or(false),
                     is_unique: descriptor
                         .primary_key
                         .as_deref()

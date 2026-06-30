@@ -61,6 +61,7 @@ pub struct CreateModelFieldBody {
     pub field_kind: String,
     #[serde(default)]
     pub is_required: bool,
+    pub api_required: Option<bool>,
     #[serde(default)]
     pub is_unique: bool,
     pub default_value: Option<serde_json::Value>,
@@ -78,6 +79,7 @@ pub struct UpdateModelFieldBody {
     pub description: Option<String>,
     #[serde(default)]
     pub is_required: bool,
+    pub api_required: Option<bool>,
     #[serde(default)]
     pub is_unique: bool,
     pub default_value: Option<serde_json::Value>,
@@ -166,6 +168,7 @@ pub struct ModelFieldResponse {
     pub is_system: bool,
     pub is_writable: bool,
     pub is_required: bool,
+    pub api_required: bool,
     pub is_unique: bool,
     #[schema(value_type = Object)]
     pub default_value: Option<serde_json::Value>,
@@ -340,6 +343,7 @@ fn to_model_field_response(
         is_system: field.is_system,
         is_writable: field.is_writable,
         is_required: field.is_required,
+        api_required: field.api_required,
         is_unique: field.is_unique,
         default_value: field.default_value,
         display_interface: field.display_interface,
@@ -879,6 +883,7 @@ pub async fn create_field(
             external_field_key: body.external_field_key,
             field_kind: parse_field_kind(&body.field_kind)?,
             is_required: body.is_required,
+            api_required: body.api_required,
             is_unique: body.is_unique,
             default_value: body.default_value,
             display_interface: body.display_interface,
@@ -930,6 +935,7 @@ pub async fn update_field(
             title: body.title,
             description: body.description,
             is_required: body.is_required,
+            api_required: body.api_required,
             is_unique: body.is_unique,
             default_value: body.default_value,
             display_interface: body.display_interface,

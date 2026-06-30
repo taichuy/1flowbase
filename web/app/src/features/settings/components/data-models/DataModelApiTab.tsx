@@ -1,10 +1,21 @@
-import { Alert, Descriptions, Empty, Flex, List, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Descriptions,
+  Empty,
+  Flex,
+  Switch,
+  Table,
+  Tag,
+  Typography
+} from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
 
 import {
   fetchSettingsDataModelOpenApiDocument,
   settingsDataModelOpenApiQueryKey,
   type SettingsDataModel,
+  type SettingsDataModelField,
   type SettingsDataModelOpenApiDocument
 } from '../../api/data-models';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -12,14 +23,12 @@ import { i18nText } from '../../../../shared/i18n/text';
 type OpenApiSchema = {
   $ref?: string;
   title?: unknown;
-  required?: unknown;
   properties?: unknown;
 };
 
-type FieldValidationGroup = {
-  key: string;
-  title: string;
-  fields: string[];
+type ApiFieldSets = {
+  createInput: Set<string>;
+  updateInput: Set<string>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -104,91 +113,96 @@ function schemaProperties(schema: OpenApiSchema | null) {
   return schema.properties;
 }
 
-function schemaRequired(schema: OpenApiSchema | null) {
-  if (!schema || !Array.isArray(schema.required)) {
-    return new Set<string>();
-  }
-
-  return new Set(
-    schema.required.filter(
-      (fieldCode): fieldCode is string => typeof fieldCode === 'string'
-    )
-  );
-}
-
-function fieldLabel(fieldCode: string, schema: unknown) {
-  if (isRecord(schema) && typeof schema.title === 'string') {
-    return schema.title;
-  }
-
-  return fieldCode;
-}
-
-function getFieldValidationGroups(
+function getApiFieldSets(
   document: SettingsDataModelOpenApiDocument | undefined,
   model: SettingsDataModel
-): FieldValidationGroup[] {
+): ApiFieldSets {
   if (!document) {
-    return [];
+    return {
+      createInput: new Set(),
+      updateInput: new Set()
+    };
   }
 
   const schemas = getSchemas(document);
   const baseName = toSchemaBaseName(model);
-  const recordSchema = findSchemaByName(
-    schemas,
-    [`${baseName}Record`],
-    model,
-    'Record'
-  );
   const createInputSchema = findSchemaByName(
     schemas,
     [`${baseName}RecordCreateInput`, `${baseName}CreateInput`],
     model,
     'RecordCreateInput'
   );
+  const updateInputSchema = findSchemaByName(
+    schemas,
+    [`${baseName}RecordUpdateInput`, `${baseName}UpdateInput`],
+    model,
+    'RecordUpdateInput'
+  );
 
-  const recordProperties = schemaProperties(recordSchema);
-  const createProperties = schemaProperties(createInputSchema);
-  const createRequired = schemaRequired(createInputSchema);
-  const requiredFields = Object.entries(createProperties)
-    .filter(([fieldCode]) => createRequired.has(fieldCode))
-    .map(([fieldCode, schema]) => fieldLabel(fieldCode, schema));
-  const optionalFields = Object.entries(createProperties)
-    .filter(([fieldCode]) => !createRequired.has(fieldCode))
-    .map(([fieldCode, schema]) => fieldLabel(fieldCode, schema));
-  const readOnlyFields = Object.entries(recordProperties)
-    .filter(([fieldCode]) => !(fieldCode in createProperties))
-    .map(([fieldCode, schema]) => fieldLabel(fieldCode, schema));
-
-  return [
-    {
-      key: 'required',
-      title: i18nText('settings', 'auto.create_request_required_fields'),
-      fields: requiredFields
-    },
-    {
-      key: 'optional',
-      title: i18nText('settings', 'auto.optional_input_fields'),
-      fields: optionalFields
-    },
-    {
-      key: 'read_only',
-      title: i18nText('settings', 'auto.system_generated_read_only_fields'),
-      fields: readOnlyFields
-    }
-  ];
+  return {
+    createInput: new Set(Object.keys(schemaProperties(createInputSchema))),
+    updateInput: new Set(Object.keys(schemaProperties(updateInputSchema)))
+  };
 }
 
-export function DataModelApiTab({ model }: { model: SettingsDataModel }) {
+function fieldKindTag(kind: string) {
+  return (
+    <Tag style={{ borderRadius: 4, margin: 0 }} color="blue">
+      {kind}
+    </Tag>
+  );
+}
+
+function yesNoTag(value: boolean) {
+  return value ? (
+    <Tag color="success" style={{ borderRadius: 4, margin: 0 }}>
+      {i18nText('settings', 'auto.yes')}
+    </Tag>
+  ) : (
+    <Tag style={{ borderRadius: 4, margin: 0 }}>
+      {i18nText('settings', 'auto.no')}
+    </Tag>
+  );
+}
+
+function contractUnavailableTag() {
+  return (
+    <Tag style={{ borderRadius: 4, margin: 0 }}>
+      {i18nText('settings', 'auto.api_contract_unavailable')}
+    </Tag>
+  );
+}
+
+function fieldAttribute(field: SettingsDataModelField) {
+  if (field.is_system || !field.is_writable) {
+    return i18nText('settings', 'auto.system_generated_read_only');
+  }
+
+  return i18nText('settings', 'auto.writable');
+}
+
+export function DataModelApiTab({
+  model,
+  canManage,
+  saving,
+  onUpdateApiRequired
+}: {
+  model: SettingsDataModel;
+  canManage: boolean;
+  saving: boolean;
+  onUpdateApiRequired: (
+    field: SettingsDataModelField,
+    apiRequired: boolean
+  ) => void;
+}) {
   const openApiQuery = useQuery({
     queryKey: settingsDataModelOpenApiQueryKey(model.id),
     queryFn: () => fetchSettingsDataModelOpenApiDocument(model.id),
     enabled: Boolean(model.id)
   });
-  const fieldValidationGroups = getFieldValidationGroups(
-    openApiQuery.data,
-    model
-  );
+  const apiFieldSets = getApiFieldSets(openApiQuery.data, model);
+  const apiContractAvailable =
+    Boolean(openApiQuery.data) && !openApiQuery.isError;
   const exposureStatus = model.api_exposure_status;
   const exposureLabel =
     exposureStatus === 'api_exposed_ready'
@@ -196,6 +210,85 @@ export function DataModelApiTab({ model }: { model: SettingsDataModel }) {
       : exposureStatus;
   const exposureColor =
     exposureStatus === 'api_exposed_ready' ? 'green' : 'default';
+  const columns: ColumnsType<SettingsDataModelField> = [
+    {
+      title: i18nText('settings', 'auto.field_title'),
+      dataIndex: 'title',
+      key: 'title',
+      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>
+    },
+    {
+      title: 'Code',
+      dataIndex: 'code',
+      key: 'code',
+      render: (value: string) => (
+        <code className="data-model-panel__code-badge">{value}</code>
+      )
+    },
+    {
+      title: i18nText('settings', 'auto.field_type'),
+      dataIndex: 'field_kind',
+      key: 'field_kind',
+      render: fieldKindTag
+    },
+    {
+      title: i18nText('settings', 'auto.create_input'),
+      key: 'create_input',
+      render: (_, field) =>
+        apiContractAvailable
+          ? yesNoTag(apiFieldSets.createInput.has(field.code))
+          : contractUnavailableTag()
+    },
+    {
+      title: i18nText('settings', 'auto.create_required'),
+      key: 'api_required',
+      render: (_, field) => {
+        if (!apiContractAvailable) {
+          return contractUnavailableTag();
+        }
+
+        const editable =
+          field.is_writable &&
+          !field.is_system &&
+          apiFieldSets.createInput.has(field.code);
+
+        if (!editable) {
+          return (
+            <Tag style={{ borderRadius: 4, margin: 0 }}>
+              {i18nText('settings', 'auto.not_configurable')}
+            </Tag>
+          );
+        }
+
+        return (
+          <Switch
+            size="small"
+            aria-label={i18nText('settings', 'auto.api_create_required_toggle', {
+              value1: field.title || field.code
+            })}
+            checked={field.api_required}
+            disabled={!canManage || saving || openApiQuery.isLoading}
+            onChange={(checked) => onUpdateApiRequired(field, checked)}
+          />
+        );
+      }
+    },
+    {
+      title: i18nText('settings', 'auto.update_input'),
+      key: 'update_input',
+      render: (_, field) =>
+        apiContractAvailable
+          ? yesNoTag(apiFieldSets.updateInput.has(field.code))
+          : contractUnavailableTag()
+    },
+    {
+      title: i18nText('settings', 'auto.field_attribute'),
+      key: 'attribute',
+      render: (_, field) => (
+        <Tag style={{ borderRadius: 4, margin: 0 }}>{fieldAttribute(field)}</Tag>
+      )
+    }
+  ];
 
   return (
     <Flex vertical gap={16}>
@@ -227,12 +320,9 @@ export function DataModelApiTab({ model }: { model: SettingsDataModel }) {
           }
         ]}
       />
-      <Flex vertical gap={8}>
+      <Flex vertical gap={8} data-testid="data-model-api-fields-table">
         <Typography.Text strong>
-          {i18nText('settings', 'auto.api_field_validation_groups')}
-        </Typography.Text>
-        <Typography.Text type="secondary">
-          {i18nText('settings', 'auto.api_field_validation_groups_help')}
+          {i18nText('settings', 'auto.api_exposed_fields')}
         </Typography.Text>
         {openApiQuery.isError ? (
           <Alert
@@ -244,39 +334,19 @@ export function DataModelApiTab({ model }: { model: SettingsDataModel }) {
             )}
           />
         ) : null}
-        {!openApiQuery.isLoading &&
-        !openApiQuery.isError &&
-        fieldValidationGroups.every((group) => group.fields.length === 0) ? (
+        {model.fields.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={i18nText(
-              'settings',
-              'auto.openapi_contract_fields_empty'
-            )}
+            description={i18nText('settings', 'auto.no_fields')}
           />
         ) : (
-          <List
-            data-testid="data-model-api-field-validation-groups"
+          <Table
+            rowKey="id"
+            size="small"
             loading={openApiQuery.isLoading}
-            dataSource={fieldValidationGroups}
-            renderItem={(group) => (
-              <List.Item>
-                <Flex vertical gap={8}>
-                  <Typography.Text strong>{group.title}</Typography.Text>
-                  <Flex wrap gap={8}>
-                    {group.fields.length === 0 ? (
-                      <Typography.Text type="secondary">
-                        {i18nText('settings', 'auto.no_fields')}
-                      </Typography.Text>
-                    ) : (
-                      group.fields.map((field) => (
-                        <Tag key={field}>{field}</Tag>
-                      ))
-                    )}
-                  </Flex>
-                </Flex>
-              </List.Item>
-            )}
+            pagination={false}
+            columns={columns}
+            dataSource={model.fields}
           />
         )}
       </Flex>

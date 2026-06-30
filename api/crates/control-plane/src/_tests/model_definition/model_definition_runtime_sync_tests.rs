@@ -94,6 +94,7 @@ async fn add_field_rebuilds_runtime_registry_once() {
             external_field_key: None,
             field_kind: ModelFieldKind::Enum,
             is_required: true,
+            api_required: None,
             is_unique: false,
             default_value: Some(json!("draft")),
             display_interface: Some("select".into()),

@@ -601,6 +601,100 @@ async fn api_exposure_status_does_not_by_itself_enable_runtime_crud() {
     );
 }
 
+#[tokio::test]
+async fn runtime_create_validates_api_required_fields_not_metadata_required() {
+    let model_id = Uuid::now_v7();
+    let engine = RuntimeEngine::for_tests_with_models(vec![ModelMetadata {
+        model_id,
+        model_code: "api_required_orders".into(),
+        status: domain::DataModelStatus::Published,
+        scope_kind: domain::DataModelScopeKind::Workspace,
+        scope_id: Uuid::nil(),
+        data_source_instance_id: None,
+        source_kind: domain::DataModelSourceKind::MainSource,
+        external_resource_key: None,
+        physical_table_name: "rtm_workspace_api_required_orders".into(),
+        scope_column_name: "scope_id".into(),
+        fields: vec![
+            domain::ModelFieldRecord {
+                id: Uuid::now_v7(),
+                data_model_id: model_id,
+                code: "title".into(),
+                title: "Title".into(),
+                description: None,
+                physical_column_name: "title".into(),
+                external_field_key: None,
+                field_kind: domain::ModelFieldKind::String,
+                is_system: false,
+                is_writable: true,
+                is_required: true,
+                api_required: false,
+                is_unique: false,
+                default_value: None,
+                display_interface: None,
+                display_options: json!({}),
+                relation_target_model_id: None,
+                relation_options: json!({}),
+                sort_order: 0,
+                availability_status: domain::MetadataAvailabilityStatus::Available,
+            },
+            domain::ModelFieldRecord {
+                id: Uuid::now_v7(),
+                data_model_id: model_id,
+                code: "status".into(),
+                title: "Status".into(),
+                description: None,
+                physical_column_name: "status".into(),
+                external_field_key: None,
+                field_kind: domain::ModelFieldKind::String,
+                is_system: false,
+                is_writable: true,
+                is_required: false,
+                api_required: true,
+                is_unique: false,
+                default_value: None,
+                display_interface: None,
+                display_options: json!({}),
+                relation_target_model_id: None,
+                relation_options: json!({}),
+                sort_order: 1,
+                availability_status: domain::MetadataAvailabilityStatus::Available,
+            },
+        ],
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
+        resource: ResourceDescriptor::runtime_model(
+            "api_required_orders",
+            domain::DataModelScopeKind::Workspace,
+        ),
+    }]);
+    let actor = ActorContext::root(Uuid::now_v7(), Uuid::nil(), "root");
+
+    assert_model_error(
+        engine
+            .create_record(RuntimeCreateInput {
+                actor: actor.clone(),
+                model_code: "api_required_orders".into(),
+                payload: json!({ "title": "A-001" }),
+                scope_grant: Some(scope_grant(model_id, Uuid::nil())),
+            })
+            .await
+            .unwrap_err(),
+        RuntimeModelError::missing_create_required_fields("api_required_orders", vec!["status"]),
+    );
+
+    let created = engine
+        .create_record(RuntimeCreateInput {
+            actor,
+            model_code: "api_required_orders".into(),
+            payload: json!({ "status": "draft" }),
+            scope_grant: Some(scope_grant(model_id, Uuid::nil())),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(created["status"], json!("draft"));
+}
+
 fn runtime_engine_for_status(status: domain::DataModelStatus) -> RuntimeEngine {
     let engine = RuntimeEngine::for_tests();
     engine
@@ -657,6 +751,7 @@ fn external_model_metadata(
                 external_field_key: Some("contact_email".into()),
                 field_kind: domain::ModelFieldKind::String,
                 is_required: false,
+                api_required: false,
                 is_system: false,
                 is_unique: false,
                 is_writable: true,
@@ -678,6 +773,7 @@ fn external_model_metadata(
                 external_field_key: Some("created_at_utc".into()),
                 field_kind: domain::ModelFieldKind::String,
                 is_required: false,
+                api_required: false,
                 is_system: false,
                 is_unique: false,
                 is_writable: true,
@@ -699,6 +795,7 @@ fn external_model_metadata(
                 external_field_key: Some("display_name".into()),
                 field_kind: domain::ModelFieldKind::String,
                 is_required: false,
+                api_required: false,
                 is_system: false,
                 is_unique: false,
                 is_writable: true,

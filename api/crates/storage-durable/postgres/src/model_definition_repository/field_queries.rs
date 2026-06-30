@@ -29,6 +29,7 @@ pub(super) async fn insert_model_field(
             is_system,
             is_writable,
             is_required,
+            api_required,
             is_unique,
             default_value,
             display_interface,
@@ -41,7 +42,7 @@ pub(super) async fn insert_model_field(
             created_by,
             updated_by
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, (select scope_id from model_definitions where id = $2), $20, $20)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, (select scope_id from model_definitions where id = $2), $21, $21)
         "#,
     )
     .bind(field.id)
@@ -55,6 +56,7 @@ pub(super) async fn insert_model_field(
     .bind(field.is_system)
     .bind(field.is_writable)
     .bind(field.is_required)
+    .bind(field.api_required)
     .bind(field.is_unique)
     .bind(&field.default_value)
     .bind(&field.display_interface)
@@ -86,6 +88,7 @@ pub(super) async fn load_fields_by_model_id(
             is_system,
             is_writable,
             is_required,
+            api_required,
             is_unique,
             default_value,
             display_interface,
@@ -122,6 +125,7 @@ pub(super) async fn load_fields_for_model(
             is_system,
             is_writable,
             is_required,
+            api_required,
             is_unique,
             default_value,
             display_interface,
@@ -161,6 +165,7 @@ pub(super) async fn load_model_field_for_update(
             is_system,
             is_writable,
             is_required,
+            api_required,
             is_unique,
             default_value,
             display_interface,
@@ -238,6 +243,7 @@ pub(super) async fn insert_model_field_after_failure(
             is_system,
             is_writable,
             is_required,
+            api_required,
             is_unique,
             default_value,
             display_interface,
@@ -250,7 +256,7 @@ pub(super) async fn insert_model_field_after_failure(
             created_by,
             updated_by
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, (select scope_id from model_definitions where id = $2), $20, $20)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, (select scope_id from model_definitions where id = $2), $21, $21)
         on conflict (id) do update
         set availability_status = excluded.availability_status,
             updated_by = excluded.updated_by,
@@ -268,6 +274,7 @@ pub(super) async fn insert_model_field_after_failure(
     .bind(field.is_system)
     .bind(field.is_writable)
     .bind(field.is_required)
+    .bind(field.api_required)
     .bind(field.is_unique)
     .bind(&field.default_value)
     .bind(&field.display_interface)
@@ -309,6 +316,7 @@ fn to_model_field_record(row: sqlx::postgres::PgRow) -> domain::ModelFieldRecord
         is_system: row.get("is_system"),
         is_writable: row.get("is_writable"),
         is_required: row.get("is_required"),
+        api_required: row.get("api_required"),
         is_unique: row.get("is_unique"),
         default_value: row.get("default_value"),
         display_interface: row.get("display_interface"),

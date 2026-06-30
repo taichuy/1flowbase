@@ -127,6 +127,11 @@ pub enum RuntimeModelError {
         model_code: String,
         action: &'static str,
     },
+    #[error("runtime model create missing api required fields: {model_code}:{fields:?}")]
+    MissingCreateRequiredFields {
+        model_code: String,
+        fields: Vec<String>,
+    },
 }
 
 impl RuntimeModelError {
@@ -150,6 +155,17 @@ impl RuntimeModelError {
         Self::RecordActionNotAllowed {
             model_code: model_code.into(),
             action,
+        }
+    }
+
+    pub fn missing_create_required_fields<I, S>(model_code: impl Into<String>, fields: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self::MissingCreateRequiredFields {
+            model_code: model_code.into(),
+            fields: fields.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -196,6 +212,29 @@ fn ensure_runtime_record_action_allowed(
         )
         .into())
     }
+}
+
+fn ensure_create_api_required_fields(metadata: &ModelMetadata, payload: &Value) -> Result<()> {
+    let missing_fields = metadata
+        .fields
+        .iter()
+        .filter(|field| field.api_required && field.is_writable)
+        .filter(|field| {
+            payload
+                .as_object()
+                .is_none_or(|payload| !payload.contains_key(&field.code))
+        })
+        .map(|field| field.code.clone())
+        .collect::<Vec<_>>();
+
+    if missing_fields.is_empty() {
+        return Ok(());
+    }
+
+    Err(
+        RuntimeModelError::missing_create_required_fields(&metadata.model_code, missing_fields)
+            .into(),
+    )
 }
 
 #[derive(Clone)]
@@ -347,6 +386,7 @@ impl RuntimeEngine {
             .default_value_resolver
             .apply(input.actor.user_id, &input.model_code, input.payload)
             .await?;
+        ensure_create_api_required_fields(&metadata, &payload)?;
         self.validator
             .validate(input.actor.user_id, &input.model_code, &payload)
             .await?;
@@ -1136,6 +1176,7 @@ fn test_model_metadata() -> ModelMetadata {
                 is_system: false,
                 is_writable: true,
                 is_required: true,
+                api_required: true,
                 is_unique: false,
                 default_value: None,
                 display_interface: Some("input".into()),
@@ -1157,6 +1198,7 @@ fn test_model_metadata() -> ModelMetadata {
                 is_system: false,
                 is_writable: true,
                 is_required: true,
+                api_required: true,
                 is_unique: false,
                 default_value: None,
                 display_interface: Some("select".into()),

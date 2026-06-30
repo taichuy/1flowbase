@@ -22,6 +22,7 @@ fn registered_system_table_model(model_id: Uuid) -> ModelDefinitionRecord {
             is_system: true,
             is_writable: false,
             is_required: true,
+            api_required: false,
             is_unique: false,
             default_value: None,
             display_interface: None,
@@ -57,6 +58,7 @@ async fn registered_system_table_rejects_system_field_physical_update_and_delete
             title: "Status".into(),
             description: None,
             is_required: false,
+            api_required: None,
             is_unique: false,
             default_value: None,
             display_interface: None,
@@ -113,6 +115,7 @@ async fn registered_system_table_allows_user_added_field_lifecycle() {
             external_field_key: None,
             field_kind: ModelFieldKind::String,
             is_required: false,
+            api_required: None,
             is_unique: false,
             default_value: None,
             display_interface: None,
@@ -131,6 +134,7 @@ async fn registered_system_table_allows_user_added_field_lifecycle() {
             title: "Timezone".into(),
             description: Some("Preferred timezone".into()),
             is_required: true,
+            api_required: Some(true),
             is_unique: false,
             default_value: Some(json!("UTC")),
             display_interface: Some("input".into()),
@@ -140,6 +144,7 @@ async fn registered_system_table_allows_user_added_field_lifecycle() {
         .await
         .unwrap();
     assert!(updated.is_required);
+    assert!(updated.api_required);
     assert_eq!(updated.default_value, Some(json!("UTC")));
     assert_eq!(updated.description.as_deref(), Some("Preferred timezone"));
 
@@ -152,6 +157,41 @@ async fn registered_system_table_allows_user_added_field_lifecycle() {
         })
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn registered_system_table_rejects_system_field_api_required_update() {
+    let actor_user_id = Uuid::now_v7();
+    let actor_workspace_id = Uuid::now_v7();
+    let model_id = Uuid::now_v7();
+    let model = registered_system_table_model(model_id);
+    let field_id = model.fields[0].id;
+    let repository = ScopedModelDefinitionRepository::new(scoped_manager_in_workspace(
+        actor_user_id,
+        actor_workspace_id,
+    ))
+    .with_model(model);
+    let service = ModelDefinitionService::new(repository);
+
+    let error = service
+        .update_field(UpdateModelFieldCommand {
+            actor_user_id,
+            model_id,
+            field_id,
+            title: "Status display".into(),
+            description: None,
+            is_required: true,
+            api_required: Some(true),
+            is_unique: false,
+            default_value: None,
+            display_interface: Some("badge".into()),
+            display_options: json!({ "tone": "neutral" }),
+            relation_options: json!({}),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("api_required"));
 }
 
 #[tokio::test]
@@ -176,6 +216,7 @@ async fn registered_system_table_allows_non_physical_field_metadata_update() {
             title: "Status display".into(),
             description: None,
             is_required: true,
+            api_required: None,
             is_unique: false,
             default_value: None,
             display_interface: Some("badge".into()),

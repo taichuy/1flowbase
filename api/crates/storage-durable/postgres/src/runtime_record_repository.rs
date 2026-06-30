@@ -1130,6 +1130,7 @@ fn to_model_field_record(row: PgRow) -> domain::ModelFieldRecord {
         is_system: row.get("is_system"),
         is_writable: row.get("is_writable"),
         is_required: row.get("is_required"),
+        api_required: row.get("api_required"),
         is_unique: row.get("is_unique"),
         default_value: row.get("default_value"),
         display_interface: row.get("display_interface"),

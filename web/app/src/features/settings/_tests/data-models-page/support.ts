@@ -350,6 +350,7 @@ function settingsDataModelField(
     is_system: false,
     is_writable: true,
     is_required: false,
+    api_required: false,
     is_unique: false,
     default_value: null,
     display_interface: 'input',
@@ -414,7 +415,16 @@ export const contactsModel = settingsDataModel(
       description: 'Primary contact email',
       external_field_key: 'email',
       is_required: true,
+      api_required: true,
       is_unique: true
+    }),
+    settingsDataModelField('field-2', 'first_name', 'First name', 'string', {
+      external_field_key: 'first_name'
+    }),
+    systemSettingsDataModelField('field-remote-id', 'remote_id', 'Remote ID', 'string', {
+      external_field_key: 'remote_id',
+      is_system: true,
+      is_writable: false
     })
   ],
   {

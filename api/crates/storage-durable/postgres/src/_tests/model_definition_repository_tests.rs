@@ -1009,6 +1009,7 @@ async fn model_definition_repository_deletes_external_source_field_without_local
             is_writable: true,
             apply_physical_schema: true,
             is_required: true,
+            api_required: true,
             is_unique: true,
             default_value: None,
             display_interface: Some("input".into()),

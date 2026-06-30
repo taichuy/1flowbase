@@ -46,6 +46,7 @@ fn test_data_model_field(
         is_system: false,
         is_writable: true,
         is_required: false,
+        api_required: false,
         is_unique: false,
         default_value: None,
         display_interface: None,

@@ -299,33 +299,105 @@ describe('Settings data models page', () => {
       expect(
         screen.getByText(i18nText('settings', 'auto.runtime'))
       ).toBeInTheDocument();
-      const fieldValidationGroups = await within(editorDialog).findByTestId(
-        'data-model-api-field-validation-groups'
+      const apiFieldsTable = await within(editorDialog).findByTestId(
+        'data-model-api-fields-table'
       );
+      expect(within(apiFieldsTable).getByText('暴露字段')).toBeInTheDocument();
+      const emailRow = within(apiFieldsTable)
+        .getAllByRole('row')
+        .find((row) => within(row).queryByText('Email'));
+      expect(emailRow).toBeInstanceOf(HTMLElement);
       expect(
-        within(fieldValidationGroups).getByText('请求创建必传字段')
+        within(emailRow as HTMLElement).getByText('email')
       ).toBeInTheDocument();
       expect(
-        within(fieldValidationGroups).getByText('可选输入字段')
+        within(emailRow as HTMLElement).getByText('string')
+      ).toBeInTheDocument();
+      const emailRequiredSwitch = within(emailRow as HTMLElement).getByRole(
+        'switch',
+        {
+          name: 'Email API 创建必填'
+        }
+      );
+      expect(emailRequiredSwitch).toBeChecked();
+      fireEvent.click(emailRequiredSwitch);
+      await waitFor(() =>
+        expect(dataModelsApi.updateSettingsDataModelField).toHaveBeenCalledWith(
+          'model-1',
+          'field-1',
+          expect.objectContaining({
+            title: 'Email',
+            description: 'Primary contact email',
+            is_required: true,
+            api_required: false,
+            is_unique: true,
+            default_value: null,
+            display_interface: 'input',
+            display_options: {},
+            relation_options: {}
+          }),
+          'csrf-123'
+        )
+      );
+      const remoteIdRow = within(apiFieldsTable)
+        .getAllByRole('row')
+        .find((row) => within(row).queryByText('Remote ID'));
+      expect(remoteIdRow).toBeInstanceOf(HTMLElement);
+      expect(
+        within(remoteIdRow as HTMLElement).getByText('系统生成/只读')
       ).toBeInTheDocument();
       expect(
-        within(fieldValidationGroups).getByText('系统生成/只读字段')
-      ).toBeInTheDocument();
-      expect(
-        within(fieldValidationGroups).getByText('Email')
-      ).toBeInTheDocument();
-      expect(
-        within(fieldValidationGroups).getByText('First name')
-      ).toBeInTheDocument();
-      expect(
-        within(fieldValidationGroups).getByText('Remote ID')
-      ).toBeInTheDocument();
+        within(remoteIdRow as HTMLElement).queryByRole('switch', {
+          name: 'Remote ID API 创建必填'
+        })
+      ).not.toBeInTheDocument();
       expect(
         dataModelsApi.fetchSettingsDataModelOpenApiDocument
       ).toHaveBeenCalledWith('model-1');
       expect(
         screen.queryByRole('combobox', {
           name: i18nText('settings', 'auto.api_exposed_ready')
+        })
+      ).not.toBeInTheDocument();
+    },
+    SLOW_SETTINGS_PAGE_TEST_TIMEOUT
+  );
+
+  test(
+    'keeps API status visible when the Data Model OpenAPI contract fails to load',
+    async () => {
+      dataModelsApi.fetchSettingsDataModelOpenApiDocument.mockRejectedValue(
+        new Error('openapi unavailable')
+      );
+      renderApp('/settings/data-models?source=source-1');
+
+      const editorDialog = await openContactsDataModelEditor();
+      fireEvent.click(screen.getByRole('tab', { name: 'API' }));
+
+      expect(
+        await screen.findByText(i18nText('settings', 'auto.api_exposed_ready'))
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByText(
+          i18nText('settings', 'auto.openapi_contract_load_failed')
+        )
+      ).toBeInTheDocument();
+
+      const apiFieldsTable = await within(editorDialog).findByTestId(
+        'data-model-api-fields-table'
+      );
+      const emailRow = within(apiFieldsTable)
+        .getAllByRole('row')
+        .find((row) => within(row).queryByText('Email'));
+      expect(emailRow).toBeInstanceOf(HTMLElement);
+      expect(
+        within(emailRow as HTMLElement).getAllByText(
+          i18nText('settings', 'auto.api_contract_unavailable')
+        )
+      ).toHaveLength(3);
+      expect(
+        within(emailRow as HTMLElement).queryByRole('switch', {
+          name: 'Email API 创建必填'
         })
       ).not.toBeInTheDocument();
     },

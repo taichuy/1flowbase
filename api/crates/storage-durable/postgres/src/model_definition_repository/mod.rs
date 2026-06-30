@@ -102,6 +102,7 @@ fn platform_runtime_field_records(model_id: Uuid) -> Vec<domain::ModelFieldRecor
             is_system: true,
             is_writable: false,
             is_required: true,
+            api_required: false,
             is_unique: code == "id",
             default_value: None,
             display_interface: None,
@@ -652,6 +653,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             is_system: input.is_system,
             is_writable: input.is_writable,
             is_required: input.is_required,
+            api_required: input.api_required,
             is_unique: input.is_unique,
             default_value: input.default_value.clone(),
             display_interface: input.display_interface.clone(),
@@ -760,6 +762,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             title: input.title.clone(),
             description: input.description.clone(),
             is_required: input.is_required,
+            api_required: input.api_required,
             is_unique: input.is_unique,
             default_value: input.default_value.clone(),
             display_interface: input.display_interface.clone(),
@@ -778,12 +781,13 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                     title = $3,
                     description = $4,
                     is_required = $5,
-                    is_unique = $6,
-                    default_value = $7,
-                    display_interface = $8,
-                    display_options = $9,
-                    relation_options = $10,
-                    updated_by = $11,
+                    api_required = $6,
+                    is_unique = $7,
+                    default_value = $8,
+                    display_interface = $9,
+                    display_options = $10,
+                    relation_options = $11,
+                    updated_by = $12,
                     updated_at = now()
                 where id = $1
                   and data_model_id = $2
@@ -794,6 +798,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             .bind(&updated.title)
             .bind(&updated.description)
             .bind(updated.is_required)
+            .bind(updated.api_required)
             .bind(updated.is_unique)
             .bind(&updated.default_value)
             .bind(&updated.display_interface)
@@ -863,15 +868,16 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 is_system = $8,
                 is_writable = $9,
                 is_required = $10,
-                is_unique = $11,
-                default_value = $12,
-                display_interface = $13,
-                display_options = $14,
-                relation_target_model_id = $15,
-                relation_options = $16,
-                sort_order = $17,
-                availability_status = $18,
-                updated_by = $19,
+                api_required = $11,
+                is_unique = $12,
+                default_value = $13,
+                display_interface = $14,
+                display_options = $15,
+                relation_target_model_id = $16,
+                relation_options = $17,
+                sort_order = $18,
+                availability_status = $19,
+                updated_by = $20,
                 updated_at = now()
             where id = $1
               and data_model_id = $2
@@ -887,6 +893,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 is_system,
                 is_writable,
                 is_required,
+                api_required,
                 is_unique,
                 default_value,
                 display_interface,
@@ -907,6 +914,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         .bind(input.is_system)
         .bind(input.is_writable)
         .bind(input.is_required)
+        .bind(input.api_required)
         .bind(input.is_unique)
         .bind(&input.default_value)
         .bind(&input.display_interface)
@@ -934,6 +942,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             is_system: row.get("is_system"),
             is_writable: row.get("is_writable"),
             is_required: row.get("is_required"),
+            api_required: row.get("api_required"),
             is_unique: row.get("is_unique"),
             default_value: row.get("default_value"),
             display_interface: row.get("display_interface"),

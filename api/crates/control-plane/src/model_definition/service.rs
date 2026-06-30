@@ -107,6 +107,18 @@ fn field_changes_physical_metadata(
         || field.default_value != command.default_value
 }
 
+fn ensure_api_required_allowed(
+    is_system: bool,
+    is_writable: bool,
+    api_required: bool,
+) -> Result<(), ControlPlaneError> {
+    if api_required && (is_system || !is_writable) {
+        return Err(ControlPlaneError::InvalidInput("api_required"));
+    }
+
+    Ok(())
+}
+
 fn ensure_field_deletable(
     model: &domain::ModelDefinitionRecord,
     field_id: Uuid,
@@ -536,6 +548,8 @@ where
         ensure_field_can_be_added(&model)?;
         let external_field_key =
             normalize_external_field_key(model.source_kind, command.external_field_key.as_deref())?;
+        let api_required = command.api_required.unwrap_or(command.is_required);
+        ensure_api_required_allowed(false, true, api_required)?;
 
         let field = self
             .repository
@@ -552,6 +566,7 @@ where
                 is_writable: true,
                 apply_physical_schema: true,
                 is_required: command.is_required,
+                api_required,
                 is_unique: command.is_unique,
                 default_value: command.default_value,
                 display_interface: command.display_interface,
@@ -593,6 +608,17 @@ where
         if !is_builtin_data_model {
             ensure_protected_model_override_authorized(&actor, &model)?;
         }
+        let existing_field = model
+            .fields
+            .iter()
+            .find(|field| field.id == command.field_id)
+            .ok_or(ControlPlaneError::NotFound("model_field"))?;
+        let api_required = command.api_required.unwrap_or(existing_field.api_required);
+        ensure_api_required_allowed(
+            existing_field.is_system,
+            existing_field.is_writable,
+            api_required,
+        )?;
 
         let field = self
             .repository
@@ -603,6 +629,7 @@ where
                 title: command.title,
                 description: command.description,
                 is_required: command.is_required,
+                api_required,
                 is_unique: command.is_unique,
                 default_value: command.default_value,
                 display_interface: command.display_interface,

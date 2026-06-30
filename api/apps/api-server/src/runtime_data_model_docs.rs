@@ -571,7 +571,7 @@ fn record_write_schema(model: &domain::ModelDefinitionRecord, include_required: 
             continue;
         }
         properties.insert(field.code.clone(), field_schema(field));
-        if include_required && field.is_required {
+        if include_required && field.api_required {
             required.push(Value::String(field.code.clone()));
         }
     }

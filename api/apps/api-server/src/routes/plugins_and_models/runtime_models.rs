@@ -52,6 +52,12 @@ fn map_runtime_error(error: anyhow::Error) -> ApiError {
             runtime_core::runtime_engine::RuntimeModelError::RecordActionNotAllowed { .. } => {
                 "runtime_model_record_action_not_allowed"
             }
+            runtime_core::runtime_engine::RuntimeModelError::MissingCreateRequiredFields {
+                ..
+            } => {
+                return control_plane::errors::ControlPlaneError::InvalidInput("api_required")
+                    .into();
+            }
         };
         return control_plane::errors::ControlPlaneError::Conflict(code).into();
     }
