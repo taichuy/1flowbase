@@ -1,286 +1,17 @@
-alter table application_run_log_summaries
-    add column if not exists scope_id uuid;
-
-update application_run_log_summaries summaries
-set scope_id = applications.workspace_id
-from applications
-where summaries.application_id = applications.id
-  and summaries.scope_id is null;
-
-alter table application_run_log_summaries
-    alter column scope_id set not null;
-
-alter table application_run_log_summaries
-    drop constraint if exists application_run_log_summaries_status_check;
-
-alter table application_run_log_summaries
-    add constraint application_run_log_summaries_status_check
-    check (status in (
-        'queued',
-        'running',
-        'waiting_callback',
-        'waiting_human',
-        'paused',
-        'succeeded',
-        'failed',
-        'cancelled'
-    ));
-
-alter table application_run_log_summaries
-    add column if not exists id uuid generated always as (flow_run_id) stored;
-
-create index if not exists application_run_log_summaries_scope_created_idx
-    on application_run_log_summaries (scope_id, created_at desc, flow_run_id desc);
-
-create index if not exists application_run_log_summaries_scope_application_idx
-    on application_run_log_summaries (scope_id, application_id, created_at desc, flow_run_id desc);
-
-alter table node_runs
-    add column if not exists scope_id uuid;
-
-update node_runs
-set scope_id = applications.workspace_id
-from flow_runs
-join applications on applications.id = flow_runs.application_id
-where node_runs.flow_run_id = flow_runs.id
-  and node_runs.scope_id is null;
-
-alter table node_runs
-    alter column scope_id set not null;
-
-alter table node_runs
-    add column if not exists node_run_id uuid generated always as (id) stored;
-
-alter table node_runs
-    add column if not exists created_at timestamptz;
-
-update node_runs
-set created_at = started_at
-where created_at is null;
-
-alter table node_runs
-    alter column created_at set default now(),
-    alter column created_at set not null;
-
-create index if not exists node_runs_scope_flow_created_idx
-    on node_runs (scope_id, flow_run_id, created_at desc, id desc);
-
-create index if not exists node_runs_scope_node_created_idx
-    on node_runs (scope_id, node_run_id, created_at desc, id desc);
-
-alter table flow_run_events
-    add column if not exists scope_id uuid;
-
-update flow_run_events
-set scope_id = applications.workspace_id
-from flow_runs
-join applications on applications.id = flow_runs.application_id
-where flow_run_events.flow_run_id = flow_runs.id
-  and flow_run_events.scope_id is null;
-
-alter table flow_run_events
-    alter column scope_id set not null;
-
-create index if not exists flow_run_events_scope_flow_sequence_idx
-    on flow_run_events (scope_id, flow_run_id, sequence asc, id asc);
-
-create index if not exists flow_run_events_scope_node_sequence_idx
-    on flow_run_events (scope_id, node_run_id, sequence asc, id asc);
-
-alter table flow_run_checkpoints
-    add column if not exists scope_id uuid;
-
-update flow_run_checkpoints
-set scope_id = applications.workspace_id
-from flow_runs
-join applications on applications.id = flow_runs.application_id
-where flow_run_checkpoints.flow_run_id = flow_runs.id
-  and flow_run_checkpoints.scope_id is null;
-
-alter table flow_run_checkpoints
-    alter column scope_id set not null;
-
-create index if not exists flow_run_checkpoints_scope_flow_created_idx
-    on flow_run_checkpoints (scope_id, flow_run_id, created_at desc, id desc);
-
-create index if not exists flow_run_checkpoints_scope_node_created_idx
-    on flow_run_checkpoints (scope_id, node_run_id, created_at desc, id desc);
-
-alter table flow_run_callback_tasks
-    add column if not exists scope_id uuid;
-
-update flow_run_callback_tasks
-set scope_id = applications.workspace_id
-from flow_runs
-join applications on applications.id = flow_runs.application_id
-where flow_run_callback_tasks.flow_run_id = flow_runs.id
-  and flow_run_callback_tasks.scope_id is null;
-
-alter table flow_run_callback_tasks
-    alter column scope_id set not null;
-
-create index if not exists flow_run_callback_tasks_scope_flow_created_idx
-    on flow_run_callback_tasks (scope_id, flow_run_id, created_at desc, id desc);
-
-create index if not exists flow_run_callback_tasks_scope_node_created_idx
-    on flow_run_callback_tasks (scope_id, node_run_id, created_at desc, id desc);
-
-create table if not exists application_conversations (
-    id uuid primary key,
-    scope_id uuid not null references workspaces(id) on delete cascade,
-    application_id uuid not null references applications(id) on delete cascade,
-    external_conversation_id text not null,
-    external_user text,
-    api_key_id uuid references api_keys(id) on delete set null,
-    title text,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-    unique (application_id, api_key_id, external_user, external_conversation_id)
-);
-
-create index if not exists application_conversations_scope_created_idx
-    on application_conversations (scope_id, created_at desc, id desc);
-
-create index if not exists application_conversations_application_idx
-    on application_conversations (application_id, created_at desc, id desc);
-
-create index if not exists application_conversations_external_id_idx
-    on application_conversations (external_conversation_id, created_at desc, id desc);
-
-create index if not exists application_conversations_external_user_idx
-    on application_conversations (external_user, created_at desc, id desc);
-
-create index if not exists application_conversations_api_key_idx
-    on application_conversations (api_key_id, created_at desc, id desc);
-
-insert into application_conversations (
-    id,
-    scope_id,
-    application_id,
-    api_key_id,
-    external_user,
-    external_conversation_id,
-    created_at,
-    updated_at
-)
-select
-    legacy.id,
-    applications.workspace_id,
-    legacy.application_id,
-    legacy.api_key_id,
-    legacy.external_user,
-    legacy.external_conversation_id,
-    legacy.created_at,
-    legacy.updated_at
-from application_public_conversations legacy
-join applications on applications.id = legacy.application_id
-on conflict (application_id, api_key_id, external_user, external_conversation_id)
-do update set updated_at = excluded.updated_at;
-
-create table if not exists application_conversation_messages (
-    id uuid primary key,
-    scope_id uuid not null references workspaces(id) on delete cascade,
-    conversation_id uuid not null references application_conversations(id) on delete cascade,
-    application_id uuid not null references applications(id) on delete cascade,
-    flow_run_id uuid references flow_runs(id) on delete set null,
-    node_run_id uuid references node_runs(id) on delete set null,
-    role text not null,
-    content text not null,
-    sequence bigint not null default 0,
-    status text not null default 'succeeded',
-    started_at timestamptz,
-    finished_at timestamptz,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now()
-);
-
-create unique index if not exists application_conversation_messages_flow_sequence_unique_idx
-    on application_conversation_messages (conversation_id, flow_run_id, sequence);
-
-create index if not exists application_conversation_messages_conversation_sequence_idx
-    on application_conversation_messages (conversation_id, sequence asc, created_at asc, id asc);
-
-create index if not exists application_conversation_messages_scope_created_idx
-    on application_conversation_messages (scope_id, created_at desc, id desc);
-
-create index if not exists application_conversation_messages_flow_idx
-    on application_conversation_messages (flow_run_id, created_at asc, id asc);
-
-create index if not exists application_conversation_messages_node_idx
-    on application_conversation_messages (node_run_id, created_at asc, id asc);
-
-create index if not exists application_conversation_messages_role_idx
-    on application_conversation_messages (role, created_at asc, id asc);
-
-create temporary table builtin_runtime_read_models (
-    id uuid primary key,
-    code text not null,
-    title text not null,
+create temporary table runtime_read_model_contracts (
+    code text primary key,
     physical_table_name text not null
 ) on commit drop;
 
-insert into builtin_runtime_read_models (id, code, title, physical_table_name)
+insert into runtime_read_model_contracts (code, physical_table_name)
 values
-    ('00000000-0532-4000-8000-000000000001', 'application_run_log_summaries', 'Application run log summaries', 'application_run_log_summaries'),
-    ('00000000-0533-4000-8000-000000000001', 'application_conversations', 'Application conversations', 'application_conversations'),
-    ('00000000-0533-4000-8000-000000000002', 'application_conversation_messages', 'Application conversation messages', 'application_conversation_messages'),
-    ('00000000-0534-4000-8000-000000000001', 'node_runs', 'Node runs', 'node_runs'),
-    ('00000000-0534-4000-8000-000000000002', 'flow_run_events', 'Flow run events', 'flow_run_events'),
-    ('00000000-0534-4000-8000-000000000003', 'flow_run_checkpoints', 'Flow run checkpoints', 'flow_run_checkpoints'),
-    ('00000000-0534-4000-8000-000000000004', 'flow_run_callback_tasks', 'Flow run callback tasks', 'flow_run_callback_tasks');
-
-insert into model_definitions (
-    id,
-    scope_kind,
-    scope_id,
-    data_source_instance_id,
-    source_kind,
-    external_resource_key,
-    external_table_id,
-    external_capability_snapshot,
-    code,
-    title,
-    physical_table_name,
-    acl_namespace,
-    audit_namespace,
-    availability_status,
-    status,
-    api_exposure_status,
-    owner_kind,
-    owner_id,
-    is_protected,
-    created_by,
-    updated_by
-)
-select
-    models.id,
-    'system',
-    '00000000-0000-0000-0000-000000000000'::uuid,
-    null,
-    'main_source',
-    null,
-    null,
-    null,
-    models.code,
-    models.title,
-    models.physical_table_name,
-    'state_model.' || models.code,
-    'audit.state_model.' || models.code,
-    'available',
-    'published',
-    'published_not_exposed',
-    'core',
-    null,
-    true,
-    null,
-    null
-from builtin_runtime_read_models models
-where not exists (
-    select 1
-    from model_definitions existing
-    where existing.data_source_instance_id is null
-      and existing.code = models.code
-);
+    ('application_run_log_summaries', 'application_run_log_summaries'),
+    ('application_conversations', 'application_conversations'),
+    ('application_conversation_messages', 'application_conversation_messages'),
+    ('node_runs', 'node_runs'),
+    ('flow_run_events', 'flow_run_events'),
+    ('flow_run_checkpoints', 'flow_run_checkpoints'),
+    ('flow_run_callback_tasks', 'flow_run_callback_tasks');
 
 update model_definitions definitions
 set
@@ -290,22 +21,20 @@ set
     external_resource_key = null,
     external_table_id = null,
     external_capability_snapshot = null,
-    title = models.title,
-    physical_table_name = models.physical_table_name,
-    acl_namespace = 'state_model.' || models.code,
-    audit_namespace = 'audit.state_model.' || models.code,
+    physical_table_name = contracts.physical_table_name,
+    acl_namespace = 'state_model.' || contracts.code,
+    audit_namespace = 'audit.state_model.' || contracts.code,
     availability_status = 'available',
     status = 'published',
-    api_exposure_status = 'published_not_exposed',
     owner_kind = 'core',
     owner_id = null,
     is_protected = true,
     updated_at = now()
-from builtin_runtime_read_models models
+from runtime_read_model_contracts contracts
 where definitions.data_source_instance_id is null
-  and definitions.code = models.code;
+  and definitions.code = contracts.code;
 
-create temporary table builtin_runtime_read_model_fields (
+create temporary table runtime_read_model_field_contracts (
     model_code text not null,
     field_id uuid not null,
     code text not null,
@@ -314,10 +43,11 @@ create temporary table builtin_runtime_read_model_fields (
     field_kind text not null,
     is_required boolean not null,
     is_unique boolean not null,
-    sort_order integer not null
+    sort_order integer not null,
+    primary key (model_code, code)
 ) on commit drop;
 
-insert into builtin_runtime_read_model_fields (
+insert into runtime_read_model_field_contracts (
     model_code,
     field_id,
     code,
@@ -347,12 +77,17 @@ values
     ('application_run_log_summaries', '00000000-1532-4000-8000-000000000016', 'compatibility_mode', 'Compatibility mode', 'compatibility_mode', 'string', false, false, 15),
     ('application_run_log_summaries', '00000000-1532-4000-8000-000000000017', 'idempotency_key', 'Idempotency key', 'idempotency_key', 'string', false, false, 16),
     ('application_run_log_summaries', '00000000-1532-4000-8000-000000000018', 'total_tokens', 'Total tokens', 'total_tokens', 'number', false, false, 17),
-    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000019', 'unique_node_count', 'Unique node count', 'unique_node_count', 'number', true, false, 18),
-    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000020', 'tool_callback_count', 'Tool callback count', 'tool_callback_count', 'number', true, false, 19),
-    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000021', 'started_at', 'Started at', 'started_at', 'datetime', true, false, 20),
-    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000022', 'finished_at', 'Finished at', 'finished_at', 'datetime', false, false, 21),
-    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000023', 'created_at', 'Created at', 'created_at', 'datetime', true, false, 22),
-    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000024', 'updated_at', 'Updated at', 'updated_at', 'datetime', true, false, 23),
+    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000025', 'input_tokens', 'Input tokens', 'input_tokens', 'number', false, false, 18),
+    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000026', 'output_tokens', 'Output tokens', 'output_tokens', 'number', false, false, 19),
+    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000027', 'input_cache_hit_tokens', 'Input cache hit tokens', 'input_cache_hit_tokens', 'number', false, false, 20),
+    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000028', 'input_cache_hit_rate', 'Input cache hit rate', 'input_cache_hit_rate', 'number', false, false, 21),
+    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000019', 'unique_node_count', 'Unique node count', 'unique_node_count', 'number', true, false, 22),
+    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000020', 'tool_callback_count', 'Tool callback count', 'tool_callback_count', 'number', true, false, 23),
+    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000021', 'started_at', 'Started at', 'started_at', 'datetime', true, false, 24),
+    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000022', 'finished_at', 'Finished at', 'finished_at', 'datetime', false, false, 25),
+    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000023', 'created_at', 'Created at', 'created_at', 'datetime', true, false, 26),
+    ('application_run_log_summaries', '00000000-1532-4000-8000-000000000024', 'updated_at', 'Updated at', 'updated_at', 'datetime', true, false, 27),
+
     ('application_conversations', '00000000-1533-4000-8000-000000000001', 'id', 'ID', 'id', 'string', true, true, 0),
     ('application_conversations', '00000000-1533-4000-8000-000000000002', 'scope_id', 'Scope ID', 'scope_id', 'many_to_one', true, false, 1),
     ('application_conversations', '00000000-1533-4000-8000-000000000003', 'application_id', 'Application ID', 'application_id', 'many_to_one', true, false, 2),
@@ -362,6 +97,7 @@ values
     ('application_conversations', '00000000-1533-4000-8000-000000000007', 'title', 'Title', 'title', 'string', false, false, 6),
     ('application_conversations', '00000000-1533-4000-8000-000000000008', 'created_at', 'Created at', 'created_at', 'datetime', true, false, 7),
     ('application_conversations', '00000000-1533-4000-8000-000000000009', 'updated_at', 'Updated at', 'updated_at', 'datetime', true, false, 8),
+
     ('application_conversation_messages', '00000000-1533-4000-8000-000000000101', 'id', 'ID', 'id', 'string', true, true, 0),
     ('application_conversation_messages', '00000000-1533-4000-8000-000000000102', 'scope_id', 'Scope ID', 'scope_id', 'many_to_one', true, false, 1),
     ('application_conversation_messages', '00000000-1533-4000-8000-000000000103', 'conversation_id', 'Conversation ID', 'conversation_id', 'many_to_one', true, false, 2),
@@ -376,6 +112,7 @@ values
     ('application_conversation_messages', '00000000-1533-4000-8000-000000000112', 'finished_at', 'Finished at', 'finished_at', 'datetime', false, false, 11),
     ('application_conversation_messages', '00000000-1533-4000-8000-000000000113', 'created_at', 'Created at', 'created_at', 'datetime', true, false, 12),
     ('application_conversation_messages', '00000000-1533-4000-8000-000000000114', 'updated_at', 'Updated at', 'updated_at', 'datetime', true, false, 13),
+
     ('node_runs', '00000000-1534-4000-8000-000000000001', 'id', 'ID', 'id', 'string', true, true, 0),
     ('node_runs', '00000000-1534-4000-8000-000000000002', 'scope_id', 'Scope ID', 'scope_id', 'many_to_one', true, false, 1),
     ('node_runs', '00000000-1534-4000-8000-000000000003', 'flow_run_id', 'Flow run ID', 'flow_run_id', 'many_to_one', true, false, 2),
@@ -387,6 +124,7 @@ values
     ('node_runs', '00000000-1534-4000-8000-000000000009', 'started_at', 'Started at', 'started_at', 'datetime', true, false, 8),
     ('node_runs', '00000000-1534-4000-8000-000000000010', 'finished_at', 'Finished at', 'finished_at', 'datetime', false, false, 9),
     ('node_runs', '00000000-1534-4000-8000-000000000011', 'created_at', 'Created at', 'created_at', 'datetime', true, false, 10),
+
     ('flow_run_events', '00000000-1534-4000-8000-000000000101', 'id', 'ID', 'id', 'string', true, true, 0),
     ('flow_run_events', '00000000-1534-4000-8000-000000000102', 'scope_id', 'Scope ID', 'scope_id', 'many_to_one', true, false, 1),
     ('flow_run_events', '00000000-1534-4000-8000-000000000103', 'flow_run_id', 'Flow run ID', 'flow_run_id', 'many_to_one', true, false, 2),
@@ -394,6 +132,7 @@ values
     ('flow_run_events', '00000000-1534-4000-8000-000000000105', 'sequence', 'Sequence', 'sequence', 'number', true, false, 4),
     ('flow_run_events', '00000000-1534-4000-8000-000000000106', 'event_type', 'Event type', 'event_type', 'string', true, false, 5),
     ('flow_run_events', '00000000-1534-4000-8000-000000000107', 'created_at', 'Created at', 'created_at', 'datetime', true, false, 6),
+
     ('flow_run_checkpoints', '00000000-1534-4000-8000-000000000201', 'id', 'ID', 'id', 'string', true, true, 0),
     ('flow_run_checkpoints', '00000000-1534-4000-8000-000000000202', 'scope_id', 'Scope ID', 'scope_id', 'many_to_one', true, false, 1),
     ('flow_run_checkpoints', '00000000-1534-4000-8000-000000000203', 'flow_run_id', 'Flow run ID', 'flow_run_id', 'many_to_one', true, false, 2),
@@ -401,6 +140,7 @@ values
     ('flow_run_checkpoints', '00000000-1534-4000-8000-000000000205', 'status', 'Status', 'status', 'string', true, false, 4),
     ('flow_run_checkpoints', '00000000-1534-4000-8000-000000000206', 'reason', 'Reason', 'reason', 'text', true, false, 5),
     ('flow_run_checkpoints', '00000000-1534-4000-8000-000000000207', 'created_at', 'Created at', 'created_at', 'datetime', true, false, 6),
+
     ('flow_run_callback_tasks', '00000000-1534-4000-8000-000000000301', 'id', 'ID', 'id', 'string', true, true, 0),
     ('flow_run_callback_tasks', '00000000-1534-4000-8000-000000000302', 'scope_id', 'Scope ID', 'scope_id', 'many_to_one', true, false, 1),
     ('flow_run_callback_tasks', '00000000-1534-4000-8000-000000000303', 'flow_run_id', 'Flow run ID', 'flow_run_id', 'many_to_one', true, false, 2),
@@ -413,6 +153,7 @@ values
 insert into model_fields (
     id,
     data_model_id,
+    scope_id,
     code,
     title,
     physical_column_name,
@@ -435,6 +176,7 @@ insert into model_fields (
 select
     fields.field_id,
     definitions.id,
+    definitions.scope_id,
     fields.code,
     fields.title,
     fields.physical_column_name,
@@ -453,7 +195,7 @@ select
     'available',
     null,
     null
-from builtin_runtime_read_model_fields fields
+from runtime_read_model_field_contracts fields
 join model_definitions definitions
   on definitions.data_source_instance_id is null
  and definitions.code = fields.model_code
@@ -466,7 +208,7 @@ where not exists (
 
 update model_fields target
 set
-    title = fields.title,
+    scope_id = definitions.scope_id,
     physical_column_name = fields.physical_column_name,
     external_field_key = null,
     field_kind = fields.field_kind,
@@ -475,14 +217,12 @@ set
     is_required = fields.is_required,
     is_unique = fields.is_unique,
     default_value = null,
-    display_interface = null,
-    display_options = '{}'::jsonb,
     relation_target_model_id = null,
     relation_options = '{}'::jsonb,
     sort_order = fields.sort_order,
     availability_status = 'available',
     updated_at = now()
-from builtin_runtime_read_model_fields fields
+from runtime_read_model_field_contracts fields
 join model_definitions definitions
   on definitions.data_source_instance_id is null
  and definitions.code = fields.model_code
@@ -496,7 +236,7 @@ with model_scope_grants as (
         definitions.id as data_model_id,
         'system_all'::text as permission_profile
     from model_definitions definitions
-    join builtin_runtime_read_models models on models.code = definitions.code
+    join runtime_read_model_contracts contracts on contracts.code = definitions.code
     where definitions.data_source_instance_id is null
     union all
     select
@@ -506,7 +246,7 @@ with model_scope_grants as (
         'scope_all'
     from workspaces
     cross join model_definitions definitions
-    join builtin_runtime_read_models models on models.code = definitions.code
+    join runtime_read_model_contracts contracts on contracts.code = definitions.code
     where definitions.data_source_instance_id is null
 ), hashed_model_scope_grants as (
     select
@@ -542,7 +282,4 @@ select
     null
 from hashed_model_scope_grants
 on conflict (scope_kind, scope_id, data_model_id)
-do update set
-    enabled = true,
-    permission_profile = excluded.permission_profile,
-    updated_at = now();
+do nothing;

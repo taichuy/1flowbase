@@ -1,7 +1,8 @@
 use super::*;
 
-const RUNTIME_READ_MODELS_MIGRATION_SQL: &str =
-    include_str!("../../../migrations/20260529123000_register_runtime_builtin_read_models.sql");
+const RUNTIME_READ_MODEL_CONTRACT_METADATA_SQL: &str = include_str!(
+    "../../../migrations/20260630103000_preserve_runtime_read_model_contract_metadata.sql"
+);
 
 #[tokio::test]
 async fn runtime_record_repository_registers_builtin_runtime_read_models() {
@@ -70,7 +71,7 @@ async fn runtime_record_repository_registers_builtin_runtime_read_models() {
 }
 
 #[tokio::test]
-async fn runtime_read_model_migration_preserves_existing_scope_grant_metadata() {
+async fn runtime_read_model_contract_migration_preserves_existing_scope_grant_metadata() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -97,7 +98,7 @@ async fn runtime_read_model_migration_preserves_existing_scope_grant_metadata() 
     .await
     .unwrap();
 
-    sqlx::raw_sql(RUNTIME_READ_MODELS_MIGRATION_SQL)
+    sqlx::raw_sql(RUNTIME_READ_MODEL_CONTRACT_METADATA_SQL)
         .execute(store.pool())
         .await
         .unwrap();
@@ -119,6 +120,100 @@ async fn runtime_read_model_migration_preserves_existing_scope_grant_metadata() 
 
     assert!(!enabled);
     assert_eq!(permission_profile, "owner");
+}
+
+#[tokio::test]
+async fn runtime_read_model_contract_migration_preserves_presentation_metadata() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+
+    let model_id: Uuid = sqlx::query_scalar(
+        "select id from model_definitions where code = 'application_run_log_summaries'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    let field_id: Uuid = sqlx::query_scalar(
+        "select id from model_fields where data_model_id = $1 and code = 'status'",
+    )
+    .bind(model_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        update model_definitions
+        set title = 'Custom run logs',
+            api_exposure_status = 'draft',
+            physical_table_name = 'broken_runtime_table'
+        where id = $1
+        "#,
+    )
+    .bind(model_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        update model_fields
+        set title = 'Custom status',
+            physical_column_name = 'broken_status',
+            is_required = false,
+            display_interface = 'badge',
+            display_options = '{"tone":"info"}'::jsonb
+        where id = $1
+        "#,
+    )
+    .bind(field_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    sqlx::raw_sql(RUNTIME_READ_MODEL_CONTRACT_METADATA_SQL)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    let (title, api_exposure_status, physical_table_name): (String, String, String) =
+        sqlx::query_as(
+            r#"
+            select title, api_exposure_status, physical_table_name
+            from model_definitions
+            where id = $1
+            "#,
+        )
+        .bind(model_id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(title, "Custom run logs");
+    assert_eq!(api_exposure_status, "draft");
+    assert_eq!(physical_table_name, "application_run_log_summaries");
+
+    let (field_title, physical_column_name, is_required, display_interface, display_options): (
+        String,
+        String,
+        bool,
+        Option<String>,
+        serde_json::Value,
+    ) = sqlx::query_as(
+        r#"
+        select title, physical_column_name, is_required, display_interface, display_options
+        from model_fields
+        where id = $1
+        "#,
+    )
+    .bind(field_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(field_title, "Custom status");
+    assert_eq!(physical_column_name, "status");
+    assert!(is_required);
+    assert_eq!(display_interface.as_deref(), Some("badge"));
+    assert_eq!(display_options, json!({ "tone": "info" }));
 }
 
 #[tokio::test]

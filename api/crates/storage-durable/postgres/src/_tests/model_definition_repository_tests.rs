@@ -10,6 +10,10 @@ use sqlx::PgPool;
 use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
+const BUILTIN_SYSTEM_TABLE_CONTRACT_METADATA_SQL: &str = include_str!(
+    "../../migrations/20260630104000_preserve_builtin_system_table_contract_metadata.sql"
+);
+
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
@@ -293,6 +297,179 @@ async fn model_definition_repository_binds_core_system_models_to_registered_tabl
         assert!(!created.physical_table_name.starts_with("rtm_system_"));
         assert!(created.fields.is_empty());
     }
+}
+
+#[tokio::test]
+async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fields() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+
+    let model = ModelDefinitionRepository::create_model_definition(
+        &store,
+        &CreateModelDefinitionInput {
+            actor_user_id: Uuid::nil(),
+            scope_kind: DataModelScopeKind::System,
+            scope_id: SYSTEM_SCOPE_ID,
+            data_source_instance_id: None,
+            source_kind: DataModelSourceKind::MainSource,
+            external_resource_key: None,
+            external_table_id: None,
+            external_capability_snapshot: None,
+            code: "attachments".into(),
+            title: "Custom attachments".into(),
+            status: DataModelStatus::Draft,
+            api_exposure_status: ApiExposureStatus::Draft,
+            protection: DataModelProtection {
+                owner_kind: domain::DataModelOwnerKind::Core,
+                owner_id: None,
+                is_protected: true,
+            },
+        },
+    )
+    .await
+    .unwrap();
+    let filename_field_id = Uuid::now_v7();
+    let custom_field_id = Uuid::now_v7();
+    let grant_id = Uuid::now_v7();
+
+    sqlx::query(
+        r#"
+        update model_definitions
+        set physical_table_name = 'broken_attachments'
+        where id = $1
+        "#,
+    )
+    .bind(model.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into model_fields (
+            id, data_model_id, scope_id, code, title, physical_column_name,
+            external_field_key, field_kind, is_system, is_writable, is_required,
+            is_unique, default_value, display_interface, display_options,
+            relation_target_model_id, relation_options, sort_order,
+            availability_status
+        )
+        values
+            (
+                $1, $3, $4, 'filename', 'Custom filename', 'broken_filename',
+                null, 'string', false, true, false, false, null,
+                'input', '{"placeholder":"custom"}'::jsonb, null, '{}'::jsonb,
+                70, 'available'
+            ),
+            (
+                $2, $3, $4, 'custom_tag', 'Custom tag', 'custom_tag',
+                null, 'string', false, true, false, false, null,
+                'input', '{}'::jsonb, null, '{}'::jsonb, 80, 'available'
+            )
+        "#,
+    )
+    .bind(filename_field_id)
+    .bind(custom_field_id)
+    .bind(model.id)
+    .bind(SYSTEM_SCOPE_ID)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into scope_data_model_grants (
+            id, scope_kind, scope_id, data_model_id, enabled, permission_profile
+        )
+        values ($1, 'system', $2, $3, false, 'owner')
+        "#,
+    )
+    .bind(grant_id)
+    .bind(SYSTEM_SCOPE_ID)
+    .bind(model.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    sqlx::raw_sql(BUILTIN_SYSTEM_TABLE_CONTRACT_METADATA_SQL)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    let (title, api_exposure_status, status, physical_table_name): (
+        String,
+        String,
+        String,
+        String,
+    ) = sqlx::query_as(
+        r#"
+        select title, api_exposure_status, status, physical_table_name
+        from model_definitions
+        where id = $1
+        "#,
+    )
+    .bind(model.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(title, "Custom attachments");
+    assert_eq!(api_exposure_status, "draft");
+    assert_eq!(status, "published");
+    assert_eq!(physical_table_name, "attachments");
+
+    let (field_title, physical_column_name, is_required, display_interface, display_options): (
+        String,
+        String,
+        bool,
+        Option<String>,
+        serde_json::Value,
+    ) = sqlx::query_as(
+        r#"
+        select title, physical_column_name, is_required, display_interface, display_options
+        from model_fields
+        where id = $1
+        "#,
+    )
+    .bind(filename_field_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(field_title, "Custom filename");
+    assert_eq!(physical_column_name, "filename");
+    assert!(is_required);
+    assert_eq!(display_interface.as_deref(), Some("input"));
+    assert_eq!(
+        display_options,
+        serde_json::json!({ "placeholder": "custom" })
+    );
+
+    let custom_field_exists: bool =
+        sqlx::query_scalar("select exists(select 1 from model_fields where id = $1)")
+            .bind(custom_field_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    let attachment_scope_field_exists: bool = sqlx::query_scalar(
+        "select exists(select 1 from model_fields where data_model_id = $1 and code = 'scope_id')",
+    )
+    .bind(model.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(custom_field_exists);
+    assert!(attachment_scope_field_exists);
+
+    let (enabled, permission_profile): (bool, String) = sqlx::query_as(
+        r#"
+        select enabled, permission_profile
+        from scope_data_model_grants
+        where id = $1
+        "#,
+    )
+    .bind(grant_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(!enabled);
+    assert_eq!(permission_profile, "owner");
 }
 
 #[tokio::test]
