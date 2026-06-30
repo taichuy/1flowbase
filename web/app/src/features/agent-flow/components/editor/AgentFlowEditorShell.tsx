@@ -1,4 +1,5 @@
 import type {
+  ConsoleApplicationType,
   ConsoleNodeContributionEntry,
   ConsoleApplicationEnvironmentVariable,
   ConsoleApplicationOrchestrationState,
@@ -12,6 +13,7 @@ import { AgentFlowCanvasFrame } from './AgentFlowCanvasFrame';
 interface AgentFlowEditorShellProps {
   applicationId: string;
   applicationName: string;
+  applicationType?: ConsoleApplicationType;
   initialState: ConsoleApplicationOrchestrationState;
   initialEnvironmentVariables?: ConsoleApplicationEnvironmentVariable[];
   nodeContributions?: ConsoleNodeContributionEntry[];
@@ -26,6 +28,7 @@ interface AgentFlowEditorShellProps {
 export function AgentFlowEditorShell({
   applicationId,
   applicationName,
+  applicationType = 'agent_flow',
   initialState,
   initialEnvironmentVariables = [],
   nodeContributions = [],
@@ -37,6 +40,7 @@ export function AgentFlowEditorShell({
       <AgentFlowCanvasFrame
         applicationId={applicationId}
         applicationName={applicationName}
+        applicationType={applicationType}
         initialEnvironmentVariables={initialEnvironmentVariables}
         nodeContributions={nodeContributions}
         saveDraftOverride={saveDraftOverride}

@@ -264,6 +264,86 @@ fn compile_workflow_preserves_start_timeout_and_end_return_fields() {
 }
 
 #[test]
+fn compile_workflow_recognizes_start_input_fields_for_selector_validation() {
+    let flow_id = Uuid::now_v7();
+    let mut document = workflow_document(flow_id);
+    document["graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({
+            "id": "node-workflow-llm",
+            "type": "llm",
+            "alias": "Workflow LLM",
+            "description": "",
+            "containerId": null,
+            "position": { "x": 240, "y": 0 },
+            "configVersion": 1,
+            "config": {
+                "model_provider": {
+                    "provider_code": "fixture_provider",
+                    "model_id": "gpt-5.4-mini"
+                },
+                "context_policy": {
+                    "integration_context": "enabled",
+                    "context_selector": ["node-workflow-start", "customer_id"]
+                }
+            },
+            "bindings": {
+                "prompt_messages": {
+                    "kind": "prompt_messages",
+                    "value": [{
+                        "id": "workflow-user",
+                        "role": "user",
+                        "content": {
+                            "kind": "templated_text",
+                            "value": "Customer: {{ node-workflow-start.customer_id }}"
+                        }
+                    }]
+                }
+            },
+            "outputs": [{ "key": "text", "title": "模型输出", "valueType": "string" }]
+        }));
+    let edges = document["graph"]["edges"].as_array_mut().unwrap();
+    edges.clear();
+    edges.push(json!({
+        "id": "edge-workflow-start-llm",
+        "source": "node-workflow-start",
+        "target": "node-workflow-llm",
+        "sourceHandle": null,
+        "targetHandle": null,
+        "containerId": null,
+        "points": []
+    }));
+    edges.push(json!({
+        "id": "edge-workflow-llm-end",
+        "source": "node-workflow-llm",
+        "target": "node-workflow-end",
+        "sourceHandle": null,
+        "targetHandle": null,
+        "containerId": null,
+        "points": []
+    }));
+
+    let plan =
+        FlowCompiler::compile_workflow(flow_id, "draft-1", &document, &compile_context()).unwrap();
+
+    assert!(plan.nodes["node-workflow-llm"].bindings["prompt_messages"]
+        .selector_paths
+        .contains(&vec![
+            "node-workflow-start".to_string(),
+            "customer_id".to_string()
+        ]));
+    assert!(!plan.compile_issues.iter().any(|issue| {
+        issue.node_id == "node-workflow-llm"
+            && issue.code == CompileIssueCode::InvalidLlmContextSelector
+    }));
+    assert!(plan.compile_issues.iter().any(|issue| {
+        issue.node_id == "node-workflow-llm"
+            && issue.code == CompileIssueCode::IncompatibleLlmContextSchema
+    }));
+}
+
+#[test]
 fn compile_llm_node_ignores_removed_prompt_bindings() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);

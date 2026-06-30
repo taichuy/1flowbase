@@ -53,7 +53,10 @@ import {
 } from '../../api/model-provider-options';
 import { clampNodeDetailWidth } from '../../lib/detail-panel-width';
 import { validateDocument } from '../../lib/validate-document';
-import { buildNodePickerOptions } from '../../lib/plugin-node-definitions';
+import {
+  buildNodePickerOptions,
+  WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS
+} from '../../lib/plugin-node-definitions';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
@@ -110,6 +113,7 @@ const EMPTY_ENVIRONMENT_VARIABLES: NonNullable<
 export function AgentFlowCanvasFrame({
   applicationId,
   applicationName,
+  applicationType = 'agent_flow',
   initialEnvironmentVariables = EMPTY_ENVIRONMENT_VARIABLES,
   nodeContributions,
   saveDraftOverride,
@@ -200,14 +204,10 @@ export function AgentFlowCanvasFrame({
   const [conversationVariablesDockWidth, setConversationVariablesDockWidth] =
     useState(ENVIRONMENT_VARIABLES_DOCK_WIDTH);
   const [historyDockWidth, setHistoryDockWidth] = useState(HISTORY_DOCK_WIDTH);
-  const environmentVariablesSourceRef = useRef(
-    initialEnvironmentVariables
-  );
+  const environmentVariablesSourceRef = useRef(initialEnvironmentVariables);
   const [environmentVariables, setEnvironmentVariables] = useState<
     AgentFlowEnvironmentVariable[]
-  >(
-    initialEnvironmentVariables
-  );
+  >(initialEnvironmentVariables);
   if (environmentVariablesSourceRef.current !== initialEnvironmentVariables) {
     environmentVariablesSourceRef.current = initialEnvironmentVariables;
     setEnvironmentVariables(initialEnvironmentVariables);
@@ -430,8 +430,11 @@ export function AgentFlowCanvasFrame({
     [issues]
   );
   const nodePickerOptions = useMemo(
-    () => buildNodePickerOptions(nodeContributions),
-    [nodeContributions]
+    () =>
+      applicationType === 'workflow'
+        ? WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS
+        : buildNodePickerOptions(nodeContributions),
+    [applicationType, nodeContributions]
   );
 
   useEffect(() => {
@@ -671,7 +674,9 @@ export function AgentFlowCanvasFrame({
     debugSession.setVariableCacheValue(key, value);
   }
 
-  function handleNodeDetailResizeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+  function handleNodeDetailResizeKeyDown(
+    event: ReactKeyboardEvent<HTMLDivElement>
+  ) {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
       return;
     }

@@ -86,6 +86,7 @@ export function ApplicationDetailPage({
         <AgentFlowEditorPage
           applicationId={applicationId}
           applicationName={application.name}
+          applicationType={application.application_type}
         />
       </ApplicationSectionBoundary>
     ) : requestedSectionKey === 'logs' ? (
