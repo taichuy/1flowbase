@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Navigate } from '@tanstack/react-router';
 import { Result } from 'antd';
 import { Suspense, lazy, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -12,10 +13,12 @@ import {
   fetchApplicationDetail
 } from '../api/applications';
 import { ApplicationSectionState } from '../components/ApplicationSectionState';
+import { WorkflowTriggerConfigBar } from '../components/workflow/WorkflowTriggerConfigBar';
 import {
   getApplicationSections,
   type ApplicationSectionKey
 } from '../lib/application-sections';
+import './workflow-application-page.css';
 
 const AgentFlowEditorPage = lazy(() =>
   import('../../agent-flow/pages/AgentFlowEditorPage').then((module) => ({
@@ -80,15 +83,40 @@ export function ApplicationDetailPage({
   }
 
   const application = detailQuery.data;
+  const isWorkflow = application.application_type === 'workflow';
+
+  if (isWorkflow && requestedSectionKey === 'api') {
+    return (
+      <Navigate
+        to="/applications/$applicationId/orchestration"
+        params={{ applicationId }}
+        replace
+      />
+    );
+  }
+
   const content =
     requestedSectionKey === 'orchestration' ? (
-      <ApplicationSectionBoundary>
-        <AgentFlowEditorPage
-          applicationId={applicationId}
-          applicationName={application.name}
-          applicationType={application.application_type}
-        />
-      </ApplicationSectionBoundary>
+      isWorkflow ? (
+        <div className="workflow-orchestration-page">
+          <WorkflowTriggerConfigBar applicationId={applicationId} />
+          <ApplicationSectionBoundary>
+            <AgentFlowEditorPage
+              applicationId={applicationId}
+              applicationName={application.name}
+              applicationType={application.application_type}
+            />
+          </ApplicationSectionBoundary>
+        </div>
+      ) : (
+        <ApplicationSectionBoundary>
+          <AgentFlowEditorPage
+            applicationId={applicationId}
+            applicationName={application.name}
+            applicationType={application.application_type}
+          />
+        </ApplicationSectionBoundary>
+      )
     ) : requestedSectionKey === 'logs' ? (
       <ApplicationSectionBoundary>
         <ApplicationLogsPage applicationId={applicationId} />
@@ -111,7 +139,11 @@ export function ApplicationDetailPage({
   return (
     <SectionPageLayout
       pageTitle={application.name}
-      navItems={getApplicationSections(applicationId, t)}
+      navItems={getApplicationSections(
+        applicationId,
+        t,
+        application.application_type
+      )}
       activeKey={requestedSectionKey}
       contentWidth={requestedSectionKey === 'orchestration' ? 'full' : 'wide'}
       heightMode={

@@ -47,6 +47,37 @@ export interface ConsoleApplicationApiMapping {
     files_selector: string | null;
     error_selector: string | null;
   };
+  extension?: ConsoleWorkflowExtensionApiConfig | null;
+}
+
+export type ConsoleWorkflowExtensionHttpMethod =
+  | 'GET'
+  | 'POST'
+  | 'PUT'
+  | 'PATCH'
+  | 'DELETE'
+  | 'HEAD'
+  | 'OPTIONS';
+
+export type ConsoleWorkflowExtensionResponseMode = 'sync' | 'async';
+
+export type ConsoleWorkflowExtensionParameterSource =
+  | 'path'
+  | 'query'
+  | 'form'
+  | 'body';
+
+export interface ConsoleWorkflowExtensionParameterMapping {
+  name: string;
+  source: ConsoleWorkflowExtensionParameterSource;
+  target: string;
+}
+
+export interface ConsoleWorkflowExtensionApiConfig {
+  slug: string;
+  method: ConsoleWorkflowExtensionHttpMethod;
+  response_mode: ConsoleWorkflowExtensionResponseMode;
+  parameters: ConsoleWorkflowExtensionParameterMapping[];
 }
 
 export interface ConsoleApplicationApiPublication {
@@ -77,6 +108,27 @@ export interface ConsoleApplicationApiStatus {
   application_id: string;
   api_enabled: boolean;
   public_url: string;
+}
+
+export interface ConsoleWorkflowScheduleTrigger {
+  id: string;
+  workspace_id: string;
+  application_id: string;
+  enabled: boolean;
+  cron: string;
+  timezone: string;
+  input_payload: unknown;
+  created_by: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReplaceConsoleWorkflowScheduleTriggerInput {
+  enabled: boolean;
+  cron: string;
+  timezone: string;
+  input_payload: unknown;
 }
 
 function buildApplicationApiDocsPath(path: string, locale?: string | null) {
@@ -214,6 +266,31 @@ export function updateConsoleApplicationApiStatus(
   return apiFetch<ConsoleApplicationApiStatus>({
     path: `/api/console/applications/${applicationId}/api-status`,
     method: 'PATCH',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function getConsoleWorkflowScheduleTrigger(
+  applicationId: string,
+  baseUrl?: string
+): Promise<ConsoleWorkflowScheduleTrigger | null> {
+  return apiFetch<ConsoleWorkflowScheduleTrigger | null>({
+    path: `/api/console/applications/${applicationId}/workflow-schedule-trigger`,
+    baseUrl
+  });
+}
+
+export function replaceConsoleWorkflowScheduleTrigger(
+  applicationId: string,
+  input: ReplaceConsoleWorkflowScheduleTriggerInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleWorkflowScheduleTrigger> {
+  return apiFetch<ConsoleWorkflowScheduleTrigger>({
+    path: `/api/console/applications/${applicationId}/workflow-schedule-trigger`,
+    method: 'PUT',
     body: input,
     csrfToken,
     baseUrl

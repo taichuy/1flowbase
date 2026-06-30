@@ -3,18 +3,22 @@ import {
   fetchConsoleApplicationApiDocsCatalog,
   fetchConsoleApplicationApiDocsCategoryOperations,
   fetchConsoleApplicationApiOperationSpec,
+  getConsoleWorkflowScheduleTrigger,
   getConsoleApplicationApiMapping,
   getConsoleApplicationApiPublication,
   listConsoleApplicationApiKeys,
   publishConsoleApplicationApiVersion,
   replaceConsoleApplicationApiMapping,
+  replaceConsoleWorkflowScheduleTrigger,
   revokeConsoleApplicationApiKey,
   updateConsoleApplicationApiStatus,
   type ConsoleApplicationApiKey,
   type ConsoleApplicationApiMapping,
   type ConsoleApplicationApiPublication,
   type ConsoleApiDocsCategoryOperationsRequest,
-  type CreatedConsoleApplicationApiKey
+  type ConsoleWorkflowScheduleTrigger,
+  type CreatedConsoleApplicationApiKey,
+  type ReplaceConsoleWorkflowScheduleTriggerInput
 } from '@1flowbase/api-client';
 
 import { getApplicationsApiBaseUrl } from './applications';
@@ -23,6 +27,9 @@ export type ApplicationApiKey = ConsoleApplicationApiKey;
 export type CreatedApplicationApiKey = CreatedConsoleApplicationApiKey;
 export type ApplicationApiMapping = ConsoleApplicationApiMapping;
 export type ApplicationApiPublication = ConsoleApplicationApiPublication;
+export type WorkflowScheduleTrigger = ConsoleWorkflowScheduleTrigger;
+export type WorkflowScheduleTriggerInput =
+  ReplaceConsoleWorkflowScheduleTriggerInput;
 export type ApplicationApiDocsCategoryOperationsRequest =
   ConsoleApiDocsCategoryOperationsRequest;
 
@@ -67,6 +74,8 @@ export const applicationApiMappingQueryKey = (applicationId: string) =>
   ['applications', applicationId, 'public-api', 'mapping'] as const;
 export const applicationApiPublicationQueryKey = (applicationId: string) =>
   ['applications', applicationId, 'public-api', 'publication'] as const;
+export const workflowScheduleTriggerQueryKey = (applicationId: string) =>
+  ['applications', applicationId, 'workflow', 'schedule-trigger'] as const;
 export const applicationApiDocsCatalogQueryKey = (
   applicationId: string,
   locale?: string | null
@@ -191,6 +200,26 @@ export function setApplicationApiEnabled(
   return updateConsoleApplicationApiStatus(
     applicationId,
     { api_enabled: apiEnabled },
+    csrfToken,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function fetchWorkflowScheduleTrigger(applicationId: string) {
+  return getConsoleWorkflowScheduleTrigger(
+    applicationId,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function saveWorkflowScheduleTrigger(
+  applicationId: string,
+  input: WorkflowScheduleTriggerInput,
+  csrfToken: string
+) {
+  return replaceConsoleWorkflowScheduleTrigger(
+    applicationId,
+    input,
     csrfToken,
     getApplicationsApiBaseUrl()
   );
