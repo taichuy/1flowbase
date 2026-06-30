@@ -31,7 +31,8 @@ function manualChunks(id: string) {
 }
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
+  const devServerPort = Number.parseInt(env.VITE_DEV_SERVER_PORT || '3100', 10);
   const apiProxyTarget = (
     env.VITE_API_PROXY_TARGET ||
     env.VITE_API_BASE_URL ||
@@ -72,7 +73,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
-      port: 3100,
+      port: Number.isInteger(devServerPort) && devServerPort > 0 ? devServerPort : 3100,
       strictPort: true,
       fs: {
         allow: [
