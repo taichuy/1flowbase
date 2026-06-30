@@ -161,6 +161,12 @@ impl AuthenticatorRegistry {
     pub fn provider(&self, auth_type: &str) -> Option<Arc<dyn AuthenticatorProvider>> {
         self.providers.get(auth_type).cloned()
     }
+
+    pub fn supported_auth_types(&self) -> Vec<String> {
+        let mut auth_types = self.providers.keys().cloned().collect::<Vec<_>>();
+        auth_types.sort();
+        auth_types
+    }
 }
 
 impl Default for AuthenticatorRegistry {

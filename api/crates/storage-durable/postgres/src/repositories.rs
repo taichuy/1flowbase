@@ -1,4 +1,5 @@
 use anyhow::Result;
+use control_plane::errors::ControlPlaneError;
 use control_plane::ports::{
     ApplicationRepository, AuthRepository, BootstrapRepository, CreateApplicationInput,
     CreateMemberInput, FlowRepository, MemberRepository, UpdateProfileInput, WorkspaceRepository,
@@ -51,6 +52,87 @@ impl PgControlPlaneStore {
         .bind(&authenticator.options)
         .execute(&self.pool)
         .await?;
+
+        Ok(())
+    }
+
+    pub async fn create_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
+        sqlx::query(
+            r#"
+            insert into authenticators (id, name, auth_type, title, enabled, is_builtin, sort_order, options)
+            values ($1, $2, $3, $4, $5, $6, $7, $8)
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(&authenticator.name)
+        .bind(&authenticator.auth_type)
+        .bind(&authenticator.title)
+        .bind(authenticator.enabled)
+        .bind(authenticator.is_builtin)
+        .bind(authenticator.sort_order)
+        .bind(&authenticator.options)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_authenticator_if_unbound(&self, name: &str) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        let authenticator = sqlx::query(
+            r#"
+            select is_builtin
+            from authenticators
+            where name = $1
+            for update
+            "#,
+        )
+        .bind(name)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(authenticator) = authenticator else {
+            return Err(ControlPlaneError::NotFound("authenticator").into());
+        };
+        if authenticator.get::<bool, _>("is_builtin") {
+            return Err(ControlPlaneError::InvalidInput("builtin_authenticator").into());
+        }
+
+        let identity_count: i64 = sqlx::query_scalar(
+            "select count(*) from user_auth_identities where authenticator_name = $1",
+        )
+        .bind(name)
+        .fetch_one(&mut *tx)
+        .await?;
+        if identity_count > 0 {
+            return Err(ControlPlaneError::Conflict("authenticator_identity_bindings").into());
+        }
+
+        sqlx::query("delete from authenticators where name = $1")
+            .bind(name)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        Ok(())
+    }
+
+    pub async fn update_authenticator_order(&self, names: &[String]) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        for (index, name) in names.iter().enumerate() {
+            sqlx::query(
+                r#"
+                update authenticators
+                set sort_order = $2,
+                    updated_at = now()
+                where name = $1
+                "#,
+            )
+            .bind(name)
+            .bind((index as i32) * 10)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
 
         Ok(())
     }

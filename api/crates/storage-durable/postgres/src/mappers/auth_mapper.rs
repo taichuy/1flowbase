@@ -7,6 +7,7 @@ pub struct StoredAuthenticatorRow {
     pub title: String,
     pub enabled: bool,
     pub is_builtin: bool,
+    pub sort_order: i32,
     pub options: serde_json::Value,
 }
 
@@ -20,6 +21,7 @@ impl PgAuthMapper {
             title: row.title,
             enabled: row.enabled,
             is_builtin: row.is_builtin,
+            sort_order: row.sort_order,
             options: row.options,
         }
     }

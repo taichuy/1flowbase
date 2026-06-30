@@ -1,6 +1,12 @@
 import {
+  copyConsoleAuthCenterAuthenticator,
+  createConsoleAuthCenterAuthenticator,
+  deleteConsoleAuthCenterAuthenticator,
   enableConsoleAuthCenterAuthenticator,
   fetchConsoleAuthCenterOverview,
+  reorderConsoleAuthCenterAuthenticators,
+  type ConsoleAuthCenterCopyAuthenticatorInput,
+  type ConsoleAuthCenterCreateAuthenticatorInput,
   updateConsoleAuthCenterAuthenticatorConfig,
   type ConsoleAuthCenterAuthenticatorConfigInput,
   type ConsoleAuthCenterOverview
@@ -23,6 +29,39 @@ export function enableSettingsAuthCenterAuthenticator(
   csrfToken: string
 ) {
   return enableConsoleAuthCenterAuthenticator(authenticatorName, csrfToken);
+}
+
+export function createSettingsAuthCenterAuthenticator(
+  input: ConsoleAuthCenterCreateAuthenticatorInput,
+  csrfToken: string
+) {
+  return createConsoleAuthCenterAuthenticator(input, csrfToken);
+}
+
+export function copySettingsAuthCenterAuthenticator(
+  authenticatorName: string,
+  input: ConsoleAuthCenterCopyAuthenticatorInput,
+  csrfToken: string
+) {
+  return copyConsoleAuthCenterAuthenticator(
+    authenticatorName,
+    input,
+    csrfToken
+  );
+}
+
+export function deleteSettingsAuthCenterAuthenticator(
+  authenticatorName: string,
+  csrfToken: string
+) {
+  return deleteConsoleAuthCenterAuthenticator(authenticatorName, csrfToken);
+}
+
+export function reorderSettingsAuthCenterAuthenticators(
+  names: string[],
+  csrfToken: string
+) {
+  return reorderConsoleAuthCenterAuthenticators({ names }, csrfToken);
 }
 
 export function updateSettingsAuthCenterAuthenticatorConfig(

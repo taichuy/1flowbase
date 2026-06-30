@@ -15,6 +15,8 @@
       "placeholder": "请输入密码",
       "required": "请输入密码。"
     },
+    "login_instances_load_failed": "登录入口加载失败，请刷新页面后重试。",
+    "no_login_instances": "当前没有可用登录入口。",
     "submit": "登录",
     "title": "1flowbase"
   }

@@ -163,6 +163,7 @@ pub struct AuthenticatorRecord {
     pub title: String,
     pub enabled: bool,
     pub is_builtin: bool,
+    pub sort_order: i32,
     pub options: serde_json::Value,
 }
 

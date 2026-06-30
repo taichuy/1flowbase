@@ -2,25 +2,34 @@ import {
   deleteConsoleSession as requestDeleteConsoleSession,
   fetchConsoleMe as requestFetchConsoleMe,
   fetchConsoleSession as requestFetchConsoleSession,
+  fetchPublicLoginInstances as requestFetchPublicLoginInstances,
   getDefaultApiBaseUrl,
   signInWithPassword as requestSignInWithPassword,
   type ApiBaseUrlLocation,
   type ConsoleMe,
   type ConsoleSessionSnapshot,
   type PasswordSignInInput,
-  type PasswordSignInResponse
+  type PasswordSignInResponse,
+  type PublicLoginInstance,
+  type PublicLoginInstancesResponse
 } from '@1flowbase/api-client';
 
+export type { PublicLoginInstance };
+
 export function getAuthApiBaseUrl(
-  locationLike: ApiBaseUrlLocation | undefined =
-    typeof window !== 'undefined' ? window.location : undefined
+  locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'
+    ? window.location
+    : undefined
 ): string {
-  return import.meta.env.VITE_API_BASE_URL ?? getDefaultApiBaseUrl(locationLike);
+  return (
+    import.meta.env.VITE_API_BASE_URL ?? getDefaultApiBaseUrl(locationLike)
+  );
 }
 
 export function getScalarApiBaseUrl(
-  locationLike: ApiBaseUrlLocation | undefined =
-    typeof window !== 'undefined' ? window.location : undefined
+  locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'
+    ? window.location
+    : undefined
 ): string {
   if (import.meta.env.VITE_SCALAR_API_BASE_URL) {
     return import.meta.env.VITE_SCALAR_API_BASE_URL;
@@ -44,13 +53,21 @@ export function signInWithPassword(
   return requestSignInWithPassword(input, baseUrl);
 }
 
+export function fetchLoginInstances(
+  baseUrl = getAuthApiBaseUrl()
+): Promise<PublicLoginInstancesResponse> {
+  return requestFetchPublicLoginInstances(baseUrl);
+}
+
 export function fetchCurrentSession(
   baseUrl = getAuthApiBaseUrl()
 ): Promise<ConsoleSessionSnapshot> {
   return requestFetchConsoleSession(baseUrl);
 }
 
-export function fetchCurrentMe(baseUrl = getAuthApiBaseUrl()): Promise<ConsoleMe> {
+export function fetchCurrentMe(
+  baseUrl = getAuthApiBaseUrl()
+): Promise<ConsoleMe> {
   return requestFetchConsoleMe(baseUrl);
 }
 

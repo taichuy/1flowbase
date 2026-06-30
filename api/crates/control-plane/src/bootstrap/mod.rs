@@ -77,6 +77,7 @@ where
                 title: "Password".into(),
                 enabled: true,
                 is_builtin: true,
+                sort_order: 0,
                 options: password_local_authenticator_options(),
             })
             .await?;

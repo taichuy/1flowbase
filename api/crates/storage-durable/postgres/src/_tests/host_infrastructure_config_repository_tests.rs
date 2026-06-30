@@ -49,6 +49,7 @@ async fn seed_store() -> (PgControlPlaneStore, domain::UserRecord, Uuid) {
             title: "Password".into(),
             enabled: true,
             is_builtin: true,
+            sort_order: 0,
             options: serde_json::json!({}),
         })
         .await

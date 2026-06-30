@@ -59,6 +59,7 @@ async fn seed_data_source_workspace(
             title: "Password".into(),
             enabled: true,
             is_builtin: true,
+            sort_order: 0,
             options: serde_json::json!({}),
         })
         .await

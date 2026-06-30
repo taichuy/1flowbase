@@ -89,7 +89,11 @@ const authCenterApi = vi.hoisted(() => ({
   settingsAuthCenterOverviewQueryKey: ['settings', 'auth-center', 'overview'],
   fetchSettingsAuthCenterOverview: vi.fn(),
   enableSettingsAuthCenterAuthenticator: vi.fn(),
-  updateSettingsAuthCenterAuthenticatorConfig: vi.fn()
+  updateSettingsAuthCenterAuthenticatorConfig: vi.fn(),
+  createSettingsAuthCenterAuthenticator: vi.fn(),
+  copySettingsAuthCenterAuthenticator: vi.fn(),
+  deleteSettingsAuthCenterAuthenticator: vi.fn(),
+  reorderSettingsAuthCenterAuthenticators: vi.fn()
 }));
 
 const modelProvidersApi = vi.hoisted(() => ({
@@ -443,6 +447,7 @@ describe('SettingsPage', () => {
     );
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_name: 'password-local',
+      supported_auth_types: ['password-local'],
       authenticators: [
         {
           name: 'password-local',
@@ -786,6 +791,7 @@ describe('SettingsPage', () => {
     ]);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_name: 'password-local',
+      supported_auth_types: ['password-local'],
       authenticators: [
         {
           name: 'oidc-main',
@@ -830,7 +836,7 @@ describe('SettingsPage', () => {
       screen.getByRole('columnheader', { name: '启用' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('columnheader', { name: '描述' })
+      screen.getByRole('columnheader', { name: '说明' })
     ).toBeInTheDocument();
     expect(screen.getByText('Primary OIDC')).toBeInTheDocument();
     expect(
@@ -868,6 +874,7 @@ describe('SettingsPage', () => {
     ]);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_name: 'password-local',
+      supported_auth_types: ['password-local'],
       authenticators: [
         {
           name: 'password-local',
@@ -936,6 +943,7 @@ describe('SettingsPage', () => {
     authCenterApi.fetchSettingsAuthCenterOverview
       .mockResolvedValueOnce({
         default_authenticator_name: 'oidc-main',
+        supported_auth_types: ['password-local'],
         authenticators: [
           {
             name: 'oidc-main',
@@ -958,6 +966,7 @@ describe('SettingsPage', () => {
       })
       .mockResolvedValueOnce({
         default_authenticator_name: 'oidc-main',
+        supported_auth_types: ['password-local'],
         authenticators: [
           {
             name: 'oidc-main',
@@ -1043,6 +1052,7 @@ describe('SettingsPage', () => {
     ]);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_name: 'oidc-main',
+      supported_auth_types: ['password-local'],
       authenticators: [
         {
           name: 'oidc-main',
@@ -1082,6 +1092,7 @@ describe('SettingsPage', () => {
     authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_name: 'oidc-main',
+      supported_auth_types: ['password-local'],
       authenticators: [
         {
           name: 'oidc-main',
@@ -1122,6 +1133,7 @@ describe('SettingsPage', () => {
     useAuthStore.setState({ csrfToken: null });
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_name: 'oidc-main',
+      supported_auth_types: ['password-local'],
       authenticators: [
         {
           name: 'oidc-main',
@@ -1157,6 +1169,7 @@ describe('SettingsPage', () => {
     authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_name: 'password-local',
+      supported_auth_types: ['password-local'],
       authenticators: [
         {
           name: 'password-local',
