@@ -90,6 +90,28 @@ async fn create_exposed_published_model(
         .unwrap();
     assert_eq!(grant_response.status(), StatusCode::CREATED);
 
+    let expose_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/console/models/{model_id}"))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "status": "published",
+                        "api_exposure_status": "api_exposed_ready"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(expose_response.status(), StatusCode::OK);
+
     model_id
 }
 

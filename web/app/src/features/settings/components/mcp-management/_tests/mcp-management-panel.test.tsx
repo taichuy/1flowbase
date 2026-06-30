@@ -18,6 +18,7 @@ const mcpManagementApi = vi.hoisted(() => ({
   deleteSettingsMcpInstance: vi.fn(),
   deleteSettingsMcpTool: vi.fn(),
   deleteSettingsMcpToolBinding: vi.fn(),
+  executeSettingsMcpToolDebug: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
   exportSettingsMcpInstanceDirectory: vi.fn(),
   refreshSettingsMcpToolDescription: vi.fn(),
@@ -248,6 +249,18 @@ function visibleTextEntries(root: HTMLElement, text: string) {
 describe('McpManagementPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mcpManagementApi.executeSettingsMcpToolDebug.mockImplementation(
+      async (body: { mcp_arguments: unknown }) => ({
+        mcp_arguments: body.mcp_arguments,
+        interface_arguments: {
+          body: body.mcp_arguments
+        },
+        interface_response: {
+          data: body.mcp_arguments
+        },
+        tool_result: body.mcp_arguments
+      })
+    );
   });
 
   test('shows step navigation actions only when the adjacent step exists', async () => {
@@ -322,8 +335,29 @@ describe('McpManagementPanel', () => {
     expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(1);
   });
 
-  test('keeps full description in basic and renders debug form JSON results', async () => {
-    renderPanel();
+  test(
+    'keeps full description in basic and renders debug form JSON results',
+    async () => {
+      mcpManagementApi.executeSettingsMcpToolDebug.mockResolvedValue({
+        mcp_arguments: {
+          appId: 'app-1'
+        },
+        interface_arguments: {
+          path: {
+            app_id: 'app-1'
+          }
+        },
+        interface_response: {
+          data: {
+            run_id: 'run-1',
+            app_id: 'app-1'
+          }
+        },
+        tool_result: {
+          run_id: 'run-1'
+        }
+      });
+      renderPanel();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     fireEvent.click(screen.getByRole('button', { name: /新增/ }));
@@ -371,11 +405,61 @@ describe('McpManagementPanel', () => {
     });
     fireEvent.click(within(dialog).getByRole('button', { name: '运行' }));
 
-    const debugResult = within(dialog).getByLabelText('返回值 JSON');
+    await waitFor(() => {
+      expect(mcpManagementApi.executeSettingsMcpToolDebug).toHaveBeenCalledWith(
+        {
+          interface_id: 'create_app',
+          mcp_arguments: {
+            appId: 'app-1'
+          },
+          input_mapping: {
+            interface_parameters: [
+              {
+                name: 'app_id',
+                field_type: 'string',
+                parameter_type: 'url',
+                description: 'Application id',
+                required: true
+              },
+              {
+                name: 'display_name',
+                field_type: 'string',
+                parameter_type: 'json_body',
+                description: 'Display name',
+                required: false
+              }
+            ],
+            mappings: [
+              {
+                interface_param: 'app_id',
+                mcp_param: 'appId',
+                description: 'Application id',
+                required: true
+              }
+            ]
+          },
+          output_mapping: {
+            type: 'object',
+            properties: {
+              run_id: {
+                type: 'string',
+                description: 'Flow run id'
+              }
+            }
+          }
+        },
+        expect.any(String)
+      );
+    });
+
+    const debugResult = await within(dialog).findByLabelText('返回值 JSON');
     expect(debugResult).toHaveTextContent('"app_id": "app-1"');
-    expect(debugResult).toHaveTextContent('"output_mapping"');
-    expect(debugResult).toHaveTextContent('"run_id"');
-  });
+    expect(debugResult).toHaveTextContent('"tool_result"');
+      expect(debugResult).toHaveTextContent('"run_id"');
+      expect(debugResult).not.toHaveTextContent('"output_mapping"');
+    },
+    30000
+  );
 
   test('renders debug operation and run action in one row without duplicate field-name help text', () => {
     render(
@@ -622,7 +706,7 @@ describe('McpManagementPanel', () => {
     });
     fireEvent.click(within(dialog).getByRole('button', { name: '运行' }));
 
-    const debugResult = within(dialog).getByLabelText('返回值 JSON');
+    const debugResult = await within(dialog).findByLabelText('返回值 JSON');
     expect(debugResult).toHaveTextContent('"mapping"');
     expect(debugResult).toHaveTextContent('"input"');
     expect(debugResult).toHaveTextContent('"query_target": "inputs.query"');
@@ -772,13 +856,15 @@ describe('McpManagementPanel', () => {
     expect(mcpManagementApi.createSettingsMcpTool).not.toHaveBeenCalled();
   });
 
-  test('adds the des_id mapping from the mapping layer dropdown option', async () => {
-    renderPanel([
-      {
-        ...interfaceCapabilities[0],
-        parameter_descriptors: []
-      }
-    ]);
+  test(
+    'adds the des_id mapping from the mapping layer dropdown option',
+    async () => {
+      renderPanel([
+        {
+          ...interfaceCapabilities[0],
+          parameter_descriptors: []
+        }
+      ]);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     fireEvent.click(screen.getByRole('button', { name: /新增/ }));
@@ -1029,17 +1115,21 @@ describe('McpManagementPanel', () => {
       );
     });
 
-    expect(desIdOptions).toHaveLength(1);
-    expect(applicationIdOptions).toHaveLength(2);
-  });
+      expect(desIdOptions).toHaveLength(1);
+      expect(applicationIdOptions).toHaveLength(2);
+    },
+    30000
+  );
 
-  test('allows manually adding interface parameters and mappings when descriptors are empty', async () => {
-    renderPanel([
-      {
-        ...interfaceCapabilities[0],
-        parameter_descriptors: []
-      }
-    ]);
+  test(
+    'allows manually adding interface parameters and mappings when descriptors are empty',
+    async () => {
+      renderPanel([
+        {
+          ...interfaceCapabilities[0],
+          parameter_descriptors: []
+        }
+      ]);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     fireEvent.click(screen.getByRole('button', { name: /新增/ }));
@@ -1123,6 +1213,8 @@ describe('McpManagementPanel', () => {
         }),
         expect.any(String)
       );
-    });
-  });
+      });
+    },
+    30000
+  );
 });

@@ -1,8 +1,11 @@
+mod debug_execute;
+
 use std::{collections::BTreeSet, sync::Arc};
 
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post, put},
     Json, Router,
 };
@@ -25,6 +28,8 @@ use crate::{
     response::ApiSuccess,
     runtime_data_model_docs,
 };
+
+pub use debug_execute::{McpDebugExecuteBody, McpDebugExecuteResponse};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct McpInstanceResponse {
@@ -346,6 +351,7 @@ pub fn router() -> Router<Arc<ApiState>> {
             "/mcp/tools/:tool_id/description-check",
             post(check_mcp_tool_description),
         )
+        .route("/mcp/debug/execute", post(execute_mcp_debug))
         .route(
             "/mcp/meta-tool-config",
             get(get_mcp_meta_tool_config).put(update_mcp_meta_tool_config),
@@ -658,6 +664,27 @@ pub async fn check_mcp_tool_description(
     })))
 }
 
+#[utoipa::path(post, path = "/api/console/mcp/debug/execute", request_body = McpDebugExecuteBody, responses((status = 200, body = McpDebugExecuteResponse)))]
+pub async fn execute_mcp_debug(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<McpDebugExecuteBody>,
+) -> Result<Response, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    McpManagementService::new(state.store.clone())
+        .authorize_debug_execute(context.user.id)
+        .await?;
+    let interface_entry =
+        bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
+
+    match debug_execute::execute(state, headers, interface_entry, body).await {
+        Ok(result) => Ok(Json(ApiSuccess::new(result)).into_response()),
+        Err(debug_execute::McpDebugExecuteError::Api(error)) => Err(ApiError(error)),
+        Err(debug_execute::McpDebugExecuteError::TargetResponse(response)) => Ok(response),
+    }
+}
+
 #[utoipa::path(post, path = "/api/console/mcp/instances/{instance_id}/tool-bindings", request_body = CreateMcpToolBindingBody, responses((status = 201, body = McpToolBindingResponse)))]
 pub async fn create_mcp_tool_binding(
     State(state): State<Arc<ApiState>>,
@@ -922,6 +949,13 @@ fn mcp_interface_scope_policy(
     operation: &DocsCatalogOperation,
     source: McpInterfaceCapabilitySource,
 ) -> McpInterfaceScopePolicy {
+    if operation.path == "/api/console/mcp/debug/execute" {
+        return McpInterfaceScopePolicy {
+            bindable: false,
+            disabled_reason: Some("unsupported_mcp_interface_scope"),
+        };
+    }
+
     let bindable = match source {
         McpInterfaceCapabilitySource::StaticApiDocs => operation.path.starts_with("/api/console/"),
         McpInterfaceCapabilitySource::RuntimeDataModelCrud => {

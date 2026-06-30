@@ -9,6 +9,7 @@ import {
   deleteConsoleMcpInstance,
   deleteConsoleMcpTool,
   deleteConsoleMcpToolBinding,
+  executeConsoleMcpToolDebug,
   exportConsoleMcpCatalog,
   exportConsoleMcpInstanceDirectory,
   fetchConsoleMcpCatalog,
@@ -199,6 +200,56 @@ describe('console-mcp-management client', () => {
         path: '/api/console/mcp/tools/runtime.get/description/refresh',
         method: 'POST',
         csrfToken: 'csrf-123'
+      }
+    },
+    {
+      name: 'debug execute',
+      request: () =>
+        executeConsoleMcpToolDebug(
+          {
+            interface_id: 'data_model__orders__create_record',
+            mcp_arguments: { title: 'Debug order' },
+            input_mapping: {
+              mappings: [
+                {
+                  interface_param: 'order_title',
+                  mcp_param: 'title',
+                  required: true
+                }
+              ]
+            },
+            output_mapping: {
+              type: 'object',
+              properties: {
+                order_title: { type: 'string' }
+              }
+            }
+          },
+          'csrf-123'
+        ),
+      expected: {
+        path: '/api/console/mcp/debug/execute',
+        method: 'POST',
+        csrfToken: 'csrf-123',
+        body: {
+          interface_id: 'data_model__orders__create_record',
+          mcp_arguments: { title: 'Debug order' },
+          input_mapping: {
+            mappings: [
+              {
+                interface_param: 'order_title',
+                mcp_param: 'title',
+                required: true
+              }
+            ]
+          },
+          output_mapping: {
+            type: 'object',
+            properties: {
+              order_title: { type: 'string' }
+            }
+          }
+        }
       }
     },
     {

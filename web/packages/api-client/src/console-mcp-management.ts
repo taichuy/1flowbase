@@ -177,6 +177,20 @@ export type UpdateConsoleMcpMetaToolConfigBody = Omit<
   'id' | 'workspace_id'
 >;
 
+export interface ExecuteConsoleMcpToolDebugBody {
+  interface_id: string;
+  mcp_arguments: unknown;
+  input_mapping: unknown;
+  output_mapping: unknown;
+}
+
+export interface ConsoleMcpToolDebugExecuteResponse {
+  mcp_arguments: unknown;
+  interface_arguments: unknown;
+  interface_response: unknown;
+  tool_result: unknown;
+}
+
 export function fetchConsoleMcpCatalog(baseUrl?: string) {
   return apiFetch<ConsoleMcpCatalog>({
     path: '/api/console/mcp/catalog',
@@ -371,6 +385,20 @@ export function refreshConsoleMcpToolDescription(
   return apiFetch<ConsoleMcpTool>({
     path: `/api/console/mcp/tools/${encodeURIComponent(toolId)}/description/refresh`,
     method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function executeConsoleMcpToolDebug(
+  body: ExecuteConsoleMcpToolDebugBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpToolDebugExecuteResponse>({
+    path: '/api/console/mcp/debug/execute',
+    method: 'POST',
+    body,
     csrfToken,
     baseUrl
   });
