@@ -1,15 +1,60 @@
-use crate::_tests::support::{login_and_capture_cookie, test_app};
+use std::sync::Arc;
+
+use crate::{
+    _tests::support::{
+        login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config,
+    },
+    app_state::ApiState,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
     Router,
 };
 use serde_json::{json, Value};
+use tokio::time::{sleep, Duration};
 use tower::ServiceExt;
+use uuid::Uuid;
 
 async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&body).unwrap()
+}
+
+async fn test_app_with_state() -> (Router, Arc<ApiState>) {
+    let (state, _) = test_api_state_with_database_url().await;
+    let config = test_config();
+    let app = crate::app_with_state_and_config(state.clone(), &config);
+    (app, state)
+}
+
+async fn wait_for_flow_run_status(
+    state: &ApiState,
+    flow_run_id: Uuid,
+    expected_status: &str,
+) -> Value {
+    let mut last_status = String::new();
+    let mut last_output = json!({});
+    for _ in 0..40 {
+        let Some((status, output_payload)) = sqlx::query_as::<_, (String, Value)>(
+            "select status::text, output_payload from flow_runs where id = $1",
+        )
+        .bind(flow_run_id)
+        .fetch_optional(state.store.pool())
+        .await
+        .unwrap() else {
+            sleep(Duration::from_millis(25)).await;
+            continue;
+        };
+        last_status = status;
+        last_output = output_payload;
+        if last_status == expected_status {
+            return last_output;
+        }
+        sleep(Duration::from_millis(25)).await;
+    }
+
+    panic!("expected flow run {flow_run_id} status {expected_status}, last status {last_status}");
 }
 
 async fn create_workflow_application(app: &Router, cookie: &str, csrf: &str, name: &str) -> String {
@@ -452,7 +497,7 @@ async fn workflow_extension_sync_route_returns_accepted_when_run_waits_for_human
 
 #[tokio::test]
 async fn workflow_extension_async_route_returns_accepted_run_status() {
-    let app = test_app().await;
+    let (app, state) = test_app_with_state().await;
     let (token, _) = setup_workflow_extension_app(
         &app,
         "open-ticket-async",
@@ -486,6 +531,9 @@ async fn workflow_extension_async_route_returns_accepted_run_status() {
         .as_str()
         .is_some_and(|run_id| uuid::Uuid::parse_str(run_id).is_ok()));
     assert_eq!(payload["status"], json!("queued"));
+    let run_id = Uuid::parse_str(payload["run_id"].as_str().unwrap()).unwrap();
+    let output_payload = wait_for_flow_run_status(state.as_ref(), run_id, "succeeded").await;
+    assert_eq!(output_payload, json!({ "ticket_id": "ticket-C-42" }));
 }
 
 #[tokio::test]

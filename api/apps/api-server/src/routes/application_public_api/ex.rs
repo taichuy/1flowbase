@@ -62,40 +62,11 @@ pub async fn invoke_workflow_extension(
     let _http_activity = state
         .runtime_activity
         .start(run.application_id, ApplicationActivityKind::HttpRequest);
+    let execution = spawn_workflow_extension_execution(state.clone(), run.application_id, run.id);
 
     if run.response_mode == WorkflowExtensionResponseMode::Async {
         return Ok(accepted_response(run.id, run.status));
     }
-
-    let execution_state = state.clone();
-    let run_id = run.id;
-    let application_id = run.application_id;
-    let execution = tokio::spawn(async move {
-        let _execution_activity = execution_state.runtime_activity.start(
-            application_id,
-            ApplicationActivityKind::ApplicationExecution,
-        );
-        let runtime_service = OrchestrationRuntimeService::new(
-            execution_state.store.clone(),
-            api_provider_runtime(&execution_state),
-            execution_state.runtime_engine.clone(),
-            execution_state.provider_secret_master_key.clone(),
-        )
-        .with_node_artifact_context(
-            execution_state.api_node_id.clone(),
-            execution_state.provider_install_root.clone(),
-        )
-        .with_file_storage_registry(execution_state.file_storage_registry.clone())
-        .with_runtime_event_stream(execution_state.runtime_event_stream.clone());
-        scope_application_activity(
-            application_id,
-            runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
-                application_id,
-                flow_run_id: run_id,
-            }),
-        )
-        .await
-    });
 
     match tokio::time::timeout(
         std::time::Duration::from_millis(run.sync_timeout_ms),
@@ -139,6 +110,39 @@ pub async fn invoke_workflow_extension(
         }
         Err(_) => Ok(accepted_response(run.id, domain::FlowRunStatus::Running)),
     }
+}
+
+fn spawn_workflow_extension_execution(
+    state: Arc<ApiState>,
+    application_id: uuid::Uuid,
+    flow_run_id: uuid::Uuid,
+) -> tokio::task::JoinHandle<anyhow::Result<domain::ApplicationRunDetail>> {
+    tokio::spawn(async move {
+        let _execution_activity = state.runtime_activity.start(
+            application_id,
+            ApplicationActivityKind::ApplicationExecution,
+        );
+        let runtime_service = OrchestrationRuntimeService::new(
+            state.store.clone(),
+            api_provider_runtime(&state),
+            state.runtime_engine.clone(),
+            state.provider_secret_master_key.clone(),
+        )
+        .with_node_artifact_context(
+            state.api_node_id.clone(),
+            state.provider_install_root.clone(),
+        )
+        .with_file_storage_registry(state.file_storage_registry.clone())
+        .with_runtime_event_stream(state.runtime_event_stream.clone());
+        scope_application_activity(
+            application_id,
+            runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
+                application_id,
+                flow_run_id,
+            }),
+        )
+        .await
+    })
 }
 
 fn workflow_extension_method(
