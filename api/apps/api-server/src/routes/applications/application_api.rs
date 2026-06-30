@@ -17,7 +17,9 @@ use control_plane::{
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
             ApplicationApiMappingService, GetApplicationApiMappingCommand,
-            ReplaceApplicationApiMappingCommand,
+            ReplaceApplicationApiMappingCommand, WorkflowExtensionApiConfig,
+            WorkflowExtensionHttpMethod, WorkflowExtensionParameterMapping,
+            WorkflowExtensionParameterSource, WorkflowExtensionResponseMode,
         },
         publications::{
             ApplicationPublicationService, ApplicationPublicationVersionRecord,
@@ -105,6 +107,52 @@ pub struct ApplicationApiMappingOutputBody {
 pub struct ApplicationApiMappingBody {
     pub input: ApplicationApiMappingInputBody,
     pub output: ApplicationApiMappingOutputBody,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<WorkflowExtensionApiBody>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct WorkflowExtensionApiBody {
+    pub slug: String,
+    pub method: WorkflowExtensionHttpMethodBody,
+    pub response_mode: WorkflowExtensionResponseModeBody,
+    #[serde(default)]
+    pub parameters: Vec<WorkflowExtensionParameterMappingBody>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum WorkflowExtensionHttpMethodBody {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+    Options,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowExtensionResponseModeBody {
+    Sync,
+    Async,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct WorkflowExtensionParameterMappingBody {
+    pub name: String,
+    pub source: WorkflowExtensionParameterSourceBody,
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowExtensionParameterSourceBody {
+    Path,
+    Query,
+    Form,
+    Body,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -297,6 +345,7 @@ fn to_mapping_config(body: ApplicationApiMappingBody) -> ApplicationApiMappingCo
             files_selector: body.output.files_selector,
             error_selector: body.output.error_selector,
         },
+        extension: body.extension.map(to_extension_config),
     }
 }
 
@@ -315,6 +364,89 @@ fn to_mapping_body(mapping: ApplicationApiMappingConfig) -> ApplicationApiMappin
             files_selector: mapping.output.files_selector,
             error_selector: mapping.output.error_selector,
         },
+        extension: mapping.extension.map(to_extension_body),
+    }
+}
+
+fn to_extension_config(body: WorkflowExtensionApiBody) -> WorkflowExtensionApiConfig {
+    WorkflowExtensionApiConfig {
+        slug: body.slug,
+        method: match body.method {
+            WorkflowExtensionHttpMethodBody::Get => WorkflowExtensionHttpMethod::Get,
+            WorkflowExtensionHttpMethodBody::Post => WorkflowExtensionHttpMethod::Post,
+            WorkflowExtensionHttpMethodBody::Put => WorkflowExtensionHttpMethod::Put,
+            WorkflowExtensionHttpMethodBody::Patch => WorkflowExtensionHttpMethod::Patch,
+            WorkflowExtensionHttpMethodBody::Delete => WorkflowExtensionHttpMethod::Delete,
+            WorkflowExtensionHttpMethodBody::Head => WorkflowExtensionHttpMethod::Head,
+            WorkflowExtensionHttpMethodBody::Options => WorkflowExtensionHttpMethod::Options,
+        },
+        response_mode: match body.response_mode {
+            WorkflowExtensionResponseModeBody::Sync => WorkflowExtensionResponseMode::Sync,
+            WorkflowExtensionResponseModeBody::Async => WorkflowExtensionResponseMode::Async,
+        },
+        parameters: body
+            .parameters
+            .into_iter()
+            .map(|parameter| WorkflowExtensionParameterMapping {
+                name: parameter.name,
+                source: match parameter.source {
+                    WorkflowExtensionParameterSourceBody::Path => {
+                        WorkflowExtensionParameterSource::Path
+                    }
+                    WorkflowExtensionParameterSourceBody::Query => {
+                        WorkflowExtensionParameterSource::Query
+                    }
+                    WorkflowExtensionParameterSourceBody::Form => {
+                        WorkflowExtensionParameterSource::Form
+                    }
+                    WorkflowExtensionParameterSourceBody::Body => {
+                        WorkflowExtensionParameterSource::Body
+                    }
+                },
+                target: parameter.target,
+            })
+            .collect(),
+    }
+}
+
+fn to_extension_body(config: WorkflowExtensionApiConfig) -> WorkflowExtensionApiBody {
+    WorkflowExtensionApiBody {
+        slug: config.slug,
+        method: match config.method {
+            WorkflowExtensionHttpMethod::Get => WorkflowExtensionHttpMethodBody::Get,
+            WorkflowExtensionHttpMethod::Post => WorkflowExtensionHttpMethodBody::Post,
+            WorkflowExtensionHttpMethod::Put => WorkflowExtensionHttpMethodBody::Put,
+            WorkflowExtensionHttpMethod::Patch => WorkflowExtensionHttpMethodBody::Patch,
+            WorkflowExtensionHttpMethod::Delete => WorkflowExtensionHttpMethodBody::Delete,
+            WorkflowExtensionHttpMethod::Head => WorkflowExtensionHttpMethodBody::Head,
+            WorkflowExtensionHttpMethod::Options => WorkflowExtensionHttpMethodBody::Options,
+        },
+        response_mode: match config.response_mode {
+            WorkflowExtensionResponseMode::Sync => WorkflowExtensionResponseModeBody::Sync,
+            WorkflowExtensionResponseMode::Async => WorkflowExtensionResponseModeBody::Async,
+        },
+        parameters: config
+            .parameters
+            .into_iter()
+            .map(|parameter| WorkflowExtensionParameterMappingBody {
+                name: parameter.name,
+                source: match parameter.source {
+                    WorkflowExtensionParameterSource::Path => {
+                        WorkflowExtensionParameterSourceBody::Path
+                    }
+                    WorkflowExtensionParameterSource::Query => {
+                        WorkflowExtensionParameterSourceBody::Query
+                    }
+                    WorkflowExtensionParameterSource::Form => {
+                        WorkflowExtensionParameterSourceBody::Form
+                    }
+                    WorkflowExtensionParameterSource::Body => {
+                        WorkflowExtensionParameterSourceBody::Body
+                    }
+                },
+                target: parameter.target,
+            })
+            .collect(),
     }
 }
 
@@ -330,6 +462,7 @@ fn to_publication_response(
         version_sequence: publication.version_sequence,
         active: publication.active,
         api_enabled: publication.api_enabled,
+        public_url: publication_public_url(&publication),
         mapping_snapshot: to_mapping_body(publication.mapping_snapshot),
         dependency_snapshot: publication
             .dependency_snapshot
@@ -355,10 +488,17 @@ fn to_publication_response(
                 },
             )
             .collect(),
-        public_url: PUBLIC_RUNS_PATH.to_string(),
         created_by: publication.created_by,
         created_at: format_time(publication.created_at),
     }
+}
+
+fn publication_public_url(publication: &ApplicationPublicationVersionRecord) -> String {
+    publication
+        .extension_slug
+        .as_deref()
+        .map(|slug| format!("/api/ex/{slug}"))
+        .unwrap_or_else(|| PUBLIC_RUNS_PATH.to_string())
 }
 
 fn map_publication_not_found(error: anyhow::Error) -> ApiError {

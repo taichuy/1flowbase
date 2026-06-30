@@ -38,6 +38,7 @@ fn published_mapping() -> ApplicationApiMappingConfig {
             attachments_target: None,
         },
         output: ApplicationApiMappingOutput::default(),
+        extension: None,
     }
 }
 

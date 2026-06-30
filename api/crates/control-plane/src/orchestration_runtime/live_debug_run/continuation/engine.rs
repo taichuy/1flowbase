@@ -133,7 +133,7 @@ where
             &resolved_inputs,
         );
         let node_started_at = OffsetDateTime::now_utc();
-        let node_input_payload = if node.node_type == "start" {
+        let node_input_payload = if matches!(node.node_type.as_str(), "start" | "workflow_start") {
             start_node_input_payload(&variable_pool, node_id)
         } else {
             Value::Object(resolved_inputs.clone())
@@ -181,7 +181,7 @@ where
         let mut selected_source_handle: Option<String> = None;
 
         match node.node_type.as_str() {
-            "start" => {
+            "start" | "workflow_start" => {
                 last_output_payload = variable_pool
                     .get(node_id)
                     .cloned()
@@ -209,6 +209,26 @@ where
                     &last_output_payload,
                 )
                 .await;
+            }
+            "workflow_end" => {
+                let output_payload =
+                    project_node_variable_payload(node, &Value::Object(resolved_inputs.clone()))?;
+                last_output_payload = output_payload.clone();
+                variable_pool.insert(node.node_id.clone(), output_payload.clone());
+                update_node_run_and_emit(
+                    service,
+                    flow_run.id,
+                    &UpdateNodeRunInput {
+                        node_run_id: node_run.id,
+                        status: domain::NodeRunStatus::Succeeded,
+                        output_payload,
+                        error_payload: None,
+                        metrics_payload: json!({ "preview_mode": true }),
+                        debug_payload: json!({}),
+                        finished_at: Some(OffsetDateTime::now_utc()),
+                    },
+                )
+                .await?;
             }
             "if_else" => {
                 selected_source_handle =

@@ -74,11 +74,17 @@ impl ApplicationPublicApiTestRepository {
         repository
     }
 
-    fn seed_application(&self, actor_user_id: Uuid, name: &str) -> domain::ApplicationRecord {
+    fn seed_application_with_type(
+        &self,
+        actor_user_id: Uuid,
+        name: &str,
+        application_type: domain::ApplicationType,
+    ) -> domain::ApplicationRecord {
+        let subject_kind = application_type.as_str().to_string();
         let application = domain::ApplicationRecord {
             id: Uuid::now_v7(),
             workspace_id: TEST_WORKSPACE_ID,
-            application_type: domain::ApplicationType::AgentFlow,
+            application_type,
             name: name.to_string(),
             description: String::new(),
             icon: None,
@@ -90,7 +96,7 @@ impl ApplicationPublicApiTestRepository {
             sections: domain::ApplicationSections {
                 orchestration: domain::ApplicationOrchestrationSection {
                     status: "planned".to_string(),
-                    subject_kind: "agent_flow".to_string(),
+                    subject_kind,
                     subject_status: "unconfigured".to_string(),
                     current_subject_id: None,
                     current_draft_id: None,
@@ -123,6 +129,10 @@ impl ApplicationPublicApiTestRepository {
             .applications
             .insert(application.id, application.clone());
         application
+    }
+
+    fn seed_application(&self, actor_user_id: Uuid, name: &str) -> domain::ApplicationRecord {
+        self.seed_application_with_type(actor_user_id, name, domain::ApplicationType::AgentFlow)
     }
 
     pub fn contains_api_key(&self, api_key_id: Uuid) -> bool {
@@ -182,6 +192,18 @@ impl ApplicationPublicApiTestHarness {
 
     pub fn seed_application(&self, actor_user_id: Uuid, name: &str) -> domain::ApplicationRecord {
         self.repository.seed_application(actor_user_id, name)
+    }
+
+    pub fn seed_workflow_application(
+        &self,
+        actor_user_id: Uuid,
+        name: &str,
+    ) -> domain::ApplicationRecord {
+        self.repository.seed_application_with_type(
+            actor_user_id,
+            name,
+            domain::ApplicationType::Workflow,
+        )
     }
 }
 

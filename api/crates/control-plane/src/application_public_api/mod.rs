@@ -9,6 +9,7 @@ pub mod model_catalog;
 pub mod native;
 pub mod publications;
 pub mod run_service;
+pub mod workflow_extension;
 
 use crate::errors::ControlPlaneError;
 

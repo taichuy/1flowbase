@@ -15,6 +15,7 @@ pub struct CreateApplicationPublicationVersionInput {
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
     pub mapping_snapshot: ApplicationApiMappingConfig,
+    pub extension_slug: Option<String>,
     pub api_enabled: bool,
     pub compiled_plan_id: Uuid,
     pub flow_id: Uuid,
@@ -40,6 +41,11 @@ pub trait ApplicationApiMappingRepository: Send + Sync {
         &self,
         application_id: Uuid,
     ) -> anyhow::Result<Option<ApplicationApiMappingConfig>>;
+
+    async fn load_application_api_mapping_application_id_by_extension_slug(
+        &self,
+        slug: &str,
+    ) -> anyhow::Result<Option<Uuid>>;
 
     async fn replace_application_api_mapping(
         &self,
@@ -141,6 +147,19 @@ pub trait ApplicationPublicationRepository: Send + Sync {
         application_id: Uuid,
     ) -> anyhow::Result<
         Option<crate::application_public_api::publications::ApplicationPublicationVersionRecord>,
+    >;
+
+    async fn load_active_application_publication_by_extension_slug(
+        &self,
+        slug: &str,
+    ) -> anyhow::Result<
+        Option<crate::application_public_api::publications::ApplicationPublicationVersionRecord>,
+    >;
+
+    async fn list_enabled_extension_publications(
+        &self,
+    ) -> anyhow::Result<
+        Vec<crate::application_public_api::publications::ApplicationPublicationVersionRecord>,
     >;
 
     async fn set_application_api_enabled(

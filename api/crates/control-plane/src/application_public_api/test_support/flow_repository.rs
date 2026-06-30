@@ -33,7 +33,8 @@ impl FlowRepository for ApplicationPublicApiTestRepository {
             deterministic_test_id(0x33333333333333330000000000000000, inner.next_flow_ordinal);
         let now =
             OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(inner.next_flow_ordinal as i64);
-        let document = domain::default_flow_document(flow_id);
+        let document =
+            domain::default_flow_document_for_application(application.application_type, flow_id);
         let state = domain::FlowEditorState {
             flow: domain::FlowRecord {
                 id: flow_id,

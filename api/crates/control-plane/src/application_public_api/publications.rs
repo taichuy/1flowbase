@@ -85,6 +85,7 @@ pub struct ApplicationPublicationVersionRecord {
     pub flow_id: Uuid,
     pub flow_version_id: Uuid,
     pub mapping_snapshot: ApplicationApiMappingConfig,
+    pub extension_slug: Option<String>,
     pub compiled_plan_id: Uuid,
     pub version_sequence: i64,
     pub active: bool,
@@ -135,6 +136,18 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
         ensure_application_edit_permission(&actor, &application)?;
+        let extension_slug = command.mapping.extension_slug().map(ToOwned::to_owned);
+        if let Some(slug) = extension_slug.as_deref() {
+            if let Some(existing_publication) = self
+                .repository
+                .load_active_application_publication_by_extension_slug(slug)
+                .await?
+            {
+                if existing_publication.application_id != application.id {
+                    return Err(ControlPlaneError::Conflict("extension_slug").into());
+                }
+            }
+        }
         let dependency_snapshot = self
             .repository
             .list_application_js_dependency_selections(application.workspace_id, application.id)
@@ -178,12 +191,20 @@ where
             .repository
             .build_application_compile_context(application.workspace_id, application.id)
             .await?;
-        let compiled_plan = FlowCompiler::compile(
-            protected_state.flow.id,
-            &protected_state.draft.id.to_string(),
-            &document,
-            &compile_context,
-        )?;
+        let compiled_plan = match application.application_type {
+            domain::ApplicationType::AgentFlow => FlowCompiler::compile(
+                protected_state.flow.id,
+                &protected_state.draft.id.to_string(),
+                &document,
+                &compile_context,
+            )?,
+            domain::ApplicationType::Workflow => FlowCompiler::compile_workflow(
+                protected_state.flow.id,
+                &protected_state.draft.id.to_string(),
+                &document,
+                &compile_context,
+            )?,
+        };
         let compiled_plan = self
             .repository
             .upsert_application_compiled_plan(&build_compiled_plan_input(
@@ -200,6 +221,7 @@ where
                     actor_user_id: command.actor_user_id,
                     application_id: application.id,
                     mapping_snapshot: command.mapping,
+                    extension_slug,
                     api_enabled: command.api_enabled,
                     compiled_plan_id: compiled_plan.id,
                     flow_id: protected_state.flow.id,

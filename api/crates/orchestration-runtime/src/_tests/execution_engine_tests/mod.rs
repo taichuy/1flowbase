@@ -989,3 +989,4 @@ mod llm_context;
 mod llm_output;
 mod plugin_nodes;
 mod variable_updates;
+mod workflow;

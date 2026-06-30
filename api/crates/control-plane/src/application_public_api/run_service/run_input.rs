@@ -10,7 +10,7 @@ pub(super) fn generate_external_conversation_id() -> String {
     format!("conv_{}", Uuid::now_v7().simple())
 }
 
-pub(super) fn freeze_run_input_environment(
+pub(crate) fn freeze_run_input_environment(
     input_payload: Value,
     variables: &[domain::ApplicationEnvironmentVariable],
     external_model_parameters: Option<Value>,
@@ -34,13 +34,16 @@ pub(super) fn freeze_run_input_environment(
     Value::Object(payload)
 }
 
-pub(super) fn compiled_plan_start_node_id(plan: &Value) -> Option<String> {
+pub(crate) fn compiled_plan_start_node_id(plan: &Value) -> Option<String> {
     plan.get("nodes")
         .and_then(Value::as_object)?
         .iter()
         .find_map(|(node_id, node)| {
-            (node.get("node_type").and_then(Value::as_str) == Some("start"))
-                .then(|| node_id.clone())
+            matches!(
+                node.get("node_type").and_then(Value::as_str),
+                Some("start" | "workflow_start")
+            )
+            .then(|| node_id.clone())
         })
 }
 

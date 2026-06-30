@@ -74,6 +74,17 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
         ensure_application_edit_permission(&actor, &application)?;
+        if let Some(slug) = command.mapping.extension_slug() {
+            if let Some(existing_application_id) = self
+                .repository
+                .load_application_api_mapping_application_id_by_extension_slug(slug)
+                .await?
+            {
+                if existing_application_id != application.id {
+                    return Err(ControlPlaneError::Conflict("extension_slug").into());
+                }
+            }
+        }
 
         self.repository
             .replace_application_api_mapping(&ReplaceApplicationApiMappingInput {
@@ -89,6 +100,8 @@ where
 pub struct ApplicationApiMappingConfig {
     pub input: ApplicationApiMappingInput,
     pub output: ApplicationApiMappingOutput,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<WorkflowExtensionApiConfig>,
 }
 
 impl ApplicationApiMappingConfig {
@@ -102,7 +115,14 @@ impl ApplicationApiMappingConfig {
                 attachments_target: Some("node-start.files".to_string()),
             },
             output: ApplicationApiMappingOutput::default(),
+            extension: None,
         }
+    }
+
+    pub fn extension_slug(&self) -> Option<&str> {
+        self.extension
+            .as_ref()
+            .map(|extension| extension.slug.as_str())
     }
 }
 
@@ -123,6 +143,73 @@ pub struct ApplicationApiMappingOutput {
     pub error_selector: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkflowExtensionApiConfig {
+    pub slug: String,
+    pub method: WorkflowExtensionHttpMethod,
+    pub response_mode: WorkflowExtensionResponseMode,
+    #[serde(default)]
+    pub parameters: Vec<WorkflowExtensionParameterMapping>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum WorkflowExtensionHttpMethod {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+    Options,
+}
+
+impl WorkflowExtensionHttpMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Get => "GET",
+            Self::Post => "POST",
+            Self::Put => "PUT",
+            Self::Patch => "PATCH",
+            Self::Delete => "DELETE",
+            Self::Head => "HEAD",
+            Self::Options => "OPTIONS",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowExtensionResponseMode {
+    Sync,
+    Async,
+}
+
+impl WorkflowExtensionResponseMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sync => "sync",
+            Self::Async => "async",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkflowExtensionParameterMapping {
+    pub name: String,
+    pub source: WorkflowExtensionParameterSource,
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowExtensionParameterSource {
+    Path,
+    Query,
+    Form,
+    Body,
+}
+
 pub fn validate_application_api_mapping(mapping: &ApplicationApiMappingConfig) -> Result<()> {
     validate_required_selector("query_target", &mapping.input.query_target)?;
     validate_optional_selector("model_target", mapping.input.model_target.as_deref())?;
@@ -136,7 +223,53 @@ pub fn validate_application_api_mapping(mapping: &ApplicationApiMappingConfig) -
     validate_optional_selector("usage_selector", mapping.output.usage_selector.as_deref())?;
     validate_optional_selector("files_selector", mapping.output.files_selector.as_deref())?;
     validate_optional_selector("error_selector", mapping.output.error_selector.as_deref())?;
+    if let Some(extension) = &mapping.extension {
+        validate_extension_api_config(extension)?;
+    }
     Ok(())
+}
+
+fn validate_extension_api_config(extension: &WorkflowExtensionApiConfig) -> Result<()> {
+    validate_extension_slug(&extension.slug)?;
+    let mut seen = std::collections::BTreeSet::new();
+    for parameter in &extension.parameters {
+        validate_parameter_name(&parameter.name)?;
+        validate_required_selector("parameter_target", &parameter.target)?;
+        let source_key = (parameter.source, parameter.name.as_str());
+        if !seen.insert(source_key) {
+            return Err(ControlPlaneError::InvalidInput("parameter").into());
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_extension_slug(slug: &str) -> Result<()> {
+    let valid = !slug.is_empty()
+        && slug.len() <= 63
+        && slug.chars().enumerate().all(|(index, character)| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || (index > 0 && matches!(character, '-' | '_'))
+        });
+
+    if valid {
+        Ok(())
+    } else {
+        Err(ControlPlaneError::InvalidInput("extension.slug").into())
+    }
+}
+
+fn validate_parameter_name(name: &str) -> Result<()> {
+    let valid = !name.is_empty()
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'));
+    if valid {
+        Ok(())
+    } else {
+        Err(ControlPlaneError::InvalidInput("parameter.name").into())
+    }
 }
 
 fn validate_required_selector(field: &'static str, selector: &str) -> Result<()> {

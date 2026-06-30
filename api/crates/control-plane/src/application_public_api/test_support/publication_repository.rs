@@ -14,6 +14,14 @@ impl ApplicationPublicationRepository for ApplicationPublicApiTestRepository {
         if !inner.applications.contains_key(&input.application_id) {
             return Err(ControlPlaneError::NotFound("application").into());
         }
+        if let Some(slug) = input.extension_slug.as_deref() {
+            if inner.publications.values().any(|publication| {
+                publication.application_id != input.application_id
+                    && publication.extension_slug.as_deref() == Some(slug)
+            }) {
+                return Err(ControlPlaneError::Conflict("extension_slug").into());
+            }
+        }
 
         let existing_id = inner
             .publications
@@ -31,6 +39,7 @@ impl ApplicationPublicationRepository for ApplicationPublicApiTestRepository {
             flow_id: input.flow_id,
             flow_version_id: input.flow_version_id,
             mapping_snapshot: input.mapping_snapshot.clone(),
+            extension_slug: input.extension_slug.clone(),
             compiled_plan_id: input.compiled_plan_id,
             version_sequence: 1,
             active: true,
@@ -103,6 +112,42 @@ impl ApplicationPublicationRepository for ApplicationPublicApiTestRepository {
             .cloned())
     }
 
+    async fn load_active_application_publication_by_extension_slug(
+        &self,
+        slug: &str,
+    ) -> Result<Option<publications::ApplicationPublicationVersionRecord>> {
+        Ok(self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .publications
+            .values()
+            .find(|publication| {
+                publication.active && publication.extension_slug.as_deref() == Some(slug)
+            })
+            .cloned())
+    }
+
+    async fn list_enabled_extension_publications(
+        &self,
+    ) -> Result<Vec<publications::ApplicationPublicationVersionRecord>> {
+        let mut publications = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .publications
+            .values()
+            .filter(|publication| {
+                publication.active
+                    && publication.api_enabled
+                    && publication.extension_slug.as_deref().is_some()
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        publications.sort_by(|left, right| left.extension_slug.cmp(&right.extension_slug));
+        Ok(publications)
+    }
+
     async fn set_application_api_enabled(
         &self,
         input: &SetApplicationApiEnabledInput,
@@ -117,6 +162,11 @@ impl ApplicationPublicationRepository for ApplicationPublicApiTestRepository {
         inner
             .application_api_enabled
             .insert(input.application_id, input.api_enabled);
+        for publication in inner.publications.values_mut() {
+            if publication.application_id == input.application_id {
+                publication.api_enabled = input.api_enabled;
+            }
+        }
         Ok(())
     }
 }

@@ -39,6 +39,10 @@ pub use repository_contracts::{
     CancelPublishedFlowRunInput, CreatePublishedFlowRunResult,
     ListWaitingCallbackPublishedRunsInput,
 };
+pub(crate) use run_input::{
+    compiled_plan_start_node_id as public_compiled_plan_start_node_id,
+    freeze_run_input_environment as public_freeze_run_input_environment,
+};
 use run_input::{
     compiled_plan_start_node_id, freeze_run_input_environment, generate_external_conversation_id,
     validate_external_model_parameters,

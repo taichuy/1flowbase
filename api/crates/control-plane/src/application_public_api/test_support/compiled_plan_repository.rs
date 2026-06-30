@@ -15,6 +15,20 @@ impl ApplicationApiMappingRepository for ApplicationPublicApiTestRepository {
             .cloned())
     }
 
+    async fn load_application_api_mapping_application_id_by_extension_slug(
+        &self,
+        slug: &str,
+    ) -> Result<Option<Uuid>> {
+        Ok(self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .mappings
+            .iter()
+            .find(|(_, mapping)| mapping.extension_slug() == Some(slug))
+            .map(|(application_id, _)| *application_id))
+    }
+
     async fn replace_application_api_mapping(
         &self,
         input: &ReplaceApplicationApiMappingInput,
@@ -25,6 +39,13 @@ impl ApplicationApiMappingRepository for ApplicationPublicApiTestRepository {
             .expect("application public api test repo mutex poisoned");
         if !inner.applications.contains_key(&input.application_id) {
             return Err(ControlPlaneError::NotFound("application").into());
+        }
+        if let Some(slug) = input.mapping.extension_slug() {
+            if inner.mappings.iter().any(|(application_id, mapping)| {
+                *application_id != input.application_id && mapping.extension_slug() == Some(slug)
+            }) {
+                return Err(ControlPlaneError::Conflict("extension_slug").into());
+            }
         }
         inner
             .mappings

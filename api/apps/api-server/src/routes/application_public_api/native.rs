@@ -50,7 +50,7 @@ use crate::{
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
-fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
+pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
     ApiProviderRuntime::new_with_activity(
         state.provider_runtime.clone(),
         state.runtime_activity.clone(),

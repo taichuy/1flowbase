@@ -34,17 +34,32 @@ impl ApplicationApiMappingRepository for PgControlPlaneStore {
         Ok(mapping)
     }
 
+    async fn load_application_api_mapping_application_id_by_extension_slug(
+        &self,
+        slug: &str,
+    ) -> Result<Option<Uuid>> {
+        sqlx::query_scalar(
+            "select application_id from application_api_mappings where extension_slug = $1",
+        )
+        .bind(slug)
+        .fetch_optional(self.pool())
+        .await
+        .map_err(Into::into)
+    }
+
     async fn replace_application_api_mapping(
         &self,
         input: &ReplaceApplicationApiMappingInput,
     ) -> Result<ApplicationApiMappingConfig> {
         let mapping = serde_json::to_value(&input.mapping)?;
+        let extension_slug = input.mapping.extension_slug();
         let row = sqlx::query_scalar::<_, serde_json::Value>(
             r#"
             insert into application_api_mappings (
                 id,
                 application_id,
                 scope_id,
+                extension_slug,
                 mapping_config,
                 created_by,
                 updated_by
@@ -55,11 +70,13 @@ impl ApplicationApiMappingRepository for PgControlPlaneStore {
                 applications.scope_id,
                 $3,
                 $4,
-                $4
+                $5,
+                $5
             from applications
             where applications.id = $2
             on conflict (application_id) do update
             set scope_id = excluded.scope_id,
+                extension_slug = excluded.extension_slug,
                 mapping_config = excluded.mapping_config,
                 updated_by = excluded.updated_by,
                 updated_at = now()
@@ -68,10 +85,12 @@ impl ApplicationApiMappingRepository for PgControlPlaneStore {
         )
         .bind(Uuid::now_v7())
         .bind(input.application_id)
+        .bind(extension_slug)
         .bind(mapping)
         .bind(input.actor_user_id)
         .fetch_one(self.pool())
-        .await?;
+        .await
+        .map_err(map_extension_slug_sqlx_error)?;
 
         serde_json::from_value(row).map_err(Into::into)
     }
@@ -106,6 +125,7 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
                 flow_id,
                 flow_version_id,
                 compiled_plan_id,
+                extension_slug,
                 version_sequence,
                 active,
                 api_enabled,
@@ -119,13 +139,14 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
                 created_by,
                 updated_by
             ) values (
-                $1, $2, (select scope_id from applications where id = $2), $3, $4, $5, 1, true, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14
+                $1, $2, (select scope_id from applications where id = $2), $3, $4, $5, $6, 1, true, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15
             )
             on conflict (application_id) do update
             set scope_id = excluded.scope_id,
                 flow_id = excluded.flow_id,
                 flow_version_id = excluded.flow_version_id,
                 compiled_plan_id = excluded.compiled_plan_id,
+                extension_slug = excluded.extension_slug,
                 version_sequence = 1,
                 active = true,
                 api_enabled = excluded.api_enabled,
@@ -146,6 +167,7 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
                 flow_id,
                 flow_version_id,
                 compiled_plan_id,
+                extension_slug,
                 version_sequence,
                 active,
                 api_enabled,
@@ -165,6 +187,7 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         .bind(input.flow_id)
         .bind(input.flow_version_id)
         .bind(input.compiled_plan_id)
+        .bind(&input.extension_slug)
         .bind(input.api_enabled)
         .bind(&input.flow_schema_version)
         .bind(&input.document_hash)
@@ -175,7 +198,8 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         .bind(serde_json::to_value(&input.dependency_snapshot)?)
         .bind(input.actor_user_id)
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+        .map_err(map_extension_slug_sqlx_error)?;
 
         tx.commit().await?;
         map_publication_row(row)
@@ -220,6 +244,34 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
             .await?;
 
         row.map(map_publication_row).transpose()
+    }
+
+    async fn load_active_application_publication_by_extension_slug(
+        &self,
+        slug: &str,
+    ) -> Result<Option<ApplicationPublicationVersionRecord>> {
+        let row =
+            sqlx::query(publication_select_sql("where active and extension_slug = $1").as_str())
+                .bind(slug)
+                .fetch_optional(self.pool())
+                .await?;
+
+        row.map(map_publication_row).transpose()
+    }
+
+    async fn list_enabled_extension_publications(
+        &self,
+    ) -> Result<Vec<ApplicationPublicationVersionRecord>> {
+        let rows = sqlx::query(
+            publication_select_sql(
+                "where active and api_enabled and extension_slug is not null order by extension_slug asc, id asc",
+            )
+            .as_str(),
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter().map(map_publication_row).collect()
     }
 
     async fn set_application_api_enabled(
@@ -268,6 +320,7 @@ fn publication_select_sql(predicate: &str) -> String {
             flow_id,
             flow_version_id,
             compiled_plan_id,
+            extension_slug,
             version_sequence,
             active,
             api_enabled,
@@ -293,6 +346,7 @@ fn map_publication_row(row: sqlx::postgres::PgRow) -> Result<ApplicationPublicat
         flow_id: row.get("flow_id"),
         flow_version_id: row.get("flow_version_id"),
         compiled_plan_id: row.get("compiled_plan_id"),
+        extension_slug: row.get("extension_slug"),
         version_sequence: row.get("version_sequence"),
         active: row.get("active"),
         api_enabled: row.get("api_enabled"),
@@ -306,4 +360,19 @@ fn map_publication_row(row: sqlx::postgres::PgRow) -> Result<ApplicationPublicat
         created_by: row.get("created_by"),
         created_at: row.get("created_at"),
     })
+}
+
+fn map_extension_slug_sqlx_error(error: sqlx::Error) -> anyhow::Error {
+    if let sqlx::Error::Database(database_error) = &error {
+        if matches!(
+            database_error.constraint(),
+            Some(
+                "application_api_mappings_extension_slug_uidx"
+                    | "application_publication_versions_extension_slug_uidx"
+            )
+        ) {
+            return ControlPlaneError::Conflict("extension_slug").into();
+        }
+    }
+    error.into()
 }

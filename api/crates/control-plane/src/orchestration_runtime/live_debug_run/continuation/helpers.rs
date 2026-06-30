@@ -1,5 +1,6 @@
 use super::*;
 use crate::orchestration_runtime::answer_presentation;
+use orchestration_runtime::payload_builder::PublicOutputContract;
 use serde_json::Map;
 use std::collections::BTreeSet;
 
@@ -76,7 +77,7 @@ pub(super) fn compiled_plan_start_node_id(
     compiled_plan
         .nodes
         .values()
-        .find(|node| node.node_type == "start")
+        .find(|node| matches!(node.node_type.as_str(), "start" | "workflow_start"))
         .map(|node| node.node_id.as_str())
 }
 
@@ -153,6 +154,18 @@ pub(super) fn template_output_payload(
     }
 
     Value::Object(payload)
+}
+
+pub(super) fn project_node_variable_payload(
+    node: &orchestration_runtime::compiled_plan::CompiledNode,
+    output_payload: &Value,
+) -> Result<Value> {
+    if node.node_type == "code" {
+        return Ok(output_payload.clone());
+    }
+
+    PublicOutputContract::from_compiled_outputs(&node.outputs)?
+        .project_variable_payload(output_payload)
 }
 
 pub(super) fn can_continue_to_terminal_template_nodes(

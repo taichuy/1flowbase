@@ -43,7 +43,7 @@ use tower_http::{
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use utoipa::{OpenApi, ToSchema};
-use utoipa_swagger_ui::SwaggerUi;
+use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 
 use crate::{
     app_state::ApiState,
@@ -108,35 +108,38 @@ fn cors_layer(config: &ApiConfig) -> CorsLayer {
     }
 }
 
-fn base_router(include_docs_ui: bool) -> Router {
+fn base_router(include_docs_ui: bool, static_openapi: bool) -> Router {
     let router = Router::new()
         .route("/health", get(health))
         .route("/api/console/health", get(console_health));
 
-    if include_docs_ui {
+    if include_docs_ui && static_openapi {
         router.merge(SwaggerUi::new("/docs").url("/openapi.json", openapi::ApiDoc::openapi()))
+    } else if include_docs_ui {
+        router.merge(SwaggerUi::new("/docs").config(SwaggerUiConfig::from("/openapi.json")))
     } else {
         router
     }
 }
 
 pub fn app() -> Router {
-    base_router(true)
+    base_router(true, true)
         .layer(development_cors_layer())
         .layer(TraceLayer::new_for_http())
 }
 
 pub fn app_with_state(state: Arc<ApiState>) -> Router {
-    base_router(true)
-        .merge(console_router(state))
+    base_router(true, false)
+        .merge(console_router(state, true))
         .layer(development_cors_layer())
         .layer(TraceLayer::new_for_http())
 }
 
-fn console_router(state: Arc<ApiState>) -> Router {
-    Router::new()
+fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
+    let router = Router::new()
         .merge(routes::application_public_api::compatible_router())
         .nest("/api/agent/v1", routes::application_public_api::router())
+        .nest("/api/ex", routes::application_public_api::ex::router())
         .nest("/api/console", routes::applications::router())
         .nest("/api/console", routes::application_api::router())
         .nest("/api/console", routes::application_orchestration::router())
@@ -166,13 +169,21 @@ fn console_router(state: Arc<ApiState>) -> Router {
         .nest("/api/console", routes::system::router())
         .nest("/api/console", routes::workspaces::router())
         .nest("/api/runtime", routes::runtime_models::router())
-        .nest("/api/public/auth", routes::auth::router())
-        .with_state(state)
+        .nest("/api/public/auth", routes::auth::router());
+
+    let router = if include_openapi {
+        router.route("/openapi.json", get(openapi::dynamic_openapi))
+    } else {
+        router
+    };
+
+    router.with_state(state)
 }
 
 pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
-    base_router(config.env != ApiEnvironment::Production)
-        .merge(console_router(state))
+    let include_docs = config.env != ApiEnvironment::Production;
+    base_router(include_docs, false)
+        .merge(console_router(state, include_docs))
         .layer(cors_layer(config))
         .layer(TraceLayer::new_for_http())
 }

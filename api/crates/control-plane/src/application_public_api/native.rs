@@ -648,7 +648,7 @@ fn write_optional_selector(
     write_selector(root, selector, value)
 }
 
-fn write_selector(
+pub(crate) fn write_selector(
     root: &mut Value,
     selector: &str,
     value: Value,
@@ -736,6 +736,7 @@ mod tests {
                 attachments_target: None,
             },
             output: ApplicationApiMappingOutput::default(),
+            extension: None,
         };
 
         let error =
@@ -760,6 +761,7 @@ mod tests {
                 attachments_target: None,
             },
             output: ApplicationApiMappingOutput::default(),
+            extension: None,
         };
 
         let mapped =

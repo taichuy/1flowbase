@@ -69,6 +69,7 @@ fn mapping_without_model_target() -> ApplicationApiMappingConfig {
             attachments_target: Some("node-start.files".into()),
         },
         output: ApplicationApiMappingOutput::default(),
+        extension: None,
     }
 }
 
