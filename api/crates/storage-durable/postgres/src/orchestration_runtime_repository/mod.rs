@@ -702,7 +702,7 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
     async fn find_published_flow_run_by_idempotency_key(
         &self,
         application_id: Uuid,
-        api_key_id: Uuid,
+        api_key_id: Option<Uuid>,
         idempotency_key: &str,
     ) -> Result<Option<domain::FlowRunRecord>> {
         PgControlPlaneStore::find_published_flow_run_by_idempotency_key(

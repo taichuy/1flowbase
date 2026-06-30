@@ -1,4 +1,4 @@
-use super::{conversations, mapping, native, publications, run_service};
+use super::{conversations, mapping, native, publications, run_service, workflow_schedule};
 use crate::errors::ControlPlaneError;
 
 use std::{
@@ -19,8 +19,8 @@ use crate::ports::{
     CreateApplicationInput, CreateApplicationPublicationVersionInput, CreateApplicationTagInput,
     CreateFlowRunInput, DeleteApplicationInput, FlowRepository, ReplaceApplicationApiMappingInput,
     ReplaceApplicationEnvironmentVariablesInput, ReplaceApplicationJsDependencySelectionInput,
-    SetApplicationApiEnabledInput, UpdateApplicationInput, UpdateProfileInput,
-    UpsertCompiledPlanInput,
+    ReplaceWorkflowScheduleTriggerInput, SetApplicationApiEnabledInput, UpdateApplicationInput,
+    UpdateProfileInput, UpsertCompiledPlanInput, WorkflowScheduleTriggerRepository,
 };
 
 const TEST_TENANT_ID: Uuid = Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
@@ -39,6 +39,7 @@ struct ApplicationPublicApiTestRepositoryInner {
     editor_states: HashMap<Uuid, domain::FlowEditorState>,
     compiled_plans: HashMap<Uuid, domain::CompiledPlanRecord>,
     publications: HashMap<Uuid, publications::ApplicationPublicationVersionRecord>,
+    workflow_schedule_triggers: HashMap<Uuid, workflow_schedule::WorkflowScheduleTriggerRecord>,
     js_dependency_selections:
         HashMap<(Uuid, String, String), domain::ApplicationJsDependencySelection>,
     application_api_enabled: HashMap<Uuid, bool>,
@@ -54,6 +55,7 @@ struct ApplicationPublicApiTestRepositoryInner {
     next_flow_version_sequence: i64,
     next_compiled_plan_ordinal: u128,
     next_publication_ordinal: u128,
+    next_workflow_schedule_ordinal: u128,
     api_key_last_used_write_counts: HashMap<Uuid, usize>,
     fail_mark_api_key_used: bool,
 }
@@ -294,6 +296,73 @@ impl CacheStore for ApplicationPublicApiTestCache {
 impl Default for ApplicationPublicApiTestHarness {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[async_trait]
+impl WorkflowScheduleTriggerRepository for ApplicationPublicApiTestRepository {
+    async fn get_workflow_schedule_trigger(
+        &self,
+        application_id: Uuid,
+    ) -> Result<Option<workflow_schedule::WorkflowScheduleTriggerRecord>> {
+        Ok(self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .workflow_schedule_triggers
+            .get(&application_id)
+            .cloned())
+    }
+
+    async fn replace_workflow_schedule_trigger(
+        &self,
+        input: &ReplaceWorkflowScheduleTriggerInput,
+    ) -> Result<workflow_schedule::WorkflowScheduleTriggerRecord> {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        if !inner.applications.contains_key(&input.application_id) {
+            return Err(ControlPlaneError::NotFound("application").into());
+        }
+        let existing = inner
+            .workflow_schedule_triggers
+            .get(&input.application_id)
+            .cloned();
+        inner.next_workflow_schedule_ordinal += 1;
+        let now = OffsetDateTime::UNIX_EPOCH
+            + time::Duration::seconds(inner.next_workflow_schedule_ordinal as i64);
+        let record = workflow_schedule::WorkflowScheduleTriggerRecord {
+            id: existing
+                .as_ref()
+                .map(|record| record.id)
+                .unwrap_or_else(|| {
+                    deterministic_test_id(
+                        0x77777777777777770000000000000000,
+                        inner.next_workflow_schedule_ordinal,
+                    )
+                }),
+            workspace_id: input.workspace_id,
+            application_id: input.application_id,
+            enabled: input.enabled,
+            cron: input.cron.clone(),
+            timezone: input.timezone.clone(),
+            input_payload: input.input_payload.clone(),
+            created_by: existing
+                .as_ref()
+                .map(|record| record.created_by)
+                .unwrap_or(input.actor_user_id),
+            updated_by: input.actor_user_id,
+            created_at: existing
+                .as_ref()
+                .map(|record| record.created_at)
+                .unwrap_or(now),
+            updated_at: now,
+        };
+        inner
+            .workflow_schedule_triggers
+            .insert(input.application_id, record.clone());
+        Ok(record)
     }
 }
 

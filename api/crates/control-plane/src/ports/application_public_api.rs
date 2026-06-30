@@ -2,6 +2,7 @@ use super::*;
 
 use crate::application_public_api::mapping::ApplicationApiMappingConfig;
 use crate::application_public_api::publications::ApplicationPublicationJsDependencySnapshot;
+use crate::application_public_api::workflow_schedule::WorkflowScheduleTriggerRecord;
 
 #[derive(Debug, Clone)]
 pub struct ReplaceApplicationApiMappingInput {
@@ -35,6 +36,17 @@ pub struct SetApplicationApiEnabledInput {
     pub api_enabled: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct ReplaceWorkflowScheduleTriggerInput {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub application_id: Uuid,
+    pub enabled: bool,
+    pub cron: String,
+    pub timezone: String,
+    pub input_payload: serde_json::Value,
+}
+
 #[async_trait]
 pub trait ApplicationApiMappingRepository: Send + Sync {
     async fn get_application_api_mapping(
@@ -51,6 +63,19 @@ pub trait ApplicationApiMappingRepository: Send + Sync {
         &self,
         input: &ReplaceApplicationApiMappingInput,
     ) -> anyhow::Result<ApplicationApiMappingConfig>;
+}
+
+#[async_trait]
+pub trait WorkflowScheduleTriggerRepository: Send + Sync {
+    async fn get_workflow_schedule_trigger(
+        &self,
+        application_id: Uuid,
+    ) -> anyhow::Result<Option<WorkflowScheduleTriggerRecord>>;
+
+    async fn replace_workflow_schedule_trigger(
+        &self,
+        input: &ReplaceWorkflowScheduleTriggerInput,
+    ) -> anyhow::Result<WorkflowScheduleTriggerRecord>;
 }
 
 #[async_trait]

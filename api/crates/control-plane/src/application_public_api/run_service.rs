@@ -129,7 +129,7 @@ where
                 .repository
                 .find_published_flow_run_by_idempotency_key(
                     actor.application_id,
-                    actor.api_key_id,
+                    Some(actor.api_key_id),
                     idempotency_key,
                 )
                 .await

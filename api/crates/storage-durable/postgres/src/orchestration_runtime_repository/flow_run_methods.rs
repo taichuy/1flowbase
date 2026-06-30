@@ -550,7 +550,7 @@ impl PgControlPlaneStore {
     async fn find_published_flow_run_by_idempotency_key(
         &self,
         application_id: Uuid,
-        api_key_id: Uuid,
+        api_key_id: Option<Uuid>,
         idempotency_key: &str,
     ) -> Result<Option<domain::FlowRunRecord>> {
         let row = sqlx::query(
@@ -586,7 +586,7 @@ impl PgControlPlaneStore {
                 updated_at
             from flow_runs
             where application_id = $1
-              and api_key_id = $2
+              and api_key_id is not distinct from $2
               and idempotency_key = $3
               and run_mode = 'published_api_run'
             order by created_at asc, id asc

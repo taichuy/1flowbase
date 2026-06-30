@@ -1,4 +1,5 @@
 use super::*;
+use control_plane::application_public_api::run_service::ApplicationPublishedFlowRunRepository;
 
 #[tokio::test]
 async fn orchestration_runtime_repository_round_trips_published_public_run_metadata() {
@@ -100,6 +101,69 @@ async fn orchestration_runtime_repository_round_trips_published_public_run_metad
     assert_eq!(completed.external_trace_id.as_deref(), Some("trace-1"));
     assert_eq!(completed.compatibility_mode.as_deref(), Some("native-v1"));
     assert_eq!(completed.idempotency_key.as_deref(), Some("idem-1"));
+}
+
+#[tokio::test]
+async fn published_run_idempotency_lookup_supports_schedule_runs_without_api_key() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let idempotency_key = "workflow-schedule:test:34200".to_string();
+
+    let created =
+        <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::create_published_flow_run(
+            &store,
+            &CreateFlowRunInput {
+                actor_user_id: seeded.actor_user_id,
+                application_id: seeded.application_id,
+                flow_id: seeded.flow_id,
+                flow_draft_id: seeded.draft_id,
+                compiled_plan_id: compiled.id,
+                debug_session_id: String::new(),
+                flow_schema_version: compiled.schema_version.clone(),
+                document_hash: compiled.document_hash.clone(),
+                run_mode: FlowRunMode::PublishedApiRun,
+                target_node_id: None,
+                title: "Scheduled workflow".to_string(),
+                status: FlowRunStatus::Queued,
+                input_payload: json!({ "node-workflow-start": { "customer_id": "C-42" } }),
+                started_at: datetime!(2026-06-30 09:30:00 UTC),
+                api_key_id: None,
+                publication_version_id: None,
+                external_user: None,
+                external_conversation_id: None,
+                external_trace_id: Some(format!("workflow-schedule:{}", seeded.application_id)),
+                compatibility_mode: Some("workflow_schedule_v1".to_string()),
+                idempotency_key: Some(idempotency_key.clone()),
+            },
+        )
+        .await
+        .unwrap()
+        .flow_run;
+    let fetched = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::find_published_flow_run_by_idempotency_key(
+        &store,
+        seeded.application_id,
+        None,
+        &idempotency_key,
+    )
+    .await
+    .unwrap()
+    .expect("schedule run should be found without an api_key_id");
+    let api_key_id = seed_application_api_key(&store, &seeded).await;
+    let api_key_scoped = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::find_published_flow_run_by_idempotency_key(
+        &store,
+        seeded.application_id,
+        Some(api_key_id),
+        &idempotency_key,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(fetched.id, created.id);
+    assert_eq!(fetched.api_key_id, None);
+    assert!(api_key_scoped.is_none());
 }
 
 #[tokio::test]

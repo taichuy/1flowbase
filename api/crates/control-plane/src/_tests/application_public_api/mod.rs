@@ -1,3 +1,5 @@
+use anyhow::Result;
+use async_trait::async_trait;
 use control_plane::{
     application_public_api::{
         api_keys::{
@@ -20,16 +22,21 @@ use control_plane::{
             CreateWorkflowExtensionRunCommand, WorkflowExtensionRequestParameters,
             WorkflowExtensionRunService,
         },
+        workflow_schedule::{
+            DispatchWorkflowScheduleCommand, GetWorkflowScheduleTriggerCommand,
+            ReplaceWorkflowScheduleTriggerCommand, WorkflowScheduleDispatchOutcome,
+            WorkflowScheduleTriggerService, WORKFLOW_SCHEDULE_RUN_QUEUE,
+        },
         ApplicationPublicApiTestHarness,
     },
     auth::ApiKeyService,
     ports::{
-        ApplicationJsDependencySelectionRepository, FlowRepository,
-        ReplaceApplicationJsDependencySelectionInput,
+        ApplicationJsDependencySelectionRepository, ClaimedTask, EphemeralInspectionCapabilities,
+        FlowRepository, ReplaceApplicationJsDependencySelectionInput, TaskQueue,
     },
 };
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use time::Duration;
 use uuid::Uuid;
 
@@ -121,6 +128,66 @@ fn application_public_api_code_js_dependency_document(flow_id: Uuid) -> serde_js
         },
         "editor": { "viewport": { "x": 0, "y": 0, "zoom": 1 }, "annotations": [], "activeContainerPath": [] }
     })
+}
+
+#[derive(Default)]
+struct RecordingTaskQueue {
+    enqueued: Mutex<Vec<(String, serde_json::Value, Option<String>)>>,
+}
+
+#[async_trait]
+impl TaskQueue for RecordingTaskQueue {
+    async fn enqueue(
+        &self,
+        queue: &str,
+        payload: serde_json::Value,
+        idempotency_key: Option<&str>,
+    ) -> Result<String> {
+        let task_id = format!(
+            "task-{}",
+            self.enqueued
+                .lock()
+                .expect("recording task queue mutex poisoned")
+                .len()
+                + 1
+        );
+        self.enqueued
+            .lock()
+            .expect("recording task queue mutex poisoned")
+            .push((
+                queue.to_string(),
+                payload,
+                idempotency_key.map(ToOwned::to_owned),
+            ));
+        Ok(task_id)
+    }
+
+    async fn claim(
+        &self,
+        _queue: &str,
+        _worker: &str,
+        _visibility_timeout: Duration,
+    ) -> Result<Option<ClaimedTask>> {
+        Ok(None)
+    }
+
+    async fn ack(&self, _queue: &str, _task_id: &str, _worker: &str) -> Result<bool> {
+        Ok(false)
+    }
+
+    async fn fail(
+        &self,
+        _queue: &str,
+        _task_id: &str,
+        _worker: &str,
+        _reason: &str,
+    ) -> Result<bool> {
+        Ok(false)
+    }
+
+    fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
+        EphemeralInspectionCapabilities::unsupported()
+    }
 }
 
 #[tokio::test]
@@ -1077,6 +1144,241 @@ async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
         stored.compatibility_mode.as_deref(),
         Some("workflow_extension_v1")
     );
+}
+
+#[tokio::test]
+async fn workflow_schedule_trigger_service_replaces_config_and_rejects_invalid_values() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "Scheduled Workflow");
+    let service = WorkflowScheduleTriggerService::new(harness.repository());
+
+    let stored = service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "0 9 * * *".into(),
+            timezone: "Asia/Shanghai".into(),
+            input_payload: serde_json::json!({
+                "node-workflow-start": { "customer_id": "C-42" }
+            }),
+        })
+        .await
+        .unwrap();
+    let loaded = service
+        .get_trigger(GetWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+        })
+        .await
+        .unwrap()
+        .expect("schedule trigger should be stored");
+
+    assert!(stored.enabled);
+    assert_eq!(stored.cron, "0 9 * * *");
+    assert_eq!(loaded.timezone, "Asia/Shanghai");
+
+    assert!(service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "bad cron".into(),
+            timezone: "Asia/Shanghai".into(),
+            input_payload: serde_json::json!({}),
+        })
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("cron"));
+    assert!(service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "0 9 * * *".into(),
+            timezone: "Mars/Olympus".into(),
+            input_payload: serde_json::json!({}),
+        })
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("timezone"));
+}
+
+#[tokio::test]
+async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "Scheduled Workflow");
+    let repository = harness.repository();
+    let service = WorkflowScheduleTriggerService::new(repository.clone());
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "0 9 * * *".into(),
+            timezone: "UTC".into(),
+            input_payload: serde_json::json!({
+                "node-workflow-start": { "customer_id": "C-42" }
+            }),
+        })
+        .await
+        .unwrap();
+    let task_queue = RecordingTaskQueue::default();
+    let scheduled_at = time::OffsetDateTime::UNIX_EPOCH + Duration::hours(9);
+
+    let outcome = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at,
+            },
+            Some(&task_queue),
+        )
+        .await
+        .unwrap();
+    let WorkflowScheduleDispatchOutcome::Dispatched(dispatched) = outcome else {
+        panic!("enabled workflow schedule should dispatch");
+    };
+    let stored = repository
+        .get_flow_run(application.id, dispatched.run_id)
+        .await
+        .unwrap()
+        .expect("scheduled run should be durable");
+    let enqueued = task_queue
+        .enqueued
+        .lock()
+        .expect("recording task queue mutex poisoned")
+        .clone();
+
+    assert_eq!(dispatched.status, domain::FlowRunStatus::Queued);
+    assert_eq!(dispatched.task_id.as_deref(), Some("task-1"));
+    assert_eq!(stored.run_mode, domain::FlowRunMode::PublishedApiRun);
+    assert_eq!(
+        stored.external_trace_id.as_deref(),
+        Some(format!("workflow-schedule:{}", application.id).as_str())
+    );
+    assert_eq!(
+        stored.compatibility_mode.as_deref(),
+        Some("workflow_schedule_v1")
+    );
+    assert_eq!(
+        stored.input_payload["node-workflow-start"]["customer_id"],
+        serde_json::json!("C-42")
+    );
+    assert_eq!(enqueued.len(), 1);
+    assert_eq!(enqueued[0].0, WORKFLOW_SCHEDULE_RUN_QUEUE);
+    assert_eq!(
+        enqueued[0].1["flow_run_id"],
+        serde_json::json!(dispatched.run_id.to_string())
+    );
+    assert_eq!(
+        enqueued[0].2.as_deref(),
+        Some(
+            format!(
+                "workflow-schedule:{}:{}",
+                application.id,
+                scheduled_at.unix_timestamp()
+            )
+            .as_str()
+        )
+    );
+
+    let duplicate = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at,
+            },
+            Some(&task_queue),
+        )
+        .await
+        .unwrap();
+    let WorkflowScheduleDispatchOutcome::Dispatched(duplicate) = duplicate else {
+        panic!("duplicate schedule dispatch should return existing run");
+    };
+    let enqueued_after_duplicate = task_queue
+        .enqueued
+        .lock()
+        .expect("recording task queue mutex poisoned")
+        .clone();
+
+    assert_eq!(duplicate.run_id, dispatched.run_id);
+    assert_eq!(duplicate.task_id, None);
+    assert_eq!(enqueued_after_duplicate.len(), 1);
+}
+
+#[tokio::test]
+async fn workflow_schedule_trigger_dispatch_skips_disabled_or_unpublished_applications() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let disabled = harness.seed_workflow_application(actor_user_id(), "Disabled Schedule");
+    let unpublished = harness.seed_workflow_application(actor_user_id(), "Unpublished Schedule");
+    let repository = harness.repository();
+    let service = WorkflowScheduleTriggerService::new(repository.clone());
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: disabled.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    for application in [disabled.id, unpublished.id] {
+        service
+            .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+                actor_user_id: actor_user_id(),
+                application_id: application,
+                enabled: application == unpublished.id,
+                cron: "0 9 * * *".into(),
+                timezone: "UTC".into(),
+                input_payload: serde_json::json!({}),
+            })
+            .await
+            .unwrap();
+    }
+
+    let disabled_outcome = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: disabled.id,
+                scheduled_at: time::OffsetDateTime::UNIX_EPOCH,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let unpublished_outcome = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: unpublished.id,
+                scheduled_at: time::OffsetDateTime::UNIX_EPOCH,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        disabled_outcome,
+        WorkflowScheduleDispatchOutcome::Skipped { reason }
+            if reason == "disabled"
+    ));
+    assert!(matches!(
+        unpublished_outcome,
+        WorkflowScheduleDispatchOutcome::Skipped { reason }
+            if reason == "application_not_published"
+    ));
 }
 
 #[tokio::test]

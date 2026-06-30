@@ -11,7 +11,8 @@ use control_plane::{
     ports::{
         ApplicationApiMappingRepository, ApplicationPublicationRepository,
         CreateApplicationPublicationVersionInput, ReplaceApplicationApiMappingInput,
-        SetApplicationApiEnabledInput,
+        ReplaceWorkflowScheduleTriggerInput, SetApplicationApiEnabledInput,
+        WorkflowScheduleTriggerRepository,
     },
 };
 use sqlx::PgPool;
@@ -516,6 +517,65 @@ async fn application_public_api_repository_mapping_extension_slug_round_trips_an
 }
 
 #[tokio::test]
+async fn application_public_api_repository_workflow_schedule_trigger_round_trips_and_updates() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let workspace_id = seed_workspace(&store, "Workflow Schedule Trigger").await;
+    let actor_user_id = seed_user(&store, workspace_id, "workflow-schedule-owner").await;
+    let application_id =
+        seed_application(&store, workspace_id, actor_user_id, "Scheduled Workflow").await;
+
+    let created = WorkflowScheduleTriggerRepository::replace_workflow_schedule_trigger(
+        &store,
+        &ReplaceWorkflowScheduleTriggerInput {
+            actor_user_id,
+            workspace_id,
+            application_id,
+            enabled: true,
+            cron: "0 9 * * *".into(),
+            timezone: "Asia/Shanghai".into(),
+            input_payload: serde_json::json!({
+                "node-workflow-start": { "customer_id": "C-42" }
+            }),
+        },
+    )
+    .await
+    .unwrap();
+    let updated = WorkflowScheduleTriggerRepository::replace_workflow_schedule_trigger(
+        &store,
+        &ReplaceWorkflowScheduleTriggerInput {
+            actor_user_id,
+            workspace_id,
+            application_id,
+            enabled: false,
+            cron: "30 10 * * 1".into(),
+            timezone: "UTC".into(),
+            input_payload: serde_json::json!({
+                "node-workflow-start": { "customer_id": "C-84" }
+            }),
+        },
+    )
+    .await
+    .unwrap();
+    let loaded =
+        WorkflowScheduleTriggerRepository::get_workflow_schedule_trigger(&store, application_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+    assert_eq!(created.id, updated.id);
+    assert_eq!(loaded.workspace_id, workspace_id);
+    assert!(!loaded.enabled);
+    assert_eq!(loaded.cron, "30 10 * * 1");
+    assert_eq!(loaded.timezone, "UTC");
+    assert_eq!(
+        loaded.input_payload["node-workflow-start"]["customer_id"],
+        serde_json::json!("C-84")
+    );
+}
+
+#[tokio::test]
 async fn application_public_api_repository_publication_insert_uses_real_foreign_key_rows() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
@@ -899,6 +959,18 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
     .fetch_all(&pool)
     .await
     .unwrap();
+    let schedule_columns: Vec<String> = sqlx::query_scalar(
+        r#"
+        select column_name
+        from information_schema.columns
+        where table_schema = $1
+          and table_name = 'workflow_schedule_triggers'
+        "#,
+    )
+    .bind(&schema)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
     let application_columns: Vec<String> = sqlx::query_scalar(
         r#"
         select column_name
@@ -977,9 +1049,23 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
     .fetch_all(&pool)
     .await
     .unwrap();
+    let schedule_indexes: Vec<String> = sqlx::query_scalar(
+        r#"
+        select indexname
+        from pg_indexes
+        where schemaname = $1
+          and tablename = 'workflow_schedule_triggers'
+        order by indexname
+        "#,
+    )
+    .bind(&schema)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
 
     assert!(tables.contains(&"application_api_mappings".to_string()));
     assert!(tables.contains(&"application_publication_versions".to_string()));
+    assert!(tables.contains(&"workflow_schedule_triggers".to_string()));
     assert!(application_columns.contains(&"api_enabled".to_string()));
     assert!(mapping_columns.contains(&"extension_slug".to_string()));
     for expected_column in [
@@ -1016,5 +1102,21 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
             "application_api_mappings_extension_slug_uidx".to_string(),
             "application_publication_versions_extension_slug_uidx".to_string(),
         ]
+    );
+    for expected_column in [
+        "application_id",
+        "scope_id",
+        "enabled",
+        "cron",
+        "timezone",
+        "input_payload",
+    ] {
+        assert!(
+            schedule_columns.contains(&expected_column.to_string()),
+            "missing workflow_schedule_triggers.{expected_column}"
+        );
+    }
+    assert!(
+        schedule_indexes.contains(&"workflow_schedule_triggers_application_id_uidx".to_string())
     );
 }

@@ -24,4 +24,5 @@ mod runtime_event_stream;
 mod session_routes;
 pub(crate) mod support;
 mod system_routes;
+mod workflow_schedule_worker;
 mod workspace_routes;

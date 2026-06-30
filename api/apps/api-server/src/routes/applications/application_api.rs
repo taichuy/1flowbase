@@ -26,6 +26,10 @@ use control_plane::{
             LoadActiveApplicationPublicationCommand, PublishApplicationCommand,
             SetApplicationApiEnabledCommand,
         },
+        workflow_schedule::{
+            GetWorkflowScheduleTriggerCommand, ReplaceWorkflowScheduleTriggerCommand,
+            WorkflowScheduleTriggerRecord, WorkflowScheduleTriggerService,
+        },
     },
     errors::ControlPlaneError,
 };
@@ -190,6 +194,29 @@ pub struct PatchApplicationApiStatusBody {
     pub api_enabled: bool,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct WorkflowScheduleTriggerBody {
+    pub enabled: bool,
+    pub cron: String,
+    pub timezone: String,
+    pub input_payload: Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WorkflowScheduleTriggerResponse {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub application_id: Uuid,
+    pub enabled: bool,
+    pub cron: String,
+    pub timezone: String,
+    pub input_payload: Value,
+    pub created_by: Uuid,
+    pub updated_by: Uuid,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApplicationApiStatusResponse {
     pub application_id: Uuid,
@@ -264,6 +291,10 @@ pub fn router() -> Router<Arc<ApiState>> {
             axum::routing::patch(patch_application_api_status),
         )
         .route(
+            "/applications/:application_id/workflow-schedule-trigger",
+            get(get_workflow_schedule_trigger).put(replace_workflow_schedule_trigger),
+        )
+        .route(
             "/applications/:application_id/api-docs/catalog",
             get(get_application_api_docs_catalog),
         )
@@ -296,6 +327,24 @@ fn format_optional_time(value: Option<OffsetDateTime>) -> Option<String> {
 
 fn format_time(value: OffsetDateTime) -> String {
     value.format(&Rfc3339).unwrap()
+}
+
+fn to_workflow_schedule_trigger_response(
+    trigger: WorkflowScheduleTriggerRecord,
+) -> WorkflowScheduleTriggerResponse {
+    WorkflowScheduleTriggerResponse {
+        id: trigger.id,
+        workspace_id: trigger.workspace_id,
+        application_id: trigger.application_id,
+        enabled: trigger.enabled,
+        cron: trigger.cron,
+        timezone: trigger.timezone,
+        input_payload: trigger.input_payload,
+        created_by: trigger.created_by,
+        updated_by: trigger.updated_by,
+        created_at: format_time(trigger.created_at),
+        updated_at: format_time(trigger.updated_at),
+    }
 }
 
 fn to_api_key_response(api_key: domain::ApiKeyRecord) -> ApplicationApiKeyResponse {
@@ -817,6 +866,72 @@ pub async fn patch_application_api_status(
         api_enabled: body.api_enabled,
         public_url: PUBLIC_RUNS_PATH.to_string(),
     })))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/applications/{application_id}/workflow-schedule-trigger",
+    params(("application_id" = Uuid, Path, description = "Application id")),
+    responses(
+        (status = 200, body = Option<WorkflowScheduleTriggerResponse>),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_workflow_schedule_trigger(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(application_id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<Option<WorkflowScheduleTriggerResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let trigger = WorkflowScheduleTriggerService::new(state.store.clone())
+        .get_trigger(GetWorkflowScheduleTriggerCommand {
+            actor_user_id: context.user.id,
+            application_id,
+        })
+        .await?
+        .map(to_workflow_schedule_trigger_response);
+
+    Ok(Json(ApiSuccess::new(trigger)))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/console/applications/{application_id}/workflow-schedule-trigger",
+    params(("application_id" = Uuid, Path, description = "Application id")),
+    request_body = WorkflowScheduleTriggerBody,
+    responses(
+        (status = 200, body = WorkflowScheduleTriggerResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn replace_workflow_schedule_trigger(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(application_id): Path<Uuid>,
+    Json(body): Json<WorkflowScheduleTriggerBody>,
+) -> Result<Json<ApiSuccess<WorkflowScheduleTriggerResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let trigger = WorkflowScheduleTriggerService::new(state.store.clone())
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: context.user.id,
+            application_id,
+            enabled: body.enabled,
+            cron: body.cron,
+            timezone: body.timezone,
+            input_payload: body.input_payload,
+        })
+        .await?;
+
+    Ok(Json(ApiSuccess::new(
+        to_workflow_schedule_trigger_response(trigger),
+    )))
 }
 
 #[utoipa::path(

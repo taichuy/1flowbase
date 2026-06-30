@@ -3,12 +3,14 @@ use async_trait::async_trait;
 use control_plane::{
     application_public_api::{
         mapping::ApplicationApiMappingConfig, publications::ApplicationPublicationVersionRecord,
+        workflow_schedule::WorkflowScheduleTriggerRecord,
     },
     errors::ControlPlaneError,
     ports::{
         ApplicationApiMappingRepository, ApplicationPublicationRepository,
         CreateApplicationPublicationVersionInput, ReplaceApplicationApiMappingInput,
-        SetApplicationApiEnabledInput,
+        ReplaceWorkflowScheduleTriggerInput, SetApplicationApiEnabledInput,
+        WorkflowScheduleTriggerRepository,
     },
 };
 use sqlx::Row;
@@ -93,6 +95,122 @@ impl ApplicationApiMappingRepository for PgControlPlaneStore {
         .map_err(map_extension_slug_sqlx_error)?;
 
         serde_json::from_value(row).map_err(Into::into)
+    }
+}
+
+#[async_trait]
+impl WorkflowScheduleTriggerRepository for PgControlPlaneStore {
+    async fn get_workflow_schedule_trigger(
+        &self,
+        application_id: Uuid,
+    ) -> Result<Option<WorkflowScheduleTriggerRecord>> {
+        let row = sqlx::query(
+            r#"
+            select
+                workflow_schedule_triggers.id,
+                applications.workspace_id,
+                workflow_schedule_triggers.application_id,
+                workflow_schedule_triggers.enabled,
+                workflow_schedule_triggers.cron,
+                workflow_schedule_triggers.timezone,
+                workflow_schedule_triggers.input_payload,
+                workflow_schedule_triggers.created_by,
+                workflow_schedule_triggers.updated_by,
+                workflow_schedule_triggers.created_at,
+                workflow_schedule_triggers.updated_at
+            from workflow_schedule_triggers
+            join applications on applications.id = workflow_schedule_triggers.application_id
+            where workflow_schedule_triggers.application_id = $1
+            "#,
+        )
+        .bind(application_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(map_workflow_schedule_trigger_row).transpose()
+    }
+
+    async fn replace_workflow_schedule_trigger(
+        &self,
+        input: &ReplaceWorkflowScheduleTriggerInput,
+    ) -> Result<WorkflowScheduleTriggerRecord> {
+        let row = sqlx::query(
+            r#"
+            with upserted as (
+                insert into workflow_schedule_triggers (
+                    id,
+                    application_id,
+                    scope_id,
+                    enabled,
+                    cron,
+                    timezone,
+                    input_payload,
+                    created_by,
+                    updated_by
+                )
+                select
+                    $1,
+                    applications.id,
+                    applications.scope_id,
+                    $4,
+                    $5,
+                    $6,
+                    $7,
+                    $8,
+                    $8
+                from applications
+                where applications.id = $2
+                  and applications.workspace_id = $3
+                on conflict (application_id) do update
+                set scope_id = excluded.scope_id,
+                    enabled = excluded.enabled,
+                    cron = excluded.cron,
+                    timezone = excluded.timezone,
+                    input_payload = excluded.input_payload,
+                    updated_by = excluded.updated_by,
+                    updated_at = now()
+                returning
+                    id,
+                    application_id,
+                    enabled,
+                    cron,
+                    timezone,
+                    input_payload,
+                    created_by,
+                    updated_by,
+                    created_at,
+                    updated_at
+            )
+            select
+                upserted.id,
+                applications.workspace_id,
+                upserted.application_id,
+                upserted.enabled,
+                upserted.cron,
+                upserted.timezone,
+                upserted.input_payload,
+                upserted.created_by,
+                upserted.updated_by,
+                upserted.created_at,
+                upserted.updated_at
+            from upserted
+            join applications on applications.id = upserted.application_id
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(input.application_id)
+        .bind(input.workspace_id)
+        .bind(input.enabled)
+        .bind(&input.cron)
+        .bind(&input.timezone)
+        .bind(&input.input_payload)
+        .bind(input.actor_user_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(map_workflow_schedule_trigger_row)
+            .transpose()?
+            .ok_or_else(|| ControlPlaneError::NotFound("application").into())
     }
 }
 
@@ -375,4 +493,22 @@ fn map_extension_slug_sqlx_error(error: sqlx::Error) -> anyhow::Error {
         }
     }
     error.into()
+}
+
+fn map_workflow_schedule_trigger_row(
+    row: sqlx::postgres::PgRow,
+) -> Result<WorkflowScheduleTriggerRecord> {
+    Ok(WorkflowScheduleTriggerRecord {
+        id: row.get("id"),
+        workspace_id: row.get("workspace_id"),
+        application_id: row.get("application_id"),
+        enabled: row.get("enabled"),
+        cron: row.get("cron"),
+        timezone: row.get("timezone"),
+        input_payload: row.get("input_payload"),
+        created_by: row.get("created_by"),
+        updated_by: row.get("updated_by"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
 }
