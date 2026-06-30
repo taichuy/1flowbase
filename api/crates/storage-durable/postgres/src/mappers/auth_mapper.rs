@@ -2,7 +2,7 @@ use domain::AuthenticatorRecord;
 
 #[derive(Debug, Clone)]
 pub struct StoredAuthenticatorRow {
-    pub name: String,
+    pub id: uuid::Uuid,
     pub auth_type: String,
     pub title: String,
     pub enabled: bool,
@@ -16,7 +16,7 @@ pub struct PgAuthMapper;
 impl PgAuthMapper {
     pub fn to_authenticator_record(row: StoredAuthenticatorRow) -> AuthenticatorRecord {
         AuthenticatorRecord {
-            name: row.name,
+            id: row.id,
             auth_type: row.auth_type,
             title: row.title,
             enabled: row.enabled,

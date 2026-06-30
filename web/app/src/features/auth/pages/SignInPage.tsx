@@ -35,18 +35,18 @@ export function SignInPage() {
   const [loginInstancesError, setLoginInstancesError] = useState<string | null>(
     null
   );
-  const [selectedAuthenticatorName, setSelectedAuthenticatorName] = useState<
+  const [selectedAuthenticatorId, setSelectedAuthenticatorId] = useState<
     string | null
   >(null);
   const [submitting, setSubmitting] = useState(false);
   const selectedLoginInstance = useMemo(
     () =>
       loginInstances.find(
-        (instance) => instance.name === selectedAuthenticatorName
+        (instance) => instance.id === selectedAuthenticatorId
       ) ??
       loginInstances[0] ??
       null,
-    [loginInstances, selectedAuthenticatorName]
+    [loginInstances, selectedAuthenticatorId]
   );
   const signInDisabled =
     loginInstancesLoading ||
@@ -64,9 +64,9 @@ export function SignInPage() {
           return;
         }
         setLoginInstances(payload.login_instances);
-        setSelectedAuthenticatorName(
-          payload.default_authenticator_name ??
-            payload.login_instances[0]?.name ??
+        setSelectedAuthenticatorId(
+          payload.default_authenticator_id ??
+            payload.login_instances[0]?.id ??
             null
         );
         if (payload.login_instances.length === 0) {
@@ -78,7 +78,7 @@ export function SignInPage() {
           return;
         }
         setLoginInstances([]);
-        setSelectedAuthenticatorName(null);
+        setSelectedAuthenticatorId(null);
         setLoginInstancesError(t('sign_in.login_instances_load_failed'));
       })
       .finally(() => {
@@ -107,14 +107,9 @@ export function SignInPage() {
     setErrorMessage(null);
 
     try {
-      const shouldSendAuthenticator =
-        loginInstances.length > 1 ||
-        selectedLoginInstance.name !== 'password-local';
       const session = await signInWithPassword({
         ...values,
-        ...(shouldSendAuthenticator
-          ? { authenticator: selectedLoginInstance.name }
-          : {})
+        authenticator_id: selectedLoginInstance.id
       });
       const me = await fetchCurrentMe();
 
@@ -170,12 +165,12 @@ export function SignInPage() {
           {loginInstances.length > 1 ? (
             <Segmented
               block
-              value={selectedLoginInstance?.name}
+              value={selectedLoginInstance?.id}
               options={loginInstances.map((instance) => ({
                 label: instance.title,
-                value: instance.name
+                value: instance.id
               }))}
-              onChange={(value) => setSelectedAuthenticatorName(String(value))}
+              onChange={(value) => setSelectedAuthenticatorId(String(value))}
             />
           ) : null}
           <Form layout="vertical" onFinish={handleFinish} autoComplete="off">

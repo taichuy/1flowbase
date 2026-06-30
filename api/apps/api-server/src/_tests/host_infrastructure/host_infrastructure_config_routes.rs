@@ -106,7 +106,7 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
     let (state, _database_url) = test_api_state_with_database_url().await;
     let root = AuthRepository::find_user_for_password_login(
         &state.store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME,
+        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
         "root",
     )
     .await

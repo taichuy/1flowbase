@@ -48,13 +48,13 @@ impl MemoryBootstrapRepository {
         self.inner.workspace_upserts.load(Ordering::SeqCst)
     }
 
-    pub async fn authenticator(&self, name: &str) -> Option<AuthenticatorRecord> {
+    pub async fn authenticator(&self, id: Uuid) -> Option<AuthenticatorRecord> {
         self.inner
             .authenticators
             .read()
             .await
             .iter()
-            .find(|authenticator| authenticator.name == name)
+            .find(|authenticator| authenticator.id == id)
             .cloned()
     }
 }
@@ -68,7 +68,7 @@ impl BootstrapRepository for MemoryBootstrapRepository {
         let mut authenticators = self.inner.authenticators.write().await;
         match authenticators
             .iter_mut()
-            .find(|stored| stored.name == authenticator.name)
+            .find(|stored| stored.id == authenticator.id)
         {
             Some(stored) => *stored = authenticator.clone(),
             None => authenticators.push(authenticator.clone()),

@@ -1,7 +1,7 @@
 use domain::{
     password_local_identity_claims, ActorContext, BoundRole, RoleScopeKind, UserRecord, UserStatus,
     AUTH_SUBJECT_TYPE_ACCOUNT, AUTH_SUBJECT_TYPE_EMAIL, AUTH_SUBJECT_TYPE_PHONE,
-    PASSWORD_LOCAL_AUTHENTICATOR_NAME,
+    PASSWORD_LOCAL_AUTHENTICATOR_ID,
 };
 use uuid::Uuid;
 
@@ -54,7 +54,7 @@ fn password_local_identity_claims_cover_account_email_and_phone() {
 
     assert_eq!(claims.len(), 3);
     assert!(claims.iter().all(|claim| {
-        claim.authenticator_name == PASSWORD_LOCAL_AUTHENTICATOR_NAME && claim.verified
+        claim.authenticator_id == PASSWORD_LOCAL_AUTHENTICATOR_ID && claim.verified
     }));
     assert_eq!(claims[0].subject_type, AUTH_SUBJECT_TYPE_ACCOUNT);
     assert_eq!(claims[0].subject_value, "alice");

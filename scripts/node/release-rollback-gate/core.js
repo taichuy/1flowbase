@@ -12,6 +12,7 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_WEB_PORT = 39_100;
 const PROVIDER_SECRET_MASTER_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 const ROOT_PASSWORD = 'rollback-gate-root-password';
+const PASSWORD_LOCAL_AUTHENTICATOR_ID = '00000000-0000-0000-0000-000000000001';
 const DATABASE_NAME = '1flowbase';
 const DATABASE_USER = 'postgres';
 const DATABASE_PASSWORD = '1flowbase';
@@ -401,13 +402,18 @@ async function fetchJson(url, options = {}) {
   return { response, json, text };
 }
 
-async function waitForHealth({ baseUrl, timeoutMs }) {
+async function waitForHealth({
+  baseUrl,
+  timeoutMs,
+  fetchJsonImpl = fetchJson,
+  sleepImpl = sleep,
+}) {
   const startedAt = Date.now();
   let lastError = '';
 
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      const { response, json, text } = await fetchJson(`${baseUrl}/health`, { timeoutMs: 5_000 });
+      const { response, json, text } = await fetchJsonImpl(`${baseUrl}/health`, { timeoutMs: 5_000 });
       if (response.ok && json?.status === 'ok') {
         return json;
       }
@@ -416,23 +422,33 @@ async function waitForHealth({ baseUrl, timeoutMs }) {
       lastError = error.message;
     }
 
-    await sleep(2_000);
+    await sleepImpl(2_000);
   }
 
   throw new Error(`health did not become ready: ${lastError}`);
 }
 
-async function runHttpSmoke({ baseUrl, timeoutMs }) {
-  const health = await waitForHealth({ baseUrl, timeoutMs });
-  const providers = await fetchJson(`${baseUrl}/api/public/auth/providers`, { timeoutMs: 10_000 });
+async function runHttpSmoke({
+  baseUrl,
+  timeoutMs,
+  fetchJsonImpl = fetchJson,
+  sleepImpl = sleep,
+}) {
+  const health = await waitForHealth({
+    baseUrl,
+    timeoutMs,
+    fetchJsonImpl,
+    sleepImpl,
+  });
+  const providers = await fetchJsonImpl(`${baseUrl}/api/public/auth/providers`, { timeoutMs: 10_000 });
   if (!providers.response.ok) {
     throw new Error(`provider list failed with ${providers.response.status}: ${providers.text.slice(0, 160)}`);
   }
 
-  const login = await fetchJson(`${baseUrl}/api/public/auth/providers/password-local/sign-in`, {
+  const login = await fetchJsonImpl(`${baseUrl}/api/public/auth/sign-in`, {
     method: 'POST',
     body: JSON.stringify({
-      authenticator: 'password-local',
+      authenticator_id: PASSWORD_LOCAL_AUTHENTICATOR_ID,
       identifier: 'root',
       password: ROOT_PASSWORD,
     }),
@@ -744,6 +760,7 @@ module.exports = {
   buildRollbackGatePlan,
   parseCliArgs,
   resolvePreviousImageTag,
+  runHttpSmoke,
   runRollbackGate,
   usage,
 };

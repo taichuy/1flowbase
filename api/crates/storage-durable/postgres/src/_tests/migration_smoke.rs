@@ -820,7 +820,7 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
     store.upsert_builtin_roles(workspace.id).await.unwrap();
     store
         .upsert_authenticator(&domain::AuthenticatorRecord {
-            name: "password-local".into(),
+            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,
@@ -851,12 +851,12 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
         .any(|permission| permission.code == "workspace.configure.all"));
     assert_eq!(
         store
-            .find_authenticator("password-local")
+            .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
             .await
             .unwrap()
             .unwrap()
-            .name,
-        "password-local"
+            .id,
+        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
     );
     let root_identities: Vec<(String, String)> = sqlx::query_as(
         r#"
@@ -887,7 +887,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
 
     store
         .upsert_authenticator(&domain::AuthenticatorRecord {
-            name: "password-local".into(),
+            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,
@@ -912,7 +912,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
         .unwrap();
 
     let mut saved = store
-        .find_authenticator("password-local")
+        .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
         .await
         .unwrap()
         .unwrap();
@@ -938,7 +938,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
 
     store
         .upsert_authenticator(&domain::AuthenticatorRecord {
-            name: "password-local".into(),
+            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,
@@ -963,7 +963,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
         .unwrap();
 
     let after_bootstrap = store
-        .find_authenticator("password-local")
+        .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
         .await
         .unwrap()
         .unwrap();
@@ -990,10 +990,11 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
+    let oidc_id = Uuid::now_v7();
 
     store
         .upsert_authenticator(&domain::AuthenticatorRecord {
-            name: "oidc-main".into(),
+            id: oidc_id,
             auth_type: "oidc".into(),
             title: "OIDC".into(),
             enabled: false,
@@ -1011,7 +1012,7 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
 
     store
         .upsert_authenticator(&domain::AuthenticatorRecord {
-            name: "oidc-main".into(),
+            id: oidc_id,
             auth_type: "oidc".into(),
             title: "OIDC Login".into(),
             enabled: true,
@@ -1027,11 +1028,7 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
         .await
         .unwrap();
 
-    let oidc = store
-        .find_authenticator("oidc-main")
-        .await
-        .unwrap()
-        .unwrap();
+    let oidc = store.find_authenticator(oidc_id).await.unwrap().unwrap();
     assert_eq!(oidc.title, "OIDC Login");
     assert!(oidc.enabled);
     assert_eq!(oidc.options["description"], serde_json::json!("New OIDC"));

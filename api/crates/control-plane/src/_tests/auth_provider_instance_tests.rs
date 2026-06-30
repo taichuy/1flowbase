@@ -23,9 +23,9 @@ use crate::_tests::support::{password_hash, MemorySessionStore};
 
 #[derive(Clone)]
 struct InstanceAwareAuthRepository {
-    authenticators: Arc<HashMap<String, AuthenticatorRecord>>,
+    authenticators: Arc<HashMap<Uuid, AuthenticatorRecord>>,
     user: UserRecord,
-    password_login_calls: Arc<Mutex<Vec<(String, String)>>>,
+    password_login_calls: Arc<Mutex<Vec<(Uuid, String)>>>,
 }
 
 impl InstanceAwareAuthRepository {
@@ -34,7 +34,7 @@ impl InstanceAwareAuthRepository {
             authenticators: Arc::new(
                 authenticators
                     .into_iter()
-                    .map(|authenticator| (authenticator.name.clone(), authenticator))
+                    .map(|authenticator| (authenticator.id, authenticator))
                     .collect(),
             ),
             user,
@@ -42,7 +42,7 @@ impl InstanceAwareAuthRepository {
         }
     }
 
-    fn password_login_calls(&self) -> Vec<(String, String)> {
+    fn password_login_calls(&self) -> Vec<(Uuid, String)> {
         self.password_login_calls
             .lock()
             .expect("password login calls lock should be free")
@@ -52,21 +52,21 @@ impl InstanceAwareAuthRepository {
 
 #[async_trait]
 impl AuthRepository for InstanceAwareAuthRepository {
-    async fn find_authenticator(&self, name: &str) -> Result<Option<AuthenticatorRecord>> {
-        Ok(self.authenticators.get(name).cloned())
+    async fn find_authenticator(&self, id: Uuid) -> Result<Option<AuthenticatorRecord>> {
+        Ok(self.authenticators.get(&id).cloned())
     }
 
     async fn find_user_for_password_login(
         &self,
-        authenticator_name: &str,
+        authenticator_id: Uuid,
         identifier: &str,
     ) -> Result<Option<UserRecord>> {
         self.password_login_calls
             .lock()
             .expect("password login calls lock should be free")
-            .push((authenticator_name.to_string(), identifier.to_string()));
+            .push((authenticator_id, identifier.to_string()));
         Ok(
-            (authenticator_name == "staff-password" && identifier == "root")
+            (authenticator_id == STAFF_PASSWORD_AUTHENTICATOR_ID && identifier == "root")
                 .then(|| self.user.clone()),
         )
     }
@@ -160,7 +160,7 @@ impl AuthenticatorProvider for CrossInstanceClaimProvider {
         Ok(AuthenticatorAuthentication {
             user: self.user.clone(),
             external_identity_claim: Some(ExternalIdentityClaim {
-                authenticator_name: "other-external".to_string(),
+                authenticator_id: OTHER_EXTERNAL_AUTHENTICATOR_ID,
                 subject_type: "email".to_string(),
                 subject_value: "root@example.com".to_string(),
                 issuer: None,
@@ -199,11 +199,18 @@ fn test_user() -> UserRecord {
     }
 }
 
-fn authenticator(name: &str, auth_type: &str) -> AuthenticatorRecord {
+const STAFF_PASSWORD_AUTHENTICATOR_ID: Uuid =
+    Uuid::from_u128(0x00000000_0000_0000_0000_000000000011);
+const PARTNER_EXTERNAL_AUTHENTICATOR_ID: Uuid =
+    Uuid::from_u128(0x00000000_0000_0000_0000_000000000012);
+const OTHER_EXTERNAL_AUTHENTICATOR_ID: Uuid =
+    Uuid::from_u128(0x00000000_0000_0000_0000_000000000013);
+
+fn authenticator(id: Uuid, title: &str, auth_type: &str) -> AuthenticatorRecord {
     AuthenticatorRecord {
-        name: name.to_string(),
+        id,
         auth_type: auth_type.to_string(),
-        title: name.to_string(),
+        title: title.to_string(),
         enabled: true,
         is_builtin: false,
         sort_order: 0,
@@ -215,7 +222,11 @@ fn authenticator(name: &str, auth_type: &str) -> AuthenticatorRecord {
 async fn password_local_provider_reads_identity_from_selected_authenticator_instance() {
     let user = test_user();
     let repository = InstanceAwareAuthRepository::new(
-        vec![authenticator("staff-password", "password-local")],
+        vec![authenticator(
+            STAFF_PASSWORD_AUTHENTICATOR_ID,
+            "Staff Password",
+            "password-local",
+        )],
         user,
     );
     let kernel = AuthKernel::new(
@@ -225,7 +236,7 @@ async fn password_local_provider_reads_identity_from_selected_authenticator_inst
 
     kernel
         .login(LoginCommand {
-            authenticator: "staff-password".to_string(),
+            authenticator_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: "change-me".to_string(),
         })
@@ -234,7 +245,7 @@ async fn password_local_provider_reads_identity_from_selected_authenticator_inst
 
     assert_eq!(
         repository.password_login_calls(),
-        vec![("staff-password".to_string(), "root".to_string())]
+        vec![(STAFF_PASSWORD_AUTHENTICATOR_ID, "root".to_string())]
     );
 }
 
@@ -242,7 +253,11 @@ async fn password_local_provider_reads_identity_from_selected_authenticator_inst
 async fn auth_kernel_rejects_provider_claim_from_another_authenticator_instance() {
     let user = test_user();
     let repository = InstanceAwareAuthRepository::new(
-        vec![authenticator("partner-external", "external-test")],
+        vec![authenticator(
+            PARTNER_EXTERNAL_AUTHENTICATOR_ID,
+            "Partner External",
+            "external-test",
+        )],
         user.clone(),
     );
     let registry =
@@ -255,7 +270,7 @@ async fn auth_kernel_rejects_provider_claim_from_another_authenticator_instance(
 
     let result = kernel
         .login(LoginCommand {
-            authenticator: "partner-external".to_string(),
+            authenticator_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
             identifier: "root@example.com".to_string(),
             password: "ignored".to_string(),
         })

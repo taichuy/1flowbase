@@ -121,6 +121,7 @@
     "auth_center_delete_confirm": "删除 {{value1}}？",
     "auth_center_identifier_invalid": "只能使用字母、数字和下划线。",
     "auth_center_auth_type": "认证类型",
+    "auth_center_category": "分类",
     "auth_center_auth_type_required": "请选择认证类型。",
     "auth_center_sort_order": "排序值",
     "move_up": "上移",

@@ -29,14 +29,6 @@ fn password_local_authenticator_options() -> serde_json::Value {
         "description": "Local password authentication",
         "config_form_schema": [
             {
-                "key": "name",
-                "label": "Authenticator identifier",
-                "type": "string",
-                "read_only": true,
-                "required": true,
-                "pattern": "^[A-Za-z0-9_]+$"
-            },
-            {
                 "key": "title",
                 "label": "Authenticator title",
                 "type": "string",
@@ -72,7 +64,7 @@ where
     pub async fn run(&self, config: &BootstrapConfig) -> Result<BootstrapResult> {
         self.repository
             .upsert_authenticator(&AuthenticatorRecord {
-                name: "password-local".into(),
+                id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
                 auth_type: "password-local".into(),
                 title: "Password".into(),
                 enabled: true,

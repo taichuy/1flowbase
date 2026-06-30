@@ -49,11 +49,11 @@ function authenticate() {
 }
 
 const baseOverview = {
-  default_authenticator_name: 'password-local',
+  default_authenticator_id: 'auth-password-local',
   supported_auth_types: ['password-local'],
   authenticators: [
     {
-      name: 'password-local',
+      id: 'auth-password-local',
       auth_type: 'password-local',
       title: 'Password',
       enabled: true,
@@ -61,7 +61,6 @@ const baseOverview = {
       sort_order: 0,
       config_schema: [],
       config_values: {
-        name: 'password-local',
         title: 'Password',
         enabled: true,
         description: 'Local password authentication',
@@ -69,7 +68,7 @@ const baseOverview = {
       }
     },
     {
-      name: 'staff_password',
+      id: 'auth-staff-password',
       auth_type: 'password-local',
       title: 'Staff Password',
       enabled: false,
@@ -77,7 +76,6 @@ const baseOverview = {
       sort_order: 10,
       config_schema: [],
       config_values: {
-        name: 'staff_password',
         title: 'Staff Password',
         enabled: false,
         description: 'Staff login',
@@ -100,7 +98,6 @@ describe('SettingsAuthCenterSection lifecycle', () => {
   test('creates an authenticator with backend-supported auth types', async () => {
     authCenterApi.createSettingsAuthCenterAuthenticator.mockResolvedValue({
       ...baseOverview.authenticators[1],
-      name: 'customer_password',
       title: 'Customer Password',
       sort_order: 20
     });
@@ -113,10 +110,8 @@ describe('SettingsAuthCenterSection lifecycle', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '新增' }));
     const dialog = await screen.findByRole('dialog', { name: '新建认证器' });
-    fireEvent.change(within(dialog).getByLabelText('标识'), {
-      target: { value: 'customer_password' }
-    });
     expect(within(dialog).getByText('password-local')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('名称'), {
       target: { value: 'Customer Password' }
     });
@@ -130,7 +125,6 @@ describe('SettingsAuthCenterSection lifecycle', () => {
         authCenterApi.createSettingsAuthCenterAuthenticator
       ).toHaveBeenCalledWith(
         {
-          name: 'customer_password',
           auth_type: 'password-local',
           title: 'Customer Password',
           description: 'Customer login',
@@ -145,7 +139,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
   test('copies, deletes, and reorders authenticators from table actions', async () => {
     authCenterApi.copySettingsAuthCenterAuthenticator.mockResolvedValue({
       ...baseOverview.authenticators[1],
-      name: 'staff_password_copy',
+      id: 'auth-staff-password-copy',
       title: 'Staff Password Copy',
       sort_order: 20
     });
@@ -166,8 +160,17 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       </AppProviders>
     );
 
-    const staffRow = (await screen.findByText('staff_password')).closest('tr');
+    const staffRow = (
+      await screen.findByText('auth-staff-password')
+    ).closest('tr');
     expect(staffRow).not.toBeNull();
+    expect(
+      within(staffRow as HTMLElement).getByText('auth-staff-password')
+    ).toBeInTheDocument();
+    expect(
+      within(staffRow as HTMLElement).getByText('password-local')
+    ).toBeInTheDocument();
+    expect(within(staffRow as HTMLElement).getByText('10')).toBeInTheDocument();
     fireEvent.click(
       within(staffRow as HTMLElement).getByRole('button', { name: '复制' })
     );
@@ -177,9 +180,8 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       expect(
         authCenterApi.copySettingsAuthCenterAuthenticator
       ).toHaveBeenCalledWith(
-        'staff_password',
+        'auth-staff-password',
         {
-          name: 'staff_password_copy',
           title: 'Staff Password Copy',
           sort_order: 20
         },
@@ -193,7 +195,10 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     await waitFor(() => {
       expect(
         authCenterApi.reorderSettingsAuthCenterAuthenticators
-      ).toHaveBeenCalledWith(['staff_password', 'password-local'], 'csrf-123');
+      ).toHaveBeenCalledWith(
+        ['auth-staff-password', 'auth-password-local'],
+        'csrf-123'
+      );
     });
 
     fireEvent.click(
@@ -208,7 +213,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     await waitFor(() => {
       expect(
         authCenterApi.deleteSettingsAuthCenterAuthenticator
-      ).toHaveBeenCalledWith('staff_password', 'csrf-123');
+      ).toHaveBeenCalledWith('auth-staff-password', 'csrf-123');
     });
   });
 });

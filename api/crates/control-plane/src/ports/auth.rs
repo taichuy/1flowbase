@@ -161,17 +161,17 @@ pub trait BootstrapRepository: Send + Sync {
 
 #[async_trait]
 pub trait AuthRepository: Send + Sync {
-    async fn find_authenticator(&self, name: &str) -> anyhow::Result<Option<AuthenticatorRecord>>;
+    async fn find_authenticator(&self, id: Uuid) -> anyhow::Result<Option<AuthenticatorRecord>>;
     async fn list_authenticators(&self) -> anyhow::Result<Vec<AuthenticatorRecord>> {
         Ok(self
-            .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME)
+            .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
             .await?
             .into_iter()
             .collect())
     }
     async fn find_user_for_password_login(
         &self,
-        authenticator_name: &str,
+        authenticator_id: Uuid,
         identifier: &str,
     ) -> anyhow::Result<Option<UserRecord>>;
     async fn find_user_by_id(&self, user_id: Uuid) -> anyhow::Result<Option<UserRecord>>;

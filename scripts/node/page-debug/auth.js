@@ -1,5 +1,7 @@
 const { buildServiceEnv, getServiceDefinitions } = require('../dev-up/core.js');
 
+const PASSWORD_LOCAL_AUTHENTICATOR_ID = '00000000-0000-0000-0000-000000000001';
+
 function loadRootCredentials({
   repoRoot,
   accountOverride,
@@ -37,8 +39,9 @@ async function loginAndPersistStorageState({
   });
 
   try {
-    const response = await requestContext.post('/api/public/auth/providers/password-local/sign-in', {
+    const response = await requestContext.post('/api/public/auth/sign-in', {
       data: {
+        authenticator_id: PASSWORD_LOCAL_AUTHENTICATOR_ID,
         identifier: account,
         password,
       },

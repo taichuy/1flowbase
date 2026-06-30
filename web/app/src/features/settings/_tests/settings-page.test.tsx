@@ -446,18 +446,18 @@ describe('SettingsPage', () => {
       undefined
     );
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_name: 'password-local',
+      default_authenticator_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
       authenticators: [
         {
-          name: 'password-local',
+          id: 'auth-password-local',
           auth_type: 'password-local',
           title: 'Password',
           enabled: true,
           is_builtin: true,
+          sort_order: 0,
           config_schema: [],
           config_values: {
-            name: 'password-local',
             title: 'Password',
             enabled: true,
             description: null,
@@ -790,15 +790,16 @@ describe('SettingsPage', () => {
       'user.manage.all'
     ]);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_name: 'password-local',
+      default_authenticator_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
       authenticators: [
         {
-          name: 'oidc-main',
+          id: 'auth-oidc-main',
           auth_type: 'oidc',
           title: 'OIDC',
           enabled: false,
           is_builtin: false,
+          sort_order: 10,
           config_schema: [
             {
               key: 'issuer_url',
@@ -831,16 +832,21 @@ describe('SettingsPage', () => {
       screen.queryByRole('heading', { name: '认证中心' })
     ).not.toBeInTheDocument();
     expect(screen.queryByText('password-local')).not.toBeInTheDocument();
-    expect(await screen.findByText('oidc-main')).toBeInTheDocument();
+    expect(await screen.findByText('auth-oidc-main')).toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: '启用' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('columnheader', { name: '说明' })
+      screen.getByRole('columnheader', { name: '分类' })
     ).toBeInTheDocument();
-    expect(screen.getByText('Primary OIDC')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '名称' })).toBeInTheDocument();
     expect(
-      screen.queryByRole('columnheader', { name: '类型' })
+      screen.getByRole('columnheader', { name: '排序值' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('OIDC')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: '说明' })
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: '操作' })
@@ -850,15 +856,14 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       expect(
         authCenterApi.enableSettingsAuthCenterAuthenticator
-      ).toHaveBeenCalledWith('oidc-main', 'csrf-123');
+      ).toHaveBeenCalledWith('auth-oidc-main', 'csrf-123');
     });
 
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: 'OIDC 配置' });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).queryByText('类型')).not.toBeInTheDocument();
-    expect(within(dialog).getByLabelText('标识')).toBeDisabled();
-    expect(within(dialog).getByDisplayValue('oidc-main')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText('名称')).toHaveValue('OIDC');
     expect(within(dialog).getByLabelText('说明')).toHaveValue('Primary OIDC');
     expect(
@@ -873,15 +878,16 @@ describe('SettingsPage', () => {
       'user.manage.all'
     ]);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_name: 'password-local',
+      default_authenticator_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
       authenticators: [
         {
-          name: 'password-local',
+          id: 'auth-password-local',
           auth_type: 'password-local',
           title: 'Password',
           enabled: true,
           is_builtin: true,
+          sort_order: 0,
           config_schema: [],
           config_values: {
             description: 'Local password authentication',
@@ -896,9 +902,7 @@ describe('SettingsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: 'Password 配置' });
 
-    expect(within(dialog).getByLabelText('标识')).toHaveValue(
-      'password-local'
-    );
+    expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText('名称')).toHaveValue('Password');
     expect(within(dialog).getByLabelText('说明')).toHaveValue(
       'Local password authentication'
@@ -942,18 +946,18 @@ describe('SettingsPage', () => {
     ]);
     authCenterApi.fetchSettingsAuthCenterOverview
       .mockResolvedValueOnce({
-        default_authenticator_name: 'oidc-main',
+        default_authenticator_id: 'auth-oidc-main',
         supported_auth_types: ['password-local'],
         authenticators: [
           {
-            name: 'oidc-main',
+            id: 'auth-oidc-main',
             auth_type: 'oidc',
             title: 'OIDC',
             enabled: false,
             is_builtin: false,
+            sort_order: 10,
             config_schema: [],
             config_values: {
-              name: 'oidc-main',
               title: 'OIDC',
               enabled: false,
               description: 'Old description',
@@ -965,18 +969,18 @@ describe('SettingsPage', () => {
         ]
       })
       .mockResolvedValueOnce({
-        default_authenticator_name: 'oidc-main',
+        default_authenticator_id: 'auth-oidc-main',
         supported_auth_types: ['password-local'],
         authenticators: [
           {
-            name: 'oidc-main',
+            id: 'auth-oidc-main',
             auth_type: 'oidc',
             title: 'OIDC Login',
             enabled: true,
             is_builtin: false,
+            sort_order: 10,
             config_schema: [],
             config_values: {
-              name: 'oidc-main',
               title: 'OIDC Login',
               enabled: true,
               description: 'Primary OIDC login',
@@ -988,14 +992,14 @@ describe('SettingsPage', () => {
         ]
       });
     authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue({
-      name: 'oidc-main',
+      id: 'auth-oidc-main',
       auth_type: 'oidc',
       title: 'OIDC Login',
       enabled: true,
       is_builtin: false,
+      sort_order: 10,
       config_schema: [],
       config_values: {
-        name: 'oidc-main',
         title: 'OIDC Login',
         enabled: true,
         description: 'Primary OIDC login',
@@ -1011,8 +1015,7 @@ describe('SettingsPage', () => {
     fireEvent.click(editButton);
     const dialog = await screen.findByRole('dialog', { name: 'OIDC 配置' });
 
-    expect(within(dialog).getByLabelText('标识')).toBeDisabled();
-    expect(within(dialog).getByDisplayValue('oidc-main')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('名称'), {
       target: { value: 'OIDC Login' }
     });
@@ -1026,9 +1029,8 @@ describe('SettingsPage', () => {
       expect(
         authCenterApi.updateSettingsAuthCenterAuthenticatorConfig
       ).toHaveBeenCalledWith(
-        'oidc-main',
+        'auth-oidc-main',
         {
-          name: 'oidc-main',
           title: 'OIDC Login',
           enabled: true,
           description: 'Primary OIDC login'
@@ -1051,18 +1053,18 @@ describe('SettingsPage', () => {
       'user.manage.all'
     ]);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_name: 'oidc-main',
+      default_authenticator_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
       authenticators: [
         {
-          name: 'oidc-main',
+          id: 'auth-oidc-main',
           auth_type: 'oidc',
           title: 'OIDC',
           enabled: true,
           is_builtin: false,
+          sort_order: 10,
           config_schema: [],
           config_values: {
-            name: 'oidc-main',
             title: 'OIDC',
             enabled: true,
             description: 'Old description'
@@ -1091,18 +1093,18 @@ describe('SettingsPage', () => {
   test('shows auth center manage permission error in the drawer', async () => {
     authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_name: 'oidc-main',
+      default_authenticator_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
       authenticators: [
         {
-          name: 'oidc-main',
+          id: 'auth-oidc-main',
           auth_type: 'oidc',
           title: 'OIDC',
           enabled: true,
           is_builtin: false,
+          sort_order: 10,
           config_schema: [],
           config_values: {
-            name: 'oidc-main',
             title: 'OIDC',
             enabled: true,
             description: 'Old description'
@@ -1132,18 +1134,18 @@ describe('SettingsPage', () => {
     ]);
     useAuthStore.setState({ csrfToken: null });
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_name: 'oidc-main',
+      default_authenticator_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
       authenticators: [
         {
-          name: 'oidc-main',
+          id: 'auth-oidc-main',
           auth_type: 'oidc',
           title: 'OIDC',
           enabled: true,
           is_builtin: false,
+          sort_order: 10,
           config_schema: [],
           config_values: {
-            name: 'oidc-main',
             title: 'OIDC',
             enabled: true,
             description: 'Old description'
@@ -1168,18 +1170,18 @@ describe('SettingsPage', () => {
   test('opens auth center configuration drawer when extension config fields are absent', async () => {
     authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_name: 'password-local',
+      default_authenticator_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
       authenticators: [
         {
-          name: 'password-local',
+          id: 'auth-password-local',
           auth_type: 'password-local',
           title: 'Password',
           enabled: true,
           is_builtin: true,
+          sort_order: 0,
           config_schema: [],
           config_values: {
-            name: 'password-local',
             title: 'Password',
             enabled: true,
             description: null,

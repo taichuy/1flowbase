@@ -10,19 +10,20 @@ use control_plane::auth::{AuthKernel, LoginCommand, SessionIssuer};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuthProviderResponse {
-    pub name: String,
+    pub id: Uuid,
     pub auth_type: String,
     pub title: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PublicLoginInstanceResponse {
-    pub name: String,
+    pub id: Uuid,
     pub auth_type: String,
     pub title: String,
     pub description: Option<String>,
@@ -34,13 +35,13 @@ pub struct PublicLoginInstanceResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PublicLoginInstancesResponse {
-    pub default_authenticator_name: String,
+    pub default_authenticator_id: Uuid,
     pub login_instances: Vec<PublicLoginInstanceResponse>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginBody {
-    pub authenticator: Option<String>,
+    pub authenticator_id: Option<Uuid>,
     pub identifier: String,
     pub password: String,
 }
@@ -56,7 +57,7 @@ pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/providers", get(list_providers))
         .route("/login-instances", get(list_login_instances))
-        .route("/providers/password-local/sign-in", post(sign_in))
+        .route("/sign-in", post(sign_in))
 }
 
 fn public_authenticator_description(options: &Value) -> Option<String> {
@@ -82,13 +83,13 @@ fn to_public_login_instance(
     }
 
     Some(PublicLoginInstanceResponse {
-        name: authenticator.name,
+        id: authenticator.id,
         auth_type: authenticator.auth_type,
         title: authenticator.title,
         description: public_authenticator_description(&authenticator.options),
         sort_order: authenticator.sort_order,
         flow: "password".to_string(),
-        sign_in_path: "/api/public/auth/providers/password-local/sign-in".to_string(),
+        sign_in_path: "/api/public/auth/sign-in".to_string(),
         public_options: public_authenticator_options(&authenticator.options),
     })
 }
@@ -103,10 +104,10 @@ pub async fn list_providers(
 ) -> Result<Json<ApiSuccess<Vec<AuthProviderResponse>>>, ApiError> {
     let provider = state
         .store
-        .find_authenticator("password-local")
+        .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
         .await?
         .map(|authenticator| AuthProviderResponse {
-            name: authenticator.name,
+            id: authenticator.id,
             auth_type: authenticator.auth_type,
             title: authenticator.title,
         });
@@ -129,20 +130,20 @@ pub async fn list_login_instances(
         .into_iter()
         .filter_map(to_public_login_instance)
         .collect::<Vec<_>>();
-    let default_authenticator_name = login_instances
+    let default_authenticator_id = login_instances
         .first()
-        .map(|instance| instance.name.clone())
-        .unwrap_or_else(|| domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME.to_string());
+        .map(|instance| instance.id)
+        .unwrap_or(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID);
 
     Ok(Json(ApiSuccess::new(PublicLoginInstancesResponse {
-        default_authenticator_name,
+        default_authenticator_id,
         login_instances,
     })))
 }
 
 #[utoipa::path(
     post,
-    path = "/api/public/auth/providers/password-local/sign-in",
+    path = "/api/public/auth/sign-in",
     request_body = LoginBody,
     responses((status = 200, body = LoginResponse), (status = 401, body = crate::error_response::ErrorBody))
 )]
@@ -156,9 +157,9 @@ pub async fn sign_in(
     );
     let result = kernel
         .login(LoginCommand {
-            authenticator: body
-                .authenticator
-                .unwrap_or_else(|| "password-local".to_string()),
+            authenticator_id: body
+                .authenticator_id
+                .unwrap_or(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID),
             identifier: body.identifier,
             password: body.password,
         })

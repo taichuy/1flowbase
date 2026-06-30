@@ -7,6 +7,7 @@ const DEFAULT_API_BASE_URL = 'http://127.0.0.1:7800';
 const OUTPUT_ROOT = path.join('tmp', 'test-governance', 'api-debug');
 const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const PASSWORD_LOCAL_AUTHENTICATOR_ID = '00000000-0000-0000-0000-000000000001';
 const SENSITIVE_HEADER_PATTERN = /(?:authorization|cookie|csrf|token|secret|password|api[-_]?key)/iu;
 
 function getRepoRoot() {
@@ -232,13 +233,14 @@ function loadRequestBody(options) {
 }
 
 async function loginForApiDebug({ fetchImpl, apiBaseUrl, account, password }) {
-  const loginUrl = resolveTargetUrl(apiBaseUrl, '/api/public/auth/providers/password-local/sign-in');
+  const loginUrl = resolveTargetUrl(apiBaseUrl, '/api/public/auth/sign-in');
   const response = await fetchImpl(loginUrl, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
     },
     body: JSON.stringify({
+      authenticator_id: PASSWORD_LOCAL_AUTHENTICATOR_ID,
       identifier: account,
       password,
     }),

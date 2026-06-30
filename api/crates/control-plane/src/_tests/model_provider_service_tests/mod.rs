@@ -262,13 +262,13 @@ impl MemoryModelProviderRepository {
 
 #[async_trait]
 impl AuthRepository for MemoryModelProviderRepository {
-    async fn find_authenticator(&self, _name: &str) -> Result<Option<AuthenticatorRecord>> {
+    async fn find_authenticator(&self, _id: Uuid) -> Result<Option<AuthenticatorRecord>> {
         Ok(None)
     }
 
     async fn find_user_for_password_login(
         &self,
-        _authenticator_name: &str,
+        _authenticator_id: Uuid,
         _identifier: &str,
     ) -> Result<Option<UserRecord>> {
         Ok(None)

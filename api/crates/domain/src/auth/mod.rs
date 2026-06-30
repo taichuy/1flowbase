@@ -158,7 +158,7 @@ pub struct RoleTemplate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AuthenticatorRecord {
-    pub name: String,
+    pub id: Uuid,
     pub auth_type: String,
     pub title: String,
     pub enabled: bool,
@@ -167,14 +167,15 @@ pub struct AuthenticatorRecord {
     pub options: serde_json::Value,
 }
 
-pub const PASSWORD_LOCAL_AUTHENTICATOR_NAME: &str = "password-local";
+pub const PASSWORD_LOCAL_AUTHENTICATOR_ID: Uuid =
+    Uuid::from_u128(0x00000000_0000_0000_0000_000000000001);
 pub const AUTH_SUBJECT_TYPE_ACCOUNT: &str = "account";
 pub const AUTH_SUBJECT_TYPE_EMAIL: &str = "email";
 pub const AUTH_SUBJECT_TYPE_PHONE: &str = "phone";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExternalIdentityClaim {
-    pub authenticator_name: String,
+    pub authenticator_id: Uuid,
     pub subject_type: String,
     pub subject_value: String,
     pub issuer: Option<String>,
@@ -221,7 +222,7 @@ pub fn password_local_contact_identity_claims(
 
 fn password_local_identity_claim(subject_type: &str, subject_value: &str) -> ExternalIdentityClaim {
     ExternalIdentityClaim {
-        authenticator_name: PASSWORD_LOCAL_AUTHENTICATOR_NAME.to_string(),
+        authenticator_id: PASSWORD_LOCAL_AUTHENTICATOR_ID,
         subject_type: subject_type.to_string(),
         subject_value: subject_value.to_string(),
         issuer: None,
@@ -235,7 +236,7 @@ fn password_local_identity_claim(subject_type: &str, subject_value: &str) -> Ext
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UserAuthIdentity {
     pub user_id: Uuid,
-    pub authenticator_name: String,
+    pub authenticator_id: Uuid,
     pub subject_type: String,
     pub subject_value: String,
 }

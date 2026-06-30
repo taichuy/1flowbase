@@ -35,7 +35,7 @@ pub use auth::{
     ApiKeyKind, ApiKeyRecord, AuthenticatorRecord, BoundRole, ExternalIdentityClaim,
     PermissionDefinition, RoleScopeKind, RoleTemplate, SessionRecord, UserAuthIdentity, UserRecord,
     UserStatus, AUTH_SUBJECT_TYPE_ACCOUNT, AUTH_SUBJECT_TYPE_EMAIL, AUTH_SUBJECT_TYPE_PHONE,
-    PASSWORD_LOCAL_AUTHENTICATOR_NAME,
+    PASSWORD_LOCAL_AUTHENTICATOR_ID,
 };
 pub use base::BaseFields;
 pub use builtin_data_model::{

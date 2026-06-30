@@ -121,6 +121,7 @@
     "auth_center_delete_confirm": "Delete {{value1}}?",
     "auth_center_identifier_invalid": "Use letters, numbers, and underscores only.",
     "auth_center_auth_type": "Authentication type",
+    "auth_center_category": "Category",
     "auth_center_auth_type_required": "Select an authentication type.",
     "auth_center_sort_order": "Sort order",
     "move_up": "Move up",

@@ -14,7 +14,7 @@ pub(crate) async fn insert_password_local_identities(
         sqlx::query(
             r#"
             insert into user_auth_identities (
-                id, user_id, authenticator_name, subject_type, subject_value, metadata,
+                id, user_id, authenticator_id, subject_type, subject_value, metadata,
                 created_by, updated_by
             )
             values ($1, $2, $3, $4, $5, $6, $7, $7)
@@ -22,7 +22,7 @@ pub(crate) async fn insert_password_local_identities(
         )
         .bind(Uuid::now_v7())
         .bind(user_id)
-        .bind(&claim.authenticator_name)
+        .bind(claim.authenticator_id)
         .bind(&claim.subject_type)
         .bind(&claim.subject_value)
         .bind(&claim.metadata)
@@ -44,17 +44,17 @@ pub(crate) async fn upsert_password_local_identities(
         let bound_user_id: Uuid = sqlx::query_scalar(
             r#"
             insert into user_auth_identities (
-                id, user_id, authenticator_name, subject_type, subject_value, metadata
+                id, user_id, authenticator_id, subject_type, subject_value, metadata
             )
             values ($1, $2, $3, $4, $5, $6)
-            on conflict (authenticator_name, subject_type, lower(subject_value))
+            on conflict (authenticator_id, subject_type, lower(subject_value))
             do update set subject_value = user_auth_identities.subject_value
             returning user_id
             "#,
         )
         .bind(Uuid::now_v7())
         .bind(user.id)
-        .bind(&claim.authenticator_name)
+        .bind(claim.authenticator_id)
         .bind(&claim.subject_type)
         .bind(&claim.subject_value)
         .bind(&claim.metadata)
@@ -84,12 +84,12 @@ pub(crate) async fn replace_password_local_contact_identities(
         r#"
         delete from user_auth_identities
         where user_id = $1
-          and authenticator_name = $2
+          and authenticator_id = $2
           and subject_type in ($3, $4)
         "#,
     )
     .bind(user_id)
-    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME)
+    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
     .bind(domain::AUTH_SUBJECT_TYPE_EMAIL)
     .bind(domain::AUTH_SUBJECT_TYPE_PHONE)
     .execute(&mut **tx)
@@ -99,7 +99,7 @@ pub(crate) async fn replace_password_local_contact_identities(
         sqlx::query(
             r#"
             insert into user_auth_identities (
-                id, user_id, authenticator_name, subject_type, subject_value, metadata,
+                id, user_id, authenticator_id, subject_type, subject_value, metadata,
                 created_by, updated_by
             )
             values ($1, $2, $3, $4, $5, $6, $7, $7)
@@ -107,7 +107,7 @@ pub(crate) async fn replace_password_local_contact_identities(
         )
         .bind(Uuid::now_v7())
         .bind(user_id)
-        .bind(&claim.authenticator_name)
+        .bind(claim.authenticator_id)
         .bind(&claim.subject_type)
         .bind(&claim.subject_value)
         .bind(&claim.metadata)

@@ -37,7 +37,7 @@ async fn bootstrap_service_seeds_password_local_authenticator_options() {
     service.run(&config).await.unwrap();
 
     let password_local = repository
-        .authenticator("password-local")
+        .authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
         .await
         .expect("password-local should be seeded");
     assert_eq!(
@@ -48,9 +48,7 @@ async fn bootstrap_service_seeds_password_local_authenticator_options() {
         .as_array()
         .unwrap()
         .iter()
-        .any(|field| field["key"] == "name"
-            && field["read_only"] == true
-            && field["required"] == true));
+        .all(|field| field["key"] != "name"));
     assert!(password_local.options["config_form_schema"]
         .as_array()
         .unwrap()

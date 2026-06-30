@@ -54,7 +54,7 @@ async fn seed_data_source_workspace(
     store.upsert_builtin_roles(workspace.id).await.unwrap();
     store
         .upsert_authenticator(&domain::AuthenticatorRecord {
-            name: "password-local".into(),
+            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,

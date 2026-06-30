@@ -21,7 +21,6 @@ import {
   Space,
   Switch,
   Table,
-  Tag,
   Tooltip
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -57,7 +56,6 @@ const MAX_AUTH_CENTER_DRAWER_WIDTH = 960;
 const KEYBOARD_RESIZE_STEP = 40;
 
 type AuthenticatorConfigFormValues = {
-  name: string;
   title: string;
   enabled: boolean;
   description: string | null;
@@ -71,7 +69,6 @@ type AuthenticatorLifecycleModalState = {
 };
 
 type AuthenticatorLifecycleFormValues = {
-  name: string;
   auth_type?: string;
   title: string;
   description?: string | null;
@@ -93,7 +90,6 @@ function authCenterConfigFormValues(row: AuthenticatorRow): SchemaFormValues {
       : null;
 
   return {
-    name: row.name,
     title: row.title,
     enabled: row.enabled,
     description
@@ -104,12 +100,6 @@ function authCenterConfigFormSchema(): PluginFormSchema {
   return {
     schema_version: '1.0.0',
     fields: [
-      {
-        key: 'name',
-        label: i18nText('settings', 'auto.identifier'),
-        type: 'string',
-        read_only: true
-      },
       {
         key: 'title',
         label: i18nText('settings', 'auto.name'),
@@ -135,7 +125,6 @@ function toAuthenticatorConfigFormValues(
   values: SchemaFormValues
 ): AuthenticatorConfigFormValues {
   return {
-    name: String(values.name ?? ''),
     title: String(values.title ?? ''),
     enabled: Boolean(values.enabled),
     description:
@@ -179,7 +168,7 @@ function AuthenticatorConfigDrawer({
   errorMessage: string | null;
   onClose: () => void;
   onSubmit: (
-    authenticatorName: string,
+    authenticatorId: string,
     values: AuthenticatorConfigFormValues
   ) => Promise<void>;
 }) {
@@ -310,14 +299,14 @@ function AuthenticatorConfigDrawer({
       }
       onCancel={onClose}
       onSubmit={(values) =>
-        onSubmit(authenticator.name, toAuthenticatorConfigFormValues(values))
+        onSubmit(authenticator.id, toAuthenticatorConfigFormValues(values))
       }
     />
   ) : null;
 }
 
 export function SettingsAuthCenterSection() {
-  const [selectedAuthenticatorName, setSelectedAuthenticatorName] = useState<
+  const [selectedAuthenticatorId, setSelectedAuthenticatorId] = useState<
     string | null
   >(null);
   const [lifecycleForm] = Form.useForm<AuthenticatorLifecycleFormValues>();
@@ -338,9 +327,9 @@ export function SettingsAuthCenterSection() {
     queryFn: fetchSettingsAuthCenterOverview
   });
   const selectedAuthenticator =
-    selectedAuthenticatorName && overviewQuery.data
+    selectedAuthenticatorId && overviewQuery.data
       ? (overviewQuery.data.authenticators.find(
-          (row) => row.name === selectedAuthenticatorName
+          (row) => row.id === selectedAuthenticatorId
         ) ?? null)
       : null;
   const requireAuthCenterWrite = () => {
@@ -360,7 +349,6 @@ export function SettingsAuthCenterSection() {
   const openCreateAuthenticator = () => {
     setOperationErrorMessage(null);
     lifecycleForm.setFieldsValue({
-      name: '',
       auth_type: overviewQuery.data?.supported_auth_types[0],
       title: '',
       description: null,
@@ -372,7 +360,6 @@ export function SettingsAuthCenterSection() {
   const openCopyAuthenticator = (row: AuthenticatorRow) => {
     setOperationErrorMessage(null);
     lifecycleForm.setFieldsValue({
-      name: `${row.name}_copy`,
       title: `${row.title} Copy`,
       description:
         typeof row.config_values.description === 'string'
@@ -384,12 +371,12 @@ export function SettingsAuthCenterSection() {
     setLifecycleModal({ mode: 'copy', source: row });
   };
   const enableMutation = useMutation({
-    mutationFn: (authenticatorName: string) => {
+    mutationFn: (authenticatorId: string) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
       return enableSettingsAuthCenterAuthenticator(
-        authenticatorName,
+        authenticatorId,
         csrfToken
       );
     },
@@ -401,7 +388,7 @@ export function SettingsAuthCenterSection() {
   });
   const configMutation = useMutation({
     mutationFn: (input: {
-      authenticatorName: string;
+      authenticatorId: string;
       values: AuthenticatorConfigFormValues;
     }) => {
       if (!canManageAuthenticators) {
@@ -413,9 +400,8 @@ export function SettingsAuthCenterSection() {
         throw new Error(i18nText('settings', 'auto.auth_center_csrf_required'));
       }
       return updateSettingsAuthCenterAuthenticatorConfig(
-        input.authenticatorName,
+        input.authenticatorId,
         {
-          name: input.values.name,
           title: input.values.title,
           enabled: input.values.enabled,
           description: input.values.description
@@ -431,12 +417,12 @@ export function SettingsAuthCenterSection() {
             ? {
                 ...overview,
                 authenticators: overview.authenticators.map((row) =>
-                  row.name === authenticator.name ? authenticator : row
+                  row.id === authenticator.id ? authenticator : row
                 )
               }
             : overview
       );
-      setSelectedAuthenticatorName(null);
+      setSelectedAuthenticatorId(null);
       await queryClient.invalidateQueries({
         queryKey: settingsAuthCenterOverviewQueryKey
       });
@@ -446,7 +432,6 @@ export function SettingsAuthCenterSection() {
     mutationFn: (values: AuthenticatorLifecycleFormValues) =>
       createSettingsAuthCenterAuthenticator(
         {
-          name: values.name,
           auth_type: values.auth_type ?? '',
           title: values.title,
           description: values.description ?? null,
@@ -468,7 +453,7 @@ export function SettingsAuthCenterSection() {
                 ].sort(
                   (left, right) =>
                     left.sort_order - right.sort_order ||
-                    left.name.localeCompare(right.name)
+                    left.id.localeCompare(right.id)
                 )
               }
             : overview
@@ -487,13 +472,12 @@ export function SettingsAuthCenterSection() {
   });
   const copyMutation = useMutation({
     mutationFn: (input: {
-      sourceName: string;
+      sourceId: string;
       values: AuthenticatorLifecycleFormValues;
     }) =>
       copySettingsAuthCenterAuthenticator(
-        input.sourceName,
+        input.sourceId,
         {
-          name: input.values.name,
           title: input.values.title,
           sort_order: input.values.sort_order ?? undefined
         },
@@ -512,7 +496,7 @@ export function SettingsAuthCenterSection() {
                 ].sort(
                   (left, right) =>
                     left.sort_order - right.sort_order ||
-                    left.name.localeCompare(right.name)
+                    left.id.localeCompare(right.id)
                 )
               }
             : overview
@@ -530,12 +514,12 @@ export function SettingsAuthCenterSection() {
     }
   });
   const deleteMutation = useMutation({
-    mutationFn: (authenticatorName: string) =>
+    mutationFn: (authenticatorId: string) =>
       deleteSettingsAuthCenterAuthenticator(
-        authenticatorName,
+        authenticatorId,
         requireAuthCenterWrite()
       ),
-    onSuccess: async (_, authenticatorName) => {
+    onSuccess: async (_, authenticatorId) => {
       queryClient.setQueryData<SettingsAuthCenterOverview>(
         settingsAuthCenterOverviewQueryKey,
         (overview) =>
@@ -543,7 +527,7 @@ export function SettingsAuthCenterSection() {
             ? {
                 ...overview,
                 authenticators: overview.authenticators.filter(
-                  (row) => row.name !== authenticatorName
+                  (row) => row.id !== authenticatorId
                 )
               }
             : overview
@@ -559,8 +543,8 @@ export function SettingsAuthCenterSection() {
     }
   });
   const reorderMutation = useMutation({
-    mutationFn: (names: string[]) =>
-      reorderSettingsAuthCenterAuthenticators(names, requireAuthCenterWrite()),
+    mutationFn: (ids: string[]) =>
+      reorderSettingsAuthCenterAuthenticators(ids, requireAuthCenterWrite()),
     onSuccess: (overview) => {
       queryClient.setQueryData<SettingsAuthCenterOverview>(
         settingsAuthCenterOverviewQueryKey,
@@ -579,7 +563,7 @@ export function SettingsAuthCenterSection() {
   const moveAuthenticator = (row: AuthenticatorRow, direction: -1 | 1) => {
     const authenticators = overviewQuery.data?.authenticators ?? [];
     const currentIndex = authenticators.findIndex(
-      (authenticator) => authenticator.name === row.name
+      (authenticator) => authenticator.id === row.id
     );
     const targetIndex = currentIndex + direction;
     if (
@@ -594,13 +578,18 @@ export function SettingsAuthCenterSection() {
     nextRows[currentIndex] = nextRows[targetIndex];
     nextRows[targetIndex] = current;
     setOperationErrorMessage(null);
-    reorderMutation.mutate(nextRows.map((authenticator) => authenticator.name));
+    reorderMutation.mutate(nextRows.map((authenticator) => authenticator.id));
   };
   const authenticatorColumns: ColumnsType<AuthenticatorRow> = [
     {
-      title: i18nText('settings', 'auto.identifier'),
-      dataIndex: 'name',
-      key: 'name'
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id'
+    },
+    {
+      title: i18nText('settings', 'auto.auth_center_category'),
+      dataIndex: 'auth_type',
+      key: 'auth_type'
     },
     {
       title: i18nText('settings', 'auto.name'),
@@ -608,28 +597,9 @@ export function SettingsAuthCenterSection() {
       key: 'title'
     },
     {
-      title: i18nText('settings', 'auto.description'),
-      key: 'description',
-      render: (_, row) => row.config_values.description || '-'
-    },
-    {
-      title: i18nText('settings', 'auto.status'),
-      dataIndex: 'enabled',
-      key: 'enabled',
-      render: (enabled: boolean) => (
-        <Tag color={enabled ? 'green' : 'default'}>
-          {i18nText('settings', enabled ? 'auto.enabled_alt' : 'auto.disabled')}
-        </Tag>
-      )
-    },
-    {
-      title: i18nText('settings', 'auto.built_in'),
-      dataIndex: 'is_builtin',
-      key: 'is_builtin',
-      render: (isBuiltin: boolean) =>
-        isBuiltin
-          ? i18nText('settings', 'auto.yes')
-          : i18nText('settings', 'auto.no')
+      title: i18nText('settings', 'auto.auth_center_sort_order'),
+      dataIndex: 'sort_order',
+      key: 'sort_order'
     },
     {
       title: i18nText('settings', 'auto.enabled'),
@@ -640,11 +610,11 @@ export function SettingsAuthCenterSection() {
           checked={enabled}
           disabled={enabled || !csrfToken || !canManageAuthenticators}
           loading={
-            enableMutation.isPending && enableMutation.variables === row.name
+            enableMutation.isPending && enableMutation.variables === row.id
           }
           onChange={(checked) => {
             if (checked && !enabled) {
-              enableMutation.mutate(row.name);
+              enableMutation.mutate(row.id);
             }
           }}
         />
@@ -690,7 +660,7 @@ export function SettingsAuthCenterSection() {
             size="small"
             onClick={() => {
               configMutation.reset();
-              setSelectedAuthenticatorName(row.name);
+              setSelectedAuthenticatorId(row.id);
             }}
           >
             {i18nText('settings', 'auto.edit')}
@@ -714,7 +684,7 @@ export function SettingsAuthCenterSection() {
             disabled={row.is_builtin || !csrfToken || !canManageAuthenticators}
             onConfirm={() => {
               setOperationErrorMessage(null);
-              deleteMutation.mutate(row.name);
+              deleteMutation.mutate(row.id);
             }}
           >
             <Tooltip
@@ -738,7 +708,7 @@ export function SettingsAuthCenterSection() {
                   !csrfToken ||
                   !canManageAuthenticators ||
                   (deleteMutation.isPending &&
-                    deleteMutation.variables === row.name)
+                    deleteMutation.variables === row.id)
                 }
               />
             </Tooltip>
@@ -785,7 +755,7 @@ export function SettingsAuthCenterSection() {
             <Alert type="error" message={operationErrorMessage} showIcon />
           ) : null}
           <Table
-            rowKey="name"
+            rowKey="id"
             columns={authenticatorColumns}
             dataSource={overviewQuery.data.authenticators}
             pagination={false}
@@ -795,7 +765,7 @@ export function SettingsAuthCenterSection() {
       ) : null}
       <AuthenticatorConfigDrawer
         authenticator={selectedAuthenticator}
-        open={selectedAuthenticatorName != null}
+        open={selectedAuthenticatorId != null}
         canManageAuthenticators={canManageAuthenticators}
         hasCsrfToken={csrfToken != null}
         submitting={configMutation.isPending}
@@ -806,12 +776,12 @@ export function SettingsAuthCenterSection() {
         }
         onClose={() => {
           configMutation.reset();
-          setSelectedAuthenticatorName(null);
+          setSelectedAuthenticatorId(null);
         }}
-        onSubmit={async (authenticatorName, values) => {
+        onSubmit={async (authenticatorId, values) => {
           await new Promise<void>((resolve, reject) => {
             configMutation.mutate(
-              { authenticatorName, values },
+              { authenticatorId, values },
               {
                 onError: () =>
                   reject(
@@ -855,7 +825,7 @@ export function SettingsAuthCenterSection() {
             setOperationErrorMessage(null);
             if (lifecycleModal?.mode === 'copy' && lifecycleModal.source) {
               copyMutation.mutate({
-                sourceName: lifecycleModal.source.name,
+                sourceId: lifecycleModal.source.id,
                 values
               });
               return;
@@ -863,25 +833,6 @@ export function SettingsAuthCenterSection() {
             createMutation.mutate(values);
           }}
         >
-          <Form.Item
-            label={i18nText('settings', 'auto.identifier')}
-            name="name"
-            rules={[
-              {
-                required: true,
-                message: i18nText('settings', 'auto.fill_name')
-              },
-              {
-                pattern: /^[A-Za-z0-9_]+$/,
-                message: i18nText(
-                  'settings',
-                  'auto.auth_center_identifier_invalid'
-                )
-              }
-            ]}
-          >
-            <Input />
-          </Form.Item>
           {lifecycleModal?.mode === 'create' ? (
             <Form.Item
               label={i18nText('settings', 'auto.auth_center_auth_type')}

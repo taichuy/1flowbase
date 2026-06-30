@@ -11,7 +11,6 @@ export interface ConsoleAuthCenterConfigField {
 }
 
 export interface ConsoleAuthCenterAuthenticatorConfigValues {
-  name: string;
   title: string;
   enabled: boolean;
   description?: string | null;
@@ -20,7 +19,7 @@ export interface ConsoleAuthCenterAuthenticatorConfigValues {
 }
 
 export interface ConsoleAuthCenterAuthenticator {
-  name: string;
+  id: string;
   auth_type: string;
   title: string;
   enabled: boolean;
@@ -31,20 +30,18 @@ export interface ConsoleAuthCenterAuthenticator {
 }
 
 export interface ConsoleAuthCenterAuthenticatorConfigInput {
-  name?: string;
   title: string;
   enabled: boolean;
   description?: string | null;
 }
 
 export interface ConsoleAuthCenterOverview {
-  default_authenticator_name: string;
+  default_authenticator_id: string;
   supported_auth_types: string[];
   authenticators: ConsoleAuthCenterAuthenticator[];
 }
 
 export interface ConsoleAuthCenterCreateAuthenticatorInput {
-  name: string;
   auth_type: string;
   title: string;
   description?: string | null;
@@ -53,13 +50,12 @@ export interface ConsoleAuthCenterCreateAuthenticatorInput {
 }
 
 export interface ConsoleAuthCenterCopyAuthenticatorInput {
-  name: string;
   title: string;
   sort_order?: number;
 }
 
 export interface ConsoleAuthCenterReorderAuthenticatorsInput {
-  names: string[];
+  ids: string[];
 }
 
 export function fetchConsoleAuthCenterOverview(baseUrl?: string) {
@@ -70,12 +66,12 @@ export function fetchConsoleAuthCenterOverview(baseUrl?: string) {
 }
 
 export function enableConsoleAuthCenterAuthenticator(
-  authenticatorName: string,
+  authenticatorId: string,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleAuthCenterAuthenticator> {
   return apiFetch<ConsoleAuthCenterAuthenticator>({
-    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorName)}/actions/enable`,
+    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorId)}/actions/enable`,
     method: 'POST',
     csrfToken,
     baseUrl
@@ -97,13 +93,13 @@ export function createConsoleAuthCenterAuthenticator(
 }
 
 export function copyConsoleAuthCenterAuthenticator(
-  authenticatorName: string,
+  sourceId: string,
   input: ConsoleAuthCenterCopyAuthenticatorInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleAuthCenterAuthenticator> {
   return apiFetch<ConsoleAuthCenterAuthenticator>({
-    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorName)}/copy`,
+    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(sourceId)}/copy`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -112,12 +108,12 @@ export function copyConsoleAuthCenterAuthenticator(
 }
 
 export function deleteConsoleAuthCenterAuthenticator(
-  authenticatorName: string,
+  authenticatorId: string,
   csrfToken: string,
   baseUrl?: string
 ): Promise<void> {
   return apiFetch<void>({
-    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorName)}`,
+    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorId)}`,
     method: 'DELETE',
     csrfToken,
     baseUrl,
@@ -140,13 +136,13 @@ export function reorderConsoleAuthCenterAuthenticators(
 }
 
 export function updateConsoleAuthCenterAuthenticatorConfig(
-  authenticatorName: string,
+  authenticatorId: string,
   input: ConsoleAuthCenterAuthenticatorConfigInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleAuthCenterAuthenticator> {
   return apiFetch<ConsoleAuthCenterAuthenticator>({
-    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorName)}/config`,
+    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorId)}/config`,
     method: 'PUT',
     body: input,
     csrfToken,

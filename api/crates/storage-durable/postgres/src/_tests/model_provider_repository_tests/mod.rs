@@ -90,7 +90,7 @@ async fn seed_store() -> (
     store.upsert_builtin_roles(workspace.id).await.unwrap();
     store
         .upsert_authenticator(&domain::AuthenticatorRecord {
-            name: "password-local".into(),
+            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,
@@ -189,7 +189,7 @@ async fn seed_store_before_main_instance_aggregation() -> (
     store.upsert_builtin_roles(workspace.id).await.unwrap();
     store
         .upsert_authenticator(&domain::AuthenticatorRecord {
-            name: "password-local".into(),
+            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,

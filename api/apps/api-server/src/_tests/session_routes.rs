@@ -32,7 +32,7 @@ async fn production_login_cookie_is_marked_secure() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/public/auth/providers/password-local/sign-in")
+                .uri("/api/public/auth/sign-in")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -212,7 +212,7 @@ async fn expired_memory_session_is_rejected_by_require_session() {
         .unwrap();
     let user = state
         .store
-        .find_user_for_password_login(domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME, "root")
+        .find_user_for_password_login(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID, "root")
         .await
         .unwrap()
         .unwrap();

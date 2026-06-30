@@ -7,6 +7,7 @@ const {
   buildRollbackGatePlan,
   parseCliArgs,
   resolvePreviousImageTag,
+  runHttpSmoke,
 } = require('../core.js');
 
 test('parseCliArgs keeps the gate nightly-friendly by default', () => {
@@ -85,4 +86,43 @@ test('buildRollbackGatePlan verifies baseline, candidate, snapshot restore, and 
   assert.equal(plan[4].imageTag, 'latest');
   assert.equal(plan[5].imageTag, 'latest');
   assert.equal(plan[8].imageTag, 'v0.2.0');
+});
+
+test('runHttpSmoke signs in through public auth instance id contract', async () => {
+  const calls = [];
+  const result = await runHttpSmoke({
+    baseUrl: 'http://127.0.0.1:7800',
+    timeoutMs: 100,
+    fetchJsonImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (String(url).endsWith('/health')) {
+        return {
+          response: { ok: true, status: 200 },
+          json: { status: 'ok' },
+          text: '{"status":"ok"}',
+        };
+      }
+      if (String(url).endsWith('/api/public/auth/providers')) {
+        return {
+          response: { ok: true, status: 200 },
+          json: { data: [] },
+          text: '{"data":[]}',
+        };
+      }
+      return {
+        response: { ok: true, status: 200 },
+        json: { data: { current_workspace_id: 'workspace-1' } },
+        text: '{"data":{"current_workspace_id":"workspace-1"}}',
+      };
+    },
+    sleepImpl: async () => {},
+  });
+
+  assert.equal(result.currentWorkspaceId, 'workspace-1');
+  assert.equal(calls[2].url, 'http://127.0.0.1:7800/api/public/auth/sign-in');
+  assert.deepEqual(JSON.parse(calls[2].options.body), {
+    authenticator_id: '00000000-0000-0000-0000-000000000001',
+    identifier: 'root',
+    password: 'rollback-gate-root-password',
+  });
 });

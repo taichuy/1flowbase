@@ -11,14 +11,6 @@ set options = coalesce(options, '{}'::jsonb)
         when coalesce(options, '{}'::jsonb) ? 'config_form_schema' then null
         else '[
           {
-            "key": "name",
-            "label": "Authenticator identifier",
-            "type": "string",
-            "read_only": true,
-            "required": true,
-            "pattern": "^[A-Za-z0-9_]+$"
-          },
-          {
             "key": "title",
             "label": "Authenticator title",
             "type": "string",
@@ -47,4 +39,4 @@ set options = coalesce(options, '{}'::jsonb)
       end
   )),
   updated_at = now()
-where name = 'password-local';
+where id = '00000000-0000-0000-0000-000000000001';

@@ -39,16 +39,16 @@ describe('SignInPage', () => {
     fetchCurrentMe.mockReset();
     fetchLoginInstances.mockReset();
     fetchLoginInstances.mockResolvedValue({
-      default_authenticator_name: 'password-local',
+      default_authenticator_id: 'auth-password-local',
       login_instances: [
         {
-          name: 'password-local',
+          id: 'auth-password-local',
           auth_type: 'password-local',
           title: 'Password',
           description: 'Local password login',
           sort_order: 0,
           flow: 'password',
-          sign_in_path: '/api/public/auth/providers/password-local/sign-in',
+          sign_in_path: '/api/public/auth/sign-in',
           public_options: {}
         }
       ]
@@ -91,6 +91,7 @@ describe('SignInPage', () => {
 
     await waitFor(() =>
       expect(signInWithPassword).toHaveBeenCalledWith({
+        authenticator_id: 'auth-password-local',
         identifier: 'root',
         password: 'change-me'
       })
@@ -115,26 +116,26 @@ describe('SignInPage', () => {
 
   test('submits the selected authenticator when multiple login instances exist', async () => {
     fetchLoginInstances.mockResolvedValue({
-      default_authenticator_name: 'staff_password',
+      default_authenticator_id: 'auth-staff-password',
       login_instances: [
         {
-          name: 'staff_password',
+          id: 'auth-staff-password',
           auth_type: 'password-local',
           title: 'Staff Password',
           description: 'Staff login',
           sort_order: 0,
           flow: 'password',
-          sign_in_path: '/api/public/auth/providers/password-local/sign-in',
+          sign_in_path: '/api/public/auth/sign-in',
           public_options: {}
         },
         {
-          name: 'password-local',
+          id: 'auth-password-local',
           auth_type: 'password-local',
           title: 'Password',
           description: 'Local password login',
           sort_order: 10,
           flow: 'password',
-          sign_in_path: '/api/public/auth/providers/password-local/sign-in',
+          sign_in_path: '/api/public/auth/sign-in',
           public_options: {}
         }
       ]
@@ -174,7 +175,7 @@ describe('SignInPage', () => {
 
     await waitFor(() =>
       expect(signInWithPassword).toHaveBeenCalledWith({
-        authenticator: 'staff_password',
+        authenticator_id: 'auth-staff-password',
         identifier: 'root',
         password: 'change-me'
       })

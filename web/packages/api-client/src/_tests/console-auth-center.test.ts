@@ -24,9 +24,9 @@ describe('console auth center client', () => {
 
   test('enables an auth center authenticator', async () => {
     await expect(
-      enableConsoleAuthCenterAuthenticator('password-local', 'csrf-123')
+      enableConsoleAuthCenterAuthenticator('auth-password-local', 'csrf-123')
     ).resolves.toMatchObject({
-      path: '/api/console/settings/auth-center/authenticators/password-local/actions/enable',
+      path: '/api/console/settings/auth-center/authenticators/auth-password-local/actions/enable',
       method: 'POST',
       csrfToken: 'csrf-123'
     });
@@ -36,7 +36,6 @@ describe('console auth center client', () => {
     await expect(
       createConsoleAuthCenterAuthenticator(
         {
-          name: 'staff_password',
           auth_type: 'password-local',
           title: 'Staff Password',
           description: 'Staff login',
@@ -50,7 +49,6 @@ describe('console auth center client', () => {
       method: 'POST',
       csrfToken: 'csrf-123',
       body: {
-        name: 'staff_password',
         auth_type: 'password-local',
         title: 'Staff Password',
         description: 'Staff login',
@@ -63,20 +61,18 @@ describe('console auth center client', () => {
   test('copies an auth center authenticator', async () => {
     await expect(
       copyConsoleAuthCenterAuthenticator(
-        'staff_password',
+        'auth-staff-password',
         {
-          name: 'staff_password_backup',
           title: 'Staff Password Backup',
           sort_order: 30
         },
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/settings/auth-center/authenticators/staff_password/copy',
+      path: '/api/console/settings/auth-center/authenticators/auth-staff-password/copy',
       method: 'POST',
       csrfToken: 'csrf-123',
       body: {
-        name: 'staff_password_backup',
         title: 'Staff Password Backup',
         sort_order: 30
       }
@@ -85,9 +81,9 @@ describe('console auth center client', () => {
 
   test('deletes an auth center authenticator', async () => {
     await expect(
-      deleteConsoleAuthCenterAuthenticator('staff_password', 'csrf-123')
+      deleteConsoleAuthCenterAuthenticator('auth-staff-password', 'csrf-123')
     ).resolves.toMatchObject({
-      path: '/api/console/settings/auth-center/authenticators/staff_password',
+      path: '/api/console/settings/auth-center/authenticators/auth-staff-password',
       method: 'DELETE',
       csrfToken: 'csrf-123',
       expectJson: false
@@ -98,7 +94,7 @@ describe('console auth center client', () => {
     await expect(
       reorderConsoleAuthCenterAuthenticators(
         {
-          names: ['staff_password', 'password-local']
+          ids: ['auth-staff-password', 'auth-password-local']
         },
         'csrf-123'
       )
@@ -107,7 +103,7 @@ describe('console auth center client', () => {
       method: 'PUT',
       csrfToken: 'csrf-123',
       body: {
-        names: ['staff_password', 'password-local']
+        ids: ['auth-staff-password', 'auth-password-local']
       }
     });
   });
@@ -115,9 +111,8 @@ describe('console auth center client', () => {
   test('updates an auth center authenticator config without extension_config', async () => {
     await expect(
       updateConsoleAuthCenterAuthenticatorConfig(
-        'oidc-main',
+        'auth-oidc-main',
         {
-          name: 'oidc-main',
           title: 'OIDC Login',
           enabled: true,
           description: 'Primary OIDC login'
@@ -125,11 +120,10 @@ describe('console auth center client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/settings/auth-center/authenticators/oidc-main/config',
+      path: '/api/console/settings/auth-center/authenticators/auth-oidc-main/config',
       method: 'PUT',
       csrfToken: 'csrf-123',
       body: {
-        name: 'oidc-main',
         title: 'OIDC Login',
         enabled: true,
         description: 'Primary OIDC login'

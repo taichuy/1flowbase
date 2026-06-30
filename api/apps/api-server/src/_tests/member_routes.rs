@@ -460,7 +460,7 @@ async fn reset_password_invalidates_member_session() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/public/auth/providers/password-local/sign-in")
+                .uri("/api/public/auth/sign-in")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -544,7 +544,7 @@ async fn delete_member_physically_removes_identity_records() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/public/auth/providers/password-local/sign-in")
+                .uri("/api/public/auth/sign-in")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -586,7 +586,7 @@ async fn enable_member_restores_disabled_member_login() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/public/auth/providers/password-local/sign-in")
+                .uri("/api/public/auth/sign-in")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -620,7 +620,7 @@ async fn enable_member_restores_disabled_member_login() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/public/auth/providers/password-local/sign-in")
+                .uri("/api/public/auth/sign-in")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({

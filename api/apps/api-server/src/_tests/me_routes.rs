@@ -302,7 +302,7 @@ async fn change_password_route_invalidates_old_session() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/public/auth/providers/password-local/sign-in")
+                .uri("/api/public/auth/sign-in")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({

@@ -43,10 +43,10 @@ impl PgControlPlaneStore {
                 enabled = $3,
                 options = $4,
                 updated_at = now()
-            where name = $1
+            where id = $1
             "#,
         )
-        .bind(&authenticator.name)
+        .bind(authenticator.id)
         .bind(&authenticator.title)
         .bind(authenticator.enabled)
         .bind(&authenticator.options)
@@ -59,12 +59,11 @@ impl PgControlPlaneStore {
     pub async fn create_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
         sqlx::query(
             r#"
-            insert into authenticators (id, name, auth_type, title, enabled, is_builtin, sort_order, options)
-            values ($1, $2, $3, $4, $5, $6, $7, $8)
+            insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, options)
+            values ($1, $2, $3, $4, $5, $6, $7)
             "#,
         )
-        .bind(Uuid::now_v7())
-        .bind(&authenticator.name)
+        .bind(authenticator.id)
         .bind(&authenticator.auth_type)
         .bind(&authenticator.title)
         .bind(authenticator.enabled)
@@ -77,17 +76,17 @@ impl PgControlPlaneStore {
         Ok(())
     }
 
-    pub async fn delete_authenticator_if_unbound(&self, name: &str) -> Result<()> {
+    pub async fn delete_authenticator_if_unbound(&self, id: Uuid) -> Result<()> {
         let mut tx = self.pool.begin().await?;
         let authenticator = sqlx::query(
             r#"
             select is_builtin
             from authenticators
-            where name = $1
+            where id = $1
             for update
             "#,
         )
-        .bind(name)
+        .bind(id)
         .fetch_optional(&mut *tx)
         .await?;
         let Some(authenticator) = authenticator else {
@@ -98,17 +97,17 @@ impl PgControlPlaneStore {
         }
 
         let identity_count: i64 = sqlx::query_scalar(
-            "select count(*) from user_auth_identities where authenticator_name = $1",
+            "select count(*) from user_auth_identities where authenticator_id = $1",
         )
-        .bind(name)
+        .bind(id)
         .fetch_one(&mut *tx)
         .await?;
         if identity_count > 0 {
             return Err(ControlPlaneError::Conflict("authenticator_identity_bindings").into());
         }
 
-        sqlx::query("delete from authenticators where name = $1")
-            .bind(name)
+        sqlx::query("delete from authenticators where id = $1")
+            .bind(id)
             .execute(&mut *tx)
             .await?;
         tx.commit().await?;
@@ -116,18 +115,18 @@ impl PgControlPlaneStore {
         Ok(())
     }
 
-    pub async fn update_authenticator_order(&self, names: &[String]) -> Result<()> {
+    pub async fn update_authenticator_order(&self, ids: &[Uuid]) -> Result<()> {
         let mut tx = self.pool.begin().await?;
-        for (index, name) in names.iter().enumerate() {
+        for (index, id) in ids.iter().enumerate() {
             sqlx::query(
                 r#"
                 update authenticators
                 set sort_order = $2,
                     updated_at = now()
-                where name = $1
+                where id = $1
                 "#,
             )
-            .bind(name)
+            .bind(id)
             .bind((index as i32) * 10)
             .execute(&mut *tx)
             .await?;
@@ -181,8 +180,8 @@ impl PgControlPlaneStore {
         .await
     }
 
-    pub async fn find_authenticator(&self, name: &str) -> Result<Option<AuthenticatorRecord>> {
-        AuthRepository::find_authenticator(self, name).await
+    pub async fn find_authenticator(&self, id: Uuid) -> Result<Option<AuthenticatorRecord>> {
+        AuthRepository::find_authenticator(self, id).await
     }
 
     pub async fn list_authenticators(&self) -> Result<Vec<AuthenticatorRecord>> {
@@ -191,10 +190,10 @@ impl PgControlPlaneStore {
 
     pub async fn find_user_for_password_login(
         &self,
-        authenticator_name: &str,
+        authenticator_id: Uuid,
         identifier: &str,
     ) -> Result<Option<UserRecord>> {
-        AuthRepository::find_user_for_password_login(self, authenticator_name, identifier).await
+        AuthRepository::find_user_for_password_login(self, authenticator_id, identifier).await
     }
 
     pub async fn find_user_by_id(&self, user_id: Uuid) -> Result<Option<UserRecord>> {

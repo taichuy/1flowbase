@@ -135,21 +135,21 @@ impl BootstrapRepository for PgControlPlaneStore {
     async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
         sqlx::query(
             r#"
-            insert into authenticators (id, name, auth_type, title, enabled, is_builtin, sort_order, options)
-            values ($1, $2, $3, $4, $5, $6, $7, $8)
-            on conflict (name) do update
+            insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, options)
+            values ($1, $2, $3, $4, $5, $6, $7)
+            on conflict (id) do update
               set auth_type = excluded.auth_type,
                   title = case
-                    when authenticators.name = 'password-local' then authenticators.title
+                    when authenticators.id = '00000000-0000-0000-0000-000000000001' then authenticators.title
                     else excluded.title
                   end,
                   enabled = case
-                    when authenticators.name = 'password-local' then authenticators.enabled
+                    when authenticators.id = '00000000-0000-0000-0000-000000000001' then authenticators.enabled
                     else excluded.enabled
                   end,
                   is_builtin = excluded.is_builtin,
                   options = case
-                    when authenticators.name <> 'password-local' then excluded.options
+                    when authenticators.id <> '00000000-0000-0000-0000-000000000001' then excluded.options
                     else
                     case
                       when jsonb_typeof(authenticators.options) = 'object' then authenticators.options
@@ -176,8 +176,7 @@ impl BootstrapRepository for PgControlPlaneStore {
                   updated_at = now()
             "#,
         )
-        .bind(Uuid::now_v7())
-        .bind(&authenticator.name)
+        .bind(authenticator.id)
         .bind(&authenticator.auth_type)
         .bind(&authenticator.title)
         .bind(authenticator.enabled)
@@ -524,17 +523,17 @@ impl BootstrapRepository for PgControlPlaneStore {
 
 #[async_trait]
 impl AuthRepository for PgControlPlaneStore {
-    async fn find_authenticator(&self, name: &str) -> Result<Option<AuthenticatorRecord>> {
+    async fn find_authenticator(&self, id: Uuid) -> Result<Option<AuthenticatorRecord>> {
         let row = sqlx::query(
-            "select name, auth_type, title, enabled, is_builtin, sort_order, options from authenticators where name = $1",
+            "select id, auth_type, title, enabled, is_builtin, sort_order, options from authenticators where id = $1",
         )
-        .bind(name)
+        .bind(id)
         .fetch_optional(self.pool())
         .await?;
 
         Ok(row.map(|row| {
             PgAuthMapper::to_authenticator_record(StoredAuthenticatorRow {
-                name: row.get("name"),
+                id: row.get("id"),
                 auth_type: row.get("auth_type"),
                 title: row.get("title"),
                 enabled: row.get("enabled"),
@@ -548,9 +547,9 @@ impl AuthRepository for PgControlPlaneStore {
     async fn list_authenticators(&self) -> Result<Vec<AuthenticatorRecord>> {
         let rows = sqlx::query(
             r#"
-            select name, auth_type, title, enabled, is_builtin, sort_order, options
+            select id, auth_type, title, enabled, is_builtin, sort_order, options
             from authenticators
-            order by sort_order asc, name asc
+            order by sort_order asc, id asc
             "#,
         )
         .fetch_all(self.pool())
@@ -560,7 +559,7 @@ impl AuthRepository for PgControlPlaneStore {
             .into_iter()
             .map(|row| {
                 PgAuthMapper::to_authenticator_record(StoredAuthenticatorRow {
-                    name: row.get("name"),
+                    id: row.get("id"),
                     auth_type: row.get("auth_type"),
                     title: row.get("title"),
                     enabled: row.get("enabled"),
@@ -574,7 +573,7 @@ impl AuthRepository for PgControlPlaneStore {
 
     async fn find_user_for_password_login(
         &self,
-        authenticator_name: &str,
+        authenticator_id: Uuid,
         identifier: &str,
     ) -> Result<Option<UserRecord>> {
         let lowered = identifier.trim().to_lowercase();
@@ -586,7 +585,7 @@ impl AuthRepository for PgControlPlaneStore {
               u.status, u.session_version
             from user_auth_identities i
             join users u on u.id = i.user_id
-            where i.authenticator_name = $1
+            where i.authenticator_id = $1
               and lower(i.subject_value) = $2
               and (
                 i.subject_type = $3
@@ -595,7 +594,7 @@ impl AuthRepository for PgControlPlaneStore {
               )
             "#,
         )
-        .bind(authenticator_name)
+        .bind(authenticator_id)
         .bind(lowered)
         .bind(domain::AUTH_SUBJECT_TYPE_ACCOUNT)
         .bind(domain::AUTH_SUBJECT_TYPE_EMAIL)

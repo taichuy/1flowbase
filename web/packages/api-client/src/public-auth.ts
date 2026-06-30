@@ -3,7 +3,7 @@ import { apiFetch } from './transport';
 export interface PasswordSignInInput {
   identifier: string;
   password: string;
-  authenticator?: string;
+  authenticator_id?: string;
 }
 
 export interface PasswordSignInResponse {
@@ -13,7 +13,7 @@ export interface PasswordSignInResponse {
 }
 
 export interface PublicLoginInstance {
-  name: string;
+  id: string;
   auth_type: string;
   title: string;
   description?: string | null;
@@ -24,7 +24,7 @@ export interface PublicLoginInstance {
 }
 
 export interface PublicLoginInstancesResponse {
-  default_authenticator_name: string;
+  default_authenticator_id: string;
   login_instances: PublicLoginInstance[];
 }
 
@@ -42,7 +42,7 @@ export function signInWithPassword(
   baseUrl?: string
 ): Promise<PasswordSignInResponse> {
   return apiFetch<PasswordSignInResponse>({
-    path: '/api/public/auth/providers/password-local/sign-in',
+    path: '/api/public/auth/sign-in',
     method: 'POST',
     body: input,
     baseUrl

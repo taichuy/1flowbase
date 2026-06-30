@@ -83,7 +83,7 @@ test('runApiDebug logs in with env credentials and sends authenticated mutating 
       }),
       fetchImpl: async (url, init) => {
         calls.push({ url, init });
-        if (String(url).endsWith('/api/public/auth/providers/password-local/sign-in')) {
+        if (String(url).endsWith('/api/public/auth/sign-in')) {
           return createJsonResponse({
             status: 200,
             headers: { 'set-cookie': 'oneflowbase_session=session-secret; Path=/; HttpOnly' },
@@ -103,7 +103,12 @@ test('runApiDebug logs in with env credentials and sends authenticated mutating 
 
   assert.equal(result.ok, true);
   assert.equal(result.status, 201);
-  assert.equal(calls[0].init.body, JSON.stringify({ identifier: 'root', password: 'change-me' }));
+  assert.equal(String(calls[0].url), 'http://127.0.0.1:7800/api/public/auth/sign-in');
+  assert.equal(calls[0].init.body, JSON.stringify({
+    authenticator_id: '00000000-0000-0000-0000-000000000001',
+    identifier: 'root',
+    password: 'change-me',
+  }));
   assert.equal(calls[1].init.headers.cookie, 'oneflowbase_session=session-secret');
   assert.equal(calls[1].init.headers['x-csrf-token'], 'csrf-token');
   assert.equal(calls[1].init.headers['content-type'], 'application/json');
@@ -146,7 +151,7 @@ test('runApiDebug marks expected status mismatch without throwing away evidence'
         envFilePath: '/repo/api/apps/api-server/.env',
       }),
       fetchImpl: async (url) => {
-        if (String(url).endsWith('/api/public/auth/providers/password-local/sign-in')) {
+        if (String(url).endsWith('/api/public/auth/sign-in')) {
           return createJsonResponse({
             status: 200,
             headers: { 'set-cookie': 'oneflowbase_session=session-secret; Path=/' },

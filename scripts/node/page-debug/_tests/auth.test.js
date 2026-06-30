@@ -58,9 +58,10 @@ test('loginAndPersistStorageState posts password login and writes storageState',
   assert.equal(result.authenticated, true);
   assert.equal(result.storageStatePath, '/tmp/page-debug/storage-state.json');
   assert.deepEqual(calls[0], {
-    path: '/api/public/auth/providers/password-local/sign-in',
+    path: '/api/public/auth/sign-in',
     options: {
       data: {
+        authenticator_id: '00000000-0000-0000-0000-000000000001',
         identifier: 'root',
         password: 'change-me',
       },

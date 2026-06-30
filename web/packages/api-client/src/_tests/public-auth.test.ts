@@ -17,15 +17,15 @@ describe('public auth client', () => {
   test('submits password sign-in with selected authenticator', async () => {
     await expect(
       signInWithPassword({
-        authenticator: 'staff_password',
+        authenticator_id: 'auth-staff-password',
         identifier: 'root',
         password: 'change-me'
       })
     ).resolves.toMatchObject({
-      path: '/api/public/auth/providers/password-local/sign-in',
+      path: '/api/public/auth/sign-in',
       method: 'POST',
       body: {
-        authenticator: 'staff_password',
+        authenticator_id: 'auth-staff-password',
         identifier: 'root',
         password: 'change-me'
       }

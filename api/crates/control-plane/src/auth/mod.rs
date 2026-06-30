@@ -18,7 +18,7 @@ use crate::{
 };
 
 pub struct LoginCommand {
-    pub authenticator: String,
+    pub authenticator_id: Uuid,
     pub identifier: String,
     pub password: String,
 }
@@ -124,7 +124,7 @@ impl AuthenticatorProvider for PasswordLocalAuthenticator {
         repository: &dyn AuthRepository,
     ) -> Result<AuthenticatorAuthentication> {
         let user = repository
-            .find_user_for_password_login(&authenticator.name, identifier)
+            .find_user_for_password_login(authenticator.id, identifier)
             .await?
             .ok_or(ControlPlaneError::NotAuthenticated)?;
         let parsed = PasswordHash::new(&user.password_hash)
@@ -419,7 +419,7 @@ where
     pub async fn login(&self, command: LoginCommand) -> Result<LoginResult> {
         let authenticator = self
             .repository
-            .find_authenticator(&command.authenticator)
+            .find_authenticator(command.authenticator_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("authenticator"))?;
         if !authenticator.enabled {
@@ -441,7 +441,7 @@ where
         if authentication
             .external_identity_claim
             .as_ref()
-            .is_some_and(|claim| claim.authenticator_name != authenticator.name)
+            .is_some_and(|claim| claim.authenticator_id != authenticator.id)
         {
             return Err(ControlPlaneError::NotAuthenticated.into());
         }

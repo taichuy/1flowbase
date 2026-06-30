@@ -232,7 +232,7 @@ async fn login_and_capture_cookie(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/public/auth/providers/password-local/sign-in")
+                .uri("/api/public/auth/sign-in")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::json!({
@@ -330,7 +330,7 @@ async fn app_from_config_uses_local_host_infrastructure_session_store() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/public/auth/providers/password-local/sign-in")
+                .uri("/api/public/auth/sign-in")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::json!({

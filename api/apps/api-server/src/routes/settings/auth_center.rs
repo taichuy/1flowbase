@@ -12,6 +12,7 @@ use control_plane::errors::ControlPlaneError;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::{
     app_state::ApiState, error_response::ApiError, middleware::require_csrf::require_csrf,
@@ -38,7 +39,7 @@ pub struct AuthCenterConfigFieldResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuthCenterAuthenticatorResponse {
-    pub name: String,
+    pub id: Uuid,
     pub auth_type: String,
     pub title: String,
     pub enabled: bool,
@@ -50,14 +51,13 @@ pub struct AuthCenterAuthenticatorResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuthCenterOverviewResponse {
-    pub default_authenticator_name: String,
+    pub default_authenticator_id: Uuid,
     pub supported_auth_types: Vec<String>,
     pub authenticators: Vec<AuthCenterAuthenticatorResponse>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateAuthCenterAuthenticatorBody {
-    pub name: String,
     pub auth_type: String,
     pub title: String,
     pub description: Option<String>,
@@ -67,19 +67,17 @@ pub struct CreateAuthCenterAuthenticatorBody {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CopyAuthCenterAuthenticatorBody {
-    pub name: String,
     pub title: String,
     pub sort_order: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ReorderAuthCenterAuthenticatorsBody {
-    pub names: Vec<String>,
+    pub ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAuthCenterAuthenticatorConfigBody {
-    pub name: Option<String>,
     pub title: String,
     pub enabled: bool,
     pub description: Option<Option<String>>,
@@ -100,19 +98,19 @@ pub fn router() -> Router<Arc<ApiState>> {
             put(reorder_auth_center_authenticators),
         )
         .route(
-            "/settings/auth-center/authenticators/:name/actions/enable",
+            "/settings/auth-center/authenticators/:id/actions/enable",
             post(enable_auth_center_authenticator),
         )
         .route(
-            "/settings/auth-center/authenticators/:name/copy",
+            "/settings/auth-center/authenticators/:id/copy",
             post(copy_auth_center_authenticator),
         )
         .route(
-            "/settings/auth-center/authenticators/:name/config",
+            "/settings/auth-center/authenticators/:id/config",
             put(update_auth_center_authenticator_config),
         )
         .route(
-            "/settings/auth-center/authenticators/:name",
+            "/settings/auth-center/authenticators/:id",
             delete(delete_auth_center_authenticator),
         )
 }
@@ -173,14 +171,6 @@ fn auth_center_description(options: &Value) -> Option<String> {
 fn auth_center_default_config_form_schema() -> Value {
     json!([
         {
-            "key": "name",
-            "label": "Authenticator identifier",
-            "type": "string",
-            "read_only": true,
-            "required": true,
-            "pattern": "^[A-Za-z0-9_]+$"
-        },
-        {
             "key": "title",
             "label": "Authenticator title",
             "type": "string",
@@ -240,10 +230,6 @@ fn auth_center_config_response_values(
 ) -> Map<String, Value> {
     let mut values = Map::new();
     values.insert(
-        "name".to_string(),
-        Value::String(authenticator.name.clone()),
-    );
-    values.insert(
         "title".to_string(),
         Value::String(authenticator.title.clone()),
     );
@@ -269,7 +255,7 @@ fn to_auth_center_authenticator_response(
     let config_values =
         auth_center_config_response_values(&authenticator, description, extension_config);
     AuthCenterAuthenticatorResponse {
-        name: authenticator.name,
+        id: authenticator.id,
         auth_type: authenticator.auth_type,
         title: authenticator.title,
         enabled: authenticator.enabled,
@@ -295,17 +281,6 @@ fn validate_supported_auth_type(auth_type: &str) -> Result<(), ControlPlaneError
     }
 }
 
-fn validate_new_authenticator_name(name: &str) -> Result<(), ControlPlaneError> {
-    if name.is_empty()
-        || name
-            .chars()
-            .any(|character| !character.is_ascii_alphanumeric() && character != '_')
-    {
-        return Err(ControlPlaneError::InvalidInput("authenticator_name"));
-    }
-    Ok(())
-}
-
 fn validate_authenticator_title(title: &str) -> Result<(), ControlPlaneError> {
     if title.trim().is_empty() {
         return Err(ControlPlaneError::InvalidInput("title"));
@@ -313,32 +288,29 @@ fn validate_authenticator_title(title: &str) -> Result<(), ControlPlaneError> {
     Ok(())
 }
 
-fn validate_reorder_names(
-    requested_names: &[String],
+fn validate_reorder_ids(
+    requested_ids: &[Uuid],
     existing_authenticators: &[domain::AuthenticatorRecord],
 ) -> Result<(), ControlPlaneError> {
     let mut seen = HashSet::new();
-    for name in requested_names {
-        if !seen.insert(name.as_str()) {
+    for id in requested_ids {
+        if !seen.insert(*id) {
             return Err(ControlPlaneError::InvalidInput(
                 "authenticator_order_duplicate",
             ));
         }
     }
 
-    let existing_names = existing_authenticators
+    let existing_ids = existing_authenticators
         .iter()
-        .map(|authenticator| authenticator.name.as_str())
+        .map(|authenticator| authenticator.id)
         .collect::<HashSet<_>>();
-    if requested_names
-        .iter()
-        .any(|name| !existing_names.contains(name.as_str()))
-    {
+    if requested_ids.iter().any(|id| !existing_ids.contains(id)) {
         return Err(ControlPlaneError::InvalidInput(
             "authenticator_order_unknown",
         ));
     }
-    if requested_names.len() != existing_authenticators.len() {
+    if requested_ids.len() != existing_authenticators.len() {
         return Err(ControlPlaneError::InvalidInput(
             "authenticator_order_missing",
         ));
@@ -372,7 +344,7 @@ async fn auth_center_overview_response(
         .collect();
 
     Ok(AuthCenterOverviewResponse {
-        default_authenticator_name: domain::PASSWORD_LOCAL_AUTHENTICATOR_NAME.to_string(),
+        default_authenticator_id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
         supported_auth_types: supported_auth_types(),
         authenticators,
     })
@@ -435,15 +407,11 @@ pub async fn create_auth_center_authenticator(
     ApiError,
 > {
     require_auth_center_manage(&state, &headers).await?;
-    validate_new_authenticator_name(&body.name)?;
     validate_supported_auth_type(&body.auth_type)?;
     validate_authenticator_title(&body.title)?;
-    if state.store.find_authenticator(&body.name).await?.is_some() {
-        return Err(ControlPlaneError::Conflict("authenticator").into());
-    }
 
     let authenticator = domain::AuthenticatorRecord {
-        name: body.name,
+        id: Uuid::now_v7(),
         auth_type: body.auth_type,
         title: body.title,
         enabled: body.enabled,
@@ -466,7 +434,7 @@ pub async fn create_auth_center_authenticator(
 
 #[utoipa::path(
     post,
-    path = "/api/console/settings/auth-center/authenticators/{name}/copy",
+    path = "/api/console/settings/auth-center/authenticators/{id}/copy",
     request_body = CopyAuthCenterAuthenticatorBody,
     responses(
         (status = 201, body = AuthCenterAuthenticatorResponse),
@@ -479,7 +447,7 @@ pub async fn create_auth_center_authenticator(
 )]
 pub async fn copy_auth_center_authenticator(
     State(state): State<Arc<ApiState>>,
-    Path(name): Path<String>,
+    Path(id): Path<Uuid>,
     headers: HeaderMap,
     Json(body): Json<CopyAuthCenterAuthenticatorBody>,
 ) -> Result<
@@ -490,20 +458,16 @@ pub async fn copy_auth_center_authenticator(
     ApiError,
 > {
     require_auth_center_manage(&state, &headers).await?;
-    validate_new_authenticator_name(&body.name)?;
     validate_authenticator_title(&body.title)?;
-    if state.store.find_authenticator(&body.name).await?.is_some() {
-        return Err(ControlPlaneError::Conflict("authenticator").into());
-    }
 
     let source = state
         .store
-        .find_authenticator(&name)
+        .find_authenticator(id)
         .await?
         .ok_or(ControlPlaneError::NotFound("authenticator"))?;
     validate_supported_auth_type(&source.auth_type)?;
     let authenticator = domain::AuthenticatorRecord {
-        name: body.name,
+        id: Uuid::now_v7(),
         auth_type: source.auth_type,
         title: body.title,
         enabled: false,
@@ -526,7 +490,7 @@ pub async fn copy_auth_center_authenticator(
 
 #[utoipa::path(
     delete,
-    path = "/api/console/settings/auth-center/authenticators/{name}",
+    path = "/api/console/settings/auth-center/authenticators/{id}",
     responses(
         (status = 204),
         (status = 400, body = crate::error_response::ErrorBody),
@@ -538,11 +502,11 @@ pub async fn copy_auth_center_authenticator(
 )]
 pub async fn delete_auth_center_authenticator(
     State(state): State<Arc<ApiState>>,
-    Path(name): Path<String>,
+    Path(id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
     require_auth_center_manage(&state, &headers).await?;
-    state.store.delete_authenticator_if_unbound(&name).await?;
+    state.store.delete_authenticator_if_unbound(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -564,8 +528,8 @@ pub async fn reorder_auth_center_authenticators(
 ) -> Result<Json<ApiSuccess<AuthCenterOverviewResponse>>, ApiError> {
     require_auth_center_manage(&state, &headers).await?;
     let existing_authenticators = state.store.list_authenticators().await?;
-    validate_reorder_names(&body.names, &existing_authenticators)?;
-    state.store.update_authenticator_order(&body.names).await?;
+    validate_reorder_ids(&body.ids, &existing_authenticators)?;
+    state.store.update_authenticator_order(&body.ids).await?;
     Ok(Json(ApiSuccess::new(
         auth_center_overview_response(&state).await?,
     )))
@@ -573,7 +537,7 @@ pub async fn reorder_auth_center_authenticators(
 
 #[utoipa::path(
     post,
-    path = "/api/console/settings/auth-center/authenticators/{name}/actions/enable",
+    path = "/api/console/settings/auth-center/authenticators/{id}/actions/enable",
     responses(
         (status = 200, body = AuthCenterAuthenticatorResponse),
         (status = 401, body = crate::error_response::ErrorBody),
@@ -583,7 +547,7 @@ pub async fn reorder_auth_center_authenticators(
 )]
 pub async fn enable_auth_center_authenticator(
     State(state): State<Arc<ApiState>>,
-    Path(name): Path<String>,
+    Path(id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
@@ -593,7 +557,7 @@ pub async fn enable_auth_center_authenticator(
 
     let mut authenticator = state
         .store
-        .find_authenticator(&name)
+        .find_authenticator(id)
         .await?
         .ok_or(ControlPlaneError::NotFound("authenticator"))?;
     authenticator.enabled = true;
@@ -609,7 +573,7 @@ pub async fn enable_auth_center_authenticator(
 
 #[utoipa::path(
     put,
-    path = "/api/console/settings/auth-center/authenticators/{name}/config",
+    path = "/api/console/settings/auth-center/authenticators/{id}/config",
     request_body = UpdateAuthCenterAuthenticatorConfigBody,
     responses(
         (status = 200, body = AuthCenterAuthenticatorResponse),
@@ -621,7 +585,7 @@ pub async fn enable_auth_center_authenticator(
 )]
 pub async fn update_auth_center_authenticator_config(
     State(state): State<Arc<ApiState>>,
-    Path(name): Path<String>,
+    Path(id): Path<Uuid>,
     headers: HeaderMap,
     Json(body): Json<UpdateAuthCenterAuthenticatorConfigBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
@@ -630,20 +594,13 @@ pub async fn update_auth_center_authenticator_config(
     ensure_permission(&context.actor, AUTH_CENTER_MANAGE_PERMISSION)
         .map_err(ControlPlaneError::PermissionDenied)?;
 
-    if body
-        .name
-        .as_deref()
-        .is_some_and(|body_name| body_name != name)
-    {
-        return Err(ControlPlaneError::InvalidInput("authenticator_name").into());
-    }
     if body.title.trim().is_empty() {
         return Err(ControlPlaneError::InvalidInput("title").into());
     }
 
     let mut authenticator = state
         .store
-        .find_authenticator(&name)
+        .find_authenticator(id)
         .await?
         .ok_or(ControlPlaneError::NotFound("authenticator"))?;
     authenticator.title = body.title;
