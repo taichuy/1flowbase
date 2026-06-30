@@ -1,0 +1,26 @@
+.workflow-trigger-config-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 10px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.workflow-trigger-config-bar__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .workflow-trigger-config-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

@@ -51,6 +51,12 @@ const publicApi = vi.hoisted(() => ({
     'public-api',
     'publication'
   ],
+  workflowScheduleTriggerQueryKey: (applicationId: string) => [
+    'applications',
+    applicationId,
+    'workflow',
+    'schedule-trigger'
+  ],
   applicationApiDocsCatalogQueryKey: (applicationId: string, locale?: string | null) => [
     'applications',
     applicationId,
@@ -94,6 +100,8 @@ const publicApi = vi.hoisted(() => ({
   fetchApplicationApiPublication: vi.fn(),
   publishApplicationApiVersion: vi.fn(),
   setApplicationApiEnabled: vi.fn(),
+  fetchWorkflowScheduleTrigger: vi.fn(),
+  saveWorkflowScheduleTrigger: vi.fn(),
   fetchApplicationApiDocsCatalog: vi.fn(),
   fetchApplicationApiDocsCategoryOperations: vi.fn(),
   fetchApplicationApiDocsOperationSpec: vi.fn(),
@@ -157,6 +165,50 @@ function authenticate() {
 
 function renderApplicationRouter() {
   return renderReactFlowScene(<AppRouterProvider />);
+}
+
+function createWorkflowApplicationDetail() {
+  return {
+    id: 'app-1',
+    application_type: 'workflow',
+    name: 'Ticket Workflow',
+    description: 'ticket routing',
+    icon: 'RobotOutlined',
+    icon_type: 'iconfont',
+    icon_background: '#E6F7F2',
+    created_by: 'user-1',
+    updated_at: '2026-04-15T09:00:00Z',
+    tags: [],
+    sections: {
+      orchestration: {
+        status: 'planned',
+        subject_kind: 'workflow',
+        subject_status: 'unconfigured',
+        current_subject_id: null,
+        current_draft_id: null
+      },
+      api: {
+        status: 'planned',
+        credential_kind: 'application_api_key',
+        invoke_routing_mode: 'api_key_bound_application',
+        invoke_path_template: null,
+        api_capability_status: 'planned',
+        credentials_status: 'planned'
+      },
+      logs: {
+        status: 'planned',
+        runs_capability_status: 'planned',
+        run_object_kind: 'application_run',
+        log_retention_status: 'planned'
+      },
+      monitoring: {
+        status: 'planned',
+        metrics_capability_status: 'planned',
+        metrics_object_kind: 'application_metrics',
+        tracing_config_status: 'planned'
+      }
+    }
+  };
 }
 
 describe('application shell routing', () => {
@@ -238,6 +290,9 @@ describe('application shell routing', () => {
     publicApi.fetchApplicationApiPublication.mockResolvedValue(null);
     publicApi.publishApplicationApiVersion.mockReset();
     publicApi.setApplicationApiEnabled.mockReset();
+    publicApi.fetchWorkflowScheduleTrigger.mockReset();
+    publicApi.fetchWorkflowScheduleTrigger.mockResolvedValue(null);
+    publicApi.saveWorkflowScheduleTrigger.mockReset();
     publicApi.fetchApplicationApiDocsCatalog.mockReset();
     publicApi.fetchApplicationApiDocsCatalog.mockResolvedValue({
       categories: []
@@ -340,6 +395,49 @@ describe('application shell routing', () => {
       '/applications/app-1/api'
     );
     expect(applicationApi.fetchApplicationDetail).toHaveBeenCalledWith('app-1');
+  });
+
+  test('renders workflow sections without the AgentFlow API section', async () => {
+    applicationApi.fetchApplicationDetail.mockResolvedValue(
+      createWorkflowApplicationDetail()
+    );
+
+    window.history.pushState({}, '', '/applications/app-1/logs');
+    renderApplicationRouter();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Ticket Workflow', level: 4 })
+    ).toBeInTheDocument();
+    const sectionNavigation = screen.getByRole('navigation', {
+      name: 'Section navigation'
+    });
+
+    expect(
+      within(sectionNavigation).getByRole('link', { name: '工作流' })
+    ).toHaveAttribute('href', '/applications/app-1/orchestration');
+    expect(
+      within(sectionNavigation).getByRole('link', { name: '日志' })
+    ).toHaveAttribute('href', '/applications/app-1/logs');
+    expect(
+      within(sectionNavigation).getByRole('link', { name: '监控' })
+    ).toHaveAttribute('href', '/applications/app-1/monitoring');
+    expect(
+      within(sectionNavigation).queryByRole('link', { name: 'API' })
+    ).not.toBeInTheDocument();
+  });
+
+  test('redirects workflow API section requests back to the workflow editor', async () => {
+    applicationApi.fetchApplicationDetail.mockResolvedValue(
+      createWorkflowApplicationDetail()
+    );
+
+    window.history.pushState({}, '', '/applications/app-1/api');
+    renderApplicationRouter();
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/applications/app-1/orchestration');
+    });
+    expect(publicApi.fetchApplicationApiDocsCatalog).not.toHaveBeenCalled();
   });
 
   test('renders the editor page inside orchestration', async () => {

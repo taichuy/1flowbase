@@ -18,8 +18,10 @@ impl FlowRepository for PgControlPlaneStore {
         actor_user_id: Uuid,
     ) -> Result<domain::FlowEditorState> {
         let mut tx = self.pool().begin().await?;
-        ensure_application_exists(&mut tx, workspace_id, application_id).await?;
-        let state = ensure_editor_state(&mut tx, application_id, actor_user_id).await?;
+        let application_type =
+            ensure_application_exists(&mut tx, workspace_id, application_id).await?;
+        let state =
+            ensure_editor_state(&mut tx, application_id, actor_user_id, application_type).await?;
         tx.commit().await?;
         Ok(state)
     }
@@ -34,8 +36,10 @@ impl FlowRepository for PgControlPlaneStore {
         summary: &str,
     ) -> Result<domain::FlowEditorState> {
         let mut tx = self.pool().begin().await?;
-        ensure_application_exists(&mut tx, workspace_id, application_id).await?;
-        let state = ensure_editor_state(&mut tx, application_id, actor_user_id).await?;
+        let application_type =
+            ensure_application_exists(&mut tx, workspace_id, application_id).await?;
+        let state =
+            ensure_editor_state(&mut tx, application_id, actor_user_id, application_type).await?;
 
         sqlx::query(
             r#"
@@ -93,8 +97,10 @@ impl FlowRepository for PgControlPlaneStore {
         version_id: Uuid,
     ) -> Result<domain::FlowEditorState> {
         let mut tx = self.pool().begin().await?;
-        ensure_application_exists(&mut tx, workspace_id, application_id).await?;
-        let state = ensure_editor_state(&mut tx, application_id, actor_user_id).await?;
+        let application_type =
+            ensure_application_exists(&mut tx, workspace_id, application_id).await?;
+        let state =
+            ensure_editor_state(&mut tx, application_id, actor_user_id, application_type).await?;
         let restored = fetch_version(&mut tx, state.flow.id, version_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("flow_version"))?;
@@ -156,8 +162,10 @@ impl FlowRepository for PgControlPlaneStore {
         is_protected: Option<bool>,
     ) -> Result<domain::FlowEditorState> {
         let mut tx = self.pool().begin().await?;
-        ensure_application_exists(&mut tx, workspace_id, application_id).await?;
-        let state = ensure_editor_state(&mut tx, application_id, actor_user_id).await?;
+        let application_type =
+            ensure_application_exists(&mut tx, workspace_id, application_id).await?;
+        let state =
+            ensure_editor_state(&mut tx, application_id, actor_user_id, application_type).await?;
         let updated = sqlx::query_scalar::<_, Uuid>(
             r#"
             update flow_versions
@@ -193,19 +201,23 @@ async fn ensure_application_exists(
     tx: &mut Transaction<'_, Postgres>,
     workspace_id: Uuid,
     application_id: Uuid,
-) -> Result<()> {
-    let exists = sqlx::query_scalar::<_, Uuid>(
-        "select id from applications where workspace_id = $1 and id = $2",
+) -> Result<domain::ApplicationType> {
+    let application_type = sqlx::query_scalar::<_, String>(
+        "select application_type from applications where workspace_id = $1 and id = $2",
     )
     .bind(workspace_id)
     .bind(application_id)
     .fetch_optional(&mut **tx)
     .await?;
 
-    if exists.is_some() {
-        Ok(())
-    } else {
-        Err(ControlPlaneError::NotFound("application").into())
+    let Some(application_type) = application_type else {
+        return Err(ControlPlaneError::NotFound("application").into());
+    };
+
+    match application_type.as_str() {
+        "agent_flow" => Ok(domain::ApplicationType::AgentFlow),
+        "workflow" => Ok(domain::ApplicationType::Workflow),
+        _ => Err(ControlPlaneError::InvalidInput("application_type").into()),
     }
 }
 
@@ -213,6 +225,7 @@ async fn ensure_editor_state(
     tx: &mut Transaction<'_, Postgres>,
     application_id: Uuid,
     actor_user_id: Uuid,
+    application_type: domain::ApplicationType,
 ) -> Result<domain::FlowEditorState> {
     let flow = match find_flow(tx, application_id).await? {
         Some(flow) => flow,
@@ -222,7 +235,9 @@ async fn ensure_editor_state(
     if find_draft(tx, flow.id).await?.is_none() {
         let document = latest_version_document(tx, flow.id)
             .await?
-            .unwrap_or_else(|| domain::default_flow_document(flow.id));
+            .unwrap_or_else(|| {
+                domain::default_flow_document_for_application(application_type, flow.id)
+            });
         insert_draft(tx, flow.id, &document, actor_user_id).await?;
     }
 

@@ -6,11 +6,13 @@ import {
   fetchConsoleApplicationApiDocsCategoryOperations,
   fetchConsoleApplicationApiDocsCategorySpec,
   fetchConsoleApplicationApiOperationSpec,
+  getConsoleWorkflowScheduleTrigger,
   getConsoleApplicationApiMapping,
   getConsoleApplicationApiPublication,
   listConsoleApplicationApiKeys,
   publishConsoleApplicationApiVersion,
   replaceConsoleApplicationApiMapping,
+  replaceConsoleWorkflowScheduleTrigger,
   revokeConsoleApplicationApiKey,
   updateConsoleApplicationApiStatus
 } from '../application-public-api';
@@ -106,6 +108,33 @@ describe('application public API client', () => {
         usage_selector: 'usage',
         files_selector: null,
         error_selector: 'error'
+      },
+      extension: {
+        slug: 'ticket_webhook',
+        method: 'PATCH',
+        response_mode: 'sync',
+        parameters: [
+          {
+            source: 'path',
+            name: 'ticket_id',
+            target: 'node-workflow-start.path.ticket_id'
+          },
+          {
+            source: 'query',
+            name: 'include_history',
+            target: 'node-workflow-start.query.include_history'
+          },
+          {
+            source: 'form',
+            name: 'assignee',
+            target: 'node-workflow-start.form.assignee'
+          },
+          {
+            source: 'body',
+            name: 'summary',
+            target: 'node-workflow-start.body.summary'
+          }
+        ]
       }
     };
     const fetchMock = vi
@@ -166,6 +195,55 @@ describe('application public API client', () => {
       expect.objectContaining({
         method: 'PATCH',
         body: JSON.stringify({ api_enabled: false })
+      })
+    );
+  });
+
+  test('uses workflow schedule trigger console paths', async () => {
+    const trigger = {
+      id: 'trigger-1',
+      workspace_id: 'workspace-1',
+      application_id: 'app-1',
+      enabled: true,
+      cron: '0 9 * * *',
+      timezone: 'UTC',
+      input_payload: {},
+      created_by: 'user-1',
+      updated_by: 'user-1',
+      created_at: '2026-06-30T09:00:00Z',
+      updated_at: '2026-06-30T09:00:00Z'
+    };
+    const input = {
+      enabled: true,
+      cron: '0 9 * * *',
+      timezone: 'UTC',
+      input_payload: { ticket_id: 'T-1' }
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(null))
+      .mockResolvedValueOnce(jsonResponse(trigger));
+
+    await getConsoleWorkflowScheduleTrigger('app-1', 'http://localhost:7800');
+    await replaceConsoleWorkflowScheduleTrigger(
+      'app-1',
+      input,
+      'csrf-1',
+      'http://localhost:7800'
+    );
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:7800/api/console/applications/app-1/workflow-schedule-trigger',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:7800/api/console/applications/app-1/workflow-schedule-trigger',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: expect.objectContaining({ 'x-csrf-token': 'csrf-1' }),
+        body: JSON.stringify(input)
       })
     );
   });

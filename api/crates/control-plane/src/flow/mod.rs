@@ -524,10 +524,18 @@ impl ApplicationRepository for InMemoryFlowRepository {
 impl FlowRepository for InMemoryFlowRepository {
     async fn get_or_create_editor_state(
         &self,
-        _workspace_id: Uuid,
+        workspace_id: Uuid,
         application_id: Uuid,
         actor_user_id: Uuid,
     ) -> Result<domain::FlowEditorState> {
+        let application_type = ApplicationRepository::get_application(
+            &self.applications,
+            workspace_id,
+            application_id,
+        )
+        .await?
+        .map(|application| application.application_type)
+        .unwrap_or(domain::ApplicationType::AgentFlow);
         let mut inner = self
             .inner
             .lock()
@@ -536,19 +544,29 @@ impl FlowRepository for InMemoryFlowRepository {
         Ok(inner
             .editor_state_by_application_id
             .entry(application_id)
-            .or_insert_with(|| bootstrap_editor_state(application_id, actor_user_id))
+            .or_insert_with(|| {
+                bootstrap_editor_state(application_id, actor_user_id, application_type)
+            })
             .clone())
     }
 
     async fn save_draft(
         &self,
-        _workspace_id: Uuid,
+        workspace_id: Uuid,
         application_id: Uuid,
         actor_user_id: Uuid,
         document: serde_json::Value,
         change_kind: domain::FlowChangeKind,
         summary: &str,
     ) -> Result<domain::FlowEditorState> {
+        let application_type = ApplicationRepository::get_application(
+            &self.applications,
+            workspace_id,
+            application_id,
+        )
+        .await?
+        .map(|application| application.application_type)
+        .unwrap_or(domain::ApplicationType::AgentFlow);
         let mut inner = self
             .inner
             .lock()
@@ -556,7 +574,9 @@ impl FlowRepository for InMemoryFlowRepository {
         let state = inner
             .editor_state_by_application_id
             .entry(application_id)
-            .or_insert_with(|| bootstrap_editor_state(application_id, actor_user_id));
+            .or_insert_with(|| {
+                bootstrap_editor_state(application_id, actor_user_id, application_type)
+            });
 
         state.flow.updated_at = OffsetDateTime::now_utc();
         state.draft.schema_version = document_schema_version(&document).to_string();
@@ -589,11 +609,19 @@ impl FlowRepository for InMemoryFlowRepository {
 
     async fn restore_version(
         &self,
-        _workspace_id: Uuid,
+        workspace_id: Uuid,
         application_id: Uuid,
         actor_user_id: Uuid,
         version_id: Uuid,
     ) -> Result<domain::FlowEditorState> {
+        let application_type = ApplicationRepository::get_application(
+            &self.applications,
+            workspace_id,
+            application_id,
+        )
+        .await?
+        .map(|application| application.application_type)
+        .unwrap_or(domain::ApplicationType::AgentFlow);
         let mut inner = self
             .inner
             .lock()
@@ -601,7 +629,9 @@ impl FlowRepository for InMemoryFlowRepository {
         let state = inner
             .editor_state_by_application_id
             .entry(application_id)
-            .or_insert_with(|| bootstrap_editor_state(application_id, actor_user_id));
+            .or_insert_with(|| {
+                bootstrap_editor_state(application_id, actor_user_id, application_type)
+            });
         let restored = state
             .versions
             .iter()
@@ -636,7 +666,7 @@ impl FlowRepository for InMemoryFlowRepository {
 
     async fn update_version_metadata(
         &self,
-        _workspace_id: Uuid,
+        workspace_id: Uuid,
         application_id: Uuid,
         actor_user_id: Uuid,
         version_id: Uuid,
@@ -644,6 +674,14 @@ impl FlowRepository for InMemoryFlowRepository {
         summary_is_custom: Option<bool>,
         is_protected: Option<bool>,
     ) -> Result<domain::FlowEditorState> {
+        let application_type = ApplicationRepository::get_application(
+            &self.applications,
+            workspace_id,
+            application_id,
+        )
+        .await?
+        .map(|application| application.application_type)
+        .unwrap_or(domain::ApplicationType::AgentFlow);
         let mut inner = self
             .inner
             .lock()
@@ -651,7 +689,9 @@ impl FlowRepository for InMemoryFlowRepository {
         let state = inner
             .editor_state_by_application_id
             .entry(application_id)
-            .or_insert_with(|| bootstrap_editor_state(application_id, actor_user_id));
+            .or_insert_with(|| {
+                bootstrap_editor_state(application_id, actor_user_id, application_type)
+            });
         let version = state
             .versions
             .iter_mut()
@@ -681,9 +721,13 @@ impl FlowRepository for InMemoryFlowRepository {
     }
 }
 
-fn bootstrap_editor_state(application_id: Uuid, actor_user_id: Uuid) -> domain::FlowEditorState {
+fn bootstrap_editor_state(
+    application_id: Uuid,
+    actor_user_id: Uuid,
+    application_type: domain::ApplicationType,
+) -> domain::FlowEditorState {
     let flow_id = Uuid::now_v7();
-    let document = domain::default_flow_document(flow_id);
+    let document = domain::default_flow_document_for_application(application_type, flow_id);
 
     domain::FlowEditorState {
         flow: domain::FlowRecord {
@@ -767,8 +811,30 @@ impl FlowService<InMemoryFlowRepository> {
         actor_user_id: Uuid,
         name: &str,
     ) -> Result<domain::ApplicationRecord> {
-        self.repository
-            .seed_application_for_actor(actor_user_id, name)
+        self.seed_application_with_type_for_actor(
+            actor_user_id,
+            name,
+            domain::ApplicationType::AgentFlow,
+        )
+        .await
+    }
+
+    pub async fn seed_application_with_type_for_actor(
+        &self,
+        actor_user_id: Uuid,
+        name: &str,
+        application_type: domain::ApplicationType,
+    ) -> Result<domain::ApplicationRecord> {
+        ApplicationService::new(self.repository.clone())
+            .create_application(crate::application::CreateApplicationCommand {
+                actor_user_id,
+                application_type,
+                name: name.to_string(),
+                description: String::new(),
+                icon: None,
+                icon_type: None,
+                icon_background: None,
+            })
             .await
     }
 }

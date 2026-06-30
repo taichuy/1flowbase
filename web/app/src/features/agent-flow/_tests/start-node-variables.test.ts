@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+import {
+  createDefaultAgentFlowDocument,
+  createDefaultWorkflowDocument
+} from '@1flowbase/flow-schema';
 
 import { buildFlowDebugRunInput } from '../api/runtime';
 import { createNodeDocument } from '../lib/document/node-factory';
@@ -110,6 +113,51 @@ describe('start node variables', () => {
         { value: ['node-start', 'tool_choice'], label: 'Start/tool_choice' }
       ])
     );
+  });
+
+  test('exposes workflow start input fields without agent flow system variables', () => {
+    const document = createDefaultWorkflowDocument({ flowId: 'flow-1' });
+    const workflowStartNode = document.graph.nodes.find(
+      (node) => node.id === 'node-workflow-start'
+    );
+
+    if (!workflowStartNode) {
+      throw new Error('expected workflow start node');
+    }
+
+    workflowStartNode.config.input_fields = [
+      {
+        key: 'customer_id',
+        label: 'Customer ID',
+        inputType: 'text',
+        valueType: 'string',
+        required: true
+      },
+      {
+        key: 'priority',
+        label: 'Priority',
+        inputType: 'number',
+        valueType: 'number',
+        required: false
+      }
+    ];
+
+    const selectorValues = listVisibleSelectorOptions(
+      document,
+      'node-workflow-end'
+    ).map((option) => option.value);
+
+    expect(selectorValues).toEqual(
+      expect.arrayContaining([
+        ['node-workflow-start', 'customer_id'],
+        ['node-workflow-start', 'priority']
+      ])
+    );
+    expect(selectorValues).not.toContainEqual([
+      'node-workflow-start',
+      'history'
+    ]);
+    expect(selectorValues).not.toContainEqual(['node-workflow-start', 'tools']);
   });
 
   test('carries output value type and schema metadata into selector options', () => {
@@ -377,9 +425,7 @@ describe('start node variables', () => {
       }
     );
 
-    expect(
-      listVisibleSelectorOptions(document, 'node-mounted-answer')
-    ).toEqual(
+    expect(listVisibleSelectorOptions(document, 'node-mounted-answer')).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           nodeId: 'visible_internal_llm_tool',
@@ -449,11 +495,7 @@ describe('start node variables', () => {
       listVisibleSelectorOptions(document, 'node-answer').map(
         (option) => option.value
       )
-    ).not.toContainEqual([
-      'visible_internal_llm_tool',
-      'arguments',
-      'task'
-    ]);
+    ).not.toContainEqual(['visible_internal_llm_tool', 'arguments', 'task']);
     expect(
       isSelectorVisible(document, 'node-answer', [
         'visible_internal_llm_tool',

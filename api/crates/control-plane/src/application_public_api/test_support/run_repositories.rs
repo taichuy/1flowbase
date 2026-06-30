@@ -191,7 +191,7 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
     async fn find_published_flow_run_by_idempotency_key(
         &self,
         application_id: Uuid,
-        api_key_id: Uuid,
+        api_key_id: Option<Uuid>,
         idempotency_key: &str,
     ) -> Result<Option<domain::FlowRunRecord>> {
         Ok(self
@@ -202,7 +202,7 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
             .values()
             .find(|run| {
                 run.application_id == application_id
-                    && run.api_key_id == Some(api_key_id)
+                    && run.api_key_id == api_key_id
                     && run.idempotency_key.as_deref() == Some(idempotency_key)
                     && run.run_mode == domain::FlowRunMode::PublishedApiRun
             })

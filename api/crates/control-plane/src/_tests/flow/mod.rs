@@ -2,7 +2,7 @@ use control_plane::flow::{
     AgentFlowTemplateResourceSnapshot, FlowService, ImportAgentFlowTemplateCommand,
     PreviewAgentFlowTemplateCommand, SaveFlowDraftCommand,
 };
-use domain::FlowChangeKind;
+use domain::{ApplicationType, FlowChangeKind};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -49,6 +49,42 @@ async fn get_or_create_editor_state_bootstraps_start_node_without_outputs() {
 
     assert_eq!(start_node["outputs"], json!([]));
     assert_eq!(start_node["config"]["input_fields"], json!([]));
+}
+
+#[tokio::test]
+async fn get_or_create_editor_state_bootstraps_workflow_start_and_end_nodes() {
+    let owner_id = Uuid::now_v7();
+    let service = FlowService::for_tests();
+    let application = service
+        .seed_application_with_type_for_actor(
+            owner_id,
+            "Ticket Workflow",
+            ApplicationType::Workflow,
+        )
+        .await
+        .unwrap();
+
+    let state = service
+        .get_or_create_editor_state(owner_id, application.id)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        state.draft.document["graph"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|node| node["type"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["workflow_start", "workflow_end"]
+    );
+    assert_eq!(
+        state.draft.document["graph"]["nodes"][0]["config"],
+        json!({
+            "input_fields": [],
+            "sync_timeout_ms": 30000
+        })
+    );
 }
 
 #[tokio::test]

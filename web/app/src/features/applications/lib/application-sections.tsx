@@ -6,6 +6,7 @@ import {
   FundOutlined,
   UnorderedListOutlined
 } from '@ant-design/icons';
+import type { ConsoleApplicationType } from '@1flowbase/api-client';
 
 import type { SectionNavItem } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 
@@ -40,11 +41,17 @@ const SECTION_DEFINITIONS: Array<{
 
 export function getApplicationSections(
   applicationId: string,
-  t: (key: string) => string
+  t: (key: string) => string,
+  applicationType: ConsoleApplicationType = 'agent_flow'
 ): SectionNavItem[] {
-  return SECTION_DEFINITIONS.map((section) => ({
+  return SECTION_DEFINITIONS.filter(
+    (section) => applicationType !== 'workflow' || section.key !== 'api'
+  ).map((section) => ({
     key: section.key,
-    label: t(section.labelKey),
+    label:
+      applicationType === 'workflow' && section.key === 'orchestration'
+        ? t('auto.workflow_section')
+        : t(section.labelKey),
     icon: section.icon,
     to: `/applications/${applicationId}/${section.key}`
   }));

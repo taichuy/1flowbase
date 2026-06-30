@@ -1,3 +1,5 @@
+use anyhow::Result;
+use async_trait::async_trait;
 use control_plane::{
     application_public_api::{
         api_keys::{
@@ -8,20 +10,33 @@ use control_plane::{
             validate_application_api_mapping, ApplicationApiMappingConfig,
             ApplicationApiMappingInput, ApplicationApiMappingOutput, ApplicationApiMappingService,
             GetApplicationApiMappingCommand, ReplaceApplicationApiMappingCommand,
+            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
+            WorkflowExtensionParameterMapping, WorkflowExtensionParameterSource,
+            WorkflowExtensionResponseMode,
         },
         publications::{
             ApplicationPublicationService, LoadActiveApplicationPublicationCommand,
             PublishApplicationCommand,
         },
+        workflow_extension::{
+            CreateWorkflowExtensionRunCommand, WorkflowExtensionRequestParameters,
+            WorkflowExtensionRunService,
+        },
+        workflow_schedule::{
+            DispatchWorkflowScheduleCommand, GetWorkflowScheduleTriggerCommand,
+            ReplaceWorkflowScheduleTriggerCommand, WorkflowScheduleDispatchOutcome,
+            WorkflowScheduleTriggerService, WORKFLOW_SCHEDULE_RUN_QUEUE,
+        },
         ApplicationPublicApiTestHarness,
     },
     auth::ApiKeyService,
     ports::{
-        ApplicationJsDependencySelectionRepository, FlowRepository,
-        ReplaceApplicationJsDependencySelectionInput,
+        ApplicationJsDependencySelectionRepository, ClaimedTask, EphemeralInspectionCapabilities,
+        FlowRepository, ReplaceApplicationJsDependencySelectionInput, TaskQueue,
     },
 };
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 use time::Duration;
 use uuid::Uuid;
 
@@ -43,6 +58,29 @@ fn other_user_id() -> Uuid {
 
 fn root_user_id() -> Uuid {
     Uuid::from_u128(0x33333333333333333333333333333333)
+}
+
+fn workflow_extension_mapping(slug: &str) -> ApplicationApiMappingConfig {
+    ApplicationApiMappingConfig {
+        input: ApplicationApiMappingInput {
+            query_target: "node-start.query".into(),
+            model_target: None,
+            inputs_target: None,
+            history_target: None,
+            attachments_target: None,
+        },
+        output: ApplicationApiMappingOutput::default(),
+        extension: Some(WorkflowExtensionApiConfig {
+            slug: slug.into(),
+            method: WorkflowExtensionHttpMethod::Post,
+            response_mode: WorkflowExtensionResponseMode::Async,
+            parameters: vec![WorkflowExtensionParameterMapping {
+                name: "customer_id".into(),
+                source: WorkflowExtensionParameterSource::Query,
+                target: "node-workflow-start.customer_id".into(),
+            }],
+        }),
+    }
 }
 
 fn application_public_api_code_js_dependency_document(flow_id: Uuid) -> serde_json::Value {
@@ -90,6 +128,66 @@ fn application_public_api_code_js_dependency_document(flow_id: Uuid) -> serde_js
         },
         "editor": { "viewport": { "x": 0, "y": 0, "zoom": 1 }, "annotations": [], "activeContainerPath": [] }
     })
+}
+
+#[derive(Default)]
+struct RecordingTaskQueue {
+    enqueued: Mutex<Vec<(String, serde_json::Value, Option<String>)>>,
+}
+
+#[async_trait]
+impl TaskQueue for RecordingTaskQueue {
+    async fn enqueue(
+        &self,
+        queue: &str,
+        payload: serde_json::Value,
+        idempotency_key: Option<&str>,
+    ) -> Result<String> {
+        let task_id = format!(
+            "task-{}",
+            self.enqueued
+                .lock()
+                .expect("recording task queue mutex poisoned")
+                .len()
+                + 1
+        );
+        self.enqueued
+            .lock()
+            .expect("recording task queue mutex poisoned")
+            .push((
+                queue.to_string(),
+                payload,
+                idempotency_key.map(ToOwned::to_owned),
+            ));
+        Ok(task_id)
+    }
+
+    async fn claim(
+        &self,
+        _queue: &str,
+        _worker: &str,
+        _visibility_timeout: Duration,
+    ) -> Result<Option<ClaimedTask>> {
+        Ok(None)
+    }
+
+    async fn ack(&self, _queue: &str, _task_id: &str, _worker: &str) -> Result<bool> {
+        Ok(false)
+    }
+
+    async fn fail(
+        &self,
+        _queue: &str,
+        _task_id: &str,
+        _worker: &str,
+        _reason: &str,
+    ) -> Result<bool> {
+        Ok(false)
+    }
+
+    fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
+        EphemeralInspectionCapabilities::unsupported()
+    }
 }
 
 #[tokio::test]
@@ -454,6 +552,7 @@ async fn application_public_api_mapping_service_returns_default_then_replaces_st
             files_selector: None,
             error_selector: None,
         },
+        extension: None,
     };
     service
         .replace_mapping(ReplaceApplicationApiMappingCommand {
@@ -498,6 +597,61 @@ async fn application_public_api_mapping_service_requires_edit_permission_for_rep
 }
 
 #[tokio::test]
+async fn application_public_api_mapping_service_rejects_duplicate_extension_slug() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let first = harness.seed_application(actor_user_id(), "Support Bot A");
+    let second = harness.seed_application(actor_user_id(), "Support Bot B");
+    let service = ApplicationApiMappingService::new(harness.repository());
+
+    service
+        .replace_mapping(ReplaceApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: first.id,
+            mapping: workflow_extension_mapping("open-ticket-conflict"),
+        })
+        .await
+        .unwrap();
+    let error = service
+        .replace_mapping(ReplaceApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: second.id,
+            mapping: workflow_extension_mapping("open-ticket-conflict"),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("extension_slug"));
+}
+
+#[tokio::test]
+async fn application_public_api_mapping_service_rejects_extension_slug_used_by_publication() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let published = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
+    let draft = harness.seed_application(actor_user_id(), "Draft Workflow");
+    let repository = harness.repository();
+
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: published.id,
+            mapping: workflow_extension_mapping("open-ticket-cross-table"),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let error = ApplicationApiMappingService::new(repository)
+        .replace_mapping(ReplaceApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: draft.id,
+            mapping: workflow_extension_mapping("open-ticket-cross-table"),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("extension_slug"));
+}
+
+#[tokio::test]
 async fn application_public_api_publish_updates_current_publication_record() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Support Bot");
@@ -525,6 +679,7 @@ async fn application_public_api_publish_updates_current_publication_record() {
                     attachments_target: None,
                 },
                 output: ApplicationApiMappingOutput::default(),
+                extension: None,
             },
             api_enabled: true,
         })
@@ -795,6 +950,438 @@ async fn application_public_api_publish_uses_real_flow_version_and_compiled_plan
 }
 
 #[tokio::test]
+async fn application_public_api_publish_compiles_workflow_application_as_workflow() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
+    let repository = harness.repository();
+    let service = ApplicationPublicationService::new(repository.clone());
+
+    let publication = service
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .expect("workflow application should publish through workflow compiler");
+    let compiled_plan = repository
+        .get_compiled_plan(publication.compiled_plan_id)
+        .await
+        .unwrap()
+        .expect("publish should persist workflow compiled plan");
+
+    assert_eq!(
+        compiled_plan.plan["nodes"]["node-workflow-start"]["node_type"],
+        serde_json::json!("workflow_start")
+    );
+    assert_eq!(
+        compiled_plan.plan["nodes"]["node-workflow-end"]["node_type"],
+        serde_json::json!("workflow_end")
+    );
+}
+
+#[tokio::test]
+async fn application_public_api_publish_rejects_duplicate_extension_slug() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let first = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow A");
+    let second = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow B");
+    let service = ApplicationPublicationService::new(harness.repository());
+
+    service
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: first.id,
+            mapping: workflow_extension_mapping("open-ticket-publish-conflict"),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let error = service
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: second.id,
+            mapping: workflow_extension_mapping("open-ticket-publish-conflict"),
+            api_enabled: true,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("extension_slug"));
+}
+
+#[tokio::test]
+async fn application_public_api_publish_rejects_extension_slug_used_by_saved_mapping() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let draft = harness.seed_application(actor_user_id(), "Draft Workflow");
+    let published = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
+    let repository = harness.repository();
+
+    ApplicationApiMappingService::new(repository.clone())
+        .replace_mapping(ReplaceApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: draft.id,
+            mapping: workflow_extension_mapping("open-ticket-cross-table-publish"),
+        })
+        .await
+        .unwrap();
+    let error = ApplicationPublicationService::new(repository)
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: published.id,
+            mapping: workflow_extension_mapping("open-ticket-cross-table-publish"),
+            api_enabled: true,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("extension_slug"));
+}
+
+#[tokio::test]
+async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
+    let repository = harness.repository();
+    let token = ApplicationApiKeyService::new(repository.clone())
+        .create_api_key(CreateApplicationApiKeyCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            name: "Workflow extension".into(),
+            expires_at: None,
+        })
+        .await
+        .unwrap()
+        .token;
+    let mapping = ApplicationApiMappingConfig {
+        input: ApplicationApiMappingInput {
+            query_target: "node-start.query".into(),
+            model_target: None,
+            inputs_target: None,
+            history_target: None,
+            attachments_target: None,
+        },
+        output: ApplicationApiMappingOutput::default(),
+        extension: Some(WorkflowExtensionApiConfig {
+            slug: "open-ticket".into(),
+            method: WorkflowExtensionHttpMethod::Post,
+            response_mode: WorkflowExtensionResponseMode::Async,
+            parameters: vec![
+                WorkflowExtensionParameterMapping {
+                    name: "slug".into(),
+                    source: WorkflowExtensionParameterSource::Path,
+                    target: "node-workflow-start.slug".into(),
+                },
+                WorkflowExtensionParameterMapping {
+                    name: "customer_id".into(),
+                    source: WorkflowExtensionParameterSource::Query,
+                    target: "node-workflow-start.customer_id".into(),
+                },
+                WorkflowExtensionParameterMapping {
+                    name: "priority".into(),
+                    source: WorkflowExtensionParameterSource::Form,
+                    target: "node-workflow-start.priority".into(),
+                },
+                WorkflowExtensionParameterMapping {
+                    name: "ticket_kind".into(),
+                    source: WorkflowExtensionParameterSource::Body,
+                    target: "node-workflow-start.ticket_kind".into(),
+                },
+            ],
+        }),
+    };
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping,
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+
+    let run = WorkflowExtensionRunService::new(repository.clone())
+        .create_run(CreateWorkflowExtensionRunCommand {
+            bearer_token: token,
+            slug: "open-ticket".into(),
+            method: WorkflowExtensionHttpMethod::Post,
+            parameters: WorkflowExtensionRequestParameters {
+                path: BTreeMap::from([("slug".to_string(), serde_json::json!("open-ticket"))]),
+                query: serde_json::Map::from_iter([(
+                    "customer_id".to_string(),
+                    serde_json::json!("C-42"),
+                )]),
+                form: serde_json::Map::from_iter([(
+                    "priority".to_string(),
+                    serde_json::json!("urgent"),
+                )]),
+                body: serde_json::json!({ "ticket_kind": "billing" }),
+            },
+        })
+        .await
+        .unwrap();
+    let stored = repository
+        .get_flow_run(application.id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(run.status, domain::FlowRunStatus::Queued);
+    assert_eq!(
+        stored.input_payload["node-workflow-start"],
+        serde_json::json!({
+            "slug": "open-ticket",
+            "customer_id": "C-42",
+            "priority": "urgent",
+            "ticket_kind": "billing"
+        })
+    );
+    assert_eq!(
+        stored.external_trace_id.as_deref(),
+        Some("workflow-extension:open-ticket")
+    );
+    assert_eq!(
+        stored.compatibility_mode.as_deref(),
+        Some("workflow_extension_v1")
+    );
+}
+
+#[tokio::test]
+async fn workflow_schedule_trigger_service_replaces_config_and_rejects_invalid_values() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "Scheduled Workflow");
+    let service = WorkflowScheduleTriggerService::new(harness.repository());
+
+    let stored = service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "0 9 * * *".into(),
+            timezone: "Asia/Shanghai".into(),
+            input_payload: serde_json::json!({
+                "node-workflow-start": { "customer_id": "C-42" }
+            }),
+        })
+        .await
+        .unwrap();
+    let loaded = service
+        .get_trigger(GetWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+        })
+        .await
+        .unwrap()
+        .expect("schedule trigger should be stored");
+
+    assert!(stored.enabled);
+    assert_eq!(stored.cron, "0 9 * * *");
+    assert_eq!(loaded.timezone, "Asia/Shanghai");
+
+    assert!(service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "bad cron".into(),
+            timezone: "Asia/Shanghai".into(),
+            input_payload: serde_json::json!({}),
+        })
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("cron"));
+    assert!(service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "0 9 * * *".into(),
+            timezone: "Mars/Olympus".into(),
+            input_payload: serde_json::json!({}),
+        })
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("timezone"));
+}
+
+#[tokio::test]
+async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "Scheduled Workflow");
+    let repository = harness.repository();
+    let service = WorkflowScheduleTriggerService::new(repository.clone());
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "0 9 * * *".into(),
+            timezone: "UTC".into(),
+            input_payload: serde_json::json!({
+                "node-workflow-start": { "customer_id": "C-42" }
+            }),
+        })
+        .await
+        .unwrap();
+    let task_queue = RecordingTaskQueue::default();
+    let scheduled_at = time::OffsetDateTime::UNIX_EPOCH + Duration::hours(9);
+
+    let outcome = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at,
+            },
+            Some(&task_queue),
+        )
+        .await
+        .unwrap();
+    let WorkflowScheduleDispatchOutcome::Dispatched(dispatched) = outcome else {
+        panic!("enabled workflow schedule should dispatch");
+    };
+    let stored = repository
+        .get_flow_run(application.id, dispatched.run_id)
+        .await
+        .unwrap()
+        .expect("scheduled run should be durable");
+    let enqueued = task_queue
+        .enqueued
+        .lock()
+        .expect("recording task queue mutex poisoned")
+        .clone();
+
+    assert_eq!(dispatched.status, domain::FlowRunStatus::Queued);
+    assert_eq!(dispatched.task_id.as_deref(), Some("task-1"));
+    assert_eq!(stored.run_mode, domain::FlowRunMode::PublishedApiRun);
+    assert_eq!(
+        stored.external_trace_id.as_deref(),
+        Some(format!("workflow-schedule:{}", application.id).as_str())
+    );
+    assert_eq!(
+        stored.compatibility_mode.as_deref(),
+        Some("workflow_schedule_v1")
+    );
+    assert_eq!(
+        stored.input_payload["node-workflow-start"]["customer_id"],
+        serde_json::json!("C-42")
+    );
+    assert_eq!(enqueued.len(), 1);
+    assert_eq!(enqueued[0].0, WORKFLOW_SCHEDULE_RUN_QUEUE);
+    assert_eq!(
+        enqueued[0].1["flow_run_id"],
+        serde_json::json!(dispatched.run_id.to_string())
+    );
+    assert_eq!(
+        enqueued[0].2.as_deref(),
+        Some(
+            format!(
+                "workflow-schedule:{}:{}",
+                application.id,
+                scheduled_at.unix_timestamp()
+            )
+            .as_str()
+        )
+    );
+
+    let duplicate = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at,
+            },
+            Some(&task_queue),
+        )
+        .await
+        .unwrap();
+    let WorkflowScheduleDispatchOutcome::Dispatched(duplicate) = duplicate else {
+        panic!("duplicate schedule dispatch should return existing run");
+    };
+    let enqueued_after_duplicate = task_queue
+        .enqueued
+        .lock()
+        .expect("recording task queue mutex poisoned")
+        .clone();
+
+    assert_eq!(duplicate.run_id, dispatched.run_id);
+    assert_eq!(duplicate.task_id, None);
+    assert_eq!(enqueued_after_duplicate.len(), 1);
+}
+
+#[tokio::test]
+async fn workflow_schedule_trigger_dispatch_skips_disabled_or_unpublished_applications() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let disabled = harness.seed_workflow_application(actor_user_id(), "Disabled Schedule");
+    let unpublished = harness.seed_workflow_application(actor_user_id(), "Unpublished Schedule");
+    let repository = harness.repository();
+    let service = WorkflowScheduleTriggerService::new(repository.clone());
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: disabled.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    for application in [disabled.id, unpublished.id] {
+        service
+            .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+                actor_user_id: actor_user_id(),
+                application_id: application,
+                enabled: application == unpublished.id,
+                cron: "0 9 * * *".into(),
+                timezone: "UTC".into(),
+                input_payload: serde_json::json!({}),
+            })
+            .await
+            .unwrap();
+    }
+
+    let disabled_outcome = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: disabled.id,
+                scheduled_at: time::OffsetDateTime::UNIX_EPOCH,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let unpublished_outcome = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: unpublished.id,
+                scheduled_at: time::OffsetDateTime::UNIX_EPOCH,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        disabled_outcome,
+        WorkflowScheduleDispatchOutcome::Skipped { reason }
+            if reason == "disabled"
+    ));
+    assert!(matches!(
+        unpublished_outcome,
+        WorkflowScheduleDispatchOutcome::Skipped { reason }
+            if reason == "application_not_published"
+    ));
+}
+
+#[tokio::test]
 async fn application_public_api_publish_requires_application_edit_permission() {
     let harness =
         ApplicationPublicApiTestHarness::new_with_permissions(vec!["application.view.all"]);
@@ -874,6 +1461,7 @@ fn application_public_api_mapping_validation_rejects_missing_query_target_and_in
             attachments_target: None,
         },
         output: ApplicationApiMappingOutput::default(),
+        extension: None,
     };
     let invalid_selector = ApplicationApiMappingConfig {
         input: ApplicationApiMappingInput {
@@ -884,6 +1472,7 @@ fn application_public_api_mapping_validation_rejects_missing_query_target_and_in
             attachments_target: None,
         },
         output: ApplicationApiMappingOutput::default(),
+        extension: None,
     };
 
     assert!(validate_application_api_mapping(&missing_query_target)
@@ -907,7 +1496,33 @@ fn application_public_api_mapping_validation_accepts_null_model_target() {
             attachments_target: None,
         },
         output: ApplicationApiMappingOutput::default(),
+        extension: None,
     };
 
     validate_application_api_mapping(&mapping).unwrap();
+}
+
+#[test]
+fn application_public_api_mapping_validation_rejects_invalid_workflow_extension_config() {
+    let mut invalid_slug = workflow_extension_mapping("OpenTicket");
+    assert!(validate_application_api_mapping(&invalid_slug)
+        .unwrap_err()
+        .to_string()
+        .contains("extension.slug"));
+
+    invalid_slug = workflow_extension_mapping("open-ticket");
+    invalid_slug
+        .extension
+        .as_mut()
+        .unwrap()
+        .parameters
+        .push(WorkflowExtensionParameterMapping {
+            name: "customer_id".into(),
+            source: WorkflowExtensionParameterSource::Query,
+            target: "node-workflow-start.duplicate_customer_id".into(),
+        });
+    assert!(validate_application_api_mapping(&invalid_slug)
+        .unwrap_err()
+        .to_string()
+        .contains("parameter"));
 }

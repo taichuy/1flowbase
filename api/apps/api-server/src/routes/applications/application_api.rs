@@ -17,12 +17,18 @@ use control_plane::{
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
             ApplicationApiMappingService, GetApplicationApiMappingCommand,
-            ReplaceApplicationApiMappingCommand,
+            ReplaceApplicationApiMappingCommand, WorkflowExtensionApiConfig,
+            WorkflowExtensionHttpMethod, WorkflowExtensionParameterMapping,
+            WorkflowExtensionParameterSource, WorkflowExtensionResponseMode,
         },
         publications::{
             ApplicationPublicationService, ApplicationPublicationVersionRecord,
             LoadActiveApplicationPublicationCommand, PublishApplicationCommand,
             SetApplicationApiEnabledCommand,
+        },
+        workflow_schedule::{
+            GetWorkflowScheduleTriggerCommand, ReplaceWorkflowScheduleTriggerCommand,
+            WorkflowScheduleTriggerRecord, WorkflowScheduleTriggerService,
         },
     },
     errors::ControlPlaneError,
@@ -105,6 +111,52 @@ pub struct ApplicationApiMappingOutputBody {
 pub struct ApplicationApiMappingBody {
     pub input: ApplicationApiMappingInputBody,
     pub output: ApplicationApiMappingOutputBody,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<WorkflowExtensionApiBody>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct WorkflowExtensionApiBody {
+    pub slug: String,
+    pub method: WorkflowExtensionHttpMethodBody,
+    pub response_mode: WorkflowExtensionResponseModeBody,
+    #[serde(default)]
+    pub parameters: Vec<WorkflowExtensionParameterMappingBody>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum WorkflowExtensionHttpMethodBody {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+    Options,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowExtensionResponseModeBody {
+    Sync,
+    Async,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct WorkflowExtensionParameterMappingBody {
+    pub name: String,
+    pub source: WorkflowExtensionParameterSourceBody,
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowExtensionParameterSourceBody {
+    Path,
+    Query,
+    Form,
+    Body,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -140,6 +192,29 @@ pub struct PublishApplicationApiBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PatchApplicationApiStatusBody {
     pub api_enabled: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct WorkflowScheduleTriggerBody {
+    pub enabled: bool,
+    pub cron: String,
+    pub timezone: String,
+    pub input_payload: Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WorkflowScheduleTriggerResponse {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub application_id: Uuid,
+    pub enabled: bool,
+    pub cron: String,
+    pub timezone: String,
+    pub input_payload: Value,
+    pub created_by: Uuid,
+    pub updated_by: Uuid,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -216,6 +291,10 @@ pub fn router() -> Router<Arc<ApiState>> {
             axum::routing::patch(patch_application_api_status),
         )
         .route(
+            "/applications/:application_id/workflow-schedule-trigger",
+            get(get_workflow_schedule_trigger).put(replace_workflow_schedule_trigger),
+        )
+        .route(
             "/applications/:application_id/api-docs/catalog",
             get(get_application_api_docs_catalog),
         )
@@ -248,6 +327,24 @@ fn format_optional_time(value: Option<OffsetDateTime>) -> Option<String> {
 
 fn format_time(value: OffsetDateTime) -> String {
     value.format(&Rfc3339).unwrap()
+}
+
+fn to_workflow_schedule_trigger_response(
+    trigger: WorkflowScheduleTriggerRecord,
+) -> WorkflowScheduleTriggerResponse {
+    WorkflowScheduleTriggerResponse {
+        id: trigger.id,
+        workspace_id: trigger.workspace_id,
+        application_id: trigger.application_id,
+        enabled: trigger.enabled,
+        cron: trigger.cron,
+        timezone: trigger.timezone,
+        input_payload: trigger.input_payload,
+        created_by: trigger.created_by,
+        updated_by: trigger.updated_by,
+        created_at: format_time(trigger.created_at),
+        updated_at: format_time(trigger.updated_at),
+    }
 }
 
 fn to_api_key_response(api_key: domain::ApiKeyRecord) -> ApplicationApiKeyResponse {
@@ -297,6 +394,7 @@ fn to_mapping_config(body: ApplicationApiMappingBody) -> ApplicationApiMappingCo
             files_selector: body.output.files_selector,
             error_selector: body.output.error_selector,
         },
+        extension: body.extension.map(to_extension_config),
     }
 }
 
@@ -315,6 +413,89 @@ fn to_mapping_body(mapping: ApplicationApiMappingConfig) -> ApplicationApiMappin
             files_selector: mapping.output.files_selector,
             error_selector: mapping.output.error_selector,
         },
+        extension: mapping.extension.map(to_extension_body),
+    }
+}
+
+fn to_extension_config(body: WorkflowExtensionApiBody) -> WorkflowExtensionApiConfig {
+    WorkflowExtensionApiConfig {
+        slug: body.slug,
+        method: match body.method {
+            WorkflowExtensionHttpMethodBody::Get => WorkflowExtensionHttpMethod::Get,
+            WorkflowExtensionHttpMethodBody::Post => WorkflowExtensionHttpMethod::Post,
+            WorkflowExtensionHttpMethodBody::Put => WorkflowExtensionHttpMethod::Put,
+            WorkflowExtensionHttpMethodBody::Patch => WorkflowExtensionHttpMethod::Patch,
+            WorkflowExtensionHttpMethodBody::Delete => WorkflowExtensionHttpMethod::Delete,
+            WorkflowExtensionHttpMethodBody::Head => WorkflowExtensionHttpMethod::Head,
+            WorkflowExtensionHttpMethodBody::Options => WorkflowExtensionHttpMethod::Options,
+        },
+        response_mode: match body.response_mode {
+            WorkflowExtensionResponseModeBody::Sync => WorkflowExtensionResponseMode::Sync,
+            WorkflowExtensionResponseModeBody::Async => WorkflowExtensionResponseMode::Async,
+        },
+        parameters: body
+            .parameters
+            .into_iter()
+            .map(|parameter| WorkflowExtensionParameterMapping {
+                name: parameter.name,
+                source: match parameter.source {
+                    WorkflowExtensionParameterSourceBody::Path => {
+                        WorkflowExtensionParameterSource::Path
+                    }
+                    WorkflowExtensionParameterSourceBody::Query => {
+                        WorkflowExtensionParameterSource::Query
+                    }
+                    WorkflowExtensionParameterSourceBody::Form => {
+                        WorkflowExtensionParameterSource::Form
+                    }
+                    WorkflowExtensionParameterSourceBody::Body => {
+                        WorkflowExtensionParameterSource::Body
+                    }
+                },
+                target: parameter.target,
+            })
+            .collect(),
+    }
+}
+
+fn to_extension_body(config: WorkflowExtensionApiConfig) -> WorkflowExtensionApiBody {
+    WorkflowExtensionApiBody {
+        slug: config.slug,
+        method: match config.method {
+            WorkflowExtensionHttpMethod::Get => WorkflowExtensionHttpMethodBody::Get,
+            WorkflowExtensionHttpMethod::Post => WorkflowExtensionHttpMethodBody::Post,
+            WorkflowExtensionHttpMethod::Put => WorkflowExtensionHttpMethodBody::Put,
+            WorkflowExtensionHttpMethod::Patch => WorkflowExtensionHttpMethodBody::Patch,
+            WorkflowExtensionHttpMethod::Delete => WorkflowExtensionHttpMethodBody::Delete,
+            WorkflowExtensionHttpMethod::Head => WorkflowExtensionHttpMethodBody::Head,
+            WorkflowExtensionHttpMethod::Options => WorkflowExtensionHttpMethodBody::Options,
+        },
+        response_mode: match config.response_mode {
+            WorkflowExtensionResponseMode::Sync => WorkflowExtensionResponseModeBody::Sync,
+            WorkflowExtensionResponseMode::Async => WorkflowExtensionResponseModeBody::Async,
+        },
+        parameters: config
+            .parameters
+            .into_iter()
+            .map(|parameter| WorkflowExtensionParameterMappingBody {
+                name: parameter.name,
+                source: match parameter.source {
+                    WorkflowExtensionParameterSource::Path => {
+                        WorkflowExtensionParameterSourceBody::Path
+                    }
+                    WorkflowExtensionParameterSource::Query => {
+                        WorkflowExtensionParameterSourceBody::Query
+                    }
+                    WorkflowExtensionParameterSource::Form => {
+                        WorkflowExtensionParameterSourceBody::Form
+                    }
+                    WorkflowExtensionParameterSource::Body => {
+                        WorkflowExtensionParameterSourceBody::Body
+                    }
+                },
+                target: parameter.target,
+            })
+            .collect(),
     }
 }
 
@@ -330,6 +511,7 @@ fn to_publication_response(
         version_sequence: publication.version_sequence,
         active: publication.active,
         api_enabled: publication.api_enabled,
+        public_url: publication_public_url(&publication),
         mapping_snapshot: to_mapping_body(publication.mapping_snapshot),
         dependency_snapshot: publication
             .dependency_snapshot
@@ -355,10 +537,17 @@ fn to_publication_response(
                 },
             )
             .collect(),
-        public_url: PUBLIC_RUNS_PATH.to_string(),
         created_by: publication.created_by,
         created_at: format_time(publication.created_at),
     }
+}
+
+fn publication_public_url(publication: &ApplicationPublicationVersionRecord) -> String {
+    publication
+        .extension_slug
+        .as_deref()
+        .map(|slug| format!("/api/ex/{slug}"))
+        .unwrap_or_else(|| PUBLIC_RUNS_PATH.to_string())
 }
 
 fn map_publication_not_found(error: anyhow::Error) -> ApiError {
@@ -677,6 +866,72 @@ pub async fn patch_application_api_status(
         api_enabled: body.api_enabled,
         public_url: PUBLIC_RUNS_PATH.to_string(),
     })))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/applications/{application_id}/workflow-schedule-trigger",
+    params(("application_id" = Uuid, Path, description = "Application id")),
+    responses(
+        (status = 200, body = Option<WorkflowScheduleTriggerResponse>),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_workflow_schedule_trigger(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(application_id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<Option<WorkflowScheduleTriggerResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let trigger = WorkflowScheduleTriggerService::new(state.store.clone())
+        .get_trigger(GetWorkflowScheduleTriggerCommand {
+            actor_user_id: context.user.id,
+            application_id,
+        })
+        .await?
+        .map(to_workflow_schedule_trigger_response);
+
+    Ok(Json(ApiSuccess::new(trigger)))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/console/applications/{application_id}/workflow-schedule-trigger",
+    params(("application_id" = Uuid, Path, description = "Application id")),
+    request_body = WorkflowScheduleTriggerBody,
+    responses(
+        (status = 200, body = WorkflowScheduleTriggerResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn replace_workflow_schedule_trigger(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(application_id): Path<Uuid>,
+    Json(body): Json<WorkflowScheduleTriggerBody>,
+) -> Result<Json<ApiSuccess<WorkflowScheduleTriggerResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let trigger = WorkflowScheduleTriggerService::new(state.store.clone())
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: context.user.id,
+            application_id,
+            enabled: body.enabled,
+            cron: body.cron,
+            timezone: body.timezone,
+            input_payload: body.input_payload,
+        })
+        .await?;
+
+    Ok(Json(ApiSuccess::new(
+        to_workflow_schedule_trigger_response(trigger),
+    )))
 }
 
 #[utoipa::path(

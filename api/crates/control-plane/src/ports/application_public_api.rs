@@ -2,6 +2,7 @@ use super::*;
 
 use crate::application_public_api::mapping::ApplicationApiMappingConfig;
 use crate::application_public_api::publications::ApplicationPublicationJsDependencySnapshot;
+use crate::application_public_api::workflow_schedule::WorkflowScheduleTriggerRecord;
 
 #[derive(Debug, Clone)]
 pub struct ReplaceApplicationApiMappingInput {
@@ -15,6 +16,7 @@ pub struct CreateApplicationPublicationVersionInput {
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
     pub mapping_snapshot: ApplicationApiMappingConfig,
+    pub extension_slug: Option<String>,
     pub api_enabled: bool,
     pub compiled_plan_id: Uuid,
     pub flow_id: Uuid,
@@ -34,6 +36,17 @@ pub struct SetApplicationApiEnabledInput {
     pub api_enabled: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct ReplaceWorkflowScheduleTriggerInput {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub application_id: Uuid,
+    pub enabled: bool,
+    pub cron: String,
+    pub timezone: String,
+    pub input_payload: serde_json::Value,
+}
+
 #[async_trait]
 pub trait ApplicationApiMappingRepository: Send + Sync {
     async fn get_application_api_mapping(
@@ -41,10 +54,28 @@ pub trait ApplicationApiMappingRepository: Send + Sync {
         application_id: Uuid,
     ) -> anyhow::Result<Option<ApplicationApiMappingConfig>>;
 
+    async fn load_application_api_mapping_application_id_by_extension_slug(
+        &self,
+        slug: &str,
+    ) -> anyhow::Result<Option<Uuid>>;
+
     async fn replace_application_api_mapping(
         &self,
         input: &ReplaceApplicationApiMappingInput,
     ) -> anyhow::Result<ApplicationApiMappingConfig>;
+}
+
+#[async_trait]
+pub trait WorkflowScheduleTriggerRepository: Send + Sync {
+    async fn get_workflow_schedule_trigger(
+        &self,
+        application_id: Uuid,
+    ) -> anyhow::Result<Option<WorkflowScheduleTriggerRecord>>;
+
+    async fn replace_workflow_schedule_trigger(
+        &self,
+        input: &ReplaceWorkflowScheduleTriggerInput,
+    ) -> anyhow::Result<WorkflowScheduleTriggerRecord>;
 }
 
 #[async_trait]
@@ -141,6 +172,19 @@ pub trait ApplicationPublicationRepository: Send + Sync {
         application_id: Uuid,
     ) -> anyhow::Result<
         Option<crate::application_public_api::publications::ApplicationPublicationVersionRecord>,
+    >;
+
+    async fn load_active_application_publication_by_extension_slug(
+        &self,
+        slug: &str,
+    ) -> anyhow::Result<
+        Option<crate::application_public_api::publications::ApplicationPublicationVersionRecord>,
+    >;
+
+    async fn list_enabled_extension_publications(
+        &self,
+    ) -> anyhow::Result<
+        Vec<crate::application_public_api::publications::ApplicationPublicationVersionRecord>,
     >;
 
     async fn set_application_api_enabled(

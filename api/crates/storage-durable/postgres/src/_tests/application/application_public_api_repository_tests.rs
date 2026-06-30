@@ -2,13 +2,17 @@ use control_plane::{
     application_public_api::{
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
+            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
+            WorkflowExtensionParameterMapping, WorkflowExtensionParameterSource,
+            WorkflowExtensionResponseMode,
         },
         publications::ApplicationPublicationJsDependencySnapshot,
     },
     ports::{
         ApplicationApiMappingRepository, ApplicationPublicationRepository,
         CreateApplicationPublicationVersionInput, ReplaceApplicationApiMappingInput,
-        SetApplicationApiEnabledInput,
+        ReplaceWorkflowScheduleTriggerInput, SetApplicationApiEnabledInput,
+        WorkflowScheduleTriggerRepository,
     },
 };
 use sqlx::PgPool;
@@ -117,6 +121,29 @@ async fn seed_application(
     .await
     .unwrap();
     application_id
+}
+
+fn workflow_extension_mapping(slug: &str) -> ApplicationApiMappingConfig {
+    ApplicationApiMappingConfig {
+        input: ApplicationApiMappingInput {
+            query_target: "node-start.query".into(),
+            model_target: None,
+            inputs_target: None,
+            history_target: None,
+            attachments_target: None,
+        },
+        output: ApplicationApiMappingOutput::default(),
+        extension: Some(WorkflowExtensionApiConfig {
+            slug: slug.into(),
+            method: WorkflowExtensionHttpMethod::Post,
+            response_mode: WorkflowExtensionResponseMode::Async,
+            parameters: vec![WorkflowExtensionParameterMapping {
+                name: "customer_id".into(),
+                source: WorkflowExtensionParameterSource::Query,
+                target: "node-workflow-start.customer_id".into(),
+            }],
+        }),
+    }
 }
 
 async fn seed_flow_version_and_compiled_plan(
@@ -411,6 +438,7 @@ async fn application_public_api_repository_mapping_round_trips_default_and_repla
             files_selector: None,
             error_selector: None,
         },
+        extension: None,
     };
     ApplicationApiMappingRepository::replace_application_api_mapping(
         &store,
@@ -436,6 +464,118 @@ async fn application_public_api_repository_mapping_round_trips_default_and_repla
 }
 
 #[tokio::test]
+async fn application_public_api_repository_mapping_extension_slug_round_trips_and_conflicts() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let workspace_id = seed_workspace(&store, "Application Mapping Extension").await;
+    let actor_user_id = seed_user(&store, workspace_id, "mapping-extension-owner").await;
+    let first_application_id =
+        seed_application(&store, workspace_id, actor_user_id, "Public App A").await;
+    let second_application_id =
+        seed_application(&store, workspace_id, actor_user_id, "Public App B").await;
+    let mapping = workflow_extension_mapping("open-ticket-pg");
+
+    ApplicationApiMappingRepository::replace_application_api_mapping(
+        &store,
+        &ReplaceApplicationApiMappingInput {
+            actor_user_id,
+            application_id: first_application_id,
+            mapping: mapping.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    let stored =
+        ApplicationApiMappingRepository::get_application_api_mapping(&store, first_application_id)
+            .await
+            .unwrap()
+            .unwrap();
+    let owner =
+        ApplicationApiMappingRepository::load_application_api_mapping_application_id_by_extension_slug(
+            &store,
+            "open-ticket-pg",
+        )
+        .await
+        .unwrap();
+    let duplicate = ApplicationApiMappingRepository::replace_application_api_mapping(
+        &store,
+        &ReplaceApplicationApiMappingInput {
+            actor_user_id,
+            application_id: second_application_id,
+            mapping,
+        },
+    )
+    .await;
+
+    assert_eq!(stored.extension_slug(), Some("open-ticket-pg"));
+    assert_eq!(owner, Some(first_application_id));
+    assert!(duplicate
+        .unwrap_err()
+        .to_string()
+        .contains("extension_slug"));
+}
+
+#[tokio::test]
+async fn application_public_api_repository_workflow_schedule_trigger_round_trips_and_updates() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let workspace_id = seed_workspace(&store, "Workflow Schedule Trigger").await;
+    let actor_user_id = seed_user(&store, workspace_id, "workflow-schedule-owner").await;
+    let application_id =
+        seed_application(&store, workspace_id, actor_user_id, "Scheduled Workflow").await;
+
+    let created = WorkflowScheduleTriggerRepository::replace_workflow_schedule_trigger(
+        &store,
+        &ReplaceWorkflowScheduleTriggerInput {
+            actor_user_id,
+            workspace_id,
+            application_id,
+            enabled: true,
+            cron: "0 9 * * *".into(),
+            timezone: "Asia/Shanghai".into(),
+            input_payload: serde_json::json!({
+                "node-workflow-start": { "customer_id": "C-42" }
+            }),
+        },
+    )
+    .await
+    .unwrap();
+    let updated = WorkflowScheduleTriggerRepository::replace_workflow_schedule_trigger(
+        &store,
+        &ReplaceWorkflowScheduleTriggerInput {
+            actor_user_id,
+            workspace_id,
+            application_id,
+            enabled: false,
+            cron: "30 10 * * 1".into(),
+            timezone: "UTC".into(),
+            input_payload: serde_json::json!({
+                "node-workflow-start": { "customer_id": "C-84" }
+            }),
+        },
+    )
+    .await
+    .unwrap();
+    let loaded =
+        WorkflowScheduleTriggerRepository::get_workflow_schedule_trigger(&store, application_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+    assert_eq!(created.id, updated.id);
+    assert_eq!(loaded.workspace_id, workspace_id);
+    assert!(!loaded.enabled);
+    assert_eq!(loaded.cron, "30 10 * * 1");
+    assert_eq!(loaded.timezone, "UTC");
+    assert_eq!(
+        loaded.input_payload["node-workflow-start"]["customer_id"],
+        serde_json::json!("C-84")
+    );
+}
+
+#[tokio::test]
 async fn application_public_api_repository_publication_insert_uses_real_foreign_key_rows() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
@@ -453,6 +593,7 @@ async fn application_public_api_repository_publication_insert_uses_real_foreign_
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+                extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id,
                 flow_id,
@@ -490,6 +631,94 @@ async fn application_public_api_repository_publication_insert_uses_real_foreign_
 }
 
 #[tokio::test]
+async fn application_public_api_repository_publication_extension_slug_lookup_list_and_conflict() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let workspace_id = seed_workspace(&store, "Application Publication Extension").await;
+    let actor_user_id = seed_user(&store, workspace_id, "publication-extension-owner").await;
+    let first_application_id =
+        seed_application(&store, workspace_id, actor_user_id, "Public App A").await;
+    let second_application_id =
+        seed_application(&store, workspace_id, actor_user_id, "Public App B").await;
+    let (first_flow_id, first_flow_version_id, first_compiled_plan_id, first_document) =
+        seed_flow_version_and_compiled_plan(&store, first_application_id, actor_user_id).await;
+    let (second_flow_id, second_flow_version_id, second_compiled_plan_id, second_document) =
+        seed_flow_version_and_compiled_plan(&store, second_application_id, actor_user_id).await;
+    let mapping = workflow_extension_mapping("open-ticket-pg-publication");
+
+    let publication =
+        ApplicationPublicationRepository::create_active_application_publication_version(
+            &store,
+            &CreateApplicationPublicationVersionInput {
+                actor_user_id,
+                application_id: first_application_id,
+                mapping_snapshot: mapping.clone(),
+                extension_slug: Some("open-ticket-pg-publication".into()),
+                api_enabled: true,
+                compiled_plan_id: first_compiled_plan_id,
+                flow_id: first_flow_id,
+                flow_version_id: first_flow_version_id,
+                flow_schema_version: domain::FLOW_SCHEMA_VERSION.to_string(),
+                document_hash: "sha256:first-extension".into(),
+                document_snapshot: first_document,
+                runtime_profile_snapshot: serde_json::json!({}),
+                output_selector: serde_json::json!({}),
+                dependency_snapshot: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+    let loaded =
+        ApplicationPublicationRepository::load_active_application_publication_by_extension_slug(
+            &store,
+            "open-ticket-pg-publication",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let enabled = ApplicationPublicationRepository::list_enabled_extension_publications(&store)
+        .await
+        .unwrap();
+    let duplicate =
+        ApplicationPublicationRepository::create_active_application_publication_version(
+            &store,
+            &CreateApplicationPublicationVersionInput {
+                actor_user_id,
+                application_id: second_application_id,
+                mapping_snapshot: mapping,
+                extension_slug: Some("open-ticket-pg-publication".into()),
+                api_enabled: true,
+                compiled_plan_id: second_compiled_plan_id,
+                flow_id: second_flow_id,
+                flow_version_id: second_flow_version_id,
+                flow_schema_version: domain::FLOW_SCHEMA_VERSION.to_string(),
+                document_hash: "sha256:second-extension".into(),
+                document_snapshot: second_document,
+                runtime_profile_snapshot: serde_json::json!({}),
+                output_selector: serde_json::json!({}),
+                dependency_snapshot: Vec::new(),
+            },
+        )
+        .await;
+
+    assert_eq!(
+        publication.extension_slug.as_deref(),
+        Some("open-ticket-pg-publication")
+    );
+    assert_eq!(loaded.id, publication.id);
+    assert_eq!(enabled.len(), 1);
+    assert_eq!(
+        enabled[0].extension_slug.as_deref(),
+        Some("open-ticket-pg-publication")
+    );
+    assert!(duplicate
+        .unwrap_err()
+        .to_string()
+        .contains("extension_slug"));
+}
+
+#[tokio::test]
 async fn application_public_api_repository_republish_updates_single_current_publication() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
@@ -515,6 +744,7 @@ async fn application_public_api_repository_republish_updates_single_current_publ
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+                extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id: first_compiled_plan_id,
                 flow_id,
@@ -536,6 +766,7 @@ async fn application_public_api_repository_republish_updates_single_current_publ
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+                extension_slug: None,
                 api_enabled: false,
                 compiled_plan_id: second_compiled_plan_id,
                 flow_id,
@@ -613,6 +844,7 @@ async fn application_public_api_js_dependency_snapshot_persists_empty_array_with
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+                extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id,
                 flow_id,
@@ -675,6 +907,7 @@ async fn application_public_api_js_dependency_snapshot_persists_on_publication_v
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+                extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id,
                 flow_id,
@@ -726,6 +959,18 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
     .fetch_all(&pool)
     .await
     .unwrap();
+    let schedule_columns: Vec<String> = sqlx::query_scalar(
+        r#"
+        select column_name
+        from information_schema.columns
+        where table_schema = $1
+          and table_name = 'workflow_schedule_triggers'
+        "#,
+    )
+    .bind(&schema)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
     let application_columns: Vec<String> = sqlx::query_scalar(
         r#"
         select column_name
@@ -738,12 +983,40 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
     .fetch_all(&pool)
     .await
     .unwrap();
+    let mapping_columns: Vec<String> = sqlx::query_scalar(
+        r#"
+        select column_name
+        from information_schema.columns
+        where table_schema = $1
+          and table_name = 'application_api_mappings'
+        "#,
+    )
+    .bind(&schema)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
     let publication_columns: Vec<String> = sqlx::query_scalar(
         r#"
         select column_name
         from information_schema.columns
         where table_schema = $1
           and table_name = 'application_publication_versions'
+        "#,
+    )
+    .bind(&schema)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let extension_slug_indexes: Vec<String> = sqlx::query_scalar(
+        r#"
+        select indexname
+        from pg_indexes
+        where schemaname = $1
+          and indexname in (
+              'application_api_mappings_extension_slug_uidx',
+              'application_publication_versions_extension_slug_uidx'
+          )
+        order by indexname
         "#,
     )
     .bind(&schema)
@@ -776,10 +1049,25 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
     .fetch_all(&pool)
     .await
     .unwrap();
+    let schedule_indexes: Vec<String> = sqlx::query_scalar(
+        r#"
+        select indexname
+        from pg_indexes
+        where schemaname = $1
+          and tablename = 'workflow_schedule_triggers'
+        order by indexname
+        "#,
+    )
+    .bind(&schema)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
 
     assert!(tables.contains(&"application_api_mappings".to_string()));
     assert!(tables.contains(&"application_publication_versions".to_string()));
+    assert!(tables.contains(&"workflow_schedule_triggers".to_string()));
     assert!(application_columns.contains(&"api_enabled".to_string()));
+    assert!(mapping_columns.contains(&"extension_slug".to_string()));
     for expected_column in [
         "application_id",
         "flow_id",
@@ -793,6 +1081,7 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
         "runtime_profile_snapshot",
         "output_selector",
         "dependency_snapshot",
+        "extension_slug",
     ] {
         assert!(
             publication_columns.contains(&expected_column.to_string()),
@@ -806,5 +1095,28 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
     assert!(
         current_publication_indexes.len() == 1 && current_publication_indexes[0].contains("UNIQUE"),
         "a unique application_id index should enforce one current publication per application"
+    );
+    assert_eq!(
+        extension_slug_indexes,
+        vec![
+            "application_api_mappings_extension_slug_uidx".to_string(),
+            "application_publication_versions_extension_slug_uidx".to_string(),
+        ]
+    );
+    for expected_column in [
+        "application_id",
+        "scope_id",
+        "enabled",
+        "cron",
+        "timezone",
+        "input_payload",
+    ] {
+        assert!(
+            schedule_columns.contains(&expected_column.to_string()),
+            "missing workflow_schedule_triggers.{expected_column}"
+        );
+    }
+    assert!(
+        schedule_indexes.contains(&"workflow_schedule_triggers_application_id_uidx".to_string())
     );
 }

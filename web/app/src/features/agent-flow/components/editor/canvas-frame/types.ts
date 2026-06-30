@@ -1,4 +1,5 @@
 import type {
+  ConsoleApplicationType,
   ConsoleApplicationEnvironmentVariable,
   ConsoleApplicationOrchestrationState,
   ConsoleNodeContributionEntry,
@@ -8,6 +9,7 @@ import type {
 export interface AgentFlowCanvasFrameProps {
   applicationId: string;
   applicationName: string;
+  applicationType?: ConsoleApplicationType;
   initialEnvironmentVariables?: ConsoleApplicationEnvironmentVariable[];
   nodeContributions: ConsoleNodeContributionEntry[];
   saveDraftOverride?: (

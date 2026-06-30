@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { Result } from 'antd';
 
-import { ApiClientError } from '@1flowbase/api-client';
+import {
+  ApiClientError,
+  type ConsoleApplicationType
+} from '@1flowbase/api-client';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
 import {
   applicationEnvironmentVariablesQueryKey,
@@ -20,10 +23,12 @@ import { i18nText } from '../../../shared/i18n/text';
 
 export function AgentFlowEditorPage({
   applicationId,
-  applicationName
+  applicationName,
+  applicationType = 'agent_flow'
 }: {
   applicationId: string;
   applicationName: string;
+  applicationType?: ConsoleApplicationType;
 }) {
   const orchestrationQuery = useQuery({
     queryKey: orchestrationQueryKey(applicationId),
@@ -43,7 +48,12 @@ export function AgentFlowEditorPage({
     nodeContributionsQuery.isPending ||
     environmentVariablesQuery.isPending
   ) {
-    return <Result status="info" title={i18nText("agentFlow", "auto.orchestration_loading")} />;
+    return (
+      <Result
+        status="info"
+        title={i18nText('agentFlow', 'auto.orchestration_loading')}
+      />
+    );
   }
 
   if (
@@ -62,10 +72,20 @@ export function AgentFlowEditorPage({
     }
 
     if (error instanceof ApiClientError && error.status === 404) {
-      return <Result status="404" title={i18nText("agentFlow", "auto.orchestration_not_found")} />;
+      return (
+        <Result
+          status="404"
+          title={i18nText('agentFlow', 'auto.orchestration_not_found')}
+        />
+      );
     }
 
-    return <Result status="error" title={i18nText("agentFlow", "auto.orchestration_load_failed")} />;
+    return (
+      <Result
+        status="error"
+        title={i18nText('agentFlow', 'auto.orchestration_load_failed')}
+      />
+    );
   }
 
   const state = orchestrationQuery.data;
@@ -75,6 +95,7 @@ export function AgentFlowEditorPage({
     <AgentFlowEditorShell
       applicationId={applicationId}
       applicationName={applicationName}
+      applicationType={applicationType}
       initialState={state}
       initialEnvironmentVariables={environmentVariablesQuery.data}
       nodeContributions={nodeContributions}

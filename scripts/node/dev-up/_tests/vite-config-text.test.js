@@ -10,7 +10,9 @@ test('vite config uses the repo default frontend port', () => {
 
   assert.match(viteConfigSource, /server:\s*\{/u);
   assert.match(viteConfigSource, /host:\s*'0\.0\.0\.0'/u);
-  assert.match(viteConfigSource, /port:\s*3100/u);
+  assert.match(viteConfigSource, /VITE_DEV_SERVER_PORT/u);
+  assert.match(viteConfigSource, /Number\.parseInt/u);
+  assert.match(viteConfigSource, /3100/u);
   assert.match(viteConfigSource, /strictPort:\s*true/u);
 });
 

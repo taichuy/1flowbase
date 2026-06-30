@@ -19,6 +19,7 @@ import {
 } from '../lib/node-definitions/contracts';
 import {
   BUILTIN_NODE_PICKER_OPTIONS,
+  WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,
   type NodePickerOption
 } from '../lib/plugin-node-definitions';
 
@@ -327,6 +328,71 @@ describe('agent-flow node schema registry', () => {
         renderer: 'llm_tool_registrations'
       })
     );
+  });
+
+  test('exposes workflow start inputs and sync timeout through schema contract', () => {
+    const schema = resolveAgentFlowNodeSchema('workflow_start');
+
+    expect(schema.nodeType).toBe('workflow_start');
+    expect(schema.detail.tabs.config.blocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'section',
+          title: 'Input Parameters',
+          blocks: [
+            expect.objectContaining({
+              kind: 'field',
+              path: 'config.input_fields',
+              renderer: 'start_input_fields'
+            })
+          ]
+        }),
+        expect.objectContaining({
+          kind: 'section',
+          title: 'Sync Response',
+          blocks: [
+            expect.objectContaining({
+              kind: 'field',
+              path: 'config.sync_timeout_ms',
+              renderer: 'number'
+            })
+          ]
+        })
+      ])
+    );
+  });
+
+  test('exposes workflow end return fields as editable output contract', () => {
+    const schema = resolveAgentFlowNodeSchema('workflow_end');
+
+    expect(schema.nodeType).toBe('workflow_end');
+    expect(schema.detail.tabs.config.blocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'section',
+          title: 'Return Fields',
+          blocks: [
+            expect.objectContaining({
+              kind: 'field',
+              path: 'config.output_contract',
+              renderer: 'output_contract_definition'
+            })
+          ]
+        })
+      ])
+    );
+  });
+
+  test('keeps workflow picker options separate from AgentFlow picker options', () => {
+    expect(BUILTIN_NODE_PICKER_OPTIONS.map((option) => option.type)).toEqual(
+      expect.arrayContaining(['start', 'answer'])
+    );
+    expect(
+      BUILTIN_NODE_PICKER_OPTIONS.map((option) => option.type)
+    ).not.toEqual(expect.arrayContaining(['workflow_start', 'workflow_end']));
+    expect(
+      WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS.map((option) => option.type)
+    ).toEqual(['workflow_start', 'workflow_end']);
   });
 
   test('keeps Code on the main input, JavaScript source, and editable output flow', () => {
@@ -655,8 +721,10 @@ describe('agent-flow node schema registry', () => {
   test('registers builtin node runtime contracts for runtime defaults', () => {
     const expectedTypes = [
       'start',
+      'workflow_start',
       'llm',
       'answer',
+      'workflow_end',
       'template_transform',
       'knowledge_retrieval',
       'question_classifier',

@@ -119,11 +119,15 @@ function createContractSectionBlock(
   };
 }
 
-const EDITABLE_OUTPUT_CONTRACT_NODE_TYPES = new Set<FlowNodeType>(['code']);
+const EDITABLE_OUTPUT_CONTRACT_NODE_TYPES = new Set<FlowNodeType>([
+  'code',
+  'workflow_end'
+]);
 
 function shouldExposeGeneratedOutputVariables(nodeType: FlowNodeType) {
   return (
     nodeType !== 'start' &&
+    nodeType !== 'workflow_start' &&
     nodeType !== 'if_else' &&
     !EDITABLE_OUTPUT_CONTRACT_NODE_TYPES.has(nodeType)
   );
@@ -221,7 +225,8 @@ export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
     .filter((section) => {
       if (
         section.key === 'basics' ||
-        (section.key === 'outputs' && nodeType !== 'code')
+        (section.key === 'outputs' &&
+          !EDITABLE_OUTPUT_CONTRACT_NODE_TYPES.has(nodeType))
       ) {
         return false;
       }
@@ -240,7 +245,8 @@ export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
         .filter((section) => {
           if (
             section.key === 'basics' ||
-            (section.key === 'outputs' && nodeType !== 'code')
+            (section.key === 'outputs' &&
+              !EDITABLE_OUTPUT_CONTRACT_NODE_TYPES.has(nodeType))
           ) {
             return false;
           }

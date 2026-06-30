@@ -17,7 +17,13 @@ async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&body).unwrap()
 }
 
-async fn create_application(app: &Router, cookie: &str, csrf: &str, name: &str) -> String {
+async fn create_application_with_type(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    name: &str,
+    application_type: &str,
+) -> String {
     let response = app
         .clone()
         .oneshot(
@@ -29,7 +35,7 @@ async fn create_application(app: &Router, cookie: &str, csrf: &str, name: &str) 
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "application_type": "agent_flow",
+                        "application_type": application_type,
                         "name": name,
                         "description": "application public api test",
                         "icon": null,
@@ -46,6 +52,10 @@ async fn create_application(app: &Router, cookie: &str, csrf: &str, name: &str) 
     assert_eq!(response.status(), StatusCode::CREATED);
     let payload = response_json(response).await;
     payload["data"]["id"].as_str().unwrap().to_string()
+}
+
+async fn create_application(app: &Router, cookie: &str, csrf: &str, name: &str) -> String {
+    create_application_with_type(app, cookie, csrf, name, "agent_flow").await
 }
 
 async fn create_member_with_permissions(
@@ -398,6 +408,153 @@ async fn application_api_mapping_routes_get_and_replace_nullable_model_target() 
         replace_payload["data"]["output"]["answer_selector"].as_str(),
         Some("end.answer")
     );
+}
+
+#[tokio::test]
+async fn workflow_schedule_trigger_routes_get_replace_and_validate_config() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workflow_id =
+        create_application_with_type(&app, &cookie, &csrf, "Scheduled Workflow", "workflow").await;
+
+    let missing = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{workflow_id}/workflow-schedule-trigger"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), StatusCode::OK);
+    let missing_payload = response_json(missing).await;
+    assert!(missing_payload["data"].is_null());
+
+    let replace = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/applications/{workflow_id}/workflow-schedule-trigger"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "enabled": true,
+                        "cron": "0 9 * * *",
+                        "timezone": "Asia/Shanghai",
+                        "input_payload": {
+                            "node-workflow-start": {
+                                "customer_id": "C-42"
+                            }
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replace.status(), StatusCode::OK);
+    let replace_payload = response_json(replace).await;
+    assert_eq!(
+        replace_payload["data"]["application_id"].as_str(),
+        Some(workflow_id.as_str())
+    );
+    assert_eq!(replace_payload["data"]["enabled"].as_bool(), Some(true));
+    assert_eq!(replace_payload["data"]["cron"].as_str(), Some("0 9 * * *"));
+    assert_eq!(
+        replace_payload["data"]["timezone"].as_str(),
+        Some("Asia/Shanghai")
+    );
+    assert_eq!(
+        replace_payload["data"]["input_payload"]["node-workflow-start"]["customer_id"].as_str(),
+        Some("C-42")
+    );
+
+    let loaded = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{workflow_id}/workflow-schedule-trigger"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(loaded.status(), StatusCode::OK);
+    let loaded_payload = response_json(loaded).await;
+    assert_eq!(loaded_payload["data"]["cron"].as_str(), Some("0 9 * * *"));
+
+    let invalid_cron = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/applications/{workflow_id}/workflow-schedule-trigger"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "enabled": true,
+                        "cron": "bad cron",
+                        "timezone": "Asia/Shanghai",
+                        "input_payload": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(invalid_cron.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn workflow_schedule_trigger_route_rejects_non_workflow_application() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let agent_flow_id = create_application(&app, &cookie, &csrf, "Agent Flow Schedule").await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/applications/{agent_flow_id}/workflow-schedule-trigger"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "enabled": true,
+                        "cron": "0 9 * * *",
+                        "timezone": "UTC",
+                        "input_payload": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

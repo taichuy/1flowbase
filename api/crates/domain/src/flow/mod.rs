@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-pub use crate::system_defaults::flow_document::FLOW_SCHEMA_VERSION;
+pub use crate::system_defaults::flow_document::{FLOW_SCHEMA_VERSION, WORKFLOW_SYNC_TIMEOUT_MS};
 pub use crate::system_defaults::runtime_policy::FLOW_AUTOSAVE_INTERVAL_SECONDS;
 
 pub const FLOW_HISTORY_LIMIT: usize = 30;
@@ -80,4 +80,14 @@ pub struct FlowEditorState {
 
 pub fn default_flow_document(flow_id: Uuid) -> serde_json::Value {
     crate::system_defaults::flow_document::default_flow_document(flow_id)
+}
+
+pub fn default_flow_document_for_application(
+    application_type: crate::ApplicationType,
+    flow_id: Uuid,
+) -> serde_json::Value {
+    crate::system_defaults::flow_document::default_flow_document_for_application(
+        application_type,
+        flow_id,
+    )
 }

@@ -8,6 +8,7 @@ import type {
   NodeRuntimeUiContract
 } from '@1flowbase/flow-schema';
 import {
+  DEFAULT_WORKFLOW_START_NODE_CONFIG,
   NODE_CONTRIBUTION_SCHEMA_VERSION,
   getLlmNodeOutputs
 } from '@1flowbase/flow-schema';
@@ -416,6 +417,63 @@ function createAnswerContract(): NodeRuntimeUiContract {
         })
       ]),
       outputsPanelSection(outputs)
+    ]
+  });
+}
+
+function createWorkflowStartContract(): NodeRuntimeUiContract {
+  return createNodeRuntimeContract({
+    type: 'workflow_start',
+    title: 'Workflow Start',
+    description: 'Defines workflow input parameters and sync timeout.',
+    category: 'io',
+    config: {
+      input_fields: [...DEFAULT_WORKFLOW_START_NODE_CONFIG.input_fields],
+      sync_timeout_ms: DEFAULT_WORKFLOW_START_NODE_CONFIG.sync_timeout_ms
+    },
+    outputs: [],
+    panelSections: [
+      basicsPanelSection,
+      panelSection('inputs', 'Input Parameters', [
+        panelField({
+          key: 'config.input_fields',
+          title: 'Input Parameters',
+          renderer: 'start_input_fields',
+          valueType: 'array'
+        })
+      ]),
+      panelSection('sync', 'Sync Response', [
+        panelField({
+          key: 'config.sync_timeout_ms',
+          title: 'Sync Timeout',
+          renderer: 'number',
+          valueType: 'number',
+          min: 1000,
+          step: 1000
+        })
+      ])
+    ]
+  });
+}
+
+function createWorkflowEndContract(): NodeRuntimeUiContract {
+  return createNodeRuntimeContract({
+    type: 'workflow_end',
+    title: 'Workflow End',
+    description: 'Declares the successful sync response fields.',
+    category: 'io',
+    config: {},
+    outputs: [],
+    panelSections: [
+      basicsPanelSection,
+      panelSection('outputs', 'Return Fields', [
+        panelField({
+          key: 'config.output_contract',
+          title: 'Return Fields',
+          renderer: 'output_contract_definition',
+          valueType: 'array'
+        })
+      ])
     ]
   });
 }
@@ -1076,6 +1134,8 @@ function createDataModelContract(
 export const builtinNodeRuntimeContractTypes = [
   'start',
   'answer',
+  'workflow_start',
+  'workflow_end',
   'llm',
   'knowledge_retrieval',
   'question_classifier',
@@ -1104,6 +1164,8 @@ export const BUILTIN_NODE_RUNTIME_CONTRACTS: Record<
 > = {
   start: createStartContract(),
   answer: createAnswerContract(),
+  workflow_start: createWorkflowStartContract(),
+  workflow_end: createWorkflowEndContract(),
   llm: createLlmContract(),
   knowledge_retrieval: createKnowledgeRetrievalContract(),
   question_classifier: createQuestionClassifierContract(),

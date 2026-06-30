@@ -221,7 +221,7 @@ async fn dispatch_interface_request(
         );
     }
 
-    crate::console_router(state)
+    crate::console_router(state, true)
         .oneshot(request)
         .await
         .map_err(|error| anyhow::anyhow!("failed to execute MCP interface: {error}"))

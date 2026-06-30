@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_LLM_NODE_OUTPUTS,
+  DEFAULT_WORKFLOW_START_NODE_CONFIG,
   FLOW_SCHEMA_VERSION,
   NODE_CONTRIBUTION_SCHEMA_VERSION,
   createDefaultAgentFlowDocument,
+  createDefaultWorkflowDocument,
   getLlmNodeOutputs,
   validatePublicOutputKey,
   type FlowLlmVisibleInternalToolDocument,
@@ -97,6 +99,25 @@ describe('LLM authoring outputs', () => {
       { key: 'usage', title: '用量', valueType: 'json' },
       { key: 'structured_output', title: '结构化输出', valueType: 'json' }
     ]);
+  });
+});
+
+describe('workflow authoring defaults', () => {
+  it('seeds workflow_start -> workflow_end without AgentFlow start and answer nodes', () => {
+    const document = createDefaultWorkflowDocument({ flowId: 'flow-1' });
+
+    expect(document.schemaVersion).toBe(FLOW_SCHEMA_VERSION);
+    expect(document.graph.nodes.map((node) => node.type)).toEqual([
+      'workflow_start',
+      'workflow_end'
+    ]);
+    expect(
+      document.graph.edges.map((edge) => [edge.source, edge.target])
+    ).toEqual([['node-workflow-start', 'node-workflow-end']]);
+    expect(document.graph.nodes[0]?.config).toEqual(
+      DEFAULT_WORKFLOW_START_NODE_CONFIG
+    );
+    expect(document.graph.nodes[1]?.outputs).toEqual([]);
   });
 });
 

@@ -5,6 +5,8 @@ export const NODE_CONTRIBUTION_SCHEMA_VERSION =
 export type BuiltinFlowNodeType =
   | 'start'
   | 'answer'
+  | 'workflow_start'
+  | 'workflow_end'
   | 'llm'
   | 'knowledge_retrieval'
   | 'question_classifier'
@@ -216,6 +218,13 @@ export const DEFAULT_LLM_NODE_OUTPUTS = [
 export const DEFAULT_START_NODE_CONFIG = {
   input_fields: [] as unknown[],
   model_list: [] as unknown[]
+} satisfies Record<string, unknown>;
+
+export const DEFAULT_WORKFLOW_SYNC_TIMEOUT_MS = 30000;
+
+export const DEFAULT_WORKFLOW_START_NODE_CONFIG = {
+  input_fields: [] as unknown[],
+  sync_timeout_ms: DEFAULT_WORKFLOW_SYNC_TIMEOUT_MS
 } satisfies Record<string, unknown>;
 
 export const DEFAULT_ANSWER_NODE_OUTPUTS = [
@@ -597,6 +606,72 @@ export function createDefaultAgentFlowDocument({
           id: 'edge-llm-answer',
           source: 'node-llm',
           target: 'node-answer',
+          sourceHandle: null,
+          targetHandle: null,
+          containerId: null,
+          points: []
+        }
+      ]
+    },
+    variables: {
+      conversation: []
+    },
+    editor: {
+      viewport: { x: 0, y: 0, zoom: 1 },
+      annotations: [],
+      activeContainerPath: []
+    }
+  };
+}
+
+export function createDefaultWorkflowDocument({
+  flowId
+}: {
+  flowId: string;
+}): FlowAuthoringDocument {
+  return {
+    schemaVersion: FLOW_SCHEMA_VERSION,
+    meta: {
+      flowId,
+      name: 'Untitled workflow',
+      description: '',
+      tags: []
+    },
+    graph: {
+      nodes: [
+        {
+          id: 'node-workflow-start',
+          type: 'workflow_start',
+          alias: 'Workflow Start',
+          description: '',
+          containerId: null,
+          position: { x: 120, y: 220 },
+          configVersion: 1,
+          config: {
+            input_fields: [...DEFAULT_WORKFLOW_START_NODE_CONFIG.input_fields],
+            sync_timeout_ms: DEFAULT_WORKFLOW_START_NODE_CONFIG.sync_timeout_ms
+          },
+          bindings: {},
+          outputs: []
+        },
+        {
+          id: 'node-workflow-end',
+          type: 'workflow_end',
+          alias: 'Workflow End',
+          description: '',
+          containerId: null,
+          position: { x: 440, y: 220 },
+          configVersion: 1,
+          config: {},
+          bindings: {},
+          outputs: []
+        }
+      ],
+      edges: [
+        {
+          id: 'edge-workflow-start-end',
+          source: 'node-workflow-start',
+          target: 'node-workflow-end',
           sourceHandle: null,
           targetHandle: null,
           containerId: null,

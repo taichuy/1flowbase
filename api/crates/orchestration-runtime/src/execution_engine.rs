@@ -375,7 +375,7 @@ where
         let mut selected_source_handle: Option<String> = None;
 
         match node.node_type.as_str() {
-            "start" => {
+            "start" | "workflow_start" => {
                 let payload = variable_pool
                     .get(node_id)
                     .cloned()
@@ -386,6 +386,22 @@ where
                     node_alias: node.alias.clone(),
                     input_payload: payload,
                     output_payload: json!({}),
+                    error_payload: None,
+                    metrics_payload: json!({ "preview_mode": true }),
+                    debug_payload: json!({}),
+                    provider_events: Vec::new(),
+                });
+            }
+            "workflow_end" => {
+                let output_payload =
+                    project_node_variable_payload(node, &Value::Object(resolved_inputs.clone()))?;
+                variable_pool.insert(node.node_id.clone(), output_payload.clone());
+                node_traces.push(NodeExecutionTrace {
+                    node_id: node.node_id.clone(),
+                    node_type: node.node_type.clone(),
+                    node_alias: node.alias.clone(),
+                    input_payload: Value::Object(resolved_inputs),
+                    output_payload,
                     error_payload: None,
                     metrics_payload: json!({ "preview_mode": true }),
                     debug_payload: json!({}),
