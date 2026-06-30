@@ -404,6 +404,127 @@ async fn terminal_projection_reads_llm_node_system_prompt_when_run_input_has_no_
 }
 
 #[tokio::test]
+async fn migration_repairs_missing_system_projection_without_rebuilding_history() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-06-25 10:40:00 UTC);
+    let run = seed_run_conversation_flow_run(
+        &store,
+        &seeded,
+        &compiled,
+        "run-conversation-repair-system",
+        started_at,
+        json!({
+            "node-start": {
+                "system": "Use the repaired system prompt.",
+                "query": "current question",
+                "model": "gpt-repair",
+                "history": [
+                    { "role": "user", "content": "old question" },
+                    { "role": "assistant", "content": "old answer" }
+                ]
+            }
+        }),
+    )
+    .await;
+
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
+        &store,
+        &UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: FlowRunStatus::Succeeded,
+            output_payload: json!({ "answer": "current answer" }),
+            error_payload: None,
+            finished_at: Some(started_at + Duration::seconds(2)),
+        },
+    )
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        delete from application_run_conversation_message_items
+        where flow_run_id = $1
+          and role = 'system'
+        "#,
+    )
+    .bind(run.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        update application_run_conversation_message_items
+        set display_sequence = display_sequence + 1000000000
+        where flow_run_id = $1
+        "#,
+    )
+    .bind(run.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        update application_run_conversation_message_items
+        set display_sequence = display_sequence - 1000000001
+        where flow_run_id = $1
+        "#,
+    )
+    .bind(run.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    sqlx::raw_sql(include_str!(
+        "../../../../migrations/20260630120000_repair_run_conversation_projection_system.sql"
+    ))
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let rows = sqlx::query_as::<_, (i64, Option<String>, Option<String>, bool)>(
+        r#"
+        select display_sequence, role, content, is_current
+        from application_run_conversation_message_items
+        where flow_run_id = $1
+        order by display_sequence asc
+        "#,
+    )
+    .bind(run.id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+
+    assert_eq!(
+        rows,
+        vec![
+            (
+                0,
+                Some("system".to_string()),
+                Some("Use the repaired system prompt.".to_string()),
+                false,
+            ),
+            (
+                1,
+                Some("user".to_string()),
+                Some("old question".to_string()),
+                false,
+            ),
+            (
+                2,
+                Some("assistant".to_string()),
+                Some("old answer".to_string()),
+                false,
+            ),
+            (3, None, None, true),
+        ]
+    );
+}
+
+#[tokio::test]
 async fn terminal_projection_keeps_imported_history_after_artifact_payload_update() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();

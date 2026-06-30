@@ -87,6 +87,33 @@ pub(crate) fn application_run_model(payload: &Value) -> Option<String> {
     None
 }
 
+pub(crate) fn application_run_system(payload: &Value) -> Option<String> {
+    if let Some(system) = string_field(payload, "system") {
+        return Some(system);
+    }
+
+    for selector in ["node-start.system", "start.system"] {
+        if let Some(value) = string_field(payload, selector) {
+            return Some(value);
+        }
+    }
+
+    let object = payload.as_object()?;
+    for key in ["node-start", "start"] {
+        if let Some(value) = object.get(key).and_then(immediate_system_value) {
+            return Some(value);
+        }
+    }
+
+    for value in object.values() {
+        if let Some(value) = immediate_system_value(value) {
+            return Some(value);
+        }
+    }
+
+    None
+}
+
 fn immediate_input_text(value: &Value) -> Option<String> {
     let object = value.as_object()?;
     for key in APPLICATION_INPUT_QUERY_KEYS {
@@ -106,6 +133,16 @@ fn immediate_model_value(value: &Value) -> Option<String> {
     let object = value.as_object()?;
     object
         .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn immediate_system_value(value: &Value) -> Option<String> {
+    let object = value.as_object()?;
+    object
+        .get("system")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -151,6 +188,7 @@ pub(super) fn with_application_run_input_summary(
     mut payload: Value,
     query: Option<&str>,
     model: Option<&str>,
+    system: Option<&str>,
 ) -> Value {
     let Some(object) = payload.as_object_mut() else {
         return payload;
@@ -161,6 +199,9 @@ pub(super) fn with_application_run_input_summary(
     if let Some(model) = model {
         object.insert("model".to_string(), Value::String(model.to_string()));
     }
+    if let Some(system) = system {
+        object.insert("system".to_string(), Value::String(system.to_string()));
+    }
     payload
 }
 
@@ -168,7 +209,13 @@ pub(super) fn should_keep_runtime_payload_field_inline(field_path: &[String]) ->
     field_path.iter().any(|key| {
         matches!(
             key.as_str(),
-            "query" | "model" | "files" | "sys" | "env" | "visible_internal_llm_tool_trace"
+            "query"
+                | "model"
+                | "system"
+                | "files"
+                | "sys"
+                | "env"
+                | "visible_internal_llm_tool_trace"
         )
     })
 }

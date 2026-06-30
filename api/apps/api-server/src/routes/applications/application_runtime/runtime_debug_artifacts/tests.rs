@@ -2,9 +2,9 @@ use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
 use super::payloads::{
-    application_run_model, application_run_query, is_safe_to_persist_debug_artifact_previews,
-    should_keep_runtime_payload_field_inline, with_application_run_input_summary,
-    with_debug_artifact_field_path,
+    application_run_model, application_run_query, application_run_system,
+    is_safe_to_persist_debug_artifact_previews, should_keep_runtime_payload_field_inline,
+    with_application_run_input_summary, with_debug_artifact_field_path,
 };
 use super::*;
 
@@ -44,7 +44,8 @@ fn application_query_reads_persisted_artifact_preview_summary() {
         "artifact_ref": Uuid::now_v7().to_string(),
         "preview": "{\"node-start\":{\"compatibility\":{\"tools\":[]}}}",
         "query": "总结退款政策",
-        "model": "deepseek-chat"
+        "model": "deepseek-chat",
+        "system": "Use concise Chinese."
     });
 
     assert_eq!(application_run_query(&payload), Some("总结退款政策".into()));
@@ -52,20 +53,30 @@ fn application_query_reads_persisted_artifact_preview_summary() {
         application_run_model(&payload),
         Some("deepseek-chat".into())
     );
+    assert_eq!(
+        application_run_system(&payload),
+        Some("Use concise Chinese.".into())
+    );
 }
 
 #[test]
-fn flow_input_artifact_preview_keeps_application_query_and_model() {
+fn flow_input_artifact_preview_keeps_application_query_model_and_system() {
     let preview = json!({
         "__runtime_debug_artifact": true,
         "artifact_ref": Uuid::now_v7().to_string(),
         "preview": "{\"node-start\":{\"compatibility\":{\"tools\":[]}}}"
     });
 
-    let preview = with_application_run_input_summary(preview, Some("ping"), Some("gpt-test"));
+    let preview = with_application_run_input_summary(
+        preview,
+        Some("ping"),
+        Some("gpt-test"),
+        Some("Use concise Chinese."),
+    );
 
     assert_eq!(preview["query"], json!("ping"));
     assert_eq!(preview["model"], json!("gpt-test"));
+    assert_eq!(preview["system"], json!("Use concise Chinese."));
 }
 
 #[test]
@@ -74,6 +85,10 @@ fn runtime_payload_field_artifact_selection_keeps_truth_fields_inline() {
     assert!(should_keep_runtime_payload_field_inline(&[
         "node-start".into(),
         "model".into()
+    ]));
+    assert!(should_keep_runtime_payload_field_inline(&[
+        "node-start".into(),
+        "system".into()
     ]));
     assert!(should_keep_runtime_payload_field_inline(&[
         "input".into(),
