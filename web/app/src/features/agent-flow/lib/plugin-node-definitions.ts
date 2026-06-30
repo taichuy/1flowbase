@@ -7,7 +7,10 @@ import {
 } from '@1flowbase/flow-schema';
 
 import type { AgentFlowNodeContributionEntry } from '../api/node-contributions';
-import type { NodeDefinition, NodeDefinitionMeta } from './node-definitions/types';
+import type {
+  NodeDefinition,
+  NodeDefinitionMeta
+} from './node-definitions/types';
 import {
   builtinNodeRuntimeContractTypes,
   getBuiltinNodeRuntimeContract
@@ -37,6 +40,8 @@ export type NodePickerOption =
   | PluginContributionPickerOption;
 
 const HIDDEN_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
+  'workflow_start',
+  'workflow_end',
   // These nodes are incomplete and not available to users yet.
   'human_input',
   'iteration',
@@ -45,32 +50,46 @@ const HIDDEN_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
   'tool'
 ]);
 
+function buildBuiltinNodePickerOptions(
+  nodeTypes: readonly BuiltinFlowNodeType[]
+): BuiltinNodePickerOption[] {
+  return nodeTypes.map((nodeType) => {
+    const contract = getBuiltinNodeRuntimeContract(nodeType);
+
+    if (!contract) {
+      throw new Error(`Missing runtime contract for node picker: ${nodeType}`);
+    }
+
+    return {
+      kind: 'builtin',
+      type: nodeType,
+      label: contract.meta.title,
+      description:
+        contract.defaults.description ?? contract.card.description ?? '',
+      category: contract.card.category ?? null,
+      inputKeys: contract.ports.inputs.map((port) => port.key),
+      outputKeys: contract.ports.outputs.map((port) => port.key)
+    };
+  });
+}
+
 export const BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
-  builtinNodeRuntimeContractTypes
-    .filter((nodeType): nodeType is BuiltinFlowNodeType => nodeType !== 'plugin_node')
-    .filter((nodeType) => !HIDDEN_BUILTIN_NODE_PICKER_TYPES.has(nodeType))
-    .map((nodeType) => {
-      const contract = getBuiltinNodeRuntimeContract(nodeType);
+  buildBuiltinNodePickerOptions(
+    builtinNodeRuntimeContractTypes
+      .filter(
+        (nodeType): nodeType is BuiltinFlowNodeType =>
+          nodeType !== 'plugin_node'
+      )
+      .filter((nodeType) => !HIDDEN_BUILTIN_NODE_PICKER_TYPES.has(nodeType))
+  );
 
-      if (!contract) {
-        throw new Error(`Missing runtime contract for node picker: ${nodeType}`);
-      }
-
-      return {
-        kind: 'builtin',
-        type: nodeType,
-        label: contract.meta.title,
-        description: contract.defaults.description ?? contract.card.description ?? '',
-        category: contract.card.category ?? null,
-        inputKeys: contract.ports.inputs.map((port) => port.key),
-        outputKeys: contract.ports.outputs.map((port) => port.key)
-      };
-    });
+export const WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
+  buildBuiltinNodePickerOptions(['workflow_start', 'workflow_end']);
 
 const DEPENDENCY_STATUS_LABELS: Record<string, string> = {
-  missing_plugin: i18nText("agentFlow", "auto.dependency_missing_plugin"),
-  version_mismatch: i18nText("agentFlow", "auto.dependency_version_mismatch"),
-  disabled_plugin: i18nText("agentFlow", "auto.dependency_plugin_not_ready")
+  missing_plugin: i18nText('agentFlow', 'auto.dependency_missing_plugin'),
+  version_mismatch: i18nText('agentFlow', 'auto.dependency_version_mismatch'),
+  disabled_plugin: i18nText('agentFlow', 'auto.dependency_plugin_not_ready')
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -86,25 +105,25 @@ function getContributionOutputSchemaSnapshot(
 }
 
 export const pluginNodeDefinition: NodeDefinition = {
-  label: i18nText("agentFlow", "auto.plugin_node_label"),
-  summary: i18nText("agentFlow", "auto.plugin_node_definition_summary"),
+  label: i18nText('agentFlow', 'auto.plugin_node_label'),
+  summary: i18nText('agentFlow', 'auto.plugin_node_definition_summary'),
   helpHref: null,
   sections: [
     {
       key: 'basics',
-      title: i18nText("agentFlow", "auto.basic_information"),
+      title: i18nText('agentFlow', 'auto.basic_information'),
       fields: []
     },
     {
       key: 'outputs',
-      title: i18nText("agentFlow", "auto.outputs"),
+      title: i18nText('agentFlow', 'auto.outputs'),
       fields: []
     }
   ]
 };
 
 export const pluginNodeDefinitionMeta: NodeDefinitionMeta = {
-  summary: i18nText("agentFlow", "auto.plugin_node_meta_summary"),
+  summary: i18nText('agentFlow', 'auto.plugin_node_meta_summary'),
   helpHref: null
 };
 
@@ -121,8 +140,8 @@ export function buildNodePickerOptions(
       disabledReason:
         contribution.dependency_status === 'ready'
           ? null
-          : DEPENDENCY_STATUS_LABELS[contribution.dependency_status] ??
-            i18nText("agentFlow", "auto.plugin_node_unavailable")
+          : (DEPENDENCY_STATUS_LABELS[contribution.dependency_status] ??
+            i18nText('agentFlow', 'auto.plugin_node_unavailable'))
     }))
   ];
 }
@@ -140,7 +159,7 @@ export function getNodePickerOptionNodeType(option: NodePickerOption) {
 export function getNodePickerOptionDescription(option: NodePickerOption) {
   return option.kind === 'builtin'
     ? option.description
-    : option.disabledReason ?? option.contribution.description ?? null;
+    : (option.disabledReason ?? option.contribution.description ?? null);
 }
 
 export function toPluginContributionRef(
@@ -163,10 +182,7 @@ export function toPluginContributionRef(
 function hasContributionOutput(
   entry: unknown
 ): entry is FlowPluginContributionOutputSchemaSnapshot {
-  return (
-    isRecord(entry) &&
-    Array.isArray(entry.outputs)
-  );
+  return isRecord(entry) && Array.isArray(entry.outputs);
 }
 
 export function hasPluginContributionRef(
@@ -176,17 +192,19 @@ export function hasPluginContributionRef(
     return false;
   }
 
-  return [
-    node.plugin_id,
-    node.plugin_version,
-    node.contribution_code,
-    node.node_shell,
-    node.plugin_unique_identifier,
-    node.package_id,
-    node.contribution_checksum,
-    node.compiled_contribution_hash
-  ].every((value) => typeof value === 'string' && value.trim().length > 0) &&
-    hasContributionOutput(node.output_schema_snapshot);
+  return (
+    [
+      node.plugin_id,
+      node.plugin_version,
+      node.contribution_code,
+      node.node_shell,
+      node.plugin_unique_identifier,
+      node.package_id,
+      node.contribution_checksum,
+      node.compiled_contribution_hash
+    ].every((value) => typeof value === 'string' && value.trim().length > 0) &&
+    hasContributionOutput(node.output_schema_snapshot)
+  );
 }
 
 export function createPluginNodeOutputs(
@@ -228,7 +246,9 @@ export function createPluginNodeOutputs(
         valueType
       };
     })
-    .filter((entry): entry is FlowNodeDocument['outputs'][number] => entry !== null);
+    .filter(
+      (entry): entry is FlowNodeDocument['outputs'][number] => entry !== null
+    );
 
   return outputs;
 }

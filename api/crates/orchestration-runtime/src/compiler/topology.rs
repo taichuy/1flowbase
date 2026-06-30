@@ -27,8 +27,45 @@ type NodeTopologyBuild = (
 
 pub struct FlowCompiler;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FlowDocumentKind {
+    AgentFlow,
+    Workflow,
+}
+
 impl FlowCompiler {
     pub fn compile(
+        flow_id: uuid::Uuid,
+        draft_id: &str,
+        document: &Value,
+        context: &FlowCompileContext,
+    ) -> Result<CompiledPlan> {
+        Self::compile_for_kind(
+            FlowDocumentKind::AgentFlow,
+            flow_id,
+            draft_id,
+            document,
+            context,
+        )
+    }
+
+    pub fn compile_workflow(
+        flow_id: uuid::Uuid,
+        draft_id: &str,
+        document: &Value,
+        context: &FlowCompileContext,
+    ) -> Result<CompiledPlan> {
+        Self::compile_for_kind(
+            FlowDocumentKind::Workflow,
+            flow_id,
+            draft_id,
+            document,
+            context,
+        )
+    }
+
+    fn compile_for_kind(
+        document_kind: FlowDocumentKind,
         flow_id: uuid::Uuid,
         draft_id: &str,
         document: &Value,
@@ -44,6 +81,7 @@ impl FlowCompiler {
         }
         let (nodes, edges, topological_order, mut compile_issues) =
             build_nodes_and_topology(document, context)?;
+        validate_document_kind(document_kind, &nodes)?;
 
         let mut plan = CompiledPlan {
             flow_id,
@@ -59,6 +97,63 @@ impl FlowCompiler {
 
         Ok(plan)
     }
+}
+
+fn validate_document_kind(
+    document_kind: FlowDocumentKind,
+    nodes: &BTreeMap<String, CompiledNode>,
+) -> Result<()> {
+    match document_kind {
+        FlowDocumentKind::AgentFlow => validate_agent_flow_node_family(nodes),
+        FlowDocumentKind::Workflow => validate_workflow_node_family(nodes),
+    }
+}
+
+fn validate_agent_flow_node_family(nodes: &BTreeMap<String, CompiledNode>) -> Result<()> {
+    for workflow_node_type in ["workflow_start", "workflow_end"] {
+        if let Some(node) = nodes
+            .values()
+            .find(|node| node.node_type == workflow_node_type)
+        {
+            bail!(
+                "agent_flow document cannot contain {} node {}",
+                node.node_type,
+                node.node_id
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_workflow_node_family(nodes: &BTreeMap<String, CompiledNode>) -> Result<()> {
+    let mut workflow_start_count = 0;
+    let mut workflow_end_count = 0;
+
+    for node in nodes.values() {
+        match node.node_type.as_str() {
+            "start" | "answer" => {
+                bail!(
+                    "workflow document cannot contain {} node {}",
+                    node.node_type,
+                    node.node_id
+                );
+            }
+            "workflow_start" => workflow_start_count += 1,
+            "workflow_end" => workflow_end_count += 1,
+            _ => {}
+        }
+    }
+
+    if workflow_start_count != 1 {
+        bail!("workflow document must contain exactly one workflow_start node");
+    }
+
+    if workflow_end_count == 0 {
+        bail!("workflow document must contain at least one workflow_end node");
+    }
+
+    Ok(())
 }
 
 pub(super) fn build_nodes_and_topology(

@@ -8,6 +8,7 @@ import { NodePickerPopover } from '../components/node-picker/NodePickerPopover';
 import { calculateNodePickerMaxHeight } from '../components/node-picker/node-picker-layout';
 import {
   BUILTIN_NODE_PICKER_OPTIONS,
+  WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,
   type NodePickerOption
 } from '../lib/plugin-node-definitions';
 
@@ -149,6 +150,31 @@ describe('NodePickerPopover', () => {
       screen.queryByRole('menuitem', { name: /LLM/i })
     ).not.toBeInTheDocument();
     expect(screen.queryByText('模型与生成')).not.toBeInTheDocument();
+  });
+
+  test('can render workflow-only start and end picker options', () => {
+    render(
+      <NodePickerPopover
+        ariaLabel="在 Workflow 后新增节点"
+        open
+        options={WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS}
+        onOpenChange={vi.fn()}
+        onPickNode={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: /Workflow Start/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: /Workflow End/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: /^Start$/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: /^Answer$/i })
+    ).not.toBeInTheDocument();
   });
 
   test('keeps category tabs and search above the scrollable node list', () => {

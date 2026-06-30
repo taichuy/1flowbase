@@ -145,6 +145,70 @@ fn sample_document(flow_id: Uuid) -> serde_json::Value {
     })
 }
 
+fn workflow_document(flow_id: Uuid) -> serde_json::Value {
+    json!({
+        "schemaVersion": "1flowbase.flow/v2",
+        "meta": { "flowId": flow_id.to_string(), "name": "Ticket Workflow", "description": "", "tags": [] },
+        "graph": {
+            "nodes": [
+                {
+                    "id": "node-workflow-start",
+                    "type": "workflow_start",
+                    "alias": "Workflow Start",
+                    "description": "",
+                    "containerId": null,
+                    "position": { "x": 0, "y": 0 },
+                    "configVersion": 1,
+                    "config": {
+                        "input_fields": [
+                            {
+                                "key": "customer_id",
+                                "label": "Customer ID",
+                                "inputType": "text",
+                                "valueType": "string",
+                                "required": true
+                            }
+                        ],
+                        "sync_timeout_ms": 30000
+                    },
+                    "bindings": {},
+                    "outputs": []
+                },
+                {
+                    "id": "node-workflow-end",
+                    "type": "workflow_end",
+                    "alias": "Workflow End",
+                    "description": "",
+                    "containerId": null,
+                    "position": { "x": 240, "y": 0 },
+                    "configVersion": 1,
+                    "config": {},
+                    "bindings": {},
+                    "outputs": [
+                        {
+                            "key": "ticket_id",
+                            "title": "Ticket ID",
+                            "valueType": "string"
+                        }
+                    ]
+                }
+            ],
+            "edges": [
+                {
+                    "id": "edge-workflow-start-end",
+                    "source": "node-workflow-start",
+                    "target": "node-workflow-end",
+                    "sourceHandle": null,
+                    "targetHandle": null,
+                    "containerId": null,
+                    "points": []
+                }
+            ]
+        },
+        "editor": { "viewport": { "x": 0, "y": 0, "zoom": 1 }, "annotations": [], "activeContainerPath": [] }
+    })
+}
+
 fn add_second_llm_and_answer(
     document: &mut Value,
     answer_template: &str,
