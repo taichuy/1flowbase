@@ -430,6 +430,72 @@ async fn public_auth_sign_in_sets_cookie_and_returns_wrapped_payload() {
 }
 
 #[tokio::test]
+async fn public_auth_sign_in_rejects_disabled_authenticator() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    sqlx::query("update authenticators set enabled = false where name = 'password-local'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/auth/providers/password-local/sign-in")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "identifier": "root",
+                        "password": "change-me"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(payload["code"], json!("authenticator_disabled"));
+}
+
+#[tokio::test]
+async fn public_auth_sign_in_rejects_disabled_user() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    sqlx::query("update users set status = 'disabled' where account = 'root'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/auth/providers/password-local/sign-in")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "identifier": "root",
+                        "password": "change-me"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(payload["code"], json!("user_disabled"));
+}
+
+#[tokio::test]
 async fn public_auth_sign_in_resolves_password_local_identity_subject() {
     let (app, database_url) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -461,6 +527,86 @@ async fn public_auth_sign_in_resolves_password_local_identity_subject() {
                     json!({
                         "identifier": "identity-route-subject",
                         "password": "temp-pass"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().get("set-cookie").is_some());
+}
+
+#[tokio::test]
+async fn public_auth_sign_in_resolves_identity_with_requested_authenticator_instance() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let staff_member_id =
+        create_member(&app, &cookie, &csrf, "staff-password-user", "staff-pass").await;
+    let default_member_id = create_member(
+        &app,
+        &cookie,
+        &csrf,
+        "default-password-user",
+        "default-pass",
+    )
+    .await;
+    let staff_member_id = Uuid::parse_str(&staff_member_id).unwrap();
+    let default_member_id = Uuid::parse_str(&default_member_id).unwrap();
+    let pool = PgPool::connect(&database_url).await.unwrap();
+
+    sqlx::query(
+        r#"
+        insert into authenticators (id, name, auth_type, title, enabled, is_builtin, sort_order, options)
+        values ($1, 'staff-password', 'password-local', 'Staff Password', true, false, 20, '{}')
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        update user_auth_identities
+        set subject_value = 'shared-password-subject'
+        where user_id = $1
+          and authenticator_name = 'password-local'
+          and subject_type = 'account'
+        "#,
+    )
+    .bind(default_member_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        insert into user_auth_identities (
+            id, user_id, authenticator_name, subject_type, subject_value, metadata
+        )
+        values ($1, $2, 'staff-password', 'account', 'shared-password-subject', '{}')
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(staff_member_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/auth/providers/password-local/sign-in")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "authenticator": "staff-password",
+                        "identifier": "shared-password-subject",
+                        "password": "staff-pass"
                     })
                     .to_string(),
                 ))
