@@ -557,6 +557,34 @@ async fn application_public_api_mapping_service_rejects_duplicate_extension_slug
 }
 
 #[tokio::test]
+async fn application_public_api_mapping_service_rejects_extension_slug_used_by_publication() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let published = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
+    let draft = harness.seed_application(actor_user_id(), "Draft Workflow");
+    let repository = harness.repository();
+
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: published.id,
+            mapping: workflow_extension_mapping("open-ticket-cross-table"),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let error = ApplicationApiMappingService::new(repository)
+        .replace_mapping(ReplaceApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: draft.id,
+            mapping: workflow_extension_mapping("open-ticket-cross-table"),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("extension_slug"));
+}
+
+#[tokio::test]
 async fn application_public_api_publish_updates_current_publication_record() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Support Bot");
@@ -907,6 +935,34 @@ async fn application_public_api_publish_rejects_duplicate_extension_slug() {
             actor_user_id: actor_user_id(),
             application_id: second.id,
             mapping: workflow_extension_mapping("open-ticket-publish-conflict"),
+            api_enabled: true,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("extension_slug"));
+}
+
+#[tokio::test]
+async fn application_public_api_publish_rejects_extension_slug_used_by_saved_mapping() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let draft = harness.seed_application(actor_user_id(), "Draft Workflow");
+    let published = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
+    let repository = harness.repository();
+
+    ApplicationApiMappingService::new(repository.clone())
+        .replace_mapping(ReplaceApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: draft.id,
+            mapping: workflow_extension_mapping("open-ticket-cross-table-publish"),
+        })
+        .await
+        .unwrap();
+    let error = ApplicationPublicationService::new(repository)
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: published.id,
+            mapping: workflow_extension_mapping("open-ticket-cross-table-publish"),
             api_enabled: true,
         })
         .await

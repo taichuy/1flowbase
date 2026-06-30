@@ -16,10 +16,10 @@ use crate::{
         build_compiled_plan_input, flow_document_hash, flow_document_schema_version,
     },
     ports::{
-        ApplicationCompileContextRepository, ApplicationCompiledPlanRepository,
-        ApplicationJsDependencySelectionRepository, ApplicationPublicationRepository,
-        ApplicationRepository, CreateApplicationPublicationVersionInput, FlowRepository,
-        SetApplicationApiEnabledInput,
+        ApplicationApiMappingRepository, ApplicationCompileContextRepository,
+        ApplicationCompiledPlanRepository, ApplicationJsDependencySelectionRepository,
+        ApplicationPublicationRepository, ApplicationRepository,
+        CreateApplicationPublicationVersionInput, FlowRepository, SetApplicationApiEnabledInput,
     },
 };
 
@@ -118,6 +118,7 @@ where
     ) -> Result<ApplicationPublicationVersionRecord>
     where
         R: ApplicationPublicationRepository
+            + ApplicationApiMappingRepository
             + ApplicationCompiledPlanRepository
             + ApplicationCompileContextRepository
             + ApplicationJsDependencySelectionRepository
@@ -144,6 +145,15 @@ where
                 .await?
             {
                 if existing_publication.application_id != application.id {
+                    return Err(ControlPlaneError::Conflict("extension_slug").into());
+                }
+            }
+            if let Some(existing_application_id) = self
+                .repository
+                .load_application_api_mapping_application_id_by_extension_slug(slug)
+                .await?
+            {
+                if existing_application_id != application.id {
                     return Err(ControlPlaneError::Conflict("extension_slug").into());
                 }
             }

@@ -8,7 +8,8 @@ use crate::{
         ensure_application_edit_permission, ensure_application_view_permission,
     },
     ports::{
-        ApplicationApiMappingRepository, ApplicationRepository, ReplaceApplicationApiMappingInput,
+        ApplicationApiMappingRepository, ApplicationPublicationRepository, ApplicationRepository,
+        ReplaceApplicationApiMappingInput,
     },
 };
 
@@ -31,7 +32,7 @@ pub struct ApplicationApiMappingService<R> {
 
 impl<R> ApplicationApiMappingService<R>
 where
-    R: ApplicationRepository + ApplicationApiMappingRepository,
+    R: ApplicationRepository + ApplicationApiMappingRepository + ApplicationPublicationRepository,
 {
     pub fn new(repository: R) -> Self {
         Self { repository }
@@ -81,6 +82,15 @@ where
                 .await?
             {
                 if existing_application_id != application.id {
+                    return Err(ControlPlaneError::Conflict("extension_slug").into());
+                }
+            }
+            if let Some(existing_publication) = self
+                .repository
+                .load_active_application_publication_by_extension_slug(slug)
+                .await?
+            {
+                if existing_publication.application_id != application.id {
                     return Err(ControlPlaneError::Conflict("extension_slug").into());
                 }
             }
