@@ -30,9 +30,19 @@ function manualChunks(id: string) {
   }
 }
 
+function parseAllowedHosts(value?: string) {
+  const hosts = String(value || '')
+    .split(',')
+    .map((host) => host.trim())
+    .filter(Boolean);
+
+  return hosts.length > 0 ? hosts : undefined;
+}
+
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
   const devServerPort = Number.parseInt(env.VITE_DEV_SERVER_PORT || '3100', 10);
+  const devAllowedHosts = parseAllowedHosts(env.VITE_DEV_ALLOWED_HOSTS);
   const apiProxyTarget = (
     env.VITE_API_PROXY_TARGET ||
     env.VITE_API_BASE_URL ||
@@ -73,6 +83,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
+      ...(devAllowedHosts ? { allowedHosts: devAllowedHosts } : {}),
       port: Number.isInteger(devServerPort) && devServerPort > 0 ? devServerPort : 3100,
       strictPort: true,
       fs: {
