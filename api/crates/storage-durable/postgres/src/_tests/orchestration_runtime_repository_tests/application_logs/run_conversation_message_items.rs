@@ -670,7 +670,7 @@ async fn non_terminal_run_has_no_projection_but_returns_bounded_current_item() {
 }
 
 #[tokio::test]
-async fn terminal_projection_missing_falls_back_to_current_item_without_projection_rows() {
+async fn terminal_projection_missing_rebuilds_conversation_message_projection() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -685,7 +685,12 @@ async fn terminal_projection_missing_falls_back_to_current_item_without_projecti
         started_at,
         json!({
             "node-start": {
-                "query": "historical question"
+                "system": "Use the recovered system prompt.",
+                "query": "historical question",
+                "history": [
+                    { "role": "user", "content": "old question" },
+                    { "role": "assistant", "content": "old answer" }
+                ]
             }
         }),
     )
@@ -723,20 +728,30 @@ async fn terminal_projection_missing_falls_back_to_current_item_without_projecti
         )
         .await
         .unwrap();
-    assert_eq!(projection_page.total_count, 0);
-
-    let current_item =
-        <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_conversation_current_item(
-            &store,
-            seeded.application_id,
-            run.id,
-        )
-        .await
-        .unwrap()
-        .expect("terminal historical run should use bounded current fallback");
-    assert_eq!(current_item.status, "succeeded");
-    assert_eq!(current_item.query.as_deref(), Some("historical question"));
-    assert_eq!(current_item.answer.as_deref(), Some("historical answer"));
+    assert_eq!(projection_page.total_count, 4);
+    assert_eq!(
+        projection_page
+            .items
+            .iter()
+            .map(|item| (
+                item.display_sequence,
+                item.role.as_deref(),
+                item.content.as_deref(),
+                item.is_current,
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                0,
+                Some("system"),
+                Some("Use the recovered system prompt."),
+                false,
+            ),
+            (1, Some("user"), Some("old question"), false),
+            (2, Some("assistant"), Some("old answer"), false),
+            (3, None, None, true),
+        ]
+    );
 }
 
 async fn seed_run_conversation_flow_run(
