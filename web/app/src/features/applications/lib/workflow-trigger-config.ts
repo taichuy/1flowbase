@@ -1,7 +1,10 @@
+import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
+
 import type {
   ApplicationApiMapping,
   WorkflowScheduleTriggerInput
 } from '../api/public-api';
+import { getStartInputFields } from '../../agent-flow/lib/variables/start-node-variables';
 
 export type WorkflowTriggerType = 'extension' | 'schedule';
 export type WorkflowExtensionHttpMethod =
@@ -23,6 +26,11 @@ export interface WorkflowExtensionParameterFormValue {
   source: WorkflowExtensionParameterSource;
   name: string;
   target: string;
+}
+
+export interface WorkflowExtensionTargetOption {
+  value: string;
+  label: string;
 }
 
 export interface WorkflowTriggerFormValues {
@@ -163,6 +171,41 @@ export function createWorkflowTriggerValuesFromMapping(
 
 export function parseWorkflowScheduleInputPayload(value: string): unknown {
   return JSON.parse(value.trim() || '{}');
+}
+
+export function createWorkflowExtensionTargetOptions(
+  document: FlowAuthoringDocument
+): WorkflowExtensionTargetOption[] {
+  const startNode = document.graph.nodes.find(
+    (node) => node.type === 'workflow_start'
+  );
+
+  if (!startNode) {
+    return [];
+  }
+
+  return getStartInputFields(startNode).map((field) => {
+    const value = `${startNode.id}.${field.key}`;
+
+    return {
+      value,
+      label: `${field.label} · ${value}`
+    };
+  });
+}
+
+export function findInvalidWorkflowExtensionParameterTargets(
+  mapping: ApplicationApiMapping | null | undefined,
+  targetOptions: WorkflowExtensionTargetOption[]
+) {
+  const allowedTargets = new Set(targetOptions.map((option) => option.value));
+
+  return (
+    mapping?.extension?.parameters
+      .map((parameter) => parameter.target.trim())
+      .filter((target) => target.length > 0 && !allowedTargets.has(target)) ??
+    []
+  );
 }
 
 function normalizeWorkflowExtensionParameters(

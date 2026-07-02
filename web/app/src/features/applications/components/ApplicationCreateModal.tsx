@@ -4,16 +4,10 @@ import { useTranslation } from 'react-i18next';
 
 import { SchemaModalPanel } from '../../../shared/schema-ui/overlay-shell/SchemaModalPanel';
 import { applicationsQueryKey, createApplication } from '../api/applications';
-import {
-  saveApplicationApiMapping,
-  saveWorkflowScheduleTrigger
-} from '../api/public-api';
-import { WorkflowTriggerFormFields } from './workflow/WorkflowTriggerFormFields';
+import { WorkflowTriggerTypeField } from './workflow/WorkflowTriggerFormFields';
 import {
   DEFAULT_WORKFLOW_TRIGGER_VALUES,
-  createDefaultWorkflowApiMapping,
-  createWorkflowScheduleTriggerInput,
-  type WorkflowTriggerFormValues
+  type WorkflowTriggerType
 } from '../lib/workflow-trigger-config';
 
 interface ApplicationCreateModalProps {
@@ -27,15 +21,7 @@ interface ApplicationCreateFormValues {
   application_type: 'agent_flow' | 'workflow';
   name: string;
   description: string;
-  trigger_type: WorkflowTriggerFormValues['trigger_type'];
-  extension_slug: WorkflowTriggerFormValues['extension_slug'];
-  extension_method: WorkflowTriggerFormValues['extension_method'];
-  extension_response_mode: WorkflowTriggerFormValues['extension_response_mode'];
-  extension_parameters: WorkflowTriggerFormValues['extension_parameters'];
-  schedule_enabled: WorkflowTriggerFormValues['schedule_enabled'];
-  schedule_cron: WorkflowTriggerFormValues['schedule_cron'];
-  schedule_timezone: WorkflowTriggerFormValues['schedule_timezone'];
-  schedule_input_payload: WorkflowTriggerFormValues['schedule_input_payload'];
+  trigger_type: WorkflowTriggerType;
 }
 
 const applicationCreateShell = {
@@ -67,22 +53,6 @@ export function ApplicationCreateModal({
         csrfToken
       );
 
-      if (values.application_type === 'workflow') {
-        if (values.trigger_type === 'schedule') {
-          await saveWorkflowScheduleTrigger(
-            created.id,
-            createWorkflowScheduleTriggerInput(values),
-            csrfToken
-          );
-        } else {
-          await saveApplicationApiMapping(
-            created.id,
-            createDefaultWorkflowApiMapping(values),
-            csrfToken
-          );
-        }
-      }
-
       return created;
     },
     onSuccess: async (created) => {
@@ -96,13 +66,7 @@ export function ApplicationCreateModal({
     Form.useWatch('application_type', form) ??
     form.getFieldValue('application_type') ??
     'agent_flow';
-  const triggerType =
-    Form.useWatch('trigger_type', form) ??
-    form.getFieldValue('trigger_type') ??
-    'extension';
   const isWorkflow = applicationType === 'workflow';
-  const isExtensionTrigger = isWorkflow && triggerType === 'extension';
-  const isScheduleTrigger = isWorkflow && triggerType === 'schedule';
 
   return (
     <SchemaModalPanel
@@ -117,7 +81,7 @@ export function ApplicationCreateModal({
           application_type: 'agent_flow',
           name: '',
           description: '',
-          ...DEFAULT_WORKFLOW_TRIGGER_VALUES
+          trigger_type: DEFAULT_WORKFLOW_TRIGGER_VALUES.trigger_type
         }}
         onFinish={(values) => mutation.mutate(values)}
       >
@@ -125,14 +89,16 @@ export function ApplicationCreateModal({
           <Alert
             type="error"
             showIcon
-            message={t('auto.workflow_trigger_configuration_failed')}
+            message={t('auto.create_application_failed')}
             description={formatMutationError(mutation.error)}
           />
         ) : null}
         <Form.Item label={t('auto.type')} name="application_type">
           <Radio.Group>
             <Space direction="vertical" size="small">
-              <Radio value="agent_flow">{t('auto.application_type_agent_flow')}</Radio>
+              <Radio value="agent_flow">
+                {t('auto.application_type_agent_flow')}
+              </Radio>
               <Radio value="workflow">
                 {t('auto.application_type_workflow')}
               </Radio>
@@ -140,13 +106,7 @@ export function ApplicationCreateModal({
           </Radio.Group>
         </Form.Item>
 
-        {isWorkflow ? (
-          <WorkflowTriggerFormFields
-            isExtensionTrigger={isExtensionTrigger}
-            isScheduleTrigger={isScheduleTrigger}
-            t={t}
-          />
-        ) : null}
+        {isWorkflow ? <WorkflowTriggerTypeField t={t} /> : null}
 
         <Form.Item
           label={t('auto.name')}
@@ -161,7 +121,8 @@ export function ApplicationCreateModal({
         </Form.Item>
 
         <Button type="primary" htmlType="submit" loading={mutation.isPending}>
-          {t('auto.create_application')}</Button>
+          {t('auto.create_application')}
+        </Button>
       </Form>
     </SchemaModalPanel>
   );
