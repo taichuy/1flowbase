@@ -64,7 +64,11 @@ describe('ApplicationCreateModal', () => {
     expect(screen.getByRole('radio', { name: /Workflow/i })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('radio', { name: /Workflow/i }));
-    fireEvent.click(screen.getByRole('radio', { name: '定时触发' }));
+    const triggerTypeSelect = screen.getByRole('combobox', {
+      name: '触发器类型'
+    });
+    fireEvent.mouseDown(triggerTypeSelect);
+    fireEvent.click(await screen.findByText('定时触发'));
     expect(
       screen.queryByRole('textbox', { name: '接口 slug' })
     ).not.toBeInTheDocument();

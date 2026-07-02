@@ -5,7 +5,8 @@ import {
   WORKFLOW_EXTENSION_PARAMETER_SOURCES,
   parseWorkflowScheduleInputPayload,
   type WorkflowExtensionParameterSource,
-  type WorkflowExtensionTargetOption
+  type WorkflowExtensionTargetOption,
+  type WorkflowTriggerType
 } from '../../lib/workflow-trigger-config';
 
 interface WorkflowTriggerFormFieldsProps {
@@ -22,16 +23,18 @@ export function WorkflowTriggerTypeField({
 }) {
   return (
     <Form.Item label={t('auto.workflow_trigger_type')} name="trigger_type">
-      <Radio.Group>
-        <Space direction="vertical" size="small">
-          <Radio value="extension">
-            {t('auto.workflow_trigger_type_extension')}
-          </Radio>
-          <Radio value="schedule">
-            {t('auto.workflow_trigger_type_schedule')}
-          </Radio>
-        </Space>
-      </Radio.Group>
+      <Select<WorkflowTriggerType>
+        options={[
+          {
+            value: 'extension',
+            label: t('auto.workflow_trigger_type_extension')
+          },
+          {
+            value: 'schedule',
+            label: t('auto.workflow_trigger_type_schedule')
+          }
+        ]}
+      />
     </Form.Item>
   );
 }
