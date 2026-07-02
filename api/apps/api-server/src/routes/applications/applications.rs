@@ -33,6 +33,7 @@ use crate::{
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApplicationBody {
     pub application_type: String,
+    pub workflow_trigger_type: Option<String>,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,
@@ -192,6 +193,7 @@ pub struct ApplicationSectionsResponse {
 pub struct ApplicationDetailResponse {
     pub id: String,
     pub application_type: String,
+    pub workflow_trigger_type: Option<String>,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,
@@ -356,6 +358,9 @@ fn to_application_detail(application: domain::ApplicationRecord) -> ApplicationD
     ApplicationDetailResponse {
         id: application.id.to_string(),
         application_type: application.application_type.as_str().to_string(),
+        workflow_trigger_type: application
+            .workflow_trigger_type
+            .map(|value| value.as_str().to_string()),
         name: application.name,
         description: application.description,
         icon: application.icon,
@@ -377,6 +382,21 @@ fn parse_application_type(value: &str) -> Result<domain::ApplicationType, ApiErr
         "agent_flow" => Ok(domain::ApplicationType::AgentFlow),
         "workflow" => Ok(domain::ApplicationType::Workflow),
         _ => Err(ControlPlaneError::InvalidInput("application_type").into()),
+    }
+}
+
+fn parse_workflow_trigger_type(
+    application_type: domain::ApplicationType,
+    value: Option<&str>,
+) -> Result<Option<domain::WorkflowTriggerType>, ApiError> {
+    match application_type {
+        domain::ApplicationType::AgentFlow => Ok(None),
+        domain::ApplicationType::Workflow => {
+            let raw = value.unwrap_or("extension");
+            domain::WorkflowTriggerType::parse(raw)
+                .map(Some)
+                .ok_or_else(|| ControlPlaneError::InvalidInput("workflow_trigger_type").into())
+        }
     }
 }
 
@@ -452,10 +472,14 @@ pub async fn create_application(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
+    let application_type = parse_application_type(&body.application_type)?;
+    let workflow_trigger_type =
+        parse_workflow_trigger_type(application_type, body.workflow_trigger_type.as_deref())?;
     let created = ApplicationService::new(state.store.clone())
         .create_application(CreateApplicationCommand {
             actor_user_id: context.user.id,
-            application_type: parse_application_type(&body.application_type)?,
+            application_type,
+            workflow_trigger_type,
             name: body.name,
             description: body.description,
             icon: body.icon,

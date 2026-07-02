@@ -176,6 +176,10 @@ export function AgentFlowNodeCard({
         return getNodeDefinitionMeta(data.nodeType);
       }
 
+      if (key === 'workflowTriggerContext') {
+        return data.workflowTriggerContext ?? null;
+      }
+
       return null;
     },
     dispatch: () => undefined

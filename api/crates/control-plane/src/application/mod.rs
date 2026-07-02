@@ -23,6 +23,7 @@ use crate::{
 pub struct CreateApplicationCommand {
     pub actor_user_id: Uuid,
     pub application_type: domain::ApplicationType,
+    pub workflow_trigger_type: Option<domain::WorkflowTriggerType>,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,
@@ -98,6 +99,10 @@ where
                 actor_user_id: command.actor_user_id,
                 workspace_id: actor.current_workspace_id,
                 application_type: command.application_type,
+                workflow_trigger_type: create_application_workflow_trigger_type(
+                    command.application_type,
+                    command.workflow_trigger_type,
+                ),
                 name: command.name,
                 description: command.description,
                 icon: command.icon,
@@ -114,6 +119,7 @@ where
                 "application.created",
                 serde_json::json!({
                     "application_type": created.application_type.as_str(),
+                    "workflow_trigger_type": created.workflow_trigger_type.map(|value| value.as_str()),
                     "name": created.name,
                 }),
             ))
@@ -580,6 +586,7 @@ impl InMemoryApplicationRepository {
                 actor_user_id,
                 workspace_id: inner.workspace_id,
                 application_type: domain::ApplicationType::AgentFlow,
+                workflow_trigger_type: None,
                 name: name.to_string(),
                 description: String::new(),
                 icon: None,
@@ -966,6 +973,7 @@ fn build_application_record(id: Uuid, input: CreateApplicationInput) -> domain::
         id,
         workspace_id: input.workspace_id,
         application_type: input.application_type,
+        workflow_trigger_type: input.workflow_trigger_type,
         name: input.name,
         description: input.description,
         icon: input.icon,
@@ -975,6 +983,18 @@ fn build_application_record(id: Uuid, input: CreateApplicationInput) -> domain::
         updated_at: time::OffsetDateTime::now_utc(),
         tags: Vec::new(),
         sections: planned_sections(input.application_type),
+    }
+}
+
+fn create_application_workflow_trigger_type(
+    application_type: domain::ApplicationType,
+    workflow_trigger_type: Option<domain::WorkflowTriggerType>,
+) -> Option<domain::WorkflowTriggerType> {
+    match application_type {
+        domain::ApplicationType::AgentFlow => None,
+        domain::ApplicationType::Workflow => {
+            Some(workflow_trigger_type.unwrap_or(domain::WorkflowTriggerType::Extension))
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use domain::{
     ApplicationApiSection, ApplicationRecord, ApplicationSections, ApplicationTag, ApplicationType,
+    WorkflowTriggerType,
 };
 use serde_json::Value;
 use time::OffsetDateTime;
@@ -13,6 +14,7 @@ pub struct StoredApplicationRow {
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub application_type: String,
+    pub workflow_trigger_type: Option<String>,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,
@@ -34,11 +36,17 @@ pub struct PgApplicationMapper;
 impl PgApplicationMapper {
     pub fn to_application_record(row: StoredApplicationRow) -> Result<ApplicationRecord> {
         let application_type = parse_application_type(&row.application_type)?;
+        let workflow_trigger_type = row
+            .workflow_trigger_type
+            .as_deref()
+            .map(parse_workflow_trigger_type)
+            .transpose()?;
 
         Ok(ApplicationRecord {
             id: row.id,
             workspace_id: row.workspace_id,
             application_type,
+            workflow_trigger_type,
             name: row.name,
             description: row.description,
             icon: row.icon,
@@ -60,6 +68,11 @@ impl PgApplicationMapper {
             ),
         })
     }
+}
+
+pub fn parse_workflow_trigger_type(value: &str) -> Result<WorkflowTriggerType> {
+    WorkflowTriggerType::parse(value)
+        .ok_or_else(|| anyhow!("unknown workflow_trigger_type: {value}"))
 }
 
 #[derive(Debug, Clone, Copy)]

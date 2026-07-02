@@ -3,6 +3,7 @@ import type { EdgeTypes, Node, NodeTypes } from '@xyflow/react';
 
 import type { CanvasNodeSchema } from '../../../../shared/schema-ui/contracts/canvas-node-schema';
 import type { NodePickerOption } from '../../lib/plugin-node-definitions';
+import type { WorkflowTriggerContext } from '../../lib/workflow-trigger-context';
 import { AgentFlowNodeCard } from '../nodes/AgentFlowNodeCard';
 import { AgentFlowCustomEdge, type AgentFlowCanvasEdge } from './custom-edge';
 
@@ -23,6 +24,7 @@ export interface AgentFlowCanvasNodeData extends Record<string, unknown> {
   toolSourceHandles: Array<{ id: string; title: string }>;
   pickerSourceHandleId: string | null;
   isContainer: boolean;
+  workflowTriggerContext?: WorkflowTriggerContext | null;
   nodePickerOptions: NodePickerOption[];
   onOpenPicker: (nodeId: string, sourceHandleId?: string | null) => void;
   onClosePicker: () => void;

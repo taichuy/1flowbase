@@ -2,11 +2,12 @@ import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
 import type {
   ApplicationApiMapping,
+  WorkflowScheduleTrigger,
   WorkflowScheduleTriggerInput
 } from '../api/public-api';
 import { getStartInputFields } from '../../agent-flow/lib/variables/start-node-variables';
 
-export type WorkflowTriggerType = 'extension' | 'schedule';
+export type WorkflowTriggerType = 'extension' | 'schedule' | 'manual';
 export type WorkflowExtensionHttpMethod =
   | 'GET'
   | 'POST'
@@ -57,6 +58,11 @@ export const WORKFLOW_EXTENSION_HTTP_METHODS: WorkflowExtensionHttpMethod[] = [
 
 export const WORKFLOW_EXTENSION_PARAMETER_SOURCES: WorkflowExtensionParameterSource[] =
   ['path', 'query', 'form', 'body'];
+export const WORKFLOW_TRIGGER_TYPES: WorkflowTriggerType[] = [
+  'extension',
+  'schedule',
+  'manual'
+];
 
 export const DEFAULT_WORKFLOW_TRIGGER_VALUES: WorkflowTriggerFormValues = {
   trigger_type: 'extension',
@@ -166,6 +172,37 @@ export function createWorkflowTriggerValuesFromMapping(
         : DEFAULT_WORKFLOW_TRIGGER_VALUES.extension_parameters.map(
             (parameter) => ({ ...parameter })
           )
+  };
+}
+
+export function createWorkflowTriggerValuesFromContext({
+  triggerType,
+  mapping,
+  schedule
+}: {
+  triggerType: WorkflowTriggerType;
+  mapping: ApplicationApiMapping | null | undefined;
+  schedule: WorkflowScheduleTrigger | null | undefined;
+}): WorkflowTriggerFormValues {
+  const extensionValues = createWorkflowTriggerValuesFromMapping(mapping);
+
+  return {
+    ...extensionValues,
+    trigger_type: triggerType,
+    schedule_enabled:
+      schedule?.enabled ?? DEFAULT_WORKFLOW_TRIGGER_VALUES.schedule_enabled,
+    schedule_cron:
+      schedule?.cron ?? DEFAULT_WORKFLOW_TRIGGER_VALUES.schedule_cron,
+    schedule_timezone:
+      schedule?.timezone ?? DEFAULT_WORKFLOW_TRIGGER_VALUES.schedule_timezone,
+    schedule_input_payload: JSON.stringify(
+      schedule?.input_payload ??
+        parseWorkflowScheduleInputPayload(
+          DEFAULT_WORKFLOW_TRIGGER_VALUES.schedule_input_payload
+        ),
+      null,
+      2
+    )
   };
 }
 

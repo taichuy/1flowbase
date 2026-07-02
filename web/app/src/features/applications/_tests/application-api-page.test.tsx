@@ -79,6 +79,7 @@ const mapping = {
 const application: ApplicationDetail = {
   id: 'app-1',
   application_type: 'agent_flow',
+  workflow_trigger_type: null,
   name: 'Support Agent',
   description: 'customer support',
   icon: null,

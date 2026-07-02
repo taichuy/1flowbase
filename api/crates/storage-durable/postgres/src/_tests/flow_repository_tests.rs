@@ -99,6 +99,7 @@ async fn seed_agent_flow_application(
             actor_user_id,
             workspace_id,
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Support Agent".into(),
             description: "customer support".into(),
             icon: None,

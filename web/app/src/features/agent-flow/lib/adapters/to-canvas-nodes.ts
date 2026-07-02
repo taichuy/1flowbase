@@ -61,6 +61,7 @@ export function toCanvasNodes(
     | 'onDeleteNode'
   > & {
     nodePickerOptions: NodePickerOption[];
+    workflowTriggerContext?: AgentFlowCanvasNodeData['workflowTriggerContext'];
   }
 ): AgentFlowCanvasNode[] {
   return document.graph.nodes
@@ -106,6 +107,7 @@ export function toCanvasNodes(
           branchSourceHandles,
           toolSourceHandles,
           isContainer: node.type === 'iteration' || node.type === 'loop',
+          workflowTriggerContext: actions.workflowTriggerContext ?? null,
           ...actions
         }
       };

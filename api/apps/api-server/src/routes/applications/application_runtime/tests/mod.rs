@@ -31,6 +31,7 @@ fn test_application_record() -> domain::ApplicationRecord {
         id: Uuid::now_v7(),
         workspace_id: Uuid::now_v7(),
         application_type: domain::ApplicationType::AgentFlow,
+        workflow_trigger_type: None,
         name: "Support Agent".to_string(),
         description: "runtime".to_string(),
         icon: None,

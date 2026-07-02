@@ -36,6 +36,7 @@ import type { NodeLastRun } from '../api/runtime';
 import { getAgentFlowNodeTypeIcon } from '../lib/node-type-icons';
 import { getBuiltinNodeRuntimeContract } from '../lib/node-definitions/contracts';
 import { getLlmExternalReasoningPolicy } from '../lib/llm-node-config';
+import type { WorkflowTriggerContext } from '../lib/workflow-trigger-context';
 import { i18nText } from '../../../shared/i18n/text';
 
 function getNode(adapter: SchemaViewRendererProps['adapter']) {
@@ -78,14 +79,17 @@ function renderSummaryView({ adapter, block }: SchemaViewRendererProps) {
           <Typography.Link href={meta.helpHref} target="_blank">
             <Space size={4}>
               <BookOutlined />
-              {i18nText("agentFlow", "auto.help_documentation")}</Space>
+              {i18nText('agentFlow', 'auto.help_documentation')}
+            </Space>
           </Typography.Link>
         ) : null
       }
-      title={block.title ?? i18nText("agentFlow", "auto.node_description")}
+      title={block.title ?? i18nText('agentFlow', 'auto.node_description')}
     >
       <Typography.Paragraph>
-        {meta?.summary ?? node.description ?? i18nText("agentFlow", "auto.node_description_yet")}
+        {meta?.summary ??
+          node.description ??
+          i18nText('agentFlow', 'auto.node_description_yet')}
       </Typography.Paragraph>
     </Card>
   );
@@ -121,11 +125,56 @@ function renderCardModelView({ adapter }: SchemaViewRendererProps) {
   return <LlmCardModelBadge node={node} />;
 }
 
+function createWorkflowStartTriggerSummary(
+  context: WorkflowTriggerContext | null | undefined
+) {
+  if (!context?.triggerType) {
+    return i18nText('applications', 'auto.workflow_trigger_not_configured');
+  }
+
+  if (context.triggerType === 'manual') {
+    return i18nText('applications', 'auto.workflow_trigger_type_manual');
+  }
+
+  if (context.triggerType === 'schedule') {
+    const schedule = context.schedule;
+
+    if (!schedule) {
+      return i18nText('applications', 'auto.workflow_trigger_not_configured');
+    }
+
+    const status = schedule.enabled
+      ? i18nText('applications', 'auto.workflow_schedule_enabled')
+      : i18nText('applications', 'auto.workflow_schedule_disabled');
+
+    return `${status} · ${schedule.cron} · ${schedule.timezone}`;
+  }
+
+  const extension = context.mapping?.extension;
+
+  return extension
+    ? `${extension.method} /api/ex/${extension.slug}`
+    : i18nText('applications', 'auto.workflow_trigger_not_configured');
+}
+
 function renderCardDescriptionView({ adapter }: SchemaViewRendererProps) {
   const node = getNode(adapter);
 
   if (!node || node.type === 'llm') {
     return null;
+  }
+
+  if (node.type === 'workflow_start') {
+    const context = adapter.getDerived('workflowTriggerContext') as
+      | WorkflowTriggerContext
+      | null
+      | undefined;
+
+    return (
+      <div className="agent-flow-node-card__description">
+        {createWorkflowStartTriggerSummary(context)}
+      </div>
+    );
   }
 
   const description = node.description?.trim();
@@ -138,7 +187,7 @@ function renderCardDescriptionView({ adapter }: SchemaViewRendererProps) {
     description ||
     contract?.card.description ||
     meta?.summary ||
-    i18nText("agentFlow", "auto.node_configuration_shown_here");
+    i18nText('agentFlow', 'auto.node_configuration_shown_here');
 
   return (
     <div className="agent-flow-node-card__description">{displayContent}</div>
@@ -161,7 +210,10 @@ function OutputContractView({ adapter, block }: SchemaViewRendererProps) {
     return null;
   }
 
-  const title = node.type === 'start' ? i18nText("agentFlow", "auto.input_field") : i18nText("agentFlow", "auto.output_variable");
+  const title =
+    node.type === 'start'
+      ? i18nText('agentFlow', 'auto.input_field')
+      : i18nText('agentFlow', 'auto.output_variable');
   return (
     <div className="agent-flow-node-detail__section">
       <div className="agent-flow-node-detail__section-header">
@@ -193,7 +245,10 @@ function OutputContractView({ adapter, block }: SchemaViewRendererProps) {
         outputs.length > 0 ? (
           <div className="agent-flow-node-detail__list">
             {outputs.map((output) => (
-              <div key={output.key} className="agent-flow-node-detail__list-item">
+              <div
+                key={output.key}
+                className="agent-flow-node-detail__list-item"
+              >
                 <div className="agent-flow-node-detail__list-item-left">
                   <span className="agent-flow-node-detail__list-item-icon">
                     {'{x}'}
@@ -209,7 +264,10 @@ function OutputContractView({ adapter, block }: SchemaViewRendererProps) {
             ))}
           </div>
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={i18nText("agentFlow", "auto.no_fields_yet")} />
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={i18nText('agentFlow', 'auto.no_fields_yet')}
+          />
         )
       ) : null}
     </div>
@@ -260,18 +318,27 @@ function PolicyGroupView({ adapter }: SchemaViewRendererProps) {
   const errorPolicyOptions = [
     {
       value: 'none',
-      label: i18nText("agentFlow", "auto.none"),
-      description: i18nText("agentFlow", "auto.exception_occurs_handled_node_stop_running")
+      label: i18nText('agentFlow', 'auto.none'),
+      description: i18nText(
+        'agentFlow',
+        'auto.exception_occurs_handled_node_stop_running'
+      )
     },
     {
       value: 'default_value',
-      label: i18nText("agentFlow", "auto.default_value"),
-      description: i18nText("agentFlow", "auto.specifies_output_content_exception_occurs")
+      label: i18nText('agentFlow', 'auto.default_value'),
+      description: i18nText(
+        'agentFlow',
+        'auto.specifies_output_content_exception_occurs'
+      )
     },
     {
       value: 'error_branch',
-      label: i18nText("agentFlow", "auto.abnormal_branch"),
-      description: i18nText("agentFlow", "auto.exception_occurs_exception_branch_executed")
+      label: i18nText('agentFlow', 'auto.abnormal_branch'),
+      description: i18nText(
+        'agentFlow',
+        'auto.exception_occurs_exception_branch_executed'
+      )
     }
   ] satisfies Array<{ value: string; label: string; description: string }>;
 
@@ -283,7 +350,7 @@ function PolicyGroupView({ adapter }: SchemaViewRendererProps) {
           data-testid="node-policy-row"
         >
           <Typography.Text className="agent-flow-node-detail__policy-label">
-            {i18nText("agentFlow", "auto.follow_external_reasoning")}
+            {i18nText('agentFlow', 'auto.follow_external_reasoning')}
             <Tooltip title="使用外部传入推理强度">
               <QuestionCircleOutlined
                 aria-label="使用外部传入推理强度"
@@ -292,7 +359,7 @@ function PolicyGroupView({ adapter }: SchemaViewRendererProps) {
             </Tooltip>
           </Typography.Text>
           <Switch
-            aria-label={i18nText("agentFlow", "auto.follow_external_reasoning")}
+            aria-label={i18nText('agentFlow', 'auto.follow_external_reasoning')}
             checked={externalReasoningPolicy.follow_external_reasoning}
             className="agent-flow-node-detail__policy-control"
             onChange={(checked) =>
@@ -308,9 +375,10 @@ function PolicyGroupView({ adapter }: SchemaViewRendererProps) {
         data-testid="node-policy-row"
       >
         <Typography.Text className="agent-flow-node-detail__policy-label">
-          {i18nText("agentFlow", "auto.retry_on_failure")}</Typography.Text>
+          {i18nText('agentFlow', 'auto.retry_on_failure')}
+        </Typography.Text>
         <Switch
-          aria-label={i18nText("agentFlow", "auto.retry_on_failure")}
+          aria-label={i18nText('agentFlow', 'auto.retry_on_failure')}
           checked={retryEnabled}
           className="agent-flow-node-detail__policy-control"
           onChange={(checked) =>
@@ -323,13 +391,14 @@ function PolicyGroupView({ adapter }: SchemaViewRendererProps) {
         data-testid="node-policy-row"
       >
         <Typography.Text className="agent-flow-node-detail__policy-label">
-          {i18nText("agentFlow", "auto.exception_handling")}</Typography.Text>
+          {i18nText('agentFlow', 'auto.exception_handling')}
+        </Typography.Text>
         <div
           className="agent-flow-node-detail__policy-select-shell agent-flow-node-detail__policy-select-shell--compact"
           data-testid="node-policy-error"
         >
           <Select
-            aria-label={i18nText("agentFlow", "auto.exception_handling")}
+            aria-label={i18nText('agentFlow', 'auto.exception_handling')}
             className="agent-flow-node-detail__policy-control agent-flow-node-detail__policy-select"
             options={errorPolicyOptions}
             optionRender={(option) => {
@@ -428,10 +497,11 @@ function renderRelationsView({ adapter, block }: SchemaViewRendererProps) {
         level={5}
         className="agent-flow-node-detail__section-title"
       >
-        {block.title ?? i18nText("agentFlow", "auto.next_step")}
+        {block.title ?? i18nText('agentFlow', 'auto.next_step')}
       </Typography.Title>
       <Typography.Text className="agent-flow-node-detail__section-subtitle">
-        {i18nText("agentFlow", "auto.add_next_node_workflow")}</Typography.Text>
+        {i18nText('agentFlow', 'auto.add_next_node_workflow')}
+      </Typography.Text>
       <div
         className="agent-flow-node-detail__relation-list"
         style={{ marginTop: 12 }}
@@ -458,7 +528,8 @@ function renderRelationsView({ adapter, block }: SchemaViewRendererProps) {
               adapter.dispatch('openNodePicker', { nodeId: node.id })
             }
           >
-            <PlusOutlined /> {i18nText("agentFlow", "auto.add_parallel_node")}</div>
+            <PlusOutlined /> {i18nText('agentFlow', 'auto.add_parallel_node')}
+          </div>
         </div>
       </div>
     </div>
@@ -472,7 +543,7 @@ function renderRuntimeSummaryView({ adapter }: SchemaViewRendererProps) {
     | undefined;
   const emptyDescription =
     (adapter.getDerived('lastRunEmptyDescription') as string | null) ??
-    i18nText("agentFlow", "auto.node_running_records_yet");
+    i18nText('agentFlow', 'auto.node_running_records_yet');
 
   return lastRun ? (
     <NodeRunSummaryCard lastRun={lastRun} />
@@ -487,9 +558,7 @@ function renderRuntimeIoView({ adapter }: SchemaViewRendererProps) {
     | null
     | undefined;
 
-  return lastRun ? (
-    <NodeRunIOCard lastRun={lastRun} />
-  ) : null;
+  return lastRun ? <NodeRunIOCard lastRun={lastRun} /> : null;
 }
 
 function renderRuntimeMetadataView({ adapter }: SchemaViewRendererProps) {
@@ -498,9 +567,7 @@ function renderRuntimeMetadataView({ adapter }: SchemaViewRendererProps) {
     | null
     | undefined;
 
-  return lastRun ? (
-    <NodeRunMetadataCard lastRun={lastRun} />
-  ) : null;
+  return lastRun ? <NodeRunMetadataCard lastRun={lastRun} /> : null;
 }
 
 export const agentFlowViewRenderers = {

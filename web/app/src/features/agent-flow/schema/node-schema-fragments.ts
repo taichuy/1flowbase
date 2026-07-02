@@ -51,7 +51,8 @@ const CONTRACT_FIELD_RENDERER_ALLOWLIST = new Set([
   'http_request_endpoint',
   'http_request_key_values',
   'http_request_body',
-  'http_request_curl_import'
+  'http_request_curl_import',
+  'workflow_trigger_config'
 ]);
 
 function createFieldBlock(field: NodeDefinitionField): SchemaFieldBlock {

@@ -6,6 +6,11 @@ use axum::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+async fn response_json(response: axum::response::Response) -> Value {
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    serde_json::from_slice(&body).unwrap()
+}
+
 #[tokio::test]
 async fn application_routes_create_list_and_detail() {
     let app = test_app().await;
@@ -40,6 +45,10 @@ async fn application_routes_create_list_and_detail() {
     let payload: Value =
         serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
     let application_id = payload["data"]["id"].as_str().unwrap();
+    assert_eq!(
+        payload["data"].get("workflow_trigger_type"),
+        Some(&Value::Null)
+    );
 
     let list = app
         .clone()
@@ -66,6 +75,102 @@ async fn application_routes_create_list_and_detail() {
         .await
         .unwrap();
     assert_eq!(detail.status(), StatusCode::OK);
+    let detail_payload = response_json(detail).await;
+    assert_eq!(
+        detail_payload["data"].get("workflow_trigger_type"),
+        Some(&Value::Null)
+    );
+}
+
+#[tokio::test]
+async fn application_routes_persist_workflow_trigger_type() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_type": "workflow",
+                        "workflow_trigger_type": "manual",
+                        "name": "Manual Workflow",
+                        "description": "manual workflow",
+                        "icon": "RobotOutlined",
+                        "icon_type": "iconfont",
+                        "icon_background": "#E6F7F2"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let create_payload = response_json(create).await;
+    let application_id = create_payload["data"]["id"].as_str().unwrap();
+    assert_eq!(
+        create_payload["data"]["workflow_trigger_type"].as_str(),
+        Some("manual")
+    );
+
+    let detail = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/console/applications/{application_id}"))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(detail.status(), StatusCode::OK);
+    let detail_payload = response_json(detail).await;
+    assert_eq!(
+        detail_payload["data"]["workflow_trigger_type"].as_str(),
+        Some("manual")
+    );
+}
+
+#[tokio::test]
+async fn application_routes_reject_invalid_workflow_trigger_type() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_type": "workflow",
+                        "workflow_trigger_type": "webhook",
+                        "name": "Invalid Workflow",
+                        "description": "invalid workflow",
+                        "icon": null,
+                        "icon_type": null,
+                        "icon_background": null
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(create.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

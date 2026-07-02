@@ -28,6 +28,7 @@ pub use application::{
     ApplicationApiSection, ApplicationEnvironmentVariable, ApplicationLogsSection,
     ApplicationMonitoringSection, ApplicationOrchestrationSection, ApplicationRecord,
     ApplicationSections, ApplicationTag, ApplicationTagCatalogEntry, ApplicationType,
+    WorkflowTriggerType,
 };
 pub use audit::AuditLogRecord;
 pub use auth::{

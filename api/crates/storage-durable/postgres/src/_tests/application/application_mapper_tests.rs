@@ -1,4 +1,4 @@
-use domain::{ApplicationType, RoleScopeKind};
+use domain::{ApplicationType, RoleScopeKind, WorkflowTriggerType};
 use serde_json::json;
 use storage_postgres::mappers::application_mapper::{
     parse_application_type, planned_sections, PgApplicationMapper, StoredApplicationRow,
@@ -23,6 +23,25 @@ fn parse_application_type_rejects_unknown_storage_value() {
     let error = parse_application_type("form").unwrap_err();
 
     assert_eq!(error.to_string(), "unknown application_type: form");
+}
+
+#[test]
+fn parse_workflow_trigger_type_accepts_known_storage_values() {
+    assert!(matches!(
+        storage_postgres::mappers::application_mapper::parse_workflow_trigger_type("extension")
+            .unwrap(),
+        WorkflowTriggerType::Extension
+    ));
+    assert!(matches!(
+        storage_postgres::mappers::application_mapper::parse_workflow_trigger_type("schedule")
+            .unwrap(),
+        WorkflowTriggerType::Schedule
+    ));
+    assert!(matches!(
+        storage_postgres::mappers::application_mapper::parse_workflow_trigger_type("manual")
+            .unwrap(),
+        WorkflowTriggerType::Manual
+    ));
 }
 
 #[test]
@@ -75,6 +94,7 @@ fn application_mapper_maps_tags_type_and_ready_sections() {
         id: application_id,
         workspace_id,
         application_type: "agent_flow".into(),
+        workflow_trigger_type: None,
         name: "Support Agent".into(),
         description: "Routes support requests".into(),
         icon: Some("sparkles".into()),
@@ -133,6 +153,7 @@ fn application_mapper_marks_api_section_active_when_key_mapping_and_publication_
         id: application_id,
         workspace_id: Uuid::now_v7(),
         application_type: "agent_flow".into(),
+        workflow_trigger_type: None,
         name: "Support Agent".into(),
         description: "Routes support requests".into(),
         icon: None,
