@@ -99,12 +99,14 @@ export function ApplicationDetailPage({
     requestedSectionKey === 'orchestration' ? (
       isWorkflow ? (
         <div className="workflow-orchestration-page">
-          <WorkflowTriggerConfigBar applicationId={applicationId} />
           <ApplicationSectionBoundary>
             <AgentFlowEditorPage
               applicationId={applicationId}
               applicationName={application.name}
               applicationType={application.application_type}
+              topSlot={
+                <WorkflowTriggerConfigBar applicationId={applicationId} />
+              }
             />
           </ApplicationSectionBoundary>
         </div>

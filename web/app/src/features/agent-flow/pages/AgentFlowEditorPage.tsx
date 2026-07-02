@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Result } from 'antd';
+import type { ReactNode } from 'react';
 
 import {
   ApiClientError,
@@ -24,11 +25,13 @@ import { i18nText } from '../../../shared/i18n/text';
 export function AgentFlowEditorPage({
   applicationId,
   applicationName,
-  applicationType = 'agent_flow'
+  applicationType = 'agent_flow',
+  topSlot
 }: {
   applicationId: string;
   applicationName: string;
   applicationType?: ConsoleApplicationType;
+  topSlot?: ReactNode;
 }) {
   const orchestrationQuery = useQuery({
     queryKey: orchestrationQueryKey(applicationId),
@@ -99,6 +102,7 @@ export function AgentFlowEditorPage({
       initialState={state}
       initialEnvironmentVariables={environmentVariablesQuery.data}
       nodeContributions={nodeContributions}
+      topSlot={topSlot}
     />
   );
 }

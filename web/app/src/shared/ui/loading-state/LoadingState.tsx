@@ -23,8 +23,8 @@ export function LoadingState({
     .join(' ');
 
   return (
-    <div className={classNames} role="status" aria-live="polite" aria-label="1flowbase">
-      <Spin spinning tip="1flowbase" size={compact ? 'default' : 'large'}>
+    <div className={classNames} role="status" aria-live="polite" aria-label="thinking">
+      <Spin spinning tip="thinking" size={compact ? 'default' : 'large'}>
         <div className="loading-state__surface" aria-hidden="true">
           <Skeleton
             active

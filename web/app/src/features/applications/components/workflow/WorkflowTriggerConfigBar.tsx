@@ -23,9 +23,13 @@ import {
   createDefaultWorkflowApiMapping,
   createWorkflowApiMappingWithoutExtension,
   createWorkflowScheduleTriggerInput,
+  createWorkflowExtensionTargetOptions,
   createWorkflowTriggerValuesFromMapping,
+  findInvalidWorkflowExtensionParameterTargets,
   type WorkflowTriggerFormValues
 } from '../../lib/workflow-trigger-config';
+import { useAgentFlowEditorStore } from '../../../agent-flow/store/editor/provider';
+import { selectWorkingDocument } from '../../../agent-flow/store/editor/selectors';
 import { WorkflowTriggerFormFields } from './WorkflowTriggerFormFields';
 import './workflow-trigger-config-bar.css';
 
@@ -39,6 +43,9 @@ export function WorkflowTriggerConfigBar({
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form] = Form.useForm<WorkflowTriggerFormValues>();
+  const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
+  const extensionTargetOptions =
+    createWorkflowExtensionTargetOptions(workingDocument);
   const mappingQuery = useQuery({
     queryKey: applicationApiMappingQueryKey(applicationId),
     queryFn: () => fetchApplicationApiMapping(applicationId)
@@ -108,6 +115,15 @@ export function WorkflowTriggerConfigBar({
     mutationFn: async () => {
       const mapping =
         mappingQuery.data ?? (await fetchApplicationApiMapping(applicationId));
+      const invalidTargets = findInvalidWorkflowExtensionParameterTargets(
+        mapping,
+        extensionTargetOptions
+      );
+
+      if (invalidTargets.length > 0) {
+        throw new Error(t('auto.workflow_parameter_target_invalid'));
+      }
+
       return publishApplicationApiVersion(applicationId, mapping, csrfToken);
     },
     onSuccess: () => {
@@ -126,10 +142,7 @@ export function WorkflowTriggerConfigBar({
     }
 
     form.setFieldsValue(
-      createWorkflowTriggerValues(
-        mappingQuery.data,
-        scheduleQuery.data ?? null
-      )
+      createWorkflowTriggerValues(mappingQuery.data, scheduleQuery.data ?? null)
     );
   }, [drawerOpen, form, mappingQuery.data, scheduleQuery.data]);
 
@@ -151,13 +164,15 @@ export function WorkflowTriggerConfigBar({
       </div>
       <Space wrap>
         <Button onClick={() => setDrawerOpen(true)}>
-          {t('auto.workflow_trigger_configuration')}</Button>
+          {t('auto.workflow_trigger_configuration')}
+        </Button>
         <Button
           type="primary"
           loading={publishMutation.isPending || mappingQuery.isLoading}
           onClick={() => publishMutation.mutate()}
         >
-          {t('auto.publish_current_version')}</Button>
+          {t('auto.publish_current_version')}
+        </Button>
       </Space>
       {publishMutation.isError ? (
         <Alert
@@ -191,6 +206,7 @@ export function WorkflowTriggerConfigBar({
           <WorkflowTriggerFormFields
             isExtensionTrigger={triggerType === 'extension'}
             isScheduleTrigger={triggerType === 'schedule'}
+            extensionTargetOptions={extensionTargetOptions}
             t={t}
           />
           <Button
@@ -198,7 +214,8 @@ export function WorkflowTriggerConfigBar({
             htmlType="submit"
             loading={saveMutation.isPending}
           >
-            {t('auto.save_changes')}</Button>
+            {t('auto.save_changes')}
+          </Button>
         </Form>
       </Drawer>
     </section>
@@ -220,7 +237,11 @@ function createWorkflowTriggerValues(
     schedule_enabled: schedule.enabled,
     schedule_cron: schedule.cron,
     schedule_timezone: schedule.timezone,
-    schedule_input_payload: JSON.stringify(schedule.input_payload ?? {}, null, 2)
+    schedule_input_payload: JSON.stringify(
+      schedule.input_payload ?? {},
+      null,
+      2
+    )
   };
 }
 

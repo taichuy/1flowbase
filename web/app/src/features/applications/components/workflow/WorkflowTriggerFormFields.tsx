@@ -1,33 +1,59 @@
-import { Button, Form, Input, Radio, Select, Space } from 'antd';
+import { Alert, Button, Form, Input, Radio, Select, Space } from 'antd';
 
 import {
   WORKFLOW_EXTENSION_HTTP_METHODS,
   WORKFLOW_EXTENSION_PARAMETER_SOURCES,
   parseWorkflowScheduleInputPayload,
-  type WorkflowExtensionParameterSource
+  type WorkflowExtensionParameterSource,
+  type WorkflowExtensionTargetOption,
+  type WorkflowTriggerType
 } from '../../lib/workflow-trigger-config';
+
+interface WorkflowTriggerFormFieldsProps {
+  isExtensionTrigger: boolean;
+  isScheduleTrigger: boolean;
+  extensionTargetOptions?: WorkflowExtensionTargetOption[];
+  t: (key: string, options?: Record<string, string>) => string;
+}
+
+export function WorkflowTriggerTypeField({
+  t
+}: {
+  t: (key: string) => string;
+}) {
+  return (
+    <Form.Item label={t('auto.workflow_trigger_type')} name="trigger_type">
+      <Select<WorkflowTriggerType>
+        options={[
+          {
+            value: 'extension',
+            label: t('auto.workflow_trigger_type_extension')
+          },
+          {
+            value: 'schedule',
+            label: t('auto.workflow_trigger_type_schedule')
+          }
+        ]}
+      />
+    </Form.Item>
+  );
+}
 
 export function WorkflowTriggerFormFields({
   isExtensionTrigger,
   isScheduleTrigger,
+  extensionTargetOptions = [],
   t
-}: {
-  isExtensionTrigger: boolean;
-  isScheduleTrigger: boolean;
-  t: (key: string, options?: Record<string, string>) => string;
-}) {
+}: WorkflowTriggerFormFieldsProps) {
+  const form = Form.useFormInstance();
+  const allowedTargets = new Set(
+    extensionTargetOptions.map((option) => option.value)
+  );
+  const hasExtensionTargets = extensionTargetOptions.length > 0;
+
   return (
     <>
-      <Form.Item label={t('auto.workflow_trigger_type')} name="trigger_type">
-        <Radio.Group>
-          <Space direction="vertical" size="small">
-            <Radio value="extension">
-              {t('auto.workflow_trigger_type_extension')}</Radio>
-            <Radio value="schedule">
-              {t('auto.workflow_trigger_type_schedule')}</Radio>
-          </Space>
-        </Radio.Group>
-      </Form.Item>
+      <WorkflowTriggerTypeField t={t} />
 
       {isExtensionTrigger ? (
         <>
@@ -68,12 +94,23 @@ export function WorkflowTriggerFormFields({
           >
             <Radio.Group>
               <Space wrap>
-                <Radio value="sync">{t('auto.workflow_response_mode_sync')}</Radio>
+                <Radio value="sync">
+                  {t('auto.workflow_response_mode_sync')}
+                </Radio>
                 <Radio value="async">
-                  {t('auto.workflow_response_mode_async')}</Radio>
+                  {t('auto.workflow_response_mode_async')}
+                </Radio>
               </Space>
             </Radio.Group>
           </Form.Item>
+
+          {!hasExtensionTargets ? (
+            <Alert
+              type="info"
+              showIcon
+              message={t('auto.workflow_start_input_targets_empty')}
+            />
+          ) : null}
 
           <Form.List name="extension_parameters">
             {(fields, { add, remove }) => (
@@ -109,22 +146,62 @@ export function WorkflowTriggerFormFields({
                     <Form.Item
                       label={t('auto.parameter_target')}
                       name={[field.name, 'target']}
+                      rules={[
+                        {
+                          validator: (_, value: string | undefined) => {
+                            const target = value?.trim() ?? '';
+                            const parameterName =
+                              (
+                                form.getFieldValue([
+                                  'extension_parameters',
+                                  field.name,
+                                  'name'
+                                ]) as string | undefined
+                              )?.trim() ?? '';
+
+                            if (target.length === 0) {
+                              return parameterName.length > 0
+                                ? Promise.reject(
+                                    new Error(
+                                      t(
+                                        'auto.workflow_parameter_target_required'
+                                      )
+                                    )
+                                  )
+                                : Promise.resolve();
+                            }
+
+                            return allowedTargets.has(target)
+                              ? Promise.resolve()
+                              : Promise.reject(
+                                  new Error(
+                                    t('auto.workflow_parameter_target_invalid')
+                                  )
+                                );
+                          }
+                        }
+                      ]}
                     >
-                      <Input style={{ width: 260 }} />
+                      <Select
+                        disabled={!hasExtensionTargets}
+                        style={{ width: 260 }}
+                        options={extensionTargetOptions}
+                      />
                     </Form.Item>
                     {fields.length > 1 ? (
                       <Button onClick={() => remove(field.name)}>
-                        {t('auto.remove_parameter')}</Button>
+                        {t('auto.remove_parameter')}
+                      </Button>
                     ) : null}
                   </Space>
                 ))}
                 <Button
                   type="dashed"
-                  onClick={() =>
-                    add({ source: 'query', name: '', target: '' })
-                  }
+                  disabled={!hasExtensionTargets}
+                  onClick={() => add({ source: 'query', name: '', target: '' })}
                 >
-                  {t('auto.add_parameter')}</Button>
+                  {t('auto.add_parameter')}
+                </Button>
               </Space>
             )}
           </Form.List>
@@ -183,7 +260,9 @@ export function WorkflowTriggerFormFields({
                     return Promise.resolve();
                   } catch {
                     return Promise.reject(
-                      new Error(t('auto.workflow_schedule_input_payload_invalid'))
+                      new Error(
+                        t('auto.workflow_schedule_input_payload_invalid')
+                      )
                     );
                   }
                 }

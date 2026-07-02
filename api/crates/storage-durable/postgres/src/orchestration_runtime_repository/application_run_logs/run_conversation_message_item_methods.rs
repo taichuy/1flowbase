@@ -159,20 +159,19 @@ impl PgControlPlaneStore {
         input: ListApplicationRunConversationMessageItemsPageInput,
     ) -> Result<control_plane::ports::ApplicationRunConversationMessageItemsPage> {
         let limit = input.limit.clamp(1, 50);
-        let total_count = sqlx::query_scalar::<_, i64>(
-            r#"
-            select count(*)::bigint
-            from application_run_conversation_message_items
-            where application_id = $1
-              and flow_run_id = $2
-              and projection_version = $3
-            "#,
-        )
-        .bind(application_id)
-        .bind(flow_run_id)
-        .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
-        .fetch_one(self.pool())
-        .await?;
+        let mut total_count = self
+            .application_run_conversation_message_items_count(application_id, flow_run_id)
+            .await?;
+        if total_count == 0 {
+            self.ensure_application_run_conversation_message_items_projection_for_read(
+                application_id,
+                flow_run_id,
+            )
+            .await?;
+            total_count = self
+                .application_run_conversation_message_items_count(application_id, flow_run_id)
+                .await?;
+        }
 
         let mut rows = if let Some(before_sequence) = input.before_sequence {
             let sql = run_conversation_message_items_select_sql(
@@ -295,6 +294,63 @@ impl PgControlPlaneStore {
                 })
                 .flatten(),
         })
+    }
+
+    async fn application_run_conversation_message_items_count(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<i64> {
+        sqlx::query_scalar::<_, i64>(
+            r#"
+            select count(*)::bigint
+            from application_run_conversation_message_items
+            where application_id = $1
+              and flow_run_id = $2
+              and projection_version = $3
+            "#,
+        )
+        .bind(application_id)
+        .bind(flow_run_id)
+        .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
+        .fetch_one(self.pool())
+        .await
+        .map_err(Into::into)
+    }
+
+    async fn ensure_application_run_conversation_message_items_projection_for_read(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<()> {
+        let Some(flow_run) = fetch_flow_run_for_application(self, application_id, flow_run_id).await?
+        else {
+            return Ok(());
+        };
+        if !is_terminal_application_run_log_status(flow_run.status) {
+            return Ok(());
+        }
+
+        let mut tx = self.pool().begin().await?;
+        let locked_flow_run_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            select id
+            from flow_runs
+            where application_id = $1
+              and id = $2
+            for update
+            "#,
+        )
+        .bind(application_id)
+        .bind(flow_run_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if locked_flow_run_id.is_some() {
+            Self::ensure_application_run_conversation_message_items_projection(&mut tx, &flow_run)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(())
     }
 
     async fn get_application_run_conversation_current_item(

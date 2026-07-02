@@ -790,10 +790,50 @@ function collectMigrationFiles({ repoRoot, migrationsDir = DEFAULT_MIGRATIONS_DI
   return files;
 }
 
+function collectMigrationVersionFindings({ repoRoot, files }) {
+  const byVersion = new Map();
+
+  for (const absolutePath of files) {
+    const relativePath = normalizePath(path.relative(repoRoot, absolutePath));
+    const fileName = path.basename(absolutePath);
+    const match = /^(\d+)_/u.exec(fileName);
+    if (!match) {
+      continue;
+    }
+
+    const version = match[1];
+    if (!byVersion.has(version)) {
+      byVersion.set(version, []);
+    }
+    byVersion.get(version).push(relativePath);
+  }
+
+  const findings = [];
+  for (const [version, relativePaths] of byVersion) {
+    if (relativePaths.length < 2) {
+      continue;
+    }
+
+    const message = `PostgreSQL migration version ${version} is used by multiple files: ${relativePaths.join(', ')}`;
+    findings.push({
+      severity: 'error',
+      rule: 'postgres-migration-version-duplicate',
+      file: relativePaths.join(', '),
+      version,
+      reason: message,
+      message,
+      action: actionForRule('postgres-migration-version-duplicate'),
+    });
+  }
+
+  return findings;
+}
+
 function collectSchemaInventory({ repoRoot = getRepoRoot(), migrationsDir = DEFAULT_MIGRATIONS_DIR } = {}) {
   const tables = new Map();
   const parseErrors = [];
   const files = collectMigrationFiles({ repoRoot, migrationsDir });
+  const migrationErrors = collectMigrationVersionFindings({ repoRoot, files });
 
   for (const absolutePath of files) {
     const relativePath = normalizePath(path.relative(repoRoot, absolutePath));
@@ -820,6 +860,7 @@ function collectSchemaInventory({ repoRoot = getRepoRoot(), migrationsDir = DEFA
       files: files.map((file) => normalizePath(path.relative(repoRoot, file))),
     },
     tables: [...tables.values()].sort((left, right) => left.name.localeCompare(right.name)),
+    migrationErrors,
     parseErrors,
   };
 }
@@ -862,6 +903,9 @@ function actionForRule(rule) {
   }
   if (rule.startsWith('managed-table-')) {
     return 'Add the missing physical schema property or add a concrete, reasoned exemption for a bounded special table.';
+  }
+  if (rule.startsWith('postgres-migration-')) {
+    return 'Give every PostgreSQL migration SQL file a unique leading version number before running sqlx migrations.';
   }
   if (rule.startsWith('unsupported-')) {
     return 'Extend schema-hygiene SQL parsing for this DDL shape or use live DB introspection for this case.';
@@ -1114,7 +1158,8 @@ function evaluateRegisteredSystemTableTemplate(table, config, exemption) {
 
 function evaluateSchemaHygiene({ inventory, config = {} }) {
   const normalizedConfig = normalizeConfig(config);
-  const findings = [...inventory.parseErrors];
+  const migrationErrors = inventory.migrationErrors || [];
+  const findings = [...migrationErrors, ...inventory.parseErrors];
   const tables = inventory.tables.map((table) => {
     const profile = profileForTable(table, normalizedConfig);
     const exemption = normalizedConfig.exemptions[table.name];
@@ -1173,6 +1218,7 @@ function evaluateSchemaHygiene({ inventory, config = {} }) {
       findings: findings.length,
       errors,
       warnings,
+      migrationErrors: migrationErrors.length,
       parseErrors: inventory.parseErrors.length,
       platformReadiness: {
         ok: tables.filter((table) => table.platformReadiness.severity === 'ok').length,

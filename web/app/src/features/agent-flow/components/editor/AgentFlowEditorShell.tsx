@@ -5,6 +5,7 @@ import type {
   ConsoleApplicationOrchestrationState,
   SaveConsoleApplicationDraftInput
 } from '@1flowbase/api-client';
+import type { ReactNode } from 'react';
 
 import './styles/index.css';
 import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
@@ -23,6 +24,7 @@ interface AgentFlowEditorShellProps {
   restoreVersionOverride?: (
     versionId: string
   ) => Promise<ConsoleApplicationOrchestrationState>;
+  topSlot?: ReactNode;
 }
 
 export function AgentFlowEditorShell({
@@ -33,10 +35,12 @@ export function AgentFlowEditorShell({
   initialEnvironmentVariables = [],
   nodeContributions = [],
   saveDraftOverride,
-  restoreVersionOverride
+  restoreVersionOverride,
+  topSlot
 }: AgentFlowEditorShellProps) {
   return (
     <AgentFlowEditorStoreProvider initialState={initialState}>
+      {topSlot}
       <AgentFlowCanvasFrame
         applicationId={applicationId}
         applicationName={applicationName}

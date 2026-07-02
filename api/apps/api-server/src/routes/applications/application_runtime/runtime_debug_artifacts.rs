@@ -33,9 +33,9 @@ pub(super) use payloads::{
     load_runtime_debug_artifact_response,
 };
 use payloads::{
-    is_runtime_debug_artifact_payload, is_safe_to_persist_debug_artifact_previews,
-    should_keep_runtime_payload_field_inline, with_application_run_input_summary,
-    with_debug_artifact_field_path,
+    application_run_system, is_runtime_debug_artifact_payload,
+    is_safe_to_persist_debug_artifact_previews, should_keep_runtime_payload_field_inline,
+    with_application_run_input_summary, with_debug_artifact_field_path,
 };
 pub use visible_internal_enrichment::{
     enrich_application_run_detail_visible_internal_llm_route_traces,
@@ -523,6 +523,7 @@ pub async fn offload_application_run_detail_artifacts(
     };
     let flow_input_query = application_run_query(&detail.flow_run.input_payload);
     let flow_input_model = application_run_model(&detail.flow_run.input_payload);
+    let flow_input_system = application_run_system(&detail.flow_run.input_payload);
     let (flow_input_payload, flow_input_changed) = writer
         .offload_value(
             &flow_scope,
@@ -535,6 +536,7 @@ pub async fn offload_application_run_detail_artifacts(
             flow_input_payload,
             flow_input_query.as_deref(),
             flow_input_model.as_deref(),
+            flow_input_system.as_deref(),
         )
     } else {
         flow_input_payload
