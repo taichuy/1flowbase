@@ -93,6 +93,7 @@ import {
 } from './mcp-input-mapping-model';
 import { McpInputMappingEditor } from './McpInputMappingEditor';
 import { McpToolDebugPanel } from './McpToolDebugPanel';
+import { MarkdownIrEditor } from '../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
 import { JsonSchemaInlineEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel';
 import {
   createInitialMcpInstancesState,
@@ -1638,6 +1639,17 @@ function McpToolsTab({
               />
             </Form.Item>
             <Form.Item
+              name="status"
+              label="status"
+              rules={[{ required: true }]}
+            >
+              <Select
+                options={['draft', 'enabled', 'disabled', 'archived'].map(
+                  (value) => ({ label: value, value })
+                )}
+              />
+            </Form.Item>
+            <Form.Item
               name="short_description"
               label="short_description"
               rules={[{ required: true }]}
@@ -1649,18 +1661,7 @@ function McpToolsTab({
               label="full_description"
               rules={[{ required: true }]}
             >
-              <Input.TextArea rows={4} />
-            </Form.Item>
-            <Form.Item
-              name="status"
-              label="status"
-              rules={[{ required: true }]}
-            >
-              <Select
-                options={['draft', 'enabled', 'disabled', 'archived'].map(
-                  (value) => ({ label: value, value })
-                )}
-              />
+              <MarkdownIrEditor ariaLabel="full_description" />
             </Form.Item>
           </div>
           <div hidden={step !== 'interface'}>

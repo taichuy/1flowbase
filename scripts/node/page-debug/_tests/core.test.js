@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const {
+  buildChromiumLaunchOptions,
   createRunArtifacts,
   createSuccessResult,
   parseCliArgs,
@@ -90,6 +91,21 @@ test('createSuccessResult exposes machine-readable artifact paths', () => {
       screenshotPath: '/tmp/page-debug/run-1/page.png',
       consoleLogPath: '/tmp/page-debug/run-1/console.ndjson',
       warnings: [],
+    }
+  );
+});
+
+test('buildChromiumLaunchOptions uses configured system chrome executable', () => {
+  assert.deepEqual(
+    buildChromiumLaunchOptions({
+      headless: true,
+      env: {
+        PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: '/usr/bin/google-chrome',
+      },
+    }),
+    {
+      headless: true,
+      executablePath: '/usr/bin/google-chrome',
     }
   );
 });

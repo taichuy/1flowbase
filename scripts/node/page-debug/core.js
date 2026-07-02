@@ -18,6 +18,7 @@ const {
 const DEFAULT_WEB_BASE_URL = 'http://127.0.0.1:3100';
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:7800';
 const DEFAULT_TIMEOUT = 15000;
+const CHROMIUM_EXECUTABLE_ENV = 'PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH';
 const MODES = new Set(['snapshot', 'open', 'login']);
 
 function getRepoRoot() {
@@ -153,6 +154,14 @@ function loadPlaywright(repoRoot) {
   return webRequire('playwright');
 }
 
+function buildChromiumLaunchOptions({ headless, env = process.env }) {
+  const executablePath = env[CHROMIUM_EXECUTABLE_ENV]?.trim();
+
+  return executablePath
+    ? { headless, executablePath }
+    : { headless };
+}
+
 function writeStdoutJson(payload) {
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
@@ -250,7 +259,9 @@ async function runPageDebug(options, deps = {}) {
     storageStatePath: artifacts.storageStatePath,
   });
 
-  const browser = await playwright.chromium.launch({ headless: options.headless });
+  const browser = await playwright.chromium.launch(
+    buildChromiumLaunchOptions({ headless: options.headless })
+  );
   let keepBrowserOpen = options.mode === 'open';
 
   try {
@@ -407,6 +418,7 @@ async function main(argv = process.argv.slice(2)) {
 }
 
 module.exports = {
+  buildChromiumLaunchOptions,
   DEFAULT_API_BASE_URL,
   DEFAULT_TIMEOUT,
   DEFAULT_WEB_BASE_URL,

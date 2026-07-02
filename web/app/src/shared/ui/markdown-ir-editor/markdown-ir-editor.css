@@ -1,0 +1,28 @@
+.markdown-ir-editor {
+  min-height: 180px;
+}
+
+.markdown-ir-editor.vditor {
+  --markdown-ir-editor-background: var(--ant-colorBgContainer, #fff);
+  --markdown-ir-editor-border: var(--ant-colorBorder, #d5ddd8);
+  --border-color: var(--markdown-ir-editor-border);
+  --panel-background-color: var(--markdown-ir-editor-background);
+  --toolbar-background-color: var(--markdown-ir-editor-background);
+  --textarea-background-color: var(--markdown-ir-editor-background);
+
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--markdown-ir-editor-border);
+  border-radius: 6px;
+  background: var(--markdown-ir-editor-background);
+}
+
+.markdown-ir-editor.vditor .vditor-toolbar {
+  background: var(--markdown-ir-editor-background);
+}
+
+.markdown-ir-editor.vditor .vditor-content,
+.markdown-ir-editor.vditor .vditor-ir,
+.markdown-ir-editor.vditor .vditor-ir pre.vditor-reset {
+  background: var(--markdown-ir-editor-background);
+}

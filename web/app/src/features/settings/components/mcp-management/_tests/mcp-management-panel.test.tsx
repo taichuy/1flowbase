@@ -28,8 +28,48 @@ const mcpManagementApi = vi.hoisted(() => ({
   updateSettingsMcpToolBinding: vi.fn(),
   upsertSettingsMcpGroup: vi.fn()
 }));
+const vditorMock = vi.hoisted(() => ({
+  instances: [] as Array<{
+    options: {
+      mode?: string;
+      after?: () => void;
+      input?: (value: string) => void;
+    };
+    setValue: ReturnType<typeof vi.fn>;
+    getValue: ReturnType<typeof vi.fn>;
+    destroy: ReturnType<typeof vi.fn>;
+  }>,
+  constructor: vi.fn(function VditorMock(
+    this: unknown,
+    _target: HTMLElement,
+    options: {
+      mode?: string;
+      value?: string;
+      after?: () => void;
+      input?: (value: string) => void;
+    }
+  ) {
+    let currentValue = options.value ?? '';
+    const instance = {
+      options,
+      setValue: vi.fn((value: string) => {
+        currentValue = value;
+      }),
+      getValue: vi.fn(() => currentValue),
+      destroy: vi.fn()
+    };
+    vditorMock.instances.push(instance);
+
+    return instance;
+  })
+}));
 
 vi.mock('../../../api/mcp-management', () => mcpManagementApi);
+vi.mock('vditor', () => ({
+  __esModule: true,
+  default: vditorMock.constructor
+}));
+vi.mock('vditor/dist/index.css', () => ({}));
 vi.mock('@monaco-editor/react', () => ({
   __esModule: true,
   default: ({
@@ -54,6 +94,7 @@ vi.mock('@monaco-editor/react', () => ({
 import { AppProviders } from '../../../../../app/AppProviders';
 import { McpManagementPanel } from '../McpManagementPanel';
 import { McpToolDebugPanel } from '../McpToolDebugPanel';
+import { MarkdownIrEditor } from '../../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
 
 const interfaceCapabilities: ConsoleMcpInterfaceCapability[] = [
   {
@@ -246,9 +287,21 @@ function visibleTextEntries(root: HTMLElement, text: string) {
     .filter((entry) => !entry.closest('[hidden]'));
 }
 
+async function setFullDescription(value: string) {
+  await waitFor(() => {
+    expect(vditorMock.instances.at(-1)).toBeDefined();
+  });
+  const editor = vditorMock.instances.at(-1);
+
+  act(() => {
+    editor!.options.input?.(value);
+  });
+}
+
 describe('McpManagementPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vditorMock.instances.length = 0;
     mcpManagementApi.executeSettingsMcpToolDebug.mockImplementation(
       async (body: { mcp_arguments: unknown }) => ({
         mcp_arguments: body.mcp_arguments,
@@ -296,6 +349,117 @@ describe('McpManagementPanel', () => {
     ).not.toBeInTheDocument();
   }, 30000);
 
+  test('places the status selector before description fields in the basic step', async () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    const desIdField = within(dialog)
+      .getByLabelText('des_id')
+      .closest('.ant-form-item');
+    const statusField = within(dialog)
+      .getByRole('combobox', { name: 'status' })
+      .closest('.ant-form-item');
+    const shortDescriptionField = within(dialog)
+      .getByLabelText('short_description')
+      .closest('.ant-form-item');
+    const fullDescriptionField = within(dialog)
+      .getByLabelText('full_description')
+      .closest('.ant-form-item');
+
+    expect(desIdField).not.toBeNull();
+    expect(statusField).not.toBeNull();
+    expect(shortDescriptionField).not.toBeNull();
+    expect(fullDescriptionField).not.toBeNull();
+    expect(
+      desIdField!.compareDocumentPosition(statusField!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      statusField!.compareDocumentPosition(shortDescriptionField!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      statusField!.compareDocumentPosition(fullDescriptionField!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  test('uses Vditor instant rendering mode for full description', async () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    const editor = within(dialog).getByLabelText('full_description');
+
+    expect(editor).toHaveClass('markdown-ir-editor');
+    await waitFor(() => {
+      expect(vditorMock.constructor).toHaveBeenCalled();
+    });
+    expect(vditorMock.instances[0]?.options.mode).toBe('ir');
+
+    act(() => {
+      vditorMock.instances[0]?.options.input?.('Rendered **markdown**');
+    });
+  });
+
+  test('waits for Vditor readiness before syncing external full description values', async () => {
+    const { rerender } = render(
+      <MarkdownIrEditor
+        ariaLabel="full_description"
+        value="Initial description"
+      />
+    );
+    await waitFor(() => {
+      expect(vditorMock.instances[0]).toBeDefined();
+    });
+    const editor = vditorMock.instances[0];
+
+    rerender(
+      <MarkdownIrEditor
+        ariaLabel="full_description"
+        value="Updated description"
+      />
+    );
+
+    expect(editor?.getValue).not.toHaveBeenCalled();
+    expect(editor?.setValue).not.toHaveBeenCalled();
+
+    act(() => {
+      editor?.options.after?.();
+    });
+
+    expect(editor?.getValue).toHaveBeenCalled();
+    expect(editor?.setValue).toHaveBeenCalledWith('Updated description', true);
+  });
+
+  test('defers Vditor destruction until the pending editor reports ready', async () => {
+    const { unmount } = render(
+      <MarkdownIrEditor
+        ariaLabel="full_description"
+        value="Initial description"
+      />
+    );
+    await waitFor(() => {
+      expect(vditorMock.instances[0]).toBeDefined();
+    });
+    const editor = vditorMock.instances[0];
+
+    unmount();
+
+    expect(editor?.destroy).not.toHaveBeenCalled();
+
+    act(() => {
+      editor?.options.after?.();
+    });
+
+    expect(editor?.destroy).toHaveBeenCalled();
+  });
+
   test('shows the selected interface operation in input output and debug steps', async () => {
     renderPanel();
 
@@ -335,29 +499,27 @@ describe('McpManagementPanel', () => {
     expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(1);
   });
 
-  test(
-    'keeps full description in basic and renders debug form JSON results',
-    async () => {
-      mcpManagementApi.executeSettingsMcpToolDebug.mockResolvedValue({
-        mcp_arguments: {
-          appId: 'app-1'
-        },
-        interface_arguments: {
-          path: {
-            app_id: 'app-1'
-          }
-        },
-        interface_response: {
-          data: {
-            run_id: 'run-1',
-            app_id: 'app-1'
-          }
-        },
-        tool_result: {
-          run_id: 'run-1'
+  test('keeps full description in basic and renders debug form JSON results', async () => {
+    mcpManagementApi.executeSettingsMcpToolDebug.mockResolvedValue({
+      mcp_arguments: {
+        appId: 'app-1'
+      },
+      interface_arguments: {
+        path: {
+          app_id: 'app-1'
         }
-      });
-      renderPanel();
+      },
+      interface_response: {
+        data: {
+          run_id: 'run-1',
+          app_id: 'app-1'
+        }
+      },
+      tool_result: {
+        run_id: 'run-1'
+      }
+    });
+    renderPanel();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     fireEvent.click(screen.getByRole('button', { name: /新增/ }));
@@ -455,11 +617,9 @@ describe('McpManagementPanel', () => {
     const debugResult = await within(dialog).findByLabelText('返回值 JSON');
     expect(debugResult).toHaveTextContent('"app_id": "app-1"');
     expect(debugResult).toHaveTextContent('"tool_result"');
-      expect(debugResult).toHaveTextContent('"run_id"');
-      expect(debugResult).not.toHaveTextContent('"output_mapping"');
-    },
-    30000
-  );
+    expect(debugResult).toHaveTextContent('"run_id"');
+    expect(debugResult).not.toHaveTextContent('"output_mapping"');
+  }, 30000);
 
   test('renders debug operation and run action in one row without duplicate field-name help text', () => {
     render(
@@ -518,9 +678,7 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
       target: { value: 'Create app' }
     });
-    fireEvent.change(within(dialog).getByLabelText('full_description'), {
-      target: { value: 'Create app' }
-    });
+    await setFullDescription('Create app');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_id' })
@@ -639,9 +797,7 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
       target: { value: 'Publish application API' }
     });
-    fireEvent.change(within(dialog).getByLabelText('full_description'), {
-      target: { value: 'Publish application API' }
-    });
+    await setFullDescription('Publish application API');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_id' })
@@ -822,9 +978,7 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
       target: { value: 'Create app' }
     });
-    fireEvent.change(within(dialog).getByLabelText('full_description'), {
-      target: { value: 'Create app' }
-    });
+    await setFullDescription('Create app');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_id' })
@@ -856,15 +1010,13 @@ describe('McpManagementPanel', () => {
     expect(mcpManagementApi.createSettingsMcpTool).not.toHaveBeenCalled();
   });
 
-  test(
-    'adds the des_id mapping from the mapping layer dropdown option',
-    async () => {
-      renderPanel([
-        {
-          ...interfaceCapabilities[0],
-          parameter_descriptors: []
-        }
-      ]);
+  test('adds the des_id mapping from the mapping layer dropdown option', async () => {
+    renderPanel([
+      {
+        ...interfaceCapabilities[0],
+        parameter_descriptors: []
+      }
+    ]);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     fireEvent.click(screen.getByRole('button', { name: /新增/ }));
@@ -877,9 +1029,7 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
       target: { value: 'Create app' }
     });
-    fireEvent.change(within(dialog).getByLabelText('full_description'), {
-      target: { value: 'Create app' }
-    });
+    await setFullDescription('Create app');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_id' })
@@ -958,9 +1108,7 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
       target: { value: 'Create app' }
     });
-    fireEvent.change(within(dialog).getByLabelText('full_description'), {
-      target: { value: 'Create app' }
-    });
+    await setFullDescription('Create app');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_id' })
@@ -1115,21 +1263,17 @@ describe('McpManagementPanel', () => {
       );
     });
 
-      expect(desIdOptions).toHaveLength(1);
-      expect(applicationIdOptions).toHaveLength(2);
-    },
-    30000
-  );
+    expect(desIdOptions).toHaveLength(1);
+    expect(applicationIdOptions).toHaveLength(2);
+  }, 30000);
 
-  test(
-    'allows manually adding interface parameters and mappings when descriptors are empty',
-    async () => {
-      renderPanel([
-        {
-          ...interfaceCapabilities[0],
-          parameter_descriptors: []
-        }
-      ]);
+  test('allows manually adding interface parameters and mappings when descriptors are empty', async () => {
+    renderPanel([
+      {
+        ...interfaceCapabilities[0],
+        parameter_descriptors: []
+      }
+    ]);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     fireEvent.click(screen.getByRole('button', { name: /新增/ }));
@@ -1142,9 +1286,7 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('short_description'), {
       target: { value: 'Create app' }
     });
-    fireEvent.change(within(dialog).getByLabelText('full_description'), {
-      target: { value: 'Create app' }
-    });
+    await setFullDescription('Create app');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_id' })
@@ -1213,8 +1355,6 @@ describe('McpManagementPanel', () => {
         }),
         expect.any(String)
       );
-      });
-    },
-    30000
-  );
+    });
+  }, 30000);
 });
