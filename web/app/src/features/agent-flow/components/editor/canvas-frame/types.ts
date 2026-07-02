@@ -1,5 +1,6 @@
 import type {
   ConsoleApplicationType,
+  ConsoleWorkflowTriggerType,
   ConsoleApplicationEnvironmentVariable,
   ConsoleApplicationOrchestrationState,
   ConsoleNodeContributionEntry,
@@ -10,6 +11,7 @@ export interface AgentFlowCanvasFrameProps {
   applicationId: string;
   applicationName: string;
   applicationType?: ConsoleApplicationType;
+  workflowTriggerType?: ConsoleWorkflowTriggerType | null;
   initialEnvironmentVariables?: ConsoleApplicationEnvironmentVariable[];
   nodeContributions: ConsoleNodeContributionEntry[];
   saveDraftOverride?: (

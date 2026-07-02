@@ -1,5 +1,6 @@
 import type {
   ConsoleApplicationType,
+  ConsoleWorkflowTriggerType,
   ConsoleNodeContributionEntry,
   ConsoleApplicationEnvironmentVariable,
   ConsoleApplicationOrchestrationState,
@@ -15,6 +16,7 @@ interface AgentFlowEditorShellProps {
   applicationId: string;
   applicationName: string;
   applicationType?: ConsoleApplicationType;
+  workflowTriggerType?: ConsoleWorkflowTriggerType | null;
   initialState: ConsoleApplicationOrchestrationState;
   initialEnvironmentVariables?: ConsoleApplicationEnvironmentVariable[];
   nodeContributions?: ConsoleNodeContributionEntry[];
@@ -31,6 +33,7 @@ export function AgentFlowEditorShell({
   applicationId,
   applicationName,
   applicationType = 'agent_flow',
+  workflowTriggerType = null,
   initialState,
   initialEnvironmentVariables = [],
   nodeContributions = [],
@@ -45,6 +48,7 @@ export function AgentFlowEditorShell({
         applicationId={applicationId}
         applicationName={applicationName}
         applicationType={applicationType}
+        workflowTriggerType={workflowTriggerType}
         initialEnvironmentVariables={initialEnvironmentVariables}
         nodeContributions={nodeContributions}
         saveDraftOverride={saveDraftOverride}

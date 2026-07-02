@@ -8,6 +8,7 @@ import { ApplicationSectionState } from '../components/ApplicationSectionState';
 const application: ApplicationDetail = {
   id: 'app-1',
   application_type: 'agent_flow',
+  workflow_trigger_type: null,
   name: 'Support Agent',
   description: 'customer support',
   icon: 'RobotOutlined',
@@ -47,10 +48,15 @@ const application: ApplicationDetail = {
   }
 };
 
-function renderSection(sectionKey: Parameters<typeof ApplicationSectionState>[0]['sectionKey']) {
+function renderSection(
+  sectionKey: Parameters<typeof ApplicationSectionState>[0]['sectionKey']
+) {
   return render(
     <AppProviders>
-      <ApplicationSectionState application={application} sectionKey={sectionKey} />
+      <ApplicationSectionState
+        application={application}
+        sectionKey={sectionKey}
+      />
     </AppProviders>
   );
 }

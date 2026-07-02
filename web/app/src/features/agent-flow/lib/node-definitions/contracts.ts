@@ -434,6 +434,14 @@ function createWorkflowStartContract(): NodeRuntimeUiContract {
     outputs: [],
     panelSections: [
       basicsPanelSection,
+      panelSection('trigger', 'Trigger Configuration', [
+        panelField({
+          key: 'workflow_trigger_config',
+          title: 'Trigger Configuration',
+          renderer: 'workflow_trigger_config',
+          valueType: 'json'
+        })
+      ]),
       panelSection('inputs', 'Input Parameters', [
         panelField({
           key: 'config.input_fields',

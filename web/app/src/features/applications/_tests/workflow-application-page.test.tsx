@@ -68,9 +68,16 @@ vi.mock('../../agent-flow/pages/AgentFlowEditorPage', async () => {
   }
 
   return {
-    AgentFlowEditorPage: ({ topSlot }: { topSlot?: ReactNode }) => (
+    AgentFlowEditorPage: ({
+      workflowTriggerType,
+      topSlot
+    }: {
+      workflowTriggerType?: string | null;
+      topSlot?: ReactNode;
+    }) => (
       <AgentFlowEditorStoreProvider initialState={createInitialState()}>
         {topSlot}
+        <div>Workflow trigger type: {workflowTriggerType}</div>
         <div>Workflow editor shell</div>
       </AgentFlowEditorStoreProvider>
     )
@@ -85,6 +92,7 @@ function createWorkflowApplicationDetail() {
   return {
     id: 'app-workflow',
     application_type: 'workflow',
+    workflow_trigger_type: 'extension',
     name: 'Order workflow',
     description: '',
     icon: null,
@@ -158,7 +166,7 @@ describe('Workflow application page', () => {
     publicApi.fetchWorkflowScheduleTrigger.mockResolvedValue(null);
   });
 
-  test('keeps the trigger configuration entry and unconfigured state in the workflow page', async () => {
+  test('passes workflow trigger type to the editor without a top-level trigger configuration entry', async () => {
     render(
       <AppProviders>
         <ApplicationDetailPage
@@ -168,9 +176,11 @@ describe('Workflow application page', () => {
       </AppProviders>
     );
 
-    expect(await screen.findByText('触发器未配置')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: '触发器配置' })
+      await screen.findByText('Workflow trigger type: extension')
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '触发器配置' })
+    ).not.toBeInTheDocument();
   });
 });

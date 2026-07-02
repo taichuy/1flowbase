@@ -17,6 +17,32 @@ impl ApplicationType {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WorkflowTriggerType {
+    Extension,
+    Schedule,
+    Manual,
+}
+
+impl WorkflowTriggerType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Extension => "extension",
+            Self::Schedule => "schedule",
+            Self::Manual => "manual",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "extension" => Some(Self::Extension),
+            "schedule" => Some(Self::Schedule),
+            "manual" => Some(Self::Manual),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApplicationOrchestrationSection {
     pub status: String,
@@ -88,6 +114,7 @@ pub struct ApplicationRecord {
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub application_type: ApplicationType,
+    pub workflow_trigger_type: Option<WorkflowTriggerType>,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,

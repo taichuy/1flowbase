@@ -13,7 +13,10 @@ const ROUTE_EDITOR_TEST_TIMEOUT = 40_000;
 const applicationApi = vi.hoisted(() => ({
   applicationsQueryKey: ['applications'],
   applicationCatalogQueryKey: ['applications', 'catalog'],
-  applicationDetailQueryKey: (applicationId: string) => ['applications', applicationId],
+  applicationDetailQueryKey: (applicationId: string) => [
+    'applications',
+    applicationId
+  ],
   applicationEnvironmentVariablesQueryKey: (applicationId: string) => [
     'applications',
     applicationId,
@@ -57,7 +60,10 @@ const publicApi = vi.hoisted(() => ({
     'workflow',
     'schedule-trigger'
   ],
-  applicationApiDocsCatalogQueryKey: (applicationId: string, locale?: string | null) => [
+  applicationApiDocsCatalogQueryKey: (
+    applicationId: string,
+    locale?: string | null
+  ) => [
     'applications',
     applicationId,
     'public-api',
@@ -171,6 +177,7 @@ function createWorkflowApplicationDetail() {
   return {
     id: 'app-1',
     application_type: 'workflow',
+    workflow_trigger_type: 'extension',
     name: 'Ticket Workflow',
     description: 'ticket routing',
     icon: 'RobotOutlined',
@@ -375,7 +382,9 @@ describe('application shell routing', () => {
     renderApplicationRouter();
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/applications/app-1/orchestration');
+      expect(window.location.pathname).toBe(
+        '/applications/app-1/orchestration'
+      );
     });
   });
 
@@ -390,10 +399,9 @@ describe('application shell routing', () => {
       name: 'Section navigation'
     });
     expect(sectionNavigation).toBeInTheDocument();
-    expect(within(sectionNavigation).getByRole('link', { name: 'API' })).toHaveAttribute(
-      'href',
-      '/applications/app-1/api'
-    );
+    expect(
+      within(sectionNavigation).getByRole('link', { name: 'API' })
+    ).toHaveAttribute('href', '/applications/app-1/api');
     expect(applicationApi.fetchApplicationDetail).toHaveBeenCalledWith('app-1');
   });
 
@@ -435,52 +443,72 @@ describe('application shell routing', () => {
     renderApplicationRouter();
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/applications/app-1/orchestration');
+      expect(window.location.pathname).toBe(
+        '/applications/app-1/orchestration'
+      );
     });
     expect(publicApi.fetchApplicationApiDocsCatalog).not.toHaveBeenCalled();
   });
 
-  test('renders the editor page inside orchestration', async () => {
-    const desktopBreakpoints = vi
-      .spyOn(Grid, 'useBreakpoint')
-      .mockReturnValue({ lg: true } as never);
+  test(
+    'renders the editor page inside orchestration',
+    async () => {
+      const desktopBreakpoints = vi
+        .spyOn(Grid, 'useBreakpoint')
+        .mockReturnValue({ lg: true } as never);
 
-    window.history.pushState({}, '', '/applications/app-1/orchestration');
+      window.history.pushState({}, '', '/applications/app-1/orchestration');
 
-    try {
-      renderApplicationRouter();
+      try {
+        renderApplicationRouter();
 
-      expect(
-        await screen.findByRole('button', { name: '保存' }, ROUTE_EDITOR_WAIT_OPTIONS)
-      ).toBeInTheDocument();
-      expect(screen.queryByText('30 秒自动保存')).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Issues' })).toBeInTheDocument();
-    } finally {
-      desktopBreakpoints.mockRestore();
-    }
-  }, ROUTE_EDITOR_TEST_TIMEOUT);
+        expect(
+          await screen.findByRole(
+            'button',
+            { name: '保存' },
+            ROUTE_EDITOR_WAIT_OPTIONS
+          )
+        ).toBeInTheDocument();
+        expect(screen.queryByText('30 秒自动保存')).not.toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Issues' })
+        ).toBeInTheDocument();
+      } finally {
+        desktopBreakpoints.mockRestore();
+      }
+    },
+    ROUTE_EDITOR_TEST_TIMEOUT
+  );
 
-  test('keeps orchestration draft save enabled when application api capability is planned', async () => {
-    const desktopBreakpoints = vi
-      .spyOn(Grid, 'useBreakpoint')
-      .mockReturnValue({ lg: true } as never);
+  test(
+    'keeps orchestration draft save enabled when application api capability is planned',
+    async () => {
+      const desktopBreakpoints = vi
+        .spyOn(Grid, 'useBreakpoint')
+        .mockReturnValue({ lg: true } as never);
 
-    window.history.pushState({}, '', '/applications/app-1/orchestration');
+      window.history.pushState({}, '', '/applications/app-1/orchestration');
 
-    try {
-      renderApplicationRouter();
+      try {
+        renderApplicationRouter();
 
-      fireEvent.click(
-        await screen.findByRole('button', { name: '保存' }, ROUTE_EDITOR_WAIT_OPTIONS)
-      );
+        fireEvent.click(
+          await screen.findByRole(
+            'button',
+            { name: '保存' },
+            ROUTE_EDITOR_WAIT_OPTIONS
+          )
+        );
 
-      await waitFor(() => {
-        expect(orchestrationApi.saveDraft).toHaveBeenCalledTimes(1);
-      });
-    } finally {
-      desktopBreakpoints.mockRestore();
-    }
-  }, ROUTE_EDITOR_TEST_TIMEOUT);
+        await waitFor(() => {
+          expect(orchestrationApi.saveDraft).toHaveBeenCalledTimes(1);
+        });
+      } finally {
+        desktopBreakpoints.mockRestore();
+      }
+    },
+    ROUTE_EDITOR_TEST_TIMEOUT
+  );
 
   test('renders formal 403 state for inaccessible applications', async () => {
     applicationApi.fetchApplicationDetail.mockRejectedValue(

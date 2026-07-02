@@ -34,9 +34,12 @@ import {
   replaceApplicationEnvironmentVariables
 } from '../../../applications/api/applications';
 import {
+  applicationApiMappingQueryKey,
   applicationApiPublicationQueryKey,
   fetchApplicationApiMapping,
-  publishApplicationApiVersion
+  fetchWorkflowScheduleTrigger,
+  publishApplicationApiVersion,
+  workflowScheduleTriggerQueryKey
 } from '../../../applications/api/public-api';
 import {
   environmentVariableNodeId,
@@ -103,6 +106,7 @@ import {
   getDocumentWithLatestViewport
 } from './canvas-frame/document';
 import type { AgentFlowCanvasFrameProps } from './canvas-frame/types';
+import type { WorkflowTriggerContext } from '../../lib/workflow-trigger-context';
 
 type NodePreviewAction = 'run' | 'debug';
 
@@ -114,6 +118,7 @@ export function AgentFlowCanvasFrame({
   applicationId,
   applicationName,
   applicationType = 'agent_flow',
+  workflowTriggerType = null,
   initialEnvironmentVariables = EMPTY_ENVIRONMENT_VARIABLES,
   nodeContributions,
   saveDraftOverride,
@@ -231,6 +236,35 @@ export function AgentFlowCanvasFrame({
     queryKey: modelProviderOptionsQueryKey,
     queryFn: fetchModelProviderOptions
   });
+  const workflowMappingQuery = useQuery({
+    queryKey: applicationApiMappingQueryKey(applicationId),
+    queryFn: () => fetchApplicationApiMapping(applicationId),
+    enabled: applicationType === 'workflow'
+  });
+  const workflowScheduleQuery = useQuery({
+    queryKey: workflowScheduleTriggerQueryKey(applicationId),
+    queryFn: () => fetchWorkflowScheduleTrigger(applicationId),
+    enabled: applicationType === 'workflow',
+    retry: false
+  });
+  const workflowTriggerContext = useMemo<WorkflowTriggerContext | null>(
+    () =>
+      applicationType === 'workflow'
+        ? {
+            applicationId,
+            triggerType: workflowTriggerType,
+            mapping: workflowMappingQuery.data,
+            schedule: workflowScheduleQuery.data ?? null
+          }
+        : null,
+    [
+      applicationId,
+      applicationType,
+      workflowMappingQuery.data,
+      workflowScheduleQuery.data,
+      workflowTriggerType
+    ]
+  );
   const environmentVariablesMutation = useMutation({
     mutationFn: (variables: AgentFlowEnvironmentVariable[]) => {
       if (!csrfToken) {
@@ -910,6 +944,7 @@ export function AgentFlowCanvasFrame({
         <AgentFlowCanvas
           issueCountByNodeId={issueCountByNodeId}
           nodePickerOptions={nodePickerOptions}
+          workflowTriggerContext={workflowTriggerContext}
           onRunNode={handleRunNode}
           onViewportSnapshotChange={(viewport) => {
             viewportSnapshotRef.current = viewport;
@@ -1014,6 +1049,7 @@ export function AgentFlowCanvasFrame({
               onRunNode={selectedNodeId ? handleRunSelectedNode : undefined}
               previewActionsDisabled={nodePreviewMutation.isPending}
               runLoading={nodePreviewAction === 'run'}
+              workflowTriggerContext={workflowTriggerContext}
             />
           </div>
         ) : null}

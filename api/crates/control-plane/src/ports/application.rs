@@ -11,6 +11,7 @@ pub struct CreateApplicationInput {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub application_type: domain::ApplicationType,
+    pub workflow_trigger_type: Option<domain::WorkflowTriggerType>,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,

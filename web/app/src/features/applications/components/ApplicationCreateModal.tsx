@@ -7,6 +7,7 @@ import { applicationsQueryKey, createApplication } from '../api/applications';
 import { WorkflowTriggerTypeField } from './workflow/WorkflowTriggerFormFields';
 import {
   DEFAULT_WORKFLOW_TRIGGER_VALUES,
+  WORKFLOW_TRIGGER_TYPES,
   type WorkflowTriggerType
 } from '../lib/workflow-trigger-config';
 
@@ -44,6 +45,7 @@ export function ApplicationCreateModal({
       const created = await createApplication(
         {
           application_type: values.application_type,
+          workflow_trigger_type: isWorkflow ? values.trigger_type : null,
           name: values.name,
           description: values.description,
           icon: 'RobotOutlined',
@@ -106,7 +108,12 @@ export function ApplicationCreateModal({
           </Radio.Group>
         </Form.Item>
 
-        {isWorkflow ? <WorkflowTriggerTypeField t={t} /> : null}
+        {isWorkflow ? (
+          <WorkflowTriggerTypeField
+            triggerTypes={WORKFLOW_TRIGGER_TYPES}
+            t={t}
+          />
+        ) : null}
 
         <Form.Item
           label={t('auto.name')}

@@ -19,6 +19,7 @@ fn map_application_record(row: sqlx::postgres::PgRow) -> Result<domain::Applicat
         id: row.get("id"),
         workspace_id: row.get("workspace_id"),
         application_type: row.get("application_type"),
+        workflow_trigger_type: row.get("workflow_trigger_type"),
         name: row.get("name"),
         description: row.get("description"),
         icon: row.get("icon"),
@@ -64,6 +65,7 @@ impl ApplicationRepository for PgControlPlaneStore {
                 a.id,
                 a.workspace_id,
                 a.application_type,
+                a.workflow_trigger_type,
                 a.name,
                 a.description,
                 a.icon_type,
@@ -129,6 +131,7 @@ impl ApplicationRepository for PgControlPlaneStore {
                 id,
                 workspace_id,
                 application_type,
+                workflow_trigger_type,
                 name,
                 description,
                 icon_type,
@@ -136,11 +139,12 @@ impl ApplicationRepository for PgControlPlaneStore {
                 icon_background,
                 created_by,
                 updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
             returning
                 id,
                 workspace_id,
                 application_type,
+                workflow_trigger_type,
                 name,
                 description,
                 icon_type,
@@ -160,6 +164,7 @@ impl ApplicationRepository for PgControlPlaneStore {
         .bind(Uuid::now_v7())
         .bind(input.workspace_id)
         .bind(input.application_type.as_str())
+        .bind(input.workflow_trigger_type.map(|value| value.as_str()))
         .bind(&input.name)
         .bind(&input.description)
         .bind(input.icon_type.as_deref())
@@ -251,6 +256,7 @@ impl ApplicationRepository for PgControlPlaneStore {
                 a.id,
                 a.workspace_id,
                 a.application_type,
+                a.workflow_trigger_type,
                 a.name,
                 a.description,
                 a.icon_type,
@@ -352,6 +358,7 @@ impl ApplicationRepository for PgControlPlaneStore {
                 a.id,
                 a.workspace_id,
                 a.application_type,
+                a.workflow_trigger_type,
                 a.name,
                 a.description,
                 a.icon_type,

@@ -4,7 +4,8 @@ import type { ReactNode } from 'react';
 
 import {
   ApiClientError,
-  type ConsoleApplicationType
+  type ConsoleApplicationType,
+  type ConsoleWorkflowTriggerType
 } from '@1flowbase/api-client';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
 import {
@@ -26,11 +27,13 @@ export function AgentFlowEditorPage({
   applicationId,
   applicationName,
   applicationType = 'agent_flow',
+  workflowTriggerType = null,
   topSlot
 }: {
   applicationId: string;
   applicationName: string;
   applicationType?: ConsoleApplicationType;
+  workflowTriggerType?: ConsoleWorkflowTriggerType | null;
   topSlot?: ReactNode;
 }) {
   const orchestrationQuery = useQuery({
@@ -99,6 +102,7 @@ export function AgentFlowEditorPage({
       applicationId={applicationId}
       applicationName={applicationName}
       applicationType={applicationType}
+      workflowTriggerType={workflowTriggerType}
       initialState={state}
       initialEnvironmentVariables={environmentVariablesQuery.data}
       nodeContributions={nodeContributions}

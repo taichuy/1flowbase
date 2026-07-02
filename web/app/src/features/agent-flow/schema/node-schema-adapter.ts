@@ -23,6 +23,7 @@ import {
   type AgentFlowConversationVariable
 } from '../lib/variables/conversation-variables';
 import type { AgentFlowIssue } from '../lib/validate-document';
+import type { WorkflowTriggerContext } from '../lib/workflow-trigger-context';
 
 import type { SchemaAdapter } from '../../../shared/schema-ui/registry/create-renderer-registry';
 
@@ -207,13 +208,15 @@ export function createAgentFlowNodeSchemaAdapter({
   dispatch,
   environmentVariables = [],
   conversationVariables,
-  issues = []
+  issues = [],
+  workflowTriggerContext = null
 }: {
   document: FlowAuthoringDocument;
   nodeId: string;
   environmentVariables?: AgentFlowEnvironmentVariable[];
   conversationVariables?: AgentFlowConversationVariable[];
   issues?: AgentFlowIssue[];
+  workflowTriggerContext?: WorkflowTriggerContext | null;
   setWorkingDocument: (
     update:
       | FlowAuthoringDocument
@@ -375,6 +378,10 @@ export function createAgentFlowNodeSchemaAdapter({
 
       if (key === 'downstreamNodes') {
         return getDirectDownstreamNodes(document, nodeId);
+      }
+
+      if (key === 'workflowTriggerContext') {
+        return workflowTriggerContext;
       }
 
       if (key === 'outputContract') {

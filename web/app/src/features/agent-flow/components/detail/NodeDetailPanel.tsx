@@ -7,6 +7,7 @@ import { resolveAgentFlowNodeSchema } from '../../schema/node-schema-registry';
 import { useNodeInteractions } from '../../hooks/interactions/use-node-interactions';
 import type { AgentFlowEnvironmentVariable } from '../../lib/variables/application-environment-variables';
 import type { AgentFlowIssue } from '../../lib/validate-document';
+import type { WorkflowTriggerContext } from '../../lib/workflow-trigger-context';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import { NodeDetailHeader } from './NodeDetailHeader';
 import { NodeConfigTab } from './tabs/NodeConfigTab';
@@ -16,7 +17,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 const nodeDetailShellSchema = {
   schemaVersion: '1.0.0',
   shellType: 'dock_panel',
-  title: i18nText("agentFlow", "auto.node_details")
+  title: i18nText('agentFlow', 'auto.node_details')
 } as const;
 
 export function NodeDetailPanel({
@@ -30,7 +31,8 @@ export function NodeDetailPanel({
   issues = [],
   onResolveRunScope,
   previewActionsDisabled = false,
-  runLoading = false
+  runLoading = false,
+  workflowTriggerContext = null
 }: {
   onClose: () => void;
   onDebugNode?: (() => void) | undefined;
@@ -43,6 +45,7 @@ export function NodeDetailPanel({
   onResolveRunScope?: ((runId: string | null) => void) | undefined;
   previewActionsDisabled?: boolean;
   runLoading?: boolean;
+  workflowTriggerContext?: WorkflowTriggerContext | null;
 }) {
   const nodeDetailTab = useAgentFlowEditorStore((state) => state.nodeDetailTab);
   const setPanelState = useAgentFlowEditorStore((state) => state.setPanelState);
@@ -73,6 +76,7 @@ export function NodeDetailPanel({
       nodeId: selectedNodeId,
       environmentVariables,
       issues,
+      workflowTriggerContext,
       setWorkingDocument,
       dispatch(actionKey, payload) {
         if (actionKey === 'openNodePicker') {
@@ -95,7 +99,8 @@ export function NodeDetailPanel({
     issues,
     openNodePicker,
     selectedNodeId,
-    setWorkingDocument
+    setWorkingDocument,
+    workflowTriggerContext
   ]);
 
   if (!runtime.selectedNodeId || !runtime.schema || !runtime.adapter) {
@@ -131,7 +136,7 @@ export function NodeDetailPanel({
           items={[
             {
               key: 'config',
-              label: i18nText("agentFlow", "auto.settings"),
+              label: i18nText('agentFlow', 'auto.settings'),
               children: (
                 <NodeConfigTab
                   adapter={runtime.adapter}
@@ -141,7 +146,7 @@ export function NodeDetailPanel({
             },
             {
               key: 'lastRun',
-              label: i18nText("agentFlow", "auto.last_run"),
+              label: i18nText('agentFlow', 'auto.last_run'),
               forceRender: true,
               children: (
                 <NodeLastRunTab

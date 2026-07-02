@@ -104,7 +104,9 @@ describe('AgentFlowNodeCard', () => {
     expect(screen.getByText(/未知节点|Unresolved node/)).toBeInTheDocument();
     expect(screen.getByText(/llm/)).toBeInTheDocument();
     expect(screen.getByText(/missing_model_provider/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /执行|Execute/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /执行|Execute/ })
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /未知节点|Unresolved node/ })
     ).toHaveClass('agent-flow-node-card--type-unresolved_node');
@@ -205,6 +207,74 @@ describe('AgentFlowNodeCard', () => {
       within(card).getByRole('img', { name: 'message' })
     ).toBeInTheDocument();
     expect(screen.queryByText('3')).not.toBeInTheDocument();
+  });
+
+  test('summarizes extension trigger state on the workflow start node card', () => {
+    render(
+      <AppProviders>
+        <AgentFlowNodeCard
+          {...({
+            data: {
+              nodeId: 'node-workflow-start',
+              nodeType: 'workflow_start',
+              nodeSchema: resolveAgentFlowNodeSchema('workflow_start'),
+              typeLabel: 'Workflow Start',
+              alias: 'Workflow Start',
+              description: '',
+              config: {},
+              issueCount: 0,
+              canEnterContainer: false,
+              pickerOpen: false,
+              showTargetHandle: false,
+              showSourceHandle: true,
+              isContainer: false,
+              workflowTriggerContext: {
+                applicationId: 'app-workflow',
+                triggerType: 'extension',
+                mapping: {
+                  input: {
+                    query_target: 'node-workflow-start.query',
+                    model_target: null,
+                    inputs_target: 'node-workflow-start.inputs',
+                    history_target: null,
+                    attachments_target: null
+                  },
+                  output: {
+                    answer_selector: null,
+                    usage_selector: null,
+                    files_selector: null,
+                    error_selector: null
+                  },
+                  extension: {
+                    slug: 'orders',
+                    method: 'POST',
+                    response_mode: 'sync',
+                    parameters: []
+                  }
+                },
+                schedule: null
+              },
+              onOpenPicker: vi.fn(),
+              onClosePicker: vi.fn(),
+              onOpenContainer: vi.fn(),
+              onSelectNode: vi.fn(),
+              onInsertNode: vi.fn(),
+              onRunNode: vi.fn(),
+              onReplaceNode: vi.fn(),
+              onDeleteNode: vi.fn()
+            },
+            id: 'node-workflow-start',
+            selected: false
+          } as unknown as Parameters<typeof AgentFlowNodeCard>[0])}
+        />
+      </AppProviders>
+    );
+
+    expect(
+      within(
+        screen.getByTestId('agent-flow-node-content-node-workflow-start')
+      ).getByText('POST /api/ex/orders')
+    ).toBeInTheDocument();
   });
 
   test('clips rendered node content in an inner layer while floating controls stay on the shell', () => {

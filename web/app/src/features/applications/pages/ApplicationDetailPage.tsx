@@ -13,7 +13,6 @@ import {
   fetchApplicationDetail
 } from '../api/applications';
 import { ApplicationSectionState } from '../components/ApplicationSectionState';
-import { WorkflowTriggerConfigBar } from '../components/workflow/WorkflowTriggerConfigBar';
 import {
   getApplicationSections,
   type ApplicationSectionKey
@@ -104,9 +103,7 @@ export function ApplicationDetailPage({
               applicationId={applicationId}
               applicationName={application.name}
               applicationType={application.application_type}
-              topSlot={
-                <WorkflowTriggerConfigBar applicationId={applicationId} />
-              }
+              workflowTriggerType={application.workflow_trigger_type}
             />
           </ApplicationSectionBoundary>
         </div>

@@ -93,6 +93,7 @@ async fn list_applications_scopes_rows_by_workspace_and_owner() {
             actor_user_id,
             workspace_id,
             application_type: domain::ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Owned App".into(),
             description: "owned".into(),
             icon: Some("RobotOutlined".into()),
@@ -109,6 +110,7 @@ async fn list_applications_scopes_rows_by_workspace_and_owner() {
             actor_user_id: other_user_id,
             workspace_id,
             application_type: domain::ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Foreign App".into(),
             description: "foreign".into(),
             icon: None,
@@ -154,6 +156,7 @@ async fn get_application_returns_section_hooks_with_null_runtime_targets() {
             actor_user_id,
             workspace_id,
             application_type: domain::ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Detail App".into(),
             description: "detail".into(),
             icon: None,
@@ -189,6 +192,45 @@ async fn get_application_returns_section_hooks_with_null_runtime_targets() {
 }
 
 #[tokio::test]
+async fn create_workflow_application_persists_trigger_type() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let workspace_id = seed_workspace(&store, "Workflow Trigger Type").await;
+    let actor_user_id = seed_user(&store, workspace_id, "workflow-trigger").await;
+    let created = <PgControlPlaneStore as ApplicationRepository>::create_application(
+        &store,
+        &CreateApplicationInput {
+            actor_user_id,
+            workspace_id,
+            application_type: domain::ApplicationType::Workflow,
+            workflow_trigger_type: Some(domain::WorkflowTriggerType::Manual),
+            name: "Manual Workflow".into(),
+            description: "manual".into(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let detail = <PgControlPlaneStore as ApplicationRepository>::get_application(
+        &store,
+        workspace_id,
+        created.id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(
+        detail.workflow_trigger_type,
+        Some(domain::WorkflowTriggerType::Manual)
+    );
+}
+
+#[tokio::test]
 async fn delete_application_cascades_flow_runtime_and_tag_bindings() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
@@ -201,6 +243,7 @@ async fn delete_application_cascades_flow_runtime_and_tag_bindings() {
             actor_user_id,
             workspace_id,
             application_type: domain::ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Delete App".into(),
             description: "delete".into(),
             icon: None,

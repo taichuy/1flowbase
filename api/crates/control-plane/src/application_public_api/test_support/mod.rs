@@ -87,6 +87,10 @@ impl ApplicationPublicApiTestRepository {
             id: Uuid::now_v7(),
             workspace_id: TEST_WORKSPACE_ID,
             application_type,
+            workflow_trigger_type: match application_type {
+                domain::ApplicationType::AgentFlow => None,
+                domain::ApplicationType::Workflow => Some(domain::WorkflowTriggerType::Extension),
+            },
             name: name.to_string(),
             description: String::new(),
             icon: None,

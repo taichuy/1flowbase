@@ -164,6 +164,7 @@ async fn application_js_dependency_repository_replaces_alias_target_and_preserve
             actor_user_id: actor.id,
             workspace_id: workspace.id,
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Agent Support".into(),
             description: String::new(),
             icon: None,

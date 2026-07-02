@@ -1,6 +1,7 @@
 import { apiFetch, apiFetchVoid } from '../transport';
 
 export type ConsoleApplicationType = 'agent_flow' | 'workflow';
+export type ConsoleWorkflowTriggerType = 'extension' | 'schedule' | 'manual';
 
 export interface ConsoleApplicationTag {
   id: string;
@@ -65,6 +66,7 @@ export interface ConsoleApplicationSections {
 }
 
 export interface ConsoleApplicationDetail extends ConsoleApplicationSummary {
+  workflow_trigger_type: ConsoleWorkflowTriggerType | null;
   sections: ConsoleApplicationSections;
 }
 
@@ -78,6 +80,7 @@ export interface ConsoleApplicationEnvironmentVariable {
 
 export interface CreateConsoleApplicationInput {
   application_type: ConsoleApplicationType;
+  workflow_trigger_type?: ConsoleWorkflowTriggerType | null;
   name: string;
   description: string;
   icon: string | null;
