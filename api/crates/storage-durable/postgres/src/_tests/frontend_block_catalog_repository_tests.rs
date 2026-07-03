@@ -46,6 +46,18 @@ async fn seed_store() -> (
         .await
         .unwrap();
     store.upsert_builtin_roles(workspace.id).await.unwrap();
+    store
+        .upsert_authenticator(&domain::AuthenticatorRecord {
+            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+            auth_type: "password-local".into(),
+            title: "Password".into(),
+            enabled: true,
+            is_builtin: true,
+            sort_order: 0,
+            options: json!({}),
+        })
+        .await
+        .unwrap();
     let actor = store
         .upsert_root_user(
             workspace.id,

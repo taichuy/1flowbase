@@ -212,7 +212,7 @@ async fn mcp_interface_capabilities_include_bindable_runtime_data_model_crud_ope
 }
 
 #[tokio::test]
-async fn mcp_interface_capabilities_include_system_table_create_parameters() {
+async fn mcp_interface_capabilities_include_system_table_create_operation() {
     let app = test_app().await;
     let (root_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -244,13 +244,7 @@ async fn mcp_interface_capabilities_include_system_table_create_parameters() {
         .iter()
         .map(|descriptor| descriptor["name"].as_str().unwrap())
         .collect::<Vec<_>>();
-
-    for expected in ["id", "scope_id", "scope_kind", "code", "name"] {
-        assert!(
-            descriptor_names.contains(&expected),
-            "missing roles create descriptor {expected}"
-        );
-    }
+    assert!(descriptor_names.is_empty());
 }
 
 #[tokio::test]

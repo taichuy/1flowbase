@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+import type { ConsoleApplicationApiMapping } from '../application-public-api';
 import {
   APPLICATION_PUBLIC_RUNTIME_PATHS,
   createConsoleApplicationApiKey,
@@ -95,7 +96,7 @@ describe('application public API client', () => {
   });
 
   test('uses application-scoped console paths for mapping and publication', async () => {
-    const mapping = {
+    const mapping: ConsoleApplicationApiMapping = {
       input: {
         query_target: 'start.query',
         model_target: null,

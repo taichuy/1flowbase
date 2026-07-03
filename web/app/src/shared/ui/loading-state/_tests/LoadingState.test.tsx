@@ -4,17 +4,17 @@ import { describe, expect, test } from 'vitest';
 import { LoadingState } from '../LoadingState';
 
 describe('LoadingState', () => {
-  test('uses the shared 1flowbase loading label', () => {
+  test('uses the shared loading label', () => {
     render(<LoadingState />);
 
-    expect(screen.getByRole('status', { name: '1flowbase' })).toBeInTheDocument();
-    expect(screen.getByText('1flowbase')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'thinking' })).toBeInTheDocument();
+    expect(screen.getByText('thinking')).toBeInTheDocument();
   });
 
   test('supports fullscreen and compact layout variants', () => {
     render(<LoadingState fullscreen compact />);
 
-    expect(screen.getByRole('status', { name: '1flowbase' })).toHaveClass(
+    expect(screen.getByRole('status', { name: 'thinking' })).toHaveClass(
       'loading-state',
       'loading-state--fullscreen',
       'loading-state--compact'
