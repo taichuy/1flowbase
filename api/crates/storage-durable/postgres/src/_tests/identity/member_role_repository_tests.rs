@@ -134,30 +134,34 @@ async fn create_member(
     .unwrap()
 }
 
+struct TestMemberLoginOptions<'a> {
+    account: &'a str,
+    email: &'a str,
+    phone: Option<&'a str>,
+    email_login_enabled: bool,
+    phone_login_enabled: bool,
+}
+
 async fn create_member_with_login_options(
     store: &PgControlPlaneStore,
     workspace_id: Uuid,
     actor_user_id: Uuid,
-    account: &str,
-    email: &str,
-    phone: Option<&str>,
-    email_login_enabled: bool,
-    phone_login_enabled: bool,
+    options: TestMemberLoginOptions<'_>,
 ) -> domain::UserRecord {
     <PgControlPlaneStore as MemberRepository>::create_member_with_default_role(
         store,
         &CreateMemberInput {
             actor_user_id,
             workspace_id,
-            account: account.to_string(),
-            email: email.to_string(),
-            phone: phone.map(str::to_string),
+            account: options.account.to_string(),
+            email: options.email.to_string(),
+            phone: options.phone.map(str::to_string),
             password_hash: "member-hash".to_string(),
-            name: account.to_string(),
-            nickname: account.to_string(),
+            name: options.account.to_string(),
+            nickname: options.account.to_string(),
             introduction: String::new(),
-            email_login_enabled,
-            phone_login_enabled,
+            email_login_enabled: options.email_login_enabled,
+            phone_login_enabled: options.phone_login_enabled,
         },
     )
     .await
@@ -262,11 +266,13 @@ async fn password_login_resolves_member_from_auth_identity_subjects() {
         &store,
         workspace_id,
         actor_user_id,
-        "identity-member",
-        "identity-member@example.com",
-        Some("18800002222"),
-        true,
-        true,
+        TestMemberLoginOptions {
+            account: "identity-member",
+            email: "identity-member@example.com",
+            phone: Some("18800002222"),
+            email_login_enabled: true,
+            phone_login_enabled: true,
+        },
     )
     .await;
 
@@ -329,22 +335,26 @@ async fn password_login_rejects_ambiguous_identity_subjects() {
         &store,
         workspace_id,
         actor_user_id,
-        "shared-login-subject",
-        "first-shared@example.com",
-        None,
-        true,
-        false,
+        TestMemberLoginOptions {
+            account: "shared-login-subject",
+            email: "first-shared@example.com",
+            phone: None,
+            email_login_enabled: true,
+            phone_login_enabled: false,
+        },
     )
     .await;
     let second = create_member_with_login_options(
         &store,
         workspace_id,
         actor_user_id,
-        "second-shared",
-        "shared-login-subject",
-        None,
-        true,
-        false,
+        TestMemberLoginOptions {
+            account: "second-shared",
+            email: "shared-login-subject",
+            phone: None,
+            email_login_enabled: true,
+            phone_login_enabled: false,
+        },
     )
     .await;
     assert_ne!(first.id, second.id);
@@ -366,22 +376,26 @@ async fn password_login_filters_identity_subjects_by_authenticator_instance() {
         &store,
         workspace_id,
         actor_user_id,
-        "default-shared-instance",
-        "default-shared-instance@example.com",
-        None,
-        true,
-        false,
+        TestMemberLoginOptions {
+            account: "default-shared-instance",
+            email: "default-shared-instance@example.com",
+            phone: None,
+            email_login_enabled: true,
+            phone_login_enabled: false,
+        },
     )
     .await;
     let staff_member = create_member_with_login_options(
         &store,
         workspace_id,
         actor_user_id,
-        "staff-shared-instance",
-        "staff-shared-instance@example.com",
-        None,
-        true,
-        false,
+        TestMemberLoginOptions {
+            account: "staff-shared-instance",
+            email: "staff-shared-instance@example.com",
+            phone: None,
+            email_login_enabled: true,
+            phone_login_enabled: false,
+        },
     )
     .await;
 
@@ -459,11 +473,13 @@ async fn password_login_applies_email_and_phone_flags_at_identity_resolution() {
         &store,
         workspace_id,
         actor_user_id,
-        "flagged-identity",
-        "flagged-identity@example.com",
-        Some("18800004444"),
-        false,
-        false,
+        TestMemberLoginOptions {
+            account: "flagged-identity",
+            email: "flagged-identity@example.com",
+            phone: Some("18800004444"),
+            email_login_enabled: false,
+            phone_login_enabled: false,
+        },
     )
     .await;
 
@@ -502,11 +518,13 @@ async fn member_profile_update_replaces_password_local_contact_identities() {
         &store,
         workspace_id,
         actor_user_id,
-        "profile-identity",
-        "profile-identity@example.com",
-        Some("18800005555"),
-        true,
-        true,
+        TestMemberLoginOptions {
+            account: "profile-identity",
+            email: "profile-identity@example.com",
+            phone: Some("18800005555"),
+            email_login_enabled: true,
+            phone_login_enabled: true,
+        },
     )
     .await;
 

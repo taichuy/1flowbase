@@ -188,10 +188,7 @@ async fn publish_workflow_extension_with_enabled(
     cookie: &str,
     csrf: &str,
     application_id: &str,
-    slug: &str,
-    response_mode: &str,
-    parameters: Value,
-    api_enabled: bool,
+    options: WorkflowExtensionPublishOptions,
 ) -> Value {
     let response = app
         .clone()
@@ -221,13 +218,13 @@ async fn publish_workflow_extension_with_enabled(
                                 "error_selector": null
                             },
                             "extension": {
-                                "slug": slug,
+                                "slug": options.slug,
                                 "method": "POST",
-                                "response_mode": response_mode,
-                                "parameters": parameters
+                                "response_mode": options.response_mode,
+                                "parameters": options.parameters
                             }
                         },
-                        "api_enabled": api_enabled
+                        "api_enabled": options.api_enabled
                     })
                     .to_string(),
                 ))
@@ -238,6 +235,43 @@ async fn publish_workflow_extension_with_enabled(
 
     assert_eq!(response.status(), StatusCode::CREATED);
     response_json(response).await
+}
+
+struct WorkflowExtensionPublishOptions {
+    slug: String,
+    response_mode: String,
+    parameters: Value,
+    api_enabled: bool,
+}
+
+impl WorkflowExtensionPublishOptions {
+    fn new(slug: &str, response_mode: &str, parameters: Value, api_enabled: bool) -> Self {
+        Self {
+            slug: slug.to_string(),
+            response_mode: response_mode.to_string(),
+            parameters,
+            api_enabled,
+        }
+    }
+}
+
+async fn publish_workflow_extension(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    application_id: &str,
+    slug: &str,
+    response_mode: &str,
+    parameters: Value,
+) -> Value {
+    publish_workflow_extension_with_enabled(
+        app,
+        cookie,
+        csrf,
+        application_id,
+        WorkflowExtensionPublishOptions::new(slug, response_mode, parameters, true),
+    )
+    .await
 }
 
 fn workflow_document(flow_id: &str) -> Value {
@@ -392,10 +426,7 @@ async fn setup_workflow_extension_app_with_enabled(
         &cookie,
         &csrf,
         &application_id,
-        slug,
-        response_mode,
-        parameters,
-        api_enabled,
+        WorkflowExtensionPublishOptions::new(slug, response_mode, parameters, api_enabled),
     )
     .await;
     (token, publication)
@@ -457,7 +488,7 @@ async fn workflow_extension_sync_route_returns_accepted_when_run_waits_for_human
     )
     .await;
     let token = create_application_key(&app, &cookie, &csrf, &application_id).await;
-    publish_workflow_extension_with_enabled(
+    publish_workflow_extension(
         &app,
         &cookie,
         &csrf,
@@ -471,7 +502,6 @@ async fn workflow_extension_sync_route_returns_accepted_when_run_waits_for_human
                 "target": "node-workflow-start.customer_id"
             }
         ]),
-        true,
     )
     .await;
 

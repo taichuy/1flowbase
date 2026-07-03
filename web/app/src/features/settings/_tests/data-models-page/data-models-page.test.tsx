@@ -409,6 +409,7 @@ describe('Settings data models page', () => {
       const resizeHandle = screen.getByRole('separator', {
         name: '调整 Data Model 详情宽度'
       });
+      // eslint-disable-next-line testing-library/no-node-access
       const drawerWrapper = editorDialog.closest('.ant-drawer-content-wrapper');
 
       expect(drawerWrapper).toBeInstanceOf(HTMLElement);
@@ -970,15 +971,15 @@ describe('Settings data models page', () => {
         target: { value: 'paid' }
       });
       const selectDropdownOption = async (name: string) => {
-        let option: Element | undefined;
+        let option: HTMLElement | undefined;
         await waitFor(() => {
-          option = Array.from(
-            document.querySelectorAll('.ant-select-item-option-content')
-          ).find((element) => element.textContent === name);
+          option = screen.getByText(name, {
+            selector: '.ant-select-item-option-content'
+          });
           expect(option).toBeInstanceOf(HTMLElement);
         });
         expect(option).toBeInstanceOf(HTMLElement);
-        fireEvent.click(option as HTMLElement);
+        fireEvent.click(option);
       };
       fireEvent.mouseDown(screen.getByLabelText('默认值'));
       await selectDropdownOption('草稿');

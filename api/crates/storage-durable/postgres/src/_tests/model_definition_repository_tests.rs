@@ -203,6 +203,13 @@ async fn model_definition_repository_creates_scope_bound_metadata_without_publis
         vec![
             ("id", "id", ModelFieldKind::String, true, false),
             (
+                "scope_id",
+                "scope_id",
+                ModelFieldKind::ManyToOne,
+                true,
+                false
+            ),
+            (
                 "created_by",
                 "created_by",
                 ModelFieldKind::String,

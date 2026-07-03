@@ -175,10 +175,7 @@ async fn create_model_field(
     cookie: &str,
     csrf: &str,
     model_id: &str,
-    code: &str,
-    field_kind: &str,
-    is_required: bool,
-    api_required: bool,
+    input: TestModelFieldInput,
 ) {
     let response = app
         .clone()
@@ -191,11 +188,11 @@ async fn create_model_field(
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "code": code,
-                        "title": code,
-                        "field_kind": field_kind,
-                        "is_required": is_required,
-                        "api_required": api_required
+                        "code": input.code,
+                        "title": input.code,
+                        "field_kind": input.field_kind,
+                        "is_required": input.is_required,
+                        "api_required": input.api_required
                     })
                     .to_string(),
                 ))
@@ -205,6 +202,13 @@ async fn create_model_field(
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+struct TestModelFieldInput {
+    code: &'static str,
+    field_kind: &'static str,
+    is_required: bool,
+    api_required: bool,
 }
 
 async fn create_scope_grant(
@@ -538,10 +542,12 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         &cookie,
         &csrf,
         &ready_model_id,
-        "order_title",
-        "string",
-        true,
-        false,
+        TestModelFieldInput {
+            code: "order_title",
+            field_kind: "string",
+            is_required: true,
+            api_required: false,
+        },
     )
     .await;
     create_model_field(
@@ -549,10 +555,12 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         &cookie,
         &csrf,
         &ready_model_id,
-        "paid_at",
-        "datetime",
-        false,
-        true,
+        TestModelFieldInput {
+            code: "paid_at",
+            field_kind: "datetime",
+            is_required: false,
+            api_required: true,
+        },
     )
     .await;
     create_scope_grant(&app, &cookie, &csrf, &ready_model_id).await;
