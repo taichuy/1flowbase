@@ -236,9 +236,9 @@ describe('Settings data models page', () => {
       expect(within(summaryRows[0]).getByText('来源：')).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('Code：')).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('开放 API：')).toBeInTheDocument();
+      expect(within(summaryRows[1]).getByText('开放')).toBeInTheDocument();
       expect(within(summaryRows[2]).getByText('物理表：')).toBeInTheDocument();
-      expect(within(summaryRows[2]).getByText('状态：')).toBeInTheDocument();
-      expect(within(summaryRows[2]).getByText('开放')).toBeInTheDocument();
+      expect(within(detailSummary).queryByText('状态：')).not.toBeInTheDocument();
       expect(within(summaryRows[2]).queryByText('published')).not.toBeInTheDocument();
       expect(within(detailSummary).queryByText('available')).not.toBeInTheDocument();
       expect(within(detailSummary).getByText('表 ID：')).toBeInTheDocument();

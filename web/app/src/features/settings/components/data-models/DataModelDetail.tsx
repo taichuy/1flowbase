@@ -259,11 +259,6 @@ export function DataModelDetail({
         key: 'table',
         label: i18nText("settings", "auto.physical_table"),
         value: model.physical_table_name
-      },
-      {
-        key: 'status',
-        label: i18nText('settings', 'auto.status'),
-        value: apiAccessLabel(model)
       }
     ],
     ...(model.source_kind === 'external_source'
