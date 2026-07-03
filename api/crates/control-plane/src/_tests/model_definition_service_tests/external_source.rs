@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn external_model_missing_scope_filter_capability_keeps_stored_exposure_metadata() {
+async fn external_model_missing_scope_filter_capability_still_derives_ready_exposure() {
     let model_id = Uuid::now_v7();
     let mut model = model_in_workspace(model_id, Uuid::nil());
     model.data_source_instance_id = Some(Uuid::now_v7());
@@ -26,7 +26,7 @@ async fn external_model_missing_scope_filter_capability_keeps_stored_exposure_me
 
     assert_eq!(
         unsafe_external.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
+        ApiExposureStatus::ApiExposedReady
     );
 }
 
@@ -71,7 +71,7 @@ async fn external_model_with_scope_filter_capability_can_be_api_exposed_ready() 
 }
 
 #[tokio::test]
-async fn main_source_default_exposure_stays_user_metadata() {
+async fn main_source_default_exposure_derives_ready_exposure() {
     let repository = InMemoryModelDefinitionRepository::default();
     let service = ModelDefinitionService::new(repository);
     let created = service
@@ -92,7 +92,7 @@ async fn main_source_default_exposure_stays_user_metadata() {
 
     assert_eq!(
         effective.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
+        ApiExposureStatus::ApiExposedReady
     );
 }
 

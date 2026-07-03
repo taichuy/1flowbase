@@ -13,6 +13,7 @@ async fn create_application_requires_application_create_all() {
         .create_application(CreateApplicationCommand {
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Blocked".into(),
             description: "blocked".into(),
             icon: None,
@@ -35,6 +36,7 @@ async fn list_applications_uses_own_scope_when_actor_lacks_all_scope() {
         .create_application(CreateApplicationCommand {
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Mine".into(),
             description: "mine".into(),
             icon: None,
@@ -58,6 +60,7 @@ async fn get_application_detail_returns_public_api_template_before_configuration
         .create_application(CreateApplicationCommand {
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Detail".into(),
             description: "detail".into(),
             icon: Some("RobotOutlined".into()),
@@ -96,6 +99,7 @@ async fn update_application_requires_edit_permission() {
         .create_application(CreateApplicationCommand {
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Original".into(),
             description: "original".into(),
             icon: None,
@@ -130,6 +134,7 @@ async fn update_application_replaces_basic_metadata_and_tags() {
         .create_application(CreateApplicationCommand {
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Original".into(),
             description: "original".into(),
             icon: None,
@@ -174,6 +179,7 @@ async fn delete_application_requires_delete_permission() {
         .create_application(CreateApplicationCommand {
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Original".into(),
             description: "original".into(),
             icon: None,
@@ -205,6 +211,7 @@ async fn delete_application_removes_visible_record_and_writes_audit_log() {
         .create_application(CreateApplicationCommand {
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Disposable".into(),
             description: "delete me".into(),
             icon: None,

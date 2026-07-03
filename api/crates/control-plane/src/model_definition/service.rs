@@ -373,7 +373,8 @@ where
         if domain::builtin_contract_for_model(&previous_model).is_none() {
             ensure_protected_model_override_authorized(&actor, &previous_model)?;
         }
-        let previous_api_exposure_status = previous_model.api_exposure_status;
+        let previous_effective_api_exposure_status =
+            self.effective_api_exposure_status(&previous_model);
 
         let candidate = domain::ModelDefinitionRecord {
             status: command.status,
@@ -405,7 +406,7 @@ where
             ))
             .await?;
         let model = self.with_effective_exposure(model).await?;
-        if previous_api_exposure_status != model.api_exposure_status {
+        if previous_effective_api_exposure_status != model.api_exposure_status {
             self.repository
                 .append_audit_log(&audit_log(
                     Some(actor.current_workspace_id),
@@ -414,7 +415,7 @@ where
                     Some(command.model_id),
                     "state_model.api_exposure_status_changed",
                     serde_json::json!({
-                        "from": previous_api_exposure_status.as_str(),
+                        "from": previous_effective_api_exposure_status.as_str(),
                         "to": model.api_exposure_status.as_str(),
                         "status": model.status.as_str(),
                     }),
@@ -1048,7 +1049,7 @@ where
         &self,
         mut model: domain::ModelDefinitionRecord,
     ) -> Result<domain::ModelDefinitionRecord> {
-        model.api_exposure_status = self.normalized_api_exposure_for_status(&model);
+        model.api_exposure_status = self.effective_api_exposure_status(&model);
         Ok(model)
     }
 
@@ -1058,5 +1059,18 @@ where
     ) -> domain::ApiExposureStatus {
         normalize_api_exposure_for_status(model.status, model.api_exposure_status)
             .unwrap_or_else(|_| domain::ApiExposureStatus::default_for_status(model.status))
+    }
+
+    fn effective_api_exposure_status(
+        &self,
+        model: &domain::ModelDefinitionRecord,
+    ) -> domain::ApiExposureStatus {
+        match model.status {
+            domain::DataModelStatus::Draft => domain::ApiExposureStatus::Draft,
+            domain::DataModelStatus::Published => domain::ApiExposureStatus::ApiExposedReady,
+            domain::DataModelStatus::Disabled | domain::DataModelStatus::Broken => {
+                domain::ApiExposureStatus::PublishedNotExposed
+            }
+        }
     }
 }

@@ -278,7 +278,8 @@ describe('console-data-models client', () => {
     await expect(
       fetchConsoleDataModelOpenApiDocument('model-1')
     ).resolves.toMatchObject({
-      path: '/api/console/docs/data-models/model-1/openapi.json'
+      path: '/api/console/docs/data-models/model-1/openapi.json',
+      unwrapSuccess: false
     });
   });
 

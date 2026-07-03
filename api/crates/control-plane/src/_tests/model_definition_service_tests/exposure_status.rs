@@ -80,7 +80,7 @@ async fn update_model_status_persists_explicit_ready_exposure_for_published_mode
 }
 
 #[tokio::test]
-async fn get_model_preserves_published_api_exposure_metadata() {
+async fn get_model_derives_published_api_exposure_ready() {
     let actor_user_id = Uuid::now_v7();
     let workspace_id = Uuid::now_v7();
     for stored_status in [
@@ -98,7 +98,10 @@ async fn get_model_preserves_published_api_exposure_metadata() {
 
         let published = service.get_model(actor_user_id, model_id).await.unwrap();
 
-        assert_eq!(published.api_exposure_status, stored_status);
+        assert_eq!(
+            published.api_exposure_status,
+            ApiExposureStatus::ApiExposedReady
+        );
     }
 
     let model_id = Uuid::now_v7();
@@ -120,7 +123,7 @@ async fn get_model_preserves_published_api_exposure_metadata() {
 }
 
 #[tokio::test]
-async fn get_model_keeps_default_published_exposure_not_exposed() {
+async fn get_model_derives_default_published_exposure_ready() {
     let repository = InMemoryModelDefinitionRepository::default();
     let service = ModelDefinitionService::new(repository.clone());
     let created = service
@@ -137,11 +140,11 @@ async fn get_model_keeps_default_published_exposure_not_exposed() {
         .await
         .unwrap();
 
-    let not_exposed = service.get_model(Uuid::nil(), created.id).await.unwrap();
+    let ready = service.get_model(Uuid::nil(), created.id).await.unwrap();
 
     assert_eq!(
-        not_exposed.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
+        ready.api_exposure_status,
+        ApiExposureStatus::ApiExposedReady
     );
 }
 

@@ -38,6 +38,7 @@ async fn application_js_dependency_selection_snapshots_workspace_catalog_entry()
         .create_application(CreateApplicationCommand {
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Agent Support".into(),
             description: String::new(),
             icon: None,
@@ -79,6 +80,7 @@ async fn application_js_dependency_selection_rejects_dependency_outside_workspac
         .create_application(CreateApplicationCommand {
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Agent Support".into(),
             description: String::new(),
             icon: None,
@@ -112,6 +114,7 @@ async fn application_js_dependency_selection_replaces_existing_alias_target() {
         .create_application(CreateApplicationCommand {
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
             name: "Agent Support".into(),
             description: String::new(),
             icon: None,

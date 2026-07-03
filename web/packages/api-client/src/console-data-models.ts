@@ -633,6 +633,7 @@ export function fetchConsoleDataModelOpenApiDocument(
 ) {
   return apiFetch<ConsoleDataModelOpenApiDocument>({
     path: `/api/console/docs/data-models/${modelId}/openapi.json`,
+    unwrapSuccess: false,
     baseUrl
   });
 }

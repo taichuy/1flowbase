@@ -254,7 +254,7 @@ async fn create_workspace_model_creates_system_model_and_workspace_grant() {
 }
 
 #[tokio::test]
-async fn create_model_defaults_to_main_source_published_not_exposed() {
+async fn create_model_defaults_to_main_source_api_ready() {
     let service = ModelDefinitionService::for_tests();
 
     let created = service
@@ -274,7 +274,7 @@ async fn create_model_defaults_to_main_source_published_not_exposed() {
     assert_eq!(created.status, DataModelStatus::Published);
     assert_eq!(
         created.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
+        ApiExposureStatus::ApiExposedReady
     );
     assert_eq!(created.data_source_instance_id, None);
 }
