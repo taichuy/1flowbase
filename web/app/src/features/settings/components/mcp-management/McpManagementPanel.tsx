@@ -94,6 +94,7 @@ import {
 import { McpInputMappingEditor } from './McpInputMappingEditor';
 import { McpToolDebugPanel } from './McpToolDebugPanel';
 import { MarkdownIrEditor } from '../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
+import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 import { JsonSchemaInlineEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel';
 import {
   createInitialMcpInstancesState,
@@ -1501,10 +1502,9 @@ function McpToolsTab({
         rowKey="id"
         onPageChange={() => undefined}
       />
-      <Modal
+      <FixedHeightModal
         width={840}
         className="mcp-management__tool-modal"
-        centered
         open={modalOpen}
         title={
           editingTool
@@ -1544,24 +1544,28 @@ function McpToolsTab({
             </Button>
           </Space>
         }
+        bodyHeader={
+          <>
+            <Steps
+              size="small"
+              current={toolStepIndex}
+              items={TOOL_FORM_STEPS.map((entry) => ({
+                title: entry.title
+              }))}
+            />
+            <Segmented
+              block
+              className="mcp-management__segmented"
+              value={step}
+              options={TOOL_FORM_STEPS.map((entry) => ({
+                label: entry.label,
+                value: entry.value
+              }))}
+              onChange={(value) => setStep(String(value))}
+            />
+          </>
+        }
       >
-        <Steps
-          size="small"
-          current={toolStepIndex}
-          items={TOOL_FORM_STEPS.map((entry) => ({
-            title: entry.title
-          }))}
-        />
-        <Segmented
-          block
-          className="mcp-management__segmented"
-          value={step}
-          options={TOOL_FORM_STEPS.map((entry) => ({
-            label: entry.label,
-            value: entry.value
-          }))}
-          onChange={(value) => setStep(String(value))}
-        />
         <Form
           form={form}
           className="mcp-management__tool-form"
@@ -1867,7 +1871,7 @@ function McpToolsTab({
             </Form.Item>
           ) : null}
         </Form>
-      </Modal>
+      </FixedHeightModal>
     </Space>
   );
 }

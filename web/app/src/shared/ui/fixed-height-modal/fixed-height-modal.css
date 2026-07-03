@@ -1,0 +1,35 @@
+.fixed-height-modal .ant-modal-content {
+  display: flex;
+  height: var(
+    --fixed-height-modal-content-height,
+    min(700px, calc(100vh - 120px))
+  );
+  flex-direction: column;
+}
+
+.fixed-height-modal .ant-modal-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fixed-height-modal__body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.fixed-height-modal__body-header {
+  flex: 0 0 auto;
+}
+
+.fixed-height-modal__scroll-body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}

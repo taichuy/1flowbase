@@ -790,6 +790,8 @@
       "web/app/src/features/settings/lib/settings-sections.tsx",
       "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
       "web/app/src/features/settings/components/settings-section-surface.css",
+      "web/app/src/shared/ui/fixed-height-modal/FixedHeightModal.tsx",
+      "web/app/src/shared/ui/fixed-height-modal/fixed-height-modal.css",
       "web/app/src/shared/ui/markdown-ir-editor/MarkdownIrEditor.tsx",
       "web/app/src/shared/ui/markdown-ir-editor/markdown-ir-editor.css",
       "web/app/src/features/settings/components/mcp-management/McpManagementPanel.tsx",

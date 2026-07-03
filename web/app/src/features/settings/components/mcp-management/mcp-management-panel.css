@@ -34,26 +34,8 @@
   margin: 16px 0;
 }
 
-.mcp-management__tool-modal .ant-modal-content {
-  display: flex;
-  height: min(700px, calc(100vh - 120px));
-  flex-direction: column;
-}
-
-.mcp-management__tool-modal .ant-modal-body {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .mcp-management__tool-form {
   min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 4px;
 }
 
 .mcp-management__schema-editor {
