@@ -197,6 +197,23 @@ describe('Settings data models page', () => {
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT
   );
 
+  test('hides selected data source implementation metadata in model management', async () => {
+    renderApp('/settings/data-models?source=main_source');
+
+    expect(
+      await screen.findByRole('heading', { name: '主数据源' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(i18nText('settings', 'auto.id_label'))
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(i18nText('settings', 'auto.source_type'))
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(i18nText('settings', 'auto.catalog_label'))
+    ).not.toBeInTheDocument();
+  });
+
   test(
     'keeps runtime log model structural management read-only by backend capability',
     async () => {

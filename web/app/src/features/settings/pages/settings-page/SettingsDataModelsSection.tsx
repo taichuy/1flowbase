@@ -5,8 +5,6 @@ import {
   ArrowLeftOutlined,
   DatabaseOutlined,
   CloudServerOutlined,
-  IdcardOutlined,
-  SyncOutlined,
   HomeOutlined
 } from '@ant-design/icons';
 import {
@@ -432,38 +430,6 @@ export function SettingsDataModelsSection({
                 </Typography.Text>
               </Flex>
 
-              <div className="data-model-panel__source-detail">
-                <div className="data-model-panel__source-meta">
-                  <span className="data-model-panel__source-meta-item">
-                    <IdcardOutlined className="data-model-panel__source-meta-icon" />
-                    <Typography.Text type="secondary">{i18nText("settings", "auto.id_label")}</Typography.Text>
-                    <Typography.Text className="data-model-panel__source-meta-value">
-                      {selectedSource.id}
-                    </Typography.Text>
-                  </span>
-                  <span className="data-model-panel__source-meta-item">
-                    {selectedSource.source_kind === 'main_source' ? (
-                      <DatabaseOutlined className="data-model-panel__source-meta-icon" />
-                    ) : (
-                      <CloudServerOutlined className="data-model-panel__source-meta-icon" />
-                    )}
-                    <Typography.Text type="secondary">
-                      {i18nText("settings", "auto.source_type")}</Typography.Text>
-                    <Typography.Text className="data-model-panel__source-meta-value">
-                      {selectedSource.source_kind === 'main_source'
-                        ? i18nText("settings", "auto.built_in_data_source")
-                        : i18nText("settings", "auto.external_data_source")}
-                    </Typography.Text>
-                  </span>
-                  <span className="data-model-panel__source-meta-item">
-                    <SyncOutlined className="data-model-panel__source-meta-icon" />
-                    <Typography.Text type="secondary">{i18nText("settings", "auto.catalog_label")}</Typography.Text>
-                    <Typography.Text className="data-model-panel__source-meta-value">
-                      {selectedSource.catalog_refresh_status ?? '-'}
-                    </Typography.Text>
-                  </span>
-                </div>
-              </div>
             </div>
             <DataModelTable
               models={models}
