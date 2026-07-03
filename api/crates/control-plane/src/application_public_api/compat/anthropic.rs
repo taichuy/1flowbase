@@ -1,6 +1,9 @@
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
+use crate::application_public_api::client_protocol_envelope::{
+    anthropic_messages_envelope_with_beta, ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE,
+};
 use crate::application_public_api::native::{NativeProtocolRequestKind, NativeRunRequest};
 
 const CLAUDE_CODE_COMPACT_SUMMARY_PROMPT_PREFIX: &str =
@@ -21,6 +24,7 @@ const CLAUDE_CODE_COMPACT_TRANSCRIPT_MARKER: &str =
 const CLAUDE_CODE_SESSION_TITLE_SYSTEM_MARKER: &str = "Generate a concise, sentence-case title";
 const CLAUDE_CODE_SESSION_TITLE_JSON_MARKER: &str = "Return JSON with a single \"title\" field";
 const ANTHROPIC_MESSAGES_COMPATIBILITY_MODE: &str = "anthropic-messages-v1";
+const ANTHROPIC_CONTEXT_1M_MODEL_SUFFIX: &str = "[1m]";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnthropicCompatError {
@@ -52,6 +56,7 @@ pub fn map_messages_request(request: Value) -> Result<NativeRunRequest, Anthropi
         .get("model")
         .and_then(Value::as_str)
         .ok_or_else(|| AnthropicCompatError::invalid("model is required"))?;
+    let (model, context_beta) = normalize_anthropic_model_for_native(model);
     let messages = object
         .get("messages")
         .and_then(Value::as_array)
@@ -174,11 +179,34 @@ pub fn map_messages_request(request: Value) -> Result<NativeRunRequest, Anthropi
     let mut request: NativeRunRequest = serde_json::from_value(native)
         .map_err(|_| AnthropicCompatError::invalid("failed to build Native request"))?;
     request.protocol_compatibility_mode = Some(ANTHROPIC_MESSAGES_COMPATIBILITY_MODE.to_string());
+    if let Some(beta) = context_beta {
+        request.client_protocol_envelope = Some(anthropic_messages_envelope_with_beta(beta));
+    }
     if latest_user_is_tool_result_only {
         request.protocol_request_kind =
             Some(NativeProtocolRequestKind::AnthropicToolResultContinuation);
     }
     Ok(request)
+}
+
+fn normalize_anthropic_model_for_native(model: &str) -> (String, Option<&'static str>) {
+    let trimmed_end = model.trim_end();
+    let suffix_start = trimmed_end
+        .len()
+        .saturating_sub(ANTHROPIC_CONTEXT_1M_MODEL_SUFFIX.len());
+    let has_one_m_suffix = trimmed_end
+        .get(suffix_start..)
+        .is_some_and(|suffix| suffix.eq_ignore_ascii_case(ANTHROPIC_CONTEXT_1M_MODEL_SUFFIX));
+
+    if has_one_m_suffix {
+        let native_model = trimmed_end
+            .get(..suffix_start)
+            .unwrap_or(trimmed_end)
+            .to_string();
+        return (native_model, Some(ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE));
+    }
+
+    (model.to_string(), None)
 }
 
 fn anthropic_system_content_parts(value: Option<&Value>) -> Vec<String> {

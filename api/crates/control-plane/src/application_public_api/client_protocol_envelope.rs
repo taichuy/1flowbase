@@ -1,6 +1,11 @@
 use plugin_framework::provider_contract::ClientProtocolEnvelope;
 use std::collections::BTreeMap;
 
+pub const ANTHROPIC_BETA_HEADER_NAME: &str = "anthropic-beta";
+pub const ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE: &str = "context-1m-2025-08-07";
+const ANTHROPIC_MESSAGES_SOURCE_PROTOCOL: &str = "anthropic_messages";
+const ANTHROPIC_MESSAGES_POLICY: &str = "anthropic_messages_v1";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientProtocolIngressPolicy {
     AnthropicMessages,
@@ -44,6 +49,64 @@ where
     })
 }
 
+pub fn anthropic_messages_envelope_with_beta(beta: &'static str) -> ClientProtocolEnvelope {
+    ClientProtocolEnvelope {
+        source_protocol: ANTHROPIC_MESSAGES_SOURCE_PROTOCOL.to_string(),
+        policy: ANTHROPIC_MESSAGES_POLICY.to_string(),
+        headers: BTreeMap::from([(ANTHROPIC_BETA_HEADER_NAME.to_string(), beta.to_string())]),
+    }
+}
+
+pub fn merge_anthropic_messages_envelopes(
+    captured: Option<ClientProtocolEnvelope>,
+    generated: Option<ClientProtocolEnvelope>,
+) -> Option<ClientProtocolEnvelope> {
+    match (captured, generated) {
+        (None, None) => None,
+        (Some(envelope), None) | (None, Some(envelope)) => Some(envelope),
+        (Some(mut captured), Some(generated)) => {
+            for (name, value) in generated.headers {
+                if name == ANTHROPIC_BETA_HEADER_NAME {
+                    merge_anthropic_beta_header(&mut captured.headers, &value);
+                } else {
+                    captured.headers.entry(name).or_insert(value);
+                }
+            }
+            Some(captured)
+        }
+    }
+}
+
+fn merge_anthropic_beta_header(headers: &mut BTreeMap<String, String>, value: &str) {
+    let new_betas = split_anthropic_beta_header(value);
+    if new_betas.is_empty() {
+        return;
+    }
+    let mut betas = headers
+        .get(ANTHROPIC_BETA_HEADER_NAME)
+        .map(|value| split_anthropic_beta_header(value))
+        .unwrap_or_default();
+
+    for beta in new_betas {
+        if !betas
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(&beta))
+        {
+            betas.push(beta);
+        }
+    }
+    headers.insert(ANTHROPIC_BETA_HEADER_NAME.to_string(), betas.join(","));
+}
+
+fn split_anthropic_beta_header(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
 struct ClientProtocolPolicySpec {
     source_protocol: &'static str,
     policy: &'static str,
@@ -52,11 +115,11 @@ struct ClientProtocolPolicySpec {
 
 fn anthropic_messages_policy() -> ClientProtocolPolicySpec {
     ClientProtocolPolicySpec {
-        source_protocol: "anthropic_messages",
-        policy: "anthropic_messages_v1",
+        source_protocol: ANTHROPIC_MESSAGES_SOURCE_PROTOCOL,
+        policy: ANTHROPIC_MESSAGES_POLICY,
         allowed_headers: &[
             "anthropic-version",
-            "anthropic-beta",
+            ANTHROPIC_BETA_HEADER_NAME,
             "x-claude-code-session-id",
             "anthropic-client-name",
             "anthropic-client-version",

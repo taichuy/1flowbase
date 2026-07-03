@@ -156,6 +156,25 @@ fn model_maps_exactly_without_validation() {
 }
 
 #[test]
+fn one_m_model_suffix_maps_to_native_model_and_anthropic_beta() {
+    let mut request = base_request();
+    request["model"] = json!("claude-opus-4-8[1M]");
+
+    let native = map_messages_request(request).unwrap();
+
+    assert_eq!(native.model.as_deref(), Some("claude-opus-4-8"));
+    let envelope = native
+        .client_protocol_envelope
+        .expect("1M suffix should request anthropic client protocol beta");
+    assert_eq!(envelope.source_protocol, "anthropic_messages");
+    assert_eq!(envelope.policy, "anthropic_messages_v1");
+    assert_eq!(
+        envelope.headers.get("anthropic-beta").map(String::as_str),
+        Some("context-1m-2025-08-07")
+    );
+}
+
+#[test]
 fn tools_are_accepted_for_agent_framework_compatibility() {
     let mut request = base_request();
     request["tools"] = json!([

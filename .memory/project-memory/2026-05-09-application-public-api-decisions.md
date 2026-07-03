@@ -9,13 +9,14 @@ keywords:
   - native run api
   - openai compatible
   - anthropic compatible
+  - anthropic 1m context
   - streaming
   - terminal answer fallback
   - public native resume
   - resume worker
 created_at: 2026-05-09 23
-updated_at: 2026-06-02 23
-last_verified_at: 2026-06-02 23
+updated_at: 2026-07-03 00
+last_verified_at: 2026-07-03 00
 decision_policy: verify_before_decision
 scope:
   - api
@@ -50,6 +51,7 @@ AgentFlow 已进入调试跑通阶段，下一阶段最重要业务是应用 API
 - `2026-05-26 18` 用户确认 OpenAI Responses API 也属于应用兼容投影层；主仓 Native/runtime 是唯一真值，Responses/OpenAI Chat/Anthropic 只从 Native 事件和 durable answer 投影协议形状。若 runtime 终态是 `flow_failed` 但 durable `run.answer` 已存在，兼容 SSE 必须把可用 answer 完整输出并发送协议完成事件，不能让后续失败节点或工具回调失败吞掉前面已完成 answer。OpenAI Responses 根路径 `/responses` 与 `/v1/responses` 都应支持 plain base URL 客户端。
 - `2026-05-30 23` 用户再次确认三层边界：对外 OpenAI / OpenAI Responses / Anthropic 等协议只是 1flowbase Native application run 的外部投影；1flowbase Native/run event/Answer Presentation 是唯一真值层；供应商 wire shape 只由对应 provider 插件适配。网关协议转换可以参考 LiteLLM 等成熟项目，但不能让外部协议成为内部真值。
 - `2026-06-02 23` 用户确认 #611 public Native resume 的 worker 部署第一版走 API 进程内启动，不单独开 resume-worker 容器或独立服务；动机是当前阶段进程挂了通常服务也不可用，独立容器会增加资源与部署成本。持久化层仍应保存 resume request / claim / lease 事实，ephemeral 层最多做唤醒信号，不作为唯一队列。
+- `2026-07-03 00` 用户确认 Claude Code / Anthropic 兼容中的 `[1M]` 只属于入口协议扩展：Native API 仍是唯一真值，Native `model` 保持标准模型 ID；Anthropic mapper 可以识别尾部 `[1M]` 并转换为 `anthropic-beta: context-1m-2025-08-07` / `client_protocol_envelope`。具体 provider / plugin 不承载该语义；是否 1M 由应用 start node `model_list.context_window` 等 Native 模型配置表达。
 - Native payload 不能只做 `inputs/response_mode/user/metadata`，必须重新设计，覆盖 query、文件图片、会话绑定、本地 agent 工具回调、流式、协议映射预留。
 - Native API 标准字段固定为 `query` 表达当前轮输入、`history` 表达外部上下文；OpenAI/Anthropic 兼容层都映射到这套 Native envelope，不在 Native API 里直接使用兼容协议的 `messages` 作为主结构。
 - Native API 增加与 `query` 同级的可选 `model` 字符串字段；平台只校验它是字符串，不校验值、不按它路由、不要求它匹配公开 serving id。后续节点怎么使用 `model` 由应用编排和 mapping 自己配置。

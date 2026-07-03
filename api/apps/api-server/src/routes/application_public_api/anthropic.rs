@@ -13,7 +13,10 @@ use control_plane::application_public_api::{
         ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
         PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
-    client_protocol_envelope::{capture_client_protocol_envelope, ClientProtocolIngressPolicy},
+    client_protocol_envelope::{
+        capture_client_protocol_envelope, merge_anthropic_messages_envelopes,
+        ClientProtocolIngressPolicy,
+    },
     compat::anthropic::{
         anthropic_content_is_tool_result_only, map_messages_request,
         sanitize_anthropic_compat_assistant_text, AnthropicCompatError,
@@ -276,7 +279,10 @@ pub async fn create_message(
         return Ok(Json(to_anthropic_response(run, model)).into_response());
     }
     let mut request = map_messages_request(value)?;
-    request.client_protocol_envelope = anthropic_client_protocol_envelope_from_headers(&headers);
+    request.client_protocol_envelope = merge_anthropic_messages_envelopes(
+        anthropic_client_protocol_envelope_from_headers(&headers),
+        request.client_protocol_envelope,
+    );
     let response_mode = request.response_mode.clone();
     let run = create_native_run(state.clone(), bearer_token.clone(), request).await?;
 
