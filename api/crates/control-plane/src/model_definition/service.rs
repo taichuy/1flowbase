@@ -30,7 +30,6 @@ use super::{
     external_keys::{
         normalize_external_field_key, normalize_external_resource_key, normalize_external_table_id,
     },
-    naming::normalize_api_exposure_for_status,
 };
 
 pub struct ModelDefinitionService<R> {
@@ -247,7 +246,7 @@ where
             .repository
             .list_model_definitions(actor.current_workspace_id)
             .await?;
-        self.with_effective_exposures(models).await
+        Ok(models)
     }
 
     pub async fn create_model(
@@ -286,8 +285,6 @@ where
             }
         };
         let status = command.status.unwrap_or(defaults.data_model_status);
-        let api_exposure_status =
-            normalize_api_exposure_for_status(status, defaults.api_exposure_status)?;
 
         let model = self
             .repository
@@ -303,7 +300,6 @@ where
                 code: command.code,
                 title: command.title,
                 status,
-                api_exposure_status,
                 protection: domain::DataModelProtection::default(),
             })
             .await?;
@@ -345,7 +341,7 @@ where
             ))
             .await?;
 
-        self.with_effective_exposure(model).await
+        Ok(model)
     }
 
     pub async fn update_model_status(
@@ -373,23 +369,17 @@ where
         if domain::builtin_contract_for_model(&previous_model).is_none() {
             ensure_protected_model_override_authorized(&actor, &previous_model)?;
         }
-        let previous_effective_api_exposure_status =
-            self.effective_api_exposure_status(&previous_model);
-
         let candidate = domain::ModelDefinitionRecord {
             status: command.status,
-            api_exposure_status: command.api_exposure_status,
             ..previous_model
         };
-        let api_exposure_status = self.normalized_api_exposure_for_status(&candidate);
         let model = self
             .repository
             .update_model_definition_status(&UpdateModelDefinitionStatusInput {
                 actor_user_id: command.actor_user_id,
                 workspace_id: actor.current_workspace_id,
                 model_id: command.model_id,
-                status: command.status,
-                api_exposure_status,
+                status: candidate.status,
             })
             .await?;
         self.repository
@@ -401,27 +391,9 @@ where
                 "state_model.status_updated",
                 serde_json::json!({
                     "status": model.status.as_str(),
-                    "api_exposure_status": model.api_exposure_status.as_str(),
                 }),
             ))
             .await?;
-        let model = self.with_effective_exposure(model).await?;
-        if previous_effective_api_exposure_status != model.api_exposure_status {
-            self.repository
-                .append_audit_log(&audit_log(
-                    Some(actor.current_workspace_id),
-                    Some(command.actor_user_id),
-                    "state_model",
-                    Some(command.model_id),
-                    "state_model.api_exposure_status_changed",
-                    serde_json::json!({
-                        "from": previous_effective_api_exposure_status.as_str(),
-                        "to": model.api_exposure_status.as_str(),
-                        "status": model.status.as_str(),
-                    }),
-                ))
-                .await?;
-        }
 
         Ok(model)
     }
@@ -442,7 +414,7 @@ where
             .get_model_definition(actor.current_workspace_id, model_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
-        self.with_effective_exposure(model).await
+        Ok(model)
     }
 
     pub async fn list_scope_grants(
@@ -529,7 +501,7 @@ where
             ))
             .await?;
 
-        self.with_effective_exposure(model).await
+        Ok(model)
     }
 
     pub async fn add_field(
@@ -995,7 +967,6 @@ where
             .get_model_definition(actor.current_workspace_id, model_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
-        let effective = self.with_effective_exposure(model.clone()).await?;
         let mut findings = Vec::new();
 
         if external_source_is_unsafe(&model) {
@@ -1009,7 +980,7 @@ where
             ));
         }
 
-        if model.protection.is_protected && effective.status == domain::DataModelStatus::Published {
+        if model.protection.is_protected && model.status == domain::DataModelStatus::Published {
             findings.push(advisor_finding(
                 model.id,
                 domain::DataModelAdvisorSeverity::Blocking,
@@ -1032,45 +1003,5 @@ where
         }
 
         Ok(findings)
-    }
-
-    async fn with_effective_exposures(
-        &self,
-        models: Vec<domain::ModelDefinitionRecord>,
-    ) -> Result<Vec<domain::ModelDefinitionRecord>> {
-        let mut effective_models = Vec::with_capacity(models.len());
-        for model in models {
-            effective_models.push(self.with_effective_exposure(model).await?);
-        }
-        Ok(effective_models)
-    }
-
-    async fn with_effective_exposure(
-        &self,
-        mut model: domain::ModelDefinitionRecord,
-    ) -> Result<domain::ModelDefinitionRecord> {
-        model.api_exposure_status = self.effective_api_exposure_status(&model);
-        Ok(model)
-    }
-
-    fn normalized_api_exposure_for_status(
-        &self,
-        model: &domain::ModelDefinitionRecord,
-    ) -> domain::ApiExposureStatus {
-        normalize_api_exposure_for_status(model.status, model.api_exposure_status)
-            .unwrap_or_else(|_| domain::ApiExposureStatus::default_for_status(model.status))
-    }
-
-    fn effective_api_exposure_status(
-        &self,
-        model: &domain::ModelDefinitionRecord,
-    ) -> domain::ApiExposureStatus {
-        match model.status {
-            domain::DataModelStatus::Draft => domain::ApiExposureStatus::Draft,
-            domain::DataModelStatus::Published => domain::ApiExposureStatus::ApiExposedReady,
-            domain::DataModelStatus::Disabled | domain::DataModelStatus::Broken => {
-                domain::ApiExposureStatus::PublishedNotExposed
-            }
-        }
     }
 }

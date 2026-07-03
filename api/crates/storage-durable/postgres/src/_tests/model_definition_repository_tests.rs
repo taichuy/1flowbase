@@ -3,8 +3,8 @@ use control_plane::ports::{
     ModelDefinitionRepository, UpdateModelDefinitionStatusInput, UpdateScopeDataModelGrantInput,
 };
 use domain::{
-    ApiExposureStatus, DataModelProtection, DataModelScopeKind, DataModelSourceKind,
-    DataModelStatus, ModelFieldKind, ScopeDataModelPermissionProfile, SYSTEM_SCOPE_ID,
+    DataModelProtection, DataModelScopeKind, DataModelSourceKind, DataModelStatus, ModelFieldKind,
+    ScopeDataModelPermissionProfile, SYSTEM_SCOPE_ID,
 };
 use sqlx::PgPool;
 use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
@@ -174,7 +174,6 @@ async fn model_definition_repository_creates_scope_bound_metadata_without_publis
             code: code.clone(),
             title: "Orders".into(),
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
         },
     )
@@ -248,7 +247,6 @@ async fn model_definition_repository_creates_scope_bound_metadata_without_publis
             code: format!("system_{}", Uuid::now_v7().simple()),
             title: "System Orders".into(),
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
         },
     )
@@ -283,7 +281,6 @@ async fn model_definition_repository_binds_core_system_models_to_registered_tabl
                 code: code.into(),
                 title: code.into(),
                 status: DataModelStatus::Published,
-                api_exposure_status: ApiExposureStatus::PublishedNotExposed,
                 protection: DataModelProtection {
                     owner_kind: domain::DataModelOwnerKind::Core,
                     owner_id: None,
@@ -320,7 +317,6 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
             code: "attachments".into(),
             title: "Custom attachments".into(),
             status: DataModelStatus::Draft,
-            api_exposure_status: ApiExposureStatus::Draft,
             protection: DataModelProtection {
                 owner_kind: domain::DataModelOwnerKind::Core,
                 owner_id: None,
@@ -395,14 +391,9 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
         .await
         .unwrap();
 
-    let (title, api_exposure_status, status, physical_table_name): (
-        String,
-        String,
-        String,
-        String,
-    ) = sqlx::query_as(
+    let (title, status, physical_table_name): (String, String, String) = sqlx::query_as(
         r#"
-        select title, api_exposure_status, status, physical_table_name
+        select title, status, physical_table_name
         from model_definitions
         where id = $1
         "#,
@@ -412,7 +403,6 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
     .await
     .unwrap();
     assert_eq!(title, "Custom attachments");
-    assert_eq!(api_exposure_status, "draft");
     assert_eq!(status, "published");
     assert_eq!(physical_table_name, "attachments");
 
@@ -474,7 +464,7 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
 }
 
 #[tokio::test]
-async fn model_definition_repository_persists_status_exposure_owner_and_scope_grants() {
+async fn model_definition_repository_persists_status_owner_and_scope_grants() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -504,7 +494,6 @@ async fn model_definition_repository_persists_status_exposure_owner_and_scope_gr
             code: format!("customers_{}", Uuid::now_v7().simple()),
             title: "Customers".into(),
             status: DataModelStatus::Draft,
-            api_exposure_status: ApiExposureStatus::Draft,
             protection: DataModelProtection {
                 is_protected: true,
                 ..Default::default()
@@ -515,7 +504,6 @@ async fn model_definition_repository_persists_status_exposure_owner_and_scope_gr
     .unwrap();
 
     assert_eq!(created.status, DataModelStatus::Draft);
-    assert_eq!(created.api_exposure_status, ApiExposureStatus::Draft);
     assert!(created.protection.is_protected);
 
     let published = ModelDefinitionRepository::update_model_definition_status(
@@ -525,17 +513,12 @@ async fn model_definition_repository_persists_status_exposure_owner_and_scope_gr
             workspace_id,
             model_id: created.id,
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
         },
     )
     .await
     .unwrap();
 
     assert_eq!(published.status, DataModelStatus::Published);
-    assert_eq!(
-        published.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
-    );
 
     let system_model = ModelDefinitionRepository::create_model_definition(
         &store,
@@ -551,7 +534,6 @@ async fn model_definition_repository_persists_status_exposure_owner_and_scope_gr
             code: format!("system_customers_{}", Uuid::now_v7().simple()),
             title: "System Customers".into(),
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
         },
     )
@@ -622,7 +604,6 @@ async fn model_definition_repository_rejects_scope_grant_for_workspace_model() {
             code: format!("workspace_grant_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Model".into(),
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
         },
     )
@@ -677,7 +658,6 @@ async fn model_definition_repository_rejects_scope_grant_update_for_workspace_mo
             code: format!("workspace_grant_update_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Update Model".into(),
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
         },
     )
@@ -728,7 +708,6 @@ async fn model_definition_repository_blocks_duplicate_code_inside_same_data_sour
         code,
         title: "Orders".into(),
         status: DataModelStatus::Published,
-        api_exposure_status: ApiExposureStatus::PublishedNotExposed,
         protection: DataModelProtection::default(),
     };
     ModelDefinitionRepository::create_model_definition(&store, &input)
@@ -769,7 +748,6 @@ async fn model_definition_repository_blocks_duplicate_code_inside_main_source() 
         code,
         title: "Orders".into(),
         status: DataModelStatus::Published,
-        api_exposure_status: ApiExposureStatus::PublishedNotExposed,
         protection: DataModelProtection::default(),
     };
     ModelDefinitionRepository::create_model_definition(&store, &input)
@@ -821,7 +799,6 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
             code: code.clone(),
             title: "Orders".into(),
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
         },
     )
@@ -842,7 +819,6 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
             code: code.clone(),
             title: "Orders Copy".into(),
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
         },
     )
@@ -892,7 +868,6 @@ async fn model_definition_repository_rejects_workspace_model_with_foreign_data_s
             code: format!("orders_{}", Uuid::now_v7().simple()),
             title: "Orders".into(),
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
         },
     )
@@ -973,7 +948,6 @@ async fn model_definition_repository_deletes_external_source_field_without_local
             code: format!("external_contacts_{}", Uuid::now_v7().simple()),
             title: "External Contacts".into(),
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
         },
     )
@@ -1113,7 +1087,6 @@ async fn model_definition_repository_status_update_requires_visible_workspace() 
             code: format!("foreign_orders_{}", Uuid::now_v7().simple()),
             title: "Foreign Orders".into(),
             status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
         },
     )
@@ -1127,7 +1100,6 @@ async fn model_definition_repository_status_update_requires_visible_workspace() 
             workspace_id,
             model_id: foreign_model.id,
             status: DataModelStatus::Draft,
-            api_exposure_status: ApiExposureStatus::Draft,
         },
     )
     .await;
@@ -1142,8 +1114,4 @@ async fn model_definition_repository_status_update_requires_visible_workspace() 
     .unwrap()
     .unwrap();
     assert_eq!(stored.status, DataModelStatus::Published);
-    assert_eq!(
-        stored.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
-    );
 }

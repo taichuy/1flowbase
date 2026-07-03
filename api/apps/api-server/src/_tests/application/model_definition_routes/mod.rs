@@ -145,8 +145,7 @@ async fn protect_model(database_url: &str, model_id: &str) {
         update model_definitions
         set owner_kind = 'runtime_extension',
             owner_id = 'ext.crm',
-            is_protected = true,
-            api_exposure_status = 'api_exposed_ready'
+            is_protected = true
         where id = $1
         "#,
     )

@@ -53,7 +53,9 @@ describe('Settings data models page', () => {
         screen.getByRole('button', { name: /返\s*回/ })
       ).toBeInTheDocument();
       expect(screen.getByLabelText('默认 Data Model 状态')).toBeInTheDocument();
-      expect(screen.getByLabelText('默认 API 暴露状态')).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText('默认 API 暴露状态')
+      ).not.toBeInTheDocument();
       expect(
         screen.getByRole('heading', { name: 'HubSpot' })
       ).toBeInTheDocument();
@@ -134,7 +136,9 @@ describe('Settings data models page', () => {
         within(rolesRow as HTMLElement).getByText('6')
       ).toBeInTheDocument();
       expect(screen.getByLabelText('默认 Data Model 状态')).toBeEnabled();
-      expect(screen.getByLabelText('默认 API 暴露状态')).toBeEnabled();
+      expect(
+        screen.queryByLabelText('默认 API 暴露状态')
+      ).not.toBeInTheDocument();
 
       fireEvent.click(
         within(rolesRow as HTMLElement).getByRole('button', { name: '编辑' })
@@ -162,21 +166,16 @@ describe('Settings data models page', () => {
         .getAllByLabelText('状态')
         .find((element) => element instanceof HTMLInputElement);
       expect(statusInput).toBeInstanceOf(HTMLInputElement);
-      expect(statusInput).toBeDisabled();
-      fireEvent.change(screen.getByLabelText('标题'), {
-        target: { value: '系统角色' }
-      });
+      expect(statusInput).toBeEnabled();
+      expect(screen.getByLabelText('标题')).toBeDisabled();
       fireEvent.click(screen.getByRole('button', { name: '保存' }));
       await waitFor(() =>
         expect(dataModelsApi.updateSettingsDataModel).toHaveBeenCalledWith(
           'model-roles',
-          expect.not.objectContaining({
-            status: expect.anything()
-          }),
+          { status: 'published' },
           'csrf-123'
         )
       );
-
     },
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT
   );
@@ -206,9 +205,7 @@ describe('Settings data models page', () => {
       expect(screen.getByLabelText('说明')).toBeEnabled();
       expect(screen.getByLabelText('字段 Code')).toBeDisabled();
       expect(screen.getByLabelText('字段类型')).toBeDisabled();
-      expect(
-        screen.getByRole('button', { name: '删除字段' })
-      ).toBeDisabled();
+      expect(screen.getByRole('button', { name: '删除字段' })).toBeDisabled();
     },
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT
   );
@@ -281,8 +278,8 @@ describe('Settings data models page', () => {
 
       fireEvent.click(screen.getByRole('tab', { name: 'API' }));
       expect(
-        await screen.findByText(i18nText('settings', 'auto.api_exposed_ready'))
-      ).toBeInTheDocument();
+        within(editorDialog).queryByTestId('data-model-api-exposure-status')
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByText('published_not_exposed')
       ).not.toBeInTheDocument();
@@ -313,12 +310,11 @@ describe('Settings data models page', () => {
       expect(
         within(emailRow as HTMLElement).getByText('string')
       ).toBeInTheDocument();
-      const emailRequiredSwitch = within(emailRow as HTMLElement).getByRole(
-        'switch',
-        {
-          name: 'Email API 创建必填'
-        }
-      );
+      const emailRequiredSwitch = await within(
+        emailRow as HTMLElement
+      ).findByRole('switch', {
+        name: 'Email API 创建必填'
+      });
       expect(emailRequiredSwitch).toBeChecked();
       fireEvent.click(emailRequiredSwitch);
       await waitFor(() =>
@@ -356,7 +352,7 @@ describe('Settings data models page', () => {
       ).toHaveBeenCalledWith('model-1');
       expect(
         screen.queryByRole('combobox', {
-          name: i18nText('settings', 'auto.api_exposed_ready')
+          name: i18nText('settings', 'auto.api_exposed_fields')
         })
       ).not.toBeInTheDocument();
     },
@@ -364,7 +360,7 @@ describe('Settings data models page', () => {
   );
 
   test(
-    'keeps API status visible when the Data Model OpenAPI contract fails to load',
+    'keeps field contract warning visible when the Data Model OpenAPI contract fails to load',
     async () => {
       dataModelsApi.fetchSettingsDataModelOpenApiDocument.mockRejectedValue(
         new Error('openapi unavailable')
@@ -375,13 +371,13 @@ describe('Settings data models page', () => {
       fireEvent.click(screen.getByRole('tab', { name: 'API' }));
 
       expect(
-        await screen.findByText(i18nText('settings', 'auto.api_exposed_ready'))
-      ).toBeInTheDocument();
-      expect(
         await screen.findByText(
           i18nText('settings', 'auto.openapi_contract_load_failed')
         )
       ).toBeInTheDocument();
+      expect(
+        within(editorDialog).queryByTestId('data-model-api-exposure-status')
+      ).not.toBeInTheDocument();
 
       const apiFieldsTable = await within(editorDialog).findByTestId(
         'data-model-api-fields-table'
@@ -428,7 +424,7 @@ describe('Settings data models page', () => {
   );
 
   test(
-    'shows draft API exposure from the backend DTO in the table and API tab',
+    'shows draft lifecycle status without model-level API exposure in the table and API tab',
     async () => {
       renderApp('/settings/data-models?source=source-1');
 
@@ -447,15 +443,13 @@ describe('Settings data models page', () => {
         within(draftRow as HTMLElement).getAllByText(
           i18nText('settings', 'auto.draft')
         ).length
-      ).toBeGreaterThanOrEqual(2);
+      ).toBeGreaterThanOrEqual(1);
 
       const editorDialog = await openDataModelEditorByTitle('Draft Orders');
       fireEvent.click(screen.getByRole('tab', { name: 'API' }));
       expect(
-        await within(editorDialog).findByTestId(
-          'data-model-api-exposure-status'
-        )
-      ).toHaveTextContent('draft');
+        within(editorDialog).queryByTestId('data-model-api-exposure-status')
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', {
           name: '请求 API 暴露'
@@ -466,6 +460,9 @@ describe('Settings data models page', () => {
           name: '关闭 API 暴露'
         })
       ).not.toBeInTheDocument();
+      expect(
+        dataModelsApi.fetchSettingsDataModelOpenApiDocument
+      ).not.toHaveBeenCalledWith('model-draft-orders');
     },
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT
   );
@@ -499,9 +496,7 @@ describe('Settings data models page', () => {
     expect(
       within(advisorTab).getByText('受保护模型暴露尝试')
     ).toBeInTheDocument();
-    expect(
-      within(advisorTab).getByText('字段映射提示')
-    ).toBeInTheDocument();
+    expect(within(advisorTab).getByText('字段映射提示')).toBeInTheDocument();
     expect(
       within(advisorTab).getByText('请启用作用域过滤。')
     ).toBeInTheDocument();
@@ -631,23 +626,14 @@ describe('Settings data models page', () => {
       },
       { timeout: 5000 }
     );
-    fireEvent.change(within(editDialog).getByDisplayValue('Contacts'), {
-      target: { value: 'Customer Contacts' }
-    });
-    fireEvent.change(within(editDialog).getByDisplayValue('crm.contacts'), {
-      target: { value: 'crm.contacts.v2' }
-    });
+    expect(within(editDialog).getByDisplayValue('Contacts')).toBeDisabled();
+    expect(within(editDialog).getByDisplayValue('crm.contacts')).toBeDisabled();
     fireEvent.click(within(editDialog).getByRole('button', { name: '保存' }));
 
     await waitFor(() =>
-      expect(onUpdate).toHaveBeenCalledWith(
-        contactsModel,
-        expect.objectContaining({
-          title: 'Customer Contacts',
-          status: 'published',
-          external_table_id: 'crm.contacts.v2'
-        })
-      )
+      expect(onUpdate).toHaveBeenCalledWith(contactsModel, {
+        status: 'published'
+      })
     );
   });
 
@@ -779,7 +765,9 @@ describe('Settings data models page', () => {
       renderApp('/settings/data-models?source=main_source');
 
       const editorDialog = await openDataModelEditorByTitle('Attachments');
-      expect(within(editorDialog).getByText('附件原始文件名')).toBeInTheDocument();
+      expect(
+        within(editorDialog).getByText('附件原始文件名')
+      ).toBeInTheDocument();
       fireEvent.click(within(editorDialog).getByText('文件名'));
 
       expect(await screen.findByText('编辑字段')).toBeInTheDocument();
@@ -787,20 +775,12 @@ describe('Settings data models page', () => {
       expect(screen.getByLabelText('说明')).toBeEnabled();
       expect(screen.getByLabelText('字段 Code')).toBeDisabled();
       expect(screen.getByLabelText('字段类型')).toBeDisabled();
-      expect(
-        screen.getByRole('checkbox', { name: '必填' })
-      ).toBeDisabled();
-      expect(
-        screen.getByRole('checkbox', { name: '唯一' })
-      ).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: '必填' })).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: '唯一' })).toBeDisabled();
       expect(screen.getByLabelText('默认值')).toBeDisabled();
-      expect(
-        screen.getByRole('button', { name: '删除字段' })
-      ).toBeDisabled();
+      expect(screen.getByRole('button', { name: '删除字段' })).toBeDisabled();
 
-      fireEvent.click(
-        screen.getByRole('button', { name: '高级显示设置' })
-      );
+      fireEvent.click(screen.getByRole('button', { name: '高级显示设置' }));
       expect(screen.getByLabelText('显示控件')).toBeEnabled();
       expect(screen.getByLabelText('显示控件配置 JSON')).toBeEnabled();
       fireEvent.change(screen.getByLabelText('说明'), {

@@ -198,24 +198,19 @@ export function DataModelApiTab({
   const openApiQuery = useQuery({
     queryKey: settingsDataModelOpenApiQueryKey(model.id),
     queryFn: () => fetchSettingsDataModelOpenApiDocument(model.id),
-    enabled: Boolean(model.id)
+    enabled: Boolean(model.id) && model.status === 'published'
   });
   const apiFieldSets = getApiFieldSets(openApiQuery.data, model);
   const apiContractAvailable =
     Boolean(openApiQuery.data) && !openApiQuery.isError;
-  const exposureStatus = model.api_exposure_status;
-  const exposureLabel =
-    exposureStatus === 'api_exposed_ready'
-      ? i18nText('settings', 'auto.api_exposed_ready')
-      : exposureStatus;
-  const exposureColor =
-    exposureStatus === 'api_exposed_ready' ? 'green' : 'default';
   const columns: ColumnsType<SettingsDataModelField> = [
     {
       title: i18nText('settings', 'auto.field_title'),
       dataIndex: 'title',
       key: 'title',
-      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>
+      render: (value: string) => (
+        <Typography.Text strong>{value}</Typography.Text>
+      )
     },
     {
       title: 'Code',
@@ -263,9 +258,13 @@ export function DataModelApiTab({
         return (
           <Switch
             size="small"
-            aria-label={i18nText('settings', 'auto.api_create_required_toggle', {
-              value1: field.title || field.code
-            })}
+            aria-label={i18nText(
+              'settings',
+              'auto.api_create_required_toggle',
+              {
+                value1: field.title || field.code
+              }
+            )}
             checked={field.api_required}
             disabled={!canManage || saving || openApiQuery.isLoading}
             onChange={(checked) => onUpdateApiRequired(field, checked)}
@@ -285,7 +284,9 @@ export function DataModelApiTab({
       title: i18nText('settings', 'auto.field_attribute'),
       key: 'attribute',
       render: (_, field) => (
-        <Tag style={{ borderRadius: 4, margin: 0 }}>{fieldAttribute(field)}</Tag>
+        <Tag style={{ borderRadius: 4, margin: 0 }}>
+          {fieldAttribute(field)}
+        </Tag>
       )
     }
   ];
@@ -296,18 +297,6 @@ export function DataModelApiTab({
         size="small"
         column={1}
         items={[
-          {
-            key: 'status',
-            label: i18nText('settings', 'auto.api_exposure_status'),
-            children: (
-              <Tag
-                color={exposureColor}
-                data-testid="data-model-api-exposure-status"
-              >
-                {exposureLabel}
-              </Tag>
-            )
-          },
           {
             key: 'runtime',
             label: i18nText('settings', 'auto.runtime'),
@@ -328,10 +317,7 @@ export function DataModelApiTab({
           <Alert
             type="warning"
             showIcon
-            message={i18nText(
-              'settings',
-              'auto.openapi_contract_load_failed'
-            )}
+            message={i18nText('settings', 'auto.openapi_contract_load_failed')}
           />
         ) : null}
         {model.fields.length === 0 ? (

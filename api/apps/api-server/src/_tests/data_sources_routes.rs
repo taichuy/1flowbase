@@ -316,10 +316,10 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
         create_payload["data"]["default_data_model_status"].as_str(),
         Some("published")
     );
-    assert_eq!(
-        create_payload["data"]["default_api_exposure_status"].as_str(),
-        Some("published_not_exposed")
-    );
+    assert!(!create_payload["data"]
+        .as_object()
+        .unwrap()
+        .contains_key("default_api_exposure_status"));
     assert!(!create_payload.to_string().contains("route-header-secret"));
     assert!(!create_payload.to_string().contains("route-secret-echo"));
     assert_eq!(
@@ -355,13 +355,19 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
             && source["source_kind"].as_str() == Some("main_source")
             && source["display_name"].as_str() == Some("主数据源")
             && source["default_data_model_status"].as_str() == Some("published")
-            && source["default_api_exposure_status"].as_str() == Some("published_not_exposed")
+            && !source
+                .as_object()
+                .unwrap()
+                .contains_key("default_api_exposure_status")
     }));
     assert!(listed_sources.iter().any(|source| {
         source["id"].as_str() == Some(&instance_id)
             && source["source_kind"].as_str() == Some("external_source")
             && source["default_data_model_status"].as_str() == Some("published")
-            && source["default_api_exposure_status"].as_str() == Some("published_not_exposed")
+            && !source
+                .as_object()
+                .unwrap()
+                .contains_key("default_api_exposure_status")
     }));
 
     let main_source_defaults = app
@@ -374,11 +380,7 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({
-                        "default_data_model_status": "draft",
-                        "default_api_exposure_status": "draft"
-                    })
-                    .to_string(),
+                    json!({ "default_data_model_status": "draft" }).to_string(),
                 ))
                 .unwrap(),
         )
@@ -399,10 +401,10 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
         main_source_defaults_payload["data"]["default_data_model_status"].as_str(),
         Some("draft")
     );
-    assert_eq!(
-        main_source_defaults_payload["data"]["default_api_exposure_status"].as_str(),
-        Some("draft")
-    );
+    assert!(!main_source_defaults_payload["data"]
+        .as_object()
+        .unwrap()
+        .contains_key("default_api_exposure_status"));
 
     let update_defaults = app
         .clone()
@@ -416,11 +418,7 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({
-                        "default_data_model_status": "draft",
-                        "default_api_exposure_status": "draft"
-                    })
-                    .to_string(),
+                    json!({ "default_data_model_status": "draft" }).to_string(),
                 ))
                 .unwrap(),
         )
@@ -437,10 +435,10 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
         defaults_payload["data"]["default_data_model_status"].as_str(),
         Some("draft")
     );
-    assert_eq!(
-        defaults_payload["data"]["default_api_exposure_status"].as_str(),
-        Some("draft")
-    );
+    assert!(!defaults_payload["data"]
+        .as_object()
+        .unwrap()
+        .contains_key("default_api_exposure_status"));
 
     let validate = app
         .clone()

@@ -29,7 +29,6 @@ pub(super) async fn load_model_definition(
             audit_namespace,
             availability_status,
             status,
-            api_exposure_status,
             owner_kind,
             owner_id,
             is_protected
@@ -58,7 +57,6 @@ pub(super) async fn load_model_definition(
             audit_namespace: row.get("audit_namespace"),
             availability_status: row.get("availability_status"),
             status: row.get("status"),
-            api_exposure_status: row.get("api_exposure_status"),
             owner_kind: row.get("owner_kind"),
             owner_id: row.get("owner_id"),
             is_protected: row.get("is_protected"),
@@ -101,7 +99,6 @@ pub(super) async fn load_model_definition_with_lock(
             audit_namespace,
             availability_status,
             status,
-            api_exposure_status,
             owner_kind,
             owner_id,
             is_protected
@@ -135,7 +132,6 @@ pub(super) async fn load_model_definition_with_lock(
             audit_namespace: row.get("audit_namespace"),
             availability_status: row.get("availability_status"),
             status: row.get("status"),
-            api_exposure_status: row.get("api_exposure_status"),
             owner_kind: row.get("owner_kind"),
             owner_id: row.get("owner_id"),
             is_protected: row.get("is_protected"),
@@ -168,14 +164,13 @@ pub(super) async fn insert_model_definition(
             audit_namespace,
             availability_status,
             status,
-            api_exposure_status,
             owner_kind,
             owner_id,
             is_protected,
             created_by,
             updated_by
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19)
         "#,
     )
     .bind(model.id)
@@ -193,7 +188,6 @@ pub(super) async fn insert_model_definition(
     .bind(&model.audit_namespace)
     .bind(availability_status.as_str())
     .bind(model.status.as_str())
-    .bind(model.api_exposure_status.as_str())
     .bind(model.protection.owner_kind.as_str())
     .bind(&model.protection.owner_id)
     .bind(model.protection.is_protected)
@@ -227,18 +221,16 @@ pub(super) async fn insert_model_definition_after_failure(
             audit_namespace,
             availability_status,
             status,
-            api_exposure_status,
             owner_kind,
             owner_id,
             is_protected,
             created_by,
             updated_by
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19)
         on conflict (id) do update
         set availability_status = excluded.availability_status,
             status = excluded.status,
-            api_exposure_status = excluded.api_exposure_status,
             updated_by = excluded.updated_by,
             updated_at = now()
         "#,
@@ -258,7 +250,6 @@ pub(super) async fn insert_model_definition_after_failure(
     .bind(&model.audit_namespace)
     .bind(availability_status.as_str())
     .bind(model.status.as_str())
-    .bind(model.api_exposure_status.as_str())
     .bind(model.protection.owner_kind.as_str())
     .bind(&model.protection.owner_id)
     .bind(model.protection.is_protected)

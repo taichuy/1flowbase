@@ -134,7 +134,6 @@ fn model_definition(
         external_table_id: None,
         external_capability_snapshot: None,
         status: domain::DataModelStatus::Published,
-        api_exposure_status: domain::ApiExposureStatus::PublishedNotExposed,
         protection: domain::DataModelProtection::default(),
     }
 }

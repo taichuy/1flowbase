@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{ApiExposureStatus, DataModelStatus};
+use crate::DataModelStatus;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -45,14 +45,12 @@ impl DataSourceCatalogRefreshStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataSourceDefaults {
     pub data_model_status: DataModelStatus,
-    pub api_exposure_status: ApiExposureStatus,
 }
 
 impl Default for DataSourceDefaults {
     fn default() -> Self {
         Self {
             data_model_status: DataModelStatus::Published,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
         }
     }
 }

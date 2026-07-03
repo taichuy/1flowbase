@@ -26,7 +26,6 @@ async fn update_defaults_persists_valid_data_model_defaults() {
             instance_id: created.instance.id,
             defaults: DataSourceDefaults {
                 data_model_status: domain::DataModelStatus::Draft,
-                api_exposure_status: domain::ApiExposureStatus::Draft,
             },
         })
         .await
@@ -36,45 +35,6 @@ async fn update_defaults_persists_valid_data_model_defaults() {
         updated.defaults.data_model_status,
         domain::DataModelStatus::Draft
     );
-    assert_eq!(
-        updated.defaults.api_exposure_status,
-        domain::ApiExposureStatus::Draft
-    );
-}
-
-#[tokio::test]
-async fn update_defaults_rejects_invalid_status_exposure_combinations() {
-    let repository = InMemoryDataSourceRepository::default();
-    let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository, runtime);
-
-    let created = service
-        .create_instance(CreateDataSourceInstanceCommand {
-            actor_user_id: user_id(),
-            workspace_id: workspace_id(),
-            installation_id: installation_id(),
-            source_code: "acme_hubspot_source".into(),
-            display_name: "HubSpot".into(),
-            config_json: json!({ "client_id": "abc" }),
-            secret_json: json!({ "client_secret": "secret" }),
-        })
-        .await
-        .unwrap();
-
-    let error = service
-        .update_defaults(UpdateDataSourceDefaultsCommand {
-            actor_user_id: user_id(),
-            workspace_id: workspace_id(),
-            instance_id: created.instance.id,
-            defaults: DataSourceDefaults {
-                data_model_status: domain::DataModelStatus::Draft,
-                api_exposure_status: domain::ApiExposureStatus::PublishedNotExposed,
-            },
-        })
-        .await
-        .unwrap_err();
-
-    assert!(error.to_string().contains("default_api_exposure_status"));
 }
 
 #[tokio::test]

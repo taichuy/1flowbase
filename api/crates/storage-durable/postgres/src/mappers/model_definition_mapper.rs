@@ -18,7 +18,6 @@ pub struct StoredModelDefinitionRow {
     pub audit_namespace: String,
     pub availability_status: String,
     pub status: String,
-    pub api_exposure_status: String,
     pub owner_kind: String,
     pub owner_id: Option<String>,
     pub is_protected: bool,
@@ -48,7 +47,6 @@ impl PgModelDefinitionMapper {
                 &row.availability_status,
             ),
             status: domain::DataModelStatus::from_db(&row.status),
-            api_exposure_status: domain::ApiExposureStatus::from_db(&row.api_exposure_status),
             protection: domain::DataModelProtection {
                 owner_kind: domain::DataModelOwnerKind::from_db(&row.owner_kind),
                 owner_id: row.owner_id,

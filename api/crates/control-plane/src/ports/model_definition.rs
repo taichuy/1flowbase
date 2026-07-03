@@ -13,7 +13,6 @@ pub struct CreateModelDefinitionInput {
     pub code: String,
     pub title: String,
     pub status: domain::DataModelStatus,
-    pub api_exposure_status: domain::ApiExposureStatus,
     pub protection: domain::DataModelProtection,
 }
 
@@ -32,7 +31,6 @@ pub struct ReconcileSystemModelDefinitionInput {
     pub title: String,
     pub physical_table_name: String,
     pub status: domain::DataModelStatus,
-    pub api_exposure_status: domain::ApiExposureStatus,
     pub protection: domain::DataModelProtection,
 }
 
@@ -42,7 +40,6 @@ pub struct UpdateModelDefinitionStatusInput {
     pub workspace_id: Uuid,
     pub model_id: Uuid,
     pub status: domain::DataModelStatus,
-    pub api_exposure_status: domain::ApiExposureStatus,
 }
 
 #[derive(Debug, Clone)]

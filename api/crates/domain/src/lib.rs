@@ -90,11 +90,10 @@ pub use model_provider::{
     PluginVerificationStatus,
 };
 pub use modeling::{
-    ApiExposureReadiness, ApiExposureStatus, DataModelAdvisorFinding, DataModelAdvisorSeverity,
-    DataModelOwnerKind, DataModelProtection, DataModelScopeKind, DataModelSourceKind,
-    DataModelStatus, ExposureCompatibility, ExternalSourceValidation, MetadataAvailabilityStatus,
-    ModelDefinitionRecord, ModelFieldKind, ModelFieldRecord, RuntimeAvailability,
-    ScopeDataModelGrantRecord, ScopeDataModelPermissionProfile,
+    DataModelAdvisorFinding, DataModelAdvisorSeverity, DataModelOwnerKind, DataModelProtection,
+    DataModelScopeKind, DataModelSourceKind, DataModelStatus, MetadataAvailabilityStatus,
+    ModelDefinitionRecord, ModelFieldKind, ModelFieldRecord, ScopeDataModelGrantRecord,
+    ScopeDataModelPermissionProfile,
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{

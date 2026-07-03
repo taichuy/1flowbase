@@ -146,7 +146,6 @@ async fn runtime_read_model_contract_migration_preserves_presentation_metadata()
         r#"
         update model_definitions
         set title = 'Custom run logs',
-            api_exposure_status = 'draft',
             physical_table_name = 'broken_runtime_table'
         where id = $1
         "#,
@@ -176,20 +175,18 @@ async fn runtime_read_model_contract_migration_preserves_presentation_metadata()
         .await
         .unwrap();
 
-    let (title, api_exposure_status, physical_table_name): (String, String, String) =
-        sqlx::query_as(
-            r#"
-            select title, api_exposure_status, physical_table_name
-            from model_definitions
-            where id = $1
-            "#,
-        )
-        .bind(model_id)
-        .fetch_one(store.pool())
-        .await
-        .unwrap();
+    let (title, physical_table_name): (String, String) = sqlx::query_as(
+        r#"
+        select title, physical_table_name
+        from model_definitions
+        where id = $1
+        "#,
+    )
+    .bind(model_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
     assert_eq!(title, "Custom run logs");
-    assert_eq!(api_exposure_status, "draft");
     assert_eq!(physical_table_name, "application_run_log_summaries");
 
     let (field_title, physical_column_name, is_required, display_interface, display_options): (

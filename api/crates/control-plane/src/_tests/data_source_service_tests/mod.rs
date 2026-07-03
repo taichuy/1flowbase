@@ -723,7 +723,6 @@ impl ModelDefinitionRepository for InMemoryDataSourceRepository {
             fields: vec![],
             availability_status: domain::MetadataAvailabilityStatus::Available,
             status: input.status,
-            api_exposure_status: input.api_exposure_status,
             protection: input.protection.clone(),
         };
         self.models.write().await.insert(model.id, model.clone());

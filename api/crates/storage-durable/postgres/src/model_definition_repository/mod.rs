@@ -150,7 +150,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 audit_namespace,
                 availability_status,
                 status,
-                api_exposure_status,
                 owner_kind,
                 owner_id,
                 is_protected
@@ -185,7 +184,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                     audit_namespace: row.get("audit_namespace"),
                     availability_status: row.get("availability_status"),
                     status: row.get("status"),
-                    api_exposure_status: row.get("api_exposure_status"),
                     owner_kind: row.get("owner_kind"),
                     owner_id: row.get("owner_id"),
                     is_protected: row.get("is_protected"),
@@ -218,7 +216,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
     ) -> Result<domain::DataSourceDefaults> {
         let row = sqlx::query(
             r#"
-            select default_data_model_status, default_api_exposure_status
+            select default_data_model_status
             from data_source_instances
             where id = $1
               and workspace_id = $2
@@ -234,9 +232,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             data_model_status: domain::DataModelStatus::from_db(
                 row.get::<String, _>("default_data_model_status").as_str(),
             ),
-            api_exposure_status: domain::ApiExposureStatus::from_db(
-                row.get::<String, _>("default_api_exposure_status").as_str(),
-            ),
         })
     }
 
@@ -246,7 +241,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
     ) -> Result<domain::DataSourceDefaults> {
         let row = sqlx::query(
             r#"
-            select default_data_model_status, default_api_exposure_status
+            select default_data_model_status
             from main_source_defaults
             where workspace_id = $1
             "#,
@@ -259,9 +254,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             .map(|row| domain::DataSourceDefaults {
                 data_model_status: domain::DataModelStatus::from_db(
                     row.get::<String, _>("default_data_model_status").as_str(),
-                ),
-                api_exposure_status: domain::ApiExposureStatus::from_db(
-                    row.get::<String, _>("default_api_exposure_status").as_str(),
                 ),
             })
             .unwrap_or_default())
@@ -297,7 +289,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             fields: vec![],
             availability_status: domain::MetadataAvailabilityStatus::Available,
             status: input.status,
-            api_exposure_status: input.api_exposure_status,
             protection: input.protection.clone(),
         };
         if model.source_kind == domain::DataModelSourceKind::MainSource
@@ -412,7 +403,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 audit_namespace,
                 availability_status,
                 status,
-                api_exposure_status,
                 owner_kind,
                 owner_id,
                 is_protected
@@ -444,7 +434,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 audit_namespace: row.get("audit_namespace"),
                 availability_status: row.get("availability_status"),
                 status: row.get("status"),
-                api_exposure_status: row.get("api_exposure_status"),
                 owner_kind: row.get("owner_kind"),
                 owner_id: row.get("owner_id"),
                 is_protected: row.get("is_protected"),
@@ -466,12 +455,11 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             set title = $2,
                 physical_table_name = $3,
                 status = $4,
-                api_exposure_status = $5,
-                owner_kind = $6,
-                owner_id = $7,
-                is_protected = $8,
+                owner_kind = $5,
+                owner_id = $6,
+                is_protected = $7,
                 availability_status = 'available',
-                updated_by = $9,
+                updated_by = $8,
                 updated_at = now()
             where id = $1
             returning
@@ -490,7 +478,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 audit_namespace,
                 availability_status,
                 status,
-                api_exposure_status,
                 owner_kind,
                 owner_id,
                 is_protected
@@ -500,7 +487,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         .bind(&input.title)
         .bind(&input.physical_table_name)
         .bind(input.status.as_str())
-        .bind(input.api_exposure_status.as_str())
         .bind(input.protection.owner_kind.as_str())
         .bind(&input.protection.owner_id)
         .bind(input.protection.is_protected)
@@ -527,7 +513,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 audit_namespace: row.get("audit_namespace"),
                 availability_status: row.get("availability_status"),
                 status: row.get("status"),
-                api_exposure_status: row.get("api_exposure_status"),
                 owner_kind: row.get("owner_kind"),
                 owner_id: row.get("owner_id"),
                 is_protected: row.get("is_protected"),
@@ -547,14 +532,13 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             r#"
             update model_definitions
             set status = $2,
-                api_exposure_status = $3,
-                updated_by = $4,
+                updated_by = $3,
                 updated_at = now()
             where id = $1
               and (
-                  $5 = '00000000-0000-0000-0000-000000000000'::uuid
+                  $4 = '00000000-0000-0000-0000-000000000000'::uuid
                   or scope_kind <> 'workspace'
-                  or scope_id = $5
+                  or scope_id = $4
               )
             returning
                 id,
@@ -572,7 +556,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 audit_namespace,
                 availability_status,
                 status,
-                api_exposure_status,
                 owner_kind,
                 owner_id,
                 is_protected
@@ -580,7 +563,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         )
         .bind(input.model_id)
         .bind(input.status.as_str())
-        .bind(input.api_exposure_status.as_str())
         .bind(nullable_actor_user_id(input.actor_user_id))
         .bind(input.workspace_id)
         .fetch_optional(self.pool())
@@ -605,7 +587,6 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 audit_namespace: row.get("audit_namespace"),
                 availability_status: row.get("availability_status"),
                 status: row.get("status"),
-                api_exposure_status: row.get("api_exposure_status"),
                 owner_kind: row.get("owner_kind"),
                 owner_id: row.get("owner_id"),
                 is_protected: row.get("is_protected"),

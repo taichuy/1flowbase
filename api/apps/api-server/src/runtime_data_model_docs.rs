@@ -144,7 +144,7 @@ pub async fn ready_models(
     };
     let mut models = models
         .into_iter()
-        .filter(|model| model.api_exposure_status == domain::ApiExposureStatus::ApiExposedReady)
+        .filter(|model| model.status == domain::DataModelStatus::Published)
         .collect::<Vec<_>>();
     models.sort_by(|left, right| left.code.cmp(&right.code));
     Ok(models)
@@ -169,7 +169,7 @@ pub async fn ready_model(
             return Err(error.into());
         }
     };
-    if model.api_exposure_status != domain::ApiExposureStatus::ApiExposedReady {
+    if model.status != domain::DataModelStatus::Published {
         return Ok(None);
     }
     Ok(Some(model))
@@ -341,7 +341,6 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
             "id": model.id.to_string(),
             "code": model.code,
             "status": model.status.as_str(),
-            "api_exposure_status": model.api_exposure_status.as_str(),
             "source_kind": model.source_kind.as_str(),
             "protected": model.protection.is_protected
         },

@@ -126,7 +126,6 @@ async fn seed_external_runtime_model(
             external_table_id: None,
             external_capability_snapshot: None,
             status: domain::DataModelStatus::Published,
-            api_exposure_status: domain::ApiExposureStatus::PublishedNotExposed,
             protection: domain::DataModelProtection::default(),
             code: model_code,
             title: "External Contacts".into(),
@@ -202,7 +201,6 @@ async fn list_runtime_model_metadata_marks_model_unavailable_when_table_is_missi
             external_table_id: None,
             external_capability_snapshot: None,
             status: domain::DataModelStatus::Published,
-            api_exposure_status: domain::ApiExposureStatus::PublishedNotExposed,
             protection: domain::DataModelProtection::default(),
             code: model_code.clone(),
             title: "Orders".into(),
@@ -403,7 +401,6 @@ async fn list_runtime_model_metadata_preserves_data_model_status() {
             external_table_id: None,
             external_capability_snapshot: None,
             status: domain::DataModelStatus::Published,
-            api_exposure_status: domain::ApiExposureStatus::PublishedNotExposed,
             protection: domain::DataModelProtection::default(),
             code: model_code.clone(),
             title: "Draft Orders".into(),
@@ -418,7 +415,6 @@ async fn list_runtime_model_metadata_preserves_data_model_status() {
             workspace_id,
             model_id: created.id,
             status: domain::DataModelStatus::Draft,
-            api_exposure_status: domain::ApiExposureStatus::Draft,
         },
     )
     .await

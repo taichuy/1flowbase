@@ -55,10 +55,6 @@ export function DataModelFormDrawer({
     mode === 'edit'
       ? model?.source_kind === 'external_source'
       : source?.source_kind === 'external_source';
-  const canUpdateLifecycleStatus =
-    mode === 'create'
-      ? true
-      : Boolean(model?.capabilities.can_update_lifecycle_status);
 
   useEffect(() => {
     if (!open) {
@@ -89,16 +85,7 @@ export function DataModelFormDrawer({
     const values = await form.validateFields();
 
     if (mode === 'edit' && model) {
-      const input: UpdateSettingsDataModelInput = {
-        title: values.title,
-        external_table_id: isExternalModel ? values.external_table_id : null
-      };
-
-      if (canUpdateLifecycleStatus) {
-        input.status = values.status;
-      }
-
-      onUpdate(model, input);
+      onUpdate(model, { status: values.status });
       onClose();
       return;
     }
@@ -118,18 +105,28 @@ export function DataModelFormDrawer({
 
   return (
     <Drawer
-      title={mode === 'create' ? i18nText("settings", "auto.new_data_model") : i18nText("settings", "auto.edit_data_model")}
+      title={
+        mode === 'create'
+          ? i18nText('settings', 'auto.new_data_model')
+          : i18nText('settings', 'auto.edit_data_model')
+      }
       open={open}
       width={520}
       onClose={onClose}
       extra={
         <Button
           type="primary"
-          aria-label={mode === 'create' ? i18nText("settings", "auto.create") : i18nText("settings", "auto.save")}
+          aria-label={
+            mode === 'create'
+              ? i18nText('settings', 'auto.create')
+              : i18nText('settings', 'auto.save')
+          }
           loading={saving}
           onClick={handleSubmit}
         >
-          {mode === 'create' ? i18nText("settings", "auto.create") : i18nText("settings", "auto.save")}
+          {mode === 'create'
+            ? i18nText('settings', 'auto.create')
+            : i18nText('settings', 'auto.save')}
         </Button>
       }
     >
@@ -144,44 +141,74 @@ export function DataModelFormDrawer({
         <Form.Item
           name="title"
           label={
-            <DataModelFieldLabel label={i18nText("settings", "auto.title")} title={dataModelTitleHelp} />
+            <DataModelFieldLabel
+              label={i18nText('settings', 'auto.title')}
+              title={dataModelTitleHelp}
+            />
           }
-          rules={[{ required: true, message: i18nText("settings", "auto.enter_title") }]}
+          rules={[
+            {
+              required: true,
+              message: i18nText('settings', 'auto.enter_title')
+            }
+          ]}
         >
-          <Input aria-label={i18nText("settings", "auto.title")} />
+          <Input
+            aria-label={i18nText('settings', 'auto.title')}
+            disabled={mode === 'edit'}
+          />
         </Form.Item>
         <Form.Item
           name="code"
-          label={
-            <DataModelFieldLabel label="Code" title={dataModelCodeHelp} />
-          }
-          rules={[{ required: true, message: i18nText("settings", "auto.enter_data_model_code") }]}
+          label={<DataModelFieldLabel label="Code" title={dataModelCodeHelp} />}
+          rules={[
+            {
+              required: true,
+              message: i18nText('settings', 'auto.enter_data_model_code')
+            }
+          ]}
         >
           <Input aria-label="Code" disabled={mode === 'edit'} />
         </Form.Item>
         <Form.Item
           name="status"
           label={
-            <DataModelFieldLabel label={i18nText("settings", "auto.status")} title={dataModelStatusHelp} />
+            <DataModelFieldLabel
+              label={i18nText('settings', 'auto.status')}
+              title={dataModelStatusHelp}
+            />
           }
-          rules={[{ required: true, message: i18nText("settings", "auto.select_status") }]}
+          rules={[
+            {
+              required: true,
+              message: i18nText('settings', 'auto.select_status')
+            }
+          ]}
         >
           <Select
-            aria-label={i18nText("settings", "auto.status")}
-            disabled={!canUpdateLifecycleStatus}
+            aria-label={i18nText('settings', 'auto.status')}
+            disabled={saving}
             options={dataModelStatusOptions}
           />
         </Form.Item>
-        <Form.Item name="data_source_instance_id" label={i18nText("settings", "auto.data_source")}>
+        <Form.Item
+          name="data_source_instance_id"
+          label={i18nText('settings', 'auto.data_source')}
+        >
           <Input disabled />
         </Form.Item>
         {isExternalModel ? (
           <Form.Item
             name="external_table_id"
-            label={i18nText("settings", "auto.table_id_alt")}
-            rules={[{ required: true, message: i18nText("settings", "auto.enter_table_id") }]}
+            label={i18nText('settings', 'auto.table_id_alt')}
+            rules={[
+              {
+                required: true,
+                message: i18nText('settings', 'auto.enter_table_id')
+              }
+            ]}
           >
-            <Input />
+            <Input disabled={mode === 'edit'} />
           </Form.Item>
         ) : null}
       </Form>

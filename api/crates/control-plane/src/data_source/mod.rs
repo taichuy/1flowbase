@@ -433,7 +433,6 @@ where
                 "data_source.defaults_updated",
                 json!({
                     "default_data_model_status": instance.defaults.data_model_status.as_str(),
-                    "default_api_exposure_status": instance.defaults.api_exposure_status.as_str(),
                 }),
             ),
         )
@@ -481,7 +480,6 @@ where
                 "data_source.main_source_defaults_updated",
                 json!({
                     "default_data_model_status": defaults.data_model_status.as_str(),
-                    "default_api_exposure_status": defaults.api_exposure_status.as_str(),
                 }),
             ),
         )
@@ -591,8 +589,6 @@ where
             normalize_required_text(&descriptor.resource_key, "external_resource_key")?;
         let defaults = instance.defaults;
         let status = defaults.data_model_status;
-        let api_exposure_status =
-            normalize_data_source_api_exposure_for_status(status, defaults.api_exposure_status)?;
         let model_code = normalize_code_identifier(&descriptor_resource_key, "resource_key")?;
         let model_title = descriptor
             .metadata
@@ -618,7 +614,6 @@ where
                 code: model_code,
                 title: model_title,
                 status,
-                api_exposure_status,
                 protection: domain::DataModelProtection::default(),
             })
             .await?;
@@ -936,22 +931,6 @@ fn model_field_kind_from_schema(schema: &PluginFormFieldSchema) -> domain::Model
     }
 }
 
-fn normalize_data_source_api_exposure_for_status(
-    status: domain::DataModelStatus,
-    api_exposure_status: domain::ApiExposureStatus,
-) -> Result<domain::ApiExposureStatus> {
-    if status == domain::DataModelStatus::Draft {
-        match api_exposure_status {
-            domain::ApiExposureStatus::Draft => Ok(api_exposure_status),
-            _ => Err(ControlPlaneError::InvalidInput("default_api_exposure_status").into()),
-        }
-    } else if matches!(api_exposure_status, domain::ApiExposureStatus::Draft) {
-        Ok(domain::ApiExposureStatus::PublishedNotExposed)
-    } else {
-        Ok(api_exposure_status)
-    }
-}
-
 fn ensure_json_object(value: &Value, field: &'static str) -> Result<Value> {
     if value.is_object() {
         Ok(value.clone())
@@ -1212,17 +1191,8 @@ fn secret_reference_marker(secret_ref: &str, secret_version: i32) -> Value {
 }
 
 fn ensure_data_source_defaults_compatible(defaults: domain::DataSourceDefaults) -> Result<()> {
-    if domain::ApiExposureStatus::validate_for_status(
-        defaults.data_model_status,
-        defaults.api_exposure_status,
-        domain::ApiExposureReadiness::default(),
-    )
-    .is_rejected()
-    {
-        Err(ControlPlaneError::InvalidInput("default_api_exposure_status").into())
-    } else {
-        Ok(())
-    }
+    let _ = defaults;
+    Ok(())
 }
 
 fn build_preview_fingerprint(

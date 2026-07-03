@@ -276,7 +276,6 @@ impl ModelDefinitionRepository for MemoryFileManagementRepository {
             external_table_id: input.external_table_id.clone(),
             external_capability_snapshot: None,
             status: input.status,
-            api_exposure_status: input.api_exposure_status,
             protection: input.protection.clone(),
         };
         self.models

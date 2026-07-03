@@ -16,7 +16,6 @@ async fn update_model_status_rejects_model_outside_actor_workspace() {
             actor_user_id,
             model_id,
             status: DataModelStatus::Draft,
-            api_exposure_status: ApiExposureStatus::Draft,
         })
         .await
         .unwrap_err();
@@ -30,10 +29,6 @@ async fn update_model_status_rejects_model_outside_actor_workspace() {
         .cloned()
         .unwrap();
     assert_eq!(stored.status, DataModelStatus::Published);
-    assert_eq!(
-        stored.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
-    );
 }
 
 #[tokio::test]
@@ -55,7 +50,6 @@ async fn non_root_admin_cannot_mutate_protected_data_model() {
             actor_user_id,
             model_id,
             status: DataModelStatus::Disabled,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
         })
         .await
         .unwrap_err();
@@ -184,7 +178,6 @@ async fn advisor_findings_report_protection_and_field_risks() {
     let model_id = Uuid::now_v7();
     let mut model = protected_extension_model(model_id);
     model.audit_namespace = "".into();
-    model.api_exposure_status = ApiExposureStatus::ApiExposedReady;
     model.fields.push(ModelFieldRecord {
         id: Uuid::now_v7(),
         data_model_id: model_id,

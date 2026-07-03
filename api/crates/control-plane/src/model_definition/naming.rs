@@ -1,8 +1,5 @@
-use anyhow::Result;
 use domain::DataModelScopeKind;
 use uuid::Uuid;
-
-use crate::errors::ControlPlaneError;
 
 pub(super) fn registered_system_table_name(
     scope_kind: domain::DataModelScopeKind,
@@ -19,25 +16,6 @@ pub(super) fn registered_system_table_name(
     }
 
     domain::builtin_data_model_contract(code).map(|contract| contract.physical_table_name)
-}
-
-pub(super) fn normalize_api_exposure_for_status(
-    status: domain::DataModelStatus,
-    exposure: domain::ApiExposureStatus,
-) -> Result<domain::ApiExposureStatus> {
-    match status {
-        domain::DataModelStatus::Draft => Ok(domain::ApiExposureStatus::Draft),
-        domain::DataModelStatus::Published => {
-            if exposure == domain::ApiExposureStatus::Draft {
-                Err(ControlPlaneError::InvalidInput("api_exposure_status").into())
-            } else {
-                Ok(exposure)
-            }
-        }
-        domain::DataModelStatus::Disabled | domain::DataModelStatus::Broken => {
-            Ok(domain::ApiExposureStatus::PublishedNotExposed)
-        }
-    }
 }
 
 pub(super) fn build_physical_table_name(scope_kind: DataModelScopeKind, code: &str) -> String {

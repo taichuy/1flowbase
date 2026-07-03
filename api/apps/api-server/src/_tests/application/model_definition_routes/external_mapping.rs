@@ -56,10 +56,10 @@ async fn seed_external_data_source_instance(database_url: &str) -> String {
         insert into data_source_instances (
             id, workspace_id, installation_id, source_code, display_name, status,
             config_json, metadata_json, default_data_model_status,
-            default_api_exposure_status, created_by
+            created_by
         ) values (
             $1, $2, $3, 'route_external_source', 'Route External Source', 'ready',
-            '{}', '{}', 'published', 'published_not_exposed', $4
+            '{}', '{}', 'published', $4
         )
         "#,
     )

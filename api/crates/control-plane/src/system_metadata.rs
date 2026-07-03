@@ -466,7 +466,6 @@ where
                 external_table_id: None,
                 external_capability_snapshot: None,
                 status: domain::DataModelStatus::Published,
-                api_exposure_status: domain::ApiExposureStatus::PublishedNotExposed,
                 protection: registered_system_table_protection(),
                 code: template.code.to_string(),
                 title: template.title.to_string(),
@@ -501,7 +500,6 @@ where
                 title: seed_string_if_empty(&existing.title, template.title),
                 physical_table_name: template.code.to_string(),
                 status: domain::DataModelStatus::Published,
-                api_exposure_status: existing.api_exposure_status,
                 protection: registered_system_table_protection(),
             })
             .await?;

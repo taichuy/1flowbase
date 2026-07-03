@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn model_definition_scope_grant_routes_do_not_drive_api_exposure_status() {
+async fn model_definition_scope_grant_routes_do_not_return_model_level_api_exposure() {
     let (app, database_url) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -34,10 +34,11 @@ async fn model_definition_scope_grant_routes_do_not_drive_api_exposure_status() 
     )
     .unwrap();
     let model_id = created["data"]["id"].as_str().unwrap().to_string();
-    assert_eq!(
-        created["data"]["api_exposure_status"],
-        json!("api_exposed_ready")
-    );
+    assert_eq!(created["data"]["status"], json!("published"));
+    assert!(!created["data"]
+        .as_object()
+        .unwrap()
+        .contains_key("api_exposure_status"));
 
     let create_grant_response = app
         .clone()
@@ -119,10 +120,11 @@ async fn model_definition_scope_grant_routes_do_not_drive_api_exposure_status() 
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(
-        model_payload["data"]["api_exposure_status"],
-        json!("api_exposed_ready")
-    );
+    assert_eq!(model_payload["data"]["status"], json!("published"));
+    assert!(!model_payload["data"]
+        .as_object()
+        .unwrap()
+        .contains_key("api_exposure_status"));
     assert_eq!(
         audit_event_count(&database_url, "state_model.scope_grant_created").await,
         2
