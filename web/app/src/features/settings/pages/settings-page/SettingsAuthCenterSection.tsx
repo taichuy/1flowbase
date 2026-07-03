@@ -1,6 +1,6 @@
 import {
+  BarsOutlined,
   DeleteOutlined,
-  DragOutlined,
   PlusOutlined
 } from '@ant-design/icons';
 import { useMemo, useState, type DragEvent } from 'react';
@@ -468,7 +468,7 @@ export function SettingsAuthCenterSection() {
               className="settings-auth-center__drag-handle"
               disabled={!canDragSortAuthenticators}
               draggable={canDragSortAuthenticators}
-              icon={<DragOutlined aria-hidden="true" />}
+              icon={<BarsOutlined aria-hidden="true" />}
               size="small"
               type="text"
               onClick={(event) => {
