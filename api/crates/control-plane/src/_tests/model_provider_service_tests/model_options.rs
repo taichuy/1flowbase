@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn model_provider_service_options_group_models_by_source_instance_and_keep_unknown_ids() {
+async fn model_provider_service_options_group_models_by_model_id_with_ordered_instance_targets() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryModelProviderRepository::new(actor_with_permissions(
         workspace_id,
@@ -59,7 +59,7 @@ async fn model_provider_service_options_group_models_by_source_instance_and_keep
                 "base_url": "https://beta.example.com/v1"
             }),
             configured_models: Vec::new(),
-            enabled_model_ids: vec!["beta-model".to_string()],
+            enabled_model_ids: vec!["fixture_chat".to_string()],
             included_in_main: Some(true),
             created_by: repository.actor.user_id,
         })
@@ -129,8 +129,8 @@ async fn model_provider_service_options_group_models_by_source_instance_and_keep
             refresh_status: ModelProviderCatalogRefreshStatus::Ready,
             source: domain::ModelProviderCatalogSource::Hybrid,
             models_json: serde_json::to_value(vec![ProviderModelDescriptor {
-                model_id: "beta-model".to_string(),
-                display_name: "Beta Model".to_string(),
+                model_id: "fixture_chat".to_string(),
+                display_name: "Fixture Chat Backup".to_string(),
                 source: ProviderModelSource::Dynamic,
                 supports_streaming: true,
                 supports_tool_call: false,
@@ -161,51 +161,60 @@ async fn model_provider_service_options_group_models_by_source_instance_and_keep
         "fixture_provider"
     );
     assert_eq!(options.providers[0].main_instance.group_count, 2);
-    assert_eq!(options.providers[0].main_instance.model_count, 3);
+    assert_eq!(options.providers[0].main_instance.model_count, 2);
     assert_eq!(options.providers[0].model_groups.len(), 2);
 
-    let alpha_group = options.providers[0]
+    let fixture_chat_group = options.providers[0]
         .model_groups
         .iter()
-        .find(|group| group.source_instance_id == alpha.id)
+        .find(|group| group.model_id == "fixture_chat")
         .unwrap();
-    assert_eq!(alpha_group.source_instance_display_name, "Alpha");
+    assert_eq!(fixture_chat_group.model.descriptor.model_id, "fixture_chat");
     assert_eq!(
-        alpha_group
-            .models
+        fixture_chat_group
+            .targets
             .iter()
-            .map(|model| model.descriptor.model_id.as_str())
+            .map(|target| (
+                target.source_instance_id,
+                target.source_instance_display_name.as_str(),
+                target.model.descriptor.display_name.as_str()
+            ))
             .collect::<Vec<_>>(),
-        vec!["fixture_chat", "custom-enabled"]
+        vec![
+            (alpha.id, "Alpha", "Fixture Chat"),
+            (beta.id, "Beta", "Fixture Chat Backup")
+        ]
     );
     assert_eq!(
-        alpha_group.models[0].display_name_fallback.as_deref(),
+        fixture_chat_group.model.display_name_fallback.as_deref(),
         Some("Fixture Chat")
     );
     assert_eq!(
-        alpha_group.models[0].descriptor.context_window,
+        fixture_chat_group.model.descriptor.context_window,
         Some(256_000)
     );
-    assert_eq!(
-        alpha_group.models[1].display_name_fallback.as_deref(),
-        Some("custom-enabled")
-    );
-    assert_eq!(alpha_group.models[1].label_key, None);
 
-    let beta_group = options.providers[0]
+    let custom_group = options.providers[0]
         .model_groups
         .iter()
-        .find(|group| group.source_instance_id == beta.id)
+        .find(|group| group.model_id == "custom-enabled")
         .unwrap();
-    assert_eq!(beta_group.source_instance_display_name, "Beta");
     assert_eq!(
-        beta_group
-            .models
+        custom_group
+            .targets
             .iter()
-            .map(|model| model.descriptor.model_id.as_str())
+            .map(|target| (
+                target.source_instance_id,
+                target.source_instance_display_name.as_str()
+            ))
             .collect::<Vec<_>>(),
-        vec!["beta-model"]
+        vec![(alpha.id, "Alpha")]
     );
+    assert_eq!(
+        custom_group.model.display_name_fallback.as_deref(),
+        Some("custom-enabled")
+    );
+    assert_eq!(custom_group.model.label_key, None);
 }
 
 #[tokio::test]

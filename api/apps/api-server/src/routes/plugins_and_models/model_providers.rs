@@ -341,9 +341,16 @@ pub struct ModelProviderMainInstanceSummaryResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ModelProviderOptionGroupResponse {
+    pub model_id: String,
+    pub model: ProviderModelDescriptorResponse,
+    pub targets: Vec<ModelProviderOptionTargetResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderOptionTargetResponse {
     pub source_instance_id: String,
     pub source_instance_display_name: String,
-    pub models: Vec<ProviderModelDescriptorResponse>,
+    pub model: ProviderModelDescriptorResponse,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -721,12 +728,16 @@ fn to_option_response(option: ModelProviderOptionEntry) -> ModelProviderOptionRe
             .model_groups
             .into_iter()
             .map(|group| ModelProviderOptionGroupResponse {
-                source_instance_id: group.source_instance_id.to_string(),
-                source_instance_display_name: group.source_instance_display_name,
-                models: group
-                    .models
+                model_id: group.model_id,
+                model: to_model_descriptor_response(group.model),
+                targets: group
+                    .targets
                     .into_iter()
-                    .map(to_model_descriptor_response)
+                    .map(|target| ModelProviderOptionTargetResponse {
+                        source_instance_id: target.source_instance_id.to_string(),
+                        source_instance_display_name: target.source_instance_display_name,
+                        model: to_model_descriptor_response(target.model),
+                    })
                     .collect(),
             })
             .collect(),

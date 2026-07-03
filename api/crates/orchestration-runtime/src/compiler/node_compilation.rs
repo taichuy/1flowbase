@@ -193,13 +193,14 @@ fn compile_llm_runtime(
         return None;
     };
 
-    let provider_instance = resolve_fixed_model_provider_instance(
+    let provider_instances = resolve_fixed_model_provider_instances(
         node_id,
         &provider_code,
         &model,
         context,
         compile_issues,
     )?;
+    let provider_instance = provider_instances.first().copied()?;
 
     let context_policy = compile_llm_context_policy(config);
 
@@ -209,7 +210,7 @@ fn compile_llm_runtime(
         protocol: provider_instance.protocol.clone(),
         model: model.clone(),
         routing: Some(fixed_model_routing(
-            provider_instance,
+            &provider_instances,
             &model,
             context_policy,
         )),
@@ -224,13 +225,13 @@ fn compile_llm_context_policy(config: &Value) -> Value {
         .unwrap_or_else(|| serde_json::json!({ "integration_context": "enabled" }))
 }
 
-fn resolve_fixed_model_provider_instance<'a>(
+fn resolve_fixed_model_provider_instances<'a>(
     node_id: &str,
     provider_code: &str,
     model: &str,
     context: &'a FlowCompileContext,
     compile_issues: &mut Vec<CompileIssue>,
-) -> Option<&'a FlowCompileProviderInstance> {
+) -> Option<Vec<&'a FlowCompileProviderInstance>> {
     if !context.provider_families.contains_key(provider_code) {
         compile_issues.push(CompileIssue {
             node_id: node_id.to_string(),
@@ -275,19 +276,8 @@ fn resolve_fixed_model_provider_instance<'a>(
         .filter(|instance| instance.is_ready && instance.is_runnable)
         .collect::<Vec<_>>();
 
-    if runnable_candidates.len() > 1 {
-        compile_issues.push(CompileIssue {
-            node_id: node_id.to_string(),
-            code: CompileIssueCode::ProviderInstanceNotFound,
-            message: format!(
-                "provider {provider_code} model {model} is ambiguous across multiple runtime instances"
-            ),
-        });
-        return None;
-    }
-
-    if let Some(provider_instance) = runnable_candidates.first() {
-        return Some(*provider_instance);
+    if !runnable_candidates.is_empty() {
+        return Some(runnable_candidates);
     }
 
     compile_issues.push(CompileIssue {
@@ -305,10 +295,32 @@ fn provider_instance_supports_model(instance: &FlowCompileProviderInstance, mode
 }
 
 fn fixed_model_routing(
-    provider_instance: &FlowCompileProviderInstance,
+    provider_instances: &[&FlowCompileProviderInstance],
     model: &str,
     context_policy: Value,
 ) -> CompiledLlmRouting {
+    if provider_instances.len() > 1 {
+        return CompiledLlmRouting {
+            routing_mode: LlmRoutingMode::FailoverQueue,
+            fixed_model_target: None,
+            queue_template_id: None,
+            queue_snapshot_id: None,
+            queue_targets: provider_instances
+                .iter()
+                .map(|provider_instance| CompiledLlmRouteTarget {
+                    provider_instance_id: provider_instance.provider_instance_id.clone(),
+                    provider_code: provider_instance.provider_code.clone(),
+                    protocol: provider_instance.protocol.clone(),
+                    upstream_model_id: model.to_string(),
+                })
+                .collect(),
+            context_policy,
+            stream_policy: serde_json::json!({}),
+        };
+    }
+
+    let provider_instance = provider_instances[0];
+
     CompiledLlmRouting {
         routing_mode: LlmRoutingMode::FixedModel,
         fixed_model_target: Some(serde_json::json!({

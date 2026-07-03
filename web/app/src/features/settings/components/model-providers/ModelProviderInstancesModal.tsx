@@ -1,12 +1,4 @@
-import {
-  Alert,
-  Empty,
-  Modal,
-  Space,
-  Switch,
-  Tag,
-  Typography
-} from 'antd';
+import { Alert, Empty, Modal, Space, Switch, Tag, Typography } from 'antd';
 
 import type {
   SettingsModelProviderCatalogEntry,
@@ -73,12 +65,11 @@ export function ModelProviderInstancesModal({
   const includedCount = instances.filter(
     (instance) => instance.included_in_main
   ).length;
-  const aggregatedModelCount = modelGroups.reduce(
-    (total, group) => total + group.models.length,
-    0
-  );
+  const aggregatedModelCount = modelGroups.length;
   const displayName = catalogEntry?.display_name ?? providerDisplayName;
-  const title = displayName ? i18nText("settings", "auto.instance", { value1: displayName }) : i18nText("settings", "auto.supplier_instance");
+  const title = displayName
+    ? i18nText('settings', 'auto.instance', { value1: displayName })
+    : i18nText('settings', 'auto.supplier_instance');
 
   return (
     <Modal
@@ -95,10 +86,17 @@ export function ModelProviderInstancesModal({
           <Alert
             type="warning"
             showIcon
-            message={i18nText("settings", "auto.text")}
+            message={i18nText('settings', 'auto.text')}
             description={
               versionSwitchNotice.targetVersion
-                ? i18nText("settings", "auto.target_version_instances_migrated", { value1: versionSwitchNotice.targetVersion, value2: versionSwitchNotice.migratedInstanceCount ?? 0 })
+                ? i18nText(
+                    'settings',
+                    'auto.target_version_instances_migrated',
+                    {
+                      value1: versionSwitchNotice.targetVersion,
+                      value2: versionSwitchNotice.migratedInstanceCount ?? 0
+                    }
+                  )
                 : undefined
             }
           />
@@ -107,15 +105,20 @@ export function ModelProviderInstancesModal({
         <section className="model-provider-panel__main-instance-card">
           <div className="model-provider-panel__main-instance-head">
             <div className="model-provider-panel__main-instance-title-row">
-              <Typography.Text strong>{i18nText("settings", "auto.master_instance")}</Typography.Text>
+              <Typography.Text strong>
+                {i18nText('settings', 'auto.master_instance')}
+              </Typography.Text>
               <div className="model-provider-panel__main-instance-summary">
                 <Tag bordered={false} color="blue">
-                  {i18nText("settings", "auto.aggregate_view")}</Tag>
+                  {i18nText('settings', 'auto.aggregate_view')}
+                </Tag>
                 <Typography.Text type="secondary">
-                  {i18nText("settings", "auto.example")}{includedCount}
+                  {i18nText('settings', 'auto.example')}
+                  {includedCount}
                 </Typography.Text>
                 <Typography.Text type="secondary">
-                  {i18nText("settings", "auto.model")}{aggregatedModelCount}
+                  {i18nText('settings', 'auto.model')}
+                  {aggregatedModelCount}
                 </Typography.Text>
               </div>
             </div>
@@ -125,9 +128,16 @@ export function ModelProviderInstancesModal({
               className="model-provider-panel__main-instance-toggle"
             >
               <Typography.Text type="secondary">
-                {i18nText("settings", "auto.new_instances_automatically_injected_main_instance")}</Typography.Text>
+                {i18nText(
+                  'settings',
+                  'auto.new_instances_automatically_injected_main_instance'
+                )}
+              </Typography.Text>
               <Switch
-                aria-label={i18nText("settings", "auto.new_instances_automatically_injected_main_instance")}
+                aria-label={i18nText(
+                  'settings',
+                  'auto.new_instances_automatically_injected_main_instance'
+                )}
                 checked={mainInstance?.auto_include_new_instances ?? false}
                 disabled={!canManage || updatingMainInstance}
                 onChange={onToggleAutoIncludeNewInstances}
@@ -138,21 +148,28 @@ export function ModelProviderInstancesModal({
           {modelGroups.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={i18nText("settings", "auto.text_alt")}
+              description={i18nText('settings', 'auto.text_alt')}
             />
           ) : (
             <div className="model-provider-panel__main-instance-groups">
               {modelGroups.map((group) => (
                 <section
-                  key={group.source_instance_id}
+                  key={group.model_id}
                   className="model-provider-panel__main-instance-group"
                 >
                   <Typography.Text strong>
-                    {group.source_instance_display_name}
+                    {group.model.display_name || group.model_id}
+                  </Typography.Text>
+                  <Typography.Text type="secondary">
+                    {group.targets
+                      .map((target) => target.source_instance_display_name)
+                      .join(' -> ')}
                   </Typography.Text>
                   <ModelProviderTagList
-                    modelIds={group.models.map((model) => model.model_id)}
-                    emptyText={i18nText("settings", "auto.unsummarized_model")}
+                    modelIds={group.targets.map(
+                      (target) => target.source_instance_display_name
+                    )}
+                    emptyText={i18nText('settings', 'auto.unsummarized_model')}
                   />
                 </section>
               ))}

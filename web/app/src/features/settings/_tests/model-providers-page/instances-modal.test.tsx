@@ -571,6 +571,26 @@ describe('ModelProvidersPage - instances modal', () => {
     { timeout: 15000 },
     async () => {
       authenticateAsModelProviderManager();
+      const options = buildSettingsModelProviderOptions();
+      options.providers[0].model_groups[0] = {
+        model_id: primaryContractProviderModels[0].model_id,
+        model: primaryContractProviderModels[0],
+        targets: [
+          {
+            source_instance_id: 'provider-1',
+            source_instance_display_name: 'OpenAI Production',
+            model: primaryContractProviderModels[0]
+          },
+          {
+            source_instance_id: 'provider-2',
+            source_instance_display_name: 'OpenAI Backup',
+            model: primaryContractProviderModels[0]
+          }
+        ]
+      };
+      modelProvidersApi.fetchSettingsModelProviderOptions.mockResolvedValueOnce(
+        options
+      );
 
       renderApp('/settings/model-providers');
 
@@ -596,7 +616,12 @@ describe('ModelProvidersPage - instances modal', () => {
       expect(
         within(modal).getAllByText(/gpt-4o-mini/i).length
       ).toBeGreaterThanOrEqual(1);
-      expect(within(modal).getByText('OpenAI Backup')).toBeInTheDocument();
+      expect(
+        within(modal).getByText('OpenAI Production -> OpenAI Backup')
+      ).toBeInTheDocument();
+      expect(
+        within(modal).getAllByText('OpenAI Backup').length
+      ).toBeGreaterThanOrEqual(1);
     }
   );
 

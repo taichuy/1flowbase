@@ -13,7 +13,8 @@ use crate::{
     },
     model_provider::{
         ModelProviderCatalogEntry, ModelProviderCatalogView, ModelProviderMainInstanceSummary,
-        ModelProviderOptionEntry, ModelProviderOptionGroup, ModelProviderOptionsView,
+        ModelProviderOptionEntry, ModelProviderOptionGroup, ModelProviderOptionTarget,
+        ModelProviderOptionsView,
     },
     ports::{AuthRepository, ModelProviderRepository, PluginRepository},
 };
@@ -192,8 +193,8 @@ where
         let main_instance = repository
             .get_main_instance(actor.current_workspace_id, &provider_code)
             .await?;
-        let mut model_groups = Vec::with_capacity(instances.len());
-        let mut model_count = 0;
+        let mut model_groups: Vec<ModelProviderOptionGroup> = Vec::new();
+        let mut model_group_indexes: HashMap<String, usize> = HashMap::new();
         for instance in instances {
             let candidate_models = match repository.get_catalog_cache(instance.id).await? {
                 Some(cache) => serde_json::from_value(cache.models_json).unwrap_or_default(),
@@ -205,13 +206,27 @@ where
                 &instance.configured_models,
                 &instance.enabled_model_ids,
             );
-            model_count += models.len();
-            model_groups.push(ModelProviderOptionGroup {
-                source_instance_id: instance.id,
-                source_instance_display_name: instance.display_name,
-                models,
-            });
+            for model in models {
+                let model_id = model.descriptor.model_id.clone();
+                let target = ModelProviderOptionTarget {
+                    source_instance_id: instance.id,
+                    source_instance_display_name: instance.display_name.clone(),
+                    model: model.clone(),
+                };
+                if let Some(index) = model_group_indexes.get(&model_id).copied() {
+                    model_groups[index].targets.push(target);
+                    continue;
+                }
+
+                model_group_indexes.insert(model_id.clone(), model_groups.len());
+                model_groups.push(ModelProviderOptionGroup {
+                    model_id,
+                    model,
+                    targets: vec![target],
+                });
+            }
         }
+        let model_count = model_groups.len();
         options.push(ModelProviderOptionEntry {
             provider_code: provider_code.clone(),
             plugin_type: "model_provider".to_string(),

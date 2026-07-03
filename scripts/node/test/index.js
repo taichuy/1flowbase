@@ -16,9 +16,9 @@ const { IMAGE_LLM_VISION_GATE_TARGETS } = require('../verify/backend-targets.js'
 const FRONTEND_LAYERS = new Set(['fast', 'pr', 'full', 'page-regression']);
 const TEST_COMMANDS = new Set(['backend', 'contracts', 'frontend', 'scripts']);
 const CONTRACT_TEST_FILES = [
-  'src/features/settings/api/_tests/settings-api.test.ts',
+  'src/features/settings/api/_tests/settings-api/settings-api.test.ts',
   'src/style-boundary/_tests/registry.test.tsx',
-  'src/features/agent-flow/_tests/llm-model-provider-field.test.tsx',
+  'src/features/agent-flow/_tests/llm/llm-model-provider-field.test.tsx',
 ];
 
 function resolveScriptsNodeEntry(repoRoot, entryName) {

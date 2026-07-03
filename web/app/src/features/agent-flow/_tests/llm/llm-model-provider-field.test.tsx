@@ -27,12 +27,12 @@ import { appI18n } from '../../../../shared/i18n/app-i18n';
 
 const primaryProviderOption = modelProviderOptionsProviders[0];
 const primaryProviderFirstGroup = primaryProviderOption.model_groups[0];
-const primaryProviderFirstModel = primaryProviderFirstGroup.models[0];
+const primaryProviderFirstModel = primaryProviderFirstGroup.model;
 const primaryProviderSecondGroup = primaryProviderOption.model_groups[1];
-const primaryProviderSecondModel = primaryProviderSecondGroup.models[0];
+const primaryProviderSecondModel = primaryProviderSecondGroup.model;
 const secondaryProviderOption = modelProviderOptionsProviders[1];
 const secondaryProviderFirstGroup = secondaryProviderOption.model_groups[0];
-const secondaryProviderFirstModel = secondaryProviderFirstGroup.models[0];
+const secondaryProviderFirstModel = secondaryProviderFirstGroup.model;
 const fetchModelProviderOptionsSpy = vi.spyOn(
   modelProviderOptionsApi,
   'fetchModelProviderOptions'
@@ -301,12 +301,16 @@ describe('LlmModelField', () => {
     ).toBeInTheDocument();
     expect(
       await screen.findByText(
-        primaryProviderFirstGroup.source_instance_display_name
+        primaryProviderFirstGroup.targets
+          .map((target) => target.source_instance_display_name)
+          .join(' -> ')
       )
     ).toBeInTheDocument();
     expect(
       await screen.findByText(
-        primaryProviderSecondGroup.source_instance_display_name
+        primaryProviderSecondGroup.targets
+          .map((target) => target.source_instance_display_name)
+          .join(' -> ')
       )
     ).toBeInTheDocument();
     expect(
@@ -762,24 +766,30 @@ describe('LlmModelField', () => {
 
     duplicatedProvider.model_groups = [
       {
-        source_instance_id: 'provider-openai-prod',
-        source_instance_display_name: 'OpenAI Production',
-        models: [
+        model_id: 'gpt-4o-mini',
+        model: {
+          ...primaryProviderFirstModel,
+          model_id: 'gpt-4o-mini',
+          display_name: 'GPT-4o Mini'
+        },
+        targets: [
           {
-            ...primaryProviderFirstModel,
-            model_id: 'gpt-4o-mini',
-            display_name: 'GPT-4o Mini'
-          }
-        ]
-      },
-      {
-        source_instance_id: 'provider-openai-backup',
-        source_instance_display_name: 'OpenAI Backup',
-        models: [
+            source_instance_id: 'provider-openai-prod',
+            source_instance_display_name: 'OpenAI Production',
+            model: {
+              ...primaryProviderFirstModel,
+              model_id: 'gpt-4o-mini',
+              display_name: 'GPT-4o Mini'
+            }
+          },
           {
-            ...primaryProviderFirstModel,
-            model_id: 'gpt-4o-mini',
-            display_name: 'GPT-4o Mini'
+            source_instance_id: 'provider-openai-backup',
+            source_instance_display_name: 'OpenAI Backup',
+            model: {
+              ...primaryProviderFirstModel,
+              model_id: 'gpt-4o-mini',
+              display_name: 'GPT-4o Mini'
+            }
           }
         ]
       }
@@ -952,10 +962,10 @@ describe('LlmModelField', () => {
       JSON.stringify(modelProviderOptionsContract)
     ) as typeof modelProviderOptionsContract;
 
-    duplicatedModelContract.providers[0].model_groups[0].models[0].context_window = 256000;
-    duplicatedModelContract.providers[0].model_groups[0].models[0].max_output_tokens = 8192;
-    duplicatedModelContract.providers[0].model_groups[1].models[0].context_window = 64000;
-    duplicatedModelContract.providers[0].model_groups[1].models[0].max_output_tokens =
+    duplicatedModelContract.providers[0].model_groups[0].model.context_window = 256000;
+    duplicatedModelContract.providers[0].model_groups[0].model.max_output_tokens = 8192;
+    duplicatedModelContract.providers[0].model_groups[1].model.context_window = 64000;
+    duplicatedModelContract.providers[0].model_groups[1].model.max_output_tokens =
       null;
     fetchModelProviderOptionsSpy.mockResolvedValueOnce(duplicatedModelContract);
 
@@ -1043,7 +1053,7 @@ describe('LlmModelField', () => {
     await waitFor(() => {
       expect(
         screen.queryByRole('button', {
-          name: `${secondaryProviderOption.display_name} ${secondaryProviderFirstGroup.source_instance_display_name} ${secondaryProviderFirstModel.display_name}`
+          name: `${secondaryProviderOption.display_name} ${secondaryProviderFirstGroup.model.display_name} ${secondaryProviderFirstModel.display_name}`
         })
       ).not.toBeInTheDocument();
     });

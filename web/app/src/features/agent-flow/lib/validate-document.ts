@@ -847,8 +847,8 @@ export function validateDocument(
             'inputs'
           );
         } else if (model.length > 0) {
-          const matchingModelGroups = provider.model_groups.filter((group) =>
-            group.models.some((entry) => entry.model_id === model)
+          const matchingModelGroups = provider.model_groups.filter(
+            (group) => group.model_id === model
           );
 
           if (matchingModelGroups.length === 0) {
@@ -860,17 +860,6 @@ export function validateDocument(
               i18nText(
                 'agentFlow',
                 'auto.model_belong_selected_supplier_s_list_active_models'
-              )
-            );
-          } else if (matchingModelGroups.length > 1) {
-            pushFieldIssue(
-              issues,
-              node,
-              'config.model_provider',
-              i18nText('agentFlow', 'auto.llm_model_analysis_unique'),
-              i18nText(
-                'agentFlow',
-                'auto.multiple_master_instances_supplier_provide_same_model_close_supplier_configuration'
               )
             );
           }
@@ -887,7 +876,10 @@ export function validateDocument(
         sectionKey: 'basics',
         fieldKey: null,
         title: i18nText('agentFlow', 'auto.unresolved_node'),
-        message: i18nText('agentFlow', 'auto.unresolved_node_definition_summary')
+        message: i18nText(
+          'agentFlow',
+          'auto.unresolved_node_definition_summary'
+        )
       });
     }
 

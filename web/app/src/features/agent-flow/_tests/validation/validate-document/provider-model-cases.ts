@@ -19,24 +19,31 @@ describe('validateDocument model providers', () => {
           model_groups: [
             {
               ...primaryGroup,
-              models: [
-                {
-                  ...primaryModel,
-                  model_id: 'gpt-4o-mini',
-                  display_name: 'GPT-4o Mini'
-                },
-                {
-                  ...primaryModel,
-                  model_id: 'gpt-4o',
-                  display_name: 'GPT-4o'
-                },
-                {
-                  ...primaryModel,
-                  model_id: 'manual-enabled-model',
-                  display_name: '手动启用模型',
-                  source: 'manual'
-                }
-              ]
+              model_id: 'gpt-4o-mini',
+              model: {
+                ...primaryModel,
+                model_id: 'gpt-4o-mini',
+                display_name: 'GPT-4o Mini'
+              }
+            },
+            {
+              ...primaryGroup,
+              model_id: 'gpt-4o',
+              model: {
+                ...primaryModel,
+                model_id: 'gpt-4o',
+                display_name: 'GPT-4o'
+              }
+            },
+            {
+              ...primaryGroup,
+              model_id: 'manual-enabled-model',
+              model: {
+                ...primaryModel,
+                model_id: 'manual-enabled-model',
+                display_name: '手动启用模型',
+                source: 'manual'
+              }
             }
           ]
         }
@@ -143,7 +150,7 @@ describe('validateDocument model providers', () => {
     );
   });
 
-  test('flags an ambiguous stable model that is exposed by multiple included instances', () => {
+  test('accepts a stable model exposed by multiple included instances as an ordered group', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const duplicatedContract = JSON.parse(
       JSON.stringify(modelProviderOptionsContract)
@@ -157,14 +164,20 @@ describe('validateDocument model providers', () => {
 
     duplicatedProvider.model_groups = [
       {
-        source_instance_id: 'provider-openai-prod',
-        source_instance_display_name: 'OpenAI Production',
-        models: [{ ...primaryModel }]
-      },
-      {
-        source_instance_id: 'provider-openai-backup',
-        source_instance_display_name: 'OpenAI Backup',
-        models: [{ ...primaryModel }]
+        model_id: primaryModel.model_id,
+        model: { ...primaryModel },
+        targets: [
+          {
+            source_instance_id: 'provider-openai-prod',
+            source_instance_display_name: 'OpenAI Production',
+            model: { ...primaryModel }
+          },
+          {
+            source_instance_id: 'provider-openai-backup',
+            source_instance_display_name: 'OpenAI Backup',
+            model: { ...primaryModel }
+          }
+        ]
       }
     ];
     llmNode.config.model_provider = {
@@ -174,12 +187,11 @@ describe('validateDocument model providers', () => {
 
     const issues = validateDocument(document, duplicatedContract);
 
-    expect(issues).toEqual(
+    expect(issues).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           nodeId: 'node-llm',
-          fieldKey: 'config.model_provider',
-          title: 'LLM 模型解析不唯一'
+          fieldKey: 'config.model_provider'
         })
       ])
     );

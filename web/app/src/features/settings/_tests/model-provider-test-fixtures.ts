@@ -86,14 +86,31 @@ export function buildSettingsModelProviderOptions() {
         main_instance: {
           provider_code: modelProviderCatalogEntries[0].provider_code,
           auto_include_new_instances: true,
-          group_count: 1,
+          group_count: primaryContractProviderModels.length,
           model_count: primaryContractProviderModels.length
         },
         model_groups: [
           {
-            source_instance_id: 'provider-1',
-            source_instance_display_name: 'OpenAI Production',
-            models: primaryContractProviderModels
+            model_id: primaryContractProviderModels[0].model_id,
+            model: primaryContractProviderModels[0],
+            targets: [
+              {
+                source_instance_id: 'provider-1',
+                source_instance_display_name: 'OpenAI Production',
+                model: primaryContractProviderModels[0]
+              }
+            ]
+          },
+          {
+            model_id: primaryContractProviderModels[1].model_id,
+            model: primaryContractProviderModels[1],
+            targets: [
+              {
+                source_instance_id: 'provider-1',
+                source_instance_display_name: 'OpenAI Production',
+                model: primaryContractProviderModels[1]
+              }
+            ]
           }
         ]
       }

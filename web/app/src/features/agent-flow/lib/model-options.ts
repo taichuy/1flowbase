@@ -15,12 +15,14 @@ export interface LlmProviderOption {
   parameterForm: AgentFlowModelProviderOptions['providers'][number]['parameter_form'];
   modelGroups: LlmModelGroup[];
   models: LlmModelOption[];
+  targetCount: number;
 }
 
 export interface LlmModelGroup {
   key: string;
   label: string;
-  sourceInstanceId: string;
+  targetOrderLabel: string;
+  targetInstanceIds: string[];
   models: LlmModelOption[];
 }
 
@@ -34,6 +36,8 @@ export interface LlmModelOption {
   providerIcon?: string | null;
   sourceInstanceId: string;
   sourceInstanceLabel: string;
+  targetCount: number;
+  targetLabels: string[];
   contextWindow: number | null;
   effectiveContextWindow: number | null;
   maxOutputTokens: number | null;
@@ -56,9 +60,14 @@ function encodeModelSelectionValue(providerCode: string, modelId: string) {
 
 function mapLlmModelOption(
   provider: AgentFlowModelProviderOptions['providers'][number],
-  group: AgentFlowModelProviderOptions['providers'][number]['model_groups'][number],
-  model: AgentFlowModelProviderOptions['providers'][number]['model_groups'][number]['models'][number]
+  group: AgentFlowModelProviderOptions['providers'][number]['model_groups'][number]
 ): LlmModelOption {
+  const model = group.model;
+  const firstTarget = group.targets[0] ?? null;
+  const targetLabels = group.targets.map(
+    (target) => target.source_instance_display_name
+  );
+
   return {
     value: model.model_id,
     selectionValue: encodeModelSelectionValue(
@@ -70,8 +79,10 @@ function mapLlmModelOption(
     providerCode: provider.provider_code,
     protocol: provider.protocol,
     providerIcon: provider.icon,
-    sourceInstanceId: group.source_instance_id,
-    sourceInstanceLabel: group.source_instance_display_name,
+    sourceInstanceId: firstTarget?.source_instance_id ?? '',
+    sourceInstanceLabel: firstTarget?.source_instance_display_name ?? '',
+    targetCount: group.targets.length,
+    targetLabels,
     contextWindow: model.context_window,
     effectiveContextWindow: model.context_window,
     maxOutputTokens: model.max_output_tokens,
@@ -244,25 +255,35 @@ export function listLlmProviderOptions(
     return [];
   }
 
-  return options.providers.map((provider) => ({
-    value: provider.provider_code,
-    label: provider.display_name,
-    providerCode: provider.provider_code,
-    protocol: provider.protocol,
-    icon: provider.icon,
-    parameterForm: localizeParameterForm(options, provider),
-    modelGroups: provider.model_groups.map((group) => ({
-      key: group.source_instance_id,
-      label: group.source_instance_display_name,
-      sourceInstanceId: group.source_instance_id,
-      models: group.models.map((model) =>
-        mapLlmModelOption(provider, group, model)
+  return options.providers.map((provider) => {
+    const modelGroups = provider.model_groups.map((group) => {
+      const model = mapLlmModelOption(provider, group);
+      return {
+        key: group.model_id,
+        label: group.model.display_name || group.model_id,
+        targetOrderLabel: model.targetLabels.join(' -> '),
+        targetInstanceIds: group.targets.map(
+          (target) => target.source_instance_id
+        ),
+        models: [model]
+      };
+    });
+
+    return {
+      value: provider.provider_code,
+      label: provider.display_name,
+      providerCode: provider.provider_code,
+      protocol: provider.protocol,
+      icon: provider.icon,
+      parameterForm: localizeParameterForm(options, provider),
+      modelGroups,
+      models: modelGroups.flatMap((group) => group.models),
+      targetCount: provider.model_groups.reduce(
+        (total, group) => total + group.targets.length,
+        0
       )
-    })),
-    models: provider.model_groups.flatMap((group) =>
-      group.models.map((model) => mapLlmModelOption(provider, group, model))
-    )
-  }));
+    };
+  });
 }
 
 export function findLlmProviderOption(

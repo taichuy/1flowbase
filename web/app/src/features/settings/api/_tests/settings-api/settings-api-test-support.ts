@@ -43,20 +43,33 @@ const modelProviderApiFixtures = vi.hoisted(() => ({
         },
         model_groups: [
           {
-            source_instance_id: 'provider-openai-prod',
-            source_instance_display_name: 'OpenAI Production',
-            models: [
+            model_id: 'gpt-4o-mini',
+            model: {
+              model_id: 'gpt-4o-mini',
+              display_name: 'GPT-4o Mini',
+              source: 'runtime_catalog',
+              supports_streaming: true,
+              supports_tool_call: true,
+              supports_multimodal: true,
+              context_window: 128000,
+              max_output_tokens: 16384,
+              provider_metadata: {}
+            },
+            targets: [
               {
-                model_id: 'gpt-4o-mini',
-                display_name: 'GPT-4o Mini',
-                source: 'runtime_catalog',
-                supports_streaming: true,
-                supports_tool_call: true,
-                supports_multimodal: true,
-                context_window: 128000,
-                max_output_tokens: 16384,
-                parameter_form: null,
-                provider_metadata: {}
+                source_instance_id: 'provider-openai-prod',
+                source_instance_display_name: 'OpenAI Production',
+                model: {
+                  model_id: 'gpt-4o-mini',
+                  display_name: 'GPT-4o Mini',
+                  source: 'runtime_catalog',
+                  supports_streaming: true,
+                  supports_tool_call: true,
+                  supports_multimodal: true,
+                  context_window: 128000,
+                  max_output_tokens: 16384,
+                  provider_metadata: {}
+                }
               }
             ]
           }

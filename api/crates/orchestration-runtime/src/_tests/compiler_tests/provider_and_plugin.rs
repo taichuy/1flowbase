@@ -687,7 +687,7 @@ fn compile_collects_missing_provider_issue() {
 }
 
 #[test]
-fn compile_rejects_ambiguous_stable_provider_model_binding() {
+fn compile_routes_duplicate_stable_provider_model_binding_as_ordered_targets() {
     let flow_id = Uuid::now_v7();
     let mut context = compile_context();
     context.provider_instances.insert(
@@ -706,11 +706,25 @@ fn compile_rejects_ambiguous_stable_provider_model_binding() {
 
     let plan =
         FlowCompiler::compile(flow_id, "draft-1", &sample_document(flow_id), &context).unwrap();
+    let plan_json = serde_json::to_value(&plan).unwrap();
+    let routing = &plan_json["nodes"]["node-llm"]["llm_runtime"]["routing"];
 
-    assert!(plan.compile_issues.iter().any(|issue| {
-        issue.code == CompileIssueCode::ProviderInstanceNotFound
-            && issue.message.contains("ambiguous")
-    }));
+    assert!(plan.compile_issues.is_empty(), "{:?}", plan.compile_issues);
+    assert_eq!(routing["routing_mode"], json!("failover_queue"));
+    assert_eq!(routing["queue_template_id"], Value::Null);
+    assert_eq!(
+        routing["queue_targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|target| target["provider_instance_id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["provider-recreated", "provider-selected"]
+    );
+    assert_eq!(
+        routing["queue_targets"][0]["upstream_model_id"],
+        json!("gpt-5.4-mini")
+    );
 }
 
 #[test]

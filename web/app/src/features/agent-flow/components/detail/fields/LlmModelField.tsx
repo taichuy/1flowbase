@@ -48,8 +48,8 @@ const MODEL_SETTINGS_MOUSE_LEAVE_CLOSE_DELAY_MS = 2_000;
 const LLM_PARAMETERS_BLOCK: SchemaDynamicFormBlock = {
   kind: 'dynamic_form',
   form_key: 'llm_parameters',
-  title: i18nText("agentFlow", "auto.llm_parameters"),
-  empty_text: i18nText("agentFlow", "auto.select_model_first_adjust_parameters")
+  title: i18nText('agentFlow', 'auto.llm_parameters'),
+  empty_text: i18nText('agentFlow', 'auto.select_model_first_adjust_parameters')
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -73,7 +73,8 @@ function getModelSearchText(
     provider.label,
     provider.providerCode,
     group.label,
-    group.sourceInstanceId,
+    group.targetOrderLabel,
+    group.targetInstanceIds.join(' '),
     model.label,
     model.value,
     model.tag
@@ -96,7 +97,9 @@ function buildModelSelection(nextModel: LlmModelOption) {
 
 function buildOutputLabel(value: number | null | undefined) {
   const formattedValue = formatLlmTokenCount(value);
-  return formattedValue ? i18nText("agentFlow", "auto.output", { value1: formattedValue }) : null;
+  return formattedValue
+    ? i18nText('agentFlow', 'auto.output', { value1: formattedValue })
+    : null;
 }
 
 function ContextMarker({ value }: { value: number | null | undefined }) {
@@ -109,8 +112,10 @@ function ContextMarker({ value }: { value: number | null | undefined }) {
   return (
     <span
       className="agent-flow-model-meta-pill agent-flow-model-meta-pill--context"
-      aria-label={i18nText("agentFlow", "auto.context", { value1: formattedValue })}
-      title={i18nText("agentFlow", "auto.context", { value1: formattedValue })}
+      aria-label={i18nText('agentFlow', 'auto.context', {
+        value1: formattedValue
+      })}
+      title={i18nText('agentFlow', 'auto.context', { value1: formattedValue })}
     >
       {formattedValue}
     </span>
@@ -122,7 +127,7 @@ function ModelChip({
   modelLabel,
   providerIcon,
   metaItems = [],
-  placeholder = i18nText("agentFlow", "auto.select_supplier_model")
+  placeholder = i18nText('agentFlow', 'auto.select_supplier_model')
 }: {
   providerLabel?: string | null;
   modelLabel?: string | null;
@@ -149,7 +154,7 @@ function ModelChip({
       </span>
       <span className="agent-flow-model-chip__content">
         <span className="agent-flow-model-chip__eyebrow">
-          {providerLabel || i18nText("agentFlow", "auto.model_supplier")}
+          {providerLabel || i18nText('agentFlow', 'auto.model_supplier')}
         </span>
         <span className="agent-flow-model-chip__label">
           {modelLabel || placeholder}
@@ -357,8 +362,8 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
   const floatingPanel = (
     <FloatingSettingsPanel
       open={open}
-      title={i18nText("agentFlow", "auto.model_settings")}
-      closeLabel={i18nText("agentFlow", "auto.close_model_settings")}
+      title={i18nText('agentFlow', 'auto.model_settings')}
+      closeLabel={i18nText('agentFlow', 'auto.close_model_settings')}
       triggerRef={triggerRef}
       dragHandleTestId="agent-flow-model-settings-drag-handle"
       leftResizeHandleTestId="agent-flow-model-settings-resize-handle-left"
@@ -372,7 +377,10 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
           className="agent-flow-model-settings__notice"
           type="error"
           showIcon
-          message={i18nText("agentFlow", "auto.model_supplier_list_failed_load")}
+          message={i18nText(
+            'agentFlow',
+            'auto.model_supplier_list_failed_load'
+          )}
         />
       ) : null}
       {providerUnavailable ? (
@@ -380,7 +388,10 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
           className="agent-flow-model-settings__notice"
           type="error"
           showIcon
-          message={i18nText("agentFlow", "auto.model_provider_referenced_node_unavailable")}
+          message={i18nText(
+            'agentFlow',
+            'auto.model_provider_referenced_node_unavailable'
+          )}
         />
       ) : null}
       {modelUnavailable ? (
@@ -388,7 +399,10 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
           className="agent-flow-model-settings__notice"
           type="error"
           showIcon
-          message={i18nText("agentFlow", "auto.model_referenced_node_supplier_s_valid_model_list")}
+          message={i18nText(
+            'agentFlow',
+            'auto.model_referenced_node_supplier_s_valid_model_list'
+          )}
         />
       ) : null}
 
@@ -398,18 +412,24 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
             level={5}
             className="agent-flow-model-settings__section-title"
           >
-            {i18nText("agentFlow", "auto.model")}</Typography.Title>
+            {i18nText('agentFlow', 'auto.model')}
+          </Typography.Title>
           {providerCode || modelValue ? (
             <Button type="link" onClick={clearSelection}>
-              {i18nText("agentFlow", "auto.clear")}</Button>
+              {i18nText('agentFlow', 'auto.clear')}
+            </Button>
           ) : null}
         </div>
         <Typography.Text className="agent-flow-model-settings__section-subtitle">
-          {i18nText("agentFlow", "auto.nodes_store_stable_provider_model_semantics_resolve_currently_available_instances")}</Typography.Text>
+          {i18nText(
+            'agentFlow',
+            'auto.nodes_store_stable_provider_model_semantics_resolve_currently_available_instances'
+          )}
+        </Typography.Text>
         <Select
-          aria-label={i18nText("agentFlow", "auto.select_supplier_model")}
+          aria-label={i18nText('agentFlow', 'auto.select_supplier_model')}
           className="agent-flow-model-settings__select"
-          placeholder={i18nText("agentFlow", "auto.select_supplier_model")}
+          placeholder={i18nText('agentFlow', 'auto.select_supplier_model')}
           value={selectedModel?.selectionValue}
           open={dropdownOpen}
           options={selectOptions}
@@ -427,8 +447,11 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
                     description={
                       searchText.trim().length > 0
-                        ? i18nText("agentFlow", "auto.matching_model_results")
-                        : i18nText("agentFlow", "auto.currently_available_models")
+                        ? i18nText('agentFlow', 'auto.matching_model_results')
+                        : i18nText(
+                            'agentFlow',
+                            'auto.currently_available_models'
+                          )
                     }
                   />
                 </div>
@@ -472,8 +495,15 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
                                 {provider.label}
                               </Typography.Text>
                               <div className="agent-flow-model-settings__provider-meta">
-                                {i18nText("agentFlow", "auto.master_instance_aggregation")}{provider.modelGroups.length}{' '}
-                                {i18nText("agentFlow", "auto.source_examples")}{provider.models.length} {i18nText("agentFlow", "auto.models")}</div>
+                                {i18nText(
+                                  'agentFlow',
+                                  'auto.master_instance_aggregation'
+                                )}
+                                {provider.modelGroups.length}{' '}
+                                {i18nText('agentFlow', 'auto.models')} ·{' '}
+                                {i18nText('agentFlow', 'auto.source_examples')}
+                                {provider.targetCount}
+                              </div>
                             </div>
                           </div>
                           <span
@@ -490,8 +520,16 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
                                 className="agent-flow-model-settings__provider-group"
                               >
                                 <div className="agent-flow-model-settings__group-head">
-                                  <span>{group.label}</span>
-                                  <span>{group.models.length} {i18nText("agentFlow", "auto.models")}</span>
+                                  <span>
+                                    {group.targetOrderLabel || group.label}
+                                  </span>
+                                  <span>
+                                    {i18nText(
+                                      'agentFlow',
+                                      'auto.source_examples'
+                                    )}
+                                    {group.targetInstanceIds.length}
+                                  </span>
                                 </div>
                                 <div className="agent-flow-model-settings__options">
                                   {group.models.map((option) => {
@@ -558,7 +596,8 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
                   window.location.assign('/settings/model-providers')
                 }
               >
-                {i18nText("agentFlow", "auto.model_supplier_settings")}</button>
+                {i18nText('agentFlow', 'auto.model_supplier_settings')}
+              </button>
             </div>
           )}
         />
@@ -571,7 +610,8 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
           level={5}
           className="agent-flow-model-settings__section-title"
         >
-          {i18nText("agentFlow", "auto.parameters")}</Typography.Title>
+          {i18nText('agentFlow', 'auto.parameters')}
+        </Typography.Title>
         <LlmParameterForm adapter={adapter} block={LLM_PARAMETERS_BLOCK} />
       </div>
     </FloatingSettingsPanel>

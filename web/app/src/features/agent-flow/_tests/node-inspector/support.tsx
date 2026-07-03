@@ -63,7 +63,7 @@ vi.mock('@monaco-editor/react', () => ({
 
 export const primaryProviderOption = modelProviderOptionsProviders[0];
 export const primaryProviderFirstGroup = primaryProviderOption.model_groups[0];
-export const primaryProviderFirstModel = primaryProviderFirstGroup.models[0];
+export const primaryProviderFirstModel = primaryProviderFirstGroup.model;
 export const fetchModelProviderOptionsSpy = vi.spyOn(
   modelProviderOptionsApi,
   'fetchModelProviderOptions'
@@ -382,7 +382,6 @@ export async function selectDataModelOption(value: string) {
 
   fireEvent.click(option);
 }
-
 
 export async function setupNodeInspectorTest() {
   window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');

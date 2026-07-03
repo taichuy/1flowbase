@@ -182,9 +182,15 @@ export interface ConsoleModelProviderMainInstanceSummary {
 }
 
 export interface ConsoleModelProviderOptionGroup {
+  model_id: string;
+  model: ConsoleProviderModelDescriptor;
+  targets: ConsoleModelProviderOptionTarget[];
+}
+
+export interface ConsoleModelProviderOptionTarget {
   source_instance_id: string;
   source_instance_display_name: string;
-  models: ConsoleProviderModelDescriptor[];
+  model: ConsoleProviderModelDescriptor;
 }
 
 export interface ConsoleModelProviderOption {

@@ -204,9 +204,16 @@ pub struct ModelProviderMainInstanceSummary {
 
 #[derive(Debug, Clone)]
 pub struct ModelProviderOptionGroup {
+    pub model_id: String,
+    pub model: LocalizedProviderModelDescriptor,
+    pub targets: Vec<ModelProviderOptionTarget>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelProviderOptionTarget {
     pub source_instance_id: Uuid,
     pub source_instance_display_name: String,
-    pub models: Vec<LocalizedProviderModelDescriptor>,
+    pub model: LocalizedProviderModelDescriptor,
 }
 
 #[derive(Debug, Clone)]

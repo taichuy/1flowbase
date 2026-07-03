@@ -595,8 +595,13 @@ describe('settings api wrappers', () => {
         }),
         model_groups: [
           expect.objectContaining({
-            source_instance_id: 'provider-openai-prod',
-            source_instance_display_name: 'OpenAI Production'
+            model_id: 'gpt-4o-mini',
+            targets: [
+              expect.objectContaining({
+                source_instance_id: 'provider-openai-prod',
+                source_instance_display_name: 'OpenAI Production'
+              })
+            ]
           })
         ]
       })

@@ -63,36 +63,64 @@
       },
       "model_groups": [
         {
-          "source_instance_id": "provider-openai-prod",
-          "source_instance_display_name": "OpenAI Production",
-          "models": [
+          "model_id": "gpt-4o-mini",
+          "model": {
+            "model_id": "gpt-4o-mini",
+            "display_name": "GPT-4o Mini",
+            "source": "runtime_catalog",
+            "supports_streaming": true,
+            "supports_tool_call": true,
+            "supports_multimodal": true,
+            "context_window": 128000,
+            "max_output_tokens": 16384,
+            "provider_metadata": {}
+          },
+          "targets": [
             {
-              "model_id": "gpt-4o-mini",
-              "display_name": "GPT-4o Mini",
-              "source": "runtime_catalog",
-              "supports_streaming": true,
-              "supports_tool_call": true,
-              "supports_multimodal": true,
-              "context_window": 128000,
-              "max_output_tokens": 16384,
-              "provider_metadata": {}
+              "source_instance_id": "provider-openai-prod",
+              "source_instance_display_name": "OpenAI Production",
+              "model": {
+                "model_id": "gpt-4o-mini",
+                "display_name": "GPT-4o Mini",
+                "source": "runtime_catalog",
+                "supports_streaming": true,
+                "supports_tool_call": true,
+                "supports_multimodal": true,
+                "context_window": 128000,
+                "max_output_tokens": 16384,
+                "provider_metadata": {}
+              }
             }
           ]
         },
         {
-          "source_instance_id": "provider-openai-backup",
-          "source_instance_display_name": "OpenAI Backup",
-          "models": [
+          "model_id": "gpt-4o",
+          "model": {
+            "model_id": "gpt-4o",
+            "display_name": "GPT-4o",
+            "source": "manual",
+            "supports_streaming": true,
+            "supports_tool_call": true,
+            "supports_multimodal": true,
+            "context_window": 128000,
+            "max_output_tokens": 16384,
+            "provider_metadata": {}
+          },
+          "targets": [
             {
-              "model_id": "gpt-4o",
-              "display_name": "GPT-4o",
-              "source": "manual",
-              "supports_streaming": true,
-              "supports_tool_call": true,
-              "supports_multimodal": true,
-              "context_window": 128000,
-              "max_output_tokens": 16384,
-              "provider_metadata": {}
+              "source_instance_id": "provider-openai-backup",
+              "source_instance_display_name": "OpenAI Backup",
+              "model": {
+                "model_id": "gpt-4o",
+                "display_name": "GPT-4o",
+                "source": "manual",
+                "supports_streaming": true,
+                "supports_tool_call": true,
+                "supports_multimodal": true,
+                "context_window": 128000,
+                "max_output_tokens": 16384,
+                "provider_metadata": {}
+              }
             }
           ]
         }
@@ -116,19 +144,33 @@
       },
       "model_groups": [
         {
-          "source_instance_id": "provider-anthropic-prod",
-          "source_instance_display_name": "Anthropic Production",
-          "models": [
+          "model_id": "claude-3-5-sonnet",
+          "model": {
+            "model_id": "claude-3-5-sonnet",
+            "display_name": "Claude 3.5 Sonnet",
+            "source": "static",
+            "supports_streaming": true,
+            "supports_tool_call": false,
+            "supports_multimodal": true,
+            "context_window": 200000,
+            "max_output_tokens": 8192,
+            "provider_metadata": {}
+          },
+          "targets": [
             {
-              "model_id": "claude-3-5-sonnet",
-              "display_name": "Claude 3.5 Sonnet",
-              "source": "static",
-              "supports_streaming": true,
-              "supports_tool_call": false,
-              "supports_multimodal": true,
-              "context_window": 200000,
-              "max_output_tokens": 8192,
-              "provider_metadata": {}
+              "source_instance_id": "provider-anthropic-prod",
+              "source_instance_display_name": "Anthropic Production",
+              "model": {
+                "model_id": "claude-3-5-sonnet",
+                "display_name": "Claude 3.5 Sonnet",
+                "source": "static",
+                "supports_streaming": true,
+                "supports_tool_call": false,
+                "supports_multimodal": true,
+                "context_window": 200000,
+                "max_output_tokens": 8192,
+                "provider_metadata": {}
+              }
             }
           ]
         }

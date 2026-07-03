@@ -38,12 +38,12 @@ import { selectWorkingDocument } from '../store/editor/selectors';
 const NODE_DETAIL_PANEL_TEST_TIMEOUT = 15_000;
 const primaryProviderOption = modelProviderOptionsProviders[0];
 const primaryProviderFirstGroup = primaryProviderOption.model_groups[0];
-const primaryProviderFirstModel = primaryProviderFirstGroup.models[0];
+const primaryProviderFirstModel = primaryProviderFirstGroup.model;
 const primaryProviderSecondGroup = primaryProviderOption.model_groups[1];
-const primaryProviderSecondModel = primaryProviderSecondGroup.models[0];
+const primaryProviderSecondModel = primaryProviderSecondGroup.model;
 const secondaryProviderOption = modelProviderOptionsProviders[1];
 const secondaryProviderFirstGroup = secondaryProviderOption.model_groups[0];
-const secondaryProviderFirstModel = secondaryProviderFirstGroup.models[0];
+const secondaryProviderFirstModel = secondaryProviderFirstGroup.model;
 const fetchModelProviderOptionsSpy = vi.spyOn(
   modelProviderOptionsApi,
   'fetchModelProviderOptions'
@@ -849,7 +849,7 @@ describe('NodeDetailPanel', () => {
       ) as typeof modelProviderOptionsContract;
       const duplicatedSecondaryProvider = duplicatedContract.providers[1];
       const duplicatedSecondaryModel =
-        duplicatedSecondaryProvider.model_groups[0].models[0];
+        duplicatedSecondaryProvider.model_groups[0].model;
       const state = createInitialState();
       const llmNodeConfig = getLlmNodeConfig(state.draft.document);
 

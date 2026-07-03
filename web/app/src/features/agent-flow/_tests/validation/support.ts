@@ -5,7 +5,7 @@ import { createNodeDocument } from '../../lib/document/node-factory';
 
 export const primaryProvider = modelProviderOptionsContract.providers[0];
 export const primaryGroup = primaryProvider.model_groups[0];
-export const primaryModel = primaryGroup.models[0];
+export const primaryModel = primaryGroup.model;
 
 export function createCodeDocumentWithOutputs(
   outputs: Array<{
@@ -154,5 +154,8 @@ export function addSecondLlmNode(
   );
 }
 
-
-export { createDefaultAgentFlowDocument, createNodeDocument, modelProviderOptionsContract };
+export {
+  createDefaultAgentFlowDocument,
+  createNodeDocument,
+  modelProviderOptionsContract
+};
