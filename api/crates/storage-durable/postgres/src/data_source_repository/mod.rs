@@ -51,9 +51,6 @@ fn map_instance(row: sqlx::postgres::PgRow) -> Result<domain::DataSourceInstance
             data_model_status: domain::DataModelStatus::from_db(
                 row.get::<String, _>("default_data_model_status").as_str(),
             ),
-            api_exposure_status: domain::ApiExposureStatus::from_db(
-                row.get::<String, _>("default_api_exposure_status").as_str(),
-            ),
         },
         created_by: row.get("created_by"),
         created_at: row.get("created_at"),
@@ -196,7 +193,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                 data_source_instances.config_json,
                 data_source_instances.metadata_json,
                 data_source_instances.default_data_model_status,
-                data_source_instances.default_api_exposure_status,
                 data_source_instances.created_by,
                 data_source_instances.created_at,
                 data_source_instances.updated_at,
@@ -231,10 +227,9 @@ impl DataSourceRepository for PgControlPlaneStore {
                 config_json,
                 metadata_json,
                 default_data_model_status,
-                default_api_exposure_status,
                 created_by
             ) values (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
             )
             returning
                 id,
@@ -246,7 +241,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                 config_json,
                 metadata_json,
                 default_data_model_status,
-                default_api_exposure_status,
                 created_by,
                 created_at,
                 updated_at,
@@ -262,7 +256,6 @@ impl DataSourceRepository for PgControlPlaneStore {
         .bind(&input.config_json)
         .bind(&input.metadata_json)
         .bind(input.defaults.data_model_status.as_str())
-        .bind(input.defaults.api_exposure_status.as_str())
         .bind(input.created_by)
         .fetch_one(self.pool())
         .await?;
@@ -294,7 +287,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                     config_json,
                     metadata_json,
                     default_data_model_status,
-                    default_api_exposure_status,
                     created_by,
                     created_at,
                     updated_at
@@ -309,7 +301,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                 updated.config_json,
                 updated.metadata_json,
                 updated.default_data_model_status,
-                updated.default_api_exposure_status,
                 updated.created_by,
                 updated.created_at,
                 updated.updated_at,
@@ -339,7 +330,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                 update data_source_instances
                 set
                     default_data_model_status = $3,
-                    default_api_exposure_status = $4,
                     updated_at = now()
                 where workspace_id = $1
                   and id = $2
@@ -353,7 +343,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                     config_json,
                     metadata_json,
                     default_data_model_status,
-                    default_api_exposure_status,
                     created_by,
                     created_at,
                     updated_at
@@ -368,7 +357,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                 updated.config_json,
                 updated.metadata_json,
                 updated.default_data_model_status,
-                updated.default_api_exposure_status,
                 updated.created_by,
                 updated.created_at,
                 updated.updated_at,
@@ -381,7 +369,6 @@ impl DataSourceRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(input.instance_id)
         .bind(input.defaults.data_model_status.as_str())
-        .bind(input.defaults.api_exposure_status.as_str())
         .fetch_one(self.pool())
         .await?;
 
@@ -394,7 +381,7 @@ impl DataSourceRepository for PgControlPlaneStore {
     ) -> Result<domain::DataSourceDefaults> {
         let row = sqlx::query(
             r#"
-            select default_data_model_status, default_api_exposure_status
+            select default_data_model_status
             from main_source_defaults
             where workspace_id = $1
             "#,
@@ -407,9 +394,6 @@ impl DataSourceRepository for PgControlPlaneStore {
             .map(|row| domain::DataSourceDefaults {
                 data_model_status: domain::DataModelStatus::from_db(
                     row.get::<String, _>("default_data_model_status").as_str(),
-                ),
-                api_exposure_status: domain::ApiExposureStatus::from_db(
-                    row.get::<String, _>("default_api_exposure_status").as_str(),
                 ),
             })
             .unwrap_or_default())
@@ -425,25 +409,22 @@ impl DataSourceRepository for PgControlPlaneStore {
                 id,
                 workspace_id,
                 default_data_model_status,
-                default_api_exposure_status,
                 created_by,
                 updated_by
             ) values (
-                $1, $2, $3, $4, $5, $5
+                $1, $2, $3, $4, $4
             )
             on conflict (workspace_id) do update
             set
                 default_data_model_status = excluded.default_data_model_status,
-                default_api_exposure_status = excluded.default_api_exposure_status,
                 updated_by = excluded.updated_by,
                 updated_at = now()
-            returning default_data_model_status, default_api_exposure_status
+            returning default_data_model_status
             "#,
         )
         .bind(Uuid::now_v7())
         .bind(input.workspace_id)
         .bind(input.defaults.data_model_status.as_str())
-        .bind(input.defaults.api_exposure_status.as_str())
         .bind(input.updated_by)
         .fetch_one(self.pool())
         .await?;
@@ -451,9 +432,6 @@ impl DataSourceRepository for PgControlPlaneStore {
         Ok(domain::DataSourceDefaults {
             data_model_status: domain::DataModelStatus::from_db(
                 row.get::<String, _>("default_data_model_status").as_str(),
-            ),
-            api_exposure_status: domain::ApiExposureStatus::from_db(
-                row.get::<String, _>("default_api_exposure_status").as_str(),
             ),
         })
     }
@@ -481,7 +459,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                     config_json,
                     metadata_json,
                     default_data_model_status,
-                    default_api_exposure_status,
                     created_by,
                     created_at,
                     updated_at
@@ -496,7 +473,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                 updated.config_json,
                 updated.metadata_json,
                 updated.default_data_model_status,
-                updated.default_api_exposure_status,
                 updated.created_by,
                 updated.created_at,
                 updated.updated_at,
@@ -532,7 +508,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                 data_source_instances.config_json,
                 data_source_instances.metadata_json,
                 data_source_instances.default_data_model_status,
-                data_source_instances.default_api_exposure_status,
                 data_source_instances.created_by,
                 data_source_instances.created_at,
                 data_source_instances.updated_at,
@@ -711,7 +686,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                     config_json,
                     metadata_json,
                     default_data_model_status,
-                    default_api_exposure_status,
                     created_by,
                     created_at,
                     updated_at
@@ -726,7 +700,6 @@ impl DataSourceRepository for PgControlPlaneStore {
                 updated.config_json,
                 updated.metadata_json,
                 updated.default_data_model_status,
-                updated.default_api_exposure_status,
                 updated.created_by,
                 updated.created_at,
                 updated.updated_at,

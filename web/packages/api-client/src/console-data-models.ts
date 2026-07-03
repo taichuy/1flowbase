@@ -6,13 +6,6 @@ export type ConsoleDataModelStatus =
   | 'disabled'
   | 'broken';
 
-export type ConsoleApiExposureStatus =
-  | 'draft'
-  | 'published_not_exposed'
-  | 'api_exposed_no_permission'
-  | 'api_exposed_ready'
-  | 'unsafe_external_source';
-
 export type ConsoleDataSourceKind = 'main_source' | 'external_source';
 export type ConsoleDataModelScopeKind = 'workspace' | 'system';
 export type ConsoleDataModelSourceKind = 'main_source' | 'external_source';
@@ -55,7 +48,6 @@ export interface ConsoleDataSourceInstance {
   display_name: string;
   status: string;
   default_data_model_status: ConsoleDataModelStatus;
-  default_api_exposure_status: ConsoleApiExposureStatus;
   config_json: Record<string, unknown>;
   secret_ref: string | null;
   secret_version: number | null;
@@ -93,7 +85,6 @@ export interface ConsoleDataModel {
   code: string;
   title: string;
   status: ConsoleDataModelStatus;
-  api_exposure_status: ConsoleApiExposureStatus;
   runtime_availability: string;
   data_source_instance_id: string | null;
   source_kind: ConsoleDataModelSourceKind;
@@ -167,10 +158,6 @@ export interface ConsoleDataModelOpenApiDocument {
 
 export interface UpdateConsoleDataSourceDefaultsInput {
   default_data_model_status: ConsoleDataModelStatus;
-  default_api_exposure_status: Exclude<
-    ConsoleApiExposureStatus,
-    'api_exposed_ready'
-  >;
 }
 
 export interface FetchConsoleDataModelsInput {
@@ -189,9 +176,7 @@ export interface CreateConsoleDataModelInput {
 }
 
 export interface UpdateConsoleDataModelInput {
-  title?: string;
   status?: ConsoleDataModelStatus;
-  external_table_id?: string | null;
 }
 
 export interface BatchDeleteConsoleDataModelsInput {

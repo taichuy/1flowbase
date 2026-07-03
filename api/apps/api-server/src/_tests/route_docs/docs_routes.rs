@@ -170,31 +170,6 @@ async fn create_model(
     payload["data"]["id"].as_str().unwrap().to_string()
 }
 
-async fn expose_model_api(app: &axum::Router, cookie: &str, csrf: &str, model_id: &str) {
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("PATCH")
-                .uri(format!("/api/console/models/{model_id}"))
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "status": "published",
-                        "api_exposure_status": "api_exposed_ready"
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-}
-
 async fn create_model_field(
     app: &axum::Router,
     cookie: &str,
@@ -581,7 +556,6 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     )
     .await;
     create_scope_grant(&app, &cookie, &csrf, &ready_model_id).await;
-    expose_model_api(&app, &cookie, &csrf, &ready_model_id).await;
     let hidden_model_id = create_model(&app, &cookie, &csrf, "docs_hidden_orders", "draft").await;
     assert_ne!(ready_model_id, hidden_model_id);
 
@@ -701,6 +675,21 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         .get("/api/runtime/models/docs_hidden_orders/list")
         .is_none());
 
+    let hidden_model_spec_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/docs/data-models/{hidden_model_id}/openapi.json"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(hidden_model_spec_response.status(), StatusCode::NOT_FOUND);
+
     let list_operation = operations
         .iter()
         .find(|operation| {
@@ -733,6 +722,9 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     assert!(
         operation_spec["paths"]["/api/runtime/models/docs_ready_orders/list"]["get"].is_object()
     );
+    assert!(operation_spec["x-data-model"]
+        .get("api_exposure_status")
+        .is_none());
     assert!(operation_spec["paths"]
         .get("/api/runtime/models/{model_code}/list")
         .is_none());

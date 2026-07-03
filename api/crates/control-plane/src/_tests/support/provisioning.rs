@@ -198,7 +198,6 @@ impl ModelDefinitionRepository for MemoryProvisioningRepository {
             external_table_id: input.external_table_id.clone(),
             external_capability_snapshot: None,
             status: input.status,
-            api_exposure_status: input.api_exposure_status,
             protection: input.protection.clone(),
         };
         self.models
@@ -231,7 +230,6 @@ impl ModelDefinitionRepository for MemoryProvisioningRepository {
         model.title = input.title.clone();
         model.physical_table_name = input.physical_table_name.clone();
         model.status = input.status;
-        model.api_exposure_status = input.api_exposure_status;
         model.protection = input.protection.clone();
         Ok(model.clone())
     }

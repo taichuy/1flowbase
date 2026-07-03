@@ -8,7 +8,6 @@ use axum::{
     Json, Router,
 };
 use control_plane::errors::ControlPlaneError;
-use control_plane::model_definition::ModelDefinitionService;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
@@ -231,9 +230,11 @@ pub async fn get_data_model_openapi(
 
     let model_id =
         Uuid::parse_str(&model_id).map_err(|_| ControlPlaneError::InvalidInput("model_id"))?;
-    let model = ModelDefinitionService::new(state.store.clone())
-        .get_model(context.user.id, model_id)
-        .await?;
+    let Some(model) =
+        runtime_data_model_docs::ready_model(&state, context.user.id, model_id).await?
+    else {
+        return Err(ControlPlaneError::NotFound("model_id").into());
+    };
 
     Ok(Json(runtime_data_model_docs::build_model_openapi(&model)))
 }

@@ -695,7 +695,6 @@ describe('SettingsPage', () => {
         display_name: '主数据源',
         status: 'ready',
         default_data_model_status: 'published',
-        default_api_exposure_status: 'published_not_exposed',
         config_json: {},
         secret_ref: null,
         secret_version: null,
@@ -839,7 +838,9 @@ describe('SettingsPage', () => {
     expect(
       screen.getByRole('columnheader', { name: '分类' })
     ).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '名称' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '名称' })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: '排序值' })
     ).toBeInTheDocument();
@@ -991,23 +992,25 @@ describe('SettingsPage', () => {
           }
         ]
       });
-    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue({
-      id: 'auth-oidc-main',
-      auth_type: 'oidc',
-      title: 'OIDC Login',
-      enabled: true,
-      is_builtin: false,
-      sort_order: 10,
-      config_schema: [],
-      config_values: {
+    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
+      {
+        id: 'auth-oidc-main',
+        auth_type: 'oidc',
         title: 'OIDC Login',
         enabled: true,
-        description: 'Primary OIDC login',
-        extension_config: {
-          issuer_url: 'https://idp.example.com'
+        is_builtin: false,
+        sort_order: 10,
+        config_schema: [],
+        config_values: {
+          title: 'OIDC Login',
+          enabled: true,
+          description: 'Primary OIDC login',
+          extension_config: {
+            issuer_url: 'https://idp.example.com'
+          }
         }
       }
-    });
+    );
 
     renderApp('/settings/auth-center');
 
@@ -1123,7 +1126,9 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText('名称')).toBeDisabled();
     expect(within(dialog).getByRole('switch', { name: '启用' })).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+    expect(
+      within(dialog).getByRole('button', { name: /保\s*存/ })
+    ).toBeDisabled();
   });
 
   test('shows auth center csrf error in the drawer', async () => {
@@ -1164,7 +1169,9 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText('名称')).toBeDisabled();
     expect(within(dialog).getByRole('switch', { name: '启用' })).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+    expect(
+      within(dialog).getByRole('button', { name: /保\s*存/ })
+    ).toBeDisabled();
   });
 
   test('opens auth center configuration drawer when extension config fields are absent', async () => {
@@ -1215,9 +1222,7 @@ describe('SettingsPage', () => {
     expect(
       await screen.findByRole('button', { name: /添加/ })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /添加/ })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /添加/ })).toBeInTheDocument();
     expect(
       personalAccessTokensApi.fetchSettingsPersonalAccessTokens
     ).toHaveBeenCalled();
@@ -1330,9 +1335,7 @@ describe('SettingsPage', () => {
       screen.queryByRole('columnheader', { name: '角色' })
     ).not.toBeInTheDocument();
 
-    fireEvent.click(
-      within(rootRow).getByRole('button', { name: /编辑$/ })
-    );
+    fireEvent.click(within(rootRow).getByRole('button', { name: /编辑$/ }));
     const profileDialog = await screen.findByRole('dialog', {
       name: /编辑用户资料/
     });

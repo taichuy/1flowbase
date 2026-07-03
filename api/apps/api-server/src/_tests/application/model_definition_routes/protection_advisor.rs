@@ -284,10 +284,7 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
         docs["components"]["securitySchemes"]["patBearer"]["scheme"],
         json!("bearer")
     );
-    assert_eq!(
-        docs["x-data-model"]["api_exposure_status"],
-        json!("api_exposed_ready")
-    );
+    assert_eq!(docs["x-data-model"]["status"], json!("published"));
     assert!(docs["x-scope-permission-note"]
         .as_str()
         .unwrap()

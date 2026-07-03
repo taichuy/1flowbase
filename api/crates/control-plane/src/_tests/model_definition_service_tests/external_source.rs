@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn external_model_missing_scope_filter_capability_keeps_stored_exposure_metadata() {
+async fn external_model_missing_scope_filter_capability_preserves_external_metadata() {
     let model_id = Uuid::now_v7();
     let mut model = model_in_workspace(model_id, Uuid::nil());
     model.data_source_instance_id = Some(Uuid::now_v7());
@@ -22,19 +22,20 @@ async fn external_model_missing_scope_filter_capability_keeps_stored_exposure_me
             ));
     let service = ModelDefinitionService::new(repository.clone());
 
-    let unsafe_external = service.get_model(Uuid::nil(), model_id).await.unwrap();
+    let external = service.get_model(Uuid::nil(), model_id).await.unwrap();
 
+    assert_eq!(external.status, DataModelStatus::Published);
     assert_eq!(
-        unsafe_external.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
+        external.source_kind,
+        domain::DataModelSourceKind::ExternalSource
     );
+    assert_eq!(external.external_resource_key.as_deref(), Some("contacts"));
 }
 
 #[tokio::test]
-async fn external_model_with_scope_filter_capability_can_be_api_exposed_ready() {
+async fn external_model_with_scope_filter_capability_preserves_capability_snapshot() {
     let model_id = Uuid::now_v7();
     let mut model = model_in_workspace(model_id, Uuid::nil());
-    model.api_exposure_status = ApiExposureStatus::ApiExposedReady;
     model.data_source_instance_id = Some(Uuid::now_v7());
     model.source_kind = domain::DataModelSourceKind::ExternalSource;
     model.external_resource_key = Some("contacts".into());
@@ -64,14 +65,10 @@ async fn external_model_with_scope_filter_capability_can_be_api_exposed_ready() 
             "supports_write": false
         }))
     );
-    assert_eq!(
-        effective.api_exposure_status,
-        ApiExposureStatus::ApiExposedReady
-    );
 }
 
 #[tokio::test]
-async fn main_source_default_exposure_stays_user_metadata() {
+async fn main_source_default_status_stays_published() {
     let repository = InMemoryModelDefinitionRepository::default();
     let service = ModelDefinitionService::new(repository);
     let created = service
@@ -90,10 +87,7 @@ async fn main_source_default_exposure_stays_user_metadata() {
 
     let effective = service.get_model(Uuid::nil(), created.id).await.unwrap();
 
-    assert_eq!(
-        effective.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
-    );
+    assert_eq!(effective.status, DataModelStatus::Published);
 }
 
 #[tokio::test]
@@ -115,7 +109,6 @@ async fn create_model_persists_explicit_draft_status_in_initial_create_path() {
         .unwrap();
 
     assert_eq!(created.status, DataModelStatus::Draft);
-    assert_eq!(created.api_exposure_status, ApiExposureStatus::Draft);
 }
 
 #[tokio::test]
@@ -125,7 +118,6 @@ async fn create_model_inherits_data_source_defaults_when_instance_is_selected() 
         data_source_instance_id,
         DataSourceDefaults {
             data_model_status: DataModelStatus::Draft,
-            api_exposure_status: ApiExposureStatus::Draft,
         },
     );
     let service = ModelDefinitionService::new(repository);
@@ -149,7 +141,6 @@ async fn create_model_inherits_data_source_defaults_when_instance_is_selected() 
         Some(data_source_instance_id)
     );
     assert_eq!(created.status, DataModelStatus::Draft);
-    assert_eq!(created.api_exposure_status, ApiExposureStatus::Draft);
 }
 
 #[tokio::test]
@@ -293,7 +284,6 @@ async fn create_model_rejects_data_source_defaults_outside_actor_workspace() {
                 data_source_instance_id,
                 DataSourceDefaults {
                     data_model_status: DataModelStatus::Draft,
-                    api_exposure_status: ApiExposureStatus::Draft,
                 },
             );
     let service = ModelDefinitionService::new(repository);

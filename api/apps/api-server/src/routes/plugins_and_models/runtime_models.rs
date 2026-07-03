@@ -300,8 +300,28 @@ fn runtime_records_cacheable_metadata(
     actor: &domain::ActorContext,
     model_code: &str,
 ) -> Option<runtime_core::model_metadata::ModelMetadata> {
-    resolve_runtime_model(state, actor, model_code)
-        .filter(|metadata| metadata.source_kind == domain::DataModelSourceKind::MainSource)
+    let runtime_model = state
+        .runtime_engine
+        .registry()
+        .get_runtime_model(
+            domain::DataModelScopeKind::Workspace,
+            actor.current_workspace_id,
+            model_code,
+        )
+        .or_else(|| {
+            state.runtime_engine.registry().get_runtime_model(
+                domain::DataModelScopeKind::System,
+                domain::SYSTEM_SCOPE_ID,
+                model_code,
+            )
+        })?;
+    runtime_core::runtime_engine::ensure_runtime_model_available(
+        &runtime_model.metadata.model_code,
+        runtime_model.availability,
+    )
+    .ok()?;
+    (runtime_model.metadata.source_kind == domain::DataModelSourceKind::MainSource)
+        .then_some(runtime_model.metadata)
 }
 
 fn runtime_records_version_key(metadata: &runtime_core::model_metadata::ModelMetadata) -> String {

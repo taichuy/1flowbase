@@ -107,7 +107,6 @@ impl InMemoryModelDefinitionRepository {
                 external_table_id: None,
                 external_capability_snapshot: None,
                 status: domain::DataModelStatus::Published,
-                api_exposure_status: domain::ApiExposureStatus::PublishedNotExposed,
                 protection: domain::DataModelProtection::default(),
             });
         entry.clone()
@@ -205,7 +204,6 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
             fields: vec![],
             availability_status: domain::MetadataAvailabilityStatus::Available,
             status: input.status,
-            api_exposure_status: input.api_exposure_status,
             protection: input.protection.clone(),
         };
         self.models
@@ -239,7 +237,6 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
         model.title = input.title.clone();
         model.physical_table_name = input.physical_table_name.clone();
         model.status = input.status;
-        model.api_exposure_status = input.api_exposure_status;
         model.protection = input.protection.clone();
         Ok(model.clone())
     }
@@ -258,7 +255,6 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
             })
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
         model.status = input.status;
-        model.api_exposure_status = input.api_exposure_status;
         Ok(model.clone())
     }
 

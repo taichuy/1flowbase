@@ -24,7 +24,6 @@ fn test_data_model_definition() -> domain::ModelDefinitionRecord {
         ],
         availability_status: domain::MetadataAvailabilityStatus::Available,
         status: domain::DataModelStatus::Published,
-        api_exposure_status: domain::ApiExposureStatus::PublishedNotExposed,
         protection: domain::DataModelProtection::default(),
     }
 }

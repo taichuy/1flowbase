@@ -28,7 +28,6 @@ pub struct UpdateModelDefinitionStatusCommand {
     pub actor_user_id: Uuid,
     pub model_id: Uuid,
     pub status: domain::DataModelStatus,
-    pub api_exposure_status: domain::ApiExposureStatus,
 }
 
 pub struct AddModelFieldCommand {

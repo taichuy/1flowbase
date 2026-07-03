@@ -103,7 +103,6 @@ where
             external_table_id: None,
             external_capability_snapshot: None,
             status: domain::DataModelStatus::Published,
-            api_exposure_status: domain::ApiExposureStatus::PublishedNotExposed,
             protection: input.protection.clone(),
             code: input.code,
             title: input.title,

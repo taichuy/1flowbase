@@ -128,16 +128,14 @@ describe('settings data models API wrappers', () => {
     await updateSettingsDataSourceDefaults(
       'source-1',
       {
-        default_data_model_status: 'draft',
-        default_api_exposure_status: 'draft'
+        default_data_model_status: 'draft'
       },
       'csrf-123'
     );
     expect(updateConsoleDataSourceDefaults).toHaveBeenCalledWith(
       'source-1',
       {
-        default_data_model_status: 'draft',
-        default_api_exposure_status: 'draft'
+        default_data_model_status: 'draft'
       },
       'csrf-123'
     );

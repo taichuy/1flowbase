@@ -57,7 +57,6 @@ pub struct RotateDataSourceSecretBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateDataSourceDefaultsBody {
     pub default_data_model_status: String,
-    pub default_api_exposure_status: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -98,7 +97,6 @@ pub struct DataSourceInstanceResponse {
     pub display_name: String,
     pub status: String,
     pub default_data_model_status: String,
-    pub default_api_exposure_status: String,
     #[schema(value_type = Object)]
     pub config_json: serde_json::Value,
     pub secret_ref: Option<String>,
@@ -222,12 +220,6 @@ fn to_instance_response(view: DataSourceInstanceView) -> DataSourceInstanceRespo
             .data_model_status
             .as_str()
             .to_string(),
-        default_api_exposure_status: view
-            .instance
-            .defaults
-            .api_exposure_status
-            .as_str()
-            .to_string(),
         config_json: view.instance.config_json,
         secret_ref: view.instance.secret_ref,
         secret_version: view.instance.secret_version,
@@ -250,7 +242,6 @@ fn main_source_response(defaults: domain::DataSourceDefaults) -> DataSourceInsta
         display_name: "主数据源".to_string(),
         status: "ready".to_string(),
         default_data_model_status: defaults.data_model_status.as_str().to_string(),
-        default_api_exposure_status: defaults.api_exposure_status.as_str().to_string(),
         config_json: serde_json::json!({}),
         secret_ref: None,
         secret_version: None,
@@ -268,23 +259,6 @@ fn parse_model_status(raw: &str) -> Result<domain::DataModelStatus, ApiError> {
         "broken" => Ok(domain::DataModelStatus::Broken),
         _ => Err(control_plane::errors::ControlPlaneError::InvalidInput(
             "default_data_model_status",
-        )
-        .into()),
-    }
-}
-
-fn parse_api_exposure_status(raw: &str) -> Result<domain::ApiExposureStatus, ApiError> {
-    match raw {
-        "draft" => Ok(domain::ApiExposureStatus::Draft),
-        "published_not_exposed" => Ok(domain::ApiExposureStatus::PublishedNotExposed),
-        "api_exposed_no_permission" => Ok(domain::ApiExposureStatus::ApiExposedNoPermission),
-        "unsafe_external_source" => Ok(domain::ApiExposureStatus::UnsafeExternalSource),
-        "api_exposed_ready" => Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "default_api_exposure_status",
-        )
-        .into()),
-        _ => Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "default_api_exposure_status",
         )
         .into()),
     }
@@ -404,7 +378,6 @@ pub async fn update_defaults(
     require_csrf(&headers, &context)?;
     let defaults = domain::DataSourceDefaults {
         data_model_status: parse_model_status(&body.default_data_model_status)?,
-        api_exposure_status: parse_api_exposure_status(&body.default_api_exposure_status)?,
     };
     if instance_id == "main_source" {
         let defaults = service(&state)

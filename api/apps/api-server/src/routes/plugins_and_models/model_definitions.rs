@@ -48,7 +48,6 @@ pub struct CreateModelDefinitionBody {
 pub struct UpdateModelDefinitionBody {
     pub title: Option<String>,
     pub status: Option<String>,
-    pub api_exposure_status: Option<String>,
     pub external_table_id: Option<String>,
 }
 
@@ -190,7 +189,6 @@ pub struct ModelDefinitionResponse {
     pub code: String,
     pub title: String,
     pub status: String,
-    pub api_exposure_status: String,
     pub runtime_availability: String,
     pub data_source_instance_id: Option<String>,
     pub source_kind: String,
@@ -375,7 +373,6 @@ pub(super) fn to_model_definition_response(
         code: model.code,
         title: model.title,
         status: model.status.as_str().to_string(),
-        api_exposure_status: model.api_exposure_status.as_str().to_string(),
         runtime_availability: runtime_availability_for_status(model.status).to_string(),
         data_source_instance_id: model.data_source_instance_id.map(|id| id.to_string()),
         source_kind: model.source_kind.as_str().to_string(),
@@ -499,19 +496,6 @@ fn parse_model_status(raw: &str) -> Result<domain::DataModelStatus, ApiError> {
         "disabled" => Ok(domain::DataModelStatus::Disabled),
         "broken" => Ok(domain::DataModelStatus::Broken),
         _ => Err(control_plane::errors::ControlPlaneError::InvalidInput("status").into()),
-    }
-}
-
-fn parse_api_exposure_status(raw: &str) -> Result<domain::ApiExposureStatus, ApiError> {
-    match raw {
-        "draft" => Ok(domain::ApiExposureStatus::Draft),
-        "published_not_exposed" => Ok(domain::ApiExposureStatus::PublishedNotExposed),
-        "api_exposed_no_permission" => Ok(domain::ApiExposureStatus::ApiExposedNoPermission),
-        "api_exposed_ready" => Ok(domain::ApiExposureStatus::ApiExposedReady),
-        "unsafe_external_source" => Ok(domain::ApiExposureStatus::UnsafeExternalSource),
-        _ => Err(
-            control_plane::errors::ControlPlaneError::InvalidInput("api_exposure_status").into(),
-        ),
     }
 }
 
@@ -724,11 +708,6 @@ pub async fn update_model(
 
     let model_id = helpers::parse_uuid(&model_id, "model_id")?;
     let requested_status = body.status.as_deref().map(parse_model_status).transpose()?;
-    let requested_api_exposure_status = body
-        .api_exposure_status
-        .as_deref()
-        .map(parse_api_exposure_status)
-        .transpose()?;
     let mutation_service = mutation_service(&state);
     let mut model = None;
     if body.title.is_some() || body.external_table_id.is_some() {
@@ -750,25 +729,13 @@ pub async fn update_model(
                 .await?,
         );
     }
-    if requested_status.is_some() || requested_api_exposure_status.is_some() {
-        let status = if let Some(status) = requested_status {
-            status
-        } else if let Some(model) = model.as_ref() {
-            model.status
-        } else {
-            ModelDefinitionService::new(state.store.clone())
-                .get_model(context.user.id, model_id)
-                .await?
-                .status
-        };
+    if let Some(status) = requested_status {
         model = Some(
             mutation_service
                 .update_model_status(UpdateModelDefinitionStatusCommand {
                     actor_user_id: context.user.id,
                     model_id,
                     status,
-                    api_exposure_status: requested_api_exposure_status
-                        .unwrap_or_else(|| domain::ApiExposureStatus::default_for_status(status)),
                 })
                 .await?,
         );

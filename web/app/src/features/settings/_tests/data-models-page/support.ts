@@ -390,7 +390,6 @@ function settingsDataModel(
     code,
     title,
     status: 'published',
-    api_exposure_status: 'api_exposed_ready',
     runtime_availability: 'available',
     data_source_instance_id: 'main_source',
     source_kind: 'main_source',
@@ -421,11 +420,17 @@ export const contactsModel = settingsDataModel(
     settingsDataModelField('field-2', 'first_name', 'First name', 'string', {
       external_field_key: 'first_name'
     }),
-    systemSettingsDataModelField('field-remote-id', 'remote_id', 'Remote ID', 'string', {
-      external_field_key: 'remote_id',
-      is_system: true,
-      is_writable: false
-    })
+    systemSettingsDataModelField(
+      'field-remote-id',
+      'remote_id',
+      'Remote ID',
+      'string',
+      {
+        external_field_key: 'remote_id',
+        is_system: true,
+        is_writable: false
+      }
+    )
   ],
   {
     scope_kind: 'workspace',
@@ -447,7 +452,6 @@ const draftOrdersModel = settingsDataModel(
     scope_kind: 'workspace',
     scope_id: 'workspace-1',
     status: 'draft',
-    api_exposure_status: 'draft',
     runtime_availability: 'unavailable',
     data_source_instance_id: 'source-1',
     source_kind: 'external_source',
@@ -463,10 +467,16 @@ const mainSourceModels = [
     'attachments',
     'Attachments',
     [
-      systemSettingsDataModelField('attachment-name', 'name', '文件名', 'string', {
-        description: '附件原始文件名',
-        is_required: true
-      }),
+      systemSettingsDataModelField(
+        'attachment-name',
+        'name',
+        '文件名',
+        'string',
+        {
+          description: '附件原始文件名',
+          is_required: true
+        }
+      ),
       systemSettingsDataModelField(
         'attachment-size',
         'size',
@@ -482,100 +492,129 @@ const mainSourceModels = [
       capabilities: protectedBuiltinModelCapabilities
     }
   ),
-  settingsDataModel('model-users', 'users', '用户', [
-    systemSettingsDataModelField('user-username', 'username', '用户名', 'string', {
-      is_required: true,
-      is_unique: true
-    }),
-    systemSettingsDataModelField(
-      'user-display-name',
-      'display_name',
-      '显示名称',
-      'string',
-      {
+  settingsDataModel(
+    'model-users',
+    'users',
+    '用户',
+    [
+      systemSettingsDataModelField(
+        'user-username',
+        'username',
+        '用户名',
+        'string',
+        {
+          is_required: true,
+          is_unique: true
+        }
+      ),
+      systemSettingsDataModelField(
+        'user-display-name',
+        'display_name',
+        '显示名称',
+        'string',
+        {
+          is_required: true
+        }
+      ),
+      systemSettingsDataModelField('user-email', 'email', '邮箱', 'string', {
+        is_unique: true
+      }),
+      systemSettingsDataModelField('user-status', 'status', '状态', 'string', {
         is_required: true
-      }
-    ),
-    systemSettingsDataModelField('user-email', 'email', '邮箱', 'string', {
-      is_unique: true
-    }),
-    systemSettingsDataModelField('user-status', 'status', '状态', 'string', {
-      is_required: true
-    }),
-    systemSettingsDataModelField('user-role-codes', 'role_codes', '角色', 'json'),
-    systemSettingsDataModelField(
-      'user-created-at',
-      'created_time',
-      '创建时间',
-      'datetime',
-      {
+      }),
+      systemSettingsDataModelField(
+        'user-role-codes',
+        'role_codes',
+        '角色',
+        'json'
+      ),
+      systemSettingsDataModelField(
+        'user-created-at',
+        'created_time',
+        '创建时间',
+        'datetime',
+        {
+          is_required: true
+        }
+      ),
+      systemSettingsDataModelField(
+        'user-last-login-at',
+        'last_login_at',
+        '最后登录时间',
+        'datetime'
+      )
+    ],
+    {
+      builtin_kind: 'core',
+      capabilities: protectedBuiltinModelCapabilities
+    }
+  ),
+  settingsDataModel(
+    'model-roles',
+    'roles',
+    '角色',
+    [
+      systemSettingsDataModelField('role-code', 'code', '角色标识', 'string', {
+        is_required: true,
+        is_unique: true
+      }),
+      systemSettingsDataModelField('role-name', 'name', '角色名称', 'string', {
         is_required: true
-      }
-    ),
-    systemSettingsDataModelField(
-      'user-last-login-at',
-      'last_login_at',
-      '最后登录时间',
-      'datetime'
-    )
-  ], {
-    builtin_kind: 'core',
-    capabilities: protectedBuiltinModelCapabilities
-  }),
-  settingsDataModel('model-roles', 'roles', '角色', [
-    systemSettingsDataModelField('role-code', 'code', '角色标识', 'string', {
-      is_required: true,
-      is_unique: true
-    }),
-    systemSettingsDataModelField('role-name', 'name', '角色名称', 'string', {
-      is_required: true
-    }),
-    systemSettingsDataModelField(
-      'role-scope-kind',
-      'scope_kind',
-      '作用域',
-      'string',
-      {
-        is_required: true
-      }
-    ),
-    systemSettingsDataModelField(
-      'role-builtin',
-      'is_builtin',
-      '内置角色',
-      'boolean',
-      {
-        is_required: true
-      }
-    ),
-    systemSettingsDataModelField(
-      'role-default-member',
-      'is_default_member_role',
-      '默认成员角色',
-      'boolean',
-      { is_required: true }
-    ),
-    systemSettingsDataModelField(
-      'role-created-at',
-      'created_time',
-      '创建时间',
-      'datetime',
-      {
-        is_required: true
-      }
-    )
-  ], {
-    builtin_kind: 'core',
-    capabilities: protectedBuiltinModelCapabilities
-  }),
+      }),
+      systemSettingsDataModelField(
+        'role-scope-kind',
+        'scope_kind',
+        '作用域',
+        'string',
+        {
+          is_required: true
+        }
+      ),
+      systemSettingsDataModelField(
+        'role-builtin',
+        'is_builtin',
+        '内置角色',
+        'boolean',
+        {
+          is_required: true
+        }
+      ),
+      systemSettingsDataModelField(
+        'role-default-member',
+        'is_default_member_role',
+        '默认成员角色',
+        'boolean',
+        { is_required: true }
+      ),
+      systemSettingsDataModelField(
+        'role-created-at',
+        'created_time',
+        '创建时间',
+        'datetime',
+        {
+          is_required: true
+        }
+      )
+    ],
+    {
+      builtin_kind: 'core',
+      capabilities: protectedBuiltinModelCapabilities
+    }
+  ),
   settingsDataModel(
     'model-runtime-logs',
     'runtime_logs',
     'Runtime Logs',
     [
-      systemSettingsDataModelField('runtime-log-level', 'level', 'Level', 'string', {
-        description: 'Runtime log level'
-      })
+      systemSettingsDataModelField(
+        'runtime-log-level',
+        'level',
+        'Level',
+        'string',
+        {
+          description: 'Runtime log level'
+        }
+      )
     ],
     {
       builtin_kind: 'runtime_read',
@@ -652,7 +691,6 @@ export function setupDataModelsPageTest() {
       display_name: '主数据源',
       status: 'ready',
       default_data_model_status: 'published',
-      default_api_exposure_status: 'published_not_exposed',
       config_json: {},
       secret_ref: null,
       secret_version: null,
@@ -668,7 +706,6 @@ export function setupDataModelsPageTest() {
       display_name: 'HubSpot',
       status: 'ready',
       default_data_model_status: 'draft',
-      default_api_exposure_status: 'draft',
       config_json: {},
       secret_ref: null,
       secret_version: null,

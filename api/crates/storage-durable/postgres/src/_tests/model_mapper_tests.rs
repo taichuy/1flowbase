@@ -1,6 +1,6 @@
 use domain::{
-    ApiExposureStatus, DataModelOwnerKind, DataModelScopeKind, DataModelSourceKind,
-    DataModelStatus, MetadataAvailabilityStatus, ModelFieldKind,
+    DataModelOwnerKind, DataModelScopeKind, DataModelSourceKind, DataModelStatus,
+    MetadataAvailabilityStatus, ModelFieldKind,
 };
 use serde_json::json;
 use storage_postgres::mappers::model_definition_mapper::{
@@ -63,7 +63,7 @@ fn model_field_mapper_preserves_runtime_and_external_field_flags() {
 }
 
 #[test]
-fn model_definition_mapper_preserves_scope_source_exposure_and_protection() {
+fn model_definition_mapper_preserves_scope_source_status_and_protection() {
     let model_id = Uuid::now_v7();
     let scope_id = Uuid::now_v7();
     let data_source_instance_id = Uuid::now_v7();
@@ -108,7 +108,6 @@ fn model_definition_mapper_preserves_scope_source_exposure_and_protection() {
         audit_namespace: "data_model.contacts".into(),
         availability_status: "unavailable".into(),
         status: "broken".into(),
-        api_exposure_status: "unsafe_external_source".into(),
         owner_kind: "runtime_extension".into(),
         owner_id: Some("crm-provider".into()),
         is_protected: true,
@@ -142,10 +141,6 @@ fn model_definition_mapper_preserves_scope_source_exposure_and_protection() {
         MetadataAvailabilityStatus::Unavailable
     ));
     assert!(matches!(record.status, DataModelStatus::Broken));
-    assert!(matches!(
-        record.api_exposure_status,
-        ApiExposureStatus::UnsafeExternalSource
-    ));
     assert!(matches!(
         record.protection.owner_kind,
         DataModelOwnerKind::RuntimeExtension

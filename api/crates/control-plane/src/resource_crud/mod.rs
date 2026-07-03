@@ -19,7 +19,6 @@ impl ResourceFilterTarget for domain::ModelDefinitionRecord {
             "code" => Some(self.code.clone()),
             "title" => Some(self.title.clone()),
             "status" => Some(self.status.as_str().to_string()),
-            "api_exposure_status" => Some(self.api_exposure_status.as_str().to_string()),
             "availability_status" => Some(self.availability_status.as_str().to_string()),
             "data_source_instance_id" => self.data_source_instance_id.map(|id| id.to_string()),
             "source_kind" => Some(self.source_kind.as_str().to_string()),

@@ -6,8 +6,8 @@ use control_plane::system_metadata::{
     role_metadata_template, user_metadata_template, SystemMetadataBootstrapService,
 };
 use domain::{
-    ApiExposureStatus, DataModelProtection, DataModelScopeKind, DataModelSourceKind,
-    DataModelStatus, ModelFieldKind, ScopeDataModelPermissionProfile, SYSTEM_SCOPE_ID,
+    DataModelProtection, DataModelScopeKind, DataModelSourceKind, DataModelStatus, ModelFieldKind,
+    ScopeDataModelPermissionProfile, SYSTEM_SCOPE_ID,
 };
 use uuid::Uuid;
 
@@ -176,7 +176,6 @@ async fn bootstrap_repairs_existing_partial_system_metadata_models() {
             external_table_id: None,
             external_capability_snapshot: None,
             status: DataModelStatus::Draft,
-            api_exposure_status: ApiExposureStatus::PublishedNotExposed,
             protection: DataModelProtection::default(),
             code: "users".into(),
             title: "用户".into(),

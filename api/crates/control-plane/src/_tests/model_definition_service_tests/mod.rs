@@ -10,9 +10,9 @@ use control_plane::ports::{
     UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
 };
 use domain::{
-    ActorContext, ApiExposureStatus, AuditLogRecord, DataModelOwnerKind, DataModelProtection,
-    DataModelScopeKind, DataModelStatus, DataSourceDefaults, ModelDefinitionRecord, ModelFieldKind,
-    ModelFieldRecord, ScopeDataModelGrantRecord, SYSTEM_SCOPE_ID,
+    ActorContext, AuditLogRecord, DataModelOwnerKind, DataModelProtection, DataModelScopeKind,
+    DataModelStatus, DataSourceDefaults, ModelDefinitionRecord, ModelFieldKind, ModelFieldRecord,
+    ScopeDataModelGrantRecord, SYSTEM_SCOPE_ID,
 };
 use serde_json::json;
 use std::{
@@ -153,7 +153,6 @@ impl ModelDefinitionRepository for ScopedModelDefinitionRepository {
             fields: vec![],
             availability_status: domain::MetadataAvailabilityStatus::Available,
             status: input.status,
-            api_exposure_status: input.api_exposure_status,
             protection: input.protection.clone(),
         };
         self.models
@@ -191,7 +190,6 @@ impl ModelDefinitionRepository for ScopedModelDefinitionRepository {
                 "model_definition",
             ))?;
         model.status = input.status;
-        model.api_exposure_status = input.api_exposure_status;
         Ok(model.clone())
     }
 
@@ -438,7 +436,6 @@ fn system_model(model_id: Uuid) -> ModelDefinitionRecord {
         external_table_id: None,
         external_capability_snapshot: None,
         status: DataModelStatus::Published,
-        api_exposure_status: ApiExposureStatus::PublishedNotExposed,
         protection: DataModelProtection::default(),
     }
 }
@@ -522,7 +519,6 @@ fn model_in_workspace(model_id: Uuid, workspace_id: Uuid) -> ModelDefinitionReco
         external_table_id: None,
         external_capability_snapshot: None,
         status: DataModelStatus::Published,
-        api_exposure_status: ApiExposureStatus::PublishedNotExposed,
         protection: DataModelProtection::default(),
     }
 }
@@ -548,7 +544,6 @@ fn scope_grant(
 }
 
 mod basic_lifecycle;
-mod exposure_status;
 mod external_source;
 mod protection_advisor;
 mod registered_system_table;

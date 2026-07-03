@@ -4,9 +4,9 @@ use control_plane::ports::{
     UpsertPluginInstallationInput,
 };
 use domain::{
-    ApiExposureStatus, DataModelStatus, DataSourceCatalogRefreshStatus, DataSourceDefaults,
-    DataSourceInstanceStatus, PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState,
-    PluginRuntimeStatus, PluginVerificationStatus,
+    DataModelStatus, DataSourceCatalogRefreshStatus, DataSourceDefaults, DataSourceInstanceStatus,
+    PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus,
+    PluginVerificationStatus,
 };
 use serde_json::json;
 use sqlx::PgPool;
@@ -136,10 +136,6 @@ async fn creates_instance_secret_and_catalog_cache_rows() {
     assert_eq!(
         created.defaults.data_model_status,
         DataModelStatus::Published
-    );
-    assert_eq!(
-        created.defaults.api_exposure_status,
-        ApiExposureStatus::PublishedNotExposed
     );
 
     let secret = <PgControlPlaneStore as DataSourceRepository>::upsert_secret(
@@ -477,7 +473,6 @@ async fn creates_preview_session_rows() {
             metadata_json: json!({}),
             defaults: DataSourceDefaults {
                 data_model_status: DataModelStatus::Draft,
-                api_exposure_status: ApiExposureStatus::Draft,
             },
             created_by: actor.id,
         },
@@ -507,7 +502,7 @@ async fn creates_preview_session_rows() {
 }
 
 #[tokio::test]
-async fn updates_data_source_default_status_and_exposure() {
+async fn updates_data_source_default_status() {
     let (store, workspace, actor, installation_id) = seed_store().await;
     let created = <PgControlPlaneStore as DataSourceRepository>::create_instance(
         &store,
@@ -534,7 +529,6 @@ async fn updates_data_source_default_status_and_exposure() {
             instance_id: created.id,
             defaults: DataSourceDefaults {
                 data_model_status: DataModelStatus::Draft,
-                api_exposure_status: ApiExposureStatus::Draft,
             },
             updated_by: actor.id,
         },
@@ -543,14 +537,10 @@ async fn updates_data_source_default_status_and_exposure() {
     .unwrap();
 
     assert_eq!(updated.defaults.data_model_status, DataModelStatus::Draft);
-    assert_eq!(
-        updated.defaults.api_exposure_status,
-        ApiExposureStatus::Draft
-    );
 }
 
 #[tokio::test]
-async fn updates_main_source_defaults_with_workspace_scoped_readiness_fields() {
+async fn updates_main_source_defaults_with_workspace_scoped_status() {
     let (store, workspace, actor, _) = seed_store().await;
 
     let updated = <PgControlPlaneStore as DataSourceRepository>::update_main_source_defaults(
@@ -559,7 +549,6 @@ async fn updates_main_source_defaults_with_workspace_scoped_readiness_fields() {
             workspace_id: workspace.id,
             defaults: DataSourceDefaults {
                 data_model_status: DataModelStatus::Draft,
-                api_exposure_status: ApiExposureStatus::Draft,
             },
             updated_by: actor.id,
         },
@@ -567,7 +556,6 @@ async fn updates_main_source_defaults_with_workspace_scoped_readiness_fields() {
     .await
     .unwrap();
     assert_eq!(updated.data_model_status, DataModelStatus::Draft);
-    assert_eq!(updated.api_exposure_status, ApiExposureStatus::Draft);
 
     let (row_id, scope_id, row_count): (Uuid, Uuid, i64) = sqlx::query_as(
         r#"

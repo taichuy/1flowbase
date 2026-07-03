@@ -99,13 +99,7 @@ async fn create_exposed_published_model(
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "status": "published",
-                        "api_exposure_status": "api_exposed_ready"
-                    })
-                    .to_string(),
-                ))
+                .body(Body::from(json!({ "status": "published" }).to_string()))
                 .unwrap(),
         )
         .await

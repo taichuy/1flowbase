@@ -36,8 +36,7 @@ describe('console-data-models client', () => {
       updateConsoleDataSourceDefaults(
         'source-1',
         {
-          default_data_model_status: 'draft',
-          default_api_exposure_status: 'draft'
+          default_data_model_status: 'draft'
         },
         'csrf-123'
       )
@@ -111,8 +110,7 @@ describe('console-data-models client', () => {
       updateConsoleDataModel(
         'model-1',
         {
-          status: 'published',
-          external_table_id: 'crm.contacts.v2'
+          status: 'published'
         },
         'csrf-123'
       )
@@ -120,8 +118,7 @@ describe('console-data-models client', () => {
       path: '/api/console/models/model-1',
       method: 'PATCH',
       body: {
-        status: 'published',
-        external_table_id: 'crm.contacts.v2'
+        status: 'published'
       },
       csrfToken: 'csrf-123'
     });

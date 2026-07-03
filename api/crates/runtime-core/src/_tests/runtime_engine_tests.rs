@@ -578,30 +578,6 @@ async fn broken_model_returns_broken_error() {
 }
 
 #[tokio::test]
-async fn api_exposure_status_does_not_by_itself_enable_runtime_crud() {
-    let api_exposure_status = domain::ApiExposureStatus::ApiExposedReady;
-    let engine = runtime_engine_for_status(domain::DataModelStatus::Draft);
-    let actor = ActorContext::root(Uuid::now_v7(), Uuid::nil(), "root");
-
-    assert_eq!(
-        api_exposure_status,
-        domain::ApiExposureStatus::ApiExposedReady
-    );
-    assert_model_error(
-        engine
-            .create_record(RuntimeCreateInput {
-                actor,
-                model_code: "status_orders".into(),
-                payload: json!({ "title": "A-001" }),
-                scope_grant: Some(scope_grant(Uuid::nil(), Uuid::nil())),
-            })
-            .await
-            .unwrap_err(),
-        RuntimeModelError::not_published("status_orders"),
-    );
-}
-
-#[tokio::test]
 async fn runtime_create_validates_api_required_fields_not_metadata_required() {
     let model_id = Uuid::now_v7();
     let engine = RuntimeEngine::for_tests_with_models(vec![ModelMetadata {

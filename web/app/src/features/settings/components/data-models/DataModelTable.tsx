@@ -20,8 +20,7 @@ import {
   DeleteOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
-  StopOutlined,
-  FileTextOutlined
+  StopOutlined
 } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -41,18 +40,11 @@ import { i18nText } from '../../../../shared/i18n/text';
 
 const dataModelStatusHelp = i18nText(
   'settings',
-  'auto.draft_created_unpublished_state_published_entry_running_availability_api_exposure'
-);
-
-const defaultApiExposureStatusHelp = i18nText(
-  'settings',
-  'auto.draft_api_exposure_draft_published_exposed_api_access_surface_generated'
+  'auto.draft_created_unpublished_state_published_running_api_available'
 );
 
 type DefaultDataModelStatus =
   UpdateSettingsDataSourceDefaultsInput['default_data_model_status'];
-type DefaultApiExposureStatus =
-  UpdateSettingsDataSourceDefaultsInput['default_api_exposure_status'];
 
 const dataModelStatusOptions = [
   { label: i18nText('settings', 'auto.draft_alt'), value: 'draft' },
@@ -63,24 +55,6 @@ const dataModelStatusOptions = [
   { label: i18nText('settings', 'auto.disabled_inactive'), value: 'disabled' },
   { label: i18nText('settings', 'auto.broken_exception'), value: 'broken' }
 ] satisfies Array<{ label: string; value: DefaultDataModelStatus }>;
-
-const apiExposureOptions = [
-  { label: i18nText('settings', 'auto.draft_api_draft'), value: 'draft' },
-  {
-    label: i18nText('settings', 'auto.published_public_api'),
-    value: 'published_not_exposed'
-  },
-  {
-    label: i18nText('settings', 'auto.api_exposed_unauthorized_disclosure'),
-    value: 'api_exposed_no_permission'
-  }
-] satisfies Array<{ label: string; value: DefaultApiExposureStatus }>;
-
-function toDefaultApiExposureStatus(
-  status: SettingsDataSourceInstance['default_api_exposure_status']
-): DefaultApiExposureStatus {
-  return status === 'api_exposed_ready' ? 'published_not_exposed' : status;
-}
 
 function getStatusTag(status: string) {
   switch (status) {
@@ -129,45 +103,6 @@ function getStatusTag(status: string) {
   }
 }
 
-function getApiExposureTag(model: SettingsDataModel) {
-  const status = model.api_exposure_status;
-
-  switch (status) {
-    case 'api_exposed_ready':
-      return (
-        <Tag
-          color="success"
-          style={{ borderRadius: 6, margin: 0 }}
-          icon={<CheckCircleOutlined />}
-        >
-          {i18nText('settings', 'auto.already_public')}
-        </Tag>
-      );
-    case 'published_not_exposed':
-      return (
-        <Tag
-          color="blue"
-          style={{ borderRadius: 6, margin: 0 }}
-          icon={<FileTextOutlined />}
-        >
-          {i18nText('settings', 'auto.undisclosed')}
-        </Tag>
-      );
-    case 'draft':
-      return (
-        <Tag
-          color="default"
-          style={{ borderRadius: 6, margin: 0 }}
-          icon={<EditOutlined />}
-        >
-          {i18nText('settings', 'auto.draft')}
-        </Tag>
-      );
-    default:
-      return <Tag style={{ borderRadius: 6, margin: 0 }}>API {status}</Tag>;
-  }
-}
-
 export function DataModelTable({
   models,
   selectedSource,
@@ -208,10 +143,7 @@ export function DataModelTable({
       patch
     }: {
       source: SettingsDataSourceInstance;
-      patch: Pick<
-        UpdateSettingsDataSourceDefaultsInput,
-        'default_data_model_status' | 'default_api_exposure_status'
-      >;
+      patch: UpdateSettingsDataSourceDefaultsInput;
     }) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
@@ -257,13 +189,6 @@ export function DataModelTable({
       key: 'status',
       width: 140,
       render: (value: string) => getStatusTag(value)
-    },
-    {
-      title: 'API',
-      dataIndex: 'api_exposure_status',
-      key: 'api_exposure_status',
-      width: 200,
-      render: (_, model) => getApiExposureTag(model)
     },
     {
       title: i18nText('settings', 'auto.table_id_alt'),
@@ -389,10 +314,7 @@ export function DataModelTable({
                     updateDefaultsMutation.mutate({
                       source: selectedSource,
                       patch: {
-                        default_data_model_status: value,
-                        default_api_exposure_status: toDefaultApiExposureStatus(
-                          selectedSource.default_api_exposure_status
-                        )
+                        default_data_model_status: value
                       }
                     })
                   }
@@ -401,45 +323,6 @@ export function DataModelTable({
                   decorative
                   label={i18nText('settings', 'auto.data_model_state')}
                   title={dataModelStatusHelp}
-                />
-              </Flex>
-            </Form.Item>
-
-            <Form.Item style={{ margin: 0 }}>
-              <Flex align="center" gap={6}>
-                <label
-                  htmlFor="data-source-default-api-status"
-                  className="data-model-panel__sr-only"
-                >
-                  {i18nText('settings', 'auto.api_exposure_status_alt')}
-                </label>
-                <Select
-                  id="data-source-default-api-status"
-                  value={toDefaultApiExposureStatus(
-                    selectedSource.default_api_exposure_status
-                  )}
-                  options={apiExposureOptions}
-                  disabled={updateDefaultsMutation.isPending}
-                  style={{ minWidth: 140 }}
-                  placeholder={i18nText(
-                    'settings',
-                    'auto.api_exposure_status_alt'
-                  )}
-                  onChange={(value: DefaultApiExposureStatus) =>
-                    updateDefaultsMutation.mutate({
-                      source: selectedSource,
-                      patch: {
-                        default_data_model_status:
-                          selectedSource.default_data_model_status,
-                        default_api_exposure_status: value
-                      }
-                    })
-                  }
-                />
-                <DataModelHelpTooltip
-                  decorative
-                  label={i18nText('settings', 'auto.api_exposure_status_alt')}
-                  title={defaultApiExposureStatusHelp}
                 />
               </Flex>
             </Form.Item>
@@ -454,7 +337,7 @@ export function DataModelTable({
           columns={columns}
           dataSource={models}
           pagination={false}
-          scroll={{ x: 840 }}
+          scroll={{ x: 640 }}
           className="data-model-panel__models-table"
           rowSelection={{
             type: 'radio',
@@ -511,7 +394,6 @@ export function DataModelTable({
               </Flex>
               <Flex gap={6} style={{ marginTop: 12 }} wrap="wrap">
                 {getStatusTag(model.status)}
-                {getApiExposureTag(model)}
               </Flex>
               <span
                 className="data-model-panel__mobile-actions"

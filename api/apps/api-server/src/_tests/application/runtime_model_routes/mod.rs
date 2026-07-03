@@ -380,11 +380,11 @@ async fn seed_runtime_data_source_instance_with_options(
         insert into data_source_instances (
             id, workspace_id, installation_id, source_code, display_name, status,
             config_json, metadata_json, default_data_model_status,
-            default_api_exposure_status, created_by
+            created_by
         ) values (
             $1, $2, $3, $4, 'Fixture External Data Source',
             $5, '{"client_id":"route-runtime-client"}', '{}',
-            'published', 'published_not_exposed', $6
+            'published', $6
         )
         "#,
     )
