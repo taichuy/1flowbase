@@ -971,14 +971,16 @@ describe('Settings data models page', () => {
         target: { value: 'paid' }
       });
       const selectDropdownOption = async (name: string) => {
-        let option: HTMLElement | undefined;
         await waitFor(() => {
-          option = screen.getByText(name, {
-            selector: '.ant-select-item-option-content'
-          });
-          expect(option).toBeInstanceOf(HTMLElement);
+          expect(
+            screen.getByText(name, {
+              selector: '.ant-select-item-option-content'
+            })
+          ).toBeInstanceOf(HTMLElement);
         });
-        expect(option).toBeInstanceOf(HTMLElement);
+        const option = screen.getByText(name, {
+          selector: '.ant-select-item-option-content'
+        });
         fireEvent.click(option);
       };
       fireEvent.mouseDown(screen.getByLabelText('默认值'));
