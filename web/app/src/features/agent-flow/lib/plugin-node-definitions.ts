@@ -39,15 +39,19 @@ export type NodePickerOption =
   | BuiltinNodePickerOption
   | PluginContributionPickerOption;
 
-const HIDDEN_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
-  'workflow_start',
-  'workflow_end',
-  // These nodes are incomplete and not available to users yet.
+// These nodes are incomplete and not available to users yet.
+const UNRELEASED_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
   'human_input',
   'iteration',
   'loop',
   'parameter_extractor',
   'tool'
+]);
+
+const HIDDEN_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
+  'workflow_start',
+  'workflow_end',
+  ...UNRELEASED_BUILTIN_NODE_PICKER_TYPES
 ]);
 
 function buildBuiltinNodePickerOptions(
@@ -83,8 +87,22 @@ export const BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
       .filter((nodeType) => !HIDDEN_BUILTIN_NODE_PICKER_TYPES.has(nodeType))
   );
 
+const GENERAL_EXECUTION_NODE_PICKER_TYPES = builtinNodeRuntimeContractTypes.filter(
+  (nodeType): nodeType is BuiltinFlowNodeType =>
+    nodeType !== 'plugin_node' &&
+    nodeType !== 'start' &&
+    nodeType !== 'answer' &&
+    nodeType !== 'workflow_start' &&
+    nodeType !== 'workflow_end' &&
+    !UNRELEASED_BUILTIN_NODE_PICKER_TYPES.has(nodeType)
+);
+
 export const WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
-  buildBuiltinNodePickerOptions(['workflow_start', 'workflow_end']);
+  buildBuiltinNodePickerOptions([
+    'workflow_start',
+    'workflow_end',
+    ...GENERAL_EXECUTION_NODE_PICKER_TYPES
+  ]);
 
 const DEPENDENCY_STATUS_LABELS: Record<string, string> = {
   missing_plugin: i18nText('agentFlow', 'auto.dependency_missing_plugin'),
@@ -127,22 +145,37 @@ export const pluginNodeDefinitionMeta: NodeDefinitionMeta = {
   helpHref: null
 };
 
+function toPluginContributionPickerOption(
+  contribution: AgentFlowNodeContributionEntry
+): PluginContributionPickerOption {
+  return {
+    kind: 'plugin_contribution' as const,
+    label: contribution.title,
+    contribution,
+    disabled: contribution.dependency_status !== 'ready',
+    disabledReason:
+      contribution.dependency_status === 'ready'
+        ? null
+        : (DEPENDENCY_STATUS_LABELS[contribution.dependency_status] ??
+          i18nText('agentFlow', 'auto.plugin_node_unavailable'))
+  };
+}
+
 export function buildNodePickerOptions(
   contributions: AgentFlowNodeContributionEntry[]
 ): NodePickerOption[] {
   return [
     ...BUILTIN_NODE_PICKER_OPTIONS,
-    ...contributions.map((contribution) => ({
-      kind: 'plugin_contribution' as const,
-      label: contribution.title,
-      contribution,
-      disabled: contribution.dependency_status !== 'ready',
-      disabledReason:
-        contribution.dependency_status === 'ready'
-          ? null
-          : (DEPENDENCY_STATUS_LABELS[contribution.dependency_status] ??
-            i18nText('agentFlow', 'auto.plugin_node_unavailable'))
-    }))
+    ...contributions.map(toPluginContributionPickerOption)
+  ];
+}
+
+export function buildWorkflowNodePickerOptions(
+  contributions: AgentFlowNodeContributionEntry[]
+): NodePickerOption[] {
+  return [
+    ...WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,
+    ...contributions.map(toPluginContributionPickerOption)
   ];
 }
 

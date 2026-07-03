@@ -74,6 +74,8 @@ describe('AgentFlowCanvas', () => {
     expect(
       screen.getByRole('menuitem', { name: 'Workflow End' })
     ).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'LLM' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Code' })).toBeInTheDocument();
     expect(
       screen.queryByRole('menuitem', { name: 'Start' })
     ).not.toBeInTheDocument();

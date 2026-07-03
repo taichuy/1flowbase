@@ -58,7 +58,7 @@ import { clampNodeDetailWidth } from '../../lib/detail-panel-width';
 import { validateDocument } from '../../lib/validate-document';
 import {
   buildNodePickerOptions,
-  WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS
+  buildWorkflowNodePickerOptions
 } from '../../lib/plugin-node-definitions';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
@@ -466,7 +466,7 @@ export function AgentFlowCanvasFrame({
   const nodePickerOptions = useMemo(
     () =>
       applicationType === 'workflow'
-        ? WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS
+        ? buildWorkflowNodePickerOptions(nodeContributions)
         : buildNodePickerOptions(nodeContributions),
     [applicationType, nodeContributions]
   );

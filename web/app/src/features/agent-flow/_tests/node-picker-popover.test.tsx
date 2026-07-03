@@ -9,6 +9,7 @@ import { calculateNodePickerMaxHeight } from '../components/node-picker/node-pic
 import {
   BUILTIN_NODE_PICKER_OPTIONS,
   WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,
+  buildWorkflowNodePickerOptions,
   type NodePickerOption
 } from '../lib/plugin-node-definitions';
 
@@ -152,7 +153,7 @@ describe('NodePickerPopover', () => {
     expect(screen.queryByText('模型与生成')).not.toBeInTheDocument();
   });
 
-  test('can render workflow-only start and end picker options', () => {
+  test('renders workflow picker options with general execution nodes', () => {
     render(
       <NodePickerPopover
         ariaLabel="在 Workflow 后新增节点"
@@ -169,12 +170,35 @@ describe('NodePickerPopover', () => {
     expect(
       screen.getByRole('menuitem', { name: /Workflow End/i })
     ).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /^LLM$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: /^Code$/i })
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('menuitem', { name: /^Start$/i })
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('menuitem', { name: /^Answer$/i })
     ).not.toBeInTheDocument();
+  });
+
+  test('appends plugin contributions after workflow builtin options', () => {
+    const [first] = pluginOptions;
+
+    if (first.kind !== 'plugin_contribution') {
+      throw new Error('fixture must be a plugin contribution');
+    }
+
+    const options = buildWorkflowNodePickerOptions([first.contribution]);
+
+    expect(
+      options.slice(0, WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS.length)
+    ).toEqual(WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS);
+    expect(options.at(-1)).toMatchObject({
+      kind: 'plugin_contribution',
+      label: 'OpenAI Prompt',
+      disabled: false
+    });
   });
 
   test('keeps category tabs and search above the scrollable node list', () => {
