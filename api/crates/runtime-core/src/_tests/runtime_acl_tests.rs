@@ -245,7 +245,7 @@ async fn owner_permission_only_returns_actor_owned_records() {
         .create_record(RuntimeCreateInput {
             actor: owner.clone(),
             model_code: "orders".into(),
-            payload: json!({ "title": "owner-order" }),
+            payload: json!({ "title": "owner-order", "status": "draft" }),
             scope_grant: Some(grant.clone()),
         })
         .await
@@ -254,7 +254,7 @@ async fn owner_permission_only_returns_actor_owned_records() {
         .create_record(RuntimeCreateInput {
             actor: other,
             model_code: "orders".into(),
-            payload: json!({ "title": "other-order" }),
+            payload: json!({ "title": "other-order", "status": "draft" }),
             scope_grant: Some(grant.clone()),
         })
         .await
@@ -293,7 +293,7 @@ async fn scope_all_returns_all_records_inside_granted_scope_id() {
         .create_record(RuntimeCreateInput {
             actor: owner.clone(),
             model_code: "orders".into(),
-            payload: json!({ "title": "owner-order" }),
+            payload: json!({ "title": "owner-order", "status": "draft" }),
             scope_grant: Some(grant.clone()),
         })
         .await
@@ -302,7 +302,7 @@ async fn scope_all_returns_all_records_inside_granted_scope_id() {
         .create_record(RuntimeCreateInput {
             actor: other,
             model_code: "orders".into(),
-            payload: json!({ "title": "other-order" }),
+            payload: json!({ "title": "other-order", "status": "draft" }),
             scope_grant: Some(grant.clone()),
         })
         .await

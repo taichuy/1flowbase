@@ -798,4 +798,5 @@ mod runtime_repository;
 mod runtime_repository_helpers;
 mod runtime_repository_status_tests;
 
+pub(super) use flow_ports::test_data_model_definition;
 pub(crate) use provider_runtime::InMemoryProviderRuntime;

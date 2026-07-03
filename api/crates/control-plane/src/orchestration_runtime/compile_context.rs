@@ -722,7 +722,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn orchestration_runtime_compile_context_rejects_ambiguous_stable_provider_model() {
+    async fn orchestration_runtime_compile_context_uses_failover_queue_for_multi_instance_stable_model(
+    ) {
         let repository =
             super::super::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(
                 vec![],
@@ -735,13 +736,30 @@ mod tests {
             vec!["gpt-5.4-mini"],
         );
 
-        let field = compile_error_field(
-            &repository,
+        let compile_context = build_compile_context(&repository, Uuid::nil())
+            .await
+            .expect("compile context should build");
+        let compiled_plan = orchestration_runtime::compiler::FlowCompiler::compile(
+            Uuid::now_v7(),
+            "draft-1",
             &llm_document(Uuid::now_v7(), "fixture_provider", "gpt-5.4-mini"),
+            &compile_context,
         )
-        .await;
+        .expect("plan should compile");
 
-        assert_eq!(field, "provider_code");
+        ensure_compiled_plan_runnable(&compiled_plan).expect("multi-instance provider should run");
+        let routing = compiled_plan.nodes["node-llm"]
+            .llm_runtime
+            .as_ref()
+            .expect("llm runtime")
+            .routing
+            .as_ref()
+            .expect("llm routing");
+        assert_eq!(
+            routing.routing_mode,
+            orchestration_runtime::compiled_plan::LlmRoutingMode::FailoverQueue
+        );
+        assert_eq!(routing.queue_targets.len(), 2);
     }
 
     #[tokio::test]

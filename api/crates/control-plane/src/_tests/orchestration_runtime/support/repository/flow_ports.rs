@@ -3,7 +3,7 @@ use crate::ports::{
     CreateFileStorageInput, CreateFileTableRegistrationInput, FileManagementRepository,
     UpdateFileStorageBindingInput,
 };
-fn test_data_model_definition() -> domain::ModelDefinitionRecord {
+pub(crate) fn test_data_model_definition() -> domain::ModelDefinitionRecord {
     domain::ModelDefinitionRecord {
         id: Uuid::nil(),
         scope_kind: domain::DataModelScopeKind::Workspace,

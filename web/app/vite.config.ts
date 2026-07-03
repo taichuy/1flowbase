@@ -70,7 +70,8 @@ export default defineConfig(({ mode }) => {
         'lexical',
         'react-markdown',
         'remark-breaks',
-        'remark-gfm'
+        'remark-gfm',
+        'vditor'
       ]
     },
     build: {
