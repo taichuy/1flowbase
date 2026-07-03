@@ -130,6 +130,37 @@ impl WorkflowScheduleTriggerRepository for PgControlPlaneStore {
         row.map(map_workflow_schedule_trigger_row).transpose()
     }
 
+    async fn list_enabled_workflow_schedule_triggers(
+        &self,
+    ) -> Result<Vec<WorkflowScheduleTriggerRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select
+                workflow_schedule_triggers.id,
+                applications.workspace_id,
+                workflow_schedule_triggers.application_id,
+                workflow_schedule_triggers.enabled,
+                workflow_schedule_triggers.cron,
+                workflow_schedule_triggers.timezone,
+                workflow_schedule_triggers.input_payload,
+                workflow_schedule_triggers.created_by,
+                workflow_schedule_triggers.updated_by,
+                workflow_schedule_triggers.created_at,
+                workflow_schedule_triggers.updated_at
+            from workflow_schedule_triggers
+            join applications on applications.id = workflow_schedule_triggers.application_id
+            where workflow_schedule_triggers.enabled
+            order by workflow_schedule_triggers.application_id
+            "#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter()
+            .map(map_workflow_schedule_trigger_row)
+            .collect()
+    }
+
     async fn replace_workflow_schedule_trigger(
         &self,
         input: &ReplaceWorkflowScheduleTriggerInput,

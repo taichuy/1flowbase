@@ -51,6 +51,7 @@ sqlx = { version = "0.8", default-features = false, features = ["postgres", "run
 tar = "0.4.46"
 thiserror = "2"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
+time-tz = "2"
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }

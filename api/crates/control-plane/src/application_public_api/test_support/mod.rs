@@ -318,6 +318,22 @@ impl WorkflowScheduleTriggerRepository for ApplicationPublicApiTestRepository {
             .cloned())
     }
 
+    async fn list_enabled_workflow_schedule_triggers(
+        &self,
+    ) -> Result<Vec<workflow_schedule::WorkflowScheduleTriggerRecord>> {
+        let mut triggers = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .workflow_schedule_triggers
+            .values()
+            .filter(|trigger| trigger.enabled)
+            .cloned()
+            .collect::<Vec<_>>();
+        triggers.sort_by_key(|trigger| trigger.application_id);
+        Ok(triggers)
+    }
+
     async fn replace_workflow_schedule_trigger(
         &self,
         input: &ReplaceWorkflowScheduleTriggerInput,
