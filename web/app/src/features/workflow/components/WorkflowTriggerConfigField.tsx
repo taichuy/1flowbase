@@ -20,7 +20,6 @@ import {
 import {
   DEFAULT_WORKFLOW_TRIGGER_VALUES,
   createDefaultWorkflowApiMapping,
-  createWorkflowApiMappingWithoutExtension,
   createWorkflowExtensionTargetOptions,
   createWorkflowScheduleTriggerInput,
   createWorkflowTriggerValuesFromContext,
@@ -85,11 +84,6 @@ export function WorkflowTriggerConfigField({
           createWorkflowScheduleTriggerInput(nextValues),
           csrfToken
         );
-        await saveApplicationApiMapping(
-          context.applicationId,
-          createWorkflowApiMappingWithoutExtension(),
-          csrfToken
-        );
         return;
       }
 
@@ -99,19 +93,6 @@ export function WorkflowTriggerConfigField({
           createDefaultWorkflowApiMapping(nextValues),
           csrfToken
         );
-
-        if (context.schedule) {
-          await saveWorkflowScheduleTrigger(
-            context.applicationId,
-            {
-              enabled: false,
-              cron: context.schedule.cron,
-              timezone: context.schedule.timezone,
-              input_payload: context.schedule.input_payload ?? {}
-            },
-            csrfToken
-          );
-        }
       }
     },
     onSuccess: () => {

@@ -244,6 +244,11 @@ fn workflow_extension_error(error: WorkflowExtensionRunError) -> NativeApiError 
             "method_not_allowed",
             "HTTP method does not match the workflow extension API configuration",
         ),
+        WorkflowExtensionRunError::TriggerTypeMismatch => NativeApiError::new(
+            StatusCode::CONFLICT,
+            "workflow_trigger_type_mismatch",
+            "workflow trigger type does not allow extension API invocation",
+        ),
         WorkflowExtensionRunError::InvalidMapping => NativeApiError::new(
             StatusCode::BAD_REQUEST,
             "invalid_mapping",

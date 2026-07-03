@@ -76,6 +76,22 @@ impl ApplicationPublicApiTestRepository {
         repository
     }
 
+    fn set_workflow_trigger_type(
+        &self,
+        application_id: Uuid,
+        trigger_type: domain::WorkflowTriggerType,
+    ) {
+        if let Some(application) = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .applications
+            .get_mut(&application_id)
+        {
+            application.workflow_trigger_type = Some(trigger_type);
+        }
+    }
+
     fn seed_application_with_type(
         &self,
         actor_user_id: Uuid,
@@ -210,6 +226,15 @@ impl ApplicationPublicApiTestHarness {
             name,
             domain::ApplicationType::Workflow,
         )
+    }
+
+    pub fn set_workflow_trigger_type(
+        &self,
+        application_id: Uuid,
+        trigger_type: domain::WorkflowTriggerType,
+    ) {
+        self.repository
+            .set_workflow_trigger_type(application_id, trigger_type);
     }
 }
 

@@ -1211,6 +1211,7 @@ async fn workflow_schedule_trigger_service_replaces_config_and_rejects_invalid_v
 async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_workflow_application(actor_user_id(), "Scheduled Workflow");
+    harness.set_workflow_trigger_type(application.id, domain::WorkflowTriggerType::Schedule);
     let repository = harness.repository();
     let service = WorkflowScheduleTriggerService::new(repository.clone());
     ApplicationPublicationService::new(repository.clone())
@@ -1377,6 +1378,9 @@ async fn workflow_schedule_tick_dispatches_only_matching_enabled_triggers() {
             input_payload: serde_json::json!({}),
         })
     };
+    for application_id in [matching.id, wrong_cron.id, shanghai.id, invalid_timezone.id] {
+        harness.set_workflow_trigger_type(application_id, domain::WorkflowTriggerType::Schedule);
+    }
     seed_trigger(matching.id, true, "0 1 * * *", "UTC").await.unwrap();
     seed_trigger(wrong_cron.id, true, "30 12 * * *", "UTC").await.unwrap();
     seed_trigger(disabled.id, false, "0 1 * * *", "UTC").await.unwrap();
@@ -1449,11 +1453,68 @@ async fn workflow_schedule_tick_dispatches_only_matching_enabled_triggers() {
     assert_eq!(enqueued_after_repeat, 2);
 }
 
+
+#[tokio::test]
+async fn workflow_schedule_dispatch_skips_extension_trigger_application() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let service = WorkflowScheduleTriggerService::new(repository.clone());
+    // seed_workflow_application defaults to the extension trigger type.
+    let application = harness.seed_workflow_application(actor_user_id(), "Extension Typed");
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "* * * * *".into(),
+            timezone: "UTC".into(),
+            input_payload: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+    let task_queue = RecordingTaskQueue::default();
+
+    let outcome = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at: time::OffsetDateTime::UNIX_EPOCH,
+            },
+            Some(&task_queue),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        outcome,
+        WorkflowScheduleDispatchOutcome::Skipped {
+            reason: "trigger_type_mismatch",
+        }
+    );
+    assert!(task_queue
+        .enqueued
+        .lock()
+        .expect("recording task queue mutex poisoned")
+        .is_empty());
+}
+
 #[tokio::test]
 async fn workflow_schedule_trigger_dispatch_skips_disabled_or_unpublished_applications() {
     let harness = ApplicationPublicApiTestHarness::new();
     let disabled = harness.seed_workflow_application(actor_user_id(), "Disabled Schedule");
     let unpublished = harness.seed_workflow_application(actor_user_id(), "Unpublished Schedule");
+    for application_id in [disabled.id, unpublished.id] {
+        harness.set_workflow_trigger_type(application_id, domain::WorkflowTriggerType::Schedule);
+    }
     let repository = harness.repository();
     let service = WorkflowScheduleTriggerService::new(repository.clone());
     ApplicationPublicationService::new(repository.clone())

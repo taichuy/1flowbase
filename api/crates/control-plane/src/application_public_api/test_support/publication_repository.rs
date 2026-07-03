@@ -131,16 +131,24 @@ impl ApplicationPublicationRepository for ApplicationPublicApiTestRepository {
     async fn list_enabled_extension_publications(
         &self,
     ) -> Result<Vec<publications::ApplicationPublicationVersionRecord>> {
-        let mut publications = self
+        let inner = self
             .inner
             .lock()
-            .expect("application public api test repo mutex poisoned")
+            .expect("application public api test repo mutex poisoned");
+        let mut publications = inner
             .publications
             .values()
             .filter(|publication| {
                 publication.active
                     && publication.api_enabled
                     && publication.extension_slug.as_deref().is_some()
+                    && inner
+                        .applications
+                        .get(&publication.application_id)
+                        .is_some_and(|application| {
+                            application.workflow_trigger_type
+                                == Some(domain::WorkflowTriggerType::Extension)
+                        })
             })
             .cloned()
             .collect::<Vec<_>>();

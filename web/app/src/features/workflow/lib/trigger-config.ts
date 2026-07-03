@@ -114,23 +114,6 @@ export function createDefaultWorkflowApiMapping(
   };
 }
 
-export function createWorkflowApiMappingWithoutExtension(): ApplicationApiMapping {
-  return {
-    input: {
-      query_target: 'node-workflow-start.query',
-      model_target: null,
-      inputs_target: 'node-workflow-start.inputs',
-      history_target: null,
-      attachments_target: null
-    },
-    output: {
-      answer_selector: null,
-      usage_selector: null,
-      files_selector: null,
-      error_selector: null
-    }
-  };
-}
 
 export function createWorkflowScheduleTriggerInput(
   values: Pick<

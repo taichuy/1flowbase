@@ -413,7 +413,7 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
     ) -> Result<Vec<ApplicationPublicationVersionRecord>> {
         let rows = sqlx::query(
             publication_select_sql(
-                "where active and api_enabled and extension_slug is not null order by extension_slug asc, id asc",
+                "where active and api_enabled and extension_slug is not null and application_id in (select id from applications where workflow_trigger_type = 'extension') order by extension_slug asc, id asc",
             )
             .as_str(),
         )

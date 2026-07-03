@@ -226,6 +226,16 @@ where
         if !trigger.enabled {
             return Ok(WorkflowScheduleDispatchOutcome::Skipped { reason: "disabled" });
         }
+        let application = self
+            .repository
+            .get_application(trigger.workspace_id, trigger.application_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+        if application.workflow_trigger_type != Some(domain::WorkflowTriggerType::Schedule) {
+            return Ok(WorkflowScheduleDispatchOutcome::Skipped {
+                reason: "trigger_type_mismatch",
+            });
+        }
         let Some(publication) = self
             .repository
             .load_active_application_publication(trigger.application_id)
