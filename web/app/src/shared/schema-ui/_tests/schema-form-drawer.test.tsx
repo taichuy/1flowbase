@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
@@ -19,22 +19,32 @@ vi.mock('antd', async () => {
       extra,
       footer,
       onClose,
-      title
+      rootClassName,
+      title,
+      width
     }: {
       children?: ReactNode;
       extra?: ReactNode;
       footer?: ReactNode;
       onClose?: () => void;
+      rootClassName?: string;
       title?: ReactNode;
+      width?: number | string;
     }) => (
-      <section data-testid="mock-drawer">
-        <div data-testid="mock-drawer-title">{title}</div>
-        <button type="button" onClick={onClose}>
-          close drawer
-        </button>
-        {extra ? <div data-testid="mock-drawer-extra">{extra}</div> : null}
-        <div>{children}</div>
-        {footer ? <div data-testid="mock-drawer-footer">{footer}</div> : null}
+      <section className={rootClassName} data-testid="mock-drawer-root">
+        <div
+          className="ant-drawer-content-wrapper"
+          data-testid="mock-drawer"
+          style={{ width }}
+        >
+          <div data-testid="mock-drawer-title">{title}</div>
+          <button type="button" onClick={onClose}>
+            close drawer
+          </button>
+          {extra ? <div data-testid="mock-drawer-extra">{extra}</div> : null}
+          <div>{children}</div>
+          {footer ? <div data-testid="mock-drawer-footer">{footer}</div> : null}
+        </div>
       </section>
     )
   );
@@ -211,5 +221,71 @@ describe('SchemaFormDrawer', () => {
       }),
       expect.any(Object)
     ));
+  });
+
+  test('supports resizable drawer width without rerendering on every mouse move', async () => {
+    let animationFrameCallback: FrameRequestCallback | null = null;
+    const requestAnimationFrameSpy = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        animationFrameCallback = callback;
+        return 123;
+      });
+    const cancelAnimationFrameSpy = vi
+      .spyOn(window, 'cancelAnimationFrame')
+      .mockImplementation(() => undefined);
+
+    try {
+      render(
+        <SchemaFormDrawer
+          open
+          resizable
+          defaultWidth={520}
+          minWidth={480}
+          maxWidth={960}
+          resizeLabel="调整配置抽屉宽度"
+          title="Password 配置"
+          schema={schema}
+          initialValues={{ name: 'password-local', enabled: true }}
+          onCancel={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      );
+
+      const drawerWrapper = screen.getByTestId('mock-drawer');
+      const resizeHandle = screen.getByRole('separator', {
+        name: '调整配置抽屉宽度'
+      });
+
+      expect(drawerWrapper).toHaveStyle({ width: '520px' });
+      expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
+
+      fireEvent.mouseDown(resizeHandle, { clientX: 500 });
+      fireEvent.mouseMove(document, { clientX: 460 });
+      fireEvent.mouseMove(document, { clientX: 450 });
+
+      expect(document.body).toHaveClass('schema-form-drawer--resizing');
+      expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
+      expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
+
+      await act(async () => {
+        animationFrameCallback?.(performance.now());
+      });
+
+      expect(drawerWrapper).toHaveStyle({ width: '570px' });
+      expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
+
+      fireEvent.mouseUp(document);
+      expect(resizeHandle).toHaveAttribute('aria-valuenow', '570');
+      expect(document.body).not.toHaveClass('schema-form-drawer--resizing');
+
+      fireEvent.keyDown(resizeHandle, { key: 'Home' });
+      expect(resizeHandle).toHaveAttribute('aria-valuenow', '480');
+      fireEvent.keyDown(resizeHandle, { key: 'End' });
+      expect(resizeHandle).toHaveAttribute('aria-valuenow', '960');
+    } finally {
+      requestAnimationFrameSpy.mockRestore();
+      cancelAnimationFrameSpy.mockRestore();
+    }
   });
 });

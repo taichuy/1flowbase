@@ -11,33 +11,28 @@
   max-width: calc(100vw - 48px);
 }
 
-.settings-auth-center-drawer__resize-handle {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -4px;
-  z-index: 2;
-  width: 8px;
-  cursor: col-resize;
+.settings-auth-center__operation-cell {
+  white-space: nowrap;
 }
 
-.settings-auth-center-drawer__resize-handle::after {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 3px;
-  width: 2px;
-  content: "";
-  background: transparent;
-  transition: background-color 0.16s ease;
+.settings-auth-center__sequence {
+  align-items: center;
+  min-width: 72px;
 }
 
-.settings-auth-center-drawer__resize-handle:hover::after,
-.settings-auth-center-drawer__resize-handle:focus-visible::after {
-  background: var(--color-primary);
+.settings-auth-center__drag-handle {
+  color: var(--ant-color-text-tertiary);
+  cursor: grab;
 }
 
-.settings-auth-center--resizing-drawer {
-  cursor: col-resize;
-  user-select: none;
+.settings-auth-center__drag-handle:disabled {
+  cursor: default;
+}
+
+.settings-auth-center__drag-handle:not(:disabled):active {
+  cursor: grabbing;
+}
+
+.settings-auth-center__row--drag-over > td {
+  background: var(--ant-color-fill-quaternary);
 }

@@ -17,10 +17,6 @@ describe('auth center drawer layout CSS', () => {
     expect(cssSource).toContain('width: 100%;');
     expect(cssSource).toContain('.settings-auth-center-drawer .ant-space-item');
     expect(cssSource).toContain('.settings-auth-center-drawer .ant-form');
-    expect(cssSource).toContain(
-      '.settings-auth-center-drawer__resize-handle {'
-    );
-    expect(cssSource).toContain('cursor: col-resize;');
     expect(cssSource).toContain('max-width: calc(100vw - 48px);');
   });
 });

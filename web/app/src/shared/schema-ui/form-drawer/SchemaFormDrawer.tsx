@@ -47,8 +47,13 @@ export interface SchemaFormDrawerProps {
   schema: PluginFormSchema;
   initialValues?: SchemaFormValues;
   bodyClassName?: string;
+  defaultWidth?: number;
   disabled?: boolean;
   leadingContent?: ReactNode;
+  maxWidth?: number;
+  minWidth?: number;
+  resizable?: boolean;
+  resizeLabel?: string;
   rootClassName?: string;
   statusMessages?: SchemaFormDrawerStatusMessage[];
   submitting?: boolean;
@@ -72,6 +77,19 @@ export interface SchemaFormDrawerProps {
     context: SchemaFormDrawerContext,
   ) => void;
   extraActions?: SchemaFormDrawerAction[];
+}
+
+const DEFAULT_SCHEMA_FORM_DRAWER_WIDTH = 560;
+const DEFAULT_SCHEMA_FORM_DRAWER_MIN_WIDTH = 360;
+const DEFAULT_SCHEMA_FORM_DRAWER_MAX_WIDTH = 960;
+let schemaFormDrawerInstanceSeed = 0;
+
+function clampSchemaFormDrawerWidth(
+  width: number,
+  minWidth: number,
+  maxWidth: number
+) {
+  return Math.min(maxWidth, Math.max(minWidth, width));
 }
 
 function defaultValuesFromSchema(schema: PluginFormSchema): SchemaFormValues {
@@ -165,10 +183,13 @@ function errorMessageFrom(error: unknown) {
 export function SchemaFormDrawer({
   bodyClassName,
   cancelText,
+  defaultWidth,
   disabled = false,
   extraActions = [],
   initialValues,
   leadingContent,
+  maxWidth = DEFAULT_SCHEMA_FORM_DRAWER_MAX_WIDTH,
+  minWidth = DEFAULT_SCHEMA_FORM_DRAWER_MIN_WIDTH,
   onBeforeSubmit,
   onCancel,
   onSubmit,
@@ -176,6 +197,8 @@ export function SchemaFormDrawer({
   onSubmitSuccess,
   onValuesChange,
   open,
+  resizable = false,
+  resizeLabel = '调整抽屉宽度',
   rootClassName,
   schema,
   statusMessages = [],
@@ -183,12 +206,27 @@ export function SchemaFormDrawer({
   submitting,
   subtitle,
   title,
-  width = 560
+  width = DEFAULT_SCHEMA_FORM_DRAWER_WIDTH
 }: SchemaFormDrawerProps) {
   const [form] = Form.useForm<SchemaFormValues>();
   const [localSubmitting, setLocalSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const contextRef = useRef<SchemaFormDrawerContext | null>(null);
+  const instanceClassNameRef = useRef<string | null>(null);
+  if (instanceClassNameRef.current == null) {
+    schemaFormDrawerInstanceSeed += 1;
+    instanceClassNameRef.current = `schema-form-drawer-instance-${schemaFormDrawerInstanceSeed}`;
+  }
+  const initialResizableWidth =
+    defaultWidth ??
+    (typeof width === 'number' ? width : DEFAULT_SCHEMA_FORM_DRAWER_WIDTH);
+  const [resizableWidth, setResizableWidth] = useState(() =>
+    clampSchemaFormDrawerWidth(initialResizableWidth, minWidth, maxWidth)
+  );
+  const dragStartRef = useRef<{ pointerX: number; width: number } | null>(null);
+  const resizeFrameRef = useRef<number | null>(null);
+  const pendingDrawerWidthRef = useRef<number | null>(null);
+  const liveDrawerWidthRef = useRef(resizableWidth);
   const isSubmitting = submitting ?? localSubmitting;
   const resolvedInitialValues = useMemo(
     () => ({
@@ -289,8 +327,107 @@ export function SchemaFormDrawer({
     setSubmitError(null);
   }, [form, open, resolvedInitialValues]);
 
+  useEffect(() => {
+    if (!open || !resizable) {
+      return;
+    }
+    const nextWidth = clampSchemaFormDrawerWidth(
+      initialResizableWidth,
+      minWidth,
+      maxWidth
+    );
+    liveDrawerWidthRef.current = nextWidth;
+    setResizableWidth(nextWidth);
+  }, [initialResizableWidth, maxWidth, minWidth, open, resizable]);
+
+  useEffect(() => {
+    liveDrawerWidthRef.current = resizableWidth;
+  }, [resizableWidth]);
+
+  useEffect(() => {
+    if (!resizable) {
+      return undefined;
+    }
+
+    const drawerRootSelector = `.${instanceClassNameRef.current}`;
+    const applyLiveDrawerWidth = (nextWidth: number) => {
+      liveDrawerWidthRef.current = nextWidth;
+      const drawerWrapper = document.querySelector<HTMLElement>(
+        `${drawerRootSelector} .ant-drawer-content-wrapper`
+      );
+      if (drawerWrapper) {
+        drawerWrapper.style.width = `${nextWidth}px`;
+      }
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const dragStart = dragStartRef.current;
+      if (!dragStart) {
+        return;
+      }
+
+      pendingDrawerWidthRef.current = clampSchemaFormDrawerWidth(
+        dragStart.width + dragStart.pointerX - event.clientX,
+        minWidth,
+        maxWidth
+      );
+      if (resizeFrameRef.current != null) {
+        return;
+      }
+
+      resizeFrameRef.current = window.requestAnimationFrame(() => {
+        resizeFrameRef.current = null;
+        const nextWidth = pendingDrawerWidthRef.current;
+        pendingDrawerWidthRef.current = null;
+        if (nextWidth == null) {
+          return;
+        }
+        applyLiveDrawerWidth(nextWidth);
+      });
+    };
+
+    const handleMouseUp = () => {
+      const pendingWidth = pendingDrawerWidthRef.current;
+      if (resizeFrameRef.current != null) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+        resizeFrameRef.current = null;
+      }
+      if (pendingWidth != null) {
+        pendingDrawerWidthRef.current = null;
+        applyLiveDrawerWidth(pendingWidth);
+      }
+      setResizableWidth((currentWidth) =>
+        currentWidth === liveDrawerWidthRef.current
+          ? currentWidth
+          : liveDrawerWidthRef.current
+      );
+      dragStartRef.current = null;
+      document.body.classList.remove('schema-form-drawer--resizing');
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      if (resizeFrameRef.current != null) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+        resizeFrameRef.current = null;
+      }
+      document.body.classList.remove('schema-form-drawer--resizing');
+    };
+  }, [maxWidth, minWidth, resizable]);
+
   const leftActions = extraActions.filter((action) => action.placement === 'left');
   const rightActions = extraActions.filter((action) => action.placement !== 'left');
+  const resolvedRootClassName = [
+    rootClassName,
+    resizable ? instanceClassNameRef.current : null
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const resolvedWidth = resizable ? resizableWidth : width;
 
   return (
     <Drawer
@@ -336,12 +473,68 @@ export function SchemaFormDrawer({
       }
 	      open={open}
 	      placement="right"
-	      rootClassName={rootClassName}
+	      rootClassName={resolvedRootClassName}
       title={drawerTitle(title, subtitle)}
-      width={width}
+      width={resolvedWidth}
       onClose={confirmClose}
     >
 	      <div className={['schema-form-drawer__body', bodyClassName].filter(Boolean).join(' ')}>
+	        {resizable ? (
+	          <div
+	            aria-label={resizeLabel}
+	            aria-orientation="vertical"
+	            aria-valuemax={maxWidth}
+	            aria-valuemin={minWidth}
+	            aria-valuenow={resizableWidth}
+	            className="schema-form-drawer__resize-handle"
+	            role="separator"
+	            tabIndex={0}
+	            onKeyDown={(event) => {
+	              if (event.key === 'ArrowLeft') {
+	                event.preventDefault();
+	                setResizableWidth((currentWidth) =>
+	                  clampSchemaFormDrawerWidth(
+	                    currentWidth + 40,
+	                    minWidth,
+	                    maxWidth
+	                  )
+	                );
+	                return;
+	              }
+
+	              if (event.key === 'ArrowRight') {
+	                event.preventDefault();
+	                setResizableWidth((currentWidth) =>
+	                  clampSchemaFormDrawerWidth(
+	                    currentWidth - 40,
+	                    minWidth,
+	                    maxWidth
+	                  )
+	                );
+	                return;
+	              }
+
+	              if (event.key === 'Home') {
+	                event.preventDefault();
+	                setResizableWidth(minWidth);
+	                return;
+	              }
+
+	              if (event.key === 'End') {
+	                event.preventDefault();
+	                setResizableWidth(maxWidth);
+	              }
+	            }}
+	            onMouseDown={(event) => {
+	              event.preventDefault();
+	              dragStartRef.current = {
+	                pointerX: event.clientX,
+	                width: liveDrawerWidthRef.current
+	              };
+	              document.body.classList.add('schema-form-drawer--resizing');
+	            }}
+	          />
+	        ) : null}
 	        {leadingContent}
 	        {statusMessages.map((statusMessage) => (
 	          <Alert

@@ -832,21 +832,17 @@ describe('SettingsPage', () => {
       screen.queryByRole('heading', { name: '认证中心' })
     ).not.toBeInTheDocument();
     expect(screen.queryByText('password-local')).not.toBeInTheDocument();
-    expect(await screen.findByText('auth-oidc-main')).toBeInTheDocument();
+    expect(screen.queryByText('auth-oidc-main')).not.toBeInTheDocument();
+    expect(await screen.findByText('OIDC')).toBeInTheDocument();
     expect(
-      screen.getByRole('columnheader', { name: '启用' })
-    ).toBeInTheDocument();
+      screen.getAllByRole('columnheader').map((header) => header.textContent)
+    ).toEqual(['序号', '名称', '分类', '说明', '启用', '操作']);
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getByText('oidc')).toBeInTheDocument();
+    expect(screen.getByText('Primary OIDC')).toBeInTheDocument();
+    expect(screen.queryByText('10')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('columnheader', { name: '分类' })
-    ).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '名称' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('columnheader', { name: '排序值' })
-    ).toBeInTheDocument();
-    expect(screen.getByText('OIDC')).toBeInTheDocument();
-    expect(screen.getByText('10')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('columnheader', { name: '说明' })
+      screen.queryByRole('columnheader', { name: '排序值' })
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: '操作' })
@@ -911,14 +907,20 @@ describe('SettingsPage', () => {
     const resizeHandle = within(dialog).getByRole('separator', {
       name: '调整认证器配置抽屉宽度'
     });
+    const drawerWrapper = dialog.closest('.ant-drawer-content-wrapper');
+    expect(drawerWrapper).toBeInstanceOf(HTMLElement);
     expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
     fireEvent.mouseDown(resizeHandle, { clientX: 500 });
-    expect(document.body).toHaveClass('settings-auth-center--resizing-drawer');
+    expect(document.body).toHaveClass('schema-form-drawer--resizing');
     fireEvent.mouseMove(document, { clientX: 460 });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '560');
+    expect(drawerWrapper).toHaveStyle({ width: '560px' });
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
     fireEvent.mouseUp(document);
+    await waitFor(() => {
+      expect(resizeHandle).toHaveAttribute('aria-valuenow', '560');
+    });
     expect(document.body).not.toHaveClass(
-      'settings-auth-center--resizing-drawer'
+      'schema-form-drawer--resizing'
     );
     fireEvent.keyDown(resizeHandle, { key: 'ArrowLeft' });
     expect(resizeHandle).toHaveAttribute('aria-valuenow', '600');
