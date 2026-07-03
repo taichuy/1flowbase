@@ -181,6 +181,12 @@ function fieldAttribute(field: SettingsDataModelField) {
   return i18nText('settings', 'auto.writable');
 }
 
+function apiAccessLabel(model: SettingsDataModel) {
+  return model.status === 'published'
+    ? i18nText('settings', 'auto.open')
+    : i18nText('settings', 'auto.closed');
+}
+
 export function DataModelApiTab({
   model,
   canManage,
@@ -298,9 +304,9 @@ export function DataModelApiTab({
         column={1}
         items={[
           {
-            key: 'runtime',
-            label: i18nText('settings', 'auto.runtime'),
-            children: model.runtime_availability
+            key: 'api_access',
+            label: i18nText('settings', 'auto.open_api'),
+            children: apiAccessLabel(model)
           },
           {
             key: 'namespace',

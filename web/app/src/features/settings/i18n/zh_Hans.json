@@ -3,7 +3,6 @@
     "acl_namespace": "ACL 命名空间",
     "catalog_label": "目录：",
     "id_label": "ID：",
-    "runtime": "运行时",
     "memory_statistics_chart": "内存统计图表",
     "memory_statistics": "内存统计",
     "entries": "条目",

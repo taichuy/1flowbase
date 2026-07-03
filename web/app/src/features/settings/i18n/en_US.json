@@ -3,7 +3,6 @@
     "acl_namespace": "ACL Namespace",
     "catalog_label": "Catalog:",
     "id_label": "ID:",
-    "runtime": "Runtime",
     "memory_statistics_chart": "Memory statistics chart",
     "memory_statistics": "Memory statistics",
     "entries": "Entries",

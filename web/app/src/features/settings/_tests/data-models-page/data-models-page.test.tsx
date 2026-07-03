@@ -235,10 +235,12 @@ describe('Settings data models page', () => {
       expect(within(summaryRows[0]).getByText('标题：')).toBeInTheDocument();
       expect(within(summaryRows[0]).getByText('来源：')).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('Code：')).toBeInTheDocument();
-      expect(within(summaryRows[1]).getByText('Runtime：')).toBeInTheDocument();
+      expect(within(summaryRows[1]).getByText('开放 API：')).toBeInTheDocument();
       expect(within(summaryRows[2]).getByText('物理表：')).toBeInTheDocument();
       expect(within(summaryRows[2]).getByText('状态：')).toBeInTheDocument();
-      expect(within(summaryRows[2]).getByText('published')).toBeInTheDocument();
+      expect(within(summaryRows[2]).getByText('开放')).toBeInTheDocument();
+      expect(within(summaryRows[2]).queryByText('published')).not.toBeInTheDocument();
+      expect(within(detailSummary).queryByText('available')).not.toBeInTheDocument();
       expect(within(detailSummary).getByText('表 ID：')).toBeInTheDocument();
       const detailActions = within(editorDialog).getByTestId(
         'data-model-detail-actions'
@@ -292,9 +294,8 @@ describe('Settings data models page', () => {
           name: '关闭 API 暴露'
         })
       ).not.toBeInTheDocument();
-      expect(
-        screen.getByText(i18nText('settings', 'auto.runtime'))
-      ).toBeInTheDocument();
+      expect(screen.getByText('开放 API')).toBeInTheDocument();
+      expect(screen.queryByText('available')).not.toBeInTheDocument();
       const apiFieldsTable = await within(editorDialog).findByTestId(
         'data-model-api-fields-table'
       );

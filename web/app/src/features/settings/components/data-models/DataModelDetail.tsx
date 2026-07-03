@@ -65,6 +65,12 @@ function getFieldKindTag(kind: string) {
   );
 }
 
+function apiAccessLabel(model: SettingsDataModel) {
+  return model.status === 'published'
+    ? i18nText('settings', 'auto.open')
+    : i18nText('settings', 'auto.closed');
+}
+
 export function DataModelDetail({
   model,
   allModels,
@@ -244,8 +250,8 @@ export function DataModelDetail({
       { key: 'code', label: 'Code', value: model.code },
       {
         key: 'runtime',
-        label: 'Runtime',
-        value: model.runtime_availability
+        label: i18nText('settings', 'auto.open_api'),
+        value: apiAccessLabel(model)
       }
     ],
     [
@@ -256,8 +262,8 @@ export function DataModelDetail({
       },
       {
         key: 'status',
-        label: i18nText("settings", "auto.status"),
-        value: model.status
+        label: i18nText('settings', 'auto.status'),
+        value: apiAccessLabel(model)
       }
     ],
     ...(model.source_kind === 'external_source'
