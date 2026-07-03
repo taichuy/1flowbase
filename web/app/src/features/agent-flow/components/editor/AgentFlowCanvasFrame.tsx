@@ -34,12 +34,9 @@ import {
   replaceApplicationEnvironmentVariables
 } from '../../../applications/api/applications';
 import {
-  applicationApiMappingQueryKey,
   applicationApiPublicationQueryKey,
   fetchApplicationApiMapping,
-  fetchWorkflowScheduleTrigger,
-  publishApplicationApiVersion,
-  workflowScheduleTriggerQueryKey
+  publishApplicationApiVersion
 } from '../../../applications/api/public-api';
 import {
   environmentVariableNodeId,
@@ -56,10 +53,7 @@ import {
 } from '../../api/model-provider-options';
 import { clampNodeDetailWidth } from '../../lib/detail-panel-width';
 import { validateDocument } from '../../lib/validate-document';
-import {
-  buildNodePickerOptions,
-  buildWorkflowNodePickerOptions
-} from '../../lib/plugin-node-definitions';
+import { buildNodePickerOptions } from '../../lib/plugin-node-definitions';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
@@ -105,8 +99,10 @@ import {
   countIssuesByNodeId,
   getDocumentWithLatestViewport
 } from './canvas-frame/document';
-import type { AgentFlowCanvasFrameProps } from './canvas-frame/types';
-import type { WorkflowTriggerContext } from '../../lib/workflow-trigger-context';
+import {
+  DEFAULT_EDITOR_CAPABILITIES,
+  type AgentFlowCanvasFrameProps
+} from './canvas-frame/types';
 
 type NodePreviewAction = 'run' | 'debug';
 
@@ -117,8 +113,9 @@ const EMPTY_ENVIRONMENT_VARIABLES: NonNullable<
 export function AgentFlowCanvasFrame({
   applicationId,
   applicationName,
-  applicationType = 'agent_flow',
-  workflowTriggerType = null,
+  workflowTriggerContext = null,
+  capabilities = DEFAULT_EDITOR_CAPABILITIES,
+  nodePickerOptionsBuilder,
   initialEnvironmentVariables = EMPTY_ENVIRONMENT_VARIABLES,
   nodeContributions,
   saveDraftOverride,
@@ -236,35 +233,6 @@ export function AgentFlowCanvasFrame({
     queryKey: modelProviderOptionsQueryKey,
     queryFn: fetchModelProviderOptions
   });
-  const workflowMappingQuery = useQuery({
-    queryKey: applicationApiMappingQueryKey(applicationId),
-    queryFn: () => fetchApplicationApiMapping(applicationId),
-    enabled: applicationType === 'workflow'
-  });
-  const workflowScheduleQuery = useQuery({
-    queryKey: workflowScheduleTriggerQueryKey(applicationId),
-    queryFn: () => fetchWorkflowScheduleTrigger(applicationId),
-    enabled: applicationType === 'workflow',
-    retry: false
-  });
-  const workflowTriggerContext = useMemo<WorkflowTriggerContext | null>(
-    () =>
-      applicationType === 'workflow'
-        ? {
-            applicationId,
-            triggerType: workflowTriggerType,
-            mapping: workflowMappingQuery.data,
-            schedule: workflowScheduleQuery.data ?? null
-          }
-        : null,
-    [
-      applicationId,
-      applicationType,
-      workflowMappingQuery.data,
-      workflowScheduleQuery.data,
-      workflowTriggerType
-    ]
-  );
   const environmentVariablesMutation = useMutation({
     mutationFn: (variables: AgentFlowEnvironmentVariable[]) => {
       if (!csrfToken) {
@@ -464,11 +432,8 @@ export function AgentFlowCanvasFrame({
     [issues]
   );
   const nodePickerOptions = useMemo(
-    () =>
-      applicationType === 'workflow'
-        ? buildWorkflowNodePickerOptions(nodeContributions)
-        : buildNodePickerOptions(nodeContributions),
-    [applicationType, nodeContributions]
+    () => (nodePickerOptionsBuilder ?? buildNodePickerOptions)(nodeContributions),
+    [nodePickerOptionsBuilder, nodeContributions]
   );
 
   useEffect(() => {
@@ -910,6 +875,9 @@ export function AgentFlowCanvasFrame({
         saveDisabled={autosaveStatus === 'saving'}
         saveLoading={autosaveStatus === 'saving'}
         onOpenDebugConsole={openDebugConsole}
+        showConversationDebug={capabilities.conversationDebug}
+        showConversationVariables={capabilities.conversationVariables}
+        showSystemVariables={capabilities.systemVariables}
         onExportTemplate={() => exportTemplateMutation.mutate()}
         onOpenIssues={() => setPanelState({ issuesOpen: true })}
         onOpenHistory={openHistory}
@@ -1073,7 +1041,9 @@ export function AgentFlowCanvasFrame({
             sidebarWidth={boundedVariableCacheSidebarWidth}
           />
         ) : null}
-        {conversationLogOpen && conversationLogMessage ? (
+        {capabilities.conversationDebug &&
+        conversationLogOpen &&
+        conversationLogMessage ? (
           <AgentFlowSideDock
             className="agent-flow-editor__conversation-log-dock"
             data-testid="agent-flow-editor-conversation-log-dock"
@@ -1100,7 +1070,7 @@ export function AgentFlowCanvasFrame({
             />
           </AgentFlowSideDock>
         ) : null}
-        {debugConsoleOpen ? (
+        {capabilities.conversationDebug && debugConsoleOpen ? (
           <AgentFlowSideDock
             className="agent-flow-editor__debug-console-dock"
             data-testid="agent-flow-editor-debug-console-dock"

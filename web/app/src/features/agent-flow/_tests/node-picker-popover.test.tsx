@@ -8,10 +8,12 @@ import { NodePickerPopover } from '../components/node-picker/NodePickerPopover';
 import { calculateNodePickerMaxHeight } from '../components/node-picker/node-picker-layout';
 import {
   BUILTIN_NODE_PICKER_OPTIONS,
-  WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,
-  buildWorkflowNodePickerOptions,
   type NodePickerOption
 } from '../lib/plugin-node-definitions';
+import {
+  WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,
+  buildWorkflowNodePickerOptions
+} from '../../workflow/lib/picker-options';
 
 const pluginOptions: NodePickerOption[] = [
   {

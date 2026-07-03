@@ -2,11 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Result } from 'antd';
 import type { ReactNode } from 'react';
 
-import {
-  ApiClientError,
-  type ConsoleApplicationType,
-  type ConsoleWorkflowTriggerType
-} from '@1flowbase/api-client';
+import { ApiClientError } from '@1flowbase/api-client';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
 import {
   applicationEnvironmentVariablesQueryKey,
@@ -21,19 +17,25 @@ import {
   orchestrationQueryKey
 } from '../api/orchestration';
 import { AgentFlowEditorShell } from '../components/editor/AgentFlowEditorShell';
+import type {
+  AgentFlowCanvasFrameProps,
+  AgentFlowEditorCapabilities
+} from '../components/editor/canvas-frame/types';
 import { i18nText } from '../../../shared/i18n/text';
 
 export function AgentFlowEditorPage({
   applicationId,
   applicationName,
-  applicationType = 'agent_flow',
-  workflowTriggerType = null,
+  workflowTriggerContext = null,
+  capabilities,
+  nodePickerOptionsBuilder,
   topSlot
 }: {
   applicationId: string;
   applicationName: string;
-  applicationType?: ConsoleApplicationType;
-  workflowTriggerType?: ConsoleWorkflowTriggerType | null;
+  workflowTriggerContext?: unknown;
+  capabilities?: AgentFlowEditorCapabilities;
+  nodePickerOptionsBuilder?: AgentFlowCanvasFrameProps['nodePickerOptionsBuilder'];
   topSlot?: ReactNode;
 }) {
   const orchestrationQuery = useQuery({
@@ -101,8 +103,9 @@ export function AgentFlowEditorPage({
     <AgentFlowEditorShell
       applicationId={applicationId}
       applicationName={applicationName}
-      applicationType={applicationType}
-      workflowTriggerType={workflowTriggerType}
+      workflowTriggerContext={workflowTriggerContext}
+      capabilities={capabilities}
+      nodePickerOptionsBuilder={nodePickerOptionsBuilder}
       initialState={state}
       initialEnvironmentVariables={environmentVariablesQuery.data}
       nodeContributions={nodeContributions}

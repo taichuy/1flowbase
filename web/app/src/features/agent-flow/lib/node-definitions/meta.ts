@@ -17,14 +17,6 @@ export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
     ),
     helpHref: '/docs/agentflow/nodes/answer'
   },
-  workflow_start: {
-    summary: 'Defines workflow input parameters and sync timeout.',
-    helpHref: '/docs/workflow/nodes/workflow-start'
-  },
-  workflow_end: {
-    summary: 'Declares workflow sync success return fields.',
-    helpHref: '/docs/workflow/nodes/workflow-end'
-  },
   llm: {
     summary: i18nText(
       'agentFlow',

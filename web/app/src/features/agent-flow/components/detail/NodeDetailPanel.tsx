@@ -7,7 +7,6 @@ import { resolveAgentFlowNodeSchema } from '../../schema/node-schema-registry';
 import { useNodeInteractions } from '../../hooks/interactions/use-node-interactions';
 import type { AgentFlowEnvironmentVariable } from '../../lib/variables/application-environment-variables';
 import type { AgentFlowIssue } from '../../lib/validate-document';
-import type { WorkflowTriggerContext } from '../../lib/workflow-trigger-context';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import { NodeDetailHeader } from './NodeDetailHeader';
 import { NodeConfigTab } from './tabs/NodeConfigTab';
@@ -45,7 +44,7 @@ export function NodeDetailPanel({
   onResolveRunScope?: ((runId: string | null) => void) | undefined;
   previewActionsDisabled?: boolean;
   runLoading?: boolean;
-  workflowTriggerContext?: WorkflowTriggerContext | null;
+  workflowTriggerContext?: unknown;
 }) {
   const nodeDetailTab = useAgentFlowEditorStore((state) => state.nodeDetailTab);
   const setPanelState = useAgentFlowEditorStore((state) => state.setPanelState);

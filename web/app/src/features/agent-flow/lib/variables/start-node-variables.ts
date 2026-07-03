@@ -11,6 +11,7 @@ import {
 
 import { getBuiltinNodeRuntimeContract } from '../node-definitions/contracts';
 import { normalizeCodeOutput } from '../output-contract/code-output';
+import { getRegisteredNodeDefinition } from '../node-definitions/registry';
 import { LLM_CONTEXT_MESSAGES_JSON_SCHEMA } from '../output-contract/schema';
 import { i18nText } from '../../../../shared/i18n/text';
 
@@ -215,29 +216,19 @@ export function getStartNodeVariableOutputs(
   ];
 }
 
-export function getWorkflowStartNodeVariableOutputs(
-  node: Pick<FlowNodeDocument, 'config' | 'outputs'>
-): FlowNodeOutputDocument[] {
-  if (node.outputs.length > 0) {
-    throw new Error('Workflow start node outputs must be empty');
-  }
-
-  return getStartInputFields(node).map((field) => ({
-    key: field.key,
-    title: `userinput.${field.key}`,
-    valueType: field.valueType
-  }));
-}
-
 export function getNodeVariableOutputs(
   node: FlowNodeDocument
 ): FlowNodeOutputDocument[] {
-  if (node.type === 'start') {
-    return getStartNodeVariableOutputs(node);
+  const registeredVariableOutputs = getRegisteredNodeDefinition(
+    node.type
+  )?.variableOutputs;
+
+  if (registeredVariableOutputs) {
+    return registeredVariableOutputs(node);
   }
 
-  if (node.type === 'workflow_start') {
-    return getWorkflowStartNodeVariableOutputs(node);
+  if (node.type === 'start') {
+    return getStartNodeVariableOutputs(node);
   }
 
   if (node.type === 'if_else') {

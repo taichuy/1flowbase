@@ -38,13 +38,12 @@ import { AgentFlowCustomConnectionLine } from '../canvas/custom-connection-line'
 import { NodePickerPopover } from '../node-picker/NodePickerPopover';
 import { agentFlowEdgeTypes, agentFlowNodeTypes } from '../canvas/node-types';
 import type { NodePickerOption } from '../../lib/plugin-node-definitions';
-import type { WorkflowTriggerContext } from '../../lib/workflow-trigger-context';
 import { i18nText } from '../../../../shared/i18n/text';
 
 interface AgentFlowCanvasProps {
   issueCountByNodeId: Record<string, number>;
   nodePickerOptions?: NodePickerOption[];
-  workflowTriggerContext?: WorkflowTriggerContext | null;
+  workflowTriggerContext?: unknown;
   onRunNode?: (nodeId: string) => void;
   onViewportSnapshotChange?: (
     viewport: FlowAuthoringDocument['editor']['viewport']

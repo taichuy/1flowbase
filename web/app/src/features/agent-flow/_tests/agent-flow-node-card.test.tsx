@@ -8,6 +8,7 @@ import { AgentFlowNodeCard } from '../components/nodes/AgentFlowNodeCard';
 import { ERROR_BRANCH_SOURCE_HANDLE } from '../lib/policy/node-error-policy';
 import type { NodePickerOption } from '../lib/plugin-node-definitions';
 import { resolveAgentFlowNodeSchema } from '../schema/node-schema-registry';
+import '../../workflow/register';
 
 const updateNodeInternalsMock = vi.hoisted(() => vi.fn());
 

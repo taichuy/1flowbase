@@ -28,6 +28,7 @@ import {
 
 import { NodeConfigTab } from '../components/detail/tabs/NodeConfigTab';
 import { NodeDetailPanel } from '../components/detail/NodeDetailPanel';
+import '../../workflow/register';
 import * as modelProviderOptionsApi from '../api/model-provider-options';
 import { AgentFlowEditorStoreProvider } from '../store/editor/AgentFlowEditorStoreProvider';
 import * as nodeSchemaAdapterApi from '../schema/node-schema-adapter';
@@ -615,7 +616,7 @@ describe('NodeDetailPanel', () => {
         </AgentFlowEditorStoreProvider>
       );
 
-      expect(screen.getByText('Input Parameters')).toBeInTheDocument();
+      expect(screen.getByText('输入参数')).toBeInTheDocument();
       expect(screen.queryByLabelText('接口 slug')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('定时表达式')).not.toBeInTheDocument();
     },

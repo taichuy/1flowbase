@@ -34,9 +34,9 @@ import { NodeRunEmptyState } from '../components/detail/last-run/NodeRunEmptySta
 import { LlmCardModelBadge } from '../components/nodes/LlmCardModelBadge';
 import type { NodeLastRun } from '../api/runtime';
 import { getAgentFlowNodeTypeIcon } from '../lib/node-type-icons';
+import { getRegisteredNodeDefinition } from '../lib/node-definitions/registry';
 import { getBuiltinNodeRuntimeContract } from '../lib/node-definitions/contracts';
 import { getLlmExternalReasoningPolicy } from '../lib/llm-node-config';
-import type { WorkflowTriggerContext } from '../lib/workflow-trigger-context';
 import { i18nText } from '../../../shared/i18n/text';
 
 function getNode(adapter: SchemaViewRendererProps['adapter']) {
@@ -125,56 +125,20 @@ function renderCardModelView({ adapter }: SchemaViewRendererProps) {
   return <LlmCardModelBadge node={node} />;
 }
 
-function createWorkflowStartTriggerSummary(
-  context: WorkflowTriggerContext | null | undefined
-) {
-  if (!context?.triggerType) {
-    return i18nText('applications', 'auto.workflow_trigger_not_configured');
-  }
-
-  if (context.triggerType === 'manual') {
-    return i18nText('applications', 'auto.workflow_trigger_type_manual');
-  }
-
-  if (context.triggerType === 'schedule') {
-    const schedule = context.schedule;
-
-    if (!schedule) {
-      return i18nText('applications', 'auto.workflow_trigger_not_configured');
-    }
-
-    const status = schedule.enabled
-      ? i18nText('applications', 'auto.workflow_schedule_enabled')
-      : i18nText('applications', 'auto.workflow_schedule_disabled');
-
-    return `${status} · ${schedule.cron} · ${schedule.timezone}`;
-  }
-
-  const extension = context.mapping?.extension;
-
-  return extension
-    ? `${extension.method} /api/ex/${extension.slug}`
-    : i18nText('applications', 'auto.workflow_trigger_not_configured');
-}
-
-function renderCardDescriptionView({ adapter }: SchemaViewRendererProps) {
+function renderCardDescriptionView(props: SchemaViewRendererProps) {
+  const { adapter } = props;
   const node = getNode(adapter);
 
   if (!node || node.type === 'llm') {
     return null;
   }
 
-  if (node.type === 'workflow_start') {
-    const context = adapter.getDerived('workflowTriggerContext') as
-      | WorkflowTriggerContext
-      | null
-      | undefined;
+  const RegisteredCardDescription = getRegisteredNodeDefinition(
+    node.type
+  )?.cardDescription;
 
-    return (
-      <div className="agent-flow-node-card__description">
-        {createWorkflowStartTriggerSummary(context)}
-      </div>
-    );
+  if (RegisteredCardDescription) {
+    return <RegisteredCardDescription {...props} />;
   }
 
   const description = node.description?.trim();

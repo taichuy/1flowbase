@@ -54,7 +54,7 @@ const HIDDEN_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
   ...UNRELEASED_BUILTIN_NODE_PICKER_TYPES
 ]);
 
-function buildBuiltinNodePickerOptions(
+export function buildBuiltinNodePickerOptions(
   nodeTypes: readonly BuiltinFlowNodeType[]
 ): BuiltinNodePickerOption[] {
   return nodeTypes.map((nodeType) => {
@@ -87,22 +87,16 @@ export const BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
       .filter((nodeType) => !HIDDEN_BUILTIN_NODE_PICKER_TYPES.has(nodeType))
   );
 
-const GENERAL_EXECUTION_NODE_PICKER_TYPES = builtinNodeRuntimeContractTypes.filter(
-  (nodeType): nodeType is BuiltinFlowNodeType =>
-    nodeType !== 'plugin_node' &&
-    nodeType !== 'start' &&
-    nodeType !== 'answer' &&
-    nodeType !== 'workflow_start' &&
-    nodeType !== 'workflow_end' &&
-    !UNRELEASED_BUILTIN_NODE_PICKER_TYPES.has(nodeType)
-);
-
-export const WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
-  buildBuiltinNodePickerOptions([
-    'workflow_start',
-    'workflow_end',
-    ...GENERAL_EXECUTION_NODE_PICKER_TYPES
-  ]);
+export const GENERAL_EXECUTION_NODE_PICKER_TYPES =
+  builtinNodeRuntimeContractTypes.filter(
+    (nodeType): nodeType is BuiltinFlowNodeType =>
+      nodeType !== 'plugin_node' &&
+      nodeType !== 'start' &&
+      nodeType !== 'answer' &&
+      nodeType !== 'workflow_start' &&
+      nodeType !== 'workflow_end' &&
+      !UNRELEASED_BUILTIN_NODE_PICKER_TYPES.has(nodeType)
+  );
 
 const DEPENDENCY_STATUS_LABELS: Record<string, string> = {
   missing_plugin: i18nText('agentFlow', 'auto.dependency_missing_plugin'),
@@ -145,7 +139,7 @@ export const pluginNodeDefinitionMeta: NodeDefinitionMeta = {
   helpHref: null
 };
 
-function toPluginContributionPickerOption(
+export function toPluginContributionPickerOption(
   contribution: AgentFlowNodeContributionEntry
 ): PluginContributionPickerOption {
   return {
@@ -166,15 +160,6 @@ export function buildNodePickerOptions(
 ): NodePickerOption[] {
   return [
     ...BUILTIN_NODE_PICKER_OPTIONS,
-    ...contributions.map(toPluginContributionPickerOption)
-  ];
-}
-
-export function buildWorkflowNodePickerOptions(
-  contributions: AgentFlowNodeContributionEntry[]
-): NodePickerOption[] {
-  return [
-    ...WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,
     ...contributions.map(toPluginContributionPickerOption)
   ];
 }

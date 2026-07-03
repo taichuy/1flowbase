@@ -7,16 +7,16 @@ import { Alert, Button, Form, Typography } from 'antd';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import type { SchemaFieldRendererProps } from '../../../../../shared/schema-ui/registry/create-renderer-registry';
-import { useAuthStore } from '../../../../../state/auth-store';
-import { applicationDetailQueryKey } from '../../../../applications/api/applications';
+import type { SchemaFieldRendererProps } from '../../../shared/schema-ui/registry/create-renderer-registry';
+import { useAuthStore } from '../../../state/auth-store';
+import { applicationDetailQueryKey } from '../../applications/api/applications';
 import {
   applicationApiMappingQueryKey,
   applicationApiPublicationQueryKey,
   saveApplicationApiMapping,
   saveWorkflowScheduleTrigger,
   workflowScheduleTriggerQueryKey
-} from '../../../../applications/api/public-api';
+} from '../../applications/api/public-api';
 import {
   DEFAULT_WORKFLOW_TRIGGER_VALUES,
   createDefaultWorkflowApiMapping,
@@ -25,12 +25,12 @@ import {
   createWorkflowScheduleTriggerInput,
   createWorkflowTriggerValuesFromContext,
   type WorkflowTriggerFormValues
-} from '../../../../applications/lib/workflow-trigger-config';
+} from '../lib/trigger-config';
 import {
   WorkflowExtensionTriggerFields,
   WorkflowScheduleTriggerFields
-} from '../../../../applications/components/workflow/WorkflowTriggerFormFields';
-import type { WorkflowTriggerContext } from '../../../lib/workflow-trigger-context';
+} from './WorkflowTriggerFormFields';
+import { asWorkflowTriggerContext } from '../lib/trigger-context';
 
 function formatMutationError(error: unknown) {
   if (error instanceof Error) {
@@ -43,7 +43,7 @@ function formatMutationError(error: unknown) {
 export function WorkflowTriggerConfigField({
   adapter
 }: SchemaFieldRendererProps) {
-  const { t } = useTranslation('applications');
+  const { t } = useTranslation('workflow');
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
   const [form] = Form.useForm<WorkflowTriggerFormValues>();
@@ -51,10 +51,9 @@ export function WorkflowTriggerConfigField({
   const document = adapter.getDerived(
     'document'
   ) as FlowAuthoringDocument | null;
-  const context = adapter.getDerived('workflowTriggerContext') as
-    | WorkflowTriggerContext
-    | null
-    | undefined;
+  const context = asWorkflowTriggerContext(
+    adapter.getDerived('workflowTriggerContext')
+  );
   const values = useMemo(() => {
     if (!context?.triggerType) {
       return DEFAULT_WORKFLOW_TRIGGER_VALUES;

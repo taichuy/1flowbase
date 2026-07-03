@@ -15,6 +15,7 @@ import {
   type NodeEditorKind
 } from '../lib/node-definitions';
 import { getBuiltinNodeRuntimeContract } from '../lib/node-definitions/contracts';
+import { getRegisteredNodeDefinition } from '../lib/node-definitions/registry';
 import { i18nText } from '../../../shared/i18n/text';
 
 const FIELD_RENDERER_BY_EDITOR: Record<NodeEditorKind, string> = {
@@ -51,9 +52,14 @@ const CONTRACT_FIELD_RENDERER_ALLOWLIST = new Set([
   'http_request_endpoint',
   'http_request_key_values',
   'http_request_body',
-  'http_request_curl_import',
-  'workflow_trigger_config'
+  'http_request_curl_import'
 ]);
+
+export function registerContractFieldRenderers(rendererNames: string[]) {
+  for (const rendererName of rendererNames) {
+    CONTRACT_FIELD_RENDERER_ALLOWLIST.add(rendererName);
+  }
+}
 
 function createFieldBlock(field: NodeDefinitionField): SchemaFieldBlock {
   const block: SchemaFieldBlock = {
@@ -120,17 +126,24 @@ function createContractSectionBlock(
   };
 }
 
-const EDITABLE_OUTPUT_CONTRACT_NODE_TYPES = new Set<FlowNodeType>([
-  'code',
-  'workflow_end'
-]);
+const EDITABLE_OUTPUT_CONTRACT_NODE_TYPES = new Set<FlowNodeType>(['code']);
+
+function isEditableOutputContractNodeType(nodeType: FlowNodeType) {
+  return (
+    EDITABLE_OUTPUT_CONTRACT_NODE_TYPES.has(nodeType) ||
+    getRegisteredNodeDefinition(nodeType)?.editableOutputContract === true
+  );
+}
 
 function shouldExposeGeneratedOutputVariables(nodeType: FlowNodeType) {
+  if (getRegisteredNodeDefinition(nodeType)?.suppressGeneratedOutputVariables) {
+    return false;
+  }
+
   return (
     nodeType !== 'start' &&
-    nodeType !== 'workflow_start' &&
     nodeType !== 'if_else' &&
-    !EDITABLE_OUTPUT_CONTRACT_NODE_TYPES.has(nodeType)
+    !isEditableOutputContractNodeType(nodeType)
   );
 }
 
@@ -227,7 +240,7 @@ export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
       if (
         section.key === 'basics' ||
         (section.key === 'outputs' &&
-          !EDITABLE_OUTPUT_CONTRACT_NODE_TYPES.has(nodeType))
+          !isEditableOutputContractNodeType(nodeType))
       ) {
         return false;
       }
@@ -247,7 +260,7 @@ export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
           if (
             section.key === 'basics' ||
             (section.key === 'outputs' &&
-              !EDITABLE_OUTPUT_CONTRACT_NODE_TYPES.has(nodeType))
+              !isEditableOutputContractNodeType(nodeType))
           ) {
             return false;
           }

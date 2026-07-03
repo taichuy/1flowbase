@@ -1,6 +1,4 @@
 import type {
-  ConsoleApplicationType,
-  ConsoleWorkflowTriggerType,
   ConsoleNodeContributionEntry,
   ConsoleApplicationEnvironmentVariable,
   ConsoleApplicationOrchestrationState,
@@ -11,12 +9,17 @@ import type { ReactNode } from 'react';
 import './styles/index.css';
 import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
 import { AgentFlowCanvasFrame } from './AgentFlowCanvasFrame';
+import type {
+  AgentFlowCanvasFrameProps,
+  AgentFlowEditorCapabilities
+} from './canvas-frame/types';
 
 interface AgentFlowEditorShellProps {
   applicationId: string;
   applicationName: string;
-  applicationType?: ConsoleApplicationType;
-  workflowTriggerType?: ConsoleWorkflowTriggerType | null;
+  workflowTriggerContext?: unknown;
+  capabilities?: AgentFlowEditorCapabilities;
+  nodePickerOptionsBuilder?: AgentFlowCanvasFrameProps['nodePickerOptionsBuilder'];
   initialState: ConsoleApplicationOrchestrationState;
   initialEnvironmentVariables?: ConsoleApplicationEnvironmentVariable[];
   nodeContributions?: ConsoleNodeContributionEntry[];
@@ -32,8 +35,9 @@ interface AgentFlowEditorShellProps {
 export function AgentFlowEditorShell({
   applicationId,
   applicationName,
-  applicationType = 'agent_flow',
-  workflowTriggerType = null,
+  workflowTriggerContext = null,
+  capabilities,
+  nodePickerOptionsBuilder,
   initialState,
   initialEnvironmentVariables = [],
   nodeContributions = [],
@@ -47,8 +51,9 @@ export function AgentFlowEditorShell({
       <AgentFlowCanvasFrame
         applicationId={applicationId}
         applicationName={applicationName}
-        applicationType={applicationType}
-        workflowTriggerType={workflowTriggerType}
+        workflowTriggerContext={workflowTriggerContext}
+        capabilities={capabilities}
+        nodePickerOptionsBuilder={nodePickerOptionsBuilder}
         initialEnvironmentVariables={initialEnvironmentVariables}
         nodeContributions={nodeContributions}
         saveDraftOverride={saveDraftOverride}

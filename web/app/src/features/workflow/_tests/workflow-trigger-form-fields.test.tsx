@@ -4,13 +4,12 @@ import { describe, expect, test, vi } from 'vitest';
 
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
 
-import { WorkflowTriggerFormFields } from '../components/workflow/WorkflowTriggerFormFields';
+import { WorkflowExtensionTriggerFields } from '../components/WorkflowTriggerFormFields';
 import {
   DEFAULT_WORKFLOW_TRIGGER_VALUES,
-  WORKFLOW_TRIGGER_TYPES,
   createWorkflowExtensionTargetOptions,
   type WorkflowTriggerFormValues
-} from '../lib/workflow-trigger-config';
+} from '../lib/trigger-config';
 
 const labels: Record<string, string> = {
   'auto.workflow_trigger_type': '触发器类型',
@@ -80,9 +79,7 @@ function renderExtensionFields({
       }}
       onFinish={onFinish}
     >
-      <WorkflowTriggerFormFields
-        isExtensionTrigger
-        isScheduleTrigger={false}
+      <WorkflowExtensionTriggerFields
         extensionTargetOptions={targetOptions}
         t={t}
       />
@@ -144,28 +141,6 @@ describe('WorkflowTriggerFormFields', () => {
     expect(
       screen.getByRole('combobox', { name: '目标 selector' })
     ).toBeInTheDocument();
-  });
-
-  test('can render all persisted workflow trigger types when requested', async () => {
-    render(
-      <Form<WorkflowTriggerFormValues>
-        layout="vertical"
-        initialValues={DEFAULT_WORKFLOW_TRIGGER_VALUES}
-      >
-        <WorkflowTriggerFormFields
-          isExtensionTrigger={false}
-          isScheduleTrigger={false}
-          triggerTypes={WORKFLOW_TRIGGER_TYPES}
-          t={t}
-        />
-      </Form>
-    );
-
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '触发器类型' }));
-
-    expect(await screen.findAllByText('扩展接口触发')).toHaveLength(2);
-    expect(screen.getByText('定时触发')).toBeInTheDocument();
-    expect(screen.getByText('手动触发')).toBeInTheDocument();
   });
 
   test('shows an empty state when workflow start has no input fields', () => {

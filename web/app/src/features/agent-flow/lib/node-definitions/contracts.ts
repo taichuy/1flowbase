@@ -8,7 +8,6 @@ import type {
   NodeRuntimeUiContract
 } from '@1flowbase/flow-schema';
 import {
-  DEFAULT_WORKFLOW_START_NODE_CONFIG,
   NODE_CONTRIBUTION_SCHEMA_VERSION,
   getLlmNodeOutputs
 } from '@1flowbase/flow-schema';
@@ -29,6 +28,7 @@ import {
   HTTP_REQUEST_RESPONSE_BYTES_STEP
 } from '../http-request/contract';
 import { i18nText } from '../../../../shared/i18n/text';
+import { getRegisteredNodeDefinition } from './registry';
 
 type BuiltinNodeRuntimeContractType = Exclude<FlowNodeType, 'unresolved_node'>;
 type ContractCategory = 'io' | 'generation' | 'control' | 'data' | 'external';
@@ -142,7 +142,7 @@ function branchPorts(
   }));
 }
 
-function panelField({
+export function panelField({
   key,
   title,
   renderer,
@@ -172,7 +172,7 @@ function panelField({
   } satisfies NodeRuntimePanelFieldDocument;
 }
 
-function panelSection(
+export function panelSection(
   key: string,
   title: string,
   fields: NodeRuntimePanelFieldDocument[]
@@ -184,7 +184,7 @@ function panelSection(
   };
 }
 
-const basicsPanelSection = panelSection('basics', 'Basics', [
+export const basicsPanelSection = panelSection('basics', 'Basics', [
   panelField({
     key: 'alias',
     title: i18nText('agentFlow', 'auto.node_alias'),
@@ -198,7 +198,7 @@ const basicsPanelSection = panelSection('basics', 'Basics', [
   })
 ]);
 
-function outputsPanelSection(outputs: FlowNodeOutputDocument[]) {
+export function outputsPanelSection(outputs: FlowNodeOutputDocument[]) {
   return panelSection(
     'outputs',
     'Outputs',
@@ -214,7 +214,7 @@ function outputsPanelSection(outputs: FlowNodeOutputDocument[]) {
   );
 }
 
-function createNodeRuntimeContract({
+export function createNodeRuntimeContract({
   type,
   title,
   alias,
@@ -417,71 +417,6 @@ function createAnswerContract(): NodeRuntimeUiContract {
         })
       ]),
       outputsPanelSection(outputs)
-    ]
-  });
-}
-
-function createWorkflowStartContract(): NodeRuntimeUiContract {
-  return createNodeRuntimeContract({
-    type: 'workflow_start',
-    title: 'Workflow Start',
-    description: 'Defines workflow input parameters and sync timeout.',
-    category: 'io',
-    config: {
-      input_fields: [...DEFAULT_WORKFLOW_START_NODE_CONFIG.input_fields],
-      sync_timeout_ms: DEFAULT_WORKFLOW_START_NODE_CONFIG.sync_timeout_ms
-    },
-    outputs: [],
-    panelSections: [
-      basicsPanelSection,
-      panelSection('trigger', 'Trigger Configuration', [
-        panelField({
-          key: 'workflow_trigger_config',
-          title: 'Trigger Configuration',
-          renderer: 'workflow_trigger_config',
-          valueType: 'json'
-        })
-      ]),
-      panelSection('inputs', 'Input Parameters', [
-        panelField({
-          key: 'config.input_fields',
-          title: 'Input Parameters',
-          renderer: 'start_input_fields',
-          valueType: 'array'
-        })
-      ]),
-      panelSection('sync', 'Sync Response', [
-        panelField({
-          key: 'config.sync_timeout_ms',
-          title: 'Sync Timeout',
-          renderer: 'number',
-          valueType: 'number',
-          min: 1000,
-          step: 1000
-        })
-      ])
-    ]
-  });
-}
-
-function createWorkflowEndContract(): NodeRuntimeUiContract {
-  return createNodeRuntimeContract({
-    type: 'workflow_end',
-    title: 'Workflow End',
-    description: 'Declares the successful sync response fields.',
-    category: 'io',
-    config: {},
-    outputs: [],
-    panelSections: [
-      basicsPanelSection,
-      panelSection('outputs', 'Return Fields', [
-        panelField({
-          key: 'config.output_contract',
-          title: 'Return Fields',
-          renderer: 'output_contract_definition',
-          valueType: 'array'
-        })
-      ])
     ]
   });
 }
@@ -1166,14 +1101,17 @@ export const builtinNodeRuntimeContractTypes = [
   'plugin_node'
 ] as const;
 
-export const BUILTIN_NODE_RUNTIME_CONTRACTS: Record<
+export type StaticBuiltinNodeRuntimeContractType = Exclude<
   BuiltinNodeRuntimeContractType,
+  'workflow_start' | 'workflow_end'
+>;
+
+export const BUILTIN_NODE_RUNTIME_CONTRACTS: Record<
+  StaticBuiltinNodeRuntimeContractType,
   NodeRuntimeUiContract
 > = {
   start: createStartContract(),
   answer: createAnswerContract(),
-  workflow_start: createWorkflowStartContract(),
-  workflow_end: createWorkflowEndContract(),
   llm: createLlmContract(),
   knowledge_retrieval: createKnowledgeRetrievalContract(),
   question_classifier: createQuestionClassifierContract(),
@@ -1200,7 +1138,9 @@ export function getBuiltinNodeRuntimeContract(
   nodeType: FlowNodeType
 ): NodeRuntimeUiContract | null {
   const contract =
-    BUILTIN_NODE_RUNTIME_CONTRACTS[nodeType as BuiltinNodeRuntimeContractType];
+    BUILTIN_NODE_RUNTIME_CONTRACTS[
+      nodeType as StaticBuiltinNodeRuntimeContractType
+    ] ?? getRegisteredNodeDefinition(nodeType)?.contract;
 
   return contract ? duplicateContract(contract) : null;
 }

@@ -11,6 +11,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { agentFlowRendererRegistry } from '../schema/agent-flow-renderer-registry';
 import { buildCommonConfigBlocks } from '../schema/node-schema-fragments';
 import { createAgentFlowNodeSchemaAdapter } from '../schema/node-schema-adapter';
+import { WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS } from '../../workflow/lib/picker-options';
 import { resolveAgentFlowNodeSchema } from '../schema/node-schema-registry';
 import { createNodeDocument } from '../lib/document/node-factory';
 import {
@@ -19,7 +20,6 @@ import {
 } from '../lib/node-definitions/contracts';
 import {
   BUILTIN_NODE_PICKER_OPTIONS,
-  WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,
   type NodePickerOption
 } from '../lib/plugin-node-definitions';
 
@@ -338,7 +338,7 @@ describe('agent-flow node schema registry', () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'section',
-          title: 'Input Parameters',
+          title: '输入参数',
           blocks: [
             expect.objectContaining({
               kind: 'field',
@@ -349,7 +349,7 @@ describe('agent-flow node schema registry', () => {
         }),
         expect.objectContaining({
           kind: 'section',
-          title: 'Sync Response',
+          title: '同步设置',
           blocks: [
             expect.objectContaining({
               kind: 'field',
@@ -370,7 +370,7 @@ describe('agent-flow node schema registry', () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'section',
-          title: 'Return Fields',
+          title: '返回字段',
           blocks: [
             expect.objectContaining({
               kind: 'field',

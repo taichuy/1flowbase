@@ -29,6 +29,9 @@ interface AgentFlowOverlayProps {
   issueErrorCount: number;
   exportLoading: boolean;
   publishDisabled: boolean;
+  showConversationDebug?: boolean;
+  showConversationVariables?: boolean;
+  showSystemVariables?: boolean;
 }
 
 export function AgentFlowOverlay({
@@ -48,7 +51,10 @@ export function AgentFlowOverlay({
   onOpenPublish,
   issueErrorCount,
   exportLoading,
-  publishDisabled
+  publishDisabled,
+  showConversationDebug = true,
+  showConversationVariables = true,
+  showSystemVariables = true
 }: AgentFlowOverlayProps) {
   const statusTag = {
     idle: { color: 'default', label: i18nText('agentFlow', 'auto.free') },
@@ -70,15 +76,17 @@ export function AgentFlowOverlay({
         </Tag>
       </Space>
       <Space size="small">
-        <Button
-          aria-label={i18nText('agentFlow', 'auto.preview')}
-          autoInsertSpace={false}
-          icon={<PlayCircleOutlined />}
-          onClick={onOpenDebugConsole}
-          title={i18nText('agentFlow', 'auto.preview')}
-        >
-          {i18nText('agentFlow', 'auto.preview')}
-        </Button>
+        {showConversationDebug ? (
+          <Button
+            aria-label={i18nText('agentFlow', 'auto.preview')}
+            autoInsertSpace={false}
+            icon={<PlayCircleOutlined />}
+            onClick={onOpenDebugConsole}
+            title={i18nText('agentFlow', 'auto.preview')}
+          >
+            {i18nText('agentFlow', 'auto.preview')}
+          </Button>
+        ) : null}
         <Badge count={issueErrorCount} size="small">
           <Button
             aria-label="Issues"
@@ -95,13 +103,15 @@ export function AgentFlowOverlay({
           onClick={onExportTemplate}
           title={i18nText('agentFlow', 'auto.export_template')}
         />
-        <Button
-          aria-label={i18nText('agentFlow', 'auto.system_variables')}
-          autoInsertSpace={false}
-          icon={<GlobalOutlined />}
-          onClick={onOpenSystemVariables}
-          title={i18nText('agentFlow', 'auto.system_variables')}
-        />
+        {showSystemVariables ? (
+          <Button
+            aria-label={i18nText('agentFlow', 'auto.system_variables')}
+            autoInsertSpace={false}
+            icon={<GlobalOutlined />}
+            onClick={onOpenSystemVariables}
+            title={i18nText('agentFlow', 'auto.system_variables')}
+          />
+        ) : null}
         <Button
           aria-label={i18nText('agentFlow', 'auto.environment_variables')}
           autoInsertSpace={false}
@@ -109,13 +119,15 @@ export function AgentFlowOverlay({
           onClick={onOpenEnvironmentVariables}
           title={i18nText('agentFlow', 'auto.environment_variables')}
         />
-        <Button
-          aria-label={i18nText('agentFlow', 'auto.conversation_variables')}
-          autoInsertSpace={false}
-          icon={<MessageOutlined />}
-          onClick={onOpenConversationVariables}
-          title={i18nText('agentFlow', 'auto.conversation_variables')}
-        />
+        {showConversationVariables ? (
+          <Button
+            aria-label={i18nText('agentFlow', 'auto.conversation_variables')}
+            autoInsertSpace={false}
+            icon={<MessageOutlined />}
+            onClick={onOpenConversationVariables}
+            title={i18nText('agentFlow', 'auto.conversation_variables')}
+          />
+        ) : null}
         <Tooltip title={autosaveLabel}>
           <Button
             aria-label={i18nText('agentFlow', 'auto.save')}
