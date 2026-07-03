@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
-import { Button, Drawer, Form, Input, Select } from 'antd';
+import { Button, Drawer, Form, Input, Switch } from 'antd';
 
 import type {
   CreateSettingsDataModelInput,
@@ -16,16 +16,18 @@ import {
 } from './data-model-help-text';
 import { i18nText } from '../../../../shared/i18n/text';
 
-const dataModelStatusOptions = ['draft', 'published', 'disabled', 'broken'].map(
-  (value) => ({ label: value, value })
-);
-
 interface DataModelFormValues {
   code: string;
   title: string;
-  status: SettingsDataModel['status'];
-  data_source_instance_id: string;
   external_table_id: string;
+}
+
+function isApiOpen(status: SettingsDataModel['status'] | undefined) {
+  return status === 'published';
+}
+
+function apiOpenStatus(apiOpen: boolean): SettingsDataModel['status'] {
+  return apiOpen ? 'published' : 'draft';
 }
 
 export function DataModelFormDrawer({
@@ -51,6 +53,7 @@ export function DataModelFormDrawer({
   ) => void;
 }) {
   const [form] = Form.useForm<DataModelFormValues>();
+  const [apiOpen, setApiOpen] = useState(true);
   const isExternalModel =
     mode === 'edit'
       ? model?.source_kind === 'external_source'
@@ -62,21 +65,19 @@ export function DataModelFormDrawer({
     }
 
     if (mode === 'edit' && model) {
+      setApiOpen(isApiOpen(model.status));
       form.setFieldsValue({
         code: model.code,
         title: model.title,
-        status: model.status,
-        data_source_instance_id: model.data_source_instance_id ?? 'main_source',
         external_table_id: model.external_table_id ?? ''
       });
       return;
     }
 
+    setApiOpen(isApiOpen(source?.default_data_model_status ?? 'published'));
     form.setFieldsValue({
       code: '',
       title: '',
-      status: source?.default_data_model_status ?? 'published',
-      data_source_instance_id: source?.id ?? 'main_source',
       external_table_id: ''
     });
   }, [form, mode, model, open, source]);
@@ -85,7 +86,7 @@ export function DataModelFormDrawer({
     const values = await form.validateFields();
 
     if (mode === 'edit' && model) {
-      onUpdate(model, { status: values.status });
+      onUpdate(model, { status: apiOpenStatus(apiOpen) });
       onClose();
       return;
     }
@@ -94,7 +95,7 @@ export function DataModelFormDrawer({
       scope_kind: 'workspace',
       code: values.code,
       title: values.title,
-      status: values.status,
+      status: apiOpenStatus(apiOpen),
       data_source_instance_id:
         source?.source_kind === 'external_source' ? source.id : null,
       external_resource_key: isExternalModel ? values.external_table_id : null,
@@ -133,10 +134,6 @@ export function DataModelFormDrawer({
       <Form
         form={form}
         layout="vertical"
-        initialValues={{
-          status: source?.default_data_model_status ?? 'published',
-          data_source_instance_id: source?.id ?? 'main_source'
-        }}
       >
         <Form.Item
           name="title"
@@ -171,31 +168,21 @@ export function DataModelFormDrawer({
           <Input aria-label="Code" disabled={mode === 'edit'} />
         </Form.Item>
         <Form.Item
-          name="status"
           label={
             <DataModelFieldLabel
-              label={i18nText('settings', 'auto.status')}
+              label={i18nText('settings', 'auto.open_api')}
               title={dataModelStatusHelp}
             />
           }
-          rules={[
-            {
-              required: true,
-              message: i18nText('settings', 'auto.select_status')
-            }
-          ]}
         >
-          <Select
-            aria-label={i18nText('settings', 'auto.status')}
+          <Switch
+            aria-label={i18nText('settings', 'auto.open_api')}
+            checked={apiOpen}
+            checkedChildren={i18nText('settings', 'auto.open')}
+            unCheckedChildren={i18nText('settings', 'auto.closed')}
             disabled={saving}
-            options={dataModelStatusOptions}
+            onChange={setApiOpen}
           />
-        </Form.Item>
-        <Form.Item
-          name="data_source_instance_id"
-          label={i18nText('settings', 'auto.data_source')}
-        >
-          <Input disabled />
         </Form.Item>
         {isExternalModel ? (
           <Form.Item

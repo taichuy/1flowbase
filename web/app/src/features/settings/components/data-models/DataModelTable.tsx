@@ -6,8 +6,8 @@ import {
   Form,
   Grid,
   Modal,
-  Select,
   Space,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -46,15 +46,13 @@ const dataModelStatusHelp = i18nText(
 type DefaultDataModelStatus =
   UpdateSettingsDataSourceDefaultsInput['default_data_model_status'];
 
-const dataModelStatusOptions = [
-  { label: i18nText('settings', 'auto.draft_alt'), value: 'draft' },
-  {
-    label: i18nText('settings', 'auto.published_released'),
-    value: 'published'
-  },
-  { label: i18nText('settings', 'auto.disabled_inactive'), value: 'disabled' },
-  { label: i18nText('settings', 'auto.broken_exception'), value: 'broken' }
-] satisfies Array<{ label: string; value: DefaultDataModelStatus }>;
+function isApiOpen(status: DefaultDataModelStatus) {
+  return status === 'published';
+}
+
+function apiOpenStatus(apiOpen: boolean): DefaultDataModelStatus {
+  return apiOpen ? 'published' : 'draft';
+}
 
 function getStatusTag(status: string) {
   switch (status) {
@@ -295,33 +293,30 @@ export function DataModelTable({
             <Form.Item style={{ margin: 0 }}>
               <Flex align="center" gap={6}>
                 <label
-                  htmlFor="data-source-default-model-status"
+                  htmlFor="data-source-default-api-open"
                   className="data-model-panel__sr-only"
                 >
-                  {i18nText('settings', 'auto.data_model_state')}
+                  {i18nText('settings', 'auto.default_open_api')}
                 </label>
-                <Select
-                  id="data-source-default-model-status"
-                  value={selectedSource.default_data_model_status}
-                  options={dataModelStatusOptions}
+                <Switch
+                  id="data-source-default-api-open"
+                  aria-label={i18nText('settings', 'auto.default_open_api')}
+                  checked={isApiOpen(selectedSource.default_data_model_status)}
+                  checkedChildren={i18nText('settings', 'auto.open')}
+                  unCheckedChildren={i18nText('settings', 'auto.closed')}
                   disabled={updateDefaultsMutation.isPending}
-                  style={{ minWidth: 140 }}
-                  placeholder={i18nText(
-                    'settings',
-                    'auto.default_modeling_state'
-                  )}
                   onChange={(value) =>
                     updateDefaultsMutation.mutate({
                       source: selectedSource,
                       patch: {
-                        default_data_model_status: value
+                        default_data_model_status: apiOpenStatus(value)
                       }
                     })
                   }
                 />
                 <DataModelHelpTooltip
                   decorative
-                  label={i18nText('settings', 'auto.data_model_state')}
+                  label={i18nText('settings', 'auto.default_open_api')}
                   title={dataModelStatusHelp}
                 />
               </Flex>

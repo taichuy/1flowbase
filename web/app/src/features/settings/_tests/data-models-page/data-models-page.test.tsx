@@ -52,7 +52,7 @@ describe('Settings data models page', () => {
       expect(
         screen.getByRole('button', { name: /返\s*回/ })
       ).toBeInTheDocument();
-      expect(screen.getByLabelText('默认 Data Model 状态')).toBeInTheDocument();
+      expect(screen.getByLabelText('新建默认开放 API')).toBeInTheDocument();
       expect(
         screen.queryByLabelText('默认 API 暴露状态')
       ).not.toBeInTheDocument();
@@ -135,7 +135,7 @@ describe('Settings data models page', () => {
       expect(
         within(rolesRow as HTMLElement).getByText('6')
       ).toBeInTheDocument();
-      expect(screen.getByLabelText('默认 Data Model 状态')).toBeEnabled();
+      expect(screen.getByLabelText('新建默认开放 API')).toBeEnabled();
       expect(
         screen.queryByLabelText('默认 API 暴露状态')
       ).not.toBeInTheDocument();
@@ -162,12 +162,11 @@ describe('Settings data models page', () => {
         within(detailActions).getByRole('button', { name: /编\s*辑/ })
       );
       expect(await screen.findByText('编辑 Data Model')).toBeInTheDocument();
-      const statusInput = screen
-        .getAllByLabelText('状态')
-        .find((element) => element instanceof HTMLInputElement);
-      expect(statusInput).toBeInstanceOf(HTMLInputElement);
-      expect(statusInput).toBeEnabled();
+      const apiSwitch = screen.getByRole('switch', { name: '开放 API' });
+      expect(apiSwitch).toBeEnabled();
+      expect(apiSwitch).toBeChecked();
       expect(screen.getByLabelText('标题')).toBeDisabled();
+      expect(screen.queryByLabelText('数据源')).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '保存' }));
       await waitFor(() =>
         expect(dataModelsApi.updateSettingsDataModel).toHaveBeenCalledWith(
@@ -526,9 +525,11 @@ describe('Settings data models page', () => {
     expect(
       within(createDialog).getByText(/标题: 管理台展示名称/)
     ).toBeInTheDocument();
-    expect(within(createDialog).getByLabelText('状态说明')).toBeInTheDocument();
     expect(
-      within(createDialog).getByText(/disabled: 已停用，不进入运行面/)
+      within(createDialog).getByLabelText('开放 API说明')
+    ).toBeInTheDocument();
+    expect(
+      within(createDialog).getByText(/开启后该 Data Model 进入运行面 API 可用性判断/)
     ).toBeInTheDocument();
     const titleInput = within(createDialog).getByLabelText('标题');
     const codeInput = within(createDialog).getByLabelText('Code');
@@ -628,11 +629,17 @@ describe('Settings data models page', () => {
     );
     expect(within(editDialog).getByDisplayValue('Contacts')).toBeDisabled();
     expect(within(editDialog).getByDisplayValue('crm.contacts')).toBeDisabled();
+    const apiSwitch = within(editDialog).getByRole('switch', {
+      name: '开放 API'
+    });
+    expect(apiSwitch).toBeChecked();
+    expect(within(editDialog).queryByLabelText('数据源')).not.toBeInTheDocument();
+    fireEvent.click(apiSwitch);
     fireEvent.click(within(editDialog).getByRole('button', { name: '保存' }));
 
     await waitFor(() =>
       expect(onUpdate).toHaveBeenCalledWith(contactsModel, {
-        status: 'published'
+        status: 'draft'
       })
     );
   });

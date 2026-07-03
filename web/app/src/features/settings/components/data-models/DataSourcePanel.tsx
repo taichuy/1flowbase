@@ -18,6 +18,12 @@ import {
 import type { SettingsDataSourceInstance } from '../../api/data-models';
 import { i18nText } from '../../../../shared/i18n/text';
 
+function defaultApiPolicyLabel(source: SettingsDataSourceInstance) {
+  return source.default_data_model_status === 'published'
+    ? i18nText('settings', 'auto.default_api_open')
+    : i18nText('settings', 'auto.default_api_closed');
+}
+
 export function DataSourcePanel({
   sources,
   loading,
@@ -111,8 +117,7 @@ export function DataSourcePanel({
       render: (_, source) => (
         <Space size={8}>
           <Tag style={{ borderRadius: 6, margin: 0 }} color="default">
-            {i18nText('settings', 'auto.modeling')}
-            {source.default_data_model_status}
+            {defaultApiPolicyLabel(source)}
           </Tag>
         </Space>
       )
@@ -213,8 +218,7 @@ export function DataSourcePanel({
                     : source.status}
                 </Tag>
                 <Tag style={{ borderRadius: 6, margin: 0 }} color="default">
-                  {i18nText('settings', 'auto.modeling')}
-                  {source.default_data_model_status}
+                  {defaultApiPolicyLabel(source)}
                 </Tag>
               </Flex>
             </div>
