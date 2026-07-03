@@ -69,6 +69,7 @@
     "character_update_failed": "角色更新失败",
     "discovery_mode": "发现模式：",
     "api_exposed_fields": "暴露字段",
+    "api_status": "API 状态",
     "open_api": "开放 API",
     "default_open_api": "新建默认开放 API",
     "default_api_open": "默认开放 API",

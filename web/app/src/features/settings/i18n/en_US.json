@@ -69,6 +69,7 @@
     "character_update_failed": "Character update failed",
     "discovery_mode": "Discovery mode:",
     "api_exposed_fields": "Exposed fields",
+    "api_status": "API status",
     "open_api": "Open API",
     "default_open_api": "Open API by default for new models",
     "default_api_open": "API open by default",

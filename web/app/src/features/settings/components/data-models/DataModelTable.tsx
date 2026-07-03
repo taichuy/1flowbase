@@ -63,7 +63,7 @@ function getStatusTag(status: string) {
           style={{ borderRadius: 6, margin: 0 }}
           icon={<CheckCircleOutlined />}
         >
-          {i18nText('settings', 'auto.published')}
+          {i18nText('settings', 'auto.open_api')}
         </Tag>
       );
     case 'draft':
@@ -73,7 +73,7 @@ function getStatusTag(status: string) {
           style={{ borderRadius: 6, margin: 0 }}
           icon={<EditOutlined />}
         >
-          {i18nText('settings', 'auto.draft')}
+          {i18nText('settings', 'auto.closed')}
         </Tag>
       );
     case 'disabled':
@@ -182,7 +182,7 @@ export function DataModelTable({
       )
     },
     {
-      title: i18nText('settings', 'auto.status'),
+      title: i18nText('settings', 'auto.api_status'),
       dataIndex: 'status',
       key: 'status',
       width: 140,

@@ -63,8 +63,26 @@ describe('Settings data models page', () => {
         screen.getByRole('button', { name: '新建数据表' })
       ).toBeInTheDocument();
       expect(screen.getByText('数据表')).toBeInTheDocument();
+      expect(
+        screen.getByRole('columnheader', { name: 'API 状态' })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('columnheader', { name: '状态' })
+      ).not.toBeInTheDocument();
       expect(await screen.findByText('Contacts')).toBeInTheDocument();
       expect(screen.getByText('contacts')).toBeInTheDocument();
+      const contactsRow = screen
+        .getAllByRole('row')
+        .find((row) => within(row).queryByText('Contacts'));
+      expect(contactsRow).toBeInstanceOf(HTMLElement);
+      expect(
+        within(contactsRow as HTMLElement).getByText('开放 API')
+      ).toBeInTheDocument();
+      expect(
+        within(contactsRow as HTMLElement).queryByText(
+          i18nText('settings', 'auto.published')
+        )
+      ).not.toBeInTheDocument();
     },
     SLOW_SETTINGS_PAGE_TEST_TIMEOUT
   );
@@ -294,7 +312,7 @@ describe('Settings data models page', () => {
           name: '关闭 API 暴露'
         })
       ).not.toBeInTheDocument();
-      expect(screen.getByText('开放 API')).toBeInTheDocument();
+      expect(screen.getAllByText('开放 API').length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText('available')).not.toBeInTheDocument();
       const apiFieldsTable = await within(editorDialog).findByTestId(
         'data-model-api-fields-table'
@@ -440,10 +458,13 @@ describe('Settings data models page', () => {
         .find((row) => within(row).queryByText('Draft Orders'));
       expect(draftRow).toBeInstanceOf(HTMLElement);
       expect(
-        within(draftRow as HTMLElement).getAllByText(
+        within(draftRow as HTMLElement).getByText('关闭 API')
+      ).toBeInTheDocument();
+      expect(
+        within(draftRow as HTMLElement).queryByText(
           i18nText('settings', 'auto.draft')
-        ).length
-      ).toBeGreaterThanOrEqual(1);
+        )
+      ).not.toBeInTheDocument();
 
       const editorDialog = await openDataModelEditorByTitle('Draft Orders');
       fireEvent.click(screen.getByRole('tab', { name: 'API' }));
