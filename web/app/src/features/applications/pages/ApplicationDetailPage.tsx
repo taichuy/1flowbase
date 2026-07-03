@@ -24,6 +24,11 @@ const AgentFlowEditorPage = lazy(() =>
     default: module.AgentFlowEditorPage
   }))
 );
+const WorkflowEditorPage = lazy(() =>
+  import('../../workflow/pages/WorkflowEditorPage').then((module) => ({
+    default: module.WorkflowEditorPage
+  }))
+);
 const ApplicationLogsPage = lazy(() =>
   import('./ApplicationLogsPage').then((module) => ({
     default: module.ApplicationLogsPage
@@ -99,10 +104,9 @@ export function ApplicationDetailPage({
       isWorkflow ? (
         <div className="workflow-orchestration-page">
           <ApplicationSectionBoundary>
-            <AgentFlowEditorPage
+            <WorkflowEditorPage
               applicationId={applicationId}
               applicationName={application.name}
-              applicationType={application.application_type}
               workflowTriggerType={application.workflow_trigger_type}
             />
           </ApplicationSectionBoundary>
@@ -112,7 +116,6 @@ export function ApplicationDetailPage({
           <AgentFlowEditorPage
             applicationId={applicationId}
             applicationName={application.name}
-            applicationType={application.application_type}
           />
         </ApplicationSectionBoundary>
       )

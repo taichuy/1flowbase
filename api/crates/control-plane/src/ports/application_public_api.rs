@@ -72,6 +72,10 @@ pub trait WorkflowScheduleTriggerRepository: Send + Sync {
         application_id: Uuid,
     ) -> anyhow::Result<Option<WorkflowScheduleTriggerRecord>>;
 
+    async fn list_enabled_workflow_schedule_triggers(
+        &self,
+    ) -> anyhow::Result<Vec<WorkflowScheduleTriggerRecord>>;
+
     async fn replace_workflow_schedule_trigger(
         &self,
         input: &ReplaceWorkflowScheduleTriggerInput,

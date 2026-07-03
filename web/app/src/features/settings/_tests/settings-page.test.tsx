@@ -926,8 +926,10 @@ describe('SettingsPage', () => {
     expect(resizeHandle).toHaveAttribute('aria-valuenow', '960');
     const footer = within(dialog)
       .getByRole('button', { name: /保\s*存/ })
+      // eslint-disable-next-line testing-library/no-node-access
       .closest('.ant-drawer-footer');
     expect(footer).not.toBeNull();
+    // eslint-disable-next-line testing-library/no-node-access
     expect(footer?.querySelector('.ant-flex-justify-start')).not.toBeNull();
     const footerButtons = within(footer as HTMLElement).getAllByRole('button');
     expect(footerButtons.map((button) => button.textContent)).toEqual([

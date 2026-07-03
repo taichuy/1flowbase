@@ -11,6 +11,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { agentFlowRendererRegistry } from '../schema/agent-flow-renderer-registry';
 import { buildCommonConfigBlocks } from '../schema/node-schema-fragments';
 import { createAgentFlowNodeSchemaAdapter } from '../schema/node-schema-adapter';
+import { WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS } from '../../workflow/lib/picker-options';
 import { resolveAgentFlowNodeSchema } from '../schema/node-schema-registry';
 import { createNodeDocument } from '../lib/document/node-factory';
 import {
@@ -19,7 +20,6 @@ import {
 } from '../lib/node-definitions/contracts';
 import {
   BUILTIN_NODE_PICKER_OPTIONS,
-  WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,
   type NodePickerOption
 } from '../lib/plugin-node-definitions';
 
@@ -338,7 +338,7 @@ describe('agent-flow node schema registry', () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'section',
-          title: 'Input Parameters',
+          title: '输入参数',
           blocks: [
             expect.objectContaining({
               kind: 'field',
@@ -349,7 +349,7 @@ describe('agent-flow node schema registry', () => {
         }),
         expect.objectContaining({
           kind: 'section',
-          title: 'Sync Response',
+          title: '同步设置',
           blocks: [
             expect.objectContaining({
               kind: 'field',
@@ -370,7 +370,7 @@ describe('agent-flow node schema registry', () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'section',
-          title: 'Return Fields',
+          title: '返回字段',
           blocks: [
             expect.objectContaining({
               kind: 'field',
@@ -390,9 +390,40 @@ describe('agent-flow node schema registry', () => {
     expect(
       BUILTIN_NODE_PICKER_OPTIONS.map((option) => option.type)
     ).not.toEqual(expect.arrayContaining(['workflow_start', 'workflow_end']));
-    expect(
-      WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS.map((option) => option.type)
-    ).toEqual(['workflow_start', 'workflow_end']);
+
+    const workflowPickerTypes = WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS.map(
+      (option) => option.type
+    );
+
+    expect(workflowPickerTypes.slice(0, 2)).toEqual([
+      'workflow_start',
+      'workflow_end'
+    ]);
+    expect(workflowPickerTypes).not.toContain('start');
+    expect(workflowPickerTypes).not.toContain('answer');
+    expect(workflowPickerTypes).toEqual(
+      expect.arrayContaining([
+        'llm',
+        'knowledge_retrieval',
+        'question_classifier',
+        'if_else',
+        'code',
+        'template_transform',
+        'http_request',
+        'variable_assigner'
+      ])
+    );
+  });
+
+  test('reuses the AgentFlow general execution node set for workflow picker', () => {
+    const agentFlowGeneralTypes = BUILTIN_NODE_PICKER_OPTIONS.map(
+      (option) => option.type
+    ).filter((type) => type !== 'start' && type !== 'answer');
+    const workflowGeneralTypes = WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS.map(
+      (option) => option.type
+    ).filter((type) => type !== 'workflow_start' && type !== 'workflow_end');
+
+    expect(workflowGeneralTypes).toEqual(agentFlowGeneralTypes);
   });
 
   test('keeps Code on the main input, JavaScript source, and editable output flow', () => {

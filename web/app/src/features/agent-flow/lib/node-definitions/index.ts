@@ -1,6 +1,7 @@
 import type { FlowNodeType } from '@1flowbase/flow-schema';
 
 import { nodeDefinitionMeta } from './meta';
+import { getRegisteredNodeDefinition } from './registry';
 import { answerNodeDefinition } from './nodes/answer';
 import { codeNodeDefinition } from './nodes/code';
 import { dataModelNodeDefinitions } from './nodes/data-model';
@@ -81,7 +82,10 @@ export function getSchemaConfigSections(nodeType: FlowNodeType) {
 }
 
 export function getNodeDefinitionMeta(nodeType: FlowNodeType) {
-  return nodeDefinitionMeta[nodeType];
+  return (
+    getRegisteredNodeDefinition(nodeType)?.meta ??
+    nodeDefinitionMeta[nodeType as keyof typeof nodeDefinitionMeta]
+  );
 }
 
 export function getNodeDefinitionSections(nodeType: FlowNodeType) {

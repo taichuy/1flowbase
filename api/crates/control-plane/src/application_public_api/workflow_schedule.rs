@@ -142,6 +142,67 @@ where
             .await
     }
 
+    /// Scans enabled schedule triggers and dispatches every trigger whose
+    /// cron expression matches `now_utc` in its configured timezone. The
+    /// scheduled minute is used as the idempotency anchor, so repeated ticks
+    /// within the same minute do not enqueue duplicate runs.
+    pub async fn dispatch_due_schedules(
+        &self,
+        now_utc: OffsetDateTime,
+        task_queue: Option<&dyn TaskQueue>,
+    ) -> Result<Vec<WorkflowScheduleTickEntry>>
+    where
+        R: ApplicationPublicationRepository
+            + ApplicationCompiledPlanRepository
+            + ApplicationPublishedFlowRunRepository
+            + Clone,
+    {
+        let scheduled_at = now_utc
+            .replace_second(0)
+            .expect("zero seconds is always valid")
+            .replace_nanosecond(0)
+            .expect("zero nanoseconds is always valid");
+        let triggers = self
+            .repository
+            .list_enabled_workflow_schedule_triggers()
+            .await?;
+        let mut entries = Vec::new();
+
+        for trigger in triggers {
+            let Some(local) =
+                resolve_workflow_schedule_local_time(&trigger.timezone, scheduled_at)
+            else {
+                entries.push(WorkflowScheduleTickEntry {
+                    application_id: trigger.application_id,
+                    outcome: WorkflowScheduleDispatchOutcome::Skipped {
+                        reason: "invalid_timezone",
+                    },
+                });
+                continue;
+            };
+
+            if !workflow_schedule_cron_matches(&trigger.cron, local) {
+                continue;
+            }
+
+            let outcome = self
+                .dispatch_due_schedule(
+                    DispatchWorkflowScheduleCommand {
+                        application_id: trigger.application_id,
+                        scheduled_at,
+                    },
+                    task_queue,
+                )
+                .await?;
+            entries.push(WorkflowScheduleTickEntry {
+                application_id: trigger.application_id,
+                outcome,
+            });
+        }
+
+        Ok(entries)
+    }
+
     pub async fn dispatch_due_schedule(
         &self,
         command: DispatchWorkflowScheduleCommand,
@@ -164,6 +225,16 @@ where
         };
         if !trigger.enabled {
             return Ok(WorkflowScheduleDispatchOutcome::Skipped { reason: "disabled" });
+        }
+        let application = self
+            .repository
+            .get_application(trigger.workspace_id, trigger.application_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+        if application.workflow_trigger_type != Some(domain::WorkflowTriggerType::Schedule) {
+            return Ok(WorkflowScheduleDispatchOutcome::Skipped {
+                reason: "trigger_type_mismatch",
+            });
         }
         let Some(publication) = self
             .repository
@@ -285,6 +356,80 @@ fn schedule_idempotency_key(application_id: Uuid, scheduled_at: OffsetDateTime) 
         application_id,
         scheduled_at.unix_timestamp()
     )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkflowScheduleTickEntry {
+    pub application_id: Uuid,
+    pub outcome: WorkflowScheduleDispatchOutcome,
+}
+
+/// Resolves the wall-clock time for a trigger timezone; `None` means the
+/// timezone cannot be resolved and the trigger must be skipped.
+pub fn resolve_workflow_schedule_local_time(
+    timezone: &str,
+    now_utc: OffsetDateTime,
+) -> Option<OffsetDateTime> {
+    use time_tz::{timezones, OffsetDateTimeExt};
+
+    let tz = timezones::get_by_name(timezone)?;
+    Some(now_utc.to_timezone(tz))
+}
+
+/// Matches a five-field cron expression (minute hour day-of-month month
+/// day-of-week) against a local wall-clock minute. Supports `*`, lists,
+/// ranges and step values, mirroring `validate_schedule_cron`.
+pub fn workflow_schedule_cron_matches(cron: &str, local: OffsetDateTime) -> bool {
+    let fields = cron.split_whitespace().collect::<Vec<_>>();
+    if fields.len() != 5 {
+        return false;
+    }
+
+    let minute = i64::from(local.minute());
+    let hour = i64::from(local.hour());
+    let day_of_month = i64::from(local.day());
+    let month = i64::from(u8::from(local.month()));
+    let day_of_week = i64::from(local.weekday().number_days_from_sunday());
+
+    let minute_matches = cron_field_matches(fields[0], minute, 0, 59);
+    let hour_matches = cron_field_matches(fields[1], hour, 0, 23);
+    let day_of_month_matches = cron_field_matches(fields[2], day_of_month, 1, 31);
+    let month_matches = cron_field_matches(fields[3], month, 1, 12);
+    // Both 0 and 7 mean Sunday in common cron dialects.
+    let day_of_week_matches = cron_field_matches(fields[4], day_of_week, 0, 7)
+        || (day_of_week == 0 && cron_field_matches(fields[4], 7, 0, 7));
+
+    minute_matches && hour_matches && day_of_month_matches && month_matches && day_of_week_matches
+}
+
+fn cron_field_matches(field: &str, value: i64, min: i64, max: i64) -> bool {
+    field.split(',').any(|part| {
+        let (range, step) = match part.split_once('/') {
+            Some((range, step)) => match step.parse::<i64>() {
+                Ok(step) if step > 0 => (range, step),
+                _ => return false,
+            },
+            None => (part, 1),
+        };
+
+        let (start, end) = if range == "*" {
+            (min, max)
+        } else if let Some((start, end)) = range.split_once('-') {
+            match (start.parse::<i64>(), end.parse::<i64>()) {
+                (Ok(start), Ok(end)) if start <= end => (start, end),
+                _ => return false,
+            }
+        } else {
+            match range.parse::<i64>() {
+                // A bare value with a step (e.g. `9/2`) extends to the field max.
+                Ok(start) if step > 1 => (start, max),
+                Ok(start) => (start, start),
+                Err(_) => return false,
+            }
+        };
+
+        value >= start && value <= end && (value - start) % step == 0
+    })
 }
 
 fn validate_schedule_cron(cron: &str) -> Result<()> {

@@ -5,59 +5,8 @@ import {
   WORKFLOW_EXTENSION_PARAMETER_SOURCES,
   parseWorkflowScheduleInputPayload,
   type WorkflowExtensionParameterSource,
-  type WorkflowExtensionTargetOption,
-  type WorkflowTriggerType
-} from '../../lib/workflow-trigger-config';
-
-interface WorkflowTriggerFormFieldsProps {
-  isExtensionTrigger: boolean;
-  isScheduleTrigger: boolean;
-  extensionTargetOptions?: WorkflowExtensionTargetOption[];
-  triggerTypes?: WorkflowTriggerType[];
-  t: (key: string, options?: Record<string, string>) => string;
-}
-
-export function WorkflowTriggerTypeField({
-  triggerTypes = ['extension', 'schedule'],
-  t
-}: {
-  triggerTypes?: WorkflowTriggerType[];
-  t: (key: string) => string;
-}) {
-  return (
-    <Form.Item label={t('auto.workflow_trigger_type')} name="trigger_type">
-      <Select<WorkflowTriggerType>
-        options={triggerTypes.map((type) => ({
-          value: type,
-          label: t(workflowTriggerTypeLabelKey(type))
-        }))}
-      />
-    </Form.Item>
-  );
-}
-
-export function WorkflowTriggerFormFields({
-  isExtensionTrigger,
-  isScheduleTrigger,
-  extensionTargetOptions = [],
-  triggerTypes,
-  t
-}: WorkflowTriggerFormFieldsProps) {
-  return (
-    <>
-      <WorkflowTriggerTypeField triggerTypes={triggerTypes} t={t} />
-
-      {isExtensionTrigger ? (
-        <WorkflowExtensionTriggerFields
-          extensionTargetOptions={extensionTargetOptions}
-          t={t}
-        />
-      ) : null}
-
-      {isScheduleTrigger ? <WorkflowScheduleTriggerFields t={t} /> : null}
-    </>
-  );
-}
+  type WorkflowExtensionTargetOption
+} from '../lib/trigger-config';
 
 export function WorkflowExtensionTriggerFields({
   extensionTargetOptions = [],
@@ -304,16 +253,5 @@ function workflowParameterSourceLabelKey(
       return 'auto.workflow_parameter_source_form';
     case 'body':
       return 'auto.workflow_parameter_source_body';
-  }
-}
-
-function workflowTriggerTypeLabelKey(type: WorkflowTriggerType) {
-  switch (type) {
-    case 'extension':
-      return 'auto.workflow_trigger_type_extension';
-    case 'schedule':
-      return 'auto.workflow_trigger_type_schedule';
-    case 'manual':
-      return 'auto.workflow_trigger_type_manual';
   }
 }

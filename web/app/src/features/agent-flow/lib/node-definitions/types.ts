@@ -67,4 +67,7 @@ export interface NodeDefinitionMeta {
 }
 
 export type NodeDefinitionMap = Partial<Record<FlowNodeType, NodeDefinition>>;
-export type NodeDefinitionMetaMap = Record<FlowNodeType, NodeDefinitionMeta>;
+export type NodeDefinitionMetaMap = Record<
+  Exclude<FlowNodeType, 'workflow_start' | 'workflow_end'>,
+  NodeDefinitionMeta
+>;

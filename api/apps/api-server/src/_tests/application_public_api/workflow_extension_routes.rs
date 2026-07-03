@@ -57,6 +57,46 @@ async fn wait_for_flow_run_status(
     panic!("expected flow run {flow_run_id} status {expected_status}, last status {last_status}");
 }
 
+async fn create_workflow_application_with_trigger(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    name: &str,
+    workflow_trigger_type: &str,
+) -> String {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_type": "workflow",
+                        "workflow_trigger_type": workflow_trigger_type,
+                        "name": name,
+                        "description": "workflow extension route test",
+                        "icon": null,
+                        "icon_type": null,
+                        "icon_background": null
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    response_json(response).await["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
 async fn create_workflow_application(app: &Router, cookie: &str, csrf: &str, name: &str) -> String {
     let response = app
         .clone()
@@ -188,10 +228,7 @@ async fn publish_workflow_extension_with_enabled(
     cookie: &str,
     csrf: &str,
     application_id: &str,
-    slug: &str,
-    response_mode: &str,
-    parameters: Value,
-    api_enabled: bool,
+    options: WorkflowExtensionPublishOptions,
 ) -> Value {
     let response = app
         .clone()
@@ -221,13 +258,13 @@ async fn publish_workflow_extension_with_enabled(
                                 "error_selector": null
                             },
                             "extension": {
-                                "slug": slug,
+                                "slug": options.slug,
                                 "method": "POST",
-                                "response_mode": response_mode,
-                                "parameters": parameters
+                                "response_mode": options.response_mode,
+                                "parameters": options.parameters
                             }
                         },
-                        "api_enabled": api_enabled
+                        "api_enabled": options.api_enabled
                     })
                     .to_string(),
                 ))
@@ -238,6 +275,43 @@ async fn publish_workflow_extension_with_enabled(
 
     assert_eq!(response.status(), StatusCode::CREATED);
     response_json(response).await
+}
+
+struct WorkflowExtensionPublishOptions {
+    slug: String,
+    response_mode: String,
+    parameters: Value,
+    api_enabled: bool,
+}
+
+impl WorkflowExtensionPublishOptions {
+    fn new(slug: &str, response_mode: &str, parameters: Value, api_enabled: bool) -> Self {
+        Self {
+            slug: slug.to_string(),
+            response_mode: response_mode.to_string(),
+            parameters,
+            api_enabled,
+        }
+    }
+}
+
+async fn publish_workflow_extension(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    application_id: &str,
+    slug: &str,
+    response_mode: &str,
+    parameters: Value,
+) -> Value {
+    publish_workflow_extension_with_enabled(
+        app,
+        cookie,
+        csrf,
+        application_id,
+        WorkflowExtensionPublishOptions::new(slug, response_mode, parameters, true),
+    )
+    .await
 }
 
 fn workflow_document(flow_id: &str) -> Value {
@@ -392,10 +466,7 @@ async fn setup_workflow_extension_app_with_enabled(
         &cookie,
         &csrf,
         &application_id,
-        slug,
-        response_mode,
-        parameters,
-        api_enabled,
+        WorkflowExtensionPublishOptions::new(slug, response_mode, parameters, api_enabled),
     )
     .await;
     (token, publication)
@@ -457,7 +528,7 @@ async fn workflow_extension_sync_route_returns_accepted_when_run_waits_for_human
     )
     .await;
     let token = create_application_key(&app, &cookie, &csrf, &application_id).await;
-    publish_workflow_extension_with_enabled(
+    publish_workflow_extension(
         &app,
         &cookie,
         &csrf,
@@ -471,7 +542,6 @@ async fn workflow_extension_sync_route_returns_accepted_when_run_waits_for_human
                 "target": "node-workflow-start.customer_id"
             }
         ]),
-        true,
     )
     .await;
 
@@ -738,4 +808,178 @@ async fn workflow_extension_openapi_registers_concrete_slug_operation() {
             ["ticket_id"]["type"],
         json!("string")
     );
+}
+
+#[tokio::test]
+async fn workflow_schedule_tick_creates_and_executes_async_run() {
+    let (app, state) = test_app_with_state().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_id = create_workflow_application_with_trigger(
+        &app,
+        &cookie,
+        &csrf,
+        "Tick Scheduled Workflow",
+        "schedule",
+    )
+    .await;
+    publish_workflow_extension(
+        &app,
+        &cookie,
+        &csrf,
+        &application_id,
+        "tick-scheduled-workflow",
+        "async",
+        json!([]),
+    )
+    .await;
+
+    let replace_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/workflow-schedule-trigger"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "enabled": true,
+                        "cron": "* * * * *",
+                        "timezone": "UTC",
+                        "input_payload": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replace_response.status(), StatusCode::OK);
+
+    let service = control_plane::application_public_api::workflow_schedule::WorkflowScheduleTriggerService::new(
+        state.store.clone(),
+    );
+    let task_queue = state.infrastructure.registered_task_queue();
+    let entries = service
+        .dispatch_due_schedules(time::OffsetDateTime::now_utc(), task_queue.as_deref())
+        .await
+        .unwrap();
+
+    let dispatched = entries
+        .iter()
+        .filter_map(|entry| match &entry.outcome {
+            control_plane::application_public_api::workflow_schedule::WorkflowScheduleDispatchOutcome::Dispatched(result) => Some(result.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(dispatched.len(), 1);
+
+    let outcome = crate::workers::workflow_schedule::consume_one_workflow_schedule_run(
+        state.clone(),
+        "workflow-schedule-tick-test",
+        time::Duration::seconds(30),
+    )
+    .await
+    .unwrap();
+    let flow_run_id = match outcome {
+        crate::workers::workflow_schedule::WorkflowScheduleWorkerOutcome::Executed {
+            flow_run_id,
+            ..
+        } => flow_run_id,
+        other => panic!("expected schedule run execution, got {other:?}"),
+    };
+    assert_eq!(flow_run_id, dispatched[0].run_id);
+
+    wait_for_flow_run_status(&state, flow_run_id, "succeeded").await;
+}
+
+#[tokio::test]
+async fn workflow_extension_route_rejects_schedule_trigger_application() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_id = create_workflow_application_with_trigger(
+        &app,
+        &cookie,
+        &csrf,
+        "schedule-typed-extension",
+        "schedule",
+    )
+    .await;
+    save_workflow_document(&app, &cookie, &csrf, &application_id).await;
+    let token = create_application_key(&app, &cookie, &csrf, &application_id).await;
+    publish_workflow_extension(
+        &app,
+        &cookie,
+        &csrf,
+        &application_id,
+        "schedule-typed-extension",
+        "async",
+        json!([]),
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/ex/schedule-typed-extension")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        response_json(response).await["code"],
+        json!("workflow_trigger_type_mismatch")
+    );
+}
+
+#[tokio::test]
+async fn workflow_extension_openapi_excludes_schedule_trigger_applications() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_id = create_workflow_application_with_trigger(
+        &app,
+        &cookie,
+        &csrf,
+        "schedule-typed-docs",
+        "schedule",
+    )
+    .await;
+    save_workflow_document(&app, &cookie, &csrf, &application_id).await;
+    publish_workflow_extension(
+        &app,
+        &cookie,
+        &csrf,
+        &application_id,
+        "schedule-typed-docs",
+        "async",
+        json!([]),
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response_json(response).await;
+    assert!(payload["paths"]
+        .as_object()
+        .unwrap()
+        .get("/api/ex/schedule-typed-docs")
+        .is_none());
 }

@@ -87,13 +87,13 @@ async fn live_run_failure_exposes_failed_llm_text_to_answer_contract() {
 }
 
 #[tokio::test]
-async fn start_node_debug_preview_rejects_ambiguous_stable_provider_model_binding() {
+async fn start_node_debug_preview_uses_failover_queue_for_multi_instance_provider_model_binding() {
     let service = OrchestrationRuntimeService::for_tests();
     let seeded = service
         .seed_application_with_multi_instance_provider_flow("Support Agent")
         .await;
 
-    let error = service
+    let outcome = service
         .start_node_debug_preview(StartNodeDebugPreviewCommand {
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -105,12 +105,17 @@ async fn start_node_debug_preview_rejects_ambiguous_stable_provider_model_bindin
             debug_session_id: None,
         })
         .await
-        .unwrap_err();
+        .unwrap();
 
-    assert!(matches!(
-        error.downcast_ref::<ControlPlaneError>(),
-        Some(ControlPlaneError::InvalidInput("provider_code"))
-    ));
+    assert_eq!(outcome.flow_run.status, domain::FlowRunStatus::Succeeded);
+    assert_eq!(outcome.node_run.status, domain::NodeRunStatus::Succeeded);
+    assert_eq!(
+        outcome.preview_payload["metrics_payload"]["route"]["routing_mode"],
+        serde_json::json!("failover_queue")
+    );
+    assert!(outcome.preview_payload["metrics_payload"]["attempts"]
+        .as_array()
+        .is_some_and(|attempts| !attempts.is_empty()));
 }
 
 #[tokio::test]

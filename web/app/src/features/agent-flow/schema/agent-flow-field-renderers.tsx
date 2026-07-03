@@ -36,7 +36,6 @@ import { LlmPromptMessagesField } from '../components/detail/fields/LlmPromptMes
 import { LlmResponseFormatField } from '../components/detail/fields/LlmResponseFormatField';
 import { StartInputFieldsField } from '../components/detail/fields/StartInputFieldsField';
 import { StartModelListField } from '../components/detail/fields/StartModelListField';
-import { WorkflowTriggerConfigField } from '../components/detail/fields/WorkflowTriggerConfigField';
 import { HttpRequestBodyField } from '../components/detail/fields/HttpRequestBodyField';
 import { HttpRequestCurlImportField } from '../components/detail/fields/HttpRequestCurlImportField';
 import { HttpRequestKeyValuesField } from '../components/detail/fields/HttpRequestKeyValuesField';
@@ -842,7 +841,6 @@ export const agentFlowFieldRenderers = {
   output_contract_definition: renderOutputContractDefinitionField,
   start_input_fields: renderStartInputFieldsField,
   start_model_list: renderStartModelListField,
-  workflow_trigger_config: WorkflowTriggerConfigField,
   http_request_endpoint: renderHttpRequestEndpointField,
   http_request_key_values: renderHttpRequestKeyValuesField,
   http_request_body: renderHttpRequestBodyField,

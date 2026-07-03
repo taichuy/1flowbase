@@ -63,7 +63,8 @@ describe('vite config', () => {
       'lexical',
       'react-markdown',
       'remark-breaks',
-      'remark-gfm'
+      'remark-gfm',
+      'vditor'
     ];
 
     expect(source).toContain('optimizeDeps');

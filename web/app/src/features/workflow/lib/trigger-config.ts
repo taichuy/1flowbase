@@ -4,7 +4,7 @@ import type {
   ApplicationApiMapping,
   WorkflowScheduleTrigger,
   WorkflowScheduleTriggerInput
-} from '../api/public-api';
+} from '../../applications/api/public-api';
 import { getStartInputFields } from '../../agent-flow/lib/variables/start-node-variables';
 
 export type WorkflowTriggerType = 'extension' | 'schedule' | 'manual';
@@ -114,23 +114,6 @@ export function createDefaultWorkflowApiMapping(
   };
 }
 
-export function createWorkflowApiMappingWithoutExtension(): ApplicationApiMapping {
-  return {
-    input: {
-      query_target: 'node-workflow-start.query',
-      model_target: null,
-      inputs_target: 'node-workflow-start.inputs',
-      history_target: null,
-      attachments_target: null
-    },
-    output: {
-      answer_selector: null,
-      usage_selector: null,
-      files_selector: null,
-      error_selector: null
-    }
-  };
-}
 
 export function createWorkflowScheduleTriggerInput(
   values: Pick<
@@ -151,14 +134,20 @@ export function createWorkflowScheduleTriggerInput(
   };
 }
 
-export function createWorkflowTriggerValuesFromMapping(
-  mapping: ApplicationApiMapping | null | undefined
-): WorkflowTriggerFormValues {
+export function createWorkflowTriggerValuesFromContext({
+  triggerType,
+  mapping,
+  schedule
+}: {
+  triggerType: WorkflowTriggerType;
+  mapping: ApplicationApiMapping | null | undefined;
+  schedule: WorkflowScheduleTrigger | null | undefined;
+}): WorkflowTriggerFormValues {
   const extension = mapping?.extension;
 
   return {
     ...DEFAULT_WORKFLOW_TRIGGER_VALUES,
-    trigger_type: extension ? 'extension' : 'schedule',
+    trigger_type: triggerType,
     extension_slug: extension?.slug ?? '',
     extension_method: extension?.method ?? 'POST',
     extension_response_mode: extension?.response_mode ?? 'sync',
@@ -171,24 +160,7 @@ export function createWorkflowTriggerValuesFromMapping(
           }))
         : DEFAULT_WORKFLOW_TRIGGER_VALUES.extension_parameters.map(
             (parameter) => ({ ...parameter })
-          )
-  };
-}
-
-export function createWorkflowTriggerValuesFromContext({
-  triggerType,
-  mapping,
-  schedule
-}: {
-  triggerType: WorkflowTriggerType;
-  mapping: ApplicationApiMapping | null | undefined;
-  schedule: WorkflowScheduleTrigger | null | undefined;
-}): WorkflowTriggerFormValues {
-  const extensionValues = createWorkflowTriggerValuesFromMapping(mapping);
-
-  return {
-    ...extensionValues,
-    trigger_type: triggerType,
+          ),
     schedule_enabled:
       schedule?.enabled ?? DEFAULT_WORKFLOW_TRIGGER_VALUES.schedule_enabled,
     schedule_cron:

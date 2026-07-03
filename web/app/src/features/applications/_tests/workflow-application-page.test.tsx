@@ -47,7 +47,7 @@ vi.mock('../../../shared/ui/section-page-layout/SectionPageLayout', () => ({
   )
 }));
 
-vi.mock('../../agent-flow/pages/AgentFlowEditorPage', async () => {
+vi.mock('../../workflow/pages/WorkflowEditorPage', async () => {
   const { createDefaultWorkflowDocument } =
     await import('@1flowbase/flow-schema');
   const { AgentFlowEditorStoreProvider } =
@@ -68,15 +68,12 @@ vi.mock('../../agent-flow/pages/AgentFlowEditorPage', async () => {
   }
 
   return {
-    AgentFlowEditorPage: ({
-      workflowTriggerType,
-      topSlot
+    WorkflowEditorPage: ({
+      workflowTriggerType
     }: {
       workflowTriggerType?: string | null;
-      topSlot?: ReactNode;
     }) => (
       <AgentFlowEditorStoreProvider initialState={createInitialState()}>
-        {topSlot}
         <div>Workflow trigger type: {workflowTriggerType}</div>
         <div>Workflow editor shell</div>
       </AgentFlowEditorStoreProvider>

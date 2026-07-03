@@ -358,6 +358,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     .reconcile_all_installations()
     .await?;
     load_host_extensions_at_startup(&state).await?;
+    crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());
 
     Ok(app_with_state_and_config(state, config))
 }

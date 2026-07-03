@@ -43,8 +43,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             "application.view.all",
             "application.create.all",
         ]);
-        let runtime_engine =
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests());
+        let runtime_engine = runtime_engine_for_file_storage_tests();
         seed_default_file_storage(&repository);
 
         Self::new(
@@ -621,6 +620,39 @@ fn seed_default_file_storage(repository: &InMemoryOrchestrationRuntimeRepository
     };
 
     repository.seed_file_storage(storage, file_table);
+}
+
+fn runtime_engine_for_file_storage_tests(
+) -> std::sync::Arc<runtime_core::runtime_engine::RuntimeEngine> {
+    let model = repository::test_data_model_definition();
+    std::sync::Arc::new(
+        runtime_core::runtime_engine::RuntimeEngine::for_tests_with_models(vec![
+            runtime_metadata_from_model_definition(&model),
+        ]),
+    )
+}
+
+fn runtime_metadata_from_model_definition(
+    model: &domain::ModelDefinitionRecord,
+) -> runtime_core::model_metadata::ModelMetadata {
+    runtime_core::model_metadata::ModelMetadata {
+        model_id: model.id,
+        model_code: model.code.clone(),
+        status: model.status,
+        scope_kind: model.scope_kind,
+        scope_id: model.scope_id,
+        data_source_instance_id: model.data_source_instance_id,
+        source_kind: model.source_kind,
+        external_resource_key: model.external_resource_key.clone(),
+        physical_table_name: model.physical_table_name.clone(),
+        scope_column_name: "scope_id".into(),
+        fields: model.fields.clone(),
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
+        resource: runtime_core::resource_descriptor::ResourceDescriptor::runtime_model(
+            &model.code,
+            model.scope_kind,
+        ),
+    }
 }
 
 fn build_ready_provider_flow_document(flow_id: Uuid, _provider_instance_id: Uuid) -> Value {

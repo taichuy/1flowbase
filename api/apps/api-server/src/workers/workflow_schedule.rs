@@ -2,13 +2,18 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use control_plane::{
-    application_public_api::workflow_schedule::WORKFLOW_SCHEDULE_RUN_QUEUE,
+    application_public_api::workflow_schedule::{
+        WorkflowScheduleTriggerService, WORKFLOW_SCHEDULE_RUN_QUEUE,
+    },
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
     ports::TaskQueue,
 };
 use serde::Deserialize;
+use std::time::Duration as StdDuration;
+
 use time::Duration;
-use tracing::error;
+use time::OffsetDateTime;
+use tracing::{debug, error};
 use uuid::Uuid;
 
 use crate::{
@@ -132,5 +137,78 @@ async fn acknowledge_workflow_schedule_task(
         Ok(())
     } else {
         Err(anyhow!("workflow schedule task acknowledgement failed"))
+    }
+}
+
+const WORKFLOW_SCHEDULE_WORKER_ID: &str = "workflow-schedule-worker";
+const WORKFLOW_SCHEDULE_VISIBILITY_TIMEOUT: Duration = Duration::minutes(5);
+const WORKFLOW_SCHEDULE_TICK_INTERVAL: StdDuration = StdDuration::from_secs(60);
+const WORKFLOW_SCHEDULE_IDLE_SLEEP: StdDuration = StdDuration::from_secs(1);
+
+/// Wires the workflow schedule trigger into the running server: one loop
+/// scans due cron schedules every minute, the other consumes enqueued
+/// schedule runs. Loop failures are logged and retried on the next tick so a
+/// transient error never kills the scheduler.
+pub fn spawn_workflow_schedule_loops(state: Arc<ApiState>) {
+    tokio::spawn(run_workflow_schedule_dispatch_loop(state.clone()));
+    tokio::spawn(run_workflow_schedule_worker_loop(state));
+}
+
+async fn run_workflow_schedule_dispatch_loop(state: Arc<ApiState>) {
+    let mut interval = tokio::time::interval(WORKFLOW_SCHEDULE_TICK_INTERVAL);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    loop {
+        interval.tick().await;
+        let task_queue = state.infrastructure.registered_task_queue();
+        let service = WorkflowScheduleTriggerService::new(state.store.clone());
+        match service
+            .dispatch_due_schedules(OffsetDateTime::now_utc(), task_queue.as_deref())
+            .await
+        {
+            Ok(entries) if entries.is_empty() => {}
+            Ok(entries) => {
+                for entry in entries {
+                    debug!(
+                        application_id = %entry.application_id,
+                        outcome = ?entry.outcome,
+                        "workflow schedule tick outcome"
+                    );
+                }
+            }
+            Err(dispatch_error) => {
+                error!(
+                    error = %dispatch_error,
+                    "workflow schedule dispatch tick failed"
+                );
+            }
+        }
+    }
+}
+
+async fn run_workflow_schedule_worker_loop(state: Arc<ApiState>) {
+    loop {
+        match consume_one_workflow_schedule_run(
+            state.clone(),
+            WORKFLOW_SCHEDULE_WORKER_ID,
+            WORKFLOW_SCHEDULE_VISIBILITY_TIMEOUT,
+        )
+        .await
+        {
+            Ok(
+                WorkflowScheduleWorkerOutcome::NoTask
+                | WorkflowScheduleWorkerOutcome::QueueUnavailable,
+            ) => {
+                tokio::time::sleep(WORKFLOW_SCHEDULE_IDLE_SLEEP).await;
+            }
+            Ok(_) => {}
+            Err(worker_error) => {
+                error!(
+                    error = %worker_error,
+                    "workflow schedule worker loop failed"
+                );
+                tokio::time::sleep(WORKFLOW_SCHEDULE_IDLE_SLEEP).await;
+            }
+        }
     }
 }

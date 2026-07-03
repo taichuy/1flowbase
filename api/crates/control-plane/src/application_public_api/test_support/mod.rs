@@ -76,6 +76,22 @@ impl ApplicationPublicApiTestRepository {
         repository
     }
 
+    fn set_workflow_trigger_type(
+        &self,
+        application_id: Uuid,
+        trigger_type: domain::WorkflowTriggerType,
+    ) {
+        if let Some(application) = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .applications
+            .get_mut(&application_id)
+        {
+            application.workflow_trigger_type = Some(trigger_type);
+        }
+    }
+
     fn seed_application_with_type(
         &self,
         actor_user_id: Uuid,
@@ -211,6 +227,15 @@ impl ApplicationPublicApiTestHarness {
             domain::ApplicationType::Workflow,
         )
     }
+
+    pub fn set_workflow_trigger_type(
+        &self,
+        application_id: Uuid,
+        trigger_type: domain::WorkflowTriggerType,
+    ) {
+        self.repository
+            .set_workflow_trigger_type(application_id, trigger_type);
+    }
 }
 
 #[derive(Clone, Default)]
@@ -316,6 +341,22 @@ impl WorkflowScheduleTriggerRepository for ApplicationPublicApiTestRepository {
             .workflow_schedule_triggers
             .get(&application_id)
             .cloned())
+    }
+
+    async fn list_enabled_workflow_schedule_triggers(
+        &self,
+    ) -> Result<Vec<workflow_schedule::WorkflowScheduleTriggerRecord>> {
+        let mut triggers = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .workflow_schedule_triggers
+            .values()
+            .filter(|trigger| trigger.enabled)
+            .cloned()
+            .collect::<Vec<_>>();
+        triggers.sort_by_key(|trigger| trigger.application_id);
+        Ok(triggers)
     }
 
     async fn replace_workflow_schedule_trigger(

@@ -49,6 +49,7 @@ pub enum WorkflowExtensionRunError {
     ApplicationNotPublished,
     Forbidden,
     MethodNotAllowed,
+    TriggerTypeMismatch,
     InvalidMapping,
 }
 
@@ -112,6 +113,15 @@ where
         }
         if publication.application_id != actor.application_id {
             return Err(WorkflowExtensionRunError::Forbidden);
+        }
+        let application = self
+            .repository
+            .get_application(actor.workspace_id, actor.application_id)
+            .await
+            .map_err(|_| WorkflowExtensionRunError::ExtensionNotFound)?
+            .ok_or(WorkflowExtensionRunError::ExtensionNotFound)?;
+        if application.workflow_trigger_type != Some(domain::WorkflowTriggerType::Extension) {
+            return Err(WorkflowExtensionRunError::TriggerTypeMismatch);
         }
         let extension = publication
             .mapping_snapshot

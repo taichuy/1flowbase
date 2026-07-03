@@ -1,15 +1,28 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Form, Input, Radio, Space } from 'antd';
+import { Alert, Button, Form, Input, Radio, Select, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 
+import type { ConsoleWorkflowTriggerType } from '@1flowbase/api-client';
 import { SchemaModalPanel } from '../../../shared/schema-ui/overlay-shell/SchemaModalPanel';
 import { applicationsQueryKey, createApplication } from '../api/applications';
-import { WorkflowTriggerTypeField } from './workflow/WorkflowTriggerFormFields';
-import {
-  DEFAULT_WORKFLOW_TRIGGER_VALUES,
-  WORKFLOW_TRIGGER_TYPES,
-  type WorkflowTriggerType
-} from '../lib/workflow-trigger-config';
+
+const WORKFLOW_TRIGGER_TYPE_OPTIONS: ConsoleWorkflowTriggerType[] = [
+  'extension',
+  'schedule',
+  'manual'
+];
+const DEFAULT_WORKFLOW_TRIGGER_TYPE: ConsoleWorkflowTriggerType = 'extension';
+
+function workflowTriggerTypeLabelKey(type: ConsoleWorkflowTriggerType) {
+  switch (type) {
+    case 'extension':
+      return 'auto.workflow_trigger_type_extension';
+    case 'schedule':
+      return 'auto.workflow_trigger_type_schedule';
+    case 'manual':
+      return 'auto.workflow_trigger_type_manual';
+  }
+}
 
 interface ApplicationCreateModalProps {
   open: boolean;
@@ -22,7 +35,7 @@ interface ApplicationCreateFormValues {
   application_type: 'agent_flow' | 'workflow';
   name: string;
   description: string;
-  trigger_type: WorkflowTriggerType;
+  trigger_type: ConsoleWorkflowTriggerType;
 }
 
 const applicationCreateShell = {
@@ -38,6 +51,7 @@ export function ApplicationCreateModal({
   onCreated
 }: ApplicationCreateModalProps) {
   const { t } = useTranslation('applications');
+  const { t: workflowT } = useTranslation('workflow');
   const queryClient = useQueryClient();
   const [form] = Form.useForm<ApplicationCreateFormValues>();
   const mutation = useMutation({
@@ -83,7 +97,7 @@ export function ApplicationCreateModal({
           application_type: 'agent_flow',
           name: '',
           description: '',
-          trigger_type: DEFAULT_WORKFLOW_TRIGGER_VALUES.trigger_type
+          trigger_type: DEFAULT_WORKFLOW_TRIGGER_TYPE
         }}
         onFinish={(values) => mutation.mutate(values)}
       >
@@ -109,10 +123,17 @@ export function ApplicationCreateModal({
         </Form.Item>
 
         {isWorkflow ? (
-          <WorkflowTriggerTypeField
-            triggerTypes={WORKFLOW_TRIGGER_TYPES}
-            t={t}
-          />
+          <Form.Item
+            label={workflowT('auto.workflow_trigger_type')}
+            name="trigger_type"
+          >
+            <Select<ConsoleWorkflowTriggerType>
+              options={WORKFLOW_TRIGGER_TYPE_OPTIONS.map((type) => ({
+                value: type,
+                label: workflowT(workflowTriggerTypeLabelKey(type))
+              }))}
+            />
+          </Form.Item>
         ) : null}
 
         <Form.Item

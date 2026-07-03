@@ -38,6 +38,8 @@ import sharedEnUS from './resources/en_US.json';
 import sharedUiZhHans from '../../shared/ui/i18n/zh_Hans.json';
 import sharedUiEnUS from '../../shared/ui/i18n/en_US.json';
 import templatesZhHans from '../../features/templates/i18n/zh_Hans.json';
+import workflowZhHans from '../../features/workflow/i18n/zh_Hans.json';
+import workflowEnUS from '../../features/workflow/i18n/en_US.json';
 import templatesEnUS from '../../features/templates/i18n/en_US.json';
 
 const appTranslationResources = {
@@ -55,7 +57,8 @@ const appTranslationResources = {
     settings: settingsZhHans,
     shared: sharedZhHans,
     sharedUi: sharedUiZhHans,
-    templates: templatesZhHans
+    templates: templatesZhHans,
+    workflow: workflowZhHans
   },
   en_US: {
     agentFlow: agentFlowEnUS,
@@ -71,7 +74,8 @@ const appTranslationResources = {
     settings: settingsEnUS,
     shared: sharedEnUS,
     sharedUi: sharedUiEnUS,
-    templates: templatesEnUS
+    templates: templatesEnUS,
+    workflow: workflowEnUS
   }
 } as const;
 

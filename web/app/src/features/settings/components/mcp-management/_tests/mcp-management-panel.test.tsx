@@ -356,33 +356,25 @@ describe('McpManagementPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /新增/ }));
 
     const dialog = await screen.findByRole('dialog');
-    const desIdField = within(dialog)
-      .getByLabelText('des_id')
-      .closest('.ant-form-item');
-    const statusField = within(dialog)
-      .getByRole('combobox', { name: 'status' })
-      .closest('.ant-form-item');
-    const shortDescriptionField = within(dialog)
-      .getByLabelText('short_description')
-      .closest('.ant-form-item');
-    const fullDescriptionField = within(dialog)
-      .getByLabelText('full_description')
-      .closest('.ant-form-item');
+    const desIdField = within(dialog).getByLabelText('des_id');
+    const statusField = within(dialog).getByRole('combobox', {
+      name: 'status'
+    });
+    const shortDescriptionField =
+      within(dialog).getByLabelText('short_description');
+    const fullDescriptionField =
+      within(dialog).getByLabelText('full_description');
 
-    expect(desIdField).not.toBeNull();
-    expect(statusField).not.toBeNull();
-    expect(shortDescriptionField).not.toBeNull();
-    expect(fullDescriptionField).not.toBeNull();
     expect(
-      desIdField!.compareDocumentPosition(statusField!) &
+      desIdField.compareDocumentPosition(statusField) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      statusField!.compareDocumentPosition(shortDescriptionField!) &
+      statusField.compareDocumentPosition(shortDescriptionField) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      statusField!.compareDocumentPosition(fullDescriptionField!) &
+      statusField.compareDocumentPosition(fullDescriptionField) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
   });

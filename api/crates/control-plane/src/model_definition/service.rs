@@ -158,12 +158,11 @@ fn ensure_field_update_allowed(
         .ok_or(ControlPlaneError::NotFound("model_field"))?;
     let capabilities = domain::data_model_field_capabilities(model, field);
 
-    if field_changes_physical_metadata(field, command) {
-        if !capabilities.can_update_physical_metadata {
-            return Err(ControlPlaneError::InvalidInput(
-                "builtin_data_model_physical_fields_readonly",
-            ));
-        }
+    if field_changes_physical_metadata(field, command) && !capabilities.can_update_physical_metadata
+    {
+        return Err(ControlPlaneError::InvalidInput(
+            "builtin_data_model_physical_fields_readonly",
+        ));
     }
 
     if !capabilities.can_update_presentation_metadata

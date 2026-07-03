@@ -23,7 +23,6 @@ import {
   type AgentFlowConversationVariable
 } from '../lib/variables/conversation-variables';
 import type { AgentFlowIssue } from '../lib/validate-document';
-import type { WorkflowTriggerContext } from '../lib/workflow-trigger-context';
 
 import type { SchemaAdapter } from '../../../shared/schema-ui/registry/create-renderer-registry';
 
@@ -216,7 +215,7 @@ export function createAgentFlowNodeSchemaAdapter({
   environmentVariables?: AgentFlowEnvironmentVariable[];
   conversationVariables?: AgentFlowConversationVariable[];
   issues?: AgentFlowIssue[];
-  workflowTriggerContext?: WorkflowTriggerContext | null;
+  workflowTriggerContext?: unknown;
   setWorkingDocument: (
     update:
       | FlowAuthoringDocument

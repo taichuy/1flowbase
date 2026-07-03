@@ -434,34 +434,46 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
     assert_eq!(groups.len(), 2);
     let alpha_group = groups
         .iter()
-        .find(|group| group["source_instance_id"].as_str() == Some(alpha_id.as_str()))
-        .expect("alpha group");
+        .find(|group| group["model_id"].as_str() == Some("fixture_chat"))
+        .expect("fixture_chat group");
+    let alpha_target = alpha_group["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|target| target["source_instance_id"].as_str() == Some(alpha_id.as_str()))
+        .expect("alpha target");
     assert_eq!(
-        alpha_group["source_instance_display_name"].as_str(),
+        alpha_target["source_instance_display_name"].as_str(),
         Some("Alpha")
     );
     assert_eq!(
-        alpha_group["models"][0]["model_id"].as_str(),
+        alpha_group["model"]["model_id"].as_str(),
         Some("fixture_chat")
     );
     assert_eq!(
-        alpha_group["models"][0]["context_window"].as_u64(),
+        alpha_group["model"]["context_window"].as_u64(),
         Some(256000)
     );
-    assert!(alpha_group["models"][0].get("parameter_form").is_none());
+    assert!(alpha_group["model"].get("parameter_form").is_none());
     let beta_group = groups
         .iter()
-        .find(|group| group["source_instance_id"].as_str() == Some(beta_id.as_str()))
-        .expect("beta group");
+        .find(|group| group["model_id"].as_str() == Some("custom-beta"))
+        .expect("custom-beta group");
+    let beta_target = beta_group["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|target| target["source_instance_id"].as_str() == Some(beta_id.as_str()))
+        .expect("beta target");
     assert_eq!(
-        beta_group["source_instance_display_name"].as_str(),
+        beta_target["source_instance_display_name"].as_str(),
         Some("Beta")
     );
     assert_eq!(
-        beta_group["models"][0]["model_id"].as_str(),
+        beta_group["model"]["model_id"].as_str(),
         Some("custom-beta")
     );
-    assert!(beta_group["models"][0].get("parameter_form").is_none());
+    assert!(beta_group["model"].get("parameter_form").is_none());
 
     let legacy_routing = app
         .clone()
