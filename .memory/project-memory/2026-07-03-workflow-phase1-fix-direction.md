@@ -44,5 +44,6 @@ scope:
 
 ## 截止与状态
 
-- 下一步：4 个 L3 fix issue 草案（前端架构边界、picker 放开、后端调度接线、互斥下沉）待用户确认后创建；前端两个挂 #1189，后端两个挂 #1188。
-- #1190/#1193/#1194 关闭状态与实际不符，按 #1197/#1198 先例开新 fix issue 承接，不重开旧 issue。
+- 已完成（2026-07-04）：#1205（picker 放开，e9582ef7）、#1207（feature 边界与装配层，ce79e8f8）、#1208（调度接线，5a47e6e1，新增 time-tz 依赖）、#1209（运行时门禁，7950c19b）全部实现、统一 QA 通过、关闭并推送 beta。
+- 关键实现事实：kernel 节点注册点在 `web/app/src/features/agent-flow/lib/node-definitions/registry.ts`，workflow 注册入口 `features/workflow/register.ts`（生产装配在 `App.tsx`，测试按需 import，不进全局 setup——全局 import 会破坏 vi.mock 与 i18n 时序）；调度 tick 与 worker 循环 spawn 在 api-server `app_from_config`；互斥门禁以 `workflow_trigger_type` 为运行时判定，非活跃类型配置存而不用。
+- 待办：父 issue #1189/#1188/#1186 未关，等用户人工验收产品效果后收口。
