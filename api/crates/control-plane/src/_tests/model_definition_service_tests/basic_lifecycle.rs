@@ -240,6 +240,7 @@ async fn create_workspace_model_creates_system_model_and_workspace_grant() {
         .load_runtime_scope_grant(
             &ActorContext::root(Uuid::nil(), Uuid::nil(), "root"),
             created.id,
+            runtime_core::runtime_acl::RuntimeDataAction::View,
         )
         .await
         .unwrap()

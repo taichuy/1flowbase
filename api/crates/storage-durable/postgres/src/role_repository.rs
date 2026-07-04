@@ -4,9 +4,13 @@ use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
-    ports::{AuthRepository, CreateWorkspaceRoleInput, RoleRepository, UpdateWorkspaceRoleInput},
+    ports::{
+        AuthRepository, CreateWorkspaceRoleInput, ReplaceRoleDataPolicyInput,
+        RoleDataPolicyDefaultsInput, RoleRepository, UpdateWorkspaceRoleInput,
+    },
 };
 use domain::{ActorContext, AuditLogRecord, RoleScopeKind};
+use sqlx::{Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::{
@@ -16,6 +20,57 @@ use crate::{
         tenant_id_for_workspace, workspace_id_for_user, PgControlPlaneStore,
     },
 };
+
+fn data_policy_scope_from_db(value: String) -> domain::RoleDataPolicyScope {
+    domain::RoleDataPolicyScope::from_db(&value)
+}
+
+fn optional_data_policy_scope_from_db(
+    value: Option<String>,
+) -> Option<domain::RoleDataPolicyScope> {
+    value.map(|scope| domain::RoleDataPolicyScope::from_db(&scope))
+}
+
+fn default_role_data_policy() -> RoleDataPolicyDefaultsInput {
+    RoleDataPolicyDefaultsInput {
+        can_view: false,
+        can_create: false,
+        can_update: false,
+        can_delete: false,
+        default_view_scope: domain::RoleDataPolicyScope::Own,
+        default_update_scope: domain::RoleDataPolicyScope::Own,
+        default_delete_scope: domain::RoleDataPolicyScope::Own,
+    }
+}
+
+async fn insert_default_role_data_policy(
+    tx: &mut Transaction<'_, Postgres>,
+    role_id: Uuid,
+) -> Result<()> {
+    let policy = default_role_data_policy();
+    sqlx::query(
+        r#"
+        insert into role_data_policies (
+            id, role_id, can_view, can_create, can_update, can_delete,
+            default_view_scope, default_update_scope, default_delete_scope
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        on conflict (role_id) do nothing
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(role_id)
+    .bind(policy.can_view)
+    .bind(policy.can_create)
+    .bind(policy.can_update)
+    .bind(policy.can_delete)
+    .bind(policy.default_view_scope.as_str())
+    .bind(policy.default_update_scope.as_str())
+    .bind(policy.default_delete_scope.as_str())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
 
 #[async_trait]
 impl RoleRepository for PgControlPlaneStore {
@@ -75,6 +130,7 @@ impl RoleRepository for PgControlPlaneStore {
             .await?;
         }
 
+        let role_id = Uuid::now_v7();
         sqlx::query(
             r#"
             insert into roles (
@@ -84,7 +140,7 @@ impl RoleRepository for PgControlPlaneStore {
             values ($1, $2, 'workspace', $2, $3, $4, $5, false, true, $6, $7, $8, $8)
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(role_id)
         .bind(input.workspace_id)
         .bind(&input.code)
         .bind(&input.name)
@@ -94,6 +150,7 @@ impl RoleRepository for PgControlPlaneStore {
         .bind(input.actor_user_id)
         .execute(&mut *tx)
         .await?;
+        insert_default_role_data_policy(&mut tx, role_id).await?;
 
         tx.commit().await?;
         Ok(())
@@ -259,6 +316,167 @@ impl RoleRepository for PgControlPlaneStore {
             .ok_or(ControlPlaneError::NotFound("role"))?;
 
         permission_codes_for_role(self.pool(), role.id).await
+    }
+
+    async fn get_role_data_policy(
+        &self,
+        workspace_id: Uuid,
+        role_code: &str,
+    ) -> Result<control_plane::ports::RoleDataPolicyView> {
+        let role = find_role_by_code(self.pool(), workspace_id, role_code)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("role"))?;
+
+        let row = sqlx::query(
+            r#"
+            select
+              id, role_id, can_view, can_create, can_update, can_delete,
+              default_view_scope, default_update_scope, default_delete_scope,
+              created_at, updated_at
+            from role_data_policies
+            where role_id = $1
+            "#,
+        )
+        .bind(role.id)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(ControlPlaneError::NotFound("role_data_policy"))?;
+
+        let default_policy = domain::RoleDataPolicyRecord {
+            id: row.get("id"),
+            role_id: row.get("role_id"),
+            role_code: role.code.clone(),
+            can_view: row.get("can_view"),
+            can_create: row.get("can_create"),
+            can_update: row.get("can_update"),
+            can_delete: row.get("can_delete"),
+            default_view_scope: data_policy_scope_from_db(row.get("default_view_scope")),
+            default_update_scope: data_policy_scope_from_db(row.get("default_update_scope")),
+            default_delete_scope: data_policy_scope_from_db(row.get("default_delete_scope")),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        };
+
+        let rows = sqlx::query(
+            r#"
+            select
+              id, role_id, data_model_id, view_scope_override, update_scope_override,
+              delete_scope_override, created_at, updated_at
+            from role_data_model_policies
+            where role_id = $1
+            order by data_model_id asc
+            "#,
+        )
+        .bind(role.id)
+        .fetch_all(self.pool())
+        .await?;
+        let model_policies = rows
+            .into_iter()
+            .map(|row| domain::RoleDataModelPolicyRecord {
+                id: row.get("id"),
+                role_id: row.get("role_id"),
+                data_model_id: row.get("data_model_id"),
+                view_scope_override: optional_data_policy_scope_from_db(
+                    row.get("view_scope_override"),
+                ),
+                update_scope_override: optional_data_policy_scope_from_db(
+                    row.get("update_scope_override"),
+                ),
+                delete_scope_override: optional_data_policy_scope_from_db(
+                    row.get("delete_scope_override"),
+                ),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            })
+            .collect();
+
+        Ok(control_plane::ports::RoleDataPolicyView {
+            role_code: role.code,
+            default_policy,
+            model_policies,
+        })
+    }
+
+    async fn replace_role_data_policy(
+        &self,
+        input: &ReplaceRoleDataPolicyInput,
+    ) -> Result<control_plane::ports::RoleDataPolicyView> {
+        let role = find_role_by_code(self.pool(), input.workspace_id, &input.role_code)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("role"))?;
+        if role.code == "root" || !role.is_editable {
+            return Err(ControlPlaneError::PermissionDenied("root_role_immutable").into());
+        }
+
+        let mut tx = self.pool().begin().await?;
+        sqlx::query(
+            r#"
+            insert into role_data_policies (
+                id, role_id, can_view, can_create, can_update, can_delete,
+                default_view_scope, default_update_scope, default_delete_scope, created_by, updated_by
+            )
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+            on conflict (role_id) do update set
+                can_view = excluded.can_view,
+                can_create = excluded.can_create,
+                can_update = excluded.can_update,
+                can_delete = excluded.can_delete,
+                default_view_scope = excluded.default_view_scope,
+                default_update_scope = excluded.default_update_scope,
+                default_delete_scope = excluded.default_delete_scope,
+                updated_by = excluded.updated_by,
+                updated_at = now()
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(role.id)
+        .bind(input.default_policy.can_view)
+        .bind(input.default_policy.can_create)
+        .bind(input.default_policy.can_update)
+        .bind(input.default_policy.can_delete)
+        .bind(input.default_policy.default_view_scope.as_str())
+        .bind(input.default_policy.default_update_scope.as_str())
+        .bind(input.default_policy.default_delete_scope.as_str())
+        .bind(input.actor_user_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("delete from role_data_model_policies where role_id = $1")
+            .bind(role.id)
+            .execute(&mut *tx)
+            .await?;
+        for model_policy in &input.model_policies {
+            sqlx::query(
+                r#"
+                insert into role_data_model_policies (
+                    id, role_id, data_model_id, view_scope_override, update_scope_override,
+                    delete_scope_override, created_by, updated_by
+                )
+                values ($1, $2, $3, $4, $5, $6, $7, $7)
+                "#,
+            )
+            .bind(Uuid::now_v7())
+            .bind(role.id)
+            .bind(model_policy.data_model_id)
+            .bind(model_policy.view_scope_override.map(|scope| scope.as_str()))
+            .bind(
+                model_policy
+                    .update_scope_override
+                    .map(|scope| scope.as_str()),
+            )
+            .bind(
+                model_policy
+                    .delete_scope_override
+                    .map(|scope| scope.as_str()),
+            )
+            .bind(input.actor_user_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+
+        self.get_role_data_policy(input.workspace_id, &input.role_code)
+            .await
     }
 
     async fn append_audit_log(&self, event: &AuditLogRecord) -> Result<()> {

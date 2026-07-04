@@ -643,7 +643,13 @@ where
         if let Some(metadata) = self.runtime_model_metadata(&actor, &model_code) {
             validate_list_options(&metadata, &options)?;
         }
-        let scope_grant = self.scope_grant(&actor, &model_code).await?;
+        let scope_grant = self
+            .scope_grant(
+                &actor,
+                &model_code,
+                runtime_core::runtime_acl::RuntimeDataAction::View,
+            )
+            .await?;
         let result = self
             .runtime_engine
             .list_records(runtime_core::runtime_engine::RuntimeListInput {
@@ -670,7 +676,13 @@ where
         model_code: String,
         record_id: String,
     ) -> Result<Value> {
-        let scope_grant = self.scope_grant(&actor, &model_code).await?;
+        let scope_grant = self
+            .scope_grant(
+                &actor,
+                &model_code,
+                runtime_core::runtime_acl::RuntimeDataAction::View,
+            )
+            .await?;
         let record = self
             .runtime_engine
             .get_record(runtime_core::runtime_engine::RuntimeGetInput {
@@ -692,7 +704,13 @@ where
         payload: Value,
     ) -> Result<Value> {
         ensure_object_payload(&payload)?;
-        let scope_grant = self.scope_grant(&actor, &model_code).await?;
+        let scope_grant = self
+            .scope_grant(
+                &actor,
+                &model_code,
+                runtime_core::runtime_acl::RuntimeDataAction::Create,
+            )
+            .await?;
         let record = self
             .runtime_engine
             .create_record(runtime_core::runtime_engine::RuntimeCreateInput {
@@ -714,7 +732,13 @@ where
         payload: Value,
     ) -> Result<Value> {
         ensure_object_payload(&payload)?;
-        let scope_grant = self.scope_grant(&actor, &model_code).await?;
+        let scope_grant = self
+            .scope_grant(
+                &actor,
+                &model_code,
+                runtime_core::runtime_acl::RuntimeDataAction::Update,
+            )
+            .await?;
         let record = self
             .runtime_engine
             .update_record(runtime_core::runtime_engine::RuntimeUpdateInput {
@@ -735,7 +759,13 @@ where
         model_code: String,
         record_id: String,
     ) -> Result<Value> {
-        let scope_grant = self.scope_grant(&actor, &model_code).await?;
+        let scope_grant = self
+            .scope_grant(
+                &actor,
+                &model_code,
+                runtime_core::runtime_acl::RuntimeDataAction::Delete,
+            )
+            .await?;
         self.runtime_engine
             .delete_record(runtime_core::runtime_engine::RuntimeDeleteInput {
                 actor,
@@ -776,6 +806,7 @@ where
         &self,
         actor: &domain::ActorContext,
         model_code: &str,
+        action: runtime_core::runtime_acl::RuntimeDataAction,
     ) -> Result<Option<runtime_core::runtime_acl::RuntimeScopeGrant>> {
         let Some(model) = self
             .runtime_engine
@@ -797,7 +828,7 @@ where
         };
 
         ModelDefinitionService::new(self.repository.clone())
-            .load_runtime_scope_grant(actor, model.model_id)
+            .load_runtime_scope_grant(actor, model.model_id, action)
             .await
     }
 }

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use access_control::ensure_permission;
 use anyhow::Result;
 use domain::DataModelScopeKind;
+use runtime_core::runtime_acl::RuntimeDataAction;
 use uuid::Uuid;
 
 use crate::{
@@ -48,6 +49,41 @@ pub fn runtime_scope_grant_from_record(
     }
 }
 
+fn action_allowed(policy: &domain::RoleDataPolicyRecord, action: RuntimeDataAction) -> bool {
+    match action {
+        RuntimeDataAction::View => policy.can_view,
+        RuntimeDataAction::Create => policy.can_create,
+        RuntimeDataAction::Update => policy.can_update,
+        RuntimeDataAction::Delete => policy.can_delete,
+    }
+}
+
+fn action_scope(
+    policy: &domain::RoleDataPolicyRecord,
+    override_policy: Option<&domain::RoleDataModelPolicyRecord>,
+    action: RuntimeDataAction,
+) -> domain::RoleDataPolicyScope {
+    match action {
+        RuntimeDataAction::View => override_policy
+            .and_then(|policy| policy.view_scope_override)
+            .unwrap_or(policy.default_view_scope),
+        RuntimeDataAction::Create => domain::RoleDataPolicyScope::SystemAll,
+        RuntimeDataAction::Update => override_policy
+            .and_then(|policy| policy.update_scope_override)
+            .unwrap_or(policy.default_update_scope),
+        RuntimeDataAction::Delete => override_policy
+            .and_then(|policy| policy.delete_scope_override)
+            .unwrap_or(policy.default_delete_scope),
+    }
+}
+
+fn min_scope_boundary(
+    left: domain::RoleDataPolicyScope,
+    right: domain::RoleDataPolicyScope,
+) -> domain::RoleDataPolicyScope {
+    left.min(right)
+}
+
 fn ensure_state_model_permission(
     actor: &domain::ActorContext,
     action: &str,
@@ -76,6 +112,22 @@ fn ensure_scope_grant_lifecycle_authorized(
     }
 
     Err(ControlPlaneError::PermissionDenied("permission_denied"))
+}
+
+fn ensure_system_all_grant_allowed(
+    actor: &domain::ActorContext,
+    scope_kind: DataModelScopeKind,
+    permission_profile: domain::ScopeDataModelPermissionProfile,
+) -> Result<(), ControlPlaneError> {
+    if permission_profile == domain::ScopeDataModelPermissionProfile::SystemAll
+        && !(actor.is_root && scope_kind == DataModelScopeKind::System)
+    {
+        return Err(ControlPlaneError::PermissionDenied(
+            "system_all_requires_system_scope",
+        ));
+    }
+
+    Ok(())
 }
 
 fn ensure_protected_model_override_authorized(
@@ -190,30 +242,81 @@ where
         &self,
         actor: &domain::ActorContext,
         data_model_id: Uuid,
+        action: RuntimeDataAction,
     ) -> Result<Option<runtime_core::runtime_acl::RuntimeScopeGrant>> {
+        if actor.is_root {
+            let system_grants = self
+                .repository
+                .list_scope_data_model_grants(DataModelScopeKind::System, domain::SYSTEM_SCOPE_ID)
+                .await?;
+            if let Some(grant) = system_grants
+                .iter()
+                .find(|grant| grant.data_model_id == data_model_id)
+            {
+                return Ok(Some(runtime_scope_grant_from_record(grant)));
+            }
+        }
+
         let workspace_grants = self
             .repository
             .list_scope_data_model_grants(DataModelScopeKind::Workspace, actor.current_workspace_id)
             .await?;
-        if let Some(grant) = workspace_grants
+        let grant = if let Some(grant) = workspace_grants
             .iter()
             .find(|grant| grant.data_model_id == data_model_id)
         {
-            return Ok(Some(runtime_scope_grant_from_record(grant)));
+            runtime_scope_grant_from_record(grant)
+        } else {
+            if !actor.is_root {
+                return Ok(None);
+            }
+
+            let system_grants = self
+                .repository
+                .list_scope_data_model_grants(DataModelScopeKind::System, domain::SYSTEM_SCOPE_ID)
+                .await?;
+            let Some(grant) = system_grants
+                .iter()
+                .find(|grant| grant.data_model_id == data_model_id)
+            else {
+                return Ok(None);
+            };
+            runtime_scope_grant_from_record(grant)
+        };
+
+        if actor.is_root {
+            return Ok(Some(grant));
         }
 
-        if !actor.is_root {
-            return Ok(None);
-        }
-
-        let system_grants = self
+        let mut role_scope: Option<domain::RoleDataPolicyScope> = None;
+        for (policy, model_policy) in self
             .repository
-            .list_scope_data_model_grants(DataModelScopeKind::System, domain::SYSTEM_SCOPE_ID)
-            .await?;
-        Ok(system_grants
-            .iter()
-            .find(|grant| grant.data_model_id == data_model_id)
-            .map(runtime_scope_grant_from_record))
+            .list_actor_role_data_policies(actor.user_id, actor.current_workspace_id, data_model_id)
+            .await?
+        {
+            if !action_allowed(&policy, action) {
+                continue;
+            }
+            let candidate = action_scope(&policy, model_policy.as_ref(), action);
+            role_scope = Some(role_scope.map_or(candidate, |current| current.max(candidate)));
+        }
+
+        let Some(role_scope) = role_scope else {
+            return Ok(None);
+        };
+        if matches!(action, RuntimeDataAction::Create) {
+            return Ok(Some(grant));
+        }
+
+        let grant_scope =
+            domain::RoleDataPolicyScope::from_permission_profile(grant.permission_profile);
+        let permission_profile =
+            min_scope_boundary(role_scope, grant_scope).to_permission_profile();
+
+        Ok(Some(runtime_core::runtime_acl::RuntimeScopeGrant {
+            permission_profile,
+            ..grant
+        }))
     }
 
     pub async fn load_runtime_scope_grant_for_scope(
@@ -807,6 +910,7 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
         ensure_scope_grant_lifecycle_authorized(&actor, command.scope_kind, command.scope_id)?;
+        ensure_system_all_grant_allowed(&actor, command.scope_kind, permission_profile)?;
         ensure_unsafe_external_system_all_confirmed(
             &model,
             permission_profile,
@@ -873,6 +977,7 @@ where
             None => existing.permission_profile,
         };
         let enabled = command.enabled.unwrap_or(existing.enabled);
+        ensure_system_all_grant_allowed(&actor, existing.scope_kind, permission_profile)?;
         ensure_unsafe_external_system_all_confirmed(
             &model,
             permission_profile,

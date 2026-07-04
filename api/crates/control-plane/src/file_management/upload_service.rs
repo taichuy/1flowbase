@@ -67,7 +67,11 @@ where
             .ok_or(ControlPlaneError::Conflict("storage_driver_not_registered"))?;
         let scope_grant =
             crate::model_definition::ModelDefinitionService::new(self.repository.clone())
-                .load_runtime_scope_grant(&command.actor, model.id)
+                .load_runtime_scope_grant(
+                    &command.actor,
+                    model.id,
+                    runtime_core::runtime_acl::RuntimeDataAction::Create,
+                )
                 .await?
                 .ok_or(
                     runtime_core::runtime_acl::RuntimeAclError::PermissionDenied(

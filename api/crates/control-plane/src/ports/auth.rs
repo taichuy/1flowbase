@@ -350,6 +350,41 @@ pub struct UpdateWorkspaceRoleInput {
     pub is_default_member_role: Option<bool>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RoleDataPolicyDefaultsInput {
+    pub can_view: bool,
+    pub can_create: bool,
+    pub can_update: bool,
+    pub can_delete: bool,
+    pub default_view_scope: domain::RoleDataPolicyScope,
+    pub default_update_scope: domain::RoleDataPolicyScope,
+    pub default_delete_scope: domain::RoleDataPolicyScope,
+}
+
+#[derive(Debug, Clone)]
+pub struct RoleDataModelPolicyInput {
+    pub data_model_id: Uuid,
+    pub view_scope_override: Option<domain::RoleDataPolicyScope>,
+    pub update_scope_override: Option<domain::RoleDataPolicyScope>,
+    pub delete_scope_override: Option<domain::RoleDataPolicyScope>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReplaceRoleDataPolicyInput {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub role_code: String,
+    pub default_policy: RoleDataPolicyDefaultsInput,
+    pub model_policies: Vec<RoleDataModelPolicyInput>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RoleDataPolicyView {
+    pub role_code: String,
+    pub default_policy: domain::RoleDataPolicyRecord,
+    pub model_policies: Vec<domain::RoleDataModelPolicyRecord>,
+}
+
 #[async_trait]
 pub trait MemberRepository: Send + Sync {
     async fn load_actor_context_for_user(
@@ -409,5 +444,14 @@ pub trait RoleRepository: Send + Sync {
         workspace_id: Uuid,
         role_code: &str,
     ) -> anyhow::Result<Vec<String>>;
+    async fn get_role_data_policy(
+        &self,
+        workspace_id: Uuid,
+        role_code: &str,
+    ) -> anyhow::Result<RoleDataPolicyView>;
+    async fn replace_role_data_policy(
+        &self,
+        input: &ReplaceRoleDataPolicyInput,
+    ) -> anyhow::Result<RoleDataPolicyView>;
     async fn append_audit_log(&self, event: &AuditLogRecord) -> anyhow::Result<()>;
 }

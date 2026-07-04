@@ -1282,6 +1282,102 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         rows.into_iter().map(map_scope_data_model_grant).collect()
     }
 
+    async fn list_actor_role_data_policies(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+        data_model_id: Uuid,
+    ) -> Result<
+        Vec<(
+            domain::RoleDataPolicyRecord,
+            Option<domain::RoleDataModelPolicyRecord>,
+        )>,
+    > {
+        let rows = sqlx::query(
+            r#"
+            select
+              r.code as role_code,
+              rdp.id as policy_id,
+              rdp.role_id,
+              rdp.can_view,
+              rdp.can_create,
+              rdp.can_update,
+              rdp.can_delete,
+              rdp.default_view_scope,
+              rdp.default_update_scope,
+              rdp.default_delete_scope,
+              rdp.created_at as policy_created_at,
+              rdp.updated_at as policy_updated_at,
+              rdmp.id as model_policy_id,
+              rdmp.data_model_id,
+              rdmp.view_scope_override,
+              rdmp.update_scope_override,
+              rdmp.delete_scope_override,
+              rdmp.created_at as model_policy_created_at,
+              rdmp.updated_at as model_policy_updated_at
+            from user_role_bindings urb
+            join roles r on r.id = urb.role_id
+            join role_data_policies rdp on rdp.role_id = r.id
+            left join role_data_model_policies rdmp
+              on rdmp.role_id = r.id
+             and rdmp.data_model_id = $3
+            where urb.user_id = $1
+              and (r.scope_kind = 'system' or r.workspace_id = $2)
+            order by r.scope_kind asc, r.code asc
+            "#,
+        )
+        .bind(actor_user_id)
+        .bind(workspace_id)
+        .bind(data_model_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let role_id = row.get("role_id");
+                let default_policy = domain::RoleDataPolicyRecord {
+                    id: row.get("policy_id"),
+                    role_id,
+                    role_code: row.get("role_code"),
+                    can_view: row.get("can_view"),
+                    can_create: row.get("can_create"),
+                    can_update: row.get("can_update"),
+                    can_delete: row.get("can_delete"),
+                    default_view_scope: domain::RoleDataPolicyScope::from_db(
+                        row.get::<String, _>("default_view_scope").as_str(),
+                    ),
+                    default_update_scope: domain::RoleDataPolicyScope::from_db(
+                        row.get::<String, _>("default_update_scope").as_str(),
+                    ),
+                    default_delete_scope: domain::RoleDataPolicyScope::from_db(
+                        row.get::<String, _>("default_delete_scope").as_str(),
+                    ),
+                    created_at: row.get("policy_created_at"),
+                    updated_at: row.get("policy_updated_at"),
+                };
+                let model_policy_id: Option<Uuid> = row.get("model_policy_id");
+                let model_policy = model_policy_id.map(|id| domain::RoleDataModelPolicyRecord {
+                    id,
+                    role_id,
+                    data_model_id: row.get("data_model_id"),
+                    view_scope_override: row
+                        .get::<Option<String>, _>("view_scope_override")
+                        .map(|scope| domain::RoleDataPolicyScope::from_db(&scope)),
+                    update_scope_override: row
+                        .get::<Option<String>, _>("update_scope_override")
+                        .map(|scope| domain::RoleDataPolicyScope::from_db(&scope)),
+                    delete_scope_override: row
+                        .get::<Option<String>, _>("delete_scope_override")
+                        .map(|scope| domain::RoleDataPolicyScope::from_db(&scope)),
+                    created_at: row.get("model_policy_created_at"),
+                    updated_at: row.get("model_policy_updated_at"),
+                });
+                (default_policy, model_policy)
+            })
+            .collect())
+    }
+
     async fn append_audit_log(&self, event: &domain::AuditLogRecord) -> Result<()> {
         AuthRepository::append_audit_log(self, event).await
     }

@@ -195,7 +195,7 @@ fn ensure_runtime_record_action_allowed(
             metadata.record_capabilities.can_list || metadata.record_capabilities.can_get
         }
         RuntimeDataAction::Create => metadata.record_capabilities.can_create,
-        RuntimeDataAction::Edit => metadata.record_capabilities.can_update,
+        RuntimeDataAction::Update => metadata.record_capabilities.can_update,
         RuntimeDataAction::Delete => metadata.record_capabilities.can_delete,
     };
     if allowed {
@@ -206,7 +206,7 @@ fn ensure_runtime_record_action_allowed(
             match action {
                 RuntimeDataAction::View => "view",
                 RuntimeDataAction::Create => "create",
-                RuntimeDataAction::Edit => "update",
+                RuntimeDataAction::Update => "update",
                 RuntimeDataAction::Delete => "delete",
             },
         )
@@ -235,6 +235,35 @@ fn ensure_create_api_required_fields(metadata: &ModelMetadata, payload: &Value) 
         RuntimeModelError::missing_create_required_fields(&metadata.model_code, missing_fields)
             .into(),
     )
+}
+
+fn ensure_runtime_payload_fields_writable(metadata: &ModelMetadata, payload: &Value) -> Result<()> {
+    let Some(payload) = payload.as_object() else {
+        return Ok(());
+    };
+
+    for field_code in payload.keys() {
+        if matches!(
+            field_code.as_str(),
+            "id" | "scope_id" | "created_by" | "updated_by"
+        ) {
+            return Err(anyhow!("runtime field is not writable: {field_code}"));
+        }
+        let Some(field) = metadata.field_by_code(field_code) else {
+            continue;
+        };
+        if field.is_system
+            || !field.is_writable
+            || matches!(
+                field.physical_column_name.as_str(),
+                "id" | "scope_id" | "created_by" | "updated_by"
+            )
+        {
+            return Err(anyhow!("runtime field is not writable: {field_code}"));
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -386,6 +415,7 @@ impl RuntimeEngine {
             .default_value_resolver
             .apply(input.actor.user_id, &input.model_code, input.payload)
             .await?;
+        ensure_runtime_payload_fields_writable(&metadata, &payload)?;
         ensure_create_api_required_fields(&metadata, &payload)?;
         self.validator
             .validate(input.actor.user_id, &input.model_code, &payload)
@@ -413,13 +443,14 @@ impl RuntimeEngine {
     pub async fn update_record(&self, input: RuntimeUpdateInput) -> Result<Value> {
         let metadata =
             self.load_available_metadata(&input.model_code, input.actor.current_workspace_id)?;
-        ensure_runtime_record_action_allowed(&metadata, RuntimeDataAction::Edit)?;
+        ensure_runtime_record_action_allowed(&metadata, RuntimeDataAction::Update)?;
         let access_scope = resolve_access_scope(
             &input.actor,
-            RuntimeDataAction::Edit,
+            RuntimeDataAction::Update,
             metadata.model_id,
             input.scope_grant.as_ref(),
         )?;
+        ensure_runtime_payload_fields_writable(&metadata, &input.payload)?;
         self.validator
             .validate(input.actor.user_id, &input.model_code, &input.payload)
             .await?;

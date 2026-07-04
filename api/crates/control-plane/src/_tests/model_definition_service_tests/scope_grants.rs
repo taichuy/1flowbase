@@ -50,6 +50,203 @@ async fn update_scope_grant_records_audit_event() {
 }
 
 #[tokio::test]
+async fn runtime_scope_grant_loader_denies_when_role_action_is_disabled() {
+    let actor_user_id = Uuid::now_v7();
+    let workspace_id = Uuid::now_v7();
+    let model_id = Uuid::now_v7();
+    let policy = role_data_policy(
+        false,
+        false,
+        false,
+        false,
+        domain::RoleDataPolicyScope::ScopeAll,
+    );
+    let repository = ScopedModelDefinitionRepository::new(scoped_manager_in_workspace(
+        actor_user_id,
+        workspace_id,
+    ))
+    .with_model(system_model(model_id))
+    .with_grant(scope_grant(
+        Uuid::now_v7(),
+        model_id,
+        DataModelScopeKind::Workspace,
+        workspace_id,
+    ))
+    .with_role_data_policy(policy, None);
+    let service = ModelDefinitionService::new(repository);
+
+    let grant = service
+        .load_runtime_scope_grant(
+            &ActorContext::scoped(actor_user_id, workspace_id, "member", Vec::<String>::new()),
+            model_id,
+            runtime_core::runtime_acl::RuntimeDataAction::View,
+        )
+        .await
+        .unwrap();
+
+    assert!(grant.is_none());
+}
+
+#[tokio::test]
+async fn runtime_scope_grant_loader_clamps_role_scope_and_honors_model_override() {
+    let actor_user_id = Uuid::now_v7();
+    let workspace_id = Uuid::now_v7();
+    let model_id = Uuid::now_v7();
+    let policy = role_data_policy(true, true, true, true, domain::RoleDataPolicyScope::Own);
+    let model_policy = role_data_model_policy(
+        policy.role_id,
+        model_id,
+        Some(domain::RoleDataPolicyScope::ScopeAll),
+        None,
+        Some(domain::RoleDataPolicyScope::SystemAll),
+    );
+    let repository = ScopedModelDefinitionRepository::new(scoped_manager_in_workspace(
+        actor_user_id,
+        workspace_id,
+    ))
+    .with_model(system_model(model_id))
+    .with_grant(scope_grant(
+        Uuid::now_v7(),
+        model_id,
+        DataModelScopeKind::Workspace,
+        workspace_id,
+    ))
+    .with_role_data_policy(policy.clone(), Some(model_policy));
+    let service = ModelDefinitionService::new(repository);
+    let actor = ActorContext::scoped(actor_user_id, workspace_id, "member", Vec::<String>::new());
+
+    let view_grant = service
+        .load_runtime_scope_grant(
+            &actor,
+            model_id,
+            runtime_core::runtime_acl::RuntimeDataAction::View,
+        )
+        .await
+        .unwrap()
+        .expect("view override should allow scope_all");
+    assert_eq!(
+        view_grant.permission_profile,
+        domain::ScopeDataModelPermissionProfile::ScopeAll
+    );
+
+    let update_grant = service
+        .load_runtime_scope_grant(
+            &actor,
+            model_id,
+            runtime_core::runtime_acl::RuntimeDataAction::Update,
+        )
+        .await
+        .unwrap()
+        .expect("null update override should inherit own");
+    assert_eq!(
+        update_grant.permission_profile,
+        domain::ScopeDataModelPermissionProfile::Owner
+    );
+
+    let create_grant = service
+        .load_runtime_scope_grant(
+            &actor,
+            model_id,
+            runtime_core::runtime_acl::RuntimeDataAction::Create,
+        )
+        .await
+        .unwrap()
+        .expect("create should only require can_create");
+    assert_eq!(
+        create_grant.permission_profile,
+        domain::ScopeDataModelPermissionProfile::ScopeAll
+    );
+}
+
+#[tokio::test]
+async fn runtime_scope_grant_loader_keeps_grant_owner_as_lower_boundary() {
+    let actor_user_id = Uuid::now_v7();
+    let workspace_id = Uuid::now_v7();
+    let model_id = Uuid::now_v7();
+    let mut grant = scope_grant(
+        Uuid::now_v7(),
+        model_id,
+        DataModelScopeKind::Workspace,
+        workspace_id,
+    );
+    grant.permission_profile = domain::ScopeDataModelPermissionProfile::Owner;
+    let policy = role_data_policy(
+        true,
+        true,
+        true,
+        true,
+        domain::RoleDataPolicyScope::ScopeAll,
+    );
+    let repository = ScopedModelDefinitionRepository::new(scoped_manager_in_workspace(
+        actor_user_id,
+        workspace_id,
+    ))
+    .with_model(system_model(model_id))
+    .with_grant(grant)
+    .with_role_data_policy(policy, None);
+    let service = ModelDefinitionService::new(repository);
+
+    let grant = service
+        .load_runtime_scope_grant(
+            &ActorContext::scoped(actor_user_id, workspace_id, "member", Vec::<String>::new()),
+            model_id,
+            runtime_core::runtime_acl::RuntimeDataAction::View,
+        )
+        .await
+        .unwrap()
+        .expect("role scope_all should still be bounded by owner grant");
+
+    assert_eq!(
+        grant.permission_profile,
+        domain::ScopeDataModelPermissionProfile::Owner
+    );
+}
+
+#[tokio::test]
+async fn root_runtime_scope_grant_loader_prefers_system_grant_over_workspace_overlay() {
+    let actor_user_id = Uuid::now_v7();
+    let workspace_id = Uuid::now_v7();
+    let model_id = Uuid::now_v7();
+    let mut workspace_grant = scope_grant(
+        Uuid::now_v7(),
+        model_id,
+        DataModelScopeKind::Workspace,
+        workspace_id,
+    );
+    workspace_grant.permission_profile = domain::ScopeDataModelPermissionProfile::Owner;
+    let mut system_grant = scope_grant(
+        Uuid::now_v7(),
+        model_id,
+        DataModelScopeKind::System,
+        SYSTEM_SCOPE_ID,
+    );
+    system_grant.permission_profile = domain::ScopeDataModelPermissionProfile::SystemAll;
+    let repository =
+        ScopedModelDefinitionRepository::new(actor_in_workspace(actor_user_id, workspace_id))
+            .with_model(system_model(model_id))
+            .with_grant(workspace_grant)
+            .with_grant(system_grant);
+    let service = ModelDefinitionService::new(repository);
+
+    let grant = service
+        .load_runtime_scope_grant(
+            &ActorContext::root(actor_user_id, workspace_id, "root"),
+            model_id,
+            runtime_core::runtime_acl::RuntimeDataAction::View,
+        )
+        .await
+        .unwrap()
+        .expect("root should use the system grant when one exists");
+
+    assert_eq!(grant.scope_kind, DataModelScopeKind::System);
+    assert_eq!(grant.scope_id, SYSTEM_SCOPE_ID);
+    assert_eq!(
+        grant.permission_profile,
+        domain::ScopeDataModelPermissionProfile::SystemAll
+    );
+}
+
+#[tokio::test]
 async fn non_root_scope_grant_create_rejects_system_and_other_workspace_scope() {
     let actor_user_id = Uuid::now_v7();
     let actor_workspace_id = Uuid::now_v7();
@@ -308,7 +505,7 @@ async fn unsafe_external_system_all_scope_grant_requires_explicit_confirmation()
 }
 
 #[tokio::test]
-async fn unsafe_external_workspace_scope_system_all_grant_requires_explicit_confirmation() {
+async fn workspace_scope_system_all_grant_is_rejected_even_with_confirmation() {
     let actor_user_id = Uuid::now_v7();
     let actor_workspace_id = Uuid::now_v7();
     let model_id = Uuid::now_v7();
@@ -325,30 +522,11 @@ async fn unsafe_external_workspace_scope_system_all_grant_requires_explicit_conf
             data_model_id: model_id,
             enabled: true,
             permission_profile: "system_all".into(),
-            confirm_unsafe_external_source_system_all: false,
-        })
-        .await
-        .unwrap_err();
-    assert!(error.to_string().contains("confirmation"));
-
-    let grant = service
-        .create_scope_grant(CreateScopeDataModelGrantCommand {
-            actor_user_id,
-            scope_kind: DataModelScopeKind::Workspace,
-            scope_id: actor_workspace_id,
-            data_model_id: model_id,
-            enabled: true,
-            permission_profile: "system_all".into(),
             confirm_unsafe_external_source_system_all: true,
         })
         .await
-        .unwrap();
-    assert_eq!(grant.scope_kind, DataModelScopeKind::Workspace);
-    assert_eq!(grant.scope_id, actor_workspace_id);
-    assert_eq!(
-        grant.permission_profile,
-        domain::ScopeDataModelPermissionProfile::SystemAll
-    );
+        .unwrap_err();
+    assert!(error.to_string().contains("system_all_requires_system_scope"));
 }
 
 #[tokio::test]
@@ -399,7 +577,7 @@ async fn unsafe_external_system_all_scope_grant_update_requires_explicit_confirm
 }
 
 #[tokio::test]
-async fn unsafe_external_workspace_scope_system_all_grant_update_requires_explicit_confirmation() {
+async fn workspace_scope_system_all_grant_update_is_rejected_even_with_confirmation() {
     let actor_user_id = Uuid::now_v7();
     let actor_workspace_id = Uuid::now_v7();
     let model_id = Uuid::now_v7();
@@ -422,33 +600,15 @@ async fn unsafe_external_workspace_scope_system_all_grant_update_requires_explic
             grant_id,
             enabled: Some(true),
             permission_profile: Some("system_all".into()),
-            confirm_unsafe_external_source_system_all: false,
-        })
-        .await
-        .unwrap_err();
-    assert!(error.to_string().contains("confirmation"));
-
-    let grant = service
-        .update_scope_grant(UpdateScopeDataModelGrantCommand {
-            actor_user_id,
-            data_model_id: model_id,
-            grant_id,
-            enabled: Some(true),
-            permission_profile: Some("system_all".into()),
             confirm_unsafe_external_source_system_all: true,
         })
         .await
-        .unwrap();
-    assert_eq!(grant.scope_kind, DataModelScopeKind::Workspace);
-    assert_eq!(grant.scope_id, actor_workspace_id);
-    assert_eq!(
-        grant.permission_profile,
-        domain::ScopeDataModelPermissionProfile::SystemAll
-    );
+        .unwrap_err();
+    assert!(error.to_string().contains("system_all_requires_system_scope"));
 }
 
 #[tokio::test]
-async fn safe_external_system_all_scope_grant_does_not_require_risk_confirmation() {
+async fn safe_external_system_scope_system_all_grant_does_not_require_risk_confirmation() {
     let actor_user_id = Uuid::now_v7();
     let actor_workspace_id = Uuid::now_v7();
     let model_id = Uuid::now_v7();
@@ -459,16 +619,16 @@ async fn safe_external_system_all_scope_grant_does_not_require_risk_confirmation
             .with_grant(scope_grant(
                 grant_id,
                 model_id,
-                DataModelScopeKind::Workspace,
-                actor_workspace_id,
+                DataModelScopeKind::System,
+                SYSTEM_SCOPE_ID,
             ));
     let service = ModelDefinitionService::new(repository);
 
     let created = service
         .create_scope_grant(CreateScopeDataModelGrantCommand {
             actor_user_id,
-            scope_kind: DataModelScopeKind::Workspace,
-            scope_id: actor_workspace_id,
+            scope_kind: DataModelScopeKind::System,
+            scope_id: SYSTEM_SCOPE_ID,
             data_model_id: model_id,
             enabled: true,
             permission_profile: "system_all".into(),

@@ -446,6 +446,29 @@ impl BootstrapRepository for PgControlPlaneStore {
                     .await?;
                 }
             }
+
+            let (can_all, default_scope) = match role.code.as_str() {
+                "root" => (true, "system_all"),
+                "admin" => (true, "scope_all"),
+                "manager" => (true, "own"),
+                _ => (false, "own"),
+            };
+            sqlx::query(
+                r#"
+                insert into role_data_policies (
+                    id, role_id, can_view, can_create, can_update, can_delete,
+                    default_view_scope, default_update_scope, default_delete_scope
+                )
+                values ($1, $2, $3, $3, $3, $3, $4, $4, $4)
+                on conflict (role_id) do nothing
+                "#,
+            )
+            .bind(Uuid::now_v7())
+            .bind(role_id)
+            .bind(can_all)
+            .bind(default_scope)
+            .execute(&mut *tx)
+            .await?;
         }
 
         tx.commit().await?;

@@ -7,7 +7,7 @@ use uuid::Uuid;
 pub enum RuntimeDataAction {
     View,
     Create,
-    Edit,
+    Update,
     Delete,
 }
 

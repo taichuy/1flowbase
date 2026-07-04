@@ -8,7 +8,12 @@ import type {
 } from '../../api/data-models';
 import { i18nText } from '../../../../shared/i18n/text';
 
-const profileOptions = ['owner', 'scope_all', 'system_all'].map((value) => ({
+const workspaceProfileOptions = ['owner', 'scope_all'].map((value) => ({
+  label: value,
+  value
+}));
+
+const systemProfileOptions = ['owner', 'scope_all', 'system_all'].map((value) => ({
   label: value,
   value
 }));
@@ -69,7 +74,11 @@ export function DataModelPermissionsTab({
         <Select
           aria-label={i18nText("settings", "auto.permissions", { value1: grant.id })}
           value={grant.permission_profile}
-          options={profileOptions}
+          options={
+            grant.scope_kind === 'system'
+              ? systemProfileOptions
+              : workspaceProfileOptions
+          }
           onChange={(value) => updateDraft(grant.id, { permission_profile: value })}
         />
       )

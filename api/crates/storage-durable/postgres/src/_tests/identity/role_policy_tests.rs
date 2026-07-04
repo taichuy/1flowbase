@@ -99,3 +99,143 @@ async fn upsert_builtin_roles_sets_admin_auto_grant_and_manager_default_member_r
         ]
     );
 }
+
+#[tokio::test]
+async fn role_data_policy_migration_seeds_builtin_roles_and_new_roles_get_restricted_default() {
+    let (store, workspace_id) = bootstrapped_store().await;
+
+    let builtin_policies: Vec<(String, bool, bool, bool, bool, String, String, String)> =
+        sqlx::query_as(
+            r#"
+            select
+              r.code,
+              p.can_view,
+              p.can_create,
+              p.can_update,
+              p.can_delete,
+              p.default_view_scope,
+              p.default_update_scope,
+              p.default_delete_scope
+            from roles r
+            join role_data_policies p on p.role_id = r.id
+            where (r.scope_kind = 'workspace' and r.workspace_id = $1) or r.scope_kind = 'system'
+            order by r.scope_kind asc, r.code asc
+            "#,
+        )
+        .bind(workspace_id)
+        .fetch_all(store.pool())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        builtin_policies,
+        vec![
+            (
+                "root".to_string(),
+                true,
+                true,
+                true,
+                true,
+                "system_all".to_string(),
+                "system_all".to_string(),
+                "system_all".to_string(),
+            ),
+            (
+                "admin".to_string(),
+                true,
+                true,
+                true,
+                true,
+                "scope_all".to_string(),
+                "scope_all".to_string(),
+                "scope_all".to_string(),
+            ),
+            (
+                "manager".to_string(),
+                true,
+                true,
+                true,
+                true,
+                "own".to_string(),
+                "own".to_string(),
+                "own".to_string(),
+            ),
+        ]
+    );
+
+    let actor_user_id = Uuid::now_v7();
+    <PgControlPlaneStore as control_plane::ports::RoleRepository>::create_team_role(
+        &store,
+        &control_plane::ports::CreateWorkspaceRoleInput {
+            actor_user_id,
+            workspace_id,
+            code: "auditor".into(),
+            name: "Auditor".into(),
+            introduction: String::new(),
+            auto_grant_new_permissions: false,
+            is_default_member_role: false,
+        },
+    )
+    .await
+    .unwrap();
+
+    let auditor_policy: (bool, bool, bool, bool, String, String, String) = sqlx::query_as(
+        r#"
+        select
+          p.can_view,
+          p.can_create,
+          p.can_update,
+          p.can_delete,
+          p.default_view_scope,
+          p.default_update_scope,
+          p.default_delete_scope
+        from role_data_policies p
+        join roles r on r.id = p.role_id
+        where r.workspace_id = $1 and r.code = 'auditor'
+        "#,
+    )
+    .bind(workspace_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        auditor_policy,
+        (
+            false,
+            false,
+            false,
+            false,
+            "own".to_string(),
+            "own".to_string(),
+            "own".to_string(),
+        )
+    );
+
+    let auditor_role_id: Uuid =
+        sqlx::query_scalar("select id from roles where workspace_id = $1 and code = 'auditor'")
+            .bind(workspace_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    let invalid_scope =
+        sqlx::query("update role_data_policies set default_view_scope = 'bad' where role_id = $1")
+            .bind(auditor_role_id)
+            .execute(store.pool())
+            .await;
+    assert!(invalid_scope.is_err());
+
+    let duplicate_default = sqlx::query(
+        r#"
+        insert into role_data_policies (
+          id, role_id, can_view, can_create, can_update, can_delete,
+          default_view_scope, default_update_scope, default_delete_scope
+        )
+        values ($1, $2, false, false, false, false, 'own', 'own', 'own')
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(auditor_role_id)
+    .execute(store.pool())
+    .await;
+    assert!(duplicate_default.is_err());
+}

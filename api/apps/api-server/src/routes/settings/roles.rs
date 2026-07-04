@@ -6,12 +6,14 @@ use axum::{
     routing::{get, patch},
     Json, Router,
 };
+use control_plane::ports::{RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput};
 use control_plane::role::{
-    CreateRoleCommand, DeleteRoleCommand, ReplaceRolePermissionsCommand, RoleService,
-    UpdateRoleCommand,
+    CreateRoleCommand, DeleteRoleCommand, ReplaceRoleDataPolicyCommand,
+    ReplaceRolePermissionsCommand, RoleService, UpdateRoleCommand,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
@@ -42,6 +44,31 @@ pub struct ReplaceRolePermissionsBody {
     pub permission_codes: Vec<String>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReplaceRoleDataPolicyBody {
+    pub default_policy: RoleDataPolicyBody,
+    pub model_policies: Vec<RoleDataModelPolicyBody>,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct RoleDataPolicyBody {
+    pub can_view: bool,
+    pub can_create: bool,
+    pub can_update: bool,
+    pub can_delete: bool,
+    pub default_view_scope: String,
+    pub default_update_scope: String,
+    pub default_delete_scope: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct RoleDataModelPolicyBody {
+    pub data_model_id: Uuid,
+    pub view_scope_override: Option<String>,
+    pub update_scope_override: Option<String>,
+    pub delete_scope_override: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RoleResponse {
     pub code: String,
@@ -59,6 +86,13 @@ pub struct RoleResponse {
 pub struct RolePermissionsResponse {
     pub role_code: String,
     pub permission_codes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RoleDataPolicyResponse {
+    pub role_code: String,
+    pub default_policy: RoleDataPolicyBody,
+    pub model_policies: Vec<RoleDataModelPolicyBody>,
 }
 
 fn to_role_response(role: domain::RoleTemplate) -> RoleResponse {
@@ -86,6 +120,92 @@ pub fn router() -> Router<Arc<ApiState>> {
             "/roles/:id/permissions",
             get(get_role_permissions).put(replace_role_permissions),
         )
+        .route(
+            "/roles/:id/data-policy",
+            get(get_role_data_policy).put(replace_role_data_policy),
+        )
+}
+
+fn parse_data_policy_scope(value: &str) -> Result<domain::RoleDataPolicyScope, ApiError> {
+    domain::RoleDataPolicyScope::parse(value)
+        .ok_or(control_plane::errors::ControlPlaneError::InvalidInput("data_policy_scope").into())
+        .map_err(ApiError)
+}
+
+fn parse_optional_data_policy_scope(
+    value: Option<String>,
+) -> Result<Option<domain::RoleDataPolicyScope>, ApiError> {
+    value.as_deref().map(parse_data_policy_scope).transpose()
+}
+
+fn to_default_policy_input(
+    policy: RoleDataPolicyBody,
+) -> Result<RoleDataPolicyDefaultsInput, ApiError> {
+    Ok(RoleDataPolicyDefaultsInput {
+        can_view: policy.can_view,
+        can_create: policy.can_create,
+        can_update: policy.can_update,
+        can_delete: policy.can_delete,
+        default_view_scope: parse_data_policy_scope(&policy.default_view_scope)?,
+        default_update_scope: parse_data_policy_scope(&policy.default_update_scope)?,
+        default_delete_scope: parse_data_policy_scope(&policy.default_delete_scope)?,
+    })
+}
+
+fn to_model_policy_input(
+    policy: RoleDataModelPolicyBody,
+) -> Result<RoleDataModelPolicyInput, ApiError> {
+    Ok(RoleDataModelPolicyInput {
+        data_model_id: policy.data_model_id,
+        view_scope_override: parse_optional_data_policy_scope(policy.view_scope_override)?,
+        update_scope_override: parse_optional_data_policy_scope(policy.update_scope_override)?,
+        delete_scope_override: parse_optional_data_policy_scope(policy.delete_scope_override)?,
+    })
+}
+
+fn to_role_data_policy_response(
+    policy: control_plane::ports::RoleDataPolicyView,
+) -> RoleDataPolicyResponse {
+    RoleDataPolicyResponse {
+        role_code: policy.role_code,
+        default_policy: RoleDataPolicyBody {
+            can_view: policy.default_policy.can_view,
+            can_create: policy.default_policy.can_create,
+            can_update: policy.default_policy.can_update,
+            can_delete: policy.default_policy.can_delete,
+            default_view_scope: policy
+                .default_policy
+                .default_view_scope
+                .as_str()
+                .to_string(),
+            default_update_scope: policy
+                .default_policy
+                .default_update_scope
+                .as_str()
+                .to_string(),
+            default_delete_scope: policy
+                .default_policy
+                .default_delete_scope
+                .as_str()
+                .to_string(),
+        },
+        model_policies: policy
+            .model_policies
+            .into_iter()
+            .map(|model_policy| RoleDataModelPolicyBody {
+                data_model_id: model_policy.data_model_id,
+                view_scope_override: model_policy
+                    .view_scope_override
+                    .map(|scope| scope.as_str().to_string()),
+                update_scope_override: model_policy
+                    .update_scope_override
+                    .map(|scope| scope.as_str().to_string()),
+                delete_scope_override: model_policy
+                    .delete_scope_override
+                    .map(|scope| scope.as_str().to_string()),
+            })
+            .collect(),
+    }
 }
 
 #[utoipa::path(
@@ -249,4 +369,57 @@ pub async fn replace_role_permissions(
         .await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/roles/{id}/data-policy",
+    params(("id" = String, Path, description = "Role code")),
+    responses((status = 200, body = RoleDataPolicyResponse), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn get_role_data_policy(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(role_code): Path<String>,
+) -> Result<Json<ApiSuccess<RoleDataPolicyResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let policy = RoleService::new(state.store.clone())
+        .get_role_data_policy(context.user.id, &role_code)
+        .await?;
+
+    Ok(Json(ApiSuccess::new(to_role_data_policy_response(policy))))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/console/roles/{id}/data-policy",
+    request_body = ReplaceRoleDataPolicyBody,
+    params(("id" = String, Path, description = "Role code")),
+    responses((status = 200, body = RoleDataPolicyResponse), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn replace_role_data_policy(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(role_code): Path<String>,
+    Json(body): Json<ReplaceRoleDataPolicyBody>,
+) -> Result<Json<ApiSuccess<RoleDataPolicyResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+
+    let default_policy = to_default_policy_input(body.default_policy)?;
+    let model_policies = body
+        .model_policies
+        .into_iter()
+        .map(to_model_policy_input)
+        .collect::<Result<Vec<_>, _>>()?;
+    let policy = RoleService::new(state.store.clone())
+        .replace_data_policy(ReplaceRoleDataPolicyCommand {
+            actor_user_id: context.user.id,
+            role_code,
+            default_policy,
+            model_policies,
+        })
+        .await?;
+
+    Ok(Json(ApiSuccess::new(to_role_data_policy_response(policy))))
 }
