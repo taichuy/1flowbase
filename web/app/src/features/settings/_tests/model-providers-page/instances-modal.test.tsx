@@ -761,6 +761,53 @@ describe('ModelProvidersPage - instances modal', () => {
   );
 
   test(
+    'opens the matching source instance drawer from a model group tag',
+    { timeout: 15000 },
+    async () => {
+      authenticateAsModelProviderManager();
+      const options = buildSettingsModelProviderOptions();
+      options.providers[0].model_groups[0] = {
+        model_id: primaryContractProviderModels[0].model_id,
+        model: primaryContractProviderModels[0],
+        targets: [
+          {
+            source_instance_id: 'provider-1',
+            source_instance_display_name: 'OpenAI Production',
+            model: primaryContractProviderModels[0]
+          },
+          {
+            source_instance_id: 'provider-2',
+            source_instance_display_name: 'OpenAI Backup',
+            model: primaryContractProviderModels[0]
+          }
+        ]
+      };
+      modelProvidersApi.fetchSettingsModelProviderOptions.mockResolvedValueOnce(
+        options
+      );
+
+      renderApp('/settings/model-providers');
+
+      const modal = await openProviderInstancesModal();
+      const mainInstanceTable = within(modal).getByRole('table', {
+        name: '主实例'
+      });
+      const aggregatedRow = within(mainInstanceTable).getByRole('row', {
+        name: /gpt-4o-mini.*OpenAI Production.*OpenAI Backup/
+      });
+
+      fireEvent.click(
+        within(aggregatedRow).getByRole('button', {
+          name: 'OpenAI Production'
+        })
+      );
+
+      expect(await screen.findByText('编辑 API 密钥配置')).toBeInTheDocument();
+      expect(screen.getByText('OpenAI Compatible 实例')).toBeInTheDocument();
+    }
+  );
+
+  test(
     'keeps the provider instances modal open while opening the edit drawer',
     { timeout: 15000 },
     async () => {

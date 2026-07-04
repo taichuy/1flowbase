@@ -494,6 +494,15 @@
   margin-inline-end: 0;
 }
 
+.model-provider-panel__main-instance-target-tag-action {
+  cursor: pointer;
+}
+
+.model-provider-panel__main-instance-target-tag-action:focus-visible {
+  outline: 2px solid rgba(22, 119, 255, 0.6);
+  outline-offset: 2px;
+}
+
 .model-provider-panel__instances-modal-actions {
   padding-top: 4px;
 }

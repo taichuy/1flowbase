@@ -13,6 +13,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 
 type ModelGroup =
   SettingsModelProviderOptions['providers'][number]['model_groups'][number];
+type ModelGroupTarget = ModelGroup['targets'][number];
 
 const SOURCE_INSTANCE_TAG_COLORS = [
   'blue',
@@ -92,6 +93,46 @@ export function ModelProviderInstancesModal({
     ? i18nText('settings', 'auto.instance', { value1: displayName })
     : i18nText('settings', 'auto.supplier_instance');
   const mainInstanceLabel = i18nText('settings', 'auto.master_instance');
+  const renderModelGroupTargetTag = (target: ModelGroupTarget) => {
+    const sourceInstance = instances.find(
+      (instance) => instance.id === target.source_instance_id
+    );
+    const tagColor = sourceInstanceTagColor(
+      target.source_instance_display_name
+    );
+
+    if (!canManage || !sourceInstance) {
+      return (
+        <Tag
+          key={target.source_instance_id}
+          bordered={false}
+          color={tagColor}
+        >
+          {target.source_instance_display_name}
+        </Tag>
+      );
+    }
+
+    return (
+      <Tag
+        key={target.source_instance_id}
+        bordered={false}
+        className="model-provider-panel__main-instance-target-tag-action"
+        color={tagColor}
+        role="button"
+        tabIndex={0}
+        onClick={() => onEdit(sourceInstance)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onEdit(sourceInstance);
+          }
+        }}
+      >
+        {target.source_instance_display_name}
+      </Tag>
+    );
+  };
   const modelGroupColumns: ColumnsType<ModelGroup> = [
     {
       key: 'model_id',
@@ -112,17 +153,7 @@ export function ModelProviderInstancesModal({
               {i18nText('settings', 'auto.unsummarized_model')}
             </Typography.Text>
           ) : (
-            group.targets.map((target) => (
-              <Tag
-                key={target.source_instance_id}
-                bordered={false}
-                color={sourceInstanceTagColor(
-                  target.source_instance_display_name
-                )}
-              >
-                {target.source_instance_display_name}
-              </Tag>
-            ))
+            group.targets.map(renderModelGroupTargetTag)
           )}
         </div>
       )
