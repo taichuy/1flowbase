@@ -1,6 +1,6 @@
 ---
 name: problem-framing
-description: 1flowbase 需求类请求动工前使用：普通功能、缺陷、交互、重构、规则、文档、架构、数学/算法/状态机/图/队列/约束/物理公式等计算表达假设，或跨 frontend/backend 需求，默认先给 2-3 个轻量做法、明确推荐并等待用户确认；用户确认方案后默认创建 Standalone Complete Issue，只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才升级为 L0/L1/L2/L3 issue 树。涉及 API 验收预期、contract、defaults、migration、历史数据、权限、状态归属、用户内容、产品流程、issue shaping、issue 分级标签、ADR drafting、设计对齐或 implementation planning 时升级为完整规划。先收敛目标、范围、成功标准、复杂度归属、方案、风险、终止条件和用户拍板点，再进入实现。
+description: 1flowbase 需求类请求动工前使用：普通功能、缺陷、交互、重构、规则、文档、架构、数学/算法/状态机/图/队列/约束/物理公式等计算表达假设，或跨 frontend/backend 需求，默认先给 2-3 个轻量做法、明确推荐并等待用户确认；策略建议必须输出现状、方向、风险收益和最终建议，多方向 / 高风险 / contract / 架构决策必须按保守 / 平衡 / 激进三方向展开。用户确认方案后默认创建 Standalone Complete Issue，只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才升级为 L0/L1/L2/L3 issue 树。涉及 API 验收预期、contract、defaults、migration、历史数据、权限、状态归属、用户内容、产品流程、issue shaping、issue 分级标签、ADR drafting、设计对齐或 implementation planning 时升级为完整规划。先收敛目标、范围、成功标准、复杂度归属、方案、风险、终止条件和用户拍板点，再进入实现。
 ---
 
 # Problem Framing
@@ -25,8 +25,8 @@ description: 1flowbase 需求类请求动工前使用：普通功能、缺陷、
 
 按当前阶段输出，不提前写下一阶段内容：
 
-- `alignment`: 只输出事实、假设、边界、2-3 个方向、风险收益和建议；不写 issue draft、L3 拆分或实现口径。
-- `decision`: 只输出三方案、推荐、red-team 和需要用户批准的点；不把推荐写成已批准决策。
+- `alignment`: 只按 `Strategy Advice Format` 输出现状、方向、风险收益和最终建议；不写 issue draft、L3 拆分或实现口径。
+- `decision`: 只按保守 / 平衡 / 激进三方向输出方案、最终建议、red-team 和需要用户批准的点；不把推荐写成已批准决策。
 - `issue gate`: 只输出 Standalone Complete Issue 或已批准 issue 树的 issue draft / 标签 / 验收证据 / 停止条件；不写测试、代码计划或实现步骤。
 - `implementation handoff`: 只在 issue 已确认后输出最小实现边界；issue 树场景只从已确认执行 issue 生成；不扩大 issue 范围。
 - `qa/user acceptance`: 只输出证据、风险和待用户验收事项；不自动关闭总 issue 或写验收通过。
@@ -52,11 +52,20 @@ Forbidden:
 - 只读取当前请求、最近相关的 AGENTS / README / docs，以及直接受影响的代码路径。
 - 只追一层相邻影响面；进入二阶路线图工作前停止。
 - 最多进行 3 轮批量追问；每轮集中提出当前阶段所有阻塞问题。
-- 普通需求必须至少给出简短对齐：现状、2-3 个轻量方向、风险收益、明确建议，并等待用户确认。
+- 普通需求必须至少按 `Strategy Advice Format` 给出简短对齐，并等待用户确认。
 - 需要落地开发计划时，默认产出 Standalone Complete Issue；纯查询、机械精确改动或用户明确跳过规划除外。
 - 只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才提出升级为 issue 树；升级原因和新增成本必须写清并等待用户批准。
-- 任何存在多方向选择，或涉及数据 / contract / 架构风险的决策，都必须给出 3 个方案：conservative、balanced、aggressive。
+- 任何策略建议、多方向选择，或涉及数据 / contract / 架构风险的决策，都必须给出 3 个方向：保守 / conservative、平衡 / balanced、激进 / aggressive。
 - 推荐必须绑定证据；无证据支撑的判断标为假设。
+
+## Strategy Advice Format
+
+当用户要策略建议、方案选择、方向判断、设计对齐结论，或当前输出属于 `alignment` / `decision` 阶段时，必须使用这个骨架；不要只给编号列表或把推荐埋在第一个方案里。
+
+- `现状`: 写已确认事实、证据来源、关键未知点、不变量，以及为什么现在需要拍板。
+- `方向`: 普通低风险需求可给 2-3 个轻量方向；只要涉及策略建议、多方向选择、数据 / contract / 架构风险，就必须按 `保守 / conservative`、`平衡 / balanced`、`激进 / aggressive` 三个方向命名。
+- `风险收益`: 对每个方向写收益、代价、隐藏成本、长期维护影响和失败模式；证据不足的判断标为假设。
+- `最终建议`: 给唯一推荐方向、为什么不推荐其他方向、推荐依赖的关键假设，以及需要用户批准的点。
 
 ## Grilling Pass
 
@@ -155,13 +164,13 @@ issue gate 前先写一段可给用户核对的 `需求复述`。如果无法基
 2. 做计算表达假设：使用本文件 `Computational Framing` 判断数学 / 算法 / 数据结构 / 物理公式是否应该成为方案生成维度；命中则写入方向和风险收益，不命中则不要展开。
 3. 检查设计对齐：使用本文件 `Design Alignment Gate` 判断是否需要补齐业务目标、非目标、关键约束、复杂度分配、可选方向、核心取舍和推荐倾向；命中后端 API / 状态入口时补齐 `Backend API Acceptance Framing`。
 4. 执行追问收敛：issue gate 前先写可核对的 `需求复述`；若最终产品效果、触发结果、范围边界或验收证据说不清，使用 `Grilling Pass` 批量追问；每轮给选项、推荐和影响，三轮后把剩余未知写入 issue 假设。
-5. 先做简短对齐：普通需求按“现状、方向、风险收益、建议”输出 2-3 个轻量做法，明确推荐其中一个，并等待用户确认；命中设计对齐时，把复杂度归属和长期维护影响写入方向说明。
+5. 先做简短对齐：普通需求按 `Strategy Advice Format` 输出 2-3 个轻量方向，明确推荐其中一个，并等待用户确认；命中策略建议、多方向选择、数据 / contract / 架构风险时，方向必须命名为保守 / 平衡 / 激进；命中设计对齐时，把复杂度归属和长期维护影响写入方向说明。
 6. 检查阶段顺序：使用本文件 `Phase Order Gate` 判断当前只允许输出什么；到阶段边界就停。
 7. 检查设计规则：方案可能引入抽象、接口、flag、helper、重复校验或 pass-through 时，读取 `references/design-rules.md`；违反时先输出更小 redesign。
 8. 选择 issue 形态：需要落地开发时，使用 `references/issue-lifecycle.md` 默认建立 Standalone Complete Issue；只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才申请升级为 L0/L1/L2/L3 issue 树。
 9. 拆分概念：在命名 API、service、enum、目录或 migration 前，先识别被混用的概念。
 10. 建立矩阵：任务涉及 defaults、contract、schema、state、permissions、migration、history 或 user content 时，使用 `references/domain-matrix.md`。
-11. 输出方案：存在多个有效方向，或任务涉及数据 / contract / 架构风险时，必须使用 conservative / balanced / aggressive 三方案；用户批准前不要压缩成单一最佳答案。
+11. 输出方案：存在多个有效方向，或任务涉及数据 / contract / 架构风险时，必须使用保守 / conservative、平衡 / balanced、激进 / aggressive 三方向；用户批准前不要压缩成单一最佳答案。
 12. 管理 issue：需要落地开发时，先按 Standalone Complete Issue 打标签、明确阶段、验收证据、执行边界和关闭条件；已批准 issue 树再按 L0/L1/L2/L3 管直接 parent 和 child。用户未确认 issue 前停止。
 13. 反方评审：向用户请求批准前，先 red-team 推荐方案，使用 `references/options-and-red-team.md`。
 14. 停在决策产物：使用 `references/artifacts.md` 输出 brief、issue、ADR 或 implementation handoff。
@@ -175,9 +184,9 @@ issue gate 前先写一段可给用户核对的 `需求复述`。如果无法基
 - `复杂度归属`: 新增或暴露的复杂度由哪个模块、边界或流程承担；是否会扩散到多个调用点。
 - `风险收益`: 明确收益、代价、隐藏成本、长期维护影响和失败模式。
 - `验收证据`: 用什么代码、测试、运行结果、日志、截图或 issue 条件证明方案没有破坏关键约束。
-- `建议`: 先给清晰推荐，再列出用户必须批准的点。
+- `最终建议`: 先给唯一推荐，再列出用户必须批准的点。
 
-三方案决策中，每个方案都重复上述字段，最后给出唯一推荐方案。
+三方案决策中，先写总体现状，再在 `方向` 下分别写保守 / 平衡 / 激进；每个方向至少包含复杂度归属和风险收益；最后只写一个 `最终建议`。不要用无语义编号代替三方向标签。
 
 ## Stop Conditions
 

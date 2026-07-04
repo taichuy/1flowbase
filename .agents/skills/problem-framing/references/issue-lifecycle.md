@@ -4,7 +4,7 @@
 
 ## Requirement Alignment
 
-普通需求先输出简短对齐，给出 2-3 个轻量做法，明确推荐其中一个，并等待用户确认：
+普通需求先输出简短对齐，给出 2-3 个轻量方向，明确推荐其中一个，并等待用户确认：
 
 ```md
 现状
@@ -12,9 +12,9 @@
 - 不确定点：
 
 方向
-- 做法 A：
-- 做法 B：
-- 做法 C（可选）：
+- 保守 / Conservative：
+- 平衡 / Balanced：
+- 激进 / Aggressive（高风险、多方向、contract 或架构决策必须；普通低风险可省略）：
 - 不做什么：
 
 风险收益
@@ -22,12 +22,12 @@
 - 风险：
 - 验证方式：
 
-建议
-- 我的建议：
+最终建议
+- 我的最终建议：
 - 需要你确认：
 ```
 
-高风险、多方向或影响数据 / contract / 架构的需求，升级为 conservative / balanced / aggressive 三方案。
+高风险、多方向或影响数据 / contract / 架构的需求，升级为保守 / conservative、平衡 / balanced、激进 / aggressive 三方向。
 
 ## Issue Grades
 
