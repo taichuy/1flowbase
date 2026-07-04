@@ -81,19 +81,22 @@
 - `level:*` 表示 issue 在树上的位置，`grade:*` 表示风险和规划强度。
 
 方向
+- 默认：先用 Standalone Complete Issue 承载目标、范围、取舍、验收和执行边界。
+- 升级：只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才拆 issue 树。
 - L0：项目级总问题，挂多个 L1 决策 issue。
 - L1：架构决策 / ADR，挂多个 L2 workstream。
 - L2：backend / frontend / QA 等工作流，挂多个 L3 执行任务。
-- L3：单个可执行任务，不再继续拆 child；只有 L3 默认允许 agent 直接进入实现。
+- L3：单个可执行任务，不再继续拆 child；Standalone 和 L3 允许 agent 在确认后进入实现。
 
 风险收益
 - 收益：父子关系可检索，验收路径清晰。
 - 收益：提前拆 L3 能限制 AI 的实现边界，避免过度抽象、范围扩张和耗时失控。
 - 收益：L0 只整理事实，L1 只做决策，L2 只拆工作流，L3 才执行，能避免 planning 和 implementation 混在一起。
+- 风险：小需求默认拆树会增加 issue 噪音，并让 L3 缺少完整需求上下文。
 - 风险：跨层挂载会让 parent/child 语义混乱；让 L2 直接实现会把 workstream 变成大包任务。
 
 建议
-- 建议给每个 issue 同时打 `level:*` 和 `grade:*`，并只挂直接下一层 child issue。
-- 开展开发计划默认走完 L0 -> L1 -> L2 -> L3；进入实现前，先把 L2 拆成 L3。
+- 建议默认创建 Standalone Complete Issue，并打 `level:standalone` 和对应 `grade:*`。
+- 如果用户批准拆树，再给每个 issue 同时打 `level:*` 和 `grade:*`，并只挂直接下一层 child issue；进入实现前，先把 L2 拆成 L3。
 - AI 可以在 L0 整理事实和冲突，在 L1 提供方案和风险，在 L2 拆依赖和顺序，在 L3 写代码、测试和验证；AI 不应该自己批准 L1，也不应该在 L3 改架构边界。
 ```

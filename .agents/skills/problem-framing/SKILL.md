@@ -1,23 +1,23 @@
 ---
 name: problem-framing
-description: 1flowbase 需求类请求动工前使用：普通功能、缺陷、交互、重构、规则、文档、架构、数学/算法/状态机/图/队列/约束/物理公式等计算表达假设，或跨 frontend/backend 需求，默认先给 2-3 个轻量做法、明确推荐并等待用户确认；需要落地开发计划时默认走 L0 Umbrella 到 L1 ADR 到 L2 Epic 到 L3 Task 四层规划。涉及 API 验收预期、contract、defaults、migration、历史数据、权限、状态归属、用户内容、产品流程、issue shaping、issue 层级/分级标签、ADR drafting、设计对齐或 implementation planning 时升级为完整规划。先收敛目标、范围、成功标准、复杂度归属、方案、风险、终止条件和用户拍板点，再进入实现。
+description: 1flowbase 需求类请求动工前使用：普通功能、缺陷、交互、重构、规则、文档、架构、数学/算法/状态机/图/队列/约束/物理公式等计算表达假设，或跨 frontend/backend 需求，默认先给 2-3 个轻量做法、明确推荐并等待用户确认；用户确认方案后默认创建 Standalone Complete Issue，只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才升级为 L0/L1/L2/L3 issue 树。涉及 API 验收预期、contract、defaults、migration、历史数据、权限、状态归属、用户内容、产品流程、issue shaping、issue 分级标签、ADR drafting、设计对齐或 implementation planning 时升级为完整规划。先收敛目标、范围、成功标准、复杂度归属、方案、风险、终止条件和用户拍板点，再进入实现。
 ---
 
 # Problem Framing
 
 ## Overview
 
-本 Skill 是 1flowbase 的动工前规划闸门。它只负责把需求、证据、边界和拍板点收敛清楚，不负责直接实现。需要落地开发计划时，默认按 L0 Umbrella -> L1 ADR -> L2 Epic -> L3 Task 走完整四层；只有 L3 是进入实现的最小受控单元。
+本 Skill 是 1flowbase 的动工前规划闸门。它只负责把需求、证据、边界和拍板点收敛清楚，不负责直接实现。需要落地开发计划时，默认创建一个 Standalone Complete Issue；只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才升级为 L0 Umbrella -> L1 ADR -> L2 Epic -> L3 Task issue 树。
 
 ## Iron Law
 
-需求类请求未完成对齐和用户确认前，不进入代码实现。当前阶段未完成前，不输出下一阶段产物；方案确认只授权进入 issue 草案 / 审核，不等于授权实现；除非用户明确说跳过 issue 或直接实现，否则没有已确认 L3 issue 不进入实现。影响数据、contract、架构或用户内容的请求，未完成事实整理、范围收敛、设计对齐和用户拍板前，不进入迁移设计或大规模重构计划。需要开发计划时，不跳过 L0 事实、L1 决策、L2 工作流和 L3 执行边界；实现阶段不得用 L3 修改 L1 已定架构边界。
+需求类请求未完成对齐和用户确认前，不进入代码实现。当前阶段未完成前，不输出下一阶段产物；方案确认只授权进入 issue 草案 / 审核，不等于授权实现；除非用户明确说跳过 issue 或直接实现，否则没有已确认 Standalone Complete Issue 或已确认 issue 树执行 issue 不进入实现。影响数据、contract、架构或用户内容的请求，未完成事实整理、范围收敛、设计对齐和用户拍板前，不进入迁移设计或大规模重构计划。需要开发计划时，默认使用单体完整 issue；实现阶段不得用单体 issue 或 L3 修改已确认的架构、contract 或 parent issue 边界。
 
 ## Entry Gate
 
 拿到需求类请求时，先使用本 Skill，再进入 `frontend-development`、`backend-development` 或 `test-driven-development`。
 
-用户确认方案后，先创建或更新 L3 implementation issue，并等待用户确认 issue 内容。只有存在已确认 issue，或用户明确说跳过 issue / 直接实现，才允许切换到实现 Skill。
+用户确认方案后，先创建或更新 Standalone Complete Issue，并等待用户确认 issue 内容。只有存在已确认 Standalone Complete Issue、已确认 issue 树执行 issue，或用户明确说跳过 issue / 直接实现，才允许切换到实现 Skill。
 
 只有纯查询、机械精确改动，或用户明确要求直接开始 / 无需确认时，才跳过本 Skill。
 
@@ -27,8 +27,8 @@ description: 1flowbase 需求类请求动工前使用：普通功能、缺陷、
 
 - `alignment`: 只输出事实、假设、边界、2-3 个方向、风险收益和建议；不写 issue draft、L3 拆分或实现口径。
 - `decision`: 只输出三方案、推荐、red-team 和需要用户批准的点；不把推荐写成已批准决策。
-- `issue gate`: 只输出 issue draft / 标签 / 验收证据 / 停止条件；不写测试、代码计划或实现步骤。
-- `implementation handoff`: 只在 issue 已确认后输出最小实现边界；不扩大 issue 范围。
+- `issue gate`: 只输出 Standalone Complete Issue 或已批准 issue 树的 issue draft / 标签 / 验收证据 / 停止条件；不写测试、代码计划或实现步骤。
+- `implementation handoff`: 只在 issue 已确认后输出最小实现边界；issue 树场景只从已确认执行 issue 生成；不扩大 issue 范围。
 - `qa/user acceptance`: 只输出证据、风险和待用户验收事项；不自动关闭总 issue 或写验收通过。
 
 到达阶段边界就停止并等待用户确认。用户提醒“不要跳顺序”时，先退回当前阶段并只补当前阶段缺口。
@@ -39,7 +39,7 @@ Allowed:
 
 - 收敛目标、范围、成功标准、假设、未知点、不变量、失败模式和需要用户拍板的问题。
 - 只检查确认直接事实所需的代码、文档、issue、测试和日志。
-- 产出简短对齐、讨论 brief、决策矩阵、三方案对比、red-team 评审、L0/L1/L2/L3 issue 草案、issue 分级标签、ADR 草案或实现交接稿。
+- 产出简短对齐、讨论 brief、决策矩阵、三方案对比、red-team 评审、Standalone Complete Issue 草案、按需批准的 L0/L1/L2/L3 issue 树草案、issue 分级标签、ADR 草案或实现交接稿。
 
 Forbidden:
 
@@ -53,7 +53,8 @@ Forbidden:
 - 只追一层相邻影响面；进入二阶路线图工作前停止。
 - 最多进行 3 轮批量追问；每轮集中提出当前阶段所有阻塞问题。
 - 普通需求必须至少给出简短对齐：现状、2-3 个轻量方向、风险收益、明确建议，并等待用户确认。
-- 需要落地开发计划时，默认产出 L0 -> L1 -> L2 -> L3 四层；纯查询、机械精确改动或用户明确跳过规划除外。
+- 需要落地开发计划时，默认产出 Standalone Complete Issue；纯查询、机械精确改动或用户明确跳过规划除外。
+- 只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才提出升级为 issue 树；升级原因和新增成本必须写清并等待用户批准。
 - 任何存在多方向选择，或涉及数据 / contract / 架构风险的决策，都必须给出 3 个方案：conservative、balanced、aggressive。
 - 推荐必须绑定证据；无证据支撑的判断标为假设。
 
@@ -157,11 +158,11 @@ issue gate 前先写一段可给用户核对的 `需求复述`。如果无法基
 5. 先做简短对齐：普通需求按“现状、方向、风险收益、建议”输出 2-3 个轻量做法，明确推荐其中一个，并等待用户确认；命中设计对齐时，把复杂度归属和长期维护影响写入方向说明。
 6. 检查阶段顺序：使用本文件 `Phase Order Gate` 判断当前只允许输出什么；到阶段边界就停。
 7. 检查设计规则：方案可能引入抽象、接口、flag、helper、重复校验或 pass-through 时，读取 `references/design-rules.md`；违反时先输出更小 redesign。
-8. 搭四层计划：需要落地开发时，使用 `references/issue-lifecycle.md` 默认建立 L0 Umbrella -> L1 ADR -> L2 Epic -> L3 Task；每一层可以有多个 issue，下一层只关联直接 parent。
+8. 选择 issue 形态：需要落地开发时，使用 `references/issue-lifecycle.md` 默认建立 Standalone Complete Issue；只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才申请升级为 L0/L1/L2/L3 issue 树。
 9. 拆分概念：在命名 API、service、enum、目录或 migration 前，先识别被混用的概念。
 10. 建立矩阵：任务涉及 defaults、contract、schema、state、permissions、migration、history 或 user content 时，使用 `references/domain-matrix.md`。
 11. 输出方案：存在多个有效方向，或任务涉及数据 / contract / 架构风险时，必须使用 conservative / balanced / aggressive 三方案；用户批准前不要压缩成单一最佳答案。
-12. 管理 issue：需要落地开发时，按 L0/L1/L2/L3 分级、打标签、明确阶段、直接 parent 和关闭条件；用户未确认 issue 前停止。
+12. 管理 issue：需要落地开发时，先按 Standalone Complete Issue 打标签、明确阶段、验收证据、执行边界和关闭条件；已批准 issue 树再按 L0/L1/L2/L3 管直接 parent 和 child。用户未确认 issue 前停止。
 13. 反方评审：向用户请求批准前，先 red-team 推荐方案，使用 `references/options-and-red-team.md`。
 14. 停在决策产物：使用 `references/artifacts.md` 输出 brief、issue、ADR 或 implementation handoff。
 
@@ -185,7 +186,7 @@ issue gate 前先写一段可给用户核对的 `需求复述`。如果无法基
 - discussion brief、issue draft、ADR draft 或 implementation handoff 已经可供审阅。
 - 普通需求的简短对齐已经可供用户确认。
 - 当前阶段允许的产物已经输出，下一阶段尚未得到用户确认。
-- 用户已确认方案，但 L3 issue 草案尚未创建或尚未确认。
+- 用户已确认方案，但 Standalone Complete Issue 或已批准 issue 树执行 issue 草案尚未创建或尚未确认。
 - 设计对齐已经形成可审阅的目标、非目标、关键约束、复杂度分配、方向和推荐。
 - 方案触发 `references/design-rules.md`，需要先给更小 redesign。
 - 三个方案和一个清晰推荐已经给出。
@@ -196,9 +197,11 @@ issue gate 前先写一段可给用户核对的 `需求复述`。如果无法基
 
 ## Handoff Rules
 
-用户批准方案后，先完成 issue gate：输出或更新 L3 issue，包含目标、范围、验收证据、预算、停止条件、标签和 parent；涉及后端 API / 状态入口时写入已确认的接口验收预期；等待用户确认 issue 内容。
+用户批准方案后，先完成 issue gate：默认输出或更新 Standalone Complete Issue，包含目标、非目标、事实证据、方案结论、范围、验收证据、执行边界、预算、停止 / 升级条件和标签；涉及后端 API / 状态入口时写入已确认的接口验收预期；等待用户确认 issue 内容。
 
-issue 已确认后，再切换到相关实现 Skill：
+只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才提出 issue 树升级理由和 L0/L1/L2/L3 草案，并等待用户批准。已批准 issue 树进入实现前，必须有已确认的执行 issue。
+
+Standalone Complete Issue 或 issue 树执行 issue 已确认后，再切换到相关实现 Skill：
 
 - 前端界面、交互、UI 结构：`frontend-development`。
 - 后端 API、状态、写路径、领域边界：`backend-development`。
