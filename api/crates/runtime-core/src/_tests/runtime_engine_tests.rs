@@ -671,6 +671,111 @@ async fn runtime_create_validates_api_required_fields_not_metadata_required() {
     assert_eq!(created["status"], json!("draft"));
 }
 
+#[tokio::test]
+async fn runtime_create_and_update_reject_non_writable_system_payload_fields() {
+    let model_id = Uuid::now_v7();
+    let workspace_id = Uuid::nil();
+    let metadata = ModelMetadata {
+        model_id,
+        model_code: "guarded_orders".into(),
+        status: domain::DataModelStatus::Published,
+        scope_kind: domain::DataModelScopeKind::Workspace,
+        scope_id: workspace_id,
+        data_source_instance_id: None,
+        source_kind: domain::DataModelSourceKind::MainSource,
+        external_resource_key: None,
+        physical_table_name: "rtm_workspace_guarded_orders".into(),
+        scope_column_name: "scope_id".into(),
+        fields: vec![
+            test_field(model_id, "id", domain::ModelFieldKind::String, true, false),
+            test_field(
+                model_id,
+                "scope_id",
+                domain::ModelFieldKind::ManyToOne,
+                true,
+                false,
+            ),
+            test_field(
+                model_id,
+                "created_by",
+                domain::ModelFieldKind::String,
+                true,
+                false,
+            ),
+            test_field(
+                model_id,
+                "updated_by",
+                domain::ModelFieldKind::String,
+                true,
+                false,
+            ),
+            test_field(
+                model_id,
+                "title",
+                domain::ModelFieldKind::String,
+                false,
+                true,
+            ),
+        ],
+        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
+        resource: ResourceDescriptor::runtime_model(
+            "guarded_orders",
+            domain::DataModelScopeKind::Workspace,
+        ),
+    };
+    let engine = RuntimeEngine::for_tests_with_models(vec![metadata]);
+    let actor = ActorContext::root(Uuid::now_v7(), workspace_id, "root");
+    let grant = scope_grant(model_id, workspace_id);
+
+    for field_code in ["id", "scope_id", "created_by", "updated_by"] {
+        let create_error = engine
+            .create_record(RuntimeCreateInput {
+                actor: actor.clone(),
+                model_code: "guarded_orders".into(),
+                payload: json!({ "title": "A-001", field_code: Uuid::now_v7().to_string() }),
+                scope_grant: Some(grant.clone()),
+            })
+            .await
+            .unwrap_err();
+        assert!(
+            create_error
+                .to_string()
+                .contains("runtime field is not writable"),
+            "unexpected create error for {field_code}: {create_error}"
+        );
+    }
+
+    let created = engine
+        .create_record(RuntimeCreateInput {
+            actor: actor.clone(),
+            model_code: "guarded_orders".into(),
+            payload: json!({ "title": "A-001" }),
+            scope_grant: Some(grant.clone()),
+        })
+        .await
+        .unwrap();
+    let record_id = created["id"].as_str().unwrap().to_string();
+
+    for field_code in ["id", "scope_id", "created_by", "updated_by"] {
+        let update_error = engine
+            .update_record(RuntimeUpdateInput {
+                actor: actor.clone(),
+                model_code: "guarded_orders".into(),
+                record_id: record_id.clone(),
+                payload: json!({ field_code: Uuid::now_v7().to_string() }),
+                scope_grant: Some(grant.clone()),
+            })
+            .await
+            .unwrap_err();
+        assert!(
+            update_error
+                .to_string()
+                .contains("runtime field is not writable"),
+            "unexpected update error for {field_code}: {update_error}"
+        );
+    }
+}
+
 fn runtime_engine_for_status(status: domain::DataModelStatus) -> RuntimeEngine {
     let engine = RuntimeEngine::for_tests();
     engine
@@ -697,6 +802,37 @@ fn status_model_metadata(model_code: &str) -> ModelMetadata {
             model_code,
             domain::DataModelScopeKind::Workspace,
         ),
+    }
+}
+
+fn test_field(
+    model_id: Uuid,
+    code: &str,
+    field_kind: domain::ModelFieldKind,
+    is_system: bool,
+    is_writable: bool,
+) -> domain::ModelFieldRecord {
+    domain::ModelFieldRecord {
+        id: Uuid::now_v7(),
+        data_model_id: model_id,
+        code: code.into(),
+        title: code.into(),
+        description: None,
+        physical_column_name: code.into(),
+        external_field_key: None,
+        field_kind,
+        is_system,
+        is_writable,
+        is_required: true,
+        api_required: false,
+        is_unique: code == "id",
+        default_value: None,
+        display_interface: None,
+        display_options: json!({}),
+        relation_target_model_id: None,
+        relation_options: json!({}),
+        sort_order: 0,
+        availability_status: domain::MetadataAvailabilityStatus::Available,
     }
 }
 

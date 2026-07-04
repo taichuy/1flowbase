@@ -330,6 +330,76 @@ impl RoleRepository for MemoryRoleRepository {
             .unwrap_or_default())
     }
 
+    async fn get_role_data_policy(
+        &self,
+        _workspace_id: Uuid,
+        role_code: &str,
+    ) -> Result<crate::ports::RoleDataPolicyView> {
+        let role_id = Uuid::now_v7();
+        let now = time::OffsetDateTime::now_utc();
+        Ok(crate::ports::RoleDataPolicyView {
+            role_code: role_code.to_string(),
+            default_policy: domain::RoleDataPolicyRecord {
+                id: Uuid::now_v7(),
+                role_id,
+                role_code: role_code.to_string(),
+                can_view: false,
+                can_create: false,
+                can_update: false,
+                can_delete: false,
+                default_view_scope: domain::RoleDataPolicyScope::Own,
+                default_update_scope: domain::RoleDataPolicyScope::Own,
+                default_delete_scope: domain::RoleDataPolicyScope::Own,
+                created_at: now,
+                updated_at: now,
+            },
+            model_policies: Vec::new(),
+        })
+    }
+
+    async fn replace_role_data_policy(
+        &self,
+        input: &crate::ports::ReplaceRoleDataPolicyInput,
+    ) -> Result<crate::ports::RoleDataPolicyView> {
+        self.touched_workspaces
+            .write()
+            .await
+            .push(input.workspace_id);
+        let role_id = Uuid::now_v7();
+        let now = time::OffsetDateTime::now_utc();
+        Ok(crate::ports::RoleDataPolicyView {
+            role_code: input.role_code.clone(),
+            default_policy: domain::RoleDataPolicyRecord {
+                id: Uuid::now_v7(),
+                role_id,
+                role_code: input.role_code.clone(),
+                can_view: input.default_policy.can_view,
+                can_create: input.default_policy.can_create,
+                can_update: input.default_policy.can_update,
+                can_delete: input.default_policy.can_delete,
+                default_view_scope: input.default_policy.default_view_scope,
+                default_update_scope: input.default_policy.default_update_scope,
+                default_delete_scope: input.default_policy.default_delete_scope,
+                created_at: now,
+                updated_at: now,
+            },
+            model_policies: input
+                .model_policies
+                .iter()
+                .map(|policy| domain::RoleDataModelPolicyRecord {
+                    id: Uuid::now_v7(),
+                    role_id,
+                    data_model_id: policy.data_model_id,
+                    view_scope_override: policy.view_scope_override,
+                    update_scope_override: policy.update_scope_override,
+                    delete_scope_override: policy.delete_scope_override,
+                    created_at: now,
+                    updated_at: now,
+                })
+                .collect(),
+        })
+    }
+
     async fn append_audit_log(&self, event: &AuditLogRecord) -> Result<()> {
         self.audit_events
             .write()

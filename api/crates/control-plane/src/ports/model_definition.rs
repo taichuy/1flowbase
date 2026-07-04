@@ -233,5 +233,18 @@ pub trait ModelDefinitionRepository: Send + Sync {
     ) -> anyhow::Result<Vec<domain::ScopeDataModelGrantRecord>> {
         anyhow::bail!("list_scope_data_model_grants is not implemented")
     }
+    async fn list_actor_role_data_policies(
+        &self,
+        _actor_user_id: Uuid,
+        _workspace_id: Uuid,
+        _data_model_id: Uuid,
+    ) -> anyhow::Result<
+        Vec<(
+            domain::RoleDataPolicyRecord,
+            Option<domain::RoleDataModelPolicyRecord>,
+        )>,
+    > {
+        anyhow::bail!("list_actor_role_data_policies is not implemented")
+    }
     async fn append_audit_log(&self, event: &AuditLogRecord) -> anyhow::Result<()>;
 }

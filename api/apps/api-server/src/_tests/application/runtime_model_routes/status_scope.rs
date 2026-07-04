@@ -1,7 +1,105 @@
 use super::*;
 
 #[tokio::test]
-async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors() {
+async fn runtime_model_routes_reject_role_data_policy_disabled_actions() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let model_id = create_orders_model(&app, &root_cookie, &root_csrf).await;
+    create_text_field(&app, &root_cookie, &root_csrf, &model_id, "title").await;
+
+    let create_role_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/roles")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "code": "runtime_blocked",
+                        "name": "Runtime Blocked",
+                        "introduction": "blocked by role data policy"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_role_response.status(), StatusCode::CREATED);
+
+    let member_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "runtime-blocked",
+        "temp-pass",
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["runtime_blocked"],
+    )
+    .await;
+    let (member_cookie, member_csrf) =
+        login_and_capture_cookie(&app, "runtime-blocked", "temp-pass").await;
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/runtime/models/orders/list")
+                .header("cookie", &member_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_response.status(), StatusCode::FORBIDDEN);
+    let list_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(list_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(list_payload["code"], json!("data_model_scope_not_granted"));
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/runtime/models/orders/create")
+                .header("cookie", &member_cookie)
+                .header("x-csrf-token", &member_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "title": "blocked" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::FORBIDDEN);
+    let create_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        create_payload["code"],
+        json!("data_model_scope_not_granted")
+    );
+}
+
+#[tokio::test]
+async fn runtime_model_routes_intersect_role_policy_with_persisted_scope_all_grant_for_session_actors()
+{
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let model_id = create_orders_model(&app, &root_cookie, &root_csrf).await;
@@ -100,7 +198,11 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
         .unwrap();
     let manager_list_payload: serde_json::Value =
         serde_json::from_slice(&manager_list_body).unwrap();
-    assert_eq!(manager_list_payload["data"]["total"], json!(3));
+    assert_eq!(manager_list_payload["data"]["total"], json!(1));
+    assert_eq!(
+        manager_list_payload["data"]["items"][0]["title"],
+        json!("manager-order")
+    );
 
     let admin_list = app
         .clone()
@@ -136,7 +238,23 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
     let root_list_payload: serde_json::Value = serde_json::from_slice(&root_list_body).unwrap();
     assert_eq!(root_list_payload["data"]["total"], json!(3));
 
-    let manager_get = app
+    let manager_get_own = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/runtime/models/orders/get/{manager_record_id}"
+                ))
+                .header("cookie", &manager_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(manager_get_own.status(), StatusCode::OK);
+
+    let manager_get_foreign = app
         .clone()
         .oneshot(
             Request::builder()
@@ -148,7 +266,7 @@ async fn runtime_model_routes_apply_persisted_scope_all_grant_for_session_actors
         )
         .await
         .unwrap();
-    assert_eq!(manager_get.status(), StatusCode::OK);
+    assert_eq!(manager_get_foreign.status(), StatusCode::NOT_FOUND);
 
     let admin_get = app
         .clone()

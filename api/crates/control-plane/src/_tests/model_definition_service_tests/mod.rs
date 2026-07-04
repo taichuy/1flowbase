@@ -27,6 +27,14 @@ struct ScopedModelDefinitionRepository {
     models: Arc<Mutex<HashMap<Uuid, ModelDefinitionRecord>>>,
     data_source_defaults: Arc<Mutex<HashMap<(Uuid, Uuid), DataSourceDefaults>>>,
     grants: Arc<Mutex<Vec<ScopeDataModelGrantRecord>>>,
+    role_data_policies: Arc<
+        Mutex<
+            Vec<(
+                domain::RoleDataPolicyRecord,
+                Option<domain::RoleDataModelPolicyRecord>,
+            )>,
+        >,
+    >,
     audit_logs: Arc<Mutex<Vec<AuditLogRecord>>>,
 }
 
@@ -37,6 +45,7 @@ impl ScopedModelDefinitionRepository {
             models: Arc::default(),
             data_source_defaults: Arc::default(),
             grants: Arc::default(),
+            role_data_policies: Arc::default(),
             audit_logs: Arc::default(),
         }
     }
@@ -51,6 +60,18 @@ impl ScopedModelDefinitionRepository {
 
     fn with_grant(self, grant: ScopeDataModelGrantRecord) -> Self {
         self.grants.lock().expect("grant lock poisoned").push(grant);
+        self
+    }
+
+    fn with_role_data_policy(
+        self,
+        policy: domain::RoleDataPolicyRecord,
+        model_policy: Option<domain::RoleDataModelPolicyRecord>,
+    ) -> Self {
+        self.role_data_policies
+            .lock()
+            .expect("role data policy lock poisoned")
+            .push((policy, model_policy));
         self
     }
 
@@ -393,6 +414,24 @@ impl ModelDefinitionRepository for ScopedModelDefinitionRepository {
             .collect())
     }
 
+    async fn list_actor_role_data_policies(
+        &self,
+        _actor_user_id: Uuid,
+        _workspace_id: Uuid,
+        _data_model_id: Uuid,
+    ) -> anyhow::Result<
+        Vec<(
+            domain::RoleDataPolicyRecord,
+            Option<domain::RoleDataModelPolicyRecord>,
+        )>,
+    > {
+        Ok(self
+            .role_data_policies
+            .lock()
+            .expect("role data policy lock poisoned")
+            .clone())
+    }
+
     async fn append_audit_log(&self, event: &AuditLogRecord) -> anyhow::Result<()> {
         self.audit_logs
             .lock()
@@ -538,6 +577,50 @@ fn scope_grant(
         enabled: true,
         permission_profile: domain::ScopeDataModelPermissionProfile::ScopeAll,
         created_by: None,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+fn role_data_policy(
+    can_view: bool,
+    can_create: bool,
+    can_update: bool,
+    can_delete: bool,
+    scope: domain::RoleDataPolicyScope,
+) -> domain::RoleDataPolicyRecord {
+    let now = time::OffsetDateTime::now_utc();
+    domain::RoleDataPolicyRecord {
+        id: Uuid::now_v7(),
+        role_id: Uuid::now_v7(),
+        role_code: "member".into(),
+        can_view,
+        can_create,
+        can_update,
+        can_delete,
+        default_view_scope: scope,
+        default_update_scope: scope,
+        default_delete_scope: scope,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+fn role_data_model_policy(
+    role_id: Uuid,
+    model_id: Uuid,
+    view_scope_override: Option<domain::RoleDataPolicyScope>,
+    update_scope_override: Option<domain::RoleDataPolicyScope>,
+    delete_scope_override: Option<domain::RoleDataPolicyScope>,
+) -> domain::RoleDataModelPolicyRecord {
+    let now = time::OffsetDateTime::now_utc();
+    domain::RoleDataModelPolicyRecord {
+        id: Uuid::now_v7(),
+        role_id,
+        data_model_id: model_id,
+        view_scope_override,
+        update_scope_override,
+        delete_scope_override,
         created_at: now,
         updated_at: now,
     }

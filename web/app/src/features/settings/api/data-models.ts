@@ -76,6 +76,13 @@ export function settingsDataModelsQueryKey(
   ] as const;
 }
 
+export const settingsAllDataModelsQueryKey = [
+  'settings',
+  'data-models',
+  'models',
+  'all'
+] as const;
+
 export function settingsDataModelScopeGrantsQueryKey(modelId: string) {
   return ['settings', 'data-models', 'scope-grants', modelId] as const;
 }
@@ -113,6 +120,10 @@ export function fetchSettingsDataModels(
       ? { data_source_instance_id: dataSourceInstanceId }
       : { data_source_instance_id: dataSourceInstanceId, filter }
   );
+}
+
+export function fetchSettingsAllDataModels() {
+  return fetchConsoleDataModels();
 }
 
 export function createSettingsDataModel(

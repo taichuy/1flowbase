@@ -44,6 +44,7 @@ import {
 } from '../api/roles';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
 import { i18nText } from '../../../shared/i18n/text';
+import { RoleDataPolicySection } from './role-permissions/RoleDataPolicySection';
 
 // 分类映射，根据要求
 const RESOURCE_MAP: Record<
@@ -509,48 +510,54 @@ export function RolePermissionPanel({
                     <div style={{ padding: 32, textAlign: 'center' }}>
                       {i18nText("settings", "auto.loading_permission_data")}</div>
                   ) : (
-                    <Tabs
-                      defaultActiveKey={TAB_ORDER[0]}
-                      items={tabsData.map((tab) => ({
-                        key: tab.key,
-                        label: tab.label,
-                        children: (
-                          <div style={{ paddingBottom: 32 }}>
-                            <Tree
-                              checkable
-                              disabled={
-                                !canManageRoles || !selectedRole.is_editable
-                              }
-                              checkedKeys={localCheckedCodes.filter((code) =>
-                                tab.tabLeafKeys.includes(code)
-                              )}
-                              onCheck={(checkedKeysValue) => {
-                                const keys = Array.isArray(checkedKeysValue)
-                                  ? checkedKeysValue
-                                  : checkedKeysValue.checked;
-                                const newlyCheckedLeaves = keys
-                                  .map(String)
-                                  .filter((k) => !k.startsWith('resource:'));
+                    <>
+                      <Tabs
+                        defaultActiveKey={TAB_ORDER[0]}
+                        items={tabsData.map((tab) => ({
+                          key: tab.key,
+                          label: tab.label,
+                          children: (
+                            <div style={{ paddingBottom: 32 }}>
+                              <Tree
+                                checkable
+                                disabled={
+                                  !canManageRoles || !selectedRole.is_editable
+                                }
+                                checkedKeys={localCheckedCodes.filter((code) =>
+                                  tab.tabLeafKeys.includes(code)
+                                )}
+                                onCheck={(checkedKeysValue) => {
+                                  const keys = Array.isArray(checkedKeysValue)
+                                    ? checkedKeysValue
+                                    : checkedKeysValue.checked;
+                                  const newlyCheckedLeaves = keys
+                                    .map(String)
+                                    .filter((k) => !k.startsWith('resource:'));
 
-                                const otherCheckedCodes =
-                                  localCheckedCodes.filter(
-                                    (c) => !tab.tabLeafKeys.includes(c)
-                                  );
-                                const newCodes = [
-                                  ...otherCheckedCodes,
-                                  ...newlyCheckedLeaves
-                                ];
+                                  const otherCheckedCodes =
+                                    localCheckedCodes.filter(
+                                      (c) => !tab.tabLeafKeys.includes(c)
+                                    );
+                                  const newCodes = [
+                                    ...otherCheckedCodes,
+                                    ...newlyCheckedLeaves
+                                  ];
 
-                                setLocalCheckedCodes(newCodes);
-                                replacePermissionsMutation.mutate(newCodes);
-                              }}
-                              treeData={tab.treeData}
-                              defaultExpandAll={false}
-                            />
-                          </div>
-                        )
-                      }))}
-                    />
+                                  setLocalCheckedCodes(newCodes);
+                                  replacePermissionsMutation.mutate(newCodes);
+                                }}
+                                treeData={tab.treeData}
+                                defaultExpandAll={false}
+                              />
+                            </div>
+                          )
+                        }))}
+                      />
+                      <RoleDataPolicySection
+                        canEdit={canManageRoles && selectedRole.is_editable}
+                        roleCode={selectedRole.code}
+                      />
+                    </>
                   )}
                 </div>
               </>

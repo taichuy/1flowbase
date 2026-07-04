@@ -5,7 +5,10 @@ use uuid::Uuid;
 use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
-    ports::{CreateWorkspaceRoleInput, RoleRepository, UpdateWorkspaceRoleInput},
+    ports::{
+        CreateWorkspaceRoleInput, ReplaceRoleDataPolicyInput, RoleDataModelPolicyInput,
+        RoleDataPolicyDefaultsInput, RoleDataPolicyView, RoleRepository, UpdateWorkspaceRoleInput,
+    },
 };
 
 pub struct CreateRoleCommand {
@@ -37,8 +40,51 @@ pub struct ReplaceRolePermissionsCommand {
     pub permission_codes: Vec<String>,
 }
 
+pub struct ReplaceRoleDataPolicyCommand {
+    pub actor_user_id: Uuid,
+    pub role_code: String,
+    pub default_policy: RoleDataPolicyDefaultsInput,
+    pub model_policies: Vec<RoleDataModelPolicyInput>,
+}
+
 pub struct RoleService<R> {
     repository: R,
+}
+
+fn ensure_workspace_role_data_policy_scope(
+    scope: domain::RoleDataPolicyScope,
+) -> Result<(), ControlPlaneError> {
+    if scope == domain::RoleDataPolicyScope::SystemAll {
+        return Err(ControlPlaneError::InvalidInput(
+            "system_all_requires_system_role",
+        ));
+    }
+
+    Ok(())
+}
+
+fn ensure_workspace_role_data_policy_allowed(
+    default_policy: &RoleDataPolicyDefaultsInput,
+    model_policies: &[RoleDataModelPolicyInput],
+) -> Result<(), ControlPlaneError> {
+    ensure_workspace_role_data_policy_scope(default_policy.default_view_scope)?;
+    ensure_workspace_role_data_policy_scope(default_policy.default_update_scope)?;
+    ensure_workspace_role_data_policy_scope(default_policy.default_delete_scope)?;
+
+    for policy in model_policies {
+        for scope in [
+            policy.view_scope_override,
+            policy.update_scope_override,
+            policy.delete_scope_override,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            ensure_workspace_role_data_policy_scope(scope)?;
+        }
+    }
+
+    Ok(())
 }
 
 impl<R> RoleService<R>
@@ -72,6 +118,22 @@ where
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .list_role_permissions(actor.current_workspace_id, role_code)
+            .await
+    }
+
+    pub async fn get_role_data_policy(
+        &self,
+        actor_user_id: Uuid,
+        role_code: &str,
+    ) -> Result<RoleDataPolicyView> {
+        let actor = self
+            .repository
+            .load_actor_context_for_user(actor_user_id)
+            .await?;
+        ensure_permission(&actor, "role_permission.view.all")
+            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.repository
+            .get_role_data_policy(actor.current_workspace_id, role_code)
             .await
     }
 
@@ -203,5 +265,48 @@ where
             ))
             .await?;
         Ok(())
+    }
+
+    pub async fn replace_data_policy(
+        &self,
+        command: ReplaceRoleDataPolicyCommand,
+    ) -> Result<RoleDataPolicyView> {
+        if command.role_code == "root" {
+            return Err(ControlPlaneError::PermissionDenied("root_role_immutable").into());
+        }
+        let actor = self
+            .repository
+            .load_actor_context_for_user(command.actor_user_id)
+            .await?;
+        ensure_permission(&actor, "role_permission.manage.all")
+            .map_err(ControlPlaneError::PermissionDenied)?;
+        ensure_workspace_role_data_policy_allowed(
+            &command.default_policy,
+            &command.model_policies,
+        )?;
+
+        let policy = self
+            .repository
+            .replace_role_data_policy(&ReplaceRoleDataPolicyInput {
+                actor_user_id: command.actor_user_id,
+                workspace_id: actor.current_workspace_id,
+                role_code: command.role_code.clone(),
+                default_policy: command.default_policy,
+                model_policies: command.model_policies,
+            })
+            .await?;
+        self.repository
+            .append_audit_log(&audit_log(
+                Some(actor.current_workspace_id),
+                Some(command.actor_user_id),
+                "role",
+                None,
+                "role.data_policy_replaced",
+                serde_json::json!({
+                    "code": command.role_code,
+                }),
+            ))
+            .await?;
+        Ok(policy)
     }
 }

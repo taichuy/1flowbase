@@ -92,7 +92,8 @@ pub use model_provider::{
 pub use modeling::{
     DataModelAdvisorFinding, DataModelAdvisorSeverity, DataModelOwnerKind, DataModelProtection,
     DataModelScopeKind, DataModelSourceKind, DataModelStatus, MetadataAvailabilityStatus,
-    ModelDefinitionRecord, ModelFieldKind, ModelFieldRecord, ScopeDataModelGrantRecord,
+    ModelDefinitionRecord, ModelFieldKind, ModelFieldRecord, RoleDataModelPolicyRecord,
+    RoleDataPolicyRecord, RoleDataPolicyScope, ScopeDataModelGrantRecord,
     ScopeDataModelPermissionProfile,
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};

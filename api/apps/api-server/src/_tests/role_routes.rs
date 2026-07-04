@@ -107,6 +107,234 @@ async fn role_routes_create_replace_permissions_and_protect_root() {
 }
 
 #[tokio::test]
+async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/roles")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "code": "data_editor",
+                        "name": "Data Editor",
+                        "introduction": "data editor role"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+
+    let default_policy_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/roles/data_editor/data-policy")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(default_policy_response.status(), StatusCode::OK);
+    let default_body = to_bytes(default_policy_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let default_payload: serde_json::Value = serde_json::from_slice(&default_body).unwrap();
+    assert_eq!(
+        default_payload["data"]["default_policy"]["can_view"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        default_payload["data"]["default_policy"]["default_view_scope"].as_str(),
+        Some("own")
+    );
+
+    let models_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/models")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(models_response.status(), StatusCode::OK);
+    let models_body = to_bytes(models_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let models_payload: serde_json::Value = serde_json::from_slice(&models_body).unwrap();
+    let model_id = models_payload["data"][0]["id"]
+        .as_str()
+        .expect("bootstrapped test app should expose at least one data model");
+
+    let replace_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/roles/data_editor/data-policy")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "default_policy": {
+                            "can_view": true,
+                            "can_create": true,
+                            "can_update": false,
+                            "can_delete": false,
+                            "default_view_scope": "own",
+                            "default_update_scope": "own",
+                            "default_delete_scope": "own"
+                        },
+                        "model_policies": [{
+                            "data_model_id": model_id,
+                            "view_scope_override": "scope_all",
+                            "update_scope_override": null,
+                            "delete_scope_override": null
+                        }]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replace_response.status(), StatusCode::OK);
+    let replace_body = to_bytes(replace_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let replace_payload: serde_json::Value = serde_json::from_slice(&replace_body).unwrap();
+    assert_eq!(
+        replace_payload["data"]["role_code"].as_str(),
+        Some("data_editor")
+    );
+    assert_eq!(
+        replace_payload["data"]["default_policy"]["can_create"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        replace_payload["data"]["model_policies"][0]["view_scope_override"].as_str(),
+        Some("scope_all")
+    );
+
+    let reject_default_system_all_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/roles/data_editor/data-policy")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "default_policy": {
+                            "can_view": true,
+                            "can_create": true,
+                            "can_update": true,
+                            "can_delete": true,
+                            "default_view_scope": "system_all",
+                            "default_update_scope": "scope_all",
+                            "default_delete_scope": "own"
+                        },
+                        "model_policies": []
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        reject_default_system_all_response.status(),
+        StatusCode::BAD_REQUEST
+    );
+
+    let reject_model_system_all_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/roles/data_editor/data-policy")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "default_policy": {
+                            "can_view": true,
+                            "can_create": true,
+                            "can_update": true,
+                            "can_delete": true,
+                            "default_view_scope": "scope_all",
+                            "default_update_scope": "scope_all",
+                            "default_delete_scope": "own"
+                        },
+                        "model_policies": [{
+                            "data_model_id": model_id,
+                            "view_scope_override": "system_all",
+                            "update_scope_override": null,
+                            "delete_scope_override": null
+                        }]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        reject_model_system_all_response.status(),
+        StatusCode::BAD_REQUEST
+    );
+
+    let protect_root_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/roles/root/data-policy")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "default_policy": {
+                            "can_view": true,
+                            "can_create": true,
+                            "can_update": true,
+                            "can_delete": true,
+                            "default_view_scope": "system_all",
+                            "default_update_scope": "system_all",
+                            "default_delete_scope": "system_all"
+                        },
+                        "model_policies": []
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(protect_root_response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn role_routes_roundtrip_policy_flags_and_protect_default_role_from_clear() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

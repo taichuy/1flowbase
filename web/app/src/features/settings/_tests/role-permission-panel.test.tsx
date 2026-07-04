@@ -9,12 +9,20 @@ const rolesApi = vi.hoisted(() => ({
     roleCode,
     'permissions'
   ]),
+  settingsRoleDataPolicyQueryKey: vi.fn((roleCode: string) => [
+    'settings',
+    'roles',
+    roleCode,
+    'data-policy'
+  ]),
   fetchSettingsRoles: vi.fn(),
   createSettingsRole: vi.fn(),
   updateSettingsRole: vi.fn(),
   deleteSettingsRole: vi.fn(),
   fetchSettingsRolePermissions: vi.fn(),
-  replaceSettingsRolePermissions: vi.fn()
+  replaceSettingsRolePermissions: vi.fn(),
+  fetchSettingsRoleDataPolicy: vi.fn(),
+  replaceSettingsRoleDataPolicy: vi.fn()
 }));
 
 const permissionsApi = vi.hoisted(() => ({
@@ -22,8 +30,14 @@ const permissionsApi = vi.hoisted(() => ({
   fetchSettingsPermissions: vi.fn()
 }));
 
+const dataModelsApi = vi.hoisted(() => ({
+  settingsAllDataModelsQueryKey: ['settings', 'data-models', 'models', 'all'],
+  fetchSettingsAllDataModels: vi.fn()
+}));
+
 vi.mock('../api/roles', () => rolesApi);
 vi.mock('../api/permissions', () => permissionsApi);
+vi.mock('../api/data-models', () => dataModelsApi);
 
 import { AppProviders } from '../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
@@ -53,12 +67,104 @@ function authenticate() {
   });
 }
 
-function renderPanel() {
+function renderPanel(canManageRoles = true) {
   return render(
     <AppProviders>
-      <RolePermissionPanel canManageRoles />
+      <RolePermissionPanel canManageRoles={canManageRoles} />
     </AppProviders>
   );
+}
+
+const defaultDataPolicy = {
+  role_code: 'manager',
+  default_policy: {
+    can_view: true,
+    can_create: true,
+    can_update: true,
+    can_delete: false,
+    default_view_scope: 'own',
+    default_update_scope: 'scope_all',
+    default_delete_scope: 'own'
+  },
+  model_policies: [
+    {
+      data_model_id: 'model-orders',
+      view_scope_override: null,
+      update_scope_override: 'own',
+      delete_scope_override: 'scope_all'
+    },
+    {
+      data_model_id: 'model-customers',
+      view_scope_override: null,
+      update_scope_override: null,
+      delete_scope_override: null
+    }
+  ]
+};
+
+function defaultDataModels() {
+  return [
+    {
+      id: 'model-orders',
+      scope_kind: 'workspace',
+      scope_id: 'workspace-1',
+      code: 'orders',
+      title: 'Orders',
+      status: 'published',
+      runtime_availability: 'available',
+      data_source_instance_id: 'source-1',
+      source_kind: 'main_source',
+      external_resource_key: null,
+      external_table_id: null,
+      physical_table_name: 'orders',
+      acl_namespace: 'data_model:orders',
+      audit_namespace: 'data_model:orders',
+      builtin_kind: null,
+      capabilities: {
+        can_delete: true,
+        can_add_user_field: true,
+        can_update_lifecycle_status: true,
+        record: {
+          can_list: true,
+          can_get: true,
+          can_create: true,
+          can_update: true,
+          can_delete: true
+        }
+      },
+      fields: []
+    },
+    {
+      id: 'model-customers',
+      scope_kind: 'workspace',
+      scope_id: 'workspace-1',
+      code: 'customers',
+      title: 'Customers',
+      status: 'published',
+      runtime_availability: 'available',
+      data_source_instance_id: 'source-1',
+      source_kind: 'main_source',
+      external_resource_key: null,
+      external_table_id: null,
+      physical_table_name: 'customers',
+      acl_namespace: 'data_model:customers',
+      audit_namespace: 'data_model:customers',
+      builtin_kind: null,
+      capabilities: {
+        can_delete: true,
+        can_add_user_field: true,
+        can_update_lifecycle_status: true,
+        record: {
+          can_list: true,
+          can_get: true,
+          can_create: true,
+          can_update: true,
+          can_delete: true
+        }
+      },
+      fields: []
+    }
+  ];
 }
 
 describe('RolePermissionPanel', () => {
@@ -94,7 +200,12 @@ describe('RolePermissionPanel', () => {
       permission_codes: []
     });
     rolesApi.updateSettingsRole.mockResolvedValue(undefined);
+    rolesApi.fetchSettingsRoleDataPolicy.mockResolvedValue(defaultDataPolicy);
+    rolesApi.replaceSettingsRoleDataPolicy.mockResolvedValue(undefined);
     permissionsApi.fetchSettingsPermissions.mockResolvedValue([]);
+    dataModelsApi.fetchSettingsAllDataModels.mockResolvedValue(
+      defaultDataModels()
+    );
   });
 
   test(
@@ -167,4 +278,113 @@ describe('RolePermissionPanel', () => {
     },
     20000
   );
+
+  test('submits default data policy without a create scope', async () => {
+    renderPanel();
+
+    await screen.findByText('Data Model 数据权限');
+
+    const defaultSection = screen.getByRole('region', { name: '默认策略' });
+    expect(
+      within(defaultSection).queryByRole('radiogroup', { name: '新增范围' })
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(
+        within(defaultSection).getByRole('switch', { name: '新增' })
+      ).toBeChecked();
+    });
+    fireEvent.click(
+      within(defaultSection).getByRole('radio', { name: '查看 同范围' })
+    );
+    fireEvent.click(
+      within(defaultSection).getByRole('radio', { name: '更新 自己创建' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: '保存数据权限' })
+    );
+
+    await waitFor(() => {
+      expect(rolesApi.replaceSettingsRoleDataPolicy).toHaveBeenCalledWith(
+        'manager',
+        {
+          default_policy: {
+            can_view: true,
+            can_create: true,
+            can_update: true,
+            can_delete: false,
+            default_view_scope: 'scope_all',
+            default_update_scope: 'own',
+            default_delete_scope: 'own'
+          },
+          model_policies: [
+            {
+              data_model_id: 'model-orders',
+              view_scope_override: null,
+              update_scope_override: 'own',
+              delete_scope_override: 'scope_all'
+            },
+            {
+              data_model_id: 'model-customers',
+              view_scope_override: null,
+              update_scope_override: null,
+              delete_scope_override: null
+            }
+          ]
+        },
+        'csrf-123'
+      );
+    });
+  }, 20000);
+
+  test('submits per-model override payload and hides system_all choices', async () => {
+    renderPanel();
+
+    const ordersRow = await screen.findByRole('row', { name: /Orders orders/ });
+    expect(screen.queryByText('所有数据')).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(ordersRow).getByRole('radio', { name: '查看 同范围' })
+    );
+    fireEvent.click(
+      within(ordersRow).getByRole('radio', { name: '更新 继承' })
+    );
+    fireEvent.click(
+      within(ordersRow).getByRole('radio', { name: '删除 自己创建' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: '保存数据权限' }));
+
+    await waitFor(() => {
+      expect(rolesApi.replaceSettingsRoleDataPolicy).toHaveBeenCalledWith(
+        'manager',
+        expect.objectContaining({
+          model_policies: expect.arrayContaining([
+            {
+              data_model_id: 'model-orders',
+              view_scope_override: 'scope_all',
+              update_scope_override: null,
+              delete_scope_override: 'own'
+            }
+          ])
+        }),
+        'csrf-123'
+      );
+    });
+  }, 20000);
+
+  test('disables data policy controls when the user cannot manage roles', async () => {
+    renderPanel(false);
+
+    const defaultSection = await screen.findByRole('region', {
+      name: '默认策略'
+    });
+
+    expect(
+      within(defaultSection).getByRole('switch', { name: '查看' })
+    ).toBeDisabled();
+    expect(
+      within(defaultSection).getByRole('radio', { name: '查看 自己创建' })
+    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: '保存数据权限' })).toBeDisabled();
+  }, 20000);
 });

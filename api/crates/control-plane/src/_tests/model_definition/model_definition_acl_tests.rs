@@ -322,6 +322,7 @@ async fn runtime_scope_grant_loader_converts_current_workspace_persisted_grant()
         .load_runtime_scope_grant(
             &ActorContext::scoped(Uuid::now_v7(), workspace_id, "member", Vec::<String>::new()),
             model_id,
+            runtime_core::runtime_acl::RuntimeDataAction::View,
         )
         .await
         .unwrap()
@@ -363,6 +364,7 @@ async fn runtime_scope_grant_loader_does_not_select_system_default_for_non_syste
         .load_runtime_scope_grant(
             &ActorContext::scoped(Uuid::now_v7(), workspace_id, "member", Vec::<String>::new()),
             model_id,
+            runtime_core::runtime_acl::RuntimeDataAction::View,
         )
         .await
         .unwrap();

@@ -515,6 +515,48 @@ describe('Settings data models page', () => {
     expect(screen.getByText('scope_all')).toBeInTheDocument();
     expect(screen.getByText('system_all')).toBeInTheDocument();
 
+    const openPermissionDropdown = async (name: string) => {
+      const trigger = screen.getByRole('combobox', { name });
+      fireEvent.mouseDown(trigger);
+      await waitFor(() =>
+        expect(
+          document.querySelector(
+            '.ant-select-dropdown:not(.ant-select-dropdown-hidden)'
+          )
+        ).toBeInstanceOf(HTMLElement)
+      );
+      return document.querySelector(
+        '.ant-select-dropdown:not(.ant-select-dropdown-hidden)'
+      ) as HTMLElement;
+    };
+
+    const workspaceDropdown = await openPermissionDropdown('权限 grant-owner');
+    expect(
+      within(workspaceDropdown).getByText('owner', {
+        selector: '.ant-select-item-option-content'
+      })
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceDropdown).getByText('scope_all', {
+        selector: '.ant-select-item-option-content'
+      })
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceDropdown).queryByText('system_all', {
+        selector: '.ant-select-item-option-content'
+      })
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('combobox', { name: '权限 grant-owner' }), {
+      key: 'Escape'
+    });
+
+    const systemDropdown = await openPermissionDropdown('权限 grant-system');
+    expect(
+      within(systemDropdown).getByText('system_all', {
+        selector: '.ant-select-item-option-content'
+      })
+    ).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: '保存权限' }));
     await waitFor(() =>
       expect(dataModelsApi.updateSettingsDataModelScopeGrant).toHaveBeenCalled()

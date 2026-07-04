@@ -17,6 +17,39 @@ export interface ConsoleRolePermissions {
   permission_codes: string[];
 }
 
+export type ConsoleRoleDataPolicyScope = 'own' | 'scope_all' | 'system_all';
+export type ConsoleRoleDataPolicyOverrideScope =
+  | ConsoleRoleDataPolicyScope
+  | null;
+
+export interface ConsoleRoleDefaultDataPolicy {
+  can_view: boolean;
+  can_create: boolean;
+  can_update: boolean;
+  can_delete: boolean;
+  default_view_scope: ConsoleRoleDataPolicyScope;
+  default_update_scope: ConsoleRoleDataPolicyScope;
+  default_delete_scope: ConsoleRoleDataPolicyScope;
+}
+
+export interface ConsoleRoleModelDataPolicy {
+  data_model_id: string;
+  view_scope_override: ConsoleRoleDataPolicyOverrideScope;
+  update_scope_override: ConsoleRoleDataPolicyOverrideScope;
+  delete_scope_override: ConsoleRoleDataPolicyOverrideScope;
+}
+
+export interface ConsoleRoleDataPolicy {
+  role_code: string;
+  default_policy: ConsoleRoleDefaultDataPolicy;
+  model_policies: ConsoleRoleModelDataPolicy[];
+}
+
+export interface ReplaceConsoleRoleDataPolicyInput {
+  default_policy: ConsoleRoleDefaultDataPolicy;
+  model_policies: ConsoleRoleModelDataPolicy[];
+}
+
 export interface CreateConsoleRoleInput {
   code: string;
   name: string;
@@ -103,6 +136,31 @@ export function replaceConsoleRolePermissions(
 ): Promise<void> {
   return apiFetchVoid({
     path: `/api/console/roles/${roleCode}/permissions`,
+    method: 'PUT',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleRoleDataPolicy(
+  roleCode: string,
+  baseUrl?: string
+): Promise<ConsoleRoleDataPolicy> {
+  return apiFetch<ConsoleRoleDataPolicy>({
+    path: `/api/console/roles/${roleCode}/data-policy`,
+    baseUrl
+  });
+}
+
+export function replaceConsoleRoleDataPolicy(
+  roleCode: string,
+  input: ReplaceConsoleRoleDataPolicyInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<void> {
+  return apiFetchVoid({
+    path: `/api/console/roles/${roleCode}/data-policy`,
     method: 'PUT',
     body: input,
     csrfToken,

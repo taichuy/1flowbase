@@ -94,6 +94,15 @@ impl RuntimeModelAction {
             Self::Delete => "delete",
         }
     }
+
+    fn data_action(self) -> runtime_core::runtime_acl::RuntimeDataAction {
+        match self {
+            Self::List | Self::Get => runtime_core::runtime_acl::RuntimeDataAction::View,
+            Self::Create => runtime_core::runtime_acl::RuntimeDataAction::Create,
+            Self::Update => runtime_core::runtime_acl::RuntimeDataAction::Update,
+            Self::Delete => runtime_core::runtime_acl::RuntimeDataAction::Delete,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -222,10 +231,11 @@ async fn load_runtime_scope_grant(
     state: &ApiState,
     actor: &domain::ActorContext,
     data_model_id: uuid::Uuid,
+    action: runtime_core::runtime_acl::RuntimeDataAction,
 ) -> Result<Option<runtime_core::runtime_acl::RuntimeScopeGrant>, ApiError> {
     Ok(
         control_plane::model_definition::ModelDefinitionService::new(state.store.clone())
-            .load_runtime_scope_grant(actor, data_model_id)
+            .load_runtime_scope_grant(actor, data_model_id, action)
             .await?,
     )
 }
@@ -591,7 +601,7 @@ async fn runtime_authorization(
     state: &ApiState,
     headers: &HeaderMap,
     model_code: &str,
-    _action: RuntimeModelAction,
+    action: RuntimeModelAction,
 ) -> Result<
     (
         RuntimeCredential,
@@ -603,7 +613,13 @@ async fn runtime_authorization(
     let Some(model) = resolve_runtime_model(state, credential.actor(), model_code) else {
         return Ok((credential, None));
     };
-    let scope_grant = load_runtime_scope_grant(state, credential.actor(), model.model_id).await?;
+    let scope_grant = load_runtime_scope_grant(
+        state,
+        credential.actor(),
+        model.model_id,
+        action.data_action(),
+    )
+    .await?;
     Ok((credential, scope_grant))
 }
 

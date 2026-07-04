@@ -264,7 +264,11 @@ pub async fn read_file_content(
         ))?;
     let scope_grant =
         control_plane::model_definition::ModelDefinitionService::new(state.store.clone())
-            .load_runtime_scope_grant(&context.actor, model.id)
+            .load_runtime_scope_grant(
+                &context.actor,
+                model.id,
+                runtime_core::runtime_acl::RuntimeDataAction::View,
+            )
             .await?;
     let record = state
         .runtime_engine

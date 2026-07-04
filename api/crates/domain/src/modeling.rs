@@ -200,6 +200,81 @@ pub struct ScopeDataModelGrantRecord {
     pub updated_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum RoleDataPolicyScope {
+    Own,
+    ScopeAll,
+    SystemAll,
+}
+
+impl RoleDataPolicyScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Own => "own",
+            Self::ScopeAll => "scope_all",
+            Self::SystemAll => "system_all",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "own" => Some(Self::Own),
+            "scope_all" => Some(Self::ScopeAll),
+            "system_all" => Some(Self::SystemAll),
+            _ => None,
+        }
+    }
+
+    pub fn from_db(value: &str) -> Self {
+        Self::parse(value).unwrap_or(Self::Own)
+    }
+
+    pub fn from_permission_profile(profile: ScopeDataModelPermissionProfile) -> Self {
+        match profile {
+            ScopeDataModelPermissionProfile::Owner => Self::Own,
+            ScopeDataModelPermissionProfile::ScopeAll => Self::ScopeAll,
+            ScopeDataModelPermissionProfile::SystemAll => Self::SystemAll,
+        }
+    }
+
+    pub fn to_permission_profile(self) -> ScopeDataModelPermissionProfile {
+        match self {
+            Self::Own => ScopeDataModelPermissionProfile::Owner,
+            Self::ScopeAll => ScopeDataModelPermissionProfile::ScopeAll,
+            Self::SystemAll => ScopeDataModelPermissionProfile::SystemAll,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoleDataPolicyRecord {
+    pub id: Uuid,
+    pub role_id: Uuid,
+    pub role_code: String,
+    pub can_view: bool,
+    pub can_create: bool,
+    pub can_update: bool,
+    pub can_delete: bool,
+    pub default_view_scope: RoleDataPolicyScope,
+    pub default_update_scope: RoleDataPolicyScope,
+    pub default_delete_scope: RoleDataPolicyScope,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoleDataModelPolicyRecord {
+    pub id: Uuid,
+    pub role_id: Uuid,
+    pub data_model_id: Uuid,
+    pub view_scope_override: Option<RoleDataPolicyScope>,
+    pub update_scope_override: Option<RoleDataPolicyScope>,
+    pub delete_scope_override: Option<RoleDataPolicyScope>,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataAvailabilityStatus {
