@@ -469,4 +469,24 @@ describe('ModelProvidersPage - layout and style', () => {
     expect(cssSource).not.toContain('@media (max-width: 1380px)');
     expect(cssSource).toContain('@media (max-width: 768px)');
   });
+
+  test('keeps provider modal tabs inside the fixed-height scroll shell', () => {
+    const cssSource = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        '../../components/model-providers/model-provider-panel.css'
+      ),
+      'utf8'
+    );
+
+    expect(cssSource).toContain(
+      '.fixed-height-modal__scroll-body.model-provider-panel__instances-modal'
+    );
+    expect(cssSource).toContain('.model-provider-panel__instances-tabs');
+    expect(cssSource).toContain(
+      '.model-provider-panel__instances-tabs .ant-tabs-tabpane'
+    );
+    expect(cssSource).toContain('overflow-y: auto;');
+    expect(cssSource).toContain('min-height: 0;');
+  });
 });

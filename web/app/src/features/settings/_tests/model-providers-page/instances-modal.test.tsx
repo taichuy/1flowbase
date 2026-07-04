@@ -214,6 +214,14 @@ async function openProviderInstancesModal() {
   return screen.findByRole('dialog', { name: /OpenAI Compatible 实例/ });
 }
 
+async function openSourceManagementTab(modal: HTMLElement) {
+  fireEvent.click(within(modal).getByRole('tab', { name: '来源管理' }));
+
+  return within(modal).findByRole('switch', {
+    name: '注入主实例 OpenAI Production'
+  });
+}
+
 describe('ModelProvidersPage - instances modal', () => {
   beforeEach(() => {
     resetAuthStore();
@@ -595,16 +603,54 @@ describe('ModelProvidersPage - instances modal', () => {
       renderApp('/settings/model-providers');
 
       const modal = await openProviderInstancesModal();
+      expect(screen.getByTestId('fixed-height-modal-scroll-body')).toHaveClass(
+        'model-provider-panel__instances-modal'
+      );
       expect(
-        within(modal).getAllByText('OpenAI Production').length
-      ).toBeGreaterThanOrEqual(1);
+        within(modal).getByRole('tab', { name: '模型管理' })
+      ).toHaveAttribute('aria-selected', 'true');
+      expect(
+        within(modal).getByRole('tab', { name: '来源管理' })
+      ).toBeInTheDocument();
       expect(within(modal).getByText('聚合视图')).toBeInTheDocument();
       expect(
         within(modal).getByRole('switch', { name: '新实例自动注入主实例' })
       ).toBeInTheDocument();
+      const mainInstanceTable = within(modal).getByRole('table', {
+        name: '主实例'
+      });
+      expect(
+        within(mainInstanceTable).getByRole('columnheader', {
+          name: '模型 ID'
+        })
+      ).toBeInTheDocument();
+      expect(
+        within(mainInstanceTable).getByRole('columnheader', { name: '分组' })
+      ).toBeInTheDocument();
+      expect(
+        within(mainInstanceTable).getByRole('row', {
+          name: /gpt-4o-mini.*OpenAI Production.*OpenAI Backup/
+        })
+      ).toBeInTheDocument();
+      const aggregatedRow = within(mainInstanceTable).getByRole('row', {
+        name: /gpt-4o-mini.*OpenAI Production.*OpenAI Backup/
+      });
+      expect(within(aggregatedRow).getByText('gpt-4o-mini')).not.toHaveClass(
+        'model-provider-panel__mono'
+      );
+      const productionTag = within(aggregatedRow).getByText('OpenAI Production');
+      const backupTag = within(aggregatedRow).getByText('OpenAI Backup');
+      expect(productionTag).toHaveClass('ant-tag-geekblue');
+      expect(backupTag).toHaveClass('ant-tag-green');
       expect(
         within(modal).queryByRole('combobox', { name: '主实例' })
       ).not.toBeInTheDocument();
+      expect(
+        within(modal).queryByRole('switch', {
+          name: '注入主实例 OpenAI Production'
+        })
+      ).not.toBeInTheDocument();
+      await openSourceManagementTab(modal);
       expect(
         within(modal).getByRole('switch', {
           name: '注入主实例 OpenAI Production'
@@ -616,9 +662,6 @@ describe('ModelProvidersPage - instances modal', () => {
       expect(
         within(modal).getAllByText(/gpt-4o-mini/i).length
       ).toBeGreaterThanOrEqual(1);
-      expect(
-        within(modal).getByText('OpenAI Production -> OpenAI Backup')
-      ).toBeInTheDocument();
       expect(
         within(modal).getAllByText('OpenAI Backup').length
       ).toBeGreaterThanOrEqual(1);
@@ -644,7 +687,8 @@ describe('ModelProvidersPage - instances modal', () => {
 
       renderApp('/settings/model-providers');
 
-      await openProviderInstancesModal();
+      const modal = await openProviderInstancesModal();
+      await openSourceManagementTab(modal);
 
       fireEvent.click(
         await screen.findByRole('button', {
@@ -678,6 +722,45 @@ describe('ModelProvidersPage - instances modal', () => {
   );
 
   test(
+    'explains source instance action buttons on hover',
+    { timeout: 15000 },
+    async () => {
+      authenticateAsModelProviderManager();
+
+      renderApp('/settings/model-providers');
+
+      const modal = await openProviderInstancesModal();
+      await openSourceManagementTab(modal);
+
+      const actions = [
+        {
+          buttonName: '编辑 API Key OpenAI Production',
+          tooltip: '编辑来源实例的 API Key 和连接配置'
+        },
+        {
+          buttonName: '刷新候选模型 OpenAI Production',
+          tooltip: '验证当前配置，并预览可用候选模型'
+        },
+        {
+          buttonName: '刷新模型 OpenAI Production',
+          tooltip: '同步该来源实例的模型缓存'
+        },
+        {
+          buttonName: '删除实例 OpenAI Production',
+          tooltip: '删除该来源实例'
+        }
+      ];
+
+      for (const action of actions) {
+        fireEvent.mouseEnter(
+          within(modal).getByRole('button', { name: action.buttonName })
+        );
+        expect(await screen.findByText(action.tooltip)).toBeInTheDocument();
+      }
+    }
+  );
+
+  test(
     'keeps the provider instances modal open while opening the edit drawer',
     { timeout: 15000 },
     async () => {
@@ -686,6 +769,7 @@ describe('ModelProvidersPage - instances modal', () => {
       renderApp('/settings/model-providers');
 
       const modal = await openProviderInstancesModal();
+      await openSourceManagementTab(modal);
       fireEvent.click(
         within(modal).getByRole('button', {
           name: '编辑 API Key OpenAI Production'
@@ -695,7 +779,12 @@ describe('ModelProvidersPage - instances modal', () => {
       expect(await screen.findByText('编辑 API 密钥配置')).toBeInTheDocument();
       expect(screen.getByText('OpenAI Compatible 实例')).toBeInTheDocument();
       expect(
-        screen.getByRole('switch', { name: '新实例自动注入主实例' })
+        within(modal).getByRole('tab', { name: '来源管理' })
+      ).toHaveAttribute('aria-selected', 'true');
+      expect(
+        within(modal).getByRole('switch', {
+          name: '注入主实例 OpenAI Production'
+        })
       ).toBeInTheDocument();
     }
   );
@@ -709,6 +798,7 @@ describe('ModelProvidersPage - instances modal', () => {
       renderApp('/settings/model-providers');
 
       const modal = await openProviderInstancesModal();
+      await openSourceManagementTab(modal);
       fireEvent.click(
         within(modal).getByRole('button', {
           name: '编辑 API Key OpenAI Production'
@@ -735,6 +825,7 @@ describe('ModelProvidersPage - instances modal', () => {
       renderApp('/settings/model-providers');
 
       const modal = await openProviderInstancesModal();
+      await openSourceManagementTab(modal);
 
       fireEvent.click(
         within(modal).getByRole('button', {
@@ -770,6 +861,7 @@ describe('ModelProvidersPage - instances modal', () => {
       renderApp('/settings/model-providers');
 
       const modal = await openProviderInstancesModal();
+      await openSourceManagementTab(modal);
       fireEvent.click(
         within(modal).getByRole('button', {
           name: '编辑 API Key OpenAI Production'

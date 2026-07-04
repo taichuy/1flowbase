@@ -393,9 +393,42 @@
   padding: 12px 0 4px;
 }
 
-.model-provider-panel__instances-modal {
-  display: grid;
+.fixed-height-modal__scroll-body.model-provider-panel__instances-modal {
+  display: flex;
+  flex-direction: column;
   gap: 20px;
+  min-height: 0;
+  overflow: hidden;
+  padding-right: 0;
+}
+
+.model-provider-panel__instances-tabs {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.model-provider-panel__instances-tabs,
+.model-provider-panel__instances-tabs > .ant-tabs-content-holder,
+.model-provider-panel__instances-tabs .ant-tabs-content,
+.model-provider-panel__instances-tabs .ant-tabs-tabpane {
+  min-height: 0;
+}
+
+.model-provider-panel__instances-tabs > .ant-tabs-content-holder {
+  overflow: hidden;
+}
+
+.model-provider-panel__instances-tabs .ant-tabs-content {
+  height: 100%;
+}
+
+.model-provider-panel__instances-tabs .ant-tabs-tabpane {
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.model-provider-panel__instances-tabs .model-provider-panel__instances {
+  overflow: visible;
 }
 
 .model-provider-panel__main-instance-card {
@@ -443,18 +476,22 @@
   gap: 8px 12px;
 }
 
-.model-provider-panel__main-instance-groups {
-  display: grid;
-  gap: 12px;
+.model-provider-panel__main-instance-table .ant-table {
+  border-radius: 8px;
 }
 
-.model-provider-panel__main-instance-group {
-  display: grid;
-  gap: 4px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.92);
+.model-provider-panel__main-instance-table .ant-table-cell {
+  vertical-align: top;
+}
+
+.model-provider-panel__main-instance-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.model-provider-panel__main-instance-targets .ant-tag {
+  margin-inline-end: 0;
 }
 
 .model-provider-panel__instances-modal-actions {

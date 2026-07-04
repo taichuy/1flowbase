@@ -1,17 +1,38 @@
-import { Alert, Empty, Modal, Space, Switch, Tag, Typography } from 'antd';
+import { Alert, Empty, Space, Switch, Table, Tabs, Tag, Typography } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 
+import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 import type {
   SettingsModelProviderCatalogEntry,
   SettingsModelProviderInstance,
   SettingsModelProviderMainInstance,
   SettingsModelProviderOptions
 } from '../../api/model-providers';
-import { ModelProviderTagList } from './ModelProviderTagList';
 import { ModelProviderInstancesTable } from './ModelProviderInstancesTable';
 import { i18nText } from '../../../../shared/i18n/text';
 
 type ModelGroup =
   SettingsModelProviderOptions['providers'][number]['model_groups'][number];
+
+const SOURCE_INSTANCE_TAG_COLORS = [
+  'blue',
+  'cyan',
+  'green',
+  'geekblue',
+  'purple',
+  'magenta',
+  'volcano',
+  'gold'
+] as const;
+
+function sourceInstanceTagColor(sourceInstanceDisplayName: string) {
+  const colorIndex = Array.from(sourceInstanceDisplayName).reduce(
+    (sum, character) => sum + character.charCodeAt(0),
+    0
+  ) % SOURCE_INSTANCE_TAG_COLORS.length;
+
+  return SOURCE_INSTANCE_TAG_COLORS[colorIndex];
+}
 
 export function ModelProviderInstancesModal({
   open,
@@ -70,18 +91,56 @@ export function ModelProviderInstancesModal({
   const title = displayName
     ? i18nText('settings', 'auto.instance', { value1: displayName })
     : i18nText('settings', 'auto.supplier_instance');
+  const mainInstanceLabel = i18nText('settings', 'auto.master_instance');
+  const modelGroupColumns: ColumnsType<ModelGroup> = [
+    {
+      key: 'model_id',
+      dataIndex: 'model_id',
+      title: i18nText('settings', 'auto.model_id_alt'),
+      width: '42%',
+      render: (modelId: string) => (
+        <Typography.Text>{modelId}</Typography.Text>
+      )
+    },
+    {
+      key: 'group',
+      title: i18nText('settings', 'auto.group'),
+      render: (_, group) => (
+        <div className="model-provider-panel__main-instance-targets">
+          {group.targets.length === 0 ? (
+            <Typography.Text type="secondary">
+              {i18nText('settings', 'auto.unsummarized_model')}
+            </Typography.Text>
+          ) : (
+            group.targets.map((target) => (
+              <Tag
+                key={target.source_instance_id}
+                bordered={false}
+                color={sourceInstanceTagColor(
+                  target.source_instance_display_name
+                )}
+              >
+                {target.source_instance_display_name}
+              </Tag>
+            ))
+          )}
+        </div>
+      )
+    }
+  ];
 
   return (
-    <Modal
+    <FixedHeightModal
       open={open}
       width={960}
+      height="min(860px, calc(100vh - 96px))"
       title={title}
-      aria-label={title}
       onCancel={onClose}
       footer={null}
       destroyOnHidden
+      scrollBodyClassName="model-provider-panel__instances-modal"
     >
-      <div className="model-provider-panel__instances-modal">
+      <>
         {versionSwitchNotice ? (
           <Alert
             type="warning"
@@ -102,105 +161,112 @@ export function ModelProviderInstancesModal({
           />
         ) : null}
 
-        <section className="model-provider-panel__main-instance-card">
-          <div className="model-provider-panel__main-instance-head">
-            <div className="model-provider-panel__main-instance-title-row">
-              <Typography.Text strong>
-                {i18nText('settings', 'auto.master_instance')}
-              </Typography.Text>
-              <div className="model-provider-panel__main-instance-summary">
-                <Tag bordered={false} color="blue">
-                  {i18nText('settings', 'auto.aggregate_view')}
-                </Tag>
-                <Typography.Text type="secondary">
-                  {i18nText('settings', 'auto.example')}
-                  {includedCount}
-                </Typography.Text>
-                <Typography.Text type="secondary">
-                  {i18nText('settings', 'auto.model')}
-                  {aggregatedModelCount}
-                </Typography.Text>
-              </div>
-            </div>
-            <Space
-              direction="horizontal"
-              size={8}
-              className="model-provider-panel__main-instance-toggle"
-            >
-              <Typography.Text type="secondary">
-                {i18nText(
-                  'settings',
-                  'auto.new_instances_automatically_injected_main_instance'
-                )}
-              </Typography.Text>
-              <Switch
-                aria-label={i18nText(
-                  'settings',
-                  'auto.new_instances_automatically_injected_main_instance'
-                )}
-                checked={mainInstance?.auto_include_new_instances ?? false}
-                disabled={!canManage || updatingMainInstance}
-                onChange={onToggleAutoIncludeNewInstances}
-              />
-            </Space>
-          </div>
+        <Tabs
+          className="model-provider-panel__instances-tabs"
+          defaultActiveKey="models"
+          items={[
+            {
+              key: 'models',
+              label: i18nText('settings', 'auto.model_management'),
+              children: (
+                <section className="model-provider-panel__main-instance-card">
+                  <div className="model-provider-panel__main-instance-head">
+                    <div className="model-provider-panel__main-instance-title-row">
+                      <Typography.Text strong>
+                        {mainInstanceLabel}
+                      </Typography.Text>
+                      <div className="model-provider-panel__main-instance-summary">
+                        <Tag bordered={false} color="blue">
+                          {i18nText('settings', 'auto.aggregate_view')}
+                        </Tag>
+                        <Typography.Text type="secondary">
+                          {i18nText('settings', 'auto.example')}
+                          {includedCount}
+                        </Typography.Text>
+                        <Typography.Text type="secondary">
+                          {i18nText('settings', 'auto.model')}
+                          {aggregatedModelCount}
+                        </Typography.Text>
+                      </div>
+                    </div>
+                    <Space
+                      direction="horizontal"
+                      size={8}
+                      className="model-provider-panel__main-instance-toggle"
+                    >
+                      <Typography.Text type="secondary">
+                        {i18nText(
+                          'settings',
+                          'auto.new_instances_automatically_injected_main_instance'
+                        )}
+                      </Typography.Text>
+                      <Switch
+                        aria-label={i18nText(
+                          'settings',
+                          'auto.new_instances_automatically_injected_main_instance'
+                        )}
+                        checked={mainInstance?.auto_include_new_instances ?? false}
+                        disabled={!canManage || updatingMainInstance}
+                        onChange={onToggleAutoIncludeNewInstances}
+                      />
+                    </Space>
+                  </div>
 
-          {modelGroups.length === 0 ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={i18nText('settings', 'auto.text_alt')}
-            />
-          ) : (
-            <div className="model-provider-panel__main-instance-groups">
-              {modelGroups.map((group) => (
-                <section
-                  key={group.model_id}
-                  className="model-provider-panel__main-instance-group"
-                >
-                  <Typography.Text strong>
-                    {group.model.display_name || group.model_id}
-                  </Typography.Text>
-                  <Typography.Text type="secondary">
-                    {group.targets
-                      .map((target) => target.source_instance_display_name)
-                      .join(' -> ')}
-                  </Typography.Text>
-                  <ModelProviderTagList
-                    modelIds={group.targets.map(
-                      (target) => target.source_instance_display_name
-                    )}
-                    emptyText={i18nText('settings', 'auto.unsummarized_model')}
-                  />
+                  {modelGroups.length === 0 ? (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={i18nText('settings', 'auto.text_alt')}
+                    />
+                  ) : (
+                    <Table<ModelGroup>
+                      className="model-provider-panel__main-instance-table"
+                      columns={modelGroupColumns}
+                      dataSource={modelGroups}
+                      pagination={false}
+                      rowKey="model_id"
+                      size="small"
+                      components={{
+                        table: (props) => (
+                          <table {...props} aria-label={mainInstanceLabel} />
+                        )
+                      }}
+                    />
+                  )}
                 </section>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <ModelProviderInstancesTable
-          instances={instances}
-          canManage={canManage}
-          loading={false}
-          updatingInstanceId={updatingInstanceId}
-          onToggleIncludedInMain={onToggleIncludedInMain}
-          onEdit={onEdit}
-          onRefreshCandidates={(instance) => {
-            if (!refreshingCandidates) {
-              onRefreshCandidates(instance);
+              )
+            },
+            {
+              key: 'sources',
+              label: i18nText('settings', 'auto.source_management'),
+              children: (
+                <ModelProviderInstancesTable
+                  instances={instances}
+                  canManage={canManage}
+                  loading={false}
+                  updatingInstanceId={updatingInstanceId}
+                  onToggleIncludedInMain={onToggleIncludedInMain}
+                  onEdit={onEdit}
+                  onRefreshCandidates={(instance) => {
+                    if (!refreshingCandidates) {
+                      onRefreshCandidates(instance);
+                    }
+                  }}
+                  onRefreshModels={(instance) => {
+                    if (!refreshing) {
+                      onRefreshModels(instance);
+                    }
+                  }}
+                  onDelete={(instance) => {
+                    if (!deleting) {
+                      onDelete(instance);
+                    }
+                  }}
+                />
+              )
             }
-          }}
-          onRefreshModels={(instance) => {
-            if (!refreshing) {
-              onRefreshModels(instance);
-            }
-          }}
-          onDelete={(instance) => {
-            if (!deleting) {
-              onDelete(instance);
-            }
-          }}
+          ]}
         />
-      </div>
-    </Modal>
+      </>
+    </FixedHeightModal>
   );
 }

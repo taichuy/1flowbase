@@ -1,4 +1,4 @@
-import { Descriptions, Empty, Switch, Tag, Typography } from 'antd';
+import { Descriptions, Empty, Switch, Tag, Tooltip, Typography } from 'antd';
 
 import { CollapseShell } from '../../../../shared/ui/collapse-shell/CollapseShell';
 import type { SettingsModelProviderInstance } from '../../api/model-providers';
@@ -201,34 +201,62 @@ export function ModelProviderInstancesTable({
 
               {canManage ? (
                 <div className="model-provider-panel__instance-actions">
-                  <button
-                    type="button"
-                    className="model-provider-panel__instance-action-btn"
-                    onClick={() => onEdit(instance)}
-                    aria-label={i18nText("settings", "auto.edit_api_key", { value1: instance.display_name })}
+                  <Tooltip
+                    title={i18nText(
+                      "settings",
+                      "auto.edit_model_provider_instance_tip"
+                    )}
                   >
-                    {i18nText("settings", "auto.edit_api_key_alt")}</button>
-                  <button
-                    type="button"
-                    className="model-provider-panel__instance-action-btn"
-                    onClick={() => onRefreshCandidates(instance)}
-                    aria-label={i18nText("settings", "auto.refresh_candidate_model", { value1: instance.display_name })}
+                    <button
+                      type="button"
+                      className="model-provider-panel__instance-action-btn"
+                      onClick={() => onEdit(instance)}
+                      aria-label={i18nText("settings", "auto.edit_api_key", { value1: instance.display_name })}
+                    >
+                      {i18nText("settings", "auto.edit")}</button>
+                  </Tooltip>
+                  <Tooltip
+                    title={i18nText(
+                      "settings",
+                      "auto.detect_model_provider_instance_tip"
+                    )}
                   >
-                    {i18nText("settings", "auto.refresh_candidate_models")}</button>
-                  <button
-                    type="button"
-                    className="model-provider-panel__instance-action-btn"
-                    onClick={() => onRefreshModels(instance)}
-                    aria-label={i18nText("settings", "auto.refresh_model_alt", { value1: instance.display_name })}
+                    <button
+                      type="button"
+                      className="model-provider-panel__instance-action-btn"
+                      onClick={() => onRefreshCandidates(instance)}
+                      aria-label={i18nText("settings", "auto.refresh_candidate_model", { value1: instance.display_name })}
+                    >
+                      {i18nText("settings", "auto.detection")}</button>
+                  </Tooltip>
+                  <Tooltip
+                    title={i18nText(
+                      "settings",
+                      "auto.refresh_model_provider_instance_tip"
+                    )}
                   >
-                    {i18nText("settings", "auto.refresh_model")}</button>
-                  <button
-                    type="button"
-                    className="model-provider-panel__instance-action-btn model-provider-panel__instance-action-btn--danger"
-                    onClick={() => onDelete(instance)}
-                    aria-label={i18nText("settings", "auto.delete_instance_alt", { value1: instance.display_name })}
+                    <button
+                      type="button"
+                      className="model-provider-panel__instance-action-btn"
+                      onClick={() => onRefreshModels(instance)}
+                      aria-label={i18nText("settings", "auto.refresh_model_alt", { value1: instance.display_name })}
+                    >
+                      {i18nText("settings", "auto.refresh")}</button>
+                  </Tooltip>
+                  <Tooltip
+                    title={i18nText(
+                      "settings",
+                      "auto.delete_model_provider_instance_tip"
+                    )}
                   >
-                    {i18nText("settings", "auto.delete_instance")}</button>
+                    <button
+                      type="button"
+                      className="model-provider-panel__instance-action-btn model-provider-panel__instance-action-btn--danger"
+                      onClick={() => onDelete(instance)}
+                      aria-label={i18nText("settings", "auto.delete_instance_alt", { value1: instance.display_name })}
+                    >
+                      {i18nText("settings", "auto.delete")}</button>
+                  </Tooltip>
                 </div>
               ) : null}
             </>
