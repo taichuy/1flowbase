@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Divider, Radio, Space, Switch, Table, Typography } from 'antd';
+import { Radio, Space, Switch, Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import { useAuthStore } from '../../../../state/auth-store';
@@ -39,6 +39,8 @@ interface ModelPolicyFormState {
 interface RoleDataPolicySectionProps {
   roleCode: string;
   canEdit: boolean;
+  section: 'default-policy' | 'single-model-policy';
+  formId: string;
 }
 
 const DEFAULT_POLICY_FORM_STATE: DefaultPolicyFormState = {
@@ -53,7 +55,9 @@ const DEFAULT_POLICY_FORM_STATE: DefaultPolicyFormState = {
 
 export function RoleDataPolicySection({
   roleCode,
-  canEdit
+  canEdit,
+  section,
+  formId
 }: RoleDataPolicySectionProps) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
@@ -337,110 +341,105 @@ export function RoleDataPolicySection({
 
   return (
     <section aria-label={i18nText("settings", "auto.data_model_data_policy")}>
-      <Divider orientation="left">
-        {i18nText("settings", "auto.data_model_data_policy")}
-      </Divider>
-
+      <form
+        id={formId}
+        onSubmit={(event) => {
+          event.preventDefault();
+          replaceDataPolicyMutation.mutate();
+        }}
+      >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <section aria-label={i18nText("settings", "auto.default_policy")}>
-          <Typography.Title level={5} style={{ marginTop: 0 }}>
-            {i18nText("settings", "auto.default_policy")}
-          </Typography.Title>
-          <Space direction="vertical" size="small">
-            <Space wrap>
-              <Switch
-                aria-label={i18nText("settings", "auto.view")}
-                checked={defaultPolicy.can_view}
-                disabled={!canEdit}
-                onChange={(checked) => {
-                  setDefaultPermission('can_view', checked);
-                }}
-                onClick={(checked) => {
-                  setDefaultPermission('can_view', checked);
-                }}
-              />
-              <Typography.Text>{i18nText("settings", "auto.view")}</Typography.Text>
-              {renderDefaultScope(
-                i18nText("settings", "auto.view"),
-                'default_view_scope',
-                defaultPolicy.can_view
-              )}
+        {section === 'default-policy' ? (
+          <section aria-label={i18nText("settings", "auto.default_policy")}>
+            <Typography.Title level={5} style={{ marginTop: 0 }}>
+              {i18nText("settings", "auto.default_policy")}
+            </Typography.Title>
+            <Space direction="vertical" size="small">
+              <Space wrap>
+                <Typography.Text>{i18nText("settings", "auto.view")}</Typography.Text>
+                <Switch
+                  aria-label={i18nText("settings", "auto.view")}
+                  checked={defaultPolicy.can_view}
+                  disabled={!canEdit}
+                  onChange={(checked) => {
+                    setDefaultPermission('can_view', checked);
+                  }}
+                  onClick={(checked) => {
+                    setDefaultPermission('can_view', checked);
+                  }}
+                />
+                {renderDefaultScope(
+                  i18nText("settings", "auto.view"),
+                  'default_view_scope',
+                  defaultPolicy.can_view
+                )}
+              </Space>
+              <Space wrap>
+                <Typography.Text>{i18nText("settings", "auto.new")}</Typography.Text>
+                <Switch
+                  aria-label={i18nText("settings", "auto.new")}
+                  checked={defaultPolicy.can_create}
+                  disabled={!canEdit}
+                  onChange={(checked) => {
+                    setDefaultPermission('can_create', checked);
+                  }}
+                  onClick={(checked) => {
+                    setDefaultPermission('can_create', checked);
+                  }}
+                />
+              </Space>
+              <Space wrap>
+                <Typography.Text>{i18nText("settings", "auto.update")}</Typography.Text>
+                <Switch
+                  aria-label={i18nText("settings", "auto.update")}
+                  checked={defaultPolicy.can_update}
+                  disabled={!canEdit}
+                  onChange={(checked) => {
+                    setDefaultPermission('can_update', checked);
+                  }}
+                  onClick={(checked) => {
+                    setDefaultPermission('can_update', checked);
+                  }}
+                />
+                {renderDefaultScope(
+                  i18nText("settings", "auto.update"),
+                  'default_update_scope',
+                  defaultPolicy.can_update
+                )}
+              </Space>
+              <Space wrap>
+                <Typography.Text>{i18nText("settings", "auto.delete")}</Typography.Text>
+                <Switch
+                  aria-label={i18nText("settings", "auto.delete")}
+                  checked={defaultPolicy.can_delete}
+                  disabled={!canEdit}
+                  onChange={(checked) => {
+                    setDefaultPermission('can_delete', checked);
+                  }}
+                  onClick={(checked) => {
+                    setDefaultPermission('can_delete', checked);
+                  }}
+                />
+                {renderDefaultScope(
+                  i18nText("settings", "auto.delete"),
+                  'default_delete_scope',
+                  defaultPolicy.can_delete
+                )}
+              </Space>
             </Space>
-            <Space wrap>
-              <Switch
-                aria-label={i18nText("settings", "auto.new")}
-                checked={defaultPolicy.can_create}
-                disabled={!canEdit}
-                onChange={(checked) => {
-                  setDefaultPermission('can_create', checked);
-                }}
-                onClick={(checked) => {
-                  setDefaultPermission('can_create', checked);
-                }}
-              />
-              <Typography.Text>{i18nText("settings", "auto.new")}</Typography.Text>
-            </Space>
-            <Space wrap>
-              <Switch
-                aria-label={i18nText("settings", "auto.update")}
-                checked={defaultPolicy.can_update}
-                disabled={!canEdit}
-                onChange={(checked) => {
-                  setDefaultPermission('can_update', checked);
-                }}
-                onClick={(checked) => {
-                  setDefaultPermission('can_update', checked);
-                }}
-              />
-              <Typography.Text>{i18nText("settings", "auto.update")}</Typography.Text>
-              {renderDefaultScope(
-                i18nText("settings", "auto.update"),
-                'default_update_scope',
-                defaultPolicy.can_update
-              )}
-            </Space>
-            <Space wrap>
-              <Switch
-                aria-label={i18nText("settings", "auto.delete")}
-                checked={defaultPolicy.can_delete}
-                disabled={!canEdit}
-                onChange={(checked) => {
-                  setDefaultPermission('can_delete', checked);
-                }}
-                onClick={(checked) => {
-                  setDefaultPermission('can_delete', checked);
-                }}
-              />
-              <Typography.Text>{i18nText("settings", "auto.delete")}</Typography.Text>
-              {renderDefaultScope(
-                i18nText("settings", "auto.delete"),
-                'default_delete_scope',
-                defaultPolicy.can_delete
-              )}
-            </Space>
-          </Space>
-        </section>
-
-        <Table
-          columns={columns}
-          dataSource={modelRows}
-          loading={dataPolicyQuery.isLoading || dataModelsQuery.isLoading}
-          pagination={false}
-          rowKey="id"
-          size="small"
-        />
-
-        <div style={{ textAlign: 'right' }}>
-          <Button
-            disabled={!canEdit}
-            loading={replaceDataPolicyMutation.isPending}
-            onClick={() => replaceDataPolicyMutation.mutate()}
-            type="primary"
-          >
-            {i18nText("settings", "auto.save_data_policy")}
-          </Button>
-        </div>
+          </section>
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={modelRows}
+            loading={dataPolicyQuery.isLoading || dataModelsQuery.isLoading}
+            pagination={false}
+            rowKey="id"
+            size="small"
+          />
+        )}
       </Space>
+      </form>
     </section>
   );
 }

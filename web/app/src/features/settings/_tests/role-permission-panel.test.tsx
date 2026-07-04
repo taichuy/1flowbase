@@ -282,9 +282,28 @@ describe('RolePermissionPanel', () => {
   test('submits default data policy without a create scope', async () => {
     renderPanel();
 
-    await screen.findByText('Data Model 数据权限');
+    await screen.findByRole('tab', { name: '基础通用' });
+    expect(
+      screen.getAllByRole('tab').map((tab) => tab.textContent)
+    ).toEqual([
+      '基础通用',
+      '表-通用配置',
+      '表-单独配置'
+    ]);
+    expect(screen.getAllByRole('tablist')).toHaveLength(1);
+    expect(
+      screen.queryByText('Data Model 数据权限')
+    ).not.toBeInTheDocument();
 
-    const defaultSection = screen.getByRole('region', { name: '默认策略' });
+    fireEvent.click(screen.getByRole('tab', { name: '表-通用配置' }));
+
+    expect(
+      screen.queryByText('Data Model 数据权限')
+    ).not.toBeInTheDocument();
+
+    const defaultSection = await screen.findByRole('region', {
+      name: '默认策略'
+    });
     expect(
       within(defaultSection).queryByRole('radiogroup', { name: '新增范围' })
     ).not.toBeInTheDocument();
@@ -295,10 +314,10 @@ describe('RolePermissionPanel', () => {
       ).toBeChecked();
     });
     fireEvent.click(
-      within(defaultSection).getByRole('radio', { name: '查看 同范围' })
+      within(defaultSection).getByRole('radio', { name: '查看 本空间' })
     );
     fireEvent.click(
-      within(defaultSection).getByRole('radio', { name: '更新 自己创建' })
+      within(defaultSection).getByRole('radio', { name: '更新 仅自己' })
     );
     fireEvent.click(
       screen.getByRole('button', { name: '保存数据权限' })
@@ -340,17 +359,20 @@ describe('RolePermissionPanel', () => {
   test('submits per-model override payload and hides system_all choices', async () => {
     renderPanel();
 
+    await screen.findByRole('tab', { name: '基础通用' });
+    fireEvent.click(screen.getByRole('tab', { name: '表-单独配置' }));
+
     const ordersRow = await screen.findByRole('row', { name: /Orders orders/ });
     expect(screen.queryByText('所有数据')).not.toBeInTheDocument();
 
     fireEvent.click(
-      within(ordersRow).getByRole('radio', { name: '查看 同范围' })
+      within(ordersRow).getByRole('radio', { name: '查看 本空间' })
     );
     fireEvent.click(
       within(ordersRow).getByRole('radio', { name: '更新 继承' })
     );
     fireEvent.click(
-      within(ordersRow).getByRole('radio', { name: '删除 自己创建' })
+      within(ordersRow).getByRole('radio', { name: '删除 仅自己' })
     );
     fireEvent.click(screen.getByRole('button', { name: '保存数据权限' }));
 
@@ -375,6 +397,9 @@ describe('RolePermissionPanel', () => {
   test('disables data policy controls when the user cannot manage roles', async () => {
     renderPanel(false);
 
+    await screen.findByRole('tab', { name: '基础通用' });
+    fireEvent.click(screen.getByRole('tab', { name: '表-通用配置' }));
+
     const defaultSection = await screen.findByRole('region', {
       name: '默认策略'
     });
@@ -383,7 +408,7 @@ describe('RolePermissionPanel', () => {
       within(defaultSection).getByRole('switch', { name: '查看' })
     ).toBeDisabled();
     expect(
-      within(defaultSection).getByRole('radio', { name: '查看 自己创建' })
+      within(defaultSection).getByRole('radio', { name: '查看 仅自己' })
     ).toBeDisabled();
     expect(screen.getByRole('button', { name: '保存数据权限' })).toBeDisabled();
   }, 20000);

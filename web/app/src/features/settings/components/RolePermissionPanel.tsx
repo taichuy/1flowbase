@@ -21,6 +21,7 @@ import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
+  SaveOutlined,
   TeamOutlined,
   SafetyCertificateOutlined
 } from '@ant-design/icons';
@@ -84,6 +85,9 @@ const RESOURCE_MAP: Record<
 };
 
 const TAB_ORDER = [i18nText("settings", "auto.basic_configuration"), i18nText("settings", "auto.system_management"), i18nText("settings", "auto.routing_page"), i18nText("settings", "auto.agent_application"), i18nText("settings", "auto.others")];
+const ROLE_PERMISSION_GENERAL_TAB = i18nText("settings", "auto.basic_general");
+const ROLE_TABLE_GENERAL_TAB = i18nText("settings", "auto.table_general_configuration");
+const ROLE_TABLE_SINGLE_TAB = i18nText("settings", "auto.table_single_configuration");
 
 export function RolePermissionPanel({
   canManageRoles
@@ -96,6 +100,9 @@ export function RolePermissionPanel({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoleCode, setSelectedRoleCode] = useState<string | null>(null);
+  const [activePermissionTab, setActivePermissionTab] = useState(
+    ROLE_PERMISSION_GENERAL_TAB
+  );
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<SettingsRole | null>(null);
@@ -145,6 +152,12 @@ export function RolePermissionPanel({
   const selectedRole = useMemo(() => {
     return rolesQuery.data?.find((r) => r.code === selectedRoleCode) || null;
   }, [rolesQuery.data, selectedRoleCode]);
+  const dataPolicyFormId = selectedRole
+    ? `role-data-policy-${selectedRole.code}`
+    : undefined;
+  const isDataPolicyTab =
+    activePermissionTab === ROLE_TABLE_GENERAL_TAB ||
+    activePermissionTab === ROLE_TABLE_SINGLE_TAB;
 
   const tabsData = useMemo(() => {
     const allPerms = permissionsQuery.data ?? [];
@@ -304,6 +317,101 @@ export function RolePermissionPanel({
       is_default_member_role: role.is_default_member_role
     });
   };
+
+  const permissionTabItems = useMemo(() => {
+    const renderPermissionTree = (tab: (typeof tabsData)[number]) => (
+      <div style={{ paddingBottom: 32 }}>
+        <Tree
+          checkable
+          disabled={!canManageRoles || !selectedRole?.is_editable}
+          checkedKeys={localCheckedCodes.filter((code) =>
+            tab.tabLeafKeys.includes(code)
+          )}
+          onCheck={(checkedKeysValue) => {
+            const keys = Array.isArray(checkedKeysValue)
+              ? checkedKeysValue
+              : checkedKeysValue.checked;
+            const newlyCheckedLeaves = keys
+              .map(String)
+              .filter((k) => !k.startsWith('resource:'));
+
+            const otherCheckedCodes = localCheckedCodes.filter(
+              (c) => !tab.tabLeafKeys.includes(c)
+            );
+            const newCodes = [...otherCheckedCodes, ...newlyCheckedLeaves];
+
+            setLocalCheckedCodes(newCodes);
+            replacePermissionsMutation.mutate(newCodes);
+          }}
+          treeData={tab.treeData}
+          defaultExpandAll={false}
+        />
+      </div>
+    );
+
+    const regularTabs = tabsData.map((tab) => ({
+      key:
+        tab.key === i18nText("settings", "auto.basic_configuration")
+          ? ROLE_PERMISSION_GENERAL_TAB
+          : tab.key,
+      label:
+        tab.label === i18nText("settings", "auto.basic_configuration")
+          ? ROLE_PERMISSION_GENERAL_TAB
+          : tab.label,
+      children: renderPermissionTree(tab)
+    }));
+
+    const defaultDataPolicyTab = selectedRole
+      ? {
+          key: ROLE_TABLE_GENERAL_TAB,
+          label: ROLE_TABLE_GENERAL_TAB,
+          children: (
+            <RoleDataPolicySection
+              canEdit={canManageRoles && selectedRole.is_editable}
+              formId={dataPolicyFormId ?? ''}
+              roleCode={selectedRole.code}
+              section="default-policy"
+            />
+          )
+        }
+      : null;
+
+    const singleModelPolicyTab = selectedRole
+      ? {
+          key: ROLE_TABLE_SINGLE_TAB,
+          label: ROLE_TABLE_SINGLE_TAB,
+          children: (
+            <RoleDataPolicySection
+              canEdit={canManageRoles && selectedRole.is_editable}
+              formId={dataPolicyFormId ?? ''}
+              roleCode={selectedRole.code}
+              section="single-model-policy"
+            />
+          )
+        }
+      : null;
+
+    const [firstTab, ...restTabs] = regularTabs;
+    const fallbackGeneralTab = {
+      key: ROLE_PERMISSION_GENERAL_TAB,
+      label: ROLE_PERMISSION_GENERAL_TAB,
+      children: <div style={{ paddingBottom: 32 }} />
+    };
+
+    return [
+      firstTab ?? fallbackGeneralTab,
+      ...(defaultDataPolicyTab ? [defaultDataPolicyTab] : []),
+      ...(singleModelPolicyTab ? [singleModelPolicyTab] : []),
+      ...restTabs
+    ];
+  }, [
+    canManageRoles,
+    dataPolicyFormId,
+    localCheckedCodes,
+    replacePermissionsMutation,
+    selectedRole,
+    tabsData
+  ]);
 
   return (
     <SettingsSectionSurface title={i18nText("settings", "auto.permission_management")} hideHeader heightMode="fill">
@@ -479,26 +587,39 @@ export function RolePermissionPanel({
                       ) : null}
                     </Space>
                   </div>
-                  {canManageRoles && selectedRole.is_editable && (
-                    <Space>
+                  <Space>
+                    {isDataPolicyTab && dataPolicyFormId ? (
                       <Button
-                        icon={<EditOutlined />}
-                        onClick={() => handleEditClick(selectedRole)}
+                        aria-label={i18nText("settings", "auto.save_data_policy")}
+                        disabled={!canManageRoles || !selectedRole.is_editable}
+                        form={dataPolicyFormId}
+                        htmlType="submit"
+                        icon={<SaveOutlined />}
+                        type="primary"
                       >
-                        {i18nText("settings", "auto.edit_basic_information")}</Button>
-                      <Popconfirm
-                        title={i18nText("settings", "auto.sure_want_delete_role")}
-                        onConfirm={() =>
-                          deleteMutation.mutate(selectedRole.code)
-                        }
-                        okText={i18nText("settings", "auto.delete")}
-                        okButtonProps={{ danger: true }}
-                      >
-                        <Button danger icon={<DeleteOutlined />}>
-                          {i18nText("settings", "auto.delete_role")}</Button>
-                      </Popconfirm>
-                    </Space>
-                  )}
+                        {i18nText("settings", "auto.save_data_policy")}</Button>
+                    ) : null}
+                    {canManageRoles && selectedRole.is_editable ? (
+                      <>
+                        <Button
+                          icon={<EditOutlined />}
+                          onClick={() => handleEditClick(selectedRole)}
+                        >
+                          {i18nText("settings", "auto.edit_basic_information")}</Button>
+                        <Popconfirm
+                          title={i18nText("settings", "auto.sure_want_delete_role")}
+                          onConfirm={() =>
+                            deleteMutation.mutate(selectedRole.code)
+                          }
+                          okText={i18nText("settings", "auto.delete")}
+                          okButtonProps={{ danger: true }}
+                        >
+                          <Button danger icon={<DeleteOutlined />}>
+                            {i18nText("settings", "auto.delete_role")}</Button>
+                        </Popconfirm>
+                      </>
+                    ) : null}
+                  </Space>
                 </div>
 
                 {/* 权限多 Tab 配置 */}
@@ -510,54 +631,11 @@ export function RolePermissionPanel({
                     <div style={{ padding: 32, textAlign: 'center' }}>
                       {i18nText("settings", "auto.loading_permission_data")}</div>
                   ) : (
-                    <>
-                      <Tabs
-                        defaultActiveKey={TAB_ORDER[0]}
-                        items={tabsData.map((tab) => ({
-                          key: tab.key,
-                          label: tab.label,
-                          children: (
-                            <div style={{ paddingBottom: 32 }}>
-                              <Tree
-                                checkable
-                                disabled={
-                                  !canManageRoles || !selectedRole.is_editable
-                                }
-                                checkedKeys={localCheckedCodes.filter((code) =>
-                                  tab.tabLeafKeys.includes(code)
-                                )}
-                                onCheck={(checkedKeysValue) => {
-                                  const keys = Array.isArray(checkedKeysValue)
-                                    ? checkedKeysValue
-                                    : checkedKeysValue.checked;
-                                  const newlyCheckedLeaves = keys
-                                    .map(String)
-                                    .filter((k) => !k.startsWith('resource:'));
-
-                                  const otherCheckedCodes =
-                                    localCheckedCodes.filter(
-                                      (c) => !tab.tabLeafKeys.includes(c)
-                                    );
-                                  const newCodes = [
-                                    ...otherCheckedCodes,
-                                    ...newlyCheckedLeaves
-                                  ];
-
-                                  setLocalCheckedCodes(newCodes);
-                                  replacePermissionsMutation.mutate(newCodes);
-                                }}
-                                treeData={tab.treeData}
-                                defaultExpandAll={false}
-                              />
-                            </div>
-                          )
-                        }))}
-                      />
-                      <RoleDataPolicySection
-                        canEdit={canManageRoles && selectedRole.is_editable}
-                        roleCode={selectedRole.code}
-                      />
-                    </>
+                    <Tabs
+                      activeKey={activePermissionTab}
+                      items={permissionTabItems}
+                      onChange={setActivePermissionTab}
+                    />
                   )}
                 </div>
               </>
