@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Radio, Space, Switch, Table, Typography } from 'antd';
+import { Checkbox, Select, Space, Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import { useAuthStore } from '../../../../state/auth-store';
@@ -31,6 +31,7 @@ interface DefaultPolicyFormState {
 
 interface ModelPolicyFormState {
   data_model_id: string;
+  can_create_override: boolean | null;
   view_scope_override: SettingsRoleDataPolicyOverrideScope;
   update_scope_override: SettingsRoleDataPolicyOverrideScope;
   delete_scope_override: SettingsRoleDataPolicyOverrideScope;
@@ -52,6 +53,93 @@ const DEFAULT_POLICY_FORM_STATE: DefaultPolicyFormState = {
   default_update_scope: 'own',
   default_delete_scope: 'own'
 };
+
+type DefaultPolicyAction = 'create' | 'view' | 'update' | 'delete';
+type OverrideScopeSelectValue = SettingsRoleDataPolicyScope | 'inherit';
+
+const defaultPolicyActions: Array<{
+  action: DefaultPolicyAction;
+  permissionKey: keyof Pick<
+    DefaultPolicyFormState,
+    'can_create' | 'can_view' | 'can_update' | 'can_delete'
+  >;
+  label: string;
+  scopeKey?: keyof Pick<
+    DefaultPolicyFormState,
+    'default_view_scope' | 'default_update_scope' | 'default_delete_scope'
+  >;
+}> = [
+  {
+    action: 'create',
+    permissionKey: 'can_create',
+    label: i18nText("settings", "auto.new")
+  },
+  {
+    action: 'view',
+    permissionKey: 'can_view',
+    label: i18nText("settings", "auto.view"),
+    scopeKey: 'default_view_scope'
+  },
+  {
+    action: 'update',
+    permissionKey: 'can_update',
+    label: i18nText("settings", "auto.update"),
+    scopeKey: 'default_update_scope'
+  },
+  {
+    action: 'delete',
+    permissionKey: 'can_delete',
+    label: i18nText("settings", "auto.delete"),
+    scopeKey: 'default_delete_scope'
+  }
+];
+
+const defaultPolicyScopes: Array<{
+  scope: SettingsRoleDataPolicyScope;
+  label: string;
+}> = [
+  {
+    scope: 'own',
+    label: i18nText("settings", "auto.own_records")
+  },
+  {
+    scope: 'scope_all',
+    label: i18nText("settings", "auto.scope_all_records")
+  }
+];
+
+const modelOverrideScopeOptions: Array<{
+  value: OverrideScopeSelectValue;
+  label: string;
+}> = [
+  {
+    value: 'inherit',
+    label: i18nText("settings", "auto.inherit")
+  },
+  {
+    value: 'own',
+    label: i18nText("settings", "auto.own_records")
+  },
+  {
+    value: 'scope_all',
+    label: i18nText("settings", "auto.scope_all_records")
+  }
+];
+
+interface DefaultPolicyRow {
+  action: DefaultPolicyAction;
+  label: string;
+  permissionKey: keyof Pick<
+    DefaultPolicyFormState,
+    'can_create' | 'can_view' | 'can_update' | 'can_delete'
+  >;
+  enabled: boolean;
+  scopeKey?: keyof Pick<
+    DefaultPolicyFormState,
+    'default_view_scope' | 'default_update_scope' | 'default_delete_scope'
+  >;
+  scopeValue?: SettingsRoleDataPolicyScope;
+}
 
 export function RoleDataPolicySection({
   roleCode,
@@ -115,6 +203,7 @@ export function RoleDataPolicySection({
       const policy = fetchedModelPolicyById.get(model.id);
       nextModelPolicyById[model.id] = {
         data_model_id: model.id,
+        can_create_override: policy?.can_create_override ?? null,
         view_scope_override: policy?.view_scope_override ?? null,
         update_scope_override: policy?.update_scope_override ?? null,
         delete_scope_override: policy?.delete_scope_override ?? null
@@ -137,6 +226,7 @@ export function RoleDataPolicySection({
           model_policies: (dataModelsQuery.data ?? []).map((model) => {
             const policy = modelPolicyById[model.id] ?? {
               data_model_id: model.id,
+              can_create_override: null,
               view_scope_override: null,
               update_scope_override: null,
               delete_scope_override: null
@@ -144,6 +234,7 @@ export function RoleDataPolicySection({
 
             return {
               data_model_id: model.id,
+              can_create_override: policy.can_create_override,
               view_scope_override: policy.view_scope_override,
               update_scope_override: policy.update_scope_override,
               delete_scope_override: policy.delete_scope_override
@@ -194,6 +285,7 @@ export function RoleDataPolicySection({
     setModelPolicyById((current) => {
       const currentPolicy = current[modelId] ?? {
         data_model_id: modelId,
+        can_create_override: null,
         view_scope_override: null,
         update_scope_override: null,
         delete_scope_override: null
@@ -209,12 +301,25 @@ export function RoleDataPolicySection({
     });
   };
 
+  const defaultPolicyRows = useMemo<DefaultPolicyRow[]>(
+    () =>
+      defaultPolicyActions.map((actionConfig) => ({
+        ...actionConfig,
+        enabled: defaultPolicy[actionConfig.permissionKey],
+        scopeValue: actionConfig.scopeKey
+          ? defaultPolicy[actionConfig.scopeKey]
+          : undefined
+      })),
+    [defaultPolicy]
+  );
+
   const modelRows = useMemo(
     () =>
       (dataModelsQuery.data ?? []).map((model) => ({
         ...model,
         policy: modelPolicyById[model.id] ?? {
           data_model_id: model.id,
+          can_create_override: null,
           view_scope_override: null,
           update_scope_override: null,
           delete_scope_override: null
@@ -223,36 +328,52 @@ export function RoleDataPolicySection({
     [dataModelsQuery.data, modelPolicyById]
   );
 
-  const renderDefaultScope = (
-    actionLabel: string,
-    policyKey:
-      | 'default_view_scope'
-      | 'default_update_scope'
-      | 'default_delete_scope',
-    enabled: boolean
-  ) => (
-    <Radio.Group
-      aria-label={`${actionLabel} ${i18nText("settings", "auto.scope")}`}
-      disabled={!canEdit || !enabled}
-      onChange={(event) => {
-        setDefaultScope(policyKey, event.target.value);
-      }}
-      value={defaultPolicy[policyKey]}
-    >
-      <Radio
-        aria-label={`${actionLabel} ${i18nText("settings", "auto.own_records")}`}
-        value="own"
-      >
-        {i18nText("settings", "auto.own_records")}
-      </Radio>
-      <Radio
-        aria-label={`${actionLabel} ${i18nText("settings", "auto.scope_all_records")}`}
-        value="scope_all"
-      >
-        {i18nText("settings", "auto.scope_all_records")}
-      </Radio>
-    </Radio.Group>
-  );
+  const defaultPolicyColumns: ColumnsType<DefaultPolicyRow> = [
+    {
+      title: i18nText("settings", "auto.operation"),
+      dataIndex: 'label',
+      key: 'label',
+      render: (label: string) => <Typography.Text>{label}</Typography.Text>
+    },
+    {
+      title: i18nText("settings", "auto.enabled"),
+      key: 'enabled',
+      render: (_value, row) => (
+        <Checkbox
+          aria-label={`${row.label} ${i18nText("settings", "auto.enabled")}`}
+          checked={row.enabled}
+          disabled={!canEdit}
+          onChange={(event) => {
+            setDefaultPermission(row.permissionKey, event.target.checked);
+          }}
+        />
+      )
+    },
+    {
+      title: i18nText("settings", "auto.scope"),
+      key: 'scope',
+      render: (_value, row) => {
+        const scopeKey = row.scopeKey;
+        return scopeKey ? (
+          <Select
+            aria-label={`${row.label} ${i18nText("settings", "auto.scope")}`}
+            disabled={!canEdit || !row.enabled}
+            onChange={(scope) => {
+              setDefaultScope(scopeKey, scope);
+            }}
+            options={defaultPolicyScopes.map((scopeConfig) => ({
+              label: scopeConfig.label,
+              value: scopeConfig.scope
+            }))}
+            style={{ width: 128 }}
+            value={row.scopeValue}
+          />
+        ) : (
+          <Typography.Text type="secondary">-</Typography.Text>
+        );
+      }
+    }
+  ];
 
   const renderOverrideScope = (
     actionLabel: string,
@@ -264,34 +385,39 @@ export function RoleDataPolicySection({
   ) => {
     const policy = modelPolicyById[model.id];
     return (
-      <Radio.Group
+      <Select
         aria-label={`${actionLabel} ${model.title}`}
         disabled={!canEdit}
-        onChange={(event) => {
-          setModelScope(model.id, policyKey, event.target.value);
+        onChange={(scope) => {
+          const nextScope: SettingsRoleDataPolicyOverrideScope =
+            scope === 'inherit' ? null : (scope as SettingsRoleDataPolicyScope);
+          setModelScope(model.id, policyKey, nextScope);
         }}
-        value={policy?.[policyKey] ?? null}
-      >
-        <Radio
-          aria-label={`${actionLabel} ${i18nText("settings", "auto.inherit")}`}
-          value={null}
-        >
-          {i18nText("settings", "auto.inherit")}
-        </Radio>
-        <Radio
-          aria-label={`${actionLabel} ${i18nText("settings", "auto.own_records")}`}
-          value="own"
-        >
-          {i18nText("settings", "auto.own_records")}
-        </Radio>
-        <Radio
-          aria-label={`${actionLabel} ${i18nText("settings", "auto.scope_all_records")}`}
-          value="scope_all"
-        >
-          {i18nText("settings", "auto.scope_all_records")}
-        </Radio>
-      </Radio.Group>
+        options={modelOverrideScopeOptions}
+        style={{ width: 128 }}
+        value={policy?.[policyKey] ?? 'inherit'}
+      />
     );
+  };
+
+  const setModelCreateOverride = (modelId: string, checked: boolean) => {
+    setModelPolicyById((current) => {
+      const currentPolicy = current[modelId] ?? {
+        data_model_id: modelId,
+        can_create_override: null,
+        view_scope_override: null,
+        update_scope_override: null,
+        delete_scope_override: null
+      };
+
+      return {
+        ...current,
+        [modelId]: {
+          ...currentPolicy,
+          can_create_override: checked
+        }
+      };
+    });
   };
 
   const columns: ColumnsType<SettingsDataModel & { policy: ModelPolicyFormState }> =
@@ -305,6 +431,22 @@ export function RoleDataPolicySection({
             <Typography.Text>{model.title}</Typography.Text>
             <Typography.Text type="secondary">{model.code}</Typography.Text>
           </Space>
+        )
+      },
+      {
+        title: i18nText("settings", "auto.new"),
+        key: 'can_create_override',
+        render: (_value, model) => (
+          <Checkbox
+            aria-label={`${i18nText("settings", "auto.new")} ${model.title}`}
+            checked={
+              model.policy.can_create_override ?? defaultPolicy.can_create
+            }
+            disabled={!canEdit}
+            onChange={(event) => {
+              setModelCreateOverride(model.id, event.target.checked);
+            }}
+          />
         )
       },
       {
@@ -354,79 +496,14 @@ export function RoleDataPolicySection({
             <Typography.Title level={5} style={{ marginTop: 0 }}>
               {i18nText("settings", "auto.default_policy")}
             </Typography.Title>
-            <Space direction="vertical" size="small">
-              <Space wrap>
-                <Typography.Text>{i18nText("settings", "auto.view")}</Typography.Text>
-                <Switch
-                  aria-label={i18nText("settings", "auto.view")}
-                  checked={defaultPolicy.can_view}
-                  disabled={!canEdit}
-                  onChange={(checked) => {
-                    setDefaultPermission('can_view', checked);
-                  }}
-                  onClick={(checked) => {
-                    setDefaultPermission('can_view', checked);
-                  }}
-                />
-                {renderDefaultScope(
-                  i18nText("settings", "auto.view"),
-                  'default_view_scope',
-                  defaultPolicy.can_view
-                )}
-              </Space>
-              <Space wrap>
-                <Typography.Text>{i18nText("settings", "auto.new")}</Typography.Text>
-                <Switch
-                  aria-label={i18nText("settings", "auto.new")}
-                  checked={defaultPolicy.can_create}
-                  disabled={!canEdit}
-                  onChange={(checked) => {
-                    setDefaultPermission('can_create', checked);
-                  }}
-                  onClick={(checked) => {
-                    setDefaultPermission('can_create', checked);
-                  }}
-                />
-              </Space>
-              <Space wrap>
-                <Typography.Text>{i18nText("settings", "auto.update")}</Typography.Text>
-                <Switch
-                  aria-label={i18nText("settings", "auto.update")}
-                  checked={defaultPolicy.can_update}
-                  disabled={!canEdit}
-                  onChange={(checked) => {
-                    setDefaultPermission('can_update', checked);
-                  }}
-                  onClick={(checked) => {
-                    setDefaultPermission('can_update', checked);
-                  }}
-                />
-                {renderDefaultScope(
-                  i18nText("settings", "auto.update"),
-                  'default_update_scope',
-                  defaultPolicy.can_update
-                )}
-              </Space>
-              <Space wrap>
-                <Typography.Text>{i18nText("settings", "auto.delete")}</Typography.Text>
-                <Switch
-                  aria-label={i18nText("settings", "auto.delete")}
-                  checked={defaultPolicy.can_delete}
-                  disabled={!canEdit}
-                  onChange={(checked) => {
-                    setDefaultPermission('can_delete', checked);
-                  }}
-                  onClick={(checked) => {
-                    setDefaultPermission('can_delete', checked);
-                  }}
-                />
-                {renderDefaultScope(
-                  i18nText("settings", "auto.delete"),
-                  'default_delete_scope',
-                  defaultPolicy.can_delete
-                )}
-              </Space>
-            </Space>
+            <Table
+              columns={defaultPolicyColumns}
+              dataSource={defaultPolicyRows}
+              loading={dataPolicyQuery.isLoading}
+              pagination={false}
+              rowKey="action"
+              size="small"
+            />
           </section>
         ) : (
           <Table

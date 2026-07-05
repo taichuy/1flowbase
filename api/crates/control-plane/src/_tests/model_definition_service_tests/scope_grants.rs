@@ -159,6 +159,41 @@ async fn runtime_scope_grant_loader_clamps_role_scope_and_honors_model_override(
 }
 
 #[tokio::test]
+async fn runtime_scope_grant_loader_honors_model_create_override() {
+    let actor_user_id = Uuid::now_v7();
+    let workspace_id = Uuid::now_v7();
+    let model_id = Uuid::now_v7();
+    let policy = role_data_policy(true, true, true, true, domain::RoleDataPolicyScope::Own);
+    let mut model_policy = role_data_model_policy(policy.role_id, model_id, None, None, None);
+    model_policy.can_create_override = Some(false);
+    let repository = ScopedModelDefinitionRepository::new(scoped_manager_in_workspace(
+        actor_user_id,
+        workspace_id,
+    ))
+    .with_model(system_model(model_id))
+    .with_grant(scope_grant(
+        Uuid::now_v7(),
+        model_id,
+        DataModelScopeKind::Workspace,
+        workspace_id,
+    ))
+    .with_role_data_policy(policy, Some(model_policy));
+    let service = ModelDefinitionService::new(repository);
+    let actor = ActorContext::scoped(actor_user_id, workspace_id, "member", Vec::<String>::new());
+
+    let create_grant = service
+        .load_runtime_scope_grant(
+            &actor,
+            model_id,
+            runtime_core::runtime_acl::RuntimeDataAction::Create,
+        )
+        .await
+        .unwrap();
+
+    assert!(create_grant.is_none());
+}
+
+#[tokio::test]
 async fn runtime_scope_grant_loader_keeps_grant_owner_as_lower_boundary() {
     let actor_user_id = Uuid::now_v7();
     let workspace_id = Uuid::now_v7();
@@ -526,7 +561,9 @@ async fn workspace_scope_system_all_grant_is_rejected_even_with_confirmation() {
         })
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("system_all_requires_system_scope"));
+    assert!(error
+        .to_string()
+        .contains("system_all_requires_system_scope"));
 }
 
 #[tokio::test]
@@ -604,7 +641,9 @@ async fn workspace_scope_system_all_grant_update_is_rejected_even_with_confirmat
         })
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("system_all_requires_system_scope"));
+    assert!(error
+        .to_string()
+        .contains("system_all_requires_system_scope"));
 }
 
 #[tokio::test]

@@ -75,6 +75,28 @@ function renderPanel(canManageRoles = true) {
   );
 }
 
+async function selectDefaultPolicyScope(
+  section: HTMLElement,
+  actionLabel: string,
+  optionLabel: string
+) {
+  fireEvent.mouseDown(
+    within(section).getByRole('combobox', { name: `${actionLabel} 作用域` })
+  );
+  const optionMatches = await screen.findAllByTitle(optionLabel);
+  fireEvent.click(optionMatches[optionMatches.length - 1]);
+}
+
+async function selectPolicyCombobox(
+  scope: HTMLElement,
+  comboboxName: string,
+  optionLabel: string
+) {
+  fireEvent.mouseDown(within(scope).getByRole('combobox', { name: comboboxName }));
+  const optionMatches = await screen.findAllByTitle(optionLabel);
+  fireEvent.click(optionMatches[optionMatches.length - 1]);
+}
+
 const defaultDataPolicy = {
   role_code: 'manager',
   default_policy: {
@@ -89,12 +111,14 @@ const defaultDataPolicy = {
   model_policies: [
     {
       data_model_id: 'model-orders',
+      can_create_override: null,
       view_scope_override: null,
       update_scope_override: 'own',
       delete_scope_override: 'scope_all'
     },
     {
       data_model_id: 'model-customers',
+      can_create_override: null,
       view_scope_override: null,
       update_scope_override: null,
       delete_scope_override: null
@@ -307,18 +331,27 @@ describe('RolePermissionPanel', () => {
     expect(
       within(defaultSection).queryByRole('radiogroup', { name: '新增范围' })
     ).not.toBeInTheDocument();
+    expect(
+      within(defaultSection).queryByRole('switch', { name: '新增' })
+    ).not.toBeInTheDocument();
+    expect(within(defaultSection).queryByRole('tree')).not.toBeInTheDocument();
+    expect(within(defaultSection).getByRole('table')).toBeInTheDocument();
+    expect(
+      within(defaultSection).getByRole('checkbox', { name: '新增 启用' })
+    ).toBeInTheDocument();
+    expect(
+      within(defaultSection).getByRole('combobox', { name: '查看 作用域' })
+    ).toBeInTheDocument();
 
     await waitFor(() => {
       expect(
-        within(defaultSection).getByRole('switch', { name: '新增' })
+        within(defaultSection).getByRole('checkbox', {
+          name: '新增 启用'
+        })
       ).toBeChecked();
     });
-    fireEvent.click(
-      within(defaultSection).getByRole('radio', { name: '查看 本空间' })
-    );
-    fireEvent.click(
-      within(defaultSection).getByRole('radio', { name: '更新 仅自己' })
-    );
+    await selectDefaultPolicyScope(defaultSection, '查看', '本空间');
+    await selectDefaultPolicyScope(defaultSection, '更新', '仅自己');
     fireEvent.click(
       screen.getByRole('button', { name: '保存数据权限' })
     );
@@ -339,12 +372,14 @@ describe('RolePermissionPanel', () => {
           model_policies: [
             {
               data_model_id: 'model-orders',
+              can_create_override: null,
               view_scope_override: null,
               update_scope_override: 'own',
               delete_scope_override: 'scope_all'
             },
             {
               data_model_id: 'model-customers',
+              can_create_override: null,
               view_scope_override: null,
               update_scope_override: null,
               delete_scope_override: null
@@ -364,16 +399,20 @@ describe('RolePermissionPanel', () => {
 
     const ordersRow = await screen.findByRole('row', { name: /Orders orders/ });
     expect(screen.queryByText('所有数据')).not.toBeInTheDocument();
+    expect(
+      within(ordersRow).queryByRole('radio', { name: '查看 本空间' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(ordersRow).getByRole('combobox', { name: '查看 Orders' })
+    ).toBeInTheDocument();
+    expect(
+      within(ordersRow).getByRole('checkbox', { name: '新增 Orders' })
+    ).toBeChecked();
 
-    fireEvent.click(
-      within(ordersRow).getByRole('radio', { name: '查看 本空间' })
-    );
-    fireEvent.click(
-      within(ordersRow).getByRole('radio', { name: '更新 继承' })
-    );
-    fireEvent.click(
-      within(ordersRow).getByRole('radio', { name: '删除 仅自己' })
-    );
+    fireEvent.click(within(ordersRow).getByRole('checkbox', { name: '新增 Orders' }));
+    await selectPolicyCombobox(ordersRow, '查看 Orders', '本空间');
+    await selectPolicyCombobox(ordersRow, '更新 Orders', '继承');
+    await selectPolicyCombobox(ordersRow, '删除 Orders', '仅自己');
     fireEvent.click(screen.getByRole('button', { name: '保存数据权限' }));
 
     await waitFor(() => {
@@ -383,6 +422,7 @@ describe('RolePermissionPanel', () => {
           model_policies: expect.arrayContaining([
             {
               data_model_id: 'model-orders',
+              can_create_override: false,
               view_scope_override: 'scope_all',
               update_scope_override: null,
               delete_scope_override: 'own'
@@ -405,10 +445,10 @@ describe('RolePermissionPanel', () => {
     });
 
     expect(
-      within(defaultSection).getByRole('switch', { name: '查看' })
+      within(defaultSection).getByRole('checkbox', { name: '查看 启用' })
     ).toBeDisabled();
     expect(
-      within(defaultSection).getByRole('radio', { name: '查看 仅自己' })
+      within(defaultSection).getByRole('combobox', { name: '查看 作用域' })
     ).toBeDisabled();
     expect(screen.getByRole('button', { name: '保存数据权限' })).toBeDisabled();
   }, 20000);

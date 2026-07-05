@@ -34,6 +34,7 @@ export interface ConsoleRoleDefaultDataPolicy {
 
 export interface ConsoleRoleModelDataPolicy {
   data_model_id: string;
+  can_create_override: boolean | null;
   view_scope_override: ConsoleRoleDataPolicyOverrideScope;
   update_scope_override: ConsoleRoleDataPolicyOverrideScope;
   delete_scope_override: ConsoleRoleDataPolicyOverrideScope;

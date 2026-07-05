@@ -203,6 +203,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
                         },
                         "model_policies": [{
                             "data_model_id": model_id,
+                            "can_create_override": false,
                             "view_scope_override": "scope_all",
                             "update_scope_override": null,
                             "delete_scope_override": null
@@ -230,6 +231,10 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
     assert_eq!(
         replace_payload["data"]["model_policies"][0]["view_scope_override"].as_str(),
         Some("scope_all")
+    );
+    assert_eq!(
+        replace_payload["data"]["model_policies"][0]["can_create_override"].as_bool(),
+        Some(false)
     );
 
     let reject_default_system_all_response = app

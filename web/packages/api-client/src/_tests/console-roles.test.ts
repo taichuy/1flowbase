@@ -35,6 +35,7 @@ describe('console roles client', () => {
       model_policies: [
         {
           data_model_id: 'model-orders',
+          can_create_override: false,
           view_scope_override: null,
           update_scope_override: 'own',
           delete_scope_override: 'scope_all'

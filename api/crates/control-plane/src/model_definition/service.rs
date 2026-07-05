@@ -49,10 +49,16 @@ pub fn runtime_scope_grant_from_record(
     }
 }
 
-fn action_allowed(policy: &domain::RoleDataPolicyRecord, action: RuntimeDataAction) -> bool {
+fn action_allowed(
+    policy: &domain::RoleDataPolicyRecord,
+    override_policy: Option<&domain::RoleDataModelPolicyRecord>,
+    action: RuntimeDataAction,
+) -> bool {
     match action {
         RuntimeDataAction::View => policy.can_view,
-        RuntimeDataAction::Create => policy.can_create,
+        RuntimeDataAction::Create => override_policy
+            .and_then(|policy| policy.can_create_override)
+            .unwrap_or(policy.can_create),
         RuntimeDataAction::Update => policy.can_update,
         RuntimeDataAction::Delete => policy.can_delete,
     }
@@ -294,7 +300,7 @@ where
             .list_actor_role_data_policies(actor.user_id, actor.current_workspace_id, data_model_id)
             .await?
         {
-            if !action_allowed(&policy, action) {
+            if !action_allowed(&policy, model_policy.as_ref(), action) {
                 continue;
             }
             let candidate = action_scope(&policy, model_policy.as_ref(), action);

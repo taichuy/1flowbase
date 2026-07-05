@@ -390,6 +390,7 @@ impl RoleRepository for MemoryRoleRepository {
                     id: Uuid::now_v7(),
                     role_id,
                     data_model_id: policy.data_model_id,
+                    can_create_override: policy.can_create_override,
                     view_scope_override: policy.view_scope_override,
                     update_scope_override: policy.update_scope_override,
                     delete_scope_override: policy.delete_scope_override,

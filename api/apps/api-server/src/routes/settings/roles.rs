@@ -64,6 +64,7 @@ pub struct RoleDataPolicyBody {
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct RoleDataModelPolicyBody {
     pub data_model_id: Uuid,
+    pub can_create_override: Option<bool>,
     pub view_scope_override: Option<String>,
     pub update_scope_override: Option<String>,
     pub delete_scope_override: Option<String>,
@@ -157,6 +158,7 @@ fn to_model_policy_input(
 ) -> Result<RoleDataModelPolicyInput, ApiError> {
     Ok(RoleDataModelPolicyInput {
         data_model_id: policy.data_model_id,
+        can_create_override: policy.can_create_override,
         view_scope_override: parse_optional_data_policy_scope(policy.view_scope_override)?,
         update_scope_override: parse_optional_data_policy_scope(policy.update_scope_override)?,
         delete_scope_override: parse_optional_data_policy_scope(policy.delete_scope_override)?,
@@ -194,6 +196,7 @@ fn to_role_data_policy_response(
             .into_iter()
             .map(|model_policy| RoleDataModelPolicyBody {
                 data_model_id: model_policy.data_model_id,
+                can_create_override: model_policy.can_create_override,
                 view_scope_override: model_policy
                     .view_scope_override
                     .map(|scope| scope.as_str().to_string()),

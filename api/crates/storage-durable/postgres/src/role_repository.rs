@@ -360,7 +360,7 @@ impl RoleRepository for PgControlPlaneStore {
         let rows = sqlx::query(
             r#"
             select
-              id, role_id, data_model_id, view_scope_override, update_scope_override,
+              id, role_id, data_model_id, can_create_override, view_scope_override, update_scope_override,
               delete_scope_override, created_at, updated_at
             from role_data_model_policies
             where role_id = $1
@@ -376,6 +376,7 @@ impl RoleRepository for PgControlPlaneStore {
                 id: row.get("id"),
                 role_id: row.get("role_id"),
                 data_model_id: row.get("data_model_id"),
+                can_create_override: row.get("can_create_override"),
                 view_scope_override: optional_data_policy_scope_from_db(
                     row.get("view_scope_override"),
                 ),
@@ -449,15 +450,16 @@ impl RoleRepository for PgControlPlaneStore {
             sqlx::query(
                 r#"
                 insert into role_data_model_policies (
-                    id, role_id, data_model_id, view_scope_override, update_scope_override,
-                    delete_scope_override, created_by, updated_by
+                    id, role_id, data_model_id, can_create_override, view_scope_override,
+                    update_scope_override, delete_scope_override, created_by, updated_by
                 )
-                values ($1, $2, $3, $4, $5, $6, $7, $7)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
                 "#,
             )
             .bind(Uuid::now_v7())
             .bind(role.id)
             .bind(model_policy.data_model_id)
+            .bind(model_policy.can_create_override)
             .bind(model_policy.view_scope_override.map(|scope| scope.as_str()))
             .bind(
                 model_policy

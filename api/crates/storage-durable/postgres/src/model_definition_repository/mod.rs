@@ -1310,6 +1310,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
               rdp.updated_at as policy_updated_at,
               rdmp.id as model_policy_id,
               rdmp.data_model_id,
+              rdmp.can_create_override,
               rdmp.view_scope_override,
               rdmp.update_scope_override,
               rdmp.delete_scope_override,
@@ -1361,6 +1362,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                     id,
                     role_id,
                     data_model_id: row.get("data_model_id"),
+                    can_create_override: row.get("can_create_override"),
                     view_scope_override: row
                         .get::<Option<String>, _>("view_scope_override")
                         .map(|scope| domain::RoleDataPolicyScope::from_db(&scope)),

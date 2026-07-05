@@ -268,6 +268,7 @@ pub struct RoleDataModelPolicyRecord {
     pub id: Uuid,
     pub role_id: Uuid,
     pub data_model_id: Uuid,
+    pub can_create_override: Option<bool>,
     pub view_scope_override: Option<RoleDataPolicyScope>,
     pub update_scope_override: Option<RoleDataPolicyScope>,
     pub delete_scope_override: Option<RoleDataPolicyScope>,

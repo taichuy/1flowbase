@@ -36,6 +36,7 @@ export interface SettingsRoleDefaultDataPolicy {
 
 export interface SettingsRoleModelDataPolicy {
   data_model_id: string;
+  can_create_override: boolean | null;
   view_scope_override: SettingsRoleDataPolicyOverrideScope;
   update_scope_override: SettingsRoleDataPolicyOverrideScope;
   delete_scope_override: SettingsRoleDataPolicyOverrideScope;

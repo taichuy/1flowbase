@@ -618,6 +618,7 @@ fn role_data_model_policy(
         id: Uuid::now_v7(),
         role_id,
         data_model_id: model_id,
+        can_create_override: None,
         view_scope_override,
         update_scope_override,
         delete_scope_override,

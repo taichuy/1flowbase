@@ -165,6 +165,7 @@ async fn role_service_rejects_system_all_data_policy_for_workspace_roles() {
             },
             model_policies: vec![RoleDataModelPolicyInput {
                 data_model_id: Uuid::now_v7(),
+                can_create_override: None,
                 view_scope_override: Some(domain::RoleDataPolicyScope::SystemAll),
                 update_scope_override: None,
                 delete_scope_override: None,

@@ -364,6 +364,7 @@ pub struct RoleDataPolicyDefaultsInput {
 #[derive(Debug, Clone)]
 pub struct RoleDataModelPolicyInput {
     pub data_model_id: Uuid,
+    pub can_create_override: Option<bool>,
     pub view_scope_override: Option<domain::RoleDataPolicyScope>,
     pub update_scope_override: Option<domain::RoleDataPolicyScope>,
     pub delete_scope_override: Option<domain::RoleDataPolicyScope>,
