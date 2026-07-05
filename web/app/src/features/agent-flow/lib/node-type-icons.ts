@@ -3,10 +3,12 @@ import { createElement, type CSSProperties, type ReactNode } from 'react';
 import {
   ApiOutlined,
   BlockOutlined,
+  BranchesOutlined,
   DatabaseOutlined,
   EditOutlined,
   FileTextOutlined,
   MessageOutlined,
+  MergeCellsOutlined,
   PlaySquareOutlined,
   QuestionCircleOutlined,
   ReloadOutlined,
@@ -69,7 +71,9 @@ const NODE_TYPE_ICONS: Record<string, ReactNode> = {
   unresolved_node: createElement(WarningOutlined),
   fusion: createElement(ThunderboltOutlined),
   route: createElement(ThunderboltOutlined),
-  branch: createElement(ThunderboltOutlined)
+  branch: createElement(ThunderboltOutlined),
+  stitched_context: createElement(MergeCellsOutlined),
+  flow_run: createElement(BranchesOutlined)
 };
 
 export function getAgentFlowNodeTypeIcon(nodeType: string) {

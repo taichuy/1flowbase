@@ -1320,7 +1320,6 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
     assert_eq!(enqueued_after_duplicate.len(), 1);
 }
 
-
 #[test]
 fn workflow_schedule_cron_matcher_covers_five_field_expressions() {
     let at = |hour: u8, minute: u8| {
@@ -1381,14 +1380,27 @@ async fn workflow_schedule_tick_dispatches_only_matching_enabled_triggers() {
     for application_id in [matching.id, wrong_cron.id, shanghai.id, invalid_timezone.id] {
         harness.set_workflow_trigger_type(application_id, domain::WorkflowTriggerType::Schedule);
     }
-    seed_trigger(matching.id, true, "0 1 * * *", "UTC").await.unwrap();
-    seed_trigger(wrong_cron.id, true, "30 12 * * *", "UTC").await.unwrap();
-    seed_trigger(disabled.id, false, "0 1 * * *", "UTC").await.unwrap();
-    // 01:00 UTC is 09:00 in Asia/Shanghai.
-    seed_trigger(shanghai.id, true, "0 9 * * *", "Asia/Shanghai").await.unwrap();
-    seed_trigger(invalid_timezone.id, true, "0 1 * * *", "America/Nowhere_Fake")
+    seed_trigger(matching.id, true, "0 1 * * *", "UTC")
         .await
         .unwrap();
+    seed_trigger(wrong_cron.id, true, "30 12 * * *", "UTC")
+        .await
+        .unwrap();
+    seed_trigger(disabled.id, false, "0 1 * * *", "UTC")
+        .await
+        .unwrap();
+    // 01:00 UTC is 09:00 in Asia/Shanghai.
+    seed_trigger(shanghai.id, true, "0 9 * * *", "Asia/Shanghai")
+        .await
+        .unwrap();
+    seed_trigger(
+        invalid_timezone.id,
+        true,
+        "0 1 * * *",
+        "America/Nowhere_Fake",
+    )
+    .await
+    .unwrap();
 
     let task_queue = RecordingTaskQueue::default();
     let now_utc = time::OffsetDateTime::UNIX_EPOCH + Duration::hours(1) + Duration::seconds(17);
@@ -1420,8 +1432,7 @@ async fn workflow_schedule_tick_dispatches_only_matching_enabled_triggers() {
     }));
     assert!(!entries
         .iter()
-        .any(|entry| entry.application_id == wrong_cron.id
-            || entry.application_id == disabled.id));
+        .any(|entry| entry.application_id == wrong_cron.id || entry.application_id == disabled.id));
 
     let enqueued = task_queue
         .enqueued
@@ -1452,7 +1463,6 @@ async fn workflow_schedule_tick_dispatches_only_matching_enabled_triggers() {
         .len();
     assert_eq!(enqueued_after_repeat, 2);
 }
-
 
 #[tokio::test]
 async fn workflow_schedule_dispatch_skips_extension_trigger_application() {

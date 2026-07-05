@@ -1507,6 +1507,195 @@ describe('debug conversation log panel', () => {
     ).toHaveTextContent('result_context_usage');
   }, 10_000);
 
+  test('treats stitched context and stitched runs as group-only trace nodes', async () => {
+    const stitchedContextNode = {
+      trace_node_id: 'stitched_context:root',
+      node_kind: 'stitched_context',
+      node_run_id: null,
+      node_id: null,
+      node_type: 'stitched_context',
+      node_alias: '续聊上下文',
+      status: 'succeeded',
+      started_at: '2026-04-25T09:59:00Z',
+      finished_at: '2026-04-25T10:00:00Z',
+      duration_ms: null,
+      metrics_payload: {},
+      has_children: true,
+      child_count: 1,
+      has_content: false
+    };
+    const stitchedRunNode = {
+      trace_node_id: 'stitched_run:prior-run',
+      parent_trace_node_id: stitchedContextNode.trace_node_id,
+      node_kind: 'stitched_run',
+      node_run_id: null,
+      node_id: null,
+      node_type: 'flow_run',
+      node_alias: '历史 run',
+      status: 'succeeded',
+      started_at: '2026-04-25T09:59:01Z',
+      finished_at: '2026-04-25T09:59:30Z',
+      duration_ms: 29000,
+      metrics_payload: {},
+      has_children: true,
+      child_count: 1,
+      has_content: false,
+      source_flow_run_id: 'run-prior'
+    };
+    const historicalNode = {
+      trace_node_id: 'stitched_node_run:prior-llm',
+      parent_trace_node_id: stitchedRunNode.trace_node_id,
+      node_kind: 'node_run',
+      node_run_id: 'prior-node-run',
+      node_id: 'prior-node',
+      node_type: 'llm',
+      node_alias: 'Prior LLM',
+      status: 'succeeded',
+      started_at: '2026-04-25T09:59:02Z',
+      finished_at: '2026-04-25T09:59:20Z',
+      duration_ms: 18000,
+      metrics_payload: {},
+      has_children: false,
+      child_count: 0,
+      has_content: true,
+      source_flow_run_id: 'run-prior',
+      source_trace_node_id: 'node_run:prior-node-run'
+    };
+    const traceLoader = {
+      loadTree: vi.fn().mockResolvedValue({ nodes: [stitchedContextNode] }),
+      loadChildren: vi
+        .fn()
+        .mockImplementation(
+          async (_runId: string, parentTraceNodeId: string) => ({
+            items:
+              parentTraceNodeId === stitchedContextNode.trace_node_id
+                ? [stitchedRunNode]
+                : parentTraceNodeId === stitchedRunNode.trace_node_id
+                  ? [historicalNode]
+                  : [],
+            page_info: {
+              has_more: false,
+              next_cursor: null,
+              page_size: 20
+            }
+          })
+        ),
+      loadContent: vi
+        .fn()
+        .mockImplementation(async (_runId: string, traceNodeId: string) => ({
+          trace_node_id: traceNodeId,
+          node_kind: 'node_run',
+          content_kind: 'node_run',
+          detail_refs: [
+            {
+              detail_ref_id: 'node_run',
+              detail_kind: 'node_run',
+              source_kind: 'stitched_node_run',
+              source_locator: 'prior-node-run',
+              source_flow_run_id: 'run-prior',
+              count: 1
+            }
+          ],
+          payload: {
+            payload_index: {
+              node_run_count: 1,
+              checkpoint_count: 0,
+              event_count: 0,
+              source_flow_run_id: 'run-prior'
+            }
+          }
+        })),
+      loadDetail: vi.fn().mockResolvedValue({
+        trace_node_id: historicalNode.trace_node_id,
+        detail_ref_id: 'node_run',
+        detail_kind: 'node_run',
+        payload: {
+          node_run: {
+            id: 'prior-node-run',
+            flow_run_id: 'run-prior',
+            node_id: 'prior-node',
+            node_type: 'llm',
+            node_alias: 'Prior LLM',
+            status: 'succeeded',
+            input_payload: {
+              prompt: '历史问题'
+            },
+            output_payload: {
+              answer: '历史回答'
+            },
+            error_payload: null,
+            metrics_payload: {},
+            debug_payload: {},
+            started_at: '2026-04-25T09:59:02Z',
+            finished_at: '2026-04-25T09:59:20Z'
+          }
+        }
+      })
+    };
+
+    renderWithQueryClient(
+      <ConversationLogPanel
+        message={{
+          id: 'conversation-assistant-run-application-log',
+          role: 'assistant',
+          content: '当前回答',
+          status: 'completed',
+          runId: 'run-application-log',
+          detailRunId: 'run-application-log',
+          rawOutput: null,
+          traceSummary: []
+        }}
+        traceLoader={traceLoader}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '追踪' }));
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /续聊上下文/ })
+    );
+    await waitFor(() =>
+      expect(traceLoader.loadChildren).toHaveBeenCalledWith(
+        'run-application-log',
+        stitchedContextNode.trace_node_id,
+        undefined
+      )
+    );
+    expect(
+      screen.queryByRole('region', { name: '续聊上下文 节点详情' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: /历史 run/ }));
+    await waitFor(() =>
+      expect(traceLoader.loadChildren).toHaveBeenCalledWith(
+        'run-application-log',
+        stitchedRunNode.trace_node_id,
+        undefined
+      )
+    );
+    expect(
+      screen.queryByRole('region', { name: '历史 run 节点详情' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Prior LLM/ }));
+    await waitFor(() =>
+      expect(traceLoader.loadContent).toHaveBeenCalledWith(
+        'run-application-log',
+        historicalNode.trace_node_id
+      )
+    );
+    const nodeDetail = await screen.findByRole('region', {
+      name: 'Prior LLM 节点详情'
+    });
+    expect(await within(nodeDetail).findByLabelText('输入 JSON')).toHaveTextContent(
+      '历史问题'
+    );
+    expect(await within(nodeDetail).findByLabelText('输出 JSON')).toHaveTextContent(
+      '历史回答'
+    );
+  });
+
   test('delegates log opening when the canvas shell controls the log panel', () => {
     const onOpenMessageLog = vi.fn();
 

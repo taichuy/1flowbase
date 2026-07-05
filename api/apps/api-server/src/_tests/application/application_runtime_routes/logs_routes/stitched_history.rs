@@ -225,31 +225,21 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         "lazy trace tree should expose stitched nodes as expandable summaries, not full stitched detail"
     );
     let root_nodes = data["nodes"].as_array().unwrap();
-    assert!(
-        root_nodes
-            .iter()
-            .any(|node| node["flow_run_id"] == json!(run_c_id))
-    );
-    assert!(
-        root_nodes
-            .iter()
-            .all(|node| node["flow_run_id"] != json!(run_a_id))
-    );
-    assert!(
-        root_nodes
-            .iter()
-            .all(|node| node["flow_run_id"] != json!(run_b_id))
-    );
-    assert!(
-        root_nodes
-            .iter()
-            .all(|node| node.get("input_payload").is_none())
-    );
-    assert!(
-        root_nodes
-            .iter()
-            .all(|node| node.get("debug_payload").is_none())
-    );
+    assert!(root_nodes
+        .iter()
+        .any(|node| node["flow_run_id"] == json!(run_c_id)));
+    assert!(root_nodes
+        .iter()
+        .all(|node| node["flow_run_id"] != json!(run_a_id)));
+    assert!(root_nodes
+        .iter()
+        .all(|node| node["flow_run_id"] != json!(run_b_id)));
+    assert!(root_nodes
+        .iter()
+        .all(|node| node.get("input_payload").is_none()));
+    assert!(root_nodes
+        .iter()
+        .all(|node| node.get("debug_payload").is_none()));
 
     let llm_root = root_nodes
         .iter()
@@ -260,11 +250,9 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         })
         .expect("current llm root should be present");
     let llm_root_id = llm_root["trace_node_id"].as_str().unwrap();
-    assert!(
-        root_nodes
-            .iter()
-            .all(|node| node["node_kind"] != json!("stitched_context"))
-    );
+    assert!(root_nodes
+        .iter()
+        .all(|node| node["node_kind"] != json!("stitched_context")));
 
     let llm_children = app
         .clone()
@@ -314,11 +302,12 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         .as_array()
         .unwrap();
     assert_eq!(stitched_runs.len(), 2);
-    assert!(
-        stitched_runs
-            .iter()
-            .all(|node| node["node_kind"] == json!("stitched_run"))
-    );
+    assert!(stitched_runs
+        .iter()
+        .all(|node| node["node_kind"] == json!("stitched_run")));
+    assert!(stitched_runs
+        .iter()
+        .all(|node| node["has_content"] == json!(false)));
     let run_a_trace_node_id = stitched_runs[0]["trace_node_id"].as_str().unwrap();
 
     let run_a_node_content = app
@@ -334,14 +323,86 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         )
         .await
         .unwrap();
-    assert_eq!(run_a_node_content.status(), StatusCode::OK);
-    let run_a_node_content_body = to_bytes(run_a_node_content.into_body(), usize::MAX)
+    assert_eq!(run_a_node_content.status(), StatusCode::NOT_FOUND);
+
+    let run_a_children = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/logs/runs/{run_c_id}/trace-tree/nodes?parent_trace_node_id={run_a_trace_node_id}"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
-    let run_a_node_content_payload: Value =
-        serde_json::from_slice(&run_a_node_content_body).unwrap();
+    assert_eq!(run_a_children.status(), StatusCode::OK);
+    let run_a_children_body = to_bytes(run_a_children.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let run_a_children_payload: Value = serde_json::from_slice(&run_a_children_body).unwrap();
+    let run_a_nodes = run_a_children_payload["data"]["items"].as_array().unwrap();
+    assert!(
+        run_a_nodes
+            .iter()
+            .any(|node| node["node_kind"] == json!("node_run")),
+        "stitched run should expose historical node children"
+    );
+    let run_a_llm_node = run_a_nodes
+        .iter()
+        .find(|node| {
+            node["node_kind"] == json!("node_run")
+                && node["node_type"] == json!("llm")
+                && node["source_flow_run_id"] == json!(run_a_id)
+        })
+        .expect("historical llm node should remain linked to source run");
+    let run_a_llm_trace_node_id = run_a_llm_node["trace_node_id"].as_str().unwrap();
+
+    let run_a_llm_content = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/logs/runs/{run_c_id}/trace-tree/nodes/{run_a_llm_trace_node_id}/content"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(run_a_llm_content.status(), StatusCode::OK);
+    let run_a_llm_content_body = to_bytes(run_a_llm_content.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let run_a_llm_content_payload: Value = serde_json::from_slice(&run_a_llm_content_body).unwrap();
     assert_eq!(
-        run_a_node_content_payload["data"]["payload"]["id"],
+        run_a_llm_content_payload["data"]["payload"]["payload_index"]["source_flow_run_id"],
+        json!(run_a_id)
+    );
+
+    let run_a_llm_detail = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/logs/runs/{run_c_id}/trace-tree/nodes/{run_a_llm_trace_node_id}/details/node_run"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(run_a_llm_detail.status(), StatusCode::OK);
+    let run_a_llm_detail_body = to_bytes(run_a_llm_detail.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let run_a_llm_detail_payload: Value = serde_json::from_slice(&run_a_llm_detail_body).unwrap();
+    assert_eq!(
+        run_a_llm_detail_payload["data"]["payload"]["node_run"]["flow_run_id"],
         json!(run_a_id)
     );
 }

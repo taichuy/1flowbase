@@ -173,8 +173,11 @@ export function isTraceGroupNode(node: ConversationLogTraceNodeSummary) {
   return (
     node.node_kind === 'tool_group' ||
     node.node_kind === 'agent_group' ||
+    node.node_kind === 'stitched_context' ||
+    node.node_kind === 'stitched_run' ||
     node.node_type === 'tools' ||
-    node.node_type === 'agents'
+    node.node_type === 'agents' ||
+    node.node_type === 'stitched_context'
   );
 }
 

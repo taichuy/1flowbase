@@ -169,8 +169,7 @@ where
         let mut entries = Vec::new();
 
         for trigger in triggers {
-            let Some(local) =
-                resolve_workflow_schedule_local_time(&trigger.timezone, scheduled_at)
+            let Some(local) = resolve_workflow_schedule_local_time(&trigger.timezone, scheduled_at)
             else {
                 entries.push(WorkflowScheduleTickEntry {
                     application_id: trigger.application_id,
