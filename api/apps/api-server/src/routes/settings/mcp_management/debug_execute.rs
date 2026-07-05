@@ -95,7 +95,7 @@ pub async fn execute(
     }
 
     let interface_response = parse_target_response_body(target_response).await?;
-    let tool_result = map_tool_result(&body.output_mapping, &interface_response)?;
+    let tool_result = map_tool_result(&body.output_mapping, &interface_response);
 
     Ok(McpDebugExecuteResponse {
         mcp_arguments: body.mcp_arguments,
@@ -288,30 +288,34 @@ async fn parse_target_response_body(response: Response) -> anyhow::Result<Value>
     })
 }
 
-fn map_tool_result(output_mapping: &Value, interface_response: &Value) -> anyhow::Result<Value> {
+fn map_tool_result(output_mapping: &Value, interface_response: &Value) -> Value {
     let source = interface_response.get("data").unwrap_or(interface_response);
-    map_schema_object(output_mapping, source)
+    filter_schema_object(output_mapping, source)
 }
 
-fn map_schema_object(schema: &Value, source: &Value) -> anyhow::Result<Value> {
+fn filter_schema_object(schema: &Value, source: &Value) -> Value {
     let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
-        return Ok(source.clone());
+        return source.clone();
     };
 
     let mut mapped = Map::new();
     for (field, field_schema) in properties {
-        let field_source = get_path_value(source, field).ok_or(
-            control_plane::errors::ControlPlaneError::InvalidInput("output_mapping"),
-        )?;
+        let Some(field_source) = get_path_value(source, field) else {
+            continue;
+        };
         let mapped_value = if field_schema.get("properties").is_some() {
-            map_schema_object(field_schema, field_source)?
+            filter_schema_object(field_schema, field_source)
         } else {
             field_source.clone()
         };
         set_path_value(&mut mapped, field, mapped_value);
     }
 
-    Ok(Value::Object(mapped))
+    if mapped.is_empty() {
+        source.clone()
+    } else {
+        Value::Object(mapped)
+    }
 }
 
 impl TargetArguments {

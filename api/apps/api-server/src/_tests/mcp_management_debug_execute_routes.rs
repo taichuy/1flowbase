@@ -362,7 +362,7 @@ async fn mcp_debug_execute_requires_mcp_manage_permission() {
 }
 
 #[tokio::test]
-async fn mcp_debug_execute_reports_output_mapping_failure() {
+async fn mcp_debug_execute_returns_full_payload_when_output_mapping_matches_nothing() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let create_interface_id = create_bindable_create_interface(
@@ -411,9 +411,19 @@ async fn mcp_debug_execute_reports_output_mapping_failure() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let status = response.status();
     let payload = response_json(response).await;
-    assert_eq!(payload["code"], json!("output_mapping"));
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    assert_eq!(
+        payload["data"]["tool_result"],
+        payload["data"]["interface_response"]["data"]
+    );
+    assert_eq!(
+        payload["data"]["tool_result"]["order_title"],
+        json!("Debug order")
+    );
+    assert!(payload["data"]["tool_result"]["id"].is_string());
+    assert!(payload["data"]["tool_result"]["missing_field"].is_null());
 }
 
 #[tokio::test]
