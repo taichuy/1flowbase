@@ -206,6 +206,28 @@ async fn mcp_interface_capabilities_include_bindable_runtime_data_model_crud_ope
             json!("/api/runtime/models/{model_code}/get/{id}")
         );
     }
+    let list_entry = entries
+        .iter()
+        .find(|entry| {
+            entry["method"] == json!("GET")
+                && entry["path"] == json!("/api/runtime/models/mcp_ready_orders/list")
+        })
+        .expect("missing bindable runtime list interface");
+    assert!(
+        list_entry["result_schema"]["properties"]
+            .get("items")
+            .is_some(),
+        "runtime list result_schema should expose RuntimeListResponse.items"
+    );
+    assert!(
+        list_entry["result_schema"]["properties"]
+            .get("data")
+            .is_none(),
+        "runtime list result_schema must not rename RuntimeListResponse.items to data"
+    );
+    assert!(list_entry["result_schema"]["properties"]
+        .get("total")
+        .is_some());
     assert!(!entries.iter().any(|entry| entry["path"]
         .as_str()
         .is_some_and(|path| path.contains("mcp_hidden_orders"))));

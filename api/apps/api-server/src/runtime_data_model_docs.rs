@@ -510,7 +510,7 @@ fn runtime_responses(schema_ref: &str, list: bool) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "data": {
+                "items": {
                     "type": "array",
                     "items": { "$ref": schema_ref }
                 },
