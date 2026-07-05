@@ -1,5 +1,7 @@
 use domain::{PermissionDefinition, RoleScopeKind, RoleTemplate};
 
+use crate::settings_route_permission_definitions;
+
 fn push_permissions(
     permissions: &mut Vec<PermissionDefinition>,
     resource: &str,
@@ -163,6 +165,7 @@ pub fn permission_catalog() -> Vec<PermissionDefinition> {
         "mcp_management",
         &[("view", &["all"]), ("manage", &["all"])],
     );
+    permissions.extend(settings_route_permission_definitions());
 
     permissions
 }
@@ -194,6 +197,7 @@ pub fn builtin_role_templates() -> Vec<RoleTemplate> {
             matches_resource && (!code.ends_with(".all") || code.ends_with(".create.all"))
         })
         .cloned()
+        .chain(["settings_route.visible.settings.api-key-authentication".to_string()])
         .collect();
 
     vec![

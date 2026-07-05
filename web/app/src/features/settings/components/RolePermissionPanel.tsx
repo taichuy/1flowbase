@@ -75,6 +75,11 @@ const RESOURCE_MAP: Record<
   state_model: { tab: i18nText("settings", "auto.system_management"), label: i18nText("settings", "auto.model_supplier_state_model"), order: 4 },
 
   route_page: { tab: i18nText("settings", "auto.routing_page"), label: i18nText("settings", "auto.route_permissions_route_page"), order: 1 },
+  settings_route: {
+    tab: i18nText("settings", "auto.routing_page"),
+    label: i18nText("settings", "auto.settings_page_settings_route"),
+    order: 2
+  },
 
   flow: { tab: i18nText("settings", "auto.agent_application"), label: i18nText("settings", "auto.workflow"), order: 1 },
   publish_endpoint: {

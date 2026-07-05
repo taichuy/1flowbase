@@ -41,39 +41,37 @@ fn root_console_navigation_sees_all_builtin_items() {
     assert!(item_ids.contains(&"embedded-apps"));
     assert!(item_ids.contains(&"templates"));
     assert!(item_ids.contains(&"settings"));
-    assert!(item_ids.contains(&"docs"));
-    assert!(item_ids.contains(&"api-key-authentication"));
-    assert!(item_ids.contains(&"auth-center"));
-    assert!(item_ids.contains(&"system-runtime"));
-    assert!(item_ids.contains(&"host-infrastructure"));
-    assert!(item_ids.contains(&"memory-observation"));
-    assert!(item_ids.contains(&"files"));
-    assert!(item_ids.contains(&"data-models"));
-    assert!(item_ids.contains(&"model-providers"));
-    assert!(item_ids.contains(&"mcp-management"));
-    assert!(item_ids.contains(&"members"));
-    assert!(item_ids.contains(&"roles"));
+    assert!(item_ids.contains(&"settings.docs"));
+    assert!(item_ids.contains(&"settings.api-key-authentication"));
+    assert!(item_ids.contains(&"settings.auth-center"));
+    assert!(item_ids.contains(&"settings.system-runtime"));
+    assert!(item_ids.contains(&"settings.host-infrastructure"));
+    assert!(item_ids.contains(&"settings.memory-observation"));
+    assert!(item_ids.contains(&"settings.files"));
+    assert!(item_ids.contains(&"settings.data-models"));
+    assert!(item_ids.contains(&"settings.model-providers"));
+    assert!(item_ids.contains(&"settings.mcp-management"));
+    assert!(item_ids.contains(&"settings.members"));
+    assert!(item_ids.contains(&"settings.roles"));
 }
 
 #[test]
-fn user_view_actor_sees_authenticated_routes_and_user_management_items() {
-    let actor = scoped_actor(&["user.view.all"]);
+fn settings_members_route_actor_sees_only_members_settings_entries() {
+    let actor = scoped_actor(&["settings_route.visible.settings.members"]);
 
     let navigation = accessible_console_navigation(&actor);
 
     let item_ids = item_ids(&navigation);
     assert!(item_ids.contains(&"frontstage"));
     assert!(item_ids.contains(&"settings"));
-    assert!(item_ids.contains(&"api-key-authentication"));
-    assert!(item_ids.contains(&"auth-center"));
-    assert!(item_ids.contains(&"members"));
-    assert!(!item_ids.contains(&"docs"));
-    assert!(!item_ids.contains(&"roles"));
+    assert!(item_ids.contains(&"settings.members"));
+    assert!(!item_ids.contains(&"settings.docs"));
+    assert!(!item_ids.contains(&"settings.roles"));
     assert!(!item_ids.contains(&"templates"));
 
     let route_ids = route_ids(&navigation);
-    assert!(!route_ids.contains(&"docs"));
-    assert!(!route_ids.contains(&"roles"));
+    assert!(!route_ids.contains(&"settings.docs"));
+    assert!(!route_ids.contains(&"settings.roles"));
     assert!(!route_ids.contains(&"templates"));
 }
 
@@ -87,8 +85,8 @@ fn route_page_actor_sees_workbench_and_templates() {
     assert!(item_ids.contains(&"home"));
     assert!(item_ids.contains(&"templates"));
     assert!(item_ids.contains(&"frontstage"));
-    assert!(item_ids.contains(&"settings"));
-    assert!(item_ids.contains(&"api-key-authentication"));
-    assert!(!item_ids.contains(&"docs"));
-    assert!(!item_ids.contains(&"roles"));
+    assert!(!item_ids.contains(&"settings"));
+    assert!(!item_ids.contains(&"settings.api-key-authentication"));
+    assert!(!item_ids.contains(&"settings.docs"));
+    assert!(!item_ids.contains(&"settings.roles"));
 }

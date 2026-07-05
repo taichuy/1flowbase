@@ -3,6 +3,7 @@ extern crate self as access_control;
 mod catalog;
 mod evaluator;
 mod navigation;
+mod settings_routes;
 
 pub use catalog::{builtin_role_templates, permission_catalog};
 pub use evaluator::ensure_permission;
@@ -11,6 +12,12 @@ pub use navigation::{
     builtin_console_navigation, ConsoleNavigation, ConsoleNavigationItem, ConsoleNavigationSlot,
     ConsolePermissionBinding, ConsolePermissionRequirement, ConsoleRouteDefinition,
     ConsoleSurfaceKind,
+};
+pub use settings_routes::{
+    expand_permissions_with_settings_routes, settings_route_permission_definitions,
+    settings_route_permissions_for_console_request, settings_route_spec_by_visibility_permission,
+    settings_route_specs, SettingsRouteApiMethods, SettingsRouteApiPathMatch,
+    SettingsRouteApiScope, SettingsRouteLegacyVisibility, SettingsRouteSpec,
 };
 
 pub fn crate_name() -> &'static str {

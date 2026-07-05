@@ -3,6 +3,8 @@ use std::collections::HashSet;
 use domain::ActorContext;
 use serde::Serialize;
 
+use crate::settings_route_specs;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConsoleSurfaceKind {
@@ -101,14 +103,7 @@ struct ConsoleRouteSpec {
     requirement: ConsolePermissionRequirement,
 }
 
-const STATE_MODEL_PERMISSIONS: &[&str] = &[
-    "state_model.view.all",
-    "state_model.view.own",
-    "state_model.manage.all",
-    "state_model.manage.own",
-];
-
-const SYSTEM_CONSOLE_ROUTES: &[ConsoleRouteSpec] = &[
+const BUILTIN_CONSOLE_ROUTES: &[ConsoleRouteSpec] = &[
     ConsoleRouteSpec {
         route_id: "home",
         surface_key: "home",
@@ -164,158 +159,49 @@ const SYSTEM_CONSOLE_ROUTES: &[ConsoleRouteSpec] = &[
         permission_codes: &[],
         requirement: ConsolePermissionRequirement::Authenticated,
     },
-    ConsoleRouteSpec {
-        route_id: "docs",
-        surface_key: "docs",
-        path: "/settings/docs",
-        label_key: "auto.api_documentation",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 100,
-        permission_codes: &["api_reference.view.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
-    ConsoleRouteSpec {
-        route_id: "api-key-authentication",
-        surface_key: "api-key-authentication",
-        path: "/settings/api-key-authentication",
-        label_key: "auto.api_key_authentication",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 200,
-        permission_codes: &[],
-        requirement: ConsolePermissionRequirement::Authenticated,
-    },
-    ConsoleRouteSpec {
-        route_id: "auth-center",
-        surface_key: "auth-center",
-        path: "/settings/auth-center",
-        label_key: "auto.auth_center",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 300,
-        permission_codes: &["user.view.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
-    ConsoleRouteSpec {
-        route_id: "system-runtime",
-        surface_key: "system-runtime",
-        path: "/settings/system-runtime",
-        label_key: "auto.system_runtime",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 400,
-        permission_codes: &["system_runtime.view.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
-    ConsoleRouteSpec {
-        route_id: "host-infrastructure",
-        surface_key: "host-infrastructure",
-        path: "/settings/host-infrastructure",
-        label_key: "auto.infrastructure",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 500,
-        permission_codes: &["plugin_config.view.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
-    ConsoleRouteSpec {
-        route_id: "memory-observation",
-        surface_key: "memory-observation",
-        path: "/settings/memory-observation",
-        label_key: "auto.memory_observation",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 600,
-        permission_codes: &["plugin_config.view.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
-    ConsoleRouteSpec {
-        route_id: "files",
-        surface_key: "files",
-        path: "/settings/files",
-        label_key: "auto.file_management",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 700,
-        permission_codes: &[
-            "file_table.view.all",
-            "file_table.view.own",
-            "file_table.create.all",
-        ],
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
-    ConsoleRouteSpec {
-        route_id: "data-models",
-        surface_key: "data-models",
-        path: "/settings/data-models",
-        label_key: "auto.data_source",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 800,
-        permission_codes: STATE_MODEL_PERMISSIONS,
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
-    ConsoleRouteSpec {
-        route_id: "model-providers",
-        surface_key: "model-providers",
-        path: "/settings/model-providers",
-        label_key: "auto.model_providers",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 900,
-        permission_codes: STATE_MODEL_PERMISSIONS,
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
-    ConsoleRouteSpec {
-        route_id: "mcp-management",
-        surface_key: "mcp-management",
-        path: "/settings/mcp-management",
-        label_key: "auto.mcp_management",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 1000,
-        permission_codes: &["mcp_management.view.all", "mcp_management.manage.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
-    ConsoleRouteSpec {
-        route_id: "members",
-        surface_key: "members",
-        path: "/settings/members",
-        label_key: "auto.user_management",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 1100,
-        permission_codes: &["user.view.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
-    ConsoleRouteSpec {
-        route_id: "roles",
-        surface_key: "roles",
-        path: "/settings/roles",
-        label_key: "auto.permission_management",
-        navigation_slot: ConsoleNavigationSlot::Settings,
-        parent_item_id: Some("settings"),
-        order: 1200,
-        permission_codes: &["role_permission.view.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
 ];
 
 pub fn builtin_console_navigation() -> ConsoleNavigation {
+    let mut route_definitions = BUILTIN_CONSOLE_ROUTES
+        .iter()
+        .map(|spec| route_definition(*spec))
+        .collect::<Vec<_>>();
+    let mut navigation_items = BUILTIN_CONSOLE_ROUTES
+        .iter()
+        .map(|spec| navigation_item(*spec))
+        .collect::<Vec<_>>();
+    let mut permission_bindings = BUILTIN_CONSOLE_ROUTES
+        .iter()
+        .map(|spec| permission_binding(*spec))
+        .collect::<Vec<_>>();
+
+    for spec in settings_route_specs() {
+        route_definitions.push(ConsoleRouteDefinition {
+            route_id: spec.route_id.to_string(),
+            surface_key: spec.surface_key.to_string(),
+            path: spec.path.to_string(),
+            surface_kind: ConsoleSurfaceKind::System,
+        });
+        navigation_items.push(ConsoleNavigationItem {
+            item_id: spec.route_id.to_string(),
+            route_id: spec.route_id.to_string(),
+            parent_item_id: Some("settings".to_string()),
+            label_key: spec.label_key.to_string(),
+            navigation_slot: ConsoleNavigationSlot::Settings,
+            order: spec.order,
+        });
+        permission_bindings.push(ConsolePermissionBinding {
+            binding_id: format!("{}.access", spec.route_id),
+            route_id: spec.route_id.to_string(),
+            permission_codes: vec![spec.visibility_permission_code.to_string()],
+            requirement: ConsolePermissionRequirement::AnyPermission,
+        });
+    }
+
     ConsoleNavigation {
-        route_definitions: SYSTEM_CONSOLE_ROUTES
-            .iter()
-            .map(|spec| route_definition(*spec))
-            .collect(),
-        navigation_items: SYSTEM_CONSOLE_ROUTES
-            .iter()
-            .map(|spec| navigation_item(*spec))
-            .collect(),
-        permission_bindings: SYSTEM_CONSOLE_ROUTES
-            .iter()
-            .map(|spec| permission_binding(*spec))
-            .collect(),
+        route_definitions,
+        navigation_items,
+        permission_bindings,
     }
 }
 
@@ -360,7 +246,7 @@ fn visible_console_navigation(
         .map(|item| item.item_id.clone())
         .collect::<HashSet<_>>();
 
-    ConsoleNavigation {
+    let mut navigation = ConsoleNavigation {
         route_definitions: navigation
             .route_definitions
             .into_iter()
@@ -382,7 +268,25 @@ fn visible_console_navigation(
             .into_iter()
             .filter(|binding| visible_route_ids.contains(&binding.route_id))
             .collect(),
+    };
+
+    if !navigation
+        .navigation_items
+        .iter()
+        .any(|item| item.parent_item_id.as_deref() == Some("settings"))
+    {
+        navigation
+            .route_definitions
+            .retain(|route| route.route_id != "settings");
+        navigation
+            .navigation_items
+            .retain(|item| item.item_id != "settings");
+        navigation
+            .permission_bindings
+            .retain(|binding| binding.route_id != "settings");
     }
+
+    navigation
 }
 
 fn is_binding_visible(actor: &ActorContext, binding: &ConsolePermissionBinding) -> bool {

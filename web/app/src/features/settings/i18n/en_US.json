@@ -44,6 +44,7 @@
     "unknown": "unknown",
     "root": "root",
     "route_permissions_route_page": "Route permissions (route_page)",
+    "settings_page_settings_route": "Settings pages",
     "hosting_services": "hosting services",
     "enum_configuration": "Enum configuration",
     "incomplete_installation": "Incomplete installation",

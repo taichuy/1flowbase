@@ -239,3 +239,136 @@ async fn role_data_policy_migration_seeds_builtin_roles_and_new_roles_get_restri
     .await;
     assert!(duplicate_default.is_err());
 }
+
+#[tokio::test]
+async fn upsert_permission_catalog_grants_settings_api_key_route_to_existing_workspace_roles() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "1flowbase")
+        .await
+        .unwrap();
+
+    let legacy_permissions = access_control::permission_catalog()
+        .into_iter()
+        .filter(|permission| {
+            permission.code != "settings_route.visible.settings.api-key-authentication"
+        })
+        .collect::<Vec<_>>();
+    store
+        .upsert_permission_catalog(&legacy_permissions)
+        .await
+        .unwrap();
+    store.upsert_builtin_roles(workspace.id).await.unwrap();
+
+    store
+        .upsert_permission_catalog(&[PermissionDefinition {
+            code: "settings_route.visible.settings.api-key-authentication".to_string(),
+            resource: "settings_route".to_string(),
+            action: "visible".to_string(),
+            scope: "settings.api-key-authentication".to_string(),
+            name: "settings_route:visible:settings.api-key-authentication".to_string(),
+        }])
+        .await
+        .unwrap();
+
+    let granted_roles: Vec<String> = sqlx::query_scalar(
+        r#"
+        select r.code
+        from role_permissions rp
+        join roles r on r.id = rp.role_id
+        join permission_definitions pd on pd.id = rp.permission_id
+        where pd.code = $1
+          and r.scope_kind = 'workspace'
+          and r.workspace_id = $2
+        order by r.code asc
+        "#,
+    )
+    .bind("settings_route.visible.settings.api-key-authentication")
+    .bind(workspace.id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+
+    assert_eq!(granted_roles, vec!["admin", "manager"]);
+}
+
+#[tokio::test]
+async fn upsert_permission_catalog_migrates_legacy_roles_visibility_to_settings_roles_route() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "1flowbase")
+        .await
+        .unwrap();
+
+    let legacy_permissions = access_control::permission_catalog()
+        .into_iter()
+        .filter(|permission| permission.code != "settings_route.visible.settings.roles")
+        .collect::<Vec<_>>();
+    store
+        .upsert_permission_catalog(&legacy_permissions)
+        .await
+        .unwrap();
+    store.upsert_builtin_roles(workspace.id).await.unwrap();
+
+    let actor_user_id = Uuid::now_v7();
+    <PgControlPlaneStore as control_plane::ports::RoleRepository>::create_team_role(
+        &store,
+        &control_plane::ports::CreateWorkspaceRoleInput {
+            actor_user_id,
+            workspace_id: workspace.id,
+            code: "legacy_roles_viewer".into(),
+            name: "Legacy Roles Viewer".into(),
+            introduction: String::new(),
+            auto_grant_new_permissions: false,
+            is_default_member_role: false,
+        },
+    )
+    .await
+    .unwrap();
+    <PgControlPlaneStore as control_plane::ports::RoleRepository>::replace_role_permissions(
+        &store,
+        actor_user_id,
+        workspace.id,
+        "legacy_roles_viewer",
+        &[String::from("role_permission.view.all")],
+    )
+    .await
+    .unwrap();
+
+    store
+        .upsert_permission_catalog(&[PermissionDefinition {
+            code: "settings_route.visible.settings.roles".to_string(),
+            resource: "settings_route".to_string(),
+            action: "visible".to_string(),
+            scope: "settings.roles".to_string(),
+            name: "settings_route:visible:settings.roles".to_string(),
+        }])
+        .await
+        .unwrap();
+
+    let granted_roles: Vec<String> = sqlx::query_scalar(
+        r#"
+        select r.code
+        from role_permissions rp
+        join roles r on r.id = rp.role_id
+        join permission_definitions pd on pd.id = rp.permission_id
+        where pd.code = $1
+          and r.scope_kind = 'workspace'
+          and r.workspace_id = $2
+        order by r.code asc
+        "#,
+    )
+    .bind("settings_route.visible.settings.roles")
+    .bind(workspace.id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+
+    assert_eq!(granted_roles, vec!["admin", "legacy_roles_viewer"]);
+}

@@ -24,7 +24,6 @@ export interface SettingsSectionDefinition extends Omit<
 > {
   key: SettingsSectionKey;
   label_key: string;
-  requiredPermissions: string[];
 }
 
 export interface SettingsSectionRegistryItem {
@@ -112,90 +111,61 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
   {
     key: 'docs',
     label_key: 'auto.api_documentation',
-    to: '/settings/docs',
-    requiredPermissions: ['api_reference.view.all']
+    to: '/settings/docs'
   },
   {
     key: 'api-key-authentication',
     label_key: 'auto.api_key_authentication',
-    to: '/settings/api-key-authentication',
-    requiredPermissions: []
+    to: '/settings/api-key-authentication'
   },
   {
     key: 'auth-center',
     label_key: 'auto.auth_center',
-    to: '/settings/auth-center',
-    requiredPermissions: ['user.view.all']
+    to: '/settings/auth-center'
   },
   {
     key: 'system-runtime',
     label_key: 'auto.system_runtime',
-    to: '/settings/system-runtime',
-    requiredPermissions: ['system_runtime.view.all']
+    to: '/settings/system-runtime'
   },
   {
     key: 'host-infrastructure',
     label_key: 'auto.infrastructure',
-    to: '/settings/host-infrastructure',
-    requiredPermissions: ['plugin_config.view.all']
+    to: '/settings/host-infrastructure'
   },
   {
     key: 'memory-observation',
     label_key: 'auto.memory_observation',
-    to: '/settings/memory-observation',
-    requiredPermissions: ['plugin_config.view.all']
+    to: '/settings/memory-observation'
   },
   {
     key: 'files',
     label_key: 'auto.file_management',
-    to: '/settings/files',
-    requiredPermissions: [
-      'file_table.view.all',
-      'file_table.view.own',
-      'file_table.create.all'
-    ]
+    to: '/settings/files'
   },
   {
     key: 'data-models',
     label_key: 'auto.data_source',
-    to: '/settings/data-models',
-    requiredPermissions: [
-      'state_model.view.all',
-      'state_model.view.own',
-      'state_model.manage.all',
-      'state_model.manage.own'
-    ]
+    to: '/settings/data-models'
   },
   {
     key: 'model-providers',
     label_key: 'auto.model_providers',
-    to: '/settings/model-providers',
-    requiredPermissions: [
-      'state_model.view.all',
-      'state_model.view.own',
-      'state_model.manage.all',
-      'state_model.manage.own'
-    ]
+    to: '/settings/model-providers'
   },
   {
     key: 'mcp-management',
     label_key: 'auto.mcp_management',
-    to: '/settings/mcp-management',
-    requiredPermissions: [
-      'mcp_management.view.all',
-      'mcp_management.manage.all'
-    ]
+    to: '/settings/mcp-management'
   },
   {
     key: 'members',
     label_key: 'auto.user_management',
-    to: '/settings/members',
-    requiredPermissions: ['user.view.all']
+    to: '/settings/members'
   },
   {
     key: 'roles',
     label_key: 'auto.permission_management',
-    to: '/settings/roles',
-    requiredPermissions: ['role_permission.view.all']
+    to: '/settings/roles'
   }
 ];

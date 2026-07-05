@@ -1,5 +1,9 @@
 pub(crate) mod identity_binding;
 
+use access_control::{
+    expand_permissions_with_settings_routes, settings_route_spec_by_visibility_permission,
+    SettingsRouteLegacyVisibility,
+};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use control_plane::{
@@ -13,7 +17,7 @@ use domain::{
     ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticatorRecord, BoundRole,
     PermissionDefinition, RoleScopeKind, ScopeContext, TenantRecord, UserRecord,
 };
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use self::identity_binding::{
@@ -110,6 +114,67 @@ pub(crate) async fn map_user_row(pool: &PgPool, row: sqlx::postgres::PgRow) -> R
     }))
 }
 
+async fn auto_grant_role_scopes(tx: &mut Transaction<'_, Postgres>) -> Result<Vec<(Uuid, Uuid)>> {
+    Ok(sqlx::query_as(
+        r#"
+        select id, scope_id
+        from roles
+        where auto_grant_new_permissions = true
+        "#,
+    )
+    .fetch_all(&mut **tx)
+    .await?)
+}
+
+async fn legacy_settings_route_role_scopes(
+    tx: &mut Transaction<'_, Postgres>,
+    visibility_permission_code: &str,
+) -> Result<Vec<(Uuid, Uuid)>> {
+    let Some(spec) = settings_route_spec_by_visibility_permission(visibility_permission_code)
+    else {
+        return Ok(Vec::new());
+    };
+
+    match spec.legacy_visibility {
+        SettingsRouteLegacyVisibility::Authenticated => Ok(sqlx::query_as(
+            r#"
+            select id, scope_id
+            from roles
+            where scope_kind = 'workspace'
+            "#,
+        )
+        .fetch_all(&mut **tx)
+        .await?),
+        SettingsRouteLegacyVisibility::AnyPermission(permission_codes) => {
+            let permission_codes = permission_codes
+                .iter()
+                .map(|code| (*code).to_string())
+                .collect::<Vec<_>>();
+
+            Ok(sqlx::query_as(
+                r#"
+                select distinct r.id, r.scope_id
+                from roles r
+                join role_permissions rp on rp.role_id = r.id
+                join permission_definitions pd on pd.id = rp.permission_id
+                where pd.code = any($1)
+                "#,
+            )
+            .bind(&permission_codes)
+            .fetch_all(&mut **tx)
+            .await?)
+        }
+    }
+}
+
+fn merge_role_scopes(role_scopes: Vec<(Uuid, Uuid)>) -> Vec<(Uuid, Uuid)> {
+    let merged = role_scopes
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+
+    merged.into_iter().collect()
+}
+
 async fn find_user_by_account(pool: &PgPool, account: &str) -> Result<Option<UserRecord>> {
     let row = sqlx::query(
         r#"
@@ -191,7 +256,7 @@ impl BootstrapRepository for PgControlPlaneStore {
 
     async fn upsert_permission_catalog(&self, permissions: &[PermissionDefinition]) -> Result<()> {
         let mut tx = self.pool().begin().await?;
-        let mut inserted_permission_ids = Vec::new();
+        let mut inserted_permissions = Vec::new();
 
         for permission in permissions {
             let inserted_permission_id: Option<Uuid> = sqlx::query_scalar(
@@ -232,20 +297,24 @@ impl BootstrapRepository for PgControlPlaneStore {
             .await?;
 
             if let Some(permission_id) = inserted_permission_id {
-                inserted_permission_ids.push(permission_id);
+                inserted_permissions.push((permission_id, permission.code.clone()));
             }
         }
 
-        for permission_id in inserted_permission_ids {
-            let role_scopes: Vec<(Uuid, Uuid)> = sqlx::query_as(
-                r#"
-                select id, scope_id
-                from roles
-                where auto_grant_new_permissions = true
-                "#,
-            )
-            .fetch_all(&mut *tx)
-            .await?;
+        for (permission_id, permission_code) in inserted_permissions {
+            let role_scopes = if settings_route_spec_by_visibility_permission(&permission_code)
+                .is_some()
+            {
+                merge_role_scopes(
+                    auto_grant_role_scopes(&mut tx)
+                        .await?
+                        .into_iter()
+                        .chain(legacy_settings_route_role_scopes(&mut tx, &permission_code).await?)
+                        .collect(),
+                )
+            } else {
+                auto_grant_role_scopes(&mut tx).await?
+            };
 
             for (role_id, scope_id) in role_scopes {
                 sqlx::query(
@@ -724,6 +793,7 @@ impl AuthRepository for PgControlPlaneStore {
         .bind(workspace_id)
         .fetch_all(self.pool())
         .await?;
+        let permissions = expand_permissions_with_settings_routes(&permissions);
 
         let effective_display_role = display_role
             .filter(|candidate| codes.iter().any(|code| code == *candidate))
@@ -796,6 +866,7 @@ impl AuthRepository for PgControlPlaneStore {
         .bind(role_id)
         .fetch_all(self.pool())
         .await?;
+        let permissions = expand_permissions_with_settings_routes(&permissions);
 
         Ok(ActorContext::scoped_in_scope(
             user_id,

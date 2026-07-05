@@ -32,7 +32,7 @@ use argon2::{
     password_hash::{PasswordHasher, SaltString},
     Argon2,
 };
-use axum::{routing::get, Json, Router};
+use axum::{middleware as axum_middleware, routing::get, Json, Router};
 use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
 use rand_core::OsRng;
 use serde::Serialize;
@@ -180,7 +180,12 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
         router
     };
 
-    router.with_state(state)
+    router
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::require_settings_route_permission::require_settings_route_permission,
+        ))
+        .with_state(state)
 }
 
 pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {

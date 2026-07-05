@@ -61,11 +61,11 @@ async fn console_navigation_route_returns_root_registry_with_separated_arrays() 
 
     let route_ids = string_values(&payload, &["data", "route_definitions"], "route_id");
     assert!(route_ids.contains(&"home".to_string()));
-    assert!(route_ids.contains(&"roles".to_string()));
+    assert!(route_ids.contains(&"settings.roles".to_string()));
 
     let item_ids = string_values(&payload, &["data", "navigation_items"], "item_id");
     assert!(item_ids.contains(&"settings".to_string()));
-    assert!(item_ids.contains(&"api-key-authentication".to_string()));
+    assert!(item_ids.contains(&"settings.api-key-authentication".to_string()));
 }
 
 #[tokio::test]
@@ -89,8 +89,8 @@ async fn console_navigation_route_returns_admin_registry_with_builtin_permission
     let item_ids = string_values(&payload, &["data", "navigation_items"], "item_id");
     assert!(item_ids.contains(&"home".to_string()));
     assert!(item_ids.contains(&"templates".to_string()));
-    assert!(item_ids.contains(&"docs".to_string()));
-    assert!(item_ids.contains(&"roles".to_string()));
+    assert!(item_ids.contains(&"settings.docs".to_string()));
+    assert!(item_ids.contains(&"settings.roles".to_string()));
 }
 
 #[tokio::test]
@@ -129,22 +129,22 @@ async fn console_navigation_route_trims_limited_member_registry() {
     assert_eq!(status, StatusCode::OK);
     let item_ids = string_values(&payload, &["data", "navigation_items"], "item_id");
     assert!(item_ids.contains(&"frontstage".to_string()));
-    assert!(item_ids.contains(&"settings".to_string()));
-    assert!(item_ids.contains(&"api-key-authentication".to_string()));
-    assert!(item_ids.contains(&"auth-center".to_string()));
-    assert!(item_ids.contains(&"members".to_string()));
-    assert!(!item_ids.contains(&"docs".to_string()));
-    assert!(!item_ids.contains(&"roles".to_string()));
+    assert!(!item_ids.contains(&"settings".to_string()));
+    assert!(!item_ids.contains(&"settings.api-key-authentication".to_string()));
+    assert!(!item_ids.contains(&"settings.auth-center".to_string()));
+    assert!(!item_ids.contains(&"settings.members".to_string()));
+    assert!(!item_ids.contains(&"settings.docs".to_string()));
+    assert!(!item_ids.contains(&"settings.roles".to_string()));
     assert!(!item_ids.contains(&"templates".to_string()));
 
     let route_ids = string_values(&payload, &["data", "route_definitions"], "route_id");
-    assert!(!route_ids.contains(&"docs".to_string()));
-    assert!(!route_ids.contains(&"roles".to_string()));
+    assert!(!route_ids.contains(&"settings.docs".to_string()));
+    assert!(!route_ids.contains(&"settings.roles".to_string()));
     assert!(!route_ids.contains(&"templates".to_string()));
 
     let binding_route_ids = string_values(&payload, &["data", "permission_bindings"], "route_id");
-    assert!(!binding_route_ids.contains(&"docs".to_string()));
-    assert!(!binding_route_ids.contains(&"roles".to_string()));
+    assert!(!binding_route_ids.contains(&"settings.docs".to_string()));
+    assert!(!binding_route_ids.contains(&"settings.roles".to_string()));
     assert!(!binding_route_ids.contains(&"templates".to_string()));
 }
 
@@ -232,6 +232,52 @@ migrations: []
     assert!(item_ids.contains(&"file-security.settings".to_string()));
     let binding_ids = string_values(&payload, &["data", "permission_bindings"], "binding_id");
     assert!(binding_ids.contains(&"file-security.settings.view".to_string()));
+}
+
+#[tokio::test]
+async fn console_navigation_route_uses_settings_route_visibility_permissions() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let member_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "settings-route-member",
+        "temp-pass",
+    )
+    .await;
+    create_role(&app, &root_cookie, &root_csrf, "settings_route_roles_only").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "settings_route_roles_only",
+        &["settings_route.visible.settings.roles"],
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["settings_route_roles_only"],
+    )
+    .await;
+    let (member_cookie, _) =
+        login_and_capture_cookie(&app, "settings-route-member", "temp-pass").await;
+
+    let (status, payload) = get_console_navigation(&app, &member_cookie).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let item_ids = string_values(&payload, &["data", "navigation_items"], "item_id");
+    assert!(item_ids.contains(&"settings".to_string()));
+    assert!(item_ids.contains(&"settings.roles".to_string()));
+    assert!(!item_ids.contains(&"settings.members".to_string()));
+    assert!(!item_ids.contains(&"settings.docs".to_string()));
+
+    let route_ids = string_values(&payload, &["data", "route_definitions"], "route_id");
+    assert!(route_ids.contains(&"settings.roles".to_string()));
+    assert!(!route_ids.contains(&"settings.members".to_string()));
 }
 
 #[tokio::test]
