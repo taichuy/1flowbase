@@ -26,6 +26,10 @@ type DebugField = McpInputParameterMapping & {
   field_type: string;
 };
 
+type DebugResponseMode = NonNullable<
+  ExecuteSettingsMcpToolDebugBody['debug_response_mode']
+>;
+
 function formatJson(value: unknown) {
   return JSON.stringify(value ?? {}, null, 2);
 }
@@ -170,7 +174,10 @@ export function McpToolDebugPanel({
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [debugResult, setDebugResult] = useState<unknown>(null);
-  const [debugRunning, setDebugRunning] = useState(false);
+  const [debugResultMode, setDebugResultMode] =
+    useState<DebugResponseMode>('tool_result');
+  const [debugRunningMode, setDebugRunningMode] =
+    useState<DebugResponseMode | null>(null);
 
   const setArgumentValue = (name: string, value: unknown) => {
     setArgumentValues((current) => ({
@@ -179,29 +186,31 @@ export function McpToolDebugPanel({
     }));
   };
 
-  const runDebug = async () => {
+  const runDebug = async (responseMode: DebugResponseMode) => {
     try {
       if (!interfaceId || !executeDebug) {
         throw new Error('interface_id 是必填参数');
       }
       const mcpArguments = buildMcpArguments(debugFields, argumentValues);
-      setDebugRunning(true);
-      const result = await executeDebug(
-        {
-          interface_id: interfaceId,
-          mcp_arguments: mcpArguments,
-          input_mapping: normalizedInputMapping,
-          output_mapping: outputMapping
-        },
-        csrfToken
-      );
+      setDebugRunningMode(responseMode);
+      const requestBody: ExecuteSettingsMcpToolDebugBody = {
+        interface_id: interfaceId,
+        mcp_arguments: mcpArguments,
+        input_mapping: normalizedInputMapping,
+        output_mapping: outputMapping
+      };
+      if (responseMode === 'debug_details') {
+        requestBody.debug_response_mode = responseMode;
+      }
+      const result = await executeDebug(requestBody, csrfToken);
       setDebugResult(result);
+      setDebugResultMode(responseMode);
       setErrorMessage(null);
     } catch (error) {
       setDebugResult(null);
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
-      setDebugRunning(false);
+      setDebugRunningMode(null);
     }
   };
 
@@ -256,6 +265,11 @@ export function McpToolDebugPanel({
     );
   };
 
+  const canRunDebug =
+    debugFields.length > 0 && Boolean(interfaceId && executeDebug);
+  const debugResultTitle =
+    debugResultMode === 'debug_details' ? '完整内容' : '返回值';
+
   return (
     <Space className="mcp-tool-debug-panel" direction="vertical" size={12}>
       <Flex
@@ -271,15 +285,25 @@ export function McpToolDebugPanel({
             {operationLabel}
           </Typography.Text>
         ) : null}
-        <Button
-          aria-label="运行"
-          disabled={debugFields.length === 0 || !interfaceId || !executeDebug}
-          loading={debugRunning}
-          type="primary"
-          onClick={() => void runDebug()}
-        >
-          运行
-        </Button>
+        <Flex gap={8} justify="flex-end" wrap>
+          <Button
+            aria-label="查看完整内容"
+            disabled={!canRunDebug || debugRunningMode !== null}
+            loading={debugRunningMode === 'debug_details'}
+            onClick={() => void runDebug('debug_details')}
+          >
+            查看完整内容
+          </Button>
+          <Button
+            aria-label="运行"
+            disabled={!canRunDebug || debugRunningMode !== null}
+            loading={debugRunningMode === 'tool_result'}
+            type="primary"
+            onClick={() => void runDebug('tool_result')}
+          >
+            运行
+          </Button>
+        </Flex>
       </Flex>
       {debugFields.length > 0 ? (
         <div className="mcp-tool-debug-panel__fields">
@@ -301,7 +325,7 @@ export function McpToolDebugPanel({
       {errorMessage ? <Alert type="error" message={errorMessage} /> : null}
       {debugResult ? (
         <JsonPreviewBlock
-          title="返回值"
+          title={debugResultTitle}
           value={debugResult}
           collapsible={false}
           height="240px"

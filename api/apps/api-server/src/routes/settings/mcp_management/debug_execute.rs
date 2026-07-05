@@ -21,6 +21,8 @@ const CSRF_HEADER: HeaderName = HeaderName::from_static("x-csrf-token");
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct McpDebugExecuteBody {
     pub interface_id: String,
+    #[serde(default)]
+    pub debug_response_mode: McpDebugResponseMode,
     #[schema(value_type = Object)]
     pub mcp_arguments: Value,
     #[schema(value_type = Object)]
@@ -29,8 +31,21 @@ pub struct McpDebugExecuteBody {
     pub output_mapping: Value,
 }
 
+#[derive(Debug, Deserialize, ToSchema, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum McpDebugResponseMode {
+    ToolResult,
+    DebugDetails,
+}
+
+impl Default for McpDebugResponseMode {
+    fn default() -> Self {
+        Self::ToolResult
+    }
+}
+
 #[derive(Debug, Serialize, ToSchema)]
-pub struct McpDebugExecuteResponse {
+pub struct McpDebugExecuteDetailsResponse {
     #[schema(value_type = Object)]
     pub mcp_arguments: Value,
     #[schema(value_type = Object)]
@@ -85,7 +100,7 @@ pub async fn execute(
     headers: HeaderMap,
     interface_entry: domain::McpInterfaceCatalogEntry,
     body: McpDebugExecuteBody,
-) -> Result<McpDebugExecuteResponse, McpDebugExecuteError> {
+) -> Result<Value, McpDebugExecuteError> {
     let interface_arguments =
         build_interface_arguments(&interface_entry, &body.input_mapping, &body.mcp_arguments)?;
     let target_response =
@@ -97,12 +112,17 @@ pub async fn execute(
     let interface_response = parse_target_response_body(target_response).await?;
     let tool_result = map_tool_result(&body.output_mapping, &interface_response);
 
-    Ok(McpDebugExecuteResponse {
+    if matches!(body.debug_response_mode, McpDebugResponseMode::ToolResult) {
+        return Ok(tool_result);
+    }
+
+    serde_json::to_value(McpDebugExecuteDetailsResponse {
         mcp_arguments: body.mcp_arguments,
         interface_arguments: interface_arguments.to_value(),
         interface_response,
         tool_result,
     })
+    .map_err(|error| anyhow::anyhow!("failed to serialize MCP debug details: {error}").into())
 }
 
 fn build_interface_arguments(

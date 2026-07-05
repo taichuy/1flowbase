@@ -177,14 +177,19 @@ export type UpdateConsoleMcpMetaToolConfigBody = Omit<
   'id' | 'workspace_id'
 >;
 
+export type ConsoleMcpToolDebugResponseMode = 'tool_result' | 'debug_details';
+
 export interface ExecuteConsoleMcpToolDebugBody {
   interface_id: string;
+  debug_response_mode?: ConsoleMcpToolDebugResponseMode;
   mcp_arguments: unknown;
   input_mapping: unknown;
   output_mapping: unknown;
 }
 
-export interface ConsoleMcpToolDebugExecuteResponse {
+export type ConsoleMcpToolDebugExecuteResponse = unknown;
+
+export interface ConsoleMcpToolDebugDetailsResponse {
   mcp_arguments: unknown;
   interface_arguments: unknown;
   interface_response: unknown;

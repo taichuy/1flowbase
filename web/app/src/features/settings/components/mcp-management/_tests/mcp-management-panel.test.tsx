@@ -303,16 +303,19 @@ describe('McpManagementPanel', () => {
     vi.clearAllMocks();
     vditorMock.instances.length = 0;
     mcpManagementApi.executeSettingsMcpToolDebug.mockImplementation(
-      async (body: { mcp_arguments: unknown }) => ({
-        mcp_arguments: body.mcp_arguments,
-        interface_arguments: {
-          body: body.mcp_arguments
-        },
-        interface_response: {
-          data: body.mcp_arguments
-        },
-        tool_result: body.mcp_arguments
-      })
+      async (body: { debug_response_mode?: string; mcp_arguments: unknown }) =>
+        body.debug_response_mode === 'debug_details'
+          ? {
+              mcp_arguments: body.mcp_arguments,
+              interface_arguments: {
+                body: body.mcp_arguments
+              },
+              interface_response: {
+                data: body.mcp_arguments
+              },
+              tool_result: body.mcp_arguments
+            }
+          : body.mcp_arguments
     );
   });
 
@@ -492,25 +495,32 @@ describe('McpManagementPanel', () => {
   });
 
   test('keeps full description in basic and renders debug form JSON results', async () => {
-    mcpManagementApi.executeSettingsMcpToolDebug.mockResolvedValue({
-      mcp_arguments: {
-        appId: 'app-1'
-      },
-      interface_arguments: {
-        path: {
-          app_id: 'app-1'
-        }
-      },
-      interface_response: {
-        data: {
-          run_id: 'run-1',
-          app_id: 'app-1'
-        }
-      },
-      tool_result: {
-        run_id: 'run-1'
-      }
-    });
+    mcpManagementApi.executeSettingsMcpToolDebug.mockImplementation(
+      async (body: { debug_response_mode?: string }) =>
+        body.debug_response_mode === 'debug_details'
+          ? {
+              mcp_arguments: {
+                appId: 'app-1'
+              },
+              interface_arguments: {
+                path: {
+                  app_id: 'app-1'
+                }
+              },
+              interface_response: {
+                data: {
+                  run_id: 'run-1',
+                  app_id: 'app-1'
+                }
+              },
+              tool_result: {
+                run_id: 'run-1'
+              }
+            }
+          : {
+              run_id: 'run-1'
+            }
+    );
     renderPanel();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
@@ -607,10 +617,69 @@ describe('McpManagementPanel', () => {
     });
 
     const debugResult = await within(dialog).findByLabelText('返回值 JSON');
-    expect(debugResult).toHaveTextContent('"app_id": "app-1"');
-    expect(debugResult).toHaveTextContent('"tool_result"');
     expect(debugResult).toHaveTextContent('"run_id"');
+    expect(debugResult).not.toHaveTextContent('"app_id": "app-1"');
+    expect(debugResult).not.toHaveTextContent('"tool_result"');
     expect(debugResult).not.toHaveTextContent('"output_mapping"');
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '查看完整内容' })
+    );
+
+    await waitFor(() => {
+      expect(
+        mcpManagementApi.executeSettingsMcpToolDebug
+      ).toHaveBeenLastCalledWith(
+        {
+          interface_id: 'create_app',
+          debug_response_mode: 'debug_details',
+          mcp_arguments: {
+            appId: 'app-1'
+          },
+          input_mapping: {
+            interface_parameters: [
+              {
+                name: 'app_id',
+                field_type: 'string',
+                parameter_type: 'url',
+                description: 'Application id',
+                required: true
+              },
+              {
+                name: 'display_name',
+                field_type: 'string',
+                parameter_type: 'json_body',
+                description: 'Display name',
+                required: false
+              }
+            ],
+            mappings: [
+              {
+                interface_param: 'app_id',
+                mcp_param: 'appId',
+                description: 'Application id',
+                required: true
+              }
+            ]
+          },
+          output_mapping: {
+            type: 'object',
+            properties: {
+              run_id: {
+                type: 'string',
+                description: 'Flow run id'
+              }
+            }
+          }
+        },
+        expect.any(String)
+      );
+    });
+
+    const debugDetails = await within(dialog).findByLabelText('完整内容 JSON');
+    expect(debugDetails).toHaveTextContent('"interface_response"');
+    expect(debugDetails).toHaveTextContent('"app_id": "app-1"');
+    expect(debugDetails).toHaveTextContent('"tool_result"');
   }, 30000);
 
   test('renders debug operation and run action in one row without duplicate field-name help text', () => {
@@ -646,6 +715,9 @@ describe('McpManagementPanel', () => {
     ).toBeInTheDocument();
     expect(
       within(header).getByRole('button', { name: '运行' })
+    ).toBeInTheDocument();
+    expect(
+      within(header).getByRole('button', { name: '查看完整内容' })
     ).toBeInTheDocument();
     expect(screen.getAllByText('des_id')).toHaveLength(1);
   });

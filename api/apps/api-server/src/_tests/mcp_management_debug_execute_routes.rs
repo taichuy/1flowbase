@@ -162,7 +162,7 @@ async fn bindable_interface_id_for_path(
 }
 
 #[tokio::test]
-async fn mcp_debug_execute_runs_runtime_interface_and_maps_tool_result() {
+async fn mcp_debug_execute_returns_tool_result_by_default() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let create_interface_id =
@@ -220,6 +220,69 @@ async fn mcp_debug_execute_runs_runtime_interface_and_maps_tool_result() {
     let status = response.status();
     let payload = response_json(response).await;
     assert_eq!(status, StatusCode::OK, "{payload}");
+    assert_eq!(payload["data"]["order_title"], json!("Debug order"));
+    assert!(payload["data"]["id"].is_string());
+    assert!(payload["data"]["mcp_arguments"].is_null());
+    assert!(payload["data"]["interface_arguments"].is_null());
+    assert!(payload["data"]["interface_response"].is_null());
+    assert!(payload["data"]["tool_result"].is_null());
+}
+
+#[tokio::test]
+async fn mcp_debug_execute_returns_debug_details_when_requested() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let create_interface_id = create_bindable_create_interface(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "mcp_debug_details_orders",
+    )
+    .await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/debug/execute")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "interface_id": create_interface_id,
+                        "debug_response_mode": "debug_details",
+                        "mcp_arguments": {
+                            "title": "Debug order"
+                        },
+                        "input_mapping": {
+                            "mappings": [
+                                {
+                                    "interface_param": "order_title",
+                                    "mcp_param": "title",
+                                    "required": true
+                                }
+                            ]
+                        },
+                        "output_mapping": {
+                            "type": "object",
+                            "properties": {
+                                "id": { "type": "string" },
+                                "order_title": { "type": "string" }
+                            }
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let payload = response_json(response).await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
     assert_eq!(
         payload["data"]["mcp_arguments"],
         json!({
@@ -251,13 +314,9 @@ async fn mcp_debug_execute_runs_runtime_interface_and_maps_tool_result() {
 async fn mcp_debug_execute_filters_array_item_fields_from_output_mapping() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let list_users_interface_id = bindable_interface_id_for_path(
-        &app,
-        &root_cookie,
-        "GET",
-        "/api/runtime/models/users/list",
-    )
-    .await;
+    let list_users_interface_id =
+        bindable_interface_id_for_path(&app, &root_cookie, "GET", "/api/runtime/models/users/list")
+            .await;
 
     let response = app
         .clone()
@@ -316,14 +375,14 @@ async fn mcp_debug_execute_filters_array_item_fields_from_output_mapping() {
     let status = response.status();
     let payload = response_json(response).await;
     assert_eq!(status, StatusCode::OK, "{payload}");
-    assert_eq!(payload["data"]["tool_result"]["total"], json!(1));
-    assert!(payload["data"]["tool_result"]["items"][0]["id"].is_string());
+    assert_eq!(payload["data"]["total"], json!(1));
+    assert!(payload["data"]["items"][0]["id"].is_string());
     assert_eq!(
-        payload["data"]["tool_result"]["items"][0]["email_login_enabled"],
+        payload["data"]["items"][0]["email_login_enabled"],
         json!(true)
     );
-    assert!(payload["data"]["tool_result"]["items"][0]["account"].is_null());
-    assert!(payload["data"]["tool_result"]["items"][0]["meta"].is_null());
+    assert!(payload["data"]["items"][0]["account"].is_null());
+    assert!(payload["data"]["items"][0]["meta"].is_null());
 }
 
 #[tokio::test]
@@ -493,16 +552,10 @@ async fn mcp_debug_execute_returns_full_payload_when_output_mapping_matches_noth
     let status = response.status();
     let payload = response_json(response).await;
     assert_eq!(status, StatusCode::OK, "{payload}");
-    assert_eq!(
-        payload["data"]["tool_result"],
-        payload["data"]["interface_response"]["data"]
-    );
-    assert_eq!(
-        payload["data"]["tool_result"]["order_title"],
-        json!("Debug order")
-    );
-    assert!(payload["data"]["tool_result"]["id"].is_string());
-    assert!(payload["data"]["tool_result"]["missing_field"].is_null());
+    assert_eq!(payload["data"]["order_title"], json!("Debug order"));
+    assert!(payload["data"]["id"].is_string());
+    assert!(payload["data"]["missing_field"].is_null());
+    assert!(payload["data"]["tool_result"].is_null());
 }
 
 #[tokio::test]

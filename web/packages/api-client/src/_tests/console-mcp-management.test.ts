@@ -253,6 +253,32 @@ describe('console-mcp-management client', () => {
       }
     },
     {
+      name: 'debug details execute',
+      request: () =>
+        executeConsoleMcpToolDebug(
+          {
+            interface_id: 'data_model__orders__create_record',
+            debug_response_mode: 'debug_details',
+            mcp_arguments: { title: 'Debug order' },
+            input_mapping: { mappings: [] },
+            output_mapping: { type: 'object' }
+          },
+          'csrf-123'
+        ),
+      expected: {
+        path: '/api/console/mcp/debug/execute',
+        method: 'POST',
+        csrfToken: 'csrf-123',
+        body: {
+          interface_id: 'data_model__orders__create_record',
+          debug_response_mode: 'debug_details',
+          mcp_arguments: { title: 'Debug order' },
+          input_mapping: { mappings: [] },
+          output_mapping: { type: 'object' }
+        }
+      }
+    },
+    {
       name: 'tool binding creation',
       request: () =>
         createConsoleMcpToolBinding(

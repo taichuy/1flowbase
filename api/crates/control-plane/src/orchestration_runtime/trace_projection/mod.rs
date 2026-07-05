@@ -10,7 +10,7 @@ use crate::ports::{
     ReplaceApplicationRunTraceProjectionInput,
 };
 
-pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 10;
+pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 11;
 
 pub fn trace_node_id_for_locator(flow_run_id: Uuid, stable_locator: &str) -> Uuid {
     let mut hasher = Sha256::new();
@@ -51,12 +51,18 @@ pub fn build_application_run_trace_projection(
     let source_watermark = trace_projection_source_watermark(detail);
     let mut builder = TraceProjectionBuilder::new(detail.flow_run.id, source_watermark);
     let current_node_groups = trace_visible_current_node_run_groups(detail);
+    let stitched_context_target_index = stitched_context_target_index(detail, &current_node_groups);
 
     for (index, node_runs) in current_node_groups.iter().enumerate() {
-        builder.push_node_run_root(index, node_runs, detail)?;
+        let stitched_trace = if stitched_context_target_index == Some(index) {
+            detail.stitched_trace.as_slice()
+        } else {
+            &[]
+        };
+        builder.push_node_run_root(index, node_runs, detail, stitched_trace)?;
     }
 
-    if !detail.stitched_trace.is_empty() {
+    if !detail.stitched_trace.is_empty() && stitched_context_target_index.is_none() {
         builder.push_stitched_context_group(current_node_groups.len(), &detail.stitched_trace)?;
     }
 
@@ -156,6 +162,31 @@ fn trace_visible_node_run_groups(
     groups
 }
 
+fn stitched_context_target_index(
+    detail: &domain::ApplicationRunDetail,
+    current_node_groups: &[Vec<domain::NodeRunRecord>],
+) -> Option<usize> {
+    current_node_groups
+        .iter()
+        .position(|node_runs| {
+            node_runs.first().is_some_and(|node_run| {
+                node_run.node_type == "llm"
+                    && detail
+                        .flow_run
+                        .target_node_id
+                        .as_deref()
+                        .is_some_and(|target_node_id| target_node_id == node_run.node_id)
+            })
+        })
+        .or_else(|| {
+            current_node_groups.iter().position(|node_runs| {
+                node_runs
+                    .first()
+                    .is_some_and(|node_run| node_run.node_type == "llm")
+            })
+        })
+}
+
 fn is_waiting_prefix_answer_node_run(node_run: &domain::NodeRunRecord) -> bool {
     let input_marker = node_run
         .input_payload
@@ -232,6 +263,7 @@ impl TraceProjectionBuilder {
         index: usize,
         node_runs: &[domain::NodeRunRecord],
         detail: &domain::ApplicationRunDetail,
+        stitched_trace: &[domain::ApplicationRunStitchedTrace],
     ) -> Result<()> {
         let first_node_run = &node_runs[0];
         let summary_node_run = merge_node_run_group(node_runs);
@@ -265,8 +297,9 @@ impl TraceProjectionBuilder {
             .iter()
             .filter(|task| task.callback_kind != "llm_tool_calls")
             .count();
-        let child_group_count =
-            usize::from(ordinary_tool_call_count > 0) + usize::from(linked_subagent_count > 0);
+        let child_group_count = usize::from(!stitched_trace.is_empty())
+            + usize::from(ordinary_tool_call_count > 0)
+            + usize::from(linked_subagent_count > 0);
         let child_count =
             i64::try_from(non_tool_callback_count + child_group_count).unwrap_or(i64::MAX);
 
@@ -311,6 +344,7 @@ impl TraceProjectionBuilder {
             node_runs,
             &callback_tasks,
             detail,
+            stitched_trace,
         )?;
         Ok(())
     }
@@ -323,6 +357,7 @@ impl TraceProjectionBuilder {
         parent_node_runs: &[domain::NodeRunRecord],
         callback_tasks: &[domain::CallbackTaskRecord],
         detail: &domain::ApplicationRunDetail,
+        stitched_trace: &[domain::ApplicationRunStitchedTrace],
     ) -> Result<()> {
         let mut child_index = 0_usize;
         let tool_tasks: Vec<&domain::CallbackTaskRecord> = callback_tasks
@@ -333,6 +368,16 @@ impl TraceProjectionBuilder {
             synthetic_tool_calls_not_in_callback_tasks(parent_node_runs, &tool_tasks);
         let ordinary_tool_calls = ordinary_tool_calls_not_linked_to_subagents(detail, &tool_tasks);
         let linked_subagent_traces = linked_subagent_traces_for_tool_tasks(detail, &tool_tasks);
+
+        if !stitched_trace.is_empty() {
+            child_index += 1;
+            self.push_stitched_context_child(
+                child_order_key(parent_order_key, child_index),
+                parent_trace_node_id,
+                parent_stable_locator,
+                stitched_trace,
+            )?;
+        }
 
         if !ordinary_tool_calls.is_empty() {
             child_index += 1;
@@ -1136,12 +1181,41 @@ impl TraceProjectionBuilder {
         stitched_trace: &[domain::ApplicationRunStitchedTrace],
     ) -> Result<()> {
         let order_key = root_order_key(root_index);
-        let stable_locator = format!("run:{}/stitched_context", self.flow_run_id);
+        self.push_stitched_context_node(
+            order_key,
+            None,
+            format!("run:{}/stitched_context", self.flow_run_id),
+            stitched_trace,
+        )
+    }
+
+    fn push_stitched_context_child(
+        &mut self,
+        order_key: String,
+        parent_trace_node_id: Uuid,
+        parent_stable_locator: &str,
+        stitched_trace: &[domain::ApplicationRunStitchedTrace],
+    ) -> Result<()> {
+        self.push_stitched_context_node(
+            order_key,
+            Some(parent_trace_node_id),
+            format!("{parent_stable_locator}/stitched_context"),
+            stitched_trace,
+        )
+    }
+
+    fn push_stitched_context_node(
+        &mut self,
+        order_key: String,
+        parent_trace_node_id: Option<Uuid>,
+        stable_locator: String,
+        stitched_trace: &[domain::ApplicationRunStitchedTrace],
+    ) -> Result<()> {
         let trace_node_id = trace_node_id_for_locator(self.flow_run_id, &stable_locator);
 
         self.nodes.push(ApplicationRunTraceNodeProjectionInput {
             trace_node_id,
-            parent_trace_node_id: None,
+            parent_trace_node_id,
             stable_locator: stable_locator.clone(),
             node_kind: "stitched_context".to_string(),
             owner_kind: Some("stitched_context".to_string()),

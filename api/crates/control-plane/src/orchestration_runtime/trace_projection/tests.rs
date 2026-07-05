@@ -377,12 +377,14 @@ fn builder_projects_linked_agent_tools_as_subagent_llm_nodes() {
         subagent_content.payload["debug_payload"]["parent_agent_tool_call"]["description"],
         json!("Backend worker")
     );
-    assert!(subagent_content
-        .payload
-        .as_object()
-        .expect("subagent content payload should be an object")
-        .get("input_payload")
-        .is_none());
+    assert!(
+        subagent_content
+            .payload
+            .as_object()
+            .expect("subagent content payload should be an object")
+            .get("input_payload")
+            .is_none()
+    );
 }
 
 #[test]
@@ -608,12 +610,14 @@ fn builder_projects_node_run_content_as_lightweight_refs() {
         node_run_content.payload["payload_index"]["event_count"],
         json!(1)
     );
-    assert!(node_run_content.payload["detail_refs"]
-        .as_array()
-        .is_some_and(|refs| refs.iter().any(|value| {
-            value["detail_kind"] == json!("node_run")
-                && value["source_locator"] == json!(node_run_id.to_string())
-        })));
+    assert!(
+        node_run_content.payload["detail_refs"]
+            .as_array()
+            .is_some_and(|refs| refs.iter().any(|value| {
+                value["detail_kind"] == json!("node_run")
+                    && value["source_locator"] == json!(node_run_id.to_string())
+            }))
+    );
     assert_eq!(
         node_run_content.source_refs[0]["source_kind"],
         json!("node_run")
@@ -1084,10 +1088,141 @@ fn builder_projects_stitched_trace_as_collapsed_context_group() {
         prior_run.parent_trace_node_id,
         Some(stitched_group.trace_node_id)
     );
-    assert!(projection
+    assert!(
+        projection
+            .nodes
+            .iter()
+            .all(|node| node.stable_locator != format!("run:{flow_run_id}/node:prior-node"))
+    );
+}
+
+#[test]
+fn builder_nests_stitched_trace_under_current_llm_root_as_tool_sibling() {
+    let flow_run_id = Uuid::now_v7();
+    let current_node_run_id = Uuid::now_v7();
+    let callback_task_id = Uuid::now_v7();
+    let prior_run_id = Uuid::now_v7();
+    let now = OffsetDateTime::UNIX_EPOCH;
+    let mut detail = domain::ApplicationRunDetail {
+        flow_run: domain::FlowRunRecord {
+            target_node_id: Some("node-llm".to_string()),
+            ..flow_run(flow_run_id, now)
+        },
+        node_runs: vec![domain::NodeRunRecord {
+            id: current_node_run_id,
+            flow_run_id,
+            node_id: "node-llm".to_string(),
+            node_type: "llm".to_string(),
+            node_alias: "LLM".to_string(),
+            status: domain::NodeRunStatus::Succeeded,
+            input_payload: json!({}),
+            output_payload: json!({}),
+            error_payload: None,
+            metrics_payload: json!({}),
+            debug_payload: json!({}),
+            started_at: now,
+            finished_at: Some(now),
+        }],
+        checkpoints: Vec::new(),
+        callback_tasks: vec![domain::CallbackTaskRecord {
+            id: callback_task_id,
+            flow_run_id,
+            node_run_id: current_node_run_id,
+            callback_kind: "llm_tool_calls".to_string(),
+            status: domain::CallbackTaskStatus::Completed,
+            request_payload: json!({
+                "tool_calls": [
+                    {
+                        "id": "call-read",
+                        "name": "Read"
+                    }
+                ]
+            }),
+            response_payload: Some(json!({
+                "tool_results": [
+                    {
+                        "tool_call_id": "call-read",
+                        "content": "ok"
+                    }
+                ]
+            })),
+            external_ref_payload: None,
+            created_at: now,
+            completed_at: Some(now),
+        }],
+        events: Vec::new(),
+        stitched_trace: Vec::new(),
+        subagent_traces: Vec::new(),
+    };
+    detail
+        .stitched_trace
+        .push(domain::ApplicationRunStitchedTrace {
+            source_flow_run: domain::FlowRunRecord {
+                id: prior_run_id,
+                title: "prior run".to_string(),
+                ..flow_run(prior_run_id, now - time::Duration::seconds(10))
+            },
+            node_runs: vec![domain::NodeRunRecord {
+                id: Uuid::now_v7(),
+                flow_run_id: prior_run_id,
+                node_id: "prior-node".to_string(),
+                node_type: "llm".to_string(),
+                node_alias: "Prior LLM".to_string(),
+                status: domain::NodeRunStatus::Succeeded,
+                input_payload: json!({}),
+                output_payload: json!({}),
+                error_payload: None,
+                metrics_payload: json!({}),
+                debug_payload: json!({}),
+                started_at: now,
+                finished_at: Some(now),
+            }],
+            callback_tasks: Vec::new(),
+            events: Vec::new(),
+            runtime_events: Vec::new(),
+        });
+
+    let projection = build_application_run_trace_projection(&detail).unwrap();
+    let llm_node = projection
         .nodes
         .iter()
-        .all(|node| node.stable_locator != format!("run:{flow_run_id}/node:prior-node")));
+        .find(|node| {
+            node.node_kind == "node_run"
+                && node.node_id.as_deref() == Some("node-llm")
+                && node.parent_trace_node_id.is_none()
+        })
+        .expect("current llm node should be projected");
+    let stitched_group = projection
+        .nodes
+        .iter()
+        .find(|node| node.node_kind == "stitched_context")
+        .expect("stitched context group should be projected");
+    let tools_group = projection
+        .nodes
+        .iter()
+        .find(|node| node.node_kind == "tool_group")
+        .expect("tools group should be projected");
+
+    assert_eq!(
+        stitched_group.parent_trace_node_id,
+        Some(llm_node.trace_node_id)
+    );
+    assert_eq!(
+        tools_group.parent_trace_node_id,
+        Some(llm_node.trace_node_id)
+    );
+    assert!(
+        stitched_group.order_key < tools_group.order_key,
+        "stitched context should be ordered before tools under the llm root"
+    );
+    assert_eq!(
+        projection
+            .nodes
+            .iter()
+            .filter(|node| node.node_kind == "stitched_context")
+            .count(),
+        1
+    );
 }
 
 #[test]

@@ -225,26 +225,70 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         "lazy trace tree should expose stitched nodes as expandable summaries, not full stitched detail"
     );
     let root_nodes = data["nodes"].as_array().unwrap();
-    assert!(root_nodes
-        .iter()
-        .any(|node| node["flow_run_id"] == json!(run_c_id)));
-    assert!(root_nodes
-        .iter()
-        .all(|node| node["flow_run_id"] != json!(run_a_id)));
-    assert!(root_nodes
-        .iter()
-        .all(|node| node["flow_run_id"] != json!(run_b_id)));
-    assert!(root_nodes
-        .iter()
-        .all(|node| node.get("input_payload").is_none()));
-    assert!(root_nodes
-        .iter()
-        .all(|node| node.get("debug_payload").is_none()));
+    assert!(
+        root_nodes
+            .iter()
+            .any(|node| node["flow_run_id"] == json!(run_c_id))
+    );
+    assert!(
+        root_nodes
+            .iter()
+            .all(|node| node["flow_run_id"] != json!(run_a_id))
+    );
+    assert!(
+        root_nodes
+            .iter()
+            .all(|node| node["flow_run_id"] != json!(run_b_id))
+    );
+    assert!(
+        root_nodes
+            .iter()
+            .all(|node| node.get("input_payload").is_none())
+    );
+    assert!(
+        root_nodes
+            .iter()
+            .all(|node| node.get("debug_payload").is_none())
+    );
 
-    let stitched_group = root_nodes
+    let llm_root = root_nodes
+        .iter()
+        .find(|node| {
+            node["node_kind"] == json!("node_run")
+                && node["node_type"] == json!("llm")
+                && node["flow_run_id"] == json!(run_c_id)
+        })
+        .expect("current llm root should be present");
+    let llm_root_id = llm_root["trace_node_id"].as_str().unwrap();
+    assert!(
+        root_nodes
+            .iter()
+            .all(|node| node["node_kind"] != json!("stitched_context"))
+    );
+
+    let llm_children = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/logs/runs/{run_c_id}/trace-tree/nodes?parent_trace_node_id={llm_root_id}"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(llm_children.status(), StatusCode::OK);
+    let llm_children_body = to_bytes(llm_children.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let llm_children_payload: Value = serde_json::from_slice(&llm_children_body).unwrap();
+    let llm_child_nodes = llm_children_payload["data"]["items"].as_array().unwrap();
+    let stitched_group = llm_child_nodes
         .iter()
         .find(|node| node["node_kind"] == json!("stitched_context"))
-        .expect("stitched context group should be present at root");
+        .expect("stitched context group should be nested under current llm root");
     let stitched_group_id = stitched_group["trace_node_id"].as_str().unwrap();
     assert_eq!(stitched_group["has_children"].as_bool(), Some(true));
 
@@ -270,9 +314,11 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         .as_array()
         .unwrap();
     assert_eq!(stitched_runs.len(), 2);
-    assert!(stitched_runs
-        .iter()
-        .all(|node| node["node_kind"] == json!("stitched_run")));
+    assert!(
+        stitched_runs
+            .iter()
+            .all(|node| node["node_kind"] == json!("stitched_run"))
+    );
     let run_a_trace_node_id = stitched_runs[0]["trace_node_id"].as_str().unwrap();
 
     let run_a_node_content = app

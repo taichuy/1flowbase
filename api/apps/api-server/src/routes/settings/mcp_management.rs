@@ -29,7 +29,9 @@ use crate::{
     runtime_data_model_docs,
 };
 
-pub use debug_execute::{McpDebugExecuteBody, McpDebugExecuteResponse};
+pub use debug_execute::{
+    McpDebugExecuteBody, McpDebugExecuteDetailsResponse, McpDebugResponseMode,
+};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct McpInstanceResponse {
@@ -664,7 +666,7 @@ pub async fn check_mcp_tool_description(
     })))
 }
 
-#[utoipa::path(post, path = "/api/console/mcp/debug/execute", request_body = McpDebugExecuteBody, responses((status = 200, body = McpDebugExecuteResponse)))]
+#[utoipa::path(post, path = "/api/console/mcp/debug/execute", request_body = McpDebugExecuteBody, responses((status = 200, body = Value)))]
 pub async fn execute_mcp_debug(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
