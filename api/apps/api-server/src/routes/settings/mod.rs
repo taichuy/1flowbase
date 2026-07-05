@@ -5,6 +5,7 @@ pub mod file_tables;
 pub mod host_infrastructure;
 pub mod mcp_management;
 pub mod members;
+pub mod navigation;
 pub mod permissions;
 mod release_status;
 pub mod roles;

@@ -3,6 +3,7 @@ extern crate self as api_server;
 pub mod app_state;
 pub mod application_public_docs;
 pub mod config;
+pub mod console_surface_registry;
 pub mod error_response;
 pub mod host_extension_boot;
 pub mod host_extension_loader;
@@ -48,6 +49,7 @@ use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 use crate::{
     app_state::ApiState,
     config::{ApiConfig, ApiEnvironment},
+    console_surface_registry::ConsoleSurfaceRegistry,
     host_extension_loader::load_host_extensions_at_startup,
     host_infrastructure::build_local_host_infrastructure_from_host_extensions,
     provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
@@ -155,6 +157,7 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
         .nest("/api/console", routes::me::router())
         .nest("/api/console", routes::workspace::router())
         .nest("/api/console", routes::members::router())
+        .nest("/api/console", routes::navigation::router())
         .nest("/api/console", routes::model_definitions::router())
         .nest("/api/console", routes::model_providers::router())
         .nest("/api/console", routes::frontend_block_catalog::router())
@@ -206,6 +209,12 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
             &builtin_host_extensions,
         )?;
+    let console_surface_registry =
+        Arc::new(ConsoleSurfaceRegistry::from_host_extension_contributions(
+            builtin_host_extensions
+                .iter()
+                .map(|(_, contribution)| contribution),
+        )?);
     let infrastructure = Arc::new(build_local_host_infrastructure_from_host_extensions(
         &host_extension_registry,
     )?);
@@ -314,6 +323,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let state = Arc::new(ApiState {
         store,
         infrastructure,
+        console_surface_registry,
         file_storage_registry,
         runtime_engine,
         provider_runtime,

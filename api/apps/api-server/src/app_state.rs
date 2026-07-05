@@ -5,6 +5,7 @@ use runtime_core::runtime_engine::RuntimeEngine;
 use storage_durable::MainDurableStore;
 use time::OffsetDateTime;
 
+use crate::console_surface_registry::ConsoleSurfaceRegistry;
 use crate::host_infrastructure::HostInfrastructureRegistry;
 use crate::openapi_docs::ApiDocsRegistry;
 use crate::{
@@ -18,6 +19,7 @@ use crate::{
 pub struct ApiState {
     pub store: MainDurableStore,
     pub infrastructure: Arc<HostInfrastructureRegistry>,
+    pub console_surface_registry: Arc<ConsoleSurfaceRegistry>,
     pub file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     pub runtime_engine: Arc<RuntimeEngine>,
     pub provider_runtime: Arc<ApiRuntimeServices>,

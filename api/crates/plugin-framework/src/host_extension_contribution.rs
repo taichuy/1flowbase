@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use serde::Deserialize;
 
 use crate::error::{FrameworkResult, PluginFrameworkError};
@@ -59,6 +61,70 @@ pub struct HostExtensionRouteManifest {
     pub action: HostExtensionRouteActionManifest,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionConsoleSurfacesManifest {
+    #[serde(default)]
+    pub route_definitions: Vec<HostExtensionConsoleRouteDefinitionManifest>,
+    #[serde(default)]
+    pub navigation_items: Vec<HostExtensionConsoleNavigationItemManifest>,
+    #[serde(default)]
+    pub permission_bindings: Vec<HostExtensionConsolePermissionBindingManifest>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostExtensionConsoleSurfaceKind {
+    System,
+    DynamicPage,
+    HostExtension,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionConsoleRouteDefinitionManifest {
+    pub route_id: String,
+    pub surface_key: String,
+    pub path: String,
+    pub surface_kind: HostExtensionConsoleSurfaceKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostExtensionConsoleNavigationSlot {
+    Primary,
+    Secondary,
+    Settings,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionConsoleNavigationItemManifest {
+    pub item_id: String,
+    pub route_id: String,
+    pub parent_item_id: String,
+    pub label_key: String,
+    pub navigation_slot: HostExtensionConsoleNavigationSlot,
+    pub order: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostExtensionConsolePermissionRequirement {
+    Authenticated,
+    AnyPermission,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionConsolePermissionBindingManifest {
+    pub binding_id: String,
+    pub route_id: String,
+    #[serde(default)]
+    pub permission_codes: Vec<String>,
+    pub requirement: HostExtensionConsolePermissionRequirement,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HostExtensionWorkerManifest {
@@ -88,6 +154,8 @@ pub struct HostExtensionContributionManifest {
     #[serde(default)]
     pub scope_providers: Vec<ScopeProviderContributionManifest>,
     pub routes: Vec<HostExtensionRouteManifest>,
+    #[serde(default)]
+    pub console_surfaces: HostExtensionConsoleSurfacesManifest,
     pub workers: Vec<HostExtensionWorkerManifest>,
     pub migrations: Vec<HostExtensionMigrationManifest>,
 }
@@ -160,13 +228,14 @@ fn validate_host_extension_contribution_manifest(
         validate_non_empty(&route.action.resource, "routes[].action.resource")?;
         validate_non_empty(&route.action.action, "routes[].action.action")?;
     }
+    validate_console_surfaces(&manifest.extension_id, &manifest.console_surfaces)?;
     for worker in &manifest.workers {
         validate_non_empty(&worker.worker_id, "workers[].worker_id")?;
-        if !is_extension_owned_id(&manifest.extension_id, &worker.worker_id) {
-            return Err(PluginFrameworkError::invalid_provider_package(
-                "workers[].worker_id must equal extension_id or start with <extension_id>.",
-            ));
-        }
+        validate_extension_owned_id(
+            &manifest.extension_id,
+            &worker.worker_id,
+            "workers[].worker_id",
+        )?;
         validate_non_empty(&worker.queue, "workers[].queue")?;
         validate_non_empty(&worker.handler, "workers[].handler")?;
     }
@@ -180,6 +249,185 @@ fn validate_host_extension_contribution_manifest(
         }
     }
 
+    Ok(())
+}
+
+fn validate_console_surfaces(
+    extension_id: &str,
+    console_surfaces: &HostExtensionConsoleSurfacesManifest,
+) -> FrameworkResult<()> {
+    let mut route_ids = BTreeSet::new();
+    let mut route_paths = BTreeSet::new();
+    let mut item_ids = BTreeSet::new();
+    let mut binding_ids = BTreeSet::new();
+
+    for route in &console_surfaces.route_definitions {
+        validate_non_empty(
+            &route.route_id,
+            "console_surfaces.route_definitions[].route_id",
+        )?;
+        validate_extension_owned_id(
+            extension_id,
+            &route.route_id,
+            "console_surfaces.route_definitions[].route_id",
+        )?;
+        validate_non_empty(
+            &route.surface_key,
+            "console_surfaces.route_definitions[].surface_key",
+        )?;
+        validate_non_empty(&route.path, "console_surfaces.route_definitions[].path")?;
+        if !route.path.starts_with("/settings/") {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "console_surfaces.route_definitions[].path must start with /settings/",
+            ));
+        }
+        if route.surface_kind != HostExtensionConsoleSurfaceKind::HostExtension {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "console_surfaces.route_definitions[].surface_kind must be host_extension",
+            ));
+        }
+        validate_unique_insert(
+            &mut route_ids,
+            route.route_id.as_str(),
+            "console_surfaces.route_definitions[].route_id",
+        )?;
+        validate_unique_insert(
+            &mut route_paths,
+            route.path.as_str(),
+            "console_surfaces.route_definitions[].path",
+        )?;
+    }
+
+    for item in &console_surfaces.navigation_items {
+        validate_non_empty(&item.item_id, "console_surfaces.navigation_items[].item_id")?;
+        validate_extension_owned_id(
+            extension_id,
+            &item.item_id,
+            "console_surfaces.navigation_items[].item_id",
+        )?;
+        validate_unique_insert(
+            &mut item_ids,
+            item.item_id.as_str(),
+            "console_surfaces.navigation_items[].item_id",
+        )?;
+        validate_non_empty(
+            &item.route_id,
+            "console_surfaces.navigation_items[].route_id",
+        )?;
+        validate_console_route_reference(
+            &route_ids,
+            &item.route_id,
+            "console_surfaces.navigation_items[].route_id",
+        )?;
+        validate_non_empty(
+            &item.parent_item_id,
+            "console_surfaces.navigation_items[].parent_item_id",
+        )?;
+        if item.parent_item_id != "settings"
+            && !is_extension_owned_id(extension_id, &item.parent_item_id)
+        {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "console_surfaces.navigation_items[].parent_item_id must be settings or equal extension_id or start with <extension_id>.",
+            ));
+        }
+        validate_non_empty(
+            &item.label_key,
+            "console_surfaces.navigation_items[].label_key",
+        )?;
+        if item.navigation_slot != HostExtensionConsoleNavigationSlot::Settings {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "console_surfaces.navigation_items[].navigation_slot must be settings",
+            ));
+        }
+    }
+
+    for binding in &console_surfaces.permission_bindings {
+        validate_non_empty(
+            &binding.binding_id,
+            "console_surfaces.permission_bindings[].binding_id",
+        )?;
+        validate_extension_owned_id(
+            extension_id,
+            &binding.binding_id,
+            "console_surfaces.permission_bindings[].binding_id",
+        )?;
+        validate_unique_insert(
+            &mut binding_ids,
+            binding.binding_id.as_str(),
+            "console_surfaces.permission_bindings[].binding_id",
+        )?;
+        validate_non_empty(
+            &binding.route_id,
+            "console_surfaces.permission_bindings[].route_id",
+        )?;
+        validate_console_route_reference(
+            &route_ids,
+            &binding.route_id,
+            "console_surfaces.permission_bindings[].route_id",
+        )?;
+        for permission_code in &binding.permission_codes {
+            validate_non_empty(
+                permission_code,
+                "console_surfaces.permission_bindings[].permission_codes[]",
+            )?;
+        }
+        match binding.requirement {
+            HostExtensionConsolePermissionRequirement::AnyPermission => {
+                if binding.permission_codes.is_empty() {
+                    return Err(PluginFrameworkError::invalid_provider_package(
+                        "console_surfaces.permission_bindings[].permission_codes must not be empty when requirement is any_permission",
+                    ));
+                }
+            }
+            HostExtensionConsolePermissionRequirement::Authenticated => {
+                if !binding.permission_codes.is_empty() {
+                    return Err(PluginFrameworkError::invalid_provider_package(
+                        "console_surfaces.permission_bindings[].permission_codes must be empty when requirement is authenticated",
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_unique_insert<'a>(
+    seen: &mut BTreeSet<&'a str>,
+    value: &'a str,
+    field: &str,
+) -> FrameworkResult<()> {
+    if !seen.insert(value) {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field} must be unique"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_extension_owned_id(
+    extension_id: &str,
+    candidate: &str,
+    field: &str,
+) -> FrameworkResult<()> {
+    if !is_extension_owned_id(extension_id, candidate) {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field} must equal extension_id or start with <extension_id>."
+        )));
+    }
+    Ok(())
+}
+
+fn validate_console_route_reference(
+    route_ids: &BTreeSet<&str>,
+    route_id: &str,
+    field: &str,
+) -> FrameworkResult<()> {
+    if !route_ids.contains(route_id) {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field} must reference console_surfaces.route_definitions[].route_id"
+        )));
+    }
     Ok(())
 }
 

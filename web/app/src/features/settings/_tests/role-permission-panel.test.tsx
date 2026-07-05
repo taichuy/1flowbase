@@ -452,4 +452,40 @@ describe('RolePermissionPanel', () => {
     ).toBeDisabled();
     expect(screen.getByRole('button', { name: '保存数据权限' })).toBeDisabled();
   }, 20000);
+
+  test('groups unknown permission resources under 其他 with the raw resource key', async () => {
+    permissionsApi.fetchSettingsPermissions.mockResolvedValue([
+      {
+        code: 'user.view.all',
+        resource: 'user',
+        action: 'view',
+        scope: 'all',
+        name: '查看用户'
+      },
+      {
+        code: 'custom_resource.audit.all',
+        resource: 'custom_resource',
+        action: 'audit',
+        scope: 'all',
+        name: 'Audit custom resource'
+      }
+    ]);
+    rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
+      role_code: 'manager',
+      permission_codes: ['custom_resource.audit.all']
+    });
+
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole('tab', { name: '其他' }));
+
+    const resourceNode = screen
+      .getByText('custom_resource')
+      .closest('.ant-tree-treenode');
+    const switcher = resourceNode?.querySelector<HTMLElement>('.ant-tree-switcher');
+    expect(switcher).toBeTruthy();
+    fireEvent.click(switcher!);
+
+    expect(await screen.findByText('Audit custom resource')).toBeInTheDocument();
+  }, 20000);
 });

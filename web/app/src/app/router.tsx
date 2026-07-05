@@ -30,7 +30,6 @@ import { HomePage } from '../features/home/pages/HomePage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
 import type { MeSectionKey } from '../features/me/lib/me-sections';
 import { MePage } from '../features/me/pages/MePage';
-import type { SettingsSectionKey } from '../features/settings/lib/settings-sections';
 import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import { RouteGuard } from '../routes/route-guards';
 import { LoadingState } from '../shared/ui/loading-state/LoadingState';
@@ -220,7 +219,7 @@ const templatesRoute = createRoute({
   )
 });
 
-function renderSettingsRoute(requestedSectionKey?: SettingsSectionKey) {
+function renderSettingsRoute(requestedSectionKey?: string) {
   return (
     <RouteGuard routeId="settings">
       <LazyRouteBoundary>
@@ -424,6 +423,17 @@ const settingsRolesRoute = createRoute({
   component: () => renderSettingsRoute('roles')
 });
 
+const settingsDynamicRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/$sectionKey',
+  notFoundComponent: NotFoundPage,
+  component: () => {
+    const { sectionKey } = settingsDynamicRoute.useParams();
+
+    return renderSettingsRoute(sectionKey);
+  }
+});
+
 const meIndexRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/me',
@@ -496,6 +506,7 @@ const routeTree = rootRoute.addChildren([
     settingsMcpManagementRoute,
     settingsMembersRoute,
     settingsRolesRoute,
+    settingsDynamicRoute,
     meIndexRoute,
     meProfileRoute,
     meSecurityRoute,

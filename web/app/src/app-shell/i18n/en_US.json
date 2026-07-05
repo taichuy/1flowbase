@@ -1,5 +1,7 @@
 {
   "auto": {
+    "console_navigation_load_failed": "Console navigation failed to load",
+    "console_navigation_loading": "Loading console navigation",
     "documentation": "Documentation",
     "enter_design_mode": "Enter design mode",
     "exit_design_mode": "Exit design mode",

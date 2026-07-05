@@ -118,8 +118,14 @@ async fn activate_pending_restart_installation(
         Err(error) => return Err(error),
     };
 
-    match validate_host_extension_installation(&local_installation) {
-        Ok(()) => {
+    match validate_host_extension_installation(&local_installation).and_then(|contribution| {
+        state
+            .console_surface_registry
+            .register_host_extension_contribution(&contribution)
+            .map_err(anyhow::Error::from)?;
+        Ok(contribution)
+    }) {
+        Ok(_) => {
             let desired_state = PluginDesiredState::ActiveRequested;
             state
                 .store
@@ -172,7 +178,7 @@ fn is_current_node_artifact_conflict(error: &anyhow::Error) -> bool {
 
 fn validate_host_extension_installation(
     installation: &domain::PluginInstallationRecord,
-) -> Result<()> {
+) -> Result<HostExtensionContributionManifest> {
     let install_root = Path::new(&installation.installed_path);
     let manifest_path = install_root.join("manifest.yaml");
     let manifest_raw = fs::read_to_string(&manifest_path)
@@ -210,7 +216,7 @@ fn validate_host_extension_installation(
     }
     validate_native_library(install_root, &contribution)?;
 
-    Ok(())
+    Ok(contribution)
 }
 
 fn validate_native_library(

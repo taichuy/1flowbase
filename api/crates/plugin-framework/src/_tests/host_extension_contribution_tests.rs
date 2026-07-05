@@ -173,6 +173,357 @@ migrations:
 }
 
 #[test]
+fn existing_manifest_defaults_console_surfaces_to_empty() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+workers: []
+migrations: []
+"#,
+    );
+
+    let manifest = parse_host_extension_contribution_manifest(&raw).unwrap();
+
+    assert!(manifest.console_surfaces.route_definitions.is_empty());
+    assert!(manifest.console_surfaces.navigation_items.is_empty());
+    assert!(manifest.console_surfaces.permission_bindings.is_empty());
+}
+
+#[test]
+fn parses_console_surface_route_navigation_and_permission_bindings() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: file-security.settings
+      surface_key: file-security
+      path: /settings/file-security
+      surface_kind: host_extension
+  navigation_items:
+    - item_id: file-security.settings
+      route_id: file-security.settings
+      parent_item_id: settings
+      label_key: auto.file_security
+      navigation_slot: settings
+      order: 900
+  permission_bindings:
+    - binding_id: file-security.settings.view
+      route_id: file-security.settings
+      permission_codes:
+        - plugin_config.view.all
+      requirement: any_permission
+workers: []
+migrations: []
+"#,
+    );
+
+    let manifest = parse_host_extension_contribution_manifest(&raw).unwrap();
+    let surfaces = &manifest.console_surfaces;
+
+    assert_eq!(
+        surfaces.route_definitions[0].route_id,
+        "file-security.settings"
+    );
+    assert_eq!(surfaces.route_definitions[0].surface_key, "file-security");
+    assert_eq!(surfaces.navigation_items[0].parent_item_id, "settings");
+    assert_eq!(surfaces.navigation_items[0].order, 900);
+    assert_eq!(
+        surfaces.permission_bindings[0].permission_codes,
+        vec!["plugin_config.view.all"]
+    );
+}
+
+#[test]
+fn rejects_console_surface_kind_that_is_not_host_extension() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: file-security.settings
+      surface_key: file-security
+      path: /settings/file-security
+      surface_kind: system
+  navigation_items: []
+  permission_bindings: []
+workers: []
+migrations: []
+"#,
+    );
+
+    let err = parse_host_extension_contribution_manifest(&raw).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("console_surfaces.route_definitions[].surface_kind"));
+}
+
+#[test]
+fn rejects_console_surface_path_outside_settings_prefix() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: file-security.settings
+      surface_key: file-security
+      path: /workspace/file-security
+      surface_kind: host_extension
+  navigation_items: []
+  permission_bindings: []
+workers: []
+migrations: []
+"#,
+    );
+
+    let err = parse_host_extension_contribution_manifest(&raw).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("console_surfaces.route_definitions[].path"));
+}
+
+#[test]
+fn rejects_console_navigation_item_unknown_route_id() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: file-security.settings
+      surface_key: file-security
+      path: /settings/file-security
+      surface_kind: host_extension
+  navigation_items:
+    - item_id: file-security.settings
+      route_id: file-security.missing
+      parent_item_id: settings
+      label_key: auto.file_security
+      navigation_slot: settings
+      order: 900
+  permission_bindings: []
+workers: []
+migrations: []
+"#,
+    );
+
+    let err = parse_host_extension_contribution_manifest(&raw).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("console_surfaces.navigation_items[].route_id"));
+}
+
+#[test]
+fn rejects_console_surface_ids_outside_extension_namespace() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: other.settings
+      surface_key: file-security
+      path: /settings/file-security
+      surface_kind: host_extension
+  navigation_items: []
+  permission_bindings: []
+workers: []
+migrations: []
+"#,
+    );
+
+    let err = parse_host_extension_contribution_manifest(&raw).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("console_surfaces.route_definitions[].route_id"));
+}
+
+#[test]
+fn rejects_duplicate_console_surface_route_id_in_same_manifest() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: file-security.settings
+      surface_key: file-security
+      path: /settings/file-security
+      surface_kind: host_extension
+    - route_id: file-security.settings
+      surface_key: file-security-duplicate
+      path: /settings/file-security-duplicate
+      surface_kind: host_extension
+  navigation_items: []
+  permission_bindings: []
+workers: []
+migrations: []
+"#,
+    );
+
+    let err = parse_host_extension_contribution_manifest(&raw).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("console_surfaces.route_definitions[].route_id"));
+}
+
+#[test]
+fn rejects_duplicate_console_surface_path_in_same_manifest() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: file-security.settings
+      surface_key: file-security
+      path: /settings/file-security
+      surface_kind: host_extension
+    - route_id: file-security.audit
+      surface_key: file-security-audit
+      path: /settings/file-security
+      surface_kind: host_extension
+  navigation_items: []
+  permission_bindings: []
+workers: []
+migrations: []
+"#,
+    );
+
+    let err = parse_host_extension_contribution_manifest(&raw).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("console_surfaces.route_definitions[].path"));
+}
+
+#[test]
+fn rejects_duplicate_console_navigation_item_id_in_same_manifest() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: file-security.settings
+      surface_key: file-security
+      path: /settings/file-security
+      surface_kind: host_extension
+    - route_id: file-security.audit
+      surface_key: file-security-audit
+      path: /settings/file-security-audit
+      surface_kind: host_extension
+  navigation_items:
+    - item_id: file-security.settings
+      route_id: file-security.settings
+      parent_item_id: settings
+      label_key: auto.file_security
+      navigation_slot: settings
+      order: 900
+    - item_id: file-security.settings
+      route_id: file-security.audit
+      parent_item_id: settings
+      label_key: auto.file_security
+      navigation_slot: settings
+      order: 901
+  permission_bindings: []
+workers: []
+migrations: []
+"#,
+    );
+
+    let err = parse_host_extension_contribution_manifest(&raw).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("console_surfaces.navigation_items[].item_id"));
+}
+
+#[test]
+fn rejects_duplicate_console_permission_binding_id_in_same_manifest() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: file-security.settings
+      surface_key: file-security
+      path: /settings/file-security
+      surface_kind: host_extension
+  navigation_items: []
+  permission_bindings:
+    - binding_id: file-security.settings.view
+      route_id: file-security.settings
+      permission_codes:
+        - plugin_config.view.all
+      requirement: any_permission
+    - binding_id: file-security.settings.view
+      route_id: file-security.settings
+      permission_codes:
+        - plugin_config.configure.all
+      requirement: any_permission
+workers: []
+migrations: []
+"#,
+    );
+
+    let err = parse_host_extension_contribution_manifest(&raw).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("console_surfaces.permission_bindings[].binding_id"));
+}
+
+#[test]
+fn rejects_console_permission_any_permission_without_permission_codes() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: file-security.settings
+      surface_key: file-security
+      path: /settings/file-security
+      surface_kind: host_extension
+  navigation_items: []
+  permission_bindings:
+    - binding_id: file-security.settings.view
+      route_id: file-security.settings
+      permission_codes: []
+      requirement: any_permission
+workers: []
+migrations: []
+"#,
+    );
+
+    let err = parse_host_extension_contribution_manifest(&raw).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("console_surfaces.permission_bindings[].permission_codes"));
+}
+
+#[test]
+fn rejects_console_permission_codes_for_authenticated_requirement() {
+    let raw = host_extension_manifest_with(
+        r#"
+routes: []
+console_surfaces:
+  route_definitions:
+    - route_id: file-security.settings
+      surface_key: file-security
+      path: /settings/file-security
+      surface_kind: host_extension
+  navigation_items: []
+  permission_bindings:
+    - binding_id: file-security.settings.view
+      route_id: file-security.settings
+      permission_codes:
+        - plugin_config.view.all
+      requirement: authenticated
+workers: []
+migrations: []
+"#,
+    );
+
+    let err = parse_host_extension_contribution_manifest(&raw).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("console_surfaces.permission_bindings[].permission_codes"));
+}
+
+#[test]
 fn rejects_route_path_outside_controlled_host_prefixes() {
     let raw = host_extension_manifest_with(
         r#"

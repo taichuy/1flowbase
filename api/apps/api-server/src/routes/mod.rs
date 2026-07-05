@@ -23,5 +23,5 @@ pub use plugins_and_models_group::{
 };
 pub use settings_group::{
     auth_center, docs, file_storages, file_tables, host_infrastructure, mcp_management, members,
-    permissions, roles, system, workspace, workspaces,
+    navigation, permissions, roles, system, workspace, workspaces,
 };

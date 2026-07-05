@@ -53,9 +53,21 @@ const docsApi = vi.hoisted(() => ({
 }));
 
 const modelProvidersApi = vi.hoisted(() => ({
-  settingsModelProviderCatalogQueryKey: ['settings', 'model-providers', 'catalog'],
-  settingsModelProviderInstancesQueryKey: ['settings', 'model-providers', 'instances'],
-  settingsModelProviderOptionsQueryKey: ['settings', 'model-providers', 'options'],
+  settingsModelProviderCatalogQueryKey: [
+    'settings',
+    'model-providers',
+    'catalog'
+  ],
+  settingsModelProviderInstancesQueryKey: [
+    'settings',
+    'model-providers',
+    'instances'
+  ],
+  settingsModelProviderOptionsQueryKey: [
+    'settings',
+    'model-providers',
+    'options'
+  ],
   settingsModelProviderModelsQueryKey: vi.fn((instanceId: string) => [
     'settings',
     'model-providers',
@@ -108,6 +120,11 @@ const dataModelsApi = vi.hoisted(() => ({
   updateSettingsDataModelScopeGrant: vi.fn()
 }));
 
+const consoleNavigationApi = vi.hoisted(() => ({
+  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+  fetchSettingsConsoleNavigation: vi.fn()
+}));
+
 vi.mock('../../features/settings/api/members', () => membersApi);
 vi.mock('../../features/settings/api/roles', () => rolesApi);
 vi.mock('../../features/settings/api/permissions', () => permissionsApi);
@@ -115,6 +132,10 @@ vi.mock('../../features/settings/api/api-docs', () => docsApi);
 vi.mock('../../features/settings/api/model-providers', () => modelProvidersApi);
 vi.mock('../../features/settings/api/file-management', () => fileManagementApi);
 vi.mock('../../features/settings/api/data-models', () => dataModelsApi);
+vi.mock(
+  '../../features/settings/api/console-navigation',
+  () => consoleNavigationApi
+);
 
 import { AppProviders } from '../../app/AppProviders';
 import { AppRouterProvider } from '../../app/router';
@@ -122,6 +143,51 @@ import { resetAuthStore, useAuthStore } from '../../state/auth-store';
 
 const SECTION_REDIRECT_WAIT_OPTIONS = { timeout: 8_000 };
 const SECTION_REDIRECT_TEST_TIMEOUT = 10_000;
+
+const settingsRouteRecords = {
+  'api-key-authentication': {
+    label_key: 'auto.api_key_authentication',
+    path: '/settings/api-key-authentication'
+  },
+  members: {
+    label_key: 'auto.user_management',
+    path: '/settings/members'
+  },
+  roles: {
+    label_key: 'auto.permission_management',
+    path: '/settings/roles'
+  },
+  'data-models': {
+    label_key: 'auto.data_source',
+    path: '/settings/data-models'
+  },
+  files: {
+    label_key: 'auto.file_management',
+    path: '/settings/files'
+  }
+} as const;
+
+function settingsConsoleNavigation(
+  sectionKeys: Array<keyof typeof settingsRouteRecords>
+) {
+  return {
+    route_definitions: sectionKeys.map((surface_key) => ({
+      route_id: surface_key,
+      surface_key,
+      path: settingsRouteRecords[surface_key].path,
+      surface_kind: 'system' as const
+    })),
+    navigation_items: sectionKeys.map((surface_key, index) => ({
+      item_id: surface_key,
+      route_id: surface_key,
+      parent_item_id: 'settings',
+      label_key: settingsRouteRecords[surface_key].label_key,
+      navigation_slot: 'settings' as const,
+      order: index + 1
+    })),
+    permission_bindings: []
+  };
+}
 
 function authenticateWithPermissions(
   permissions: string[],
@@ -163,6 +229,10 @@ function renderApp(pathname: string) {
 describe('section shell routing', () => {
   beforeEach(() => {
     resetAuthStore();
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockReset();
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+      settingsConsoleNavigation(['api-key-authentication'])
+    );
     membersApi.fetchSettingsMembers.mockResolvedValue([]);
     rolesApi.fetchSettingsRoles.mockResolvedValue([]);
     rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
@@ -242,47 +312,89 @@ describe('section shell routing', () => {
     SECTION_REDIRECT_TEST_TIMEOUT
   );
 
-  test('redirects /settings to API key when docs is hidden but members is visible', async () => {
-    authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
+  test(
+    'redirects /settings to first backend registry section',
+    async () => {
+      authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
 
-    renderApp('/settings');
+      renderApp('/settings');
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/settings/api-key-authentication');
-    }, SECTION_REDIRECT_WAIT_OPTIONS);
-    expect(screen.getByTestId('section-page-layout')).toBeInTheDocument();
-  }, SECTION_REDIRECT_TEST_TIMEOUT);
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/api-key-authentication'
+        );
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+      expect(screen.getByTestId('section-page-layout')).toBeInTheDocument();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
 
-  test('redirects /settings/docs to API key when docs is hidden but roles is visible', async () => {
-    authenticateWithPermissions(['route_page.view.all', 'role_permission.view.all']);
+  test(
+    'redirects /settings/docs to API key when registry omits docs and includes roles',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['api-key-authentication', 'roles'])
+      );
+      authenticateWithPermissions([
+        'route_page.view.all',
+        'role_permission.view.all'
+      ]);
 
-    renderApp('/settings/docs');
+      renderApp('/settings/docs');
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/settings/api-key-authentication');
-    }, SECTION_REDIRECT_WAIT_OPTIONS);
-    expect(screen.getByTestId('section-page-layout')).toBeInTheDocument();
-  }, SECTION_REDIRECT_TEST_TIMEOUT);
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/api-key-authentication'
+        );
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+      expect(screen.getByTestId('section-page-layout')).toBeInTheDocument();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
 
-  test('redirects /settings/docs to API key when state model settings are visible', async () => {
-    authenticateWithPermissions(['route_page.view.all', 'state_model.view.all']);
+  test(
+    'redirects /settings/docs to API key when registry omits docs and includes data models',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['api-key-authentication', 'data-models'])
+      );
+      authenticateWithPermissions([
+        'route_page.view.all',
+        'state_model.view.all'
+      ]);
 
-    renderApp('/settings/docs');
+      renderApp('/settings/docs');
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/settings/api-key-authentication');
-    }, SECTION_REDIRECT_WAIT_OPTIONS);
-    expect(screen.getByTestId('section-page-layout')).toBeInTheDocument();
-  }, SECTION_REDIRECT_TEST_TIMEOUT);
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/api-key-authentication'
+        );
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+      expect(screen.getByTestId('section-page-layout')).toBeInTheDocument();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
 
-  test('redirects /settings/docs to API key when file management is the only visible section', async () => {
-    authenticateWithPermissions(['route_page.view.all', 'file_table.view.own']);
+  test(
+    'redirects /settings/docs to API key when registry omits docs and includes file management',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['api-key-authentication', 'files'])
+      );
+      authenticateWithPermissions([
+        'route_page.view.all',
+        'file_table.view.own'
+      ]);
 
-    renderApp('/settings/docs');
+      renderApp('/settings/docs');
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/settings/api-key-authentication');
-    }, SECTION_REDIRECT_WAIT_OPTIONS);
-    expect(screen.getByTestId('section-page-layout')).toBeInTheDocument();
-  }, SECTION_REDIRECT_TEST_TIMEOUT);
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/api-key-authentication'
+        );
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+      expect(screen.getByTestId('section-page-layout')).toBeInTheDocument();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
 });

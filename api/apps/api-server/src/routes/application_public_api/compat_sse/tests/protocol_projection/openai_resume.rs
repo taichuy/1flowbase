@@ -62,6 +62,7 @@ async fn openai_chat_durable_waiting_callback_fallback_drains_text_delta_first()
     let state = Arc::new(ApiState {
         store: base_state.store.clone(),
         infrastructure: base_state.infrastructure.clone(),
+        console_surface_registry: base_state.console_surface_registry.clone(),
         file_storage_registry: base_state.file_storage_registry.clone(),
         runtime_engine: base_state.runtime_engine.clone(),
         provider_runtime: base_state.provider_runtime.clone(),
@@ -339,6 +340,7 @@ async fn openai_chat_resume_replay_terminal_drains_durable_text_before_tool_call
     let state = Arc::new(ApiState {
         store: base_state.store.clone(),
         infrastructure: base_state.infrastructure.clone(),
+        console_surface_registry: base_state.console_surface_registry.clone(),
         file_storage_registry: base_state.file_storage_registry.clone(),
         runtime_engine: base_state.runtime_engine.clone(),
         provider_runtime: base_state.provider_runtime.clone(),

@@ -2,35 +2,15 @@ import { SettingOutlined } from '@ant-design/icons';
 import { Link } from '@tanstack/react-router';
 import type { MenuProps } from 'antd';
 
-import {
-  settingsSectionDefinitions,
-  type SettingsSectionDefinition
-} from '../features/settings/lib/settings-sections';
+import type { SettingsSectionRegistryItem } from '../features/settings/lib/settings-sections';
 import { i18nText } from '../shared/i18n/text';
 
-function hasAnyPermission(permissions: string[], candidates: string[]) {
-  return candidates.some((permission) => permissions.includes(permission));
-}
+type SettingsChromeMenuRegistryState = 'loading' | 'error' | 'ready';
 
-function getVisibleSettingsSections({
-  isRoot,
-  permissions,
-  includeAllWhenPermissionsUnknown
-}: {
-  isRoot: boolean;
-  permissions: string[];
-  includeAllWhenPermissionsUnknown: boolean;
-}) {
-  if (isRoot || includeAllWhenPermissionsUnknown) {
-    return settingsSectionDefinitions;
-  }
-
-  return settingsSectionDefinitions.filter((section) =>
-    hasAnyPermission(permissions, section.requiredPermissions)
-  );
-}
-
-function isCurrentSettingsSection(pathname: string, section: SettingsSectionDefinition) {
+function isCurrentSettingsSection(
+  pathname: string,
+  section: SettingsSectionRegistryItem
+) {
   return pathname === section.to || pathname.startsWith(`${section.to}/`);
 }
 
@@ -39,7 +19,7 @@ function renderSettingsChromeLink({
   pathname,
   useRouterLinks
 }: {
-  section: SettingsSectionDefinition;
+  section: SettingsSectionRegistryItem;
   pathname: string;
   useRouterLinks: boolean;
 }) {
@@ -52,7 +32,7 @@ function renderSettingsChromeLink({
         to={section.to}
         aria-current={isCurrent ? 'page' : undefined}
       >
-        {i18nText('settings', section.labelKey)}
+        {i18nText('settings', section.label_key)}
       </Link>
     );
   }
@@ -63,7 +43,7 @@ function renderSettingsChromeLink({
       href={section.to}
       aria-current={isCurrent ? 'page' : undefined}
     >
-      {i18nText('settings', section.labelKey)}
+      {i18nText('settings', section.label_key)}
     </a>
   );
 }
@@ -71,21 +51,37 @@ function renderSettingsChromeLink({
 export function createSettingsChromeMenuItems({
   pathname,
   useRouterLinks,
-  isRoot,
-  permissions,
-  includeAllWhenPermissionsUnknown = false
+  sections,
+  registryState = 'ready'
 }: {
   pathname: string;
   useRouterLinks: boolean;
-  isRoot: boolean;
-  permissions: string[];
-  includeAllWhenPermissionsUnknown?: boolean;
+  sections: SettingsSectionRegistryItem[];
+  registryState?: SettingsChromeMenuRegistryState;
 }): MenuProps['items'] {
-  const sections = getVisibleSettingsSections({
-    isRoot,
-    permissions,
-    includeAllWhenPermissionsUnknown
-  });
+  const children =
+    registryState === 'ready'
+      ? sections.map((section) => ({
+          key: section.key,
+          label: renderSettingsChromeLink({
+            section,
+            pathname,
+            useRouterLinks
+          })
+        }))
+      : [
+          {
+            key:
+              registryState === 'error'
+                ? 'settings-navigation-error'
+                : 'settings-navigation-loading',
+            disabled: true,
+            label:
+              registryState === 'error'
+                ? i18nText('appShell', 'auto.console_navigation_load_failed')
+                : i18nText('appShell', 'auto.console_navigation_loading')
+          }
+        ];
 
   return [
     {
@@ -99,14 +95,7 @@ export function createSettingsChromeMenuItems({
         </span>
       ),
       popupClassName: 'app-shell-settings-popup',
-      children: sections.map((section) => ({
-        key: section.key,
-        label: renderSettingsChromeLink({
-          section,
-          pathname,
-          useRouterLinks
-        })
-      }))
+      children
     }
   ];
 }
