@@ -2,34 +2,26 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
-  settingsSectionDefinitions,
-  type SettingsSectionKey,
-  type SettingsSectionNavItem
+  type SettingsSectionNavItem,
+  type SettingsSectionRegistryItem
 } from '../../lib/settings-sections';
 
 export function useSettingsSections({
   requestedSectionKey,
-  isRoot,
-  permissions
+  sections
 }: {
-  requestedSectionKey?: SettingsSectionKey;
-  isRoot: boolean;
-  permissions: string[];
+  requestedSectionKey?: string;
+  sections: SettingsSectionRegistryItem[];
 }) {
   const { t } = useTranslation('settings');
   const visibleSections = useMemo<SettingsSectionNavItem[]>(
     () =>
-      settingsSectionDefinitions
-        .filter(
-          (section) =>
-            section.requiredPermissions.length === 0 ||
-            isRoot ||
-            section.requiredPermissions.some((permission) =>
-              permissions.includes(permission)
-            )
-        )
-        .map(({ key, labelKey, to }) => ({ key, label: t(labelKey), to })),
-    [isRoot, permissions, t]
+      sections.map(({ key, label_key, to }) => ({
+        key,
+        label: t(label_key),
+        to
+      })),
+    [sections, t]
   );
   const fallbackSection = visibleSections[0] ?? null;
   const activeSection = requestedSectionKey

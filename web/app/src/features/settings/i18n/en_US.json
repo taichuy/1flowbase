@@ -275,6 +275,7 @@
     "host": "Host",
     "basic_configuration": "Basic configuration",
     "select_plug_package_first": "Please select the plug-in package first",
+    "settings_navigation_load_failed": "Settings navigation failed to load",
     "loading": "Loading...",
     "operation_failed_retry": "Operation failed, please try again",
     "relationship_configuration_json": "Relationship configuration JSON",

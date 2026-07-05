@@ -16,6 +16,7 @@ export * from './console-auth-center';
 export * from './console-model-providers';
 export * from './console-mcp-management';
 export * from './console-node-contributions';
+export * from './console-navigation';
 export * from './console-me';
 export * from './console-members';
 export * from './console-permissions';

@@ -2,10 +2,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ReactElement } from 'react';
 
-import { describe, expect, test } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+const consoleNavigationApi = vi.hoisted(() => ({
+  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+  fetchSettingsConsoleNavigation: vi.fn()
+}));
+
+vi.mock(
+  '../../features/settings/api/console-navigation',
+  () => consoleNavigationApi
+);
+
+import { AppProviders } from '../../app/AppProviders';
 import { settingsSectionDefinitions } from '../../features/settings/lib/settings-sections';
 import { appI18n } from '../../shared/i18n/app-i18n';
+import { resetAuthStore, useAuthStore } from '../../state/auth-store';
+import { SettingsChromeMenu } from '../SettingsChromeMenu';
 import { createSettingsChromeMenuItems } from '../settings-chrome-menu-items';
 
 function isReactElementWithProps(
@@ -25,14 +39,55 @@ function getSettingsItem() {
     createSettingsChromeMenuItems({
       pathname: '/settings/data-models',
       useRouterLinks: false,
-      isRoot: true,
-      permissions: []
+      sections: settingsSectionDefinitions.map(({ key, label_key, to }) => ({
+        key,
+        label_key,
+        to
+      }))
     }) ?? [];
 
   return items[0];
 }
 
+function consoleNavigationForSettingsSections(sectionKeys: string[]) {
+  const sections = sectionKeys.flatMap((sectionKey) => {
+    const section = settingsSectionDefinitions.find(
+      (definition) => definition.key === sectionKey
+    );
+
+    return section ? [section] : [];
+  });
+
+  return {
+    route_definitions: sections.map((section) => ({
+      route_id: `settings.${section.key}`,
+      surface_key: section.key,
+      path: section.to,
+      surface_kind: 'system' as const
+    })),
+    navigation_items: sections.map((section, index) => ({
+      item_id: section.key,
+      route_id: `settings.${section.key}`,
+      parent_item_id: 'settings',
+      label_key: section.label_key,
+      navigation_slot: 'settings' as const,
+      order: index + 1
+    })),
+    permission_bindings: []
+  };
+}
+
 describe('createSettingsChromeMenuItems', () => {
+  beforeEach(() => {
+    resetAuthStore();
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockReset();
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+      consoleNavigationForSettingsSections(
+        settingsSectionDefinitions.map((section) => section.key)
+      )
+    );
+  });
+
   test('renders visible labels for settings submenu links', async () => {
     await appI18n.changeLanguage('zh_Hans');
     const settingsItem = getSettingsItem();
@@ -135,5 +190,117 @@ describe('createSettingsChromeMenuItems', () => {
     )?.[1];
 
     expect(settingsBlockRule).not.toContain('min-width:');
+  });
+
+  test('SettingsChromeMenu shows only backend returned settings children', async () => {
+    await appI18n.changeLanguage('zh_Hans');
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-123',
+      actor: {
+        id: 'root',
+        account: 'root',
+        effective_display_role: 'root',
+        current_workspace_id: 'workspace-1'
+      },
+      me: {
+        id: 'root',
+        account: 'root',
+        email: 'root@example.com',
+        phone: null,
+        nickname: 'Root',
+        name: 'Root',
+        avatar_url: null,
+        introduction: '',
+        effective_display_role: 'root',
+        permissions: ['api_reference.view.all', 'user.view.all']
+      }
+    });
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+      consoleNavigationForSettingsSections(['data-models', 'auth-center'])
+    );
+
+    render(
+      <AppProviders>
+        <SettingsChromeMenu
+          pathname="/settings/data-models"
+          useRouterLinks={false}
+        />
+      </AppProviders>
+    );
+
+    fireEvent.mouseEnter(await screen.findByLabelText('设置'));
+
+    expect(await screen.findByText('数据源')).toBeInTheDocument();
+    expect(screen.getByText('认证中心')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('API 文档')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('用户管理')).not.toBeInTheDocument();
+  });
+
+  test('SettingsChromeMenu keeps backend host extension settings children', async () => {
+    await appI18n.changeLanguage('zh_Hans');
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue({
+      route_definitions: [
+        {
+          route_id: 'file-security.settings',
+          surface_key: 'file-security.settings',
+          path: '/settings/file-security',
+          surface_kind: 'host_extension' as const
+        }
+      ],
+      navigation_items: [
+        {
+          item_id: 'file-security.settings',
+          route_id: 'file-security.settings',
+          parent_item_id: 'settings',
+          label_key: 'auto.api_documentation',
+          navigation_slot: 'settings' as const,
+          order: 1300
+        }
+      ],
+      permission_bindings: []
+    });
+
+    render(
+      <AppProviders>
+        <SettingsChromeMenu
+          pathname="/settings/file-security"
+          useRouterLinks={false}
+        />
+      </AppProviders>
+    );
+
+    fireEvent.mouseEnter(await screen.findByLabelText('设置'));
+
+    expect(await screen.findByText('API 文档')).toHaveAttribute(
+      'href',
+      '/settings/file-security'
+    );
+  });
+
+  test('SettingsChromeMenu shows registry error instead of falling back to local settings sections', async () => {
+    await appI18n.changeLanguage('zh_Hans');
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockRejectedValue(
+      new Error('registry unavailable')
+    );
+
+    render(
+      <AppProviders>
+        <SettingsChromeMenu
+          pathname="/settings/data-models"
+          useRouterLinks={false}
+        />
+      </AppProviders>
+    );
+
+    fireEvent.mouseEnter(await screen.findByLabelText('设置'));
+
+    expect(await screen.findByText('控制台导航加载失败')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('数据源')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('API 文档')).not.toBeInTheDocument();
+    expect(screen.queryByText('用户管理')).not.toBeInTheDocument();
   });
 });

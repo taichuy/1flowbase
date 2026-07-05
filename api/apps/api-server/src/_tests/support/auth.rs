@@ -219,6 +219,9 @@ async fn test_state_with_runtime_profile_state(
         Arc::new(ApiState {
             store,
             infrastructure,
+            console_surface_registry: Arc::new(
+                crate::console_surface_registry::ConsoleSurfaceRegistry::default(),
+            ),
             file_storage_registry,
             runtime_engine,
             provider_runtime,

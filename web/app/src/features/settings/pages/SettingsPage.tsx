@@ -1,9 +1,19 @@
 import { useMemo } from 'react';
 
+import { useQuery } from '@tanstack/react-query';
 import { Navigate } from '@tanstack/react-router';
+import { Alert, Result } from 'antd';
+import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../state/auth-store';
-import type { SettingsSectionKey } from '../lib/settings-sections';
+import {
+  fetchSettingsConsoleNavigation,
+  settingsConsoleNavigationQueryKey
+} from '../api/console-navigation';
+import {
+  isSettingsSectionKey,
+  settingsSectionItemsFromConsoleNavigation
+} from '../lib/settings-sections';
 import { SettingsRouteShell } from './settings-page/SettingsRouteShell';
 import { SettingsSectionBody } from './settings-page/SettingsSectionBody';
 import { useSettingsSections } from './settings-page/use-settings-sections';
@@ -15,10 +25,15 @@ function hasAnyPermission(permissions: string[], candidates: string[]) {
 export function SettingsPage({
   requestedSectionKey
 }: {
-  requestedSectionKey?: SettingsSectionKey;
+  requestedSectionKey?: string;
 }) {
+  const { t } = useTranslation('settings');
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
+  const consoleNavigationQuery = useQuery({
+    queryKey: settingsConsoleNavigationQueryKey,
+    queryFn: fetchSettingsConsoleNavigation
+  });
   const permissions = useMemo(() => me?.permissions ?? [], [me?.permissions]);
   const permissionSet = useMemo(() => new Set(permissions), [permissions]);
   const isRoot = actor?.effective_display_role === 'root';
@@ -58,12 +73,56 @@ export function SettingsPage({
       permissions
     ]
   );
+  const registrySections = useMemo(() => {
+    if (consoleNavigationQuery.data) {
+      return settingsSectionItemsFromConsoleNavigation(
+        consoleNavigationQuery.data
+      );
+    }
+
+    return [];
+  }, [consoleNavigationQuery.data]);
+  const registryState =
+    consoleNavigationQuery.data === undefined
+      ? consoleNavigationQuery.isError
+        ? 'error'
+        : 'loading'
+      : 'ready';
   const { activeSection, redirectSection, visibleSections } =
     useSettingsSections({
       requestedSectionKey,
-      isRoot,
-      permissions
+      sections: registrySections
     });
+
+  if (registryState === 'loading') {
+    return (
+      <SettingsRouteShell
+        visibleSections={[]}
+        activeSectionKey=""
+        emptyState={<Result status="info" title={t('auto.loading')} />}
+      >
+        {null}
+      </SettingsRouteShell>
+    );
+  }
+
+  if (registryState === 'error') {
+    return (
+      <SettingsRouteShell
+        visibleSections={[]}
+        activeSectionKey=""
+        emptyState={
+          <Alert
+            type="error"
+            showIcon
+            message={t('auto.settings_navigation_load_failed')}
+          />
+        }
+      >
+        {null}
+      </SettingsRouteShell>
+    );
+  }
 
   if (redirectSection) {
     return <Navigate to={redirectSection.to} replace />;
@@ -74,7 +133,7 @@ export function SettingsPage({
       visibleSections={visibleSections}
       activeSectionKey={activeSection?.key ?? ''}
     >
-      {activeSection ? (
+      {activeSection && isSettingsSectionKey(activeSection.key) ? (
         <SettingsSectionBody
           sectionKey={activeSection.key}
           access={sectionAccess}

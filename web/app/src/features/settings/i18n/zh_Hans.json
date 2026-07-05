@@ -275,6 +275,7 @@
     "host": "宿主机",
     "basic_configuration": "基础配置",
     "select_plug_package_first": "请先选择插件包",
+    "settings_navigation_load_failed": "设置导航加载失败",
     "loading": "加载中...",
     "operation_failed_retry": "操作失败，请重试",
     "relationship_configuration_json": "关系配置 JSON",

@@ -1,5 +1,7 @@
 {
   "auto": {
+    "console_navigation_load_failed": "控制台导航加载失败",
+    "console_navigation_loading": "控制台导航加载中",
     "documentation": "文档",
     "enter_design_mode": "进入设计模式",
     "exit_design_mode": "退出设计模式",

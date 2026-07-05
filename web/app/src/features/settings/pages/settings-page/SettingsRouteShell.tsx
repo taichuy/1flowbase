@@ -12,10 +12,12 @@ import {
 export function SettingsRouteShell({
   visibleSections,
   activeSectionKey,
+  emptyState,
   children
 }: {
   visibleSections: SettingsSectionNavItem[];
   activeSectionKey: string;
+  emptyState?: ReactNode;
   children: ReactNode;
 }) {
   if (visibleSections.length === 0) {
@@ -26,7 +28,7 @@ export function SettingsRouteShell({
         navItems={[]}
         activeKey=""
         contentWidth="wide"
-        emptyState={<SettingsEmptyState />}
+        emptyState={emptyState ?? <SettingsEmptyState />}
       >
         {null}
       </SectionPageLayout>
