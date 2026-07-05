@@ -203,4 +203,18 @@ describe('useFrontstageBlockCode', () => {
       expect(result.current.error).toEqual(new Error('missing csrf token'));
     });
   });
+
+  test('marks block code read 403 as permission denied without changing the raw error', async () => {
+    const forbiddenError = Object.assign(new Error('raw block permission detail'), {
+      status: 403
+    });
+    frontstageApi.fetchFrontstageBlockCode.mockRejectedValue(forbiddenError);
+
+    const { result } = setupBlockCode();
+
+    await waitFor(() => {
+      expect(result.current.error).toBe(forbiddenError);
+      expect(result.current.permissionDenied).toBe(true);
+    });
+  });
 });

@@ -882,7 +882,7 @@ async fn page_content_save_rejects_group_nodes() {
 }
 
 #[tokio::test]
-async fn block_code_write_requires_design_permission_but_read_allows_workspace_access() {
+async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permission() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let member_id = create_member(
@@ -899,7 +899,7 @@ async fn block_code_write_requires_design_permission_but_read_allows_workspace_a
         &root_cookie,
         &root_csrf,
         "frontstage_code_viewer",
-        &[],
+        &["frontstage.page.design"],
     )
     .await;
     replace_member_roles(
@@ -938,18 +938,16 @@ async fn block_code_write_requires_design_permission_but_read_allows_workspace_a
 
     let (viewer_cookie, viewer_csrf) =
         login_and_capture_cookie(&app, "frontstage-code-viewer", "temp-pass").await;
-    let (detail_status, detail_payload) = get_json(
+    let (detail_status, _) = get_json(
         &app,
         &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}"),
         &viewer_cookie,
     )
     .await;
-    assert_eq!(detail_status, StatusCode::OK);
-    assert_eq!(detail_payload["data"]["page"]["id"], json!(page_id));
+    assert_eq!(detail_status, StatusCode::FORBIDDEN);
 
-    let (read_status, read_payload) = get_json(&app, &code_path, &viewer_cookie).await;
-    assert_eq!(read_status, StatusCode::OK);
-    assert_eq!(read_payload["data"]["code"], json!("export default 1;"));
+    let (read_status, _) = get_json(&app, &code_path, &viewer_cookie).await;
+    assert_eq!(read_status, StatusCode::FORBIDDEN);
 
     let (write_status, _) = send_json(
         &app,
@@ -960,7 +958,7 @@ async fn block_code_write_requires_design_permission_but_read_allows_workspace_a
         json!({ "code": "export default 2;" }),
     )
     .await;
-    assert_eq!(write_status, StatusCode::FORBIDDEN);
+    assert_eq!(write_status, StatusCode::OK);
 
     let (content_write_status, _) = save_page_content(
         &app,
@@ -972,5 +970,5 @@ async fn block_code_write_requires_design_permission_but_read_allows_workspace_a
         json!({ "children": [] }),
     )
     .await;
-    assert_eq!(content_write_status, StatusCode::FORBIDDEN);
+    assert_eq!(content_write_status, StatusCode::OK);
 }

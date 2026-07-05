@@ -63,6 +63,25 @@ fn map_frontstage_block_code_row(
     }
 }
 
+fn map_frontstage_visibility_rule_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<domain::frontstage::FrontstagePageVisibilityRuleRecord> {
+    let raw_visibility: String = row.get("visibility");
+    let visibility = domain::frontstage::FrontstagePageVisibility::from_db(&raw_visibility).ok_or(
+        ControlPlaneError::InvalidInput("frontstage_page_visibility"),
+    )?;
+
+    Ok(domain::frontstage::FrontstagePageVisibilityRuleRecord {
+        id: row.get("id"),
+        workspace_id: row.get("workspace_id"),
+        page_id: row.get("page_id"),
+        role_id: row.get("role_id"),
+        visibility,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
 #[async_trait]
 impl FrontstagePageRepository for PgControlPlaneStore {
     async fn load_actor_context_for_workspace(
@@ -118,6 +137,44 @@ impl FrontstagePageRepository for PgControlPlaneStore {
 
         rows.into_iter()
             .map(|row| map_frontstage_page_row(&row))
+            .collect()
+    }
+
+    async fn list_frontstage_page_visibility_rules_for_actor_roles(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select
+                rules.id,
+                rules.workspace_id,
+                rules.page_id,
+                rules.role_id,
+                rules.visibility,
+                rules.created_at,
+                rules.updated_at
+            from frontstage_page_visibility_rules rules
+            where rules.workspace_id = $2
+              and rules.role_id in (
+                  select roles.id
+                  from user_role_bindings bindings
+                  join roles on roles.id = bindings.role_id
+                  where bindings.user_id = $1
+                    and roles.scope_kind = 'workspace'
+                    and roles.workspace_id = $2
+              )
+            order by rules.page_id nulls first, rules.role_id asc, rules.id asc
+            "#,
+        )
+        .bind(actor_user_id)
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter()
+            .map(|row| map_frontstage_visibility_rule_row(&row))
             .collect()
     }
 

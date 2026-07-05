@@ -94,6 +94,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   pageContent,
   isPageContentLoading,
   hasPageContentLoadError,
+  isPageContentPermissionDenied,
   onRetryLoadPageContent,
   isPageTreeMutating,
   pageTreeMutationError,
@@ -716,7 +717,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           await onDeletePageNode?.(nodeId);
           const next = removeNodeFromTree(pageTree, nodeId);
           const nextResolution = resolveSelectedPageId({
-            pageId: selectedPageId ?? undefined,
+            currentSelectedPageId: selectedPageId,
             pageTree: next
           });
           const nextSelectedPageId = nextResolution.selectedPageId;
@@ -1095,6 +1096,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               }
               isLoading={Boolean(selectedPageLabel && isPageContentLoading)}
               hasError={Boolean(selectedPageLabel && hasPageContentLoadError)}
+              isPermissionDenied={Boolean(
+                selectedPageLabel && isPageContentPermissionDenied
+              )}
               selectedBlockId={
                 canEnterDesignMode && isDesignMode ? selectedBlockId : null
               }

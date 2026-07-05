@@ -54,6 +54,7 @@ function createBlockCodeState() {
     loading: false,
     saving: false,
     error: null as Error | null,
+    permissionDenied: false,
     setDraft: vi.fn(),
     reset: vi.fn(),
     save: vi.fn().mockResolvedValue(undefined)
@@ -188,5 +189,27 @@ describe('BlockCodeEditorDrawer', () => {
     expect(screen.getByText('代码加载中')).toBeInTheDocument();
     expect(screen.getByText('load failed')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+  });
+
+  test('shows permission denied for block code 403 without leaking raw error text', () => {
+    mockBlockCodeState({
+      error: new Error('raw block permission detail'),
+      permissionDenied: true
+    });
+
+    render(
+      <BlockCodeEditorDrawer
+        open
+        onClose={() => undefined}
+        workspaceId="workspace-1"
+        pageId="hidden-page"
+        block={block}
+      />
+    );
+
+    expect(screen.getByText('无权限访问')).toBeInTheDocument();
+    expect(
+      screen.queryByText('raw block permission detail')
+    ).not.toBeInTheDocument();
   });
 });

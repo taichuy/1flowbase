@@ -167,6 +167,29 @@ describe('frontstage page content query route wiring', () => {
     ).toBeInTheDocument();
   });
 
+  test('keeps a cropped-tree deep link and renders permission denied from page detail 403', async () => {
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([
+      createPageNode('visible-page')
+    ]);
+    pageContentApi.fetchFrontstagePageContent.mockRejectedValue(
+      Object.assign(new Error('raw backend permission detail'), { status: 403 })
+    );
+
+    renderApp('/frontstage/pages/hidden-page');
+
+    await waitFor(() => {
+      expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
+        'workspace-1',
+        'hidden-page'
+      );
+    });
+    expect(window.location.pathname).toBe('/frontstage/pages/hidden-page');
+    expect(await screen.findByText('无权限访问')).toBeInTheDocument();
+    expect(
+      screen.queryByText('raw backend permission detail')
+    ).not.toBeInTheDocument();
+  });
+
   test('does not request page detail when no route pageId or selected page exists', async () => {
     pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([]);
     pageContentApi.fetchFrontstagePageContent.mockResolvedValue(

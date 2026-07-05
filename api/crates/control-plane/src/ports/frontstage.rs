@@ -64,6 +64,12 @@ pub trait FrontstagePageRepository: Send + Sync {
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::FrontstagePageRecord>>;
 
+    async fn list_frontstage_page_visibility_rules_for_actor_roles(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>>;
+
     async fn get_frontstage_page(
         &self,
         workspace_id: Uuid,

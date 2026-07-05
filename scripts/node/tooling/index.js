@@ -14,6 +14,9 @@ const { main: runRepoHygiene } = require('../repo-hygiene/core.js');
 const {
   main: runConsoleRouteRegistryHygiene,
 } = require('../console-route-registry-hygiene/core.js');
+const {
+  main: runFrontstageGovernanceHygiene,
+} = require('../frontstage-governance-hygiene/core.js');
 const { main: runSchemaHygiene } = require('../schema-hygiene/core.js');
 const { main: runSecurityRisk } = require('../security-risk/core.js');
 const { main: runViteLazyDepsGate } = require('../vite-lazy-deps-gate/core.js');
@@ -35,6 +38,7 @@ const TOOLING_COMMANDS = new Set([
   'check-rust-backend',
   'claude-skill-sync',
   'console-route-registry-hygiene',
+  'frontstage-governance-hygiene',
   'gate-router',
   'growth-table-report',
   'hotspot-review',
@@ -109,7 +113,7 @@ function parseToolingCliArgs(argv) {
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    'Usage: node scripts/node/tooling <api-debug|capacity-report|check-rust-backend|check-style-boundary|claude-skill-sync|console-route-registry-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n'
+    'Usage: node scripts/node/tooling <api-debug|capacity-report|check-rust-backend|check-style-boundary|claude-skill-sync|console-route-registry-hygiene|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n'
   );
 }
 
@@ -147,6 +151,13 @@ async function main(argv = [], deps = {}) {
 
   if (options.command === 'console-route-registry-hygiene') {
     return (deps.runConsoleRouteRegistryHygieneImpl || runConsoleRouteRegistryHygiene)(
+      options.rest,
+      deps
+    );
+  }
+
+  if (options.command === 'frontstage-governance-hygiene') {
+    return (deps.runFrontstageGovernanceHygieneImpl || runFrontstageGovernanceHygiene)(
       options.rest,
       deps
     );

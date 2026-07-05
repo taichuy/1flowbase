@@ -4,6 +4,7 @@ mod data_source_repository_tests;
 mod file_management_repository_tests;
 mod flow_repository_tests;
 mod frontend_block_catalog_repository_tests;
+mod frontstage;
 mod host_infrastructure_config_repository_tests;
 mod identity;
 mod mcp_management_repository_tests;

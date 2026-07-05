@@ -25,6 +25,7 @@ import {
   frontstagePageTreeQueryKey
 } from '../features/frontstage/api/page-tree';
 import { useFrontstagePageTreeMutations } from '../features/frontstage/hooks/use-frontstage-page-tree-mutations';
+import { isForbiddenResponseError } from '../features/frontstage/lib/api-errors';
 import { resolveSelectedPageId } from '../features/frontstage/lib/page-tree';
 import { HomePage } from '../features/home/pages/HomePage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
@@ -285,6 +286,9 @@ function FrontStageWorkspaceContent({
         pageContent={pageContentQuery.data}
         isPageContentLoading={pageContentQuery.isLoading}
         hasPageContentLoadError={pageContentQuery.isError}
+        isPageContentPermissionDenied={isForbiddenResponseError(
+          pageContentQuery.error
+        )}
         isPageTreeMutating={pageTreeMutations.isPending}
         pageTreeMutationError={pageTreeMutations.error}
         onCreateGroupNode={pageTreeMutations.createGroup}

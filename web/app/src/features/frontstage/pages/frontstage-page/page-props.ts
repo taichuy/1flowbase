@@ -19,6 +19,7 @@ export type FrontStagePageProps = {
   pageContent?: FrontstagePageContent;
   isPageContentLoading?: boolean;
   hasPageContentLoadError?: boolean;
+  isPageContentPermissionDenied?: boolean;
   onRetryLoadPageContent?: () => void;
   isPageTreeMutating?: boolean;
   pageTreeMutationError?: Error | null;

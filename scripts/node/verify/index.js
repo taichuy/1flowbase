@@ -974,6 +974,12 @@ function buildRepoCommands({ repoRoot, env = process.env, target = 'all' }) {
       cwd: repoRoot,
     },
     {
+      label: 'repo-frontstage-governance-hygiene',
+      command: nodeBinary,
+      args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'frontstage-governance-hygiene'],
+      cwd: repoRoot,
+    },
+    {
       label: 'repo-growth-table-report',
       command: nodeBinary,
       args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'growth-table-report'],

@@ -8,6 +8,7 @@ import {
   saveFrontstageBlockCode,
   type FrontstageBlockCode
 } from '../api/block-code';
+import { isForbiddenResponseError } from '../lib/api-errors';
 
 interface UseFrontstageBlockCodeInput {
   workspaceId: string | null | undefined;
@@ -102,15 +103,18 @@ export function useFrontstageBlockCode({
     }
   });
 
+  const readOrMutationError =
+    mutationError ??
+    (blockCodeQuery.error ? toError(blockCodeQuery.error) : null);
+
   return {
     code,
     draft,
     dirty: draft !== code,
     loading: blockCodeQuery.isFetching,
     saving: saveMutation.isPending,
-    error:
-      mutationError ??
-      (blockCodeQuery.error ? toError(blockCodeQuery.error) : null),
+    error: readOrMutationError,
+    permissionDenied: isForbiddenResponseError(readOrMutationError),
     setDraft,
     reset: () => {
       setDraft(code);

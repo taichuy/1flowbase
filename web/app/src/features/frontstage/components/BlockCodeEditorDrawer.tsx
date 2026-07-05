@@ -4,6 +4,7 @@ import type { FC } from 'react';
 import { useFrontstageBlockCode } from '../hooks/use-frontstage-block-code';
 import type { FrontstageBlockInstance } from '../lib/page-document';
 import { i18nText } from '../../../shared/i18n/text';
+import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
 
 export interface BlockCodeEditorDrawerProps {
   open: boolean;
@@ -43,7 +44,17 @@ export const BlockCodeEditorDrawer: FC<BlockCodeEditorDrawerProps> = ({
   const selectedCodeRef = resolveCodeRef({ block, codeRef });
   const hasSelectedTarget = Boolean(block || selectedCodeRef);
   const canEdit = Boolean(workspaceId && pageId && selectedCodeRef);
-  const { draft, dirty, loading, saving, error, setDraft, reset, save } =
+  const {
+    draft,
+    dirty,
+    loading,
+    saving,
+    error,
+    permissionDenied,
+    setDraft,
+    reset,
+    save
+  } =
     useFrontstageBlockCode({
       workspaceId,
       pageId,
@@ -109,7 +120,9 @@ export const BlockCodeEditorDrawer: FC<BlockCodeEditorDrawerProps> = ({
           <Alert message={emptyDescription} type="info" showIcon />
         ) : null}
 
-        {error ? (
+        {permissionDenied ? <PermissionDeniedState /> : null}
+
+        {error && !permissionDenied ? (
           <Alert
             message={i18nText("frontstage", "auto.code_load_or_save_failed")}
             description={error.message}

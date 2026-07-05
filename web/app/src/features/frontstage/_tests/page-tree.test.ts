@@ -101,7 +101,7 @@ describe('frontstage page tree logic', () => {
     expect(resolveSelectedPageId({ pageTree: tree }).shouldNavigate).toBe(true);
   });
 
-  test('resolves invalid pageId to the first backend page', () => {
+  test('keeps an explicit deep link pageId that is missing from the backend tree', () => {
     const tree: FrontStageTreeNode[] = [
       {
         id: 'page-first',
@@ -113,19 +113,19 @@ describe('frontstage page tree logic', () => {
     expect(
       resolveSelectedPageId({ pageTree: tree, pageId: 'missing-page' })
     ).toEqual({
-      selectedPageId: 'page-first',
-      navigationTarget: 'page-first',
-      shouldNavigate: true
+      selectedPageId: 'missing-page',
+      navigationTarget: undefined,
+      shouldNavigate: false
     });
   });
 
-  test('resolves empty backend tree to workspace-level route', () => {
+  test('keeps an explicit deep link pageId when the backend tree is empty', () => {
     expect(
       resolveSelectedPageId({ pageTree: [], pageId: 'missing-page' })
     ).toEqual({
-      selectedPageId: null,
+      selectedPageId: 'missing-page',
       navigationTarget: undefined,
-      shouldNavigate: true
+      shouldNavigate: false
     });
     expect(getFirstPageId([])).toBeNull();
   });
@@ -139,7 +139,10 @@ describe('frontstage page tree logic', () => {
     const nextTree = removeNodeFromTree(tree, 'page-selected');
 
     expect(
-      resolveSelectedPageId({ pageTree: nextTree, pageId: 'page-selected' })
+      resolveSelectedPageId({
+        pageTree: nextTree,
+        currentSelectedPageId: 'page-selected'
+      })
     ).toEqual({
       selectedPageId: 'page-fallback',
       navigationTarget: 'page-fallback',

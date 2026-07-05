@@ -107,12 +107,20 @@ where
         actor_user_id: Uuid,
         workspace_id: Uuid,
     ) -> Result<Vec<domain::FrontstagePageTreeNode>> {
-        self.repository
+        let actor = self
+            .repository
             .load_actor_context_for_workspace(actor_user_id, workspace_id)
             .await?;
         let pages = self.repository.list_frontstage_pages(workspace_id).await?;
+        let visibility_rules = self
+            .visibility_rules_for_actor(&actor, actor_user_id, workspace_id)
+            .await?;
 
-        Ok(build_frontstage_page_tree(pages))
+        Ok(build_visible_frontstage_page_tree(
+            pages,
+            &visibility_rules,
+            &actor,
+        ))
     }
 
     pub async fn create_group(
@@ -188,7 +196,8 @@ where
         &self,
         command: GetFrontstagePageDetailCommand,
     ) -> Result<domain::frontstage::FrontstagePageDetail> {
-        self.repository
+        let actor = self
+            .repository
             .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
             .await?;
 
@@ -198,6 +207,13 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
         ensure_page_record(&detail.page)?;
+        self.ensure_page_visible(
+            &actor,
+            command.actor_user_id,
+            command.workspace_id,
+            command.page_id,
+        )
+        .await?;
 
         Ok(detail)
     }
@@ -324,11 +340,17 @@ where
         &self,
         command: GetFrontstageBlockCodeCommand,
     ) -> Result<domain::frontstage::FrontstageBlockCodeRecord> {
-        self.repository
+        let actor = self
+            .repository
             .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
             .await?;
-        self.ensure_existing_page(command.workspace_id, command.page_id)
-            .await?;
+        self.ensure_page_visible(
+            &actor,
+            command.actor_user_id,
+            command.workspace_id,
+            command.page_id,
+        )
+        .await?;
         let code_ref = normalize_code_ref(command.code_ref)?;
 
         self.repository
@@ -390,6 +412,50 @@ where
         ensure_page_record(&page)
     }
 
+    async fn ensure_page_visible(
+        &self,
+        actor: &domain::ActorContext,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+        page_id: Uuid,
+    ) -> Result<()> {
+        if actor.is_root {
+            return Ok(());
+        }
+
+        let pages = self.repository.list_frontstage_pages(workspace_id).await?;
+        let page = pages
+            .iter()
+            .find(|page| page.id == page_id)
+            .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
+        ensure_page_record(page)?;
+
+        let visibility_rules = self
+            .visibility_rules_for_actor(actor, actor_user_id, workspace_id)
+            .await?;
+        let visibility_context = FrontstagePageVisibilityContext::new(&pages, &visibility_rules);
+        if visibility_context.is_visible(page_id) {
+            return Ok(());
+        }
+
+        Err(ControlPlaneError::PermissionDenied("frontstage_page_visibility").into())
+    }
+
+    async fn visibility_rules_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>> {
+        if actor.is_root {
+            return Ok(vec![]);
+        }
+
+        self.repository
+            .list_frontstage_page_visibility_rules_for_actor_roles(actor_user_id, workspace_id)
+            .await
+    }
+
     async fn audit(
         &self,
         actor: &domain::ActorContext,
@@ -442,6 +508,183 @@ fn normalize_rank(rank: Option<String>) -> String {
 
 fn reserved_schema_root_uid(page_id: Uuid) -> String {
     format!("frontstage_page_schema_root:{page_id}")
+}
+
+fn build_visible_frontstage_page_tree(
+    records: Vec<domain::FrontstagePageRecord>,
+    visibility_rules: &[domain::frontstage::FrontstagePageVisibilityRuleRecord],
+    actor: &domain::ActorContext,
+) -> Vec<domain::FrontstagePageTreeNode> {
+    if actor.is_root {
+        return build_frontstage_page_tree(records);
+    }
+
+    let visibility_context = FrontstagePageVisibilityContext::new(&records, visibility_rules);
+    let mut children_by_parent: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+    for record in &records {
+        if let Some(parent_id) = visibility_context.parent_id(record.id) {
+            children_by_parent
+                .entry(parent_id)
+                .or_default()
+                .push(record.id);
+        }
+    }
+
+    let visible_record_ids = records
+        .iter()
+        .filter(|record| visibility_context.is_visible(record.id))
+        .map(|record| record.id)
+        .collect::<HashSet<_>>();
+    let visible_page_ids = records
+        .iter()
+        .filter(|record| {
+            record.kind == domain::FrontstagePageKind::Page
+                && visible_record_ids.contains(&record.id)
+        })
+        .map(|record| record.id)
+        .collect::<HashSet<_>>();
+
+    let mut descendant_visibility_cache = HashMap::new();
+    let retained = records
+        .into_iter()
+        .filter(|record| {
+            if record.kind == domain::FrontstagePageKind::Page {
+                return visible_page_ids.contains(&record.id);
+            }
+
+            visible_record_ids.contains(&record.id)
+                || has_visible_frontstage_descendant(
+                    record.id,
+                    &children_by_parent,
+                    &visible_page_ids,
+                    &mut descendant_visibility_cache,
+                    &mut HashSet::new(),
+                )
+        })
+        .collect::<Vec<_>>();
+
+    build_frontstage_page_tree(retained)
+}
+
+struct FrontstagePageVisibilityContext {
+    parent_by_id: HashMap<Uuid, Option<Uuid>>,
+    role_ids: HashSet<Uuid>,
+    visibility_by_page_and_role:
+        HashMap<(Option<Uuid>, Uuid), domain::frontstage::FrontstagePageVisibility>,
+}
+
+impl FrontstagePageVisibilityContext {
+    fn new(
+        records: &[domain::FrontstagePageRecord],
+        visibility_rules: &[domain::frontstage::FrontstagePageVisibilityRuleRecord],
+    ) -> Self {
+        let existing_ids = records
+            .iter()
+            .map(|record| record.id)
+            .collect::<HashSet<_>>();
+        let parent_by_id = records
+            .iter()
+            .map(|record| {
+                let parent_id = record
+                    .parent_id
+                    .filter(|parent_id| existing_ids.contains(parent_id));
+                (record.id, parent_id)
+            })
+            .collect::<HashMap<_, _>>();
+        let role_ids = visibility_rules
+            .iter()
+            .map(|rule| rule.role_id)
+            .collect::<HashSet<_>>();
+        let visibility_by_page_and_role = visibility_rules
+            .iter()
+            .map(|rule| ((rule.page_id, rule.role_id), rule.visibility))
+            .collect::<HashMap<_, _>>();
+
+        Self {
+            parent_by_id,
+            role_ids,
+            visibility_by_page_and_role,
+        }
+    }
+
+    fn parent_id(&self, page_id: Uuid) -> Option<Uuid> {
+        self.parent_by_id.get(&page_id).copied().flatten()
+    }
+
+    fn is_visible(&self, page_id: Uuid) -> bool {
+        if self.role_ids.is_empty() {
+            return false;
+        }
+
+        self.role_ids.iter().any(|role_id| {
+            self.nearest_visibility(page_id, *role_id)
+                == Some(domain::frontstage::FrontstagePageVisibility::Visible)
+        })
+    }
+
+    fn nearest_visibility(
+        &self,
+        page_id: Uuid,
+        role_id: Uuid,
+    ) -> Option<domain::frontstage::FrontstagePageVisibility> {
+        let mut current_id = Some(page_id);
+        let mut visited = HashSet::new();
+
+        while let Some(page_id) = current_id {
+            if !visited.insert(page_id) {
+                break;
+            }
+
+            if let Some(visibility) = self
+                .visibility_by_page_and_role
+                .get(&(Some(page_id), role_id))
+            {
+                return Some(*visibility);
+            }
+
+            current_id = self.parent_id(page_id);
+        }
+
+        self.visibility_by_page_and_role
+            .get(&(None, role_id))
+            .copied()
+    }
+}
+
+fn has_visible_frontstage_descendant(
+    group_id: Uuid,
+    children_by_parent: &HashMap<Uuid, Vec<Uuid>>,
+    visible_page_ids: &HashSet<Uuid>,
+    descendant_visibility_cache: &mut HashMap<Uuid, bool>,
+    visiting_groups: &mut HashSet<Uuid>,
+) -> bool {
+    if let Some(has_visible_descendant) = descendant_visibility_cache.get(&group_id) {
+        return *has_visible_descendant;
+    }
+
+    if !visiting_groups.insert(group_id) {
+        return false;
+    }
+
+    let has_visible_descendant = children_by_parent
+        .get(&group_id)
+        .map(|children| {
+            children.iter().any(|child_id| {
+                visible_page_ids.contains(child_id)
+                    || has_visible_frontstage_descendant(
+                        *child_id,
+                        children_by_parent,
+                        visible_page_ids,
+                        descendant_visibility_cache,
+                        visiting_groups,
+                    )
+            })
+        })
+        .unwrap_or(false);
+
+    visiting_groups.remove(&group_id);
+    descendant_visibility_cache.insert(group_id, has_visible_descendant);
+    has_visible_descendant
 }
 
 fn build_frontstage_page_tree(
@@ -634,5 +877,109 @@ mod tests {
             vec![(nested_page_id, FrontstagePageKind::Page)]
         );
         assert!(tree[0].children.iter().all(|node| node.children.is_empty()));
+    }
+
+    #[test]
+    fn build_visible_frontstage_page_tree_allows_root_without_rules() {
+        let page_id = test_uuid(0x10);
+        let pages = vec![page_record(0x10, FrontstagePageKind::Page, None, "a")];
+
+        let tree = build_visible_frontstage_page_tree(
+            pages,
+            &[],
+            &domain::ActorContext::root(test_uuid(0x01), test_uuid(0x100), "root"),
+        );
+
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].page.id, page_id);
+    }
+
+    #[test]
+    fn build_visible_frontstage_page_tree_applies_root_rule_to_pages() {
+        let role_id = test_uuid(0x200);
+        let page_id = test_uuid(0x10);
+        let pages = vec![page_record(0x10, FrontstagePageKind::Page, None, "a")];
+        let rules = vec![visibility_rule(
+            None,
+            role_id,
+            domain::frontstage::FrontstagePageVisibility::Visible,
+        )];
+        let actor = domain::ActorContext::scoped(
+            test_uuid(0x01),
+            test_uuid(0x100),
+            "viewer",
+            Vec::<String>::new(),
+        );
+
+        let tree = build_visible_frontstage_page_tree(pages, &rules, &actor);
+
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].page.id, page_id);
+    }
+
+    #[test]
+    fn build_visible_frontstage_page_tree_uses_nearest_ancestor_rule() {
+        let role_id = test_uuid(0x200);
+        let hidden_group_id = test_uuid(0x10);
+        let visible_page_id = test_uuid(0x20);
+        let hidden_page_id = test_uuid(0x30);
+        let pages = vec![
+            page_record(0x10, FrontstagePageKind::Group, None, "a"),
+            page_record(0x20, FrontstagePageKind::Page, Some(hidden_group_id), "a"),
+            page_record(0x30, FrontstagePageKind::Page, Some(hidden_group_id), "b"),
+        ];
+        let rules = vec![
+            visibility_rule(
+                None,
+                role_id,
+                domain::frontstage::FrontstagePageVisibility::Visible,
+            ),
+            visibility_rule(
+                Some(hidden_group_id),
+                role_id,
+                domain::frontstage::FrontstagePageVisibility::Hidden,
+            ),
+            visibility_rule(
+                Some(visible_page_id),
+                role_id,
+                domain::frontstage::FrontstagePageVisibility::Visible,
+            ),
+        ];
+        let actor = domain::ActorContext::scoped(
+            test_uuid(0x01),
+            test_uuid(0x100),
+            "viewer",
+            Vec::<String>::new(),
+        );
+
+        let tree = build_visible_frontstage_page_tree(pages, &rules, &actor);
+
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].page.id, hidden_group_id);
+        assert_eq!(
+            tree[0]
+                .children
+                .iter()
+                .map(|node| node.page.id)
+                .collect::<Vec<_>>(),
+            vec![visible_page_id]
+        );
+        assert!(!format!("{tree:?}").contains(&hidden_page_id.to_string()));
+    }
+
+    fn visibility_rule(
+        page_id: Option<Uuid>,
+        role_id: Uuid,
+        visibility: domain::frontstage::FrontstagePageVisibility,
+    ) -> domain::frontstage::FrontstagePageVisibilityRuleRecord {
+        domain::frontstage::FrontstagePageVisibilityRuleRecord {
+            id: Uuid::now_v7(),
+            workspace_id: test_uuid(0x100),
+            page_id,
+            role_id,
+            visibility,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+        }
     }
 }

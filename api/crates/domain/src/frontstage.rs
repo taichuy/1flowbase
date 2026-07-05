@@ -26,6 +26,30 @@ impl FrontstagePageKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrontstagePageVisibility {
+    Visible,
+    Hidden,
+}
+
+impl FrontstagePageVisibility {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Visible => "visible",
+            Self::Hidden => "hidden",
+        }
+    }
+
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "visible" => Some(Self::Visible),
+            "hidden" => Some(Self::Hidden),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrontstagePageRecord {
     pub id: Uuid,
@@ -47,6 +71,17 @@ pub struct FrontstagePageRecord {
 pub struct FrontstagePageTreeNode {
     pub page: FrontstagePageRecord,
     pub children: Vec<FrontstagePageTreeNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontstagePageVisibilityRuleRecord {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub page_id: Option<Uuid>,
+    pub role_id: Uuid,
+    pub visibility: FrontstagePageVisibility,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq)]

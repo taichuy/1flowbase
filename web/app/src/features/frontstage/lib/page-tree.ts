@@ -215,12 +215,10 @@ export function resolveSelectedPageId({
       };
     }
 
-    const fallbackPageId = getFirstPageId(pageTree);
-
     return {
-      selectedPageId: fallbackPageId,
-      navigationTarget: fallbackPageId ?? undefined,
-      shouldNavigate: true
+      selectedPageId: pageId,
+      navigationTarget: undefined,
+      shouldNavigate: false
     };
   }
 

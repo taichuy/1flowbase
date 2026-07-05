@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { main } = require('../index.js');
+const { buildRepoCommands, main } = require('../index.js');
 
 test('verify index dispatches repo subcommand', async () => {
   let capturedArgv = null;
@@ -64,4 +64,22 @@ test('verify index rejects unknown subcommands', async () => {
     () => main(['unknown']),
     /Unknown verify command: unknown/u
   );
+});
+
+test('verify repo tooling target includes frontstage governance hygiene', () => {
+  const commands = buildRepoCommands({
+    repoRoot: '/repo-root',
+    env: { PATH: process.env.PATH },
+    target: 'tooling',
+  });
+
+  const command = commands.find(
+    (item) => item.label === 'repo-frontstage-governance-hygiene'
+  );
+
+  assert.ok(command);
+  assert.deepEqual(command.args, [
+    '/repo-root/scripts/node/tooling.js',
+    'frontstage-governance-hygiene',
+  ]);
 });

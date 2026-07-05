@@ -18,6 +18,7 @@ import type {
 } from '../lib/page-canvas/runtime-source';
 import type { FrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
 import { i18nText } from '../../../shared/i18n/text';
+import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
 
 type DesignBlockActions = {
   onMoveUp: (blockId: string) => void;
@@ -31,6 +32,7 @@ type PageCanvasProps = {
   content?: FrontstagePageContent;
   isLoading?: boolean;
   hasError?: boolean;
+  isPermissionDenied?: boolean;
   selectedBlockId?: string | null;
   onSelectBlock?: (blockId: string | null) => void;
   onRetry?: () => void;
@@ -255,6 +257,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   content,
   isLoading,
   hasError,
+  isPermissionDenied,
   selectedBlockId = null,
   onSelectBlock,
   onRetry,
@@ -287,6 +290,10 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   }
 
   if (hasError) {
+    if (isPermissionDenied) {
+      return <PermissionDeniedState />;
+    }
+
     return (
       <Alert
         type="error"

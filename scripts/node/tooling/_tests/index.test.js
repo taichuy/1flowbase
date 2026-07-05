@@ -157,6 +157,20 @@ test('tooling index dispatches console-route-registry-hygiene subcommand', async
   assert.deepEqual(capturedArgv, ['--max-findings', '10']);
 });
 
+test('tooling index dispatches frontstage-governance-hygiene subcommand', async () => {
+  let capturedArgv = null;
+
+  const status = await main(['frontstage-governance-hygiene', '--max-findings', '10'], {
+    runFrontstageGovernanceHygieneImpl(argv) {
+      capturedArgv = argv;
+      return 0;
+    },
+  });
+
+  assert.equal(status, 0);
+  assert.deepEqual(capturedArgv, ['--max-findings', '10']);
+});
+
 test('tooling index dispatches i18n-hygiene subcommand', async () => {
   let capturedArgv = null;
 
