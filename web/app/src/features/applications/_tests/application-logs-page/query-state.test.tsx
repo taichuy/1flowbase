@@ -129,6 +129,22 @@ import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../state/auth-store';
 import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 
+function applicationRunsPage<T>(
+  items: T[],
+  overrides?: Partial<{
+    total: number;
+    page: number;
+    page_size: number;
+  }>
+) {
+  return {
+    items,
+    total: overrides?.total ?? items.length,
+    page: overrides?.page ?? 1,
+    page_size: overrides?.page_size ?? 20
+  };
+}
+
 describe('ApplicationLogsPage - query states', () => {
   beforeEach(async () => {
     window.localStorage.clear();
@@ -174,5 +190,53 @@ describe('ApplicationLogsPage - query states', () => {
       )
     ).toBeInTheDocument();
     expect(screen.getByText('刷新日志')).toBeInTheDocument();
+  });
+
+  test('does not auto refresh running records from the logs list', async () => {
+    const setIntervalSpy = vi
+      .spyOn(window, 'setInterval')
+      .mockReturnValue(123 as unknown as ReturnType<typeof window.setInterval>);
+    runtimeApi.fetchApplicationRuns.mockResolvedValue(
+      applicationRunsPage([
+        {
+          id: 'run-1',
+          application_id: 'app-1',
+          scope_id: 'scope-1',
+          run_mode: 'published_api_run' as const,
+          status: 'running',
+          target_node_id: 'node-llm',
+          title: '运行中的公开 API 请求',
+          expand_id: null,
+          external_user: null,
+          authorized_account: 'root',
+          compatibility_mode: 'openai-responses-v1',
+          total_tokens: null,
+          input_tokens: null,
+          output_tokens: null,
+          input_cache_hit_tokens: null,
+          input_cache_hit_rate: null,
+          unique_node_count: 1,
+          tool_callback_count: 0,
+          started_at: '2026-04-17T09:00:00Z',
+          finished_at: null,
+          created_at: '2026-04-17T09:00:00Z',
+          updated_at: '2026-04-17T09:00:00Z'
+        }
+      ])
+    );
+
+    render(
+      <AppProviders>
+        <ApplicationLogsPage applicationId="app-1" />
+      </AppProviders>
+    );
+
+    await screen.findByText('运行中的公开 API 请求');
+    expect(runtimeApi.fetchApplicationRuns).toHaveBeenCalledTimes(1);
+    expect(
+      setIntervalSpy.mock.calls.some(([, delay]) => delay === 2_000)
+    ).toBe(false);
+
+    setIntervalSpy.mockRestore();
   });
 });

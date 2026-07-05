@@ -76,7 +76,6 @@ import {
   saveApplicationRunExport
 } from '../lib/run-export-download';
 import { sha256ArrayBuffer } from '../lib/run-archive-hash';
-import { isActiveRunStatus } from '../lib/run-status';
 import { useAuthStore } from '../../../state/auth-store';
 import './application-logs-page.css';
 
@@ -85,7 +84,6 @@ const FLOATING_WINDOW_GAP = 16;
 const FLOATING_WINDOW_RIGHT = 32;
 const FLOATING_WINDOW_MIN_WIDTH = 360;
 const FLOATING_WINDOW_MAX_HEIGHT = 720;
-const ACTIVE_RUNS_REFETCH_INTERVAL_MS = 2_000;
 const RUN_ARCHIVE_IMPORT_CHUNK_SIZE = 1024 * 1024;
 const RUN_ARCHIVE_IMPORT_POLL_INTERVAL_MS = 1_000;
 const RUN_ARCHIVE_IMPORT_MAX_POLLS = 120;
@@ -425,7 +423,6 @@ export function ApplicationLogsPage({
     queryKey: applicationRunsQueryKey(applicationId, runsInput),
     queryFn: () => fetchApplicationRuns(applicationId, runsInput)
   });
-  const refetchRuns = runsQuery.refetch;
   const runsPage = runsQuery.data;
   const runs = useMemo(() => runsPage?.items ?? [], [runsPage?.items]);
   const total = runsPage?.total ?? 0;
@@ -441,18 +438,6 @@ export function ApplicationLogsPage({
   useEffect(() => {
     setPage(1);
   }, [applicationId]);
-
-  useEffect(() => {
-    if (!runs.some((run) => isActiveRunStatus(run.status))) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      void refetchRuns();
-    }, ACTIVE_RUNS_REFETCH_INTERVAL_MS);
-
-    return () => window.clearInterval(intervalId);
-  }, [runs, refetchRuns]);
 
   function selectRun(run: ApplicationRunSummary | null) {
     const nextRunId = run ? run.id : null;
