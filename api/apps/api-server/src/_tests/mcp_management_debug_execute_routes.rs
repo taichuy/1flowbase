@@ -248,6 +248,85 @@ async fn mcp_debug_execute_runs_runtime_interface_and_maps_tool_result() {
 }
 
 #[tokio::test]
+async fn mcp_debug_execute_filters_array_item_fields_from_output_mapping() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let list_users_interface_id = bindable_interface_id_for_path(
+        &app,
+        &root_cookie,
+        "GET",
+        "/api/runtime/models/users/list",
+    )
+    .await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/debug/execute")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "interface_id": list_users_interface_id,
+                        "mcp_arguments": {
+                            "page": 1,
+                            "page_size": 1
+                        },
+                        "input_mapping": {
+                            "mappings": [
+                                {
+                                    "interface_param": "page",
+                                    "mcp_param": "page",
+                                    "required": true
+                                },
+                                {
+                                    "interface_param": "page_size",
+                                    "mcp_param": "page_size",
+                                    "required": true
+                                }
+                            ]
+                        },
+                        "output_mapping": {
+                            "type": "object",
+                            "properties": {
+                                "items": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": { "type": "string" },
+                                            "email_login_enabled": { "type": "boolean" }
+                                        }
+                                    }
+                                },
+                                "total": { "type": "integer" }
+                            }
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let payload = response_json(response).await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    assert_eq!(payload["data"]["tool_result"]["total"], json!(1));
+    assert!(payload["data"]["tool_result"]["items"][0]["id"].is_string());
+    assert_eq!(
+        payload["data"]["tool_result"]["items"][0]["email_login_enabled"],
+        json!(true)
+    );
+    assert!(payload["data"]["tool_result"]["items"][0]["account"].is_null());
+    assert!(payload["data"]["tool_result"]["items"][0]["meta"].is_null());
+}
+
+#[tokio::test]
 async fn mcp_debug_execute_requires_csrf() {
     let app = test_app().await;
     let (root_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;

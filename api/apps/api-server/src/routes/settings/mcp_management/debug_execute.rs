@@ -303,11 +303,7 @@ fn filter_schema_object(schema: &Value, source: &Value) -> Value {
         let Some(field_source) = get_path_value(source, field) else {
             continue;
         };
-        let mapped_value = if field_schema.get("properties").is_some() {
-            filter_schema_object(field_schema, field_source)
-        } else {
-            field_source.clone()
-        };
+        let mapped_value = filter_schema_value(field_schema, field_source);
         set_path_value(&mut mapped, field, mapped_value);
     }
 
@@ -316,6 +312,23 @@ fn filter_schema_object(schema: &Value, source: &Value) -> Value {
     } else {
         Value::Object(mapped)
     }
+}
+
+fn filter_schema_value(schema: &Value, source: &Value) -> Value {
+    if let (Some(item_schema), Some(items)) = (schema.get("items"), source.as_array()) {
+        return Value::Array(
+            items
+                .iter()
+                .map(|item| filter_schema_value(item_schema, item))
+                .collect(),
+        );
+    }
+
+    if schema.get("properties").is_some() {
+        return filter_schema_object(schema, source);
+    }
+
+    source.clone()
 }
 
 impl TargetArguments {
