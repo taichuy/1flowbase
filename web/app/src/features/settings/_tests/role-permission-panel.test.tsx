@@ -488,4 +488,41 @@ describe('RolePermissionPanel', () => {
 
     expect(await screen.findByText('Audit custom resource')).toBeInTheDocument();
   }, 20000);
+
+  test('groups settings route visibility permissions under 路由页面 with a friendly resource label', async () => {
+    permissionsApi.fetchSettingsPermissions.mockResolvedValue([
+      {
+        code: 'route_page.view.all',
+        resource: 'route_page',
+        action: 'view',
+        scope: 'all',
+        name: '查看路由页面'
+      },
+      {
+        code: 'settings_route.visible.settings.docs',
+        resource: 'settings_route',
+        action: 'visible',
+        scope: 'settings.docs',
+        name: '可见 API 文档'
+      },
+      {
+        code: 'settings_route.visible.settings.roles',
+        resource: 'settings_route',
+        action: 'visible',
+        scope: 'settings.roles',
+        name: '可见权限管理'
+      }
+    ]);
+    rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
+      role_code: 'manager',
+      permission_codes: ['settings_route.visible.settings.roles']
+    });
+
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole('tab', { name: '路由页面' }));
+
+    expect(screen.getByText('设置页面')).toBeInTheDocument();
+    expect(screen.queryByText('settings_route')).not.toBeInTheDocument();
+  }, 20000);
 });

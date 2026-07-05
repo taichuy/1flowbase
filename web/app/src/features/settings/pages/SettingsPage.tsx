@@ -6,6 +6,7 @@ import { Alert, Result } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../state/auth-store';
+import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
 import {
   fetchSettingsConsoleNavigation,
   settingsConsoleNavigationQueryKey
@@ -126,6 +127,18 @@ export function SettingsPage({
 
   if (redirectSection) {
     return <Navigate to={redirectSection.to} replace />;
+  }
+
+  if (requestedSectionKey && !activeSection) {
+    return (
+      <SettingsRouteShell
+        visibleSections={visibleSections}
+        activeSectionKey=""
+        emptyState={<PermissionDeniedState />}
+      >
+        {null}
+      </SettingsRouteShell>
+    );
   }
 
   return (

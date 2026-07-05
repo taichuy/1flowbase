@@ -1,4 +1,7 @@
-use crate::_tests::support::{login_and_capture_cookie, test_app};
+use crate::_tests::support::{
+    create_member, create_role, login_and_capture_cookie, replace_member_roles,
+    replace_role_permissions, test_app,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -568,4 +571,106 @@ async fn root_can_login_create_member_create_role_and_bind_permissions() {
         .unwrap();
 
     assert_eq!(permissions_response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn settings_roles_route_permission_grants_roles_api_without_legacy_role_permission() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let member_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "settings-route-role-member",
+        "temp-pass",
+    )
+    .await;
+    create_role(&app, &root_cookie, &root_csrf, "settings_route_roles_only").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "settings_route_roles_only",
+        &["settings_route.visible.settings.roles"],
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["settings_route_roles_only"],
+    )
+    .await;
+    let (member_cookie, _) =
+        login_and_capture_cookie(&app, "settings-route-role-member", "temp-pass").await;
+
+    let roles_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/roles")
+                .header("cookie", &member_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(roles_response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn legacy_role_permission_without_settings_route_permission_is_forbidden_on_roles_api() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let member_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "legacy-role-permission-member",
+        "temp-pass",
+    )
+    .await;
+    create_role(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "legacy_role_permission_only",
+    )
+    .await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "legacy_role_permission_only",
+        &["role_permission.view.all"],
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["legacy_role_permission_only"],
+    )
+    .await;
+    let (member_cookie, _) =
+        login_and_capture_cookie(&app, "legacy-role-permission-member", "temp-pass").await;
+
+    let roles_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/roles")
+                .header("cookie", &member_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(roles_response.status(), StatusCode::FORBIDDEN);
 }

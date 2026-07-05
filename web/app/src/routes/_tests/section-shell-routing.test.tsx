@@ -337,7 +337,7 @@ describe('section shell routing', () => {
       );
       authenticateWithPermissions([
         'route_page.view.all',
-        'role_permission.view.all'
+        'settings_route.visible.settings.roles'
       ]);
 
       renderApp('/settings/docs');
@@ -360,7 +360,7 @@ describe('section shell routing', () => {
       );
       authenticateWithPermissions([
         'route_page.view.all',
-        'state_model.view.all'
+        'settings_route.visible.settings.data-models'
       ]);
 
       renderApp('/settings/docs');
@@ -383,7 +383,7 @@ describe('section shell routing', () => {
       );
       authenticateWithPermissions([
         'route_page.view.all',
-        'file_table.view.own'
+        'settings_route.visible.settings.files'
       ]);
 
       renderApp('/settings/docs');
@@ -394,6 +394,24 @@ describe('section shell routing', () => {
         );
       }, SECTION_REDIRECT_WAIT_OPTIONS);
       expect(screen.getByTestId('section-page-layout')).toBeInTheDocument();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'denies a direct settings section URL when backend navigation exposes no visible settings sections',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue({
+        route_definitions: [],
+        navigation_items: [],
+        permission_bindings: []
+      });
+      authenticateWithPermissions(['route_page.view.all']);
+
+      renderApp('/settings/docs');
+
+      expect(await screen.findByText('无权限访问')).toBeInTheDocument();
+      expect(docsApi.fetchSettingsApiDocsCatalog).not.toHaveBeenCalled();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );

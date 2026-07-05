@@ -26,6 +26,18 @@ fn permission_catalog_seeds_api_reference_view_all() {
 }
 
 #[test]
+fn permission_catalog_seeds_settings_route_visibility_codes() {
+    let codes = permission_catalog()
+        .into_iter()
+        .map(|permission| permission.code)
+        .collect::<Vec<_>>();
+
+    assert!(codes.contains(&"settings_route.visible.settings.api-key-authentication".to_string()));
+    assert!(codes.contains(&"settings_route.visible.settings.roles".to_string()));
+    assert!(codes.contains(&"settings_route.visible.settings.members".to_string()));
+}
+
+#[test]
 fn builtin_roles_lock_root_but_keep_admin_and_manager_editable() {
     let templates = builtin_role_templates();
 
@@ -52,4 +64,20 @@ fn manager_role_includes_frontstage_design_permission_by_default() {
     assert!(manager
         .permissions
         .contains(&"frontstage.page.design".to_string()));
+}
+
+#[test]
+fn manager_role_keeps_api_key_authentication_settings_route_permission_by_default() {
+    let templates = builtin_role_templates();
+    let manager = templates
+        .iter()
+        .find(|role| role.code == "manager")
+        .unwrap();
+
+    assert!(manager
+        .permissions
+        .contains(&"settings_route.visible.settings.api-key-authentication".to_string()));
+    assert!(!manager
+        .permissions
+        .contains(&"settings_route.visible.settings.roles".to_string()));
 }
