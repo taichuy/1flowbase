@@ -154,6 +154,21 @@ issue gate 前先写一段可给用户核对的 `需求复述`。如果无法基
 - 如果用户提出的方向会破坏边界、掩盖根因、扩散复杂度或引入明显维护成本，必须指出风险，不得盲目顺从。
 - 设计结论必须进入 issue 草案或 implementation handoff。用户确认 issue / handoff 后，允许直接进入实现并完成交付；实现阶段不得扩大已确认设计边界。
 
+## Delivery Shape And Acceptance Points
+
+issue gate 前必须判断任务形态，并把结论写入 issue / handoff：
+
+- `greenfield`: 新能力或新子系统从零建立；验收可包含基础可运行性、最小文档、初始化路径和首轮回归。
+- `existing-codebase`: 既有代码库增量变更；默认只把本次引入的问题作为 blocker，既有债务进入 warning / 后续 issue，除非用户明确把旧债纳入范围。
+- `hybrid-foundation`: 在既有系统内新增基础层或承载后续功能的 foundation；先验收 foundation 是否形成稳定入口，再把后续功能作为增量点处理。
+
+需要落地开发时，issue gate 必须把成功标准拆成稳定验收点账本：
+
+- 使用 `AC-001`、`AC-002` 这类稳定编号；后续轮次引用旧点时只规划 delta，并把旧点写成回归断言。
+- 每个验收点写清可观察结果、证据来源和结算阶段：本地开发、QA、CI / beta 或用户验收。
+- 验收点是判断交付是否满足需求的 rubric；机械质量门禁只证明构建、测试、contract 或 hygiene，不替代验收点结算。
+- 不把分数阈值、自动返工或自动关闭 issue 写入流程，除非用户明确批准。
+
 ## Correction Rule
 
 用户方向与当前证据、代码边界或客观工程约束冲突时，必须明确纠正，不把风险包装成可选建议。证据不足时先标为假设或补调查，不用抽象原则压过代码事实。
@@ -204,7 +219,7 @@ issue gate 前先写一段可给用户核对的 `需求复述`。如果无法基
 9. 拆分概念：在命名 API、service、enum、目录或 migration 前，先识别被混用的概念。
 10. 建立矩阵：任务涉及 defaults、contract、schema、state、permissions、migration、history 或 user content 时，使用 `references/domain-matrix.md`。
 11. 输出方案：存在多个有效方向，或任务涉及数据 / contract / 架构风险时，必须使用保守 / conservative、平衡 / balanced、激进 / aggressive 三方向；用户批准前不要压缩成单一最佳答案。
-12. 管理 issue：需要落地开发时，先按 Standalone Complete Issue 打标签、明确阶段、验收证据、执行边界和关闭条件；已批准 issue 树再按 L0/L1/L2/L3 管直接 parent 和 child。用户未确认 issue 前停止。
+12. 管理 issue：需要落地开发时，先按 Standalone Complete Issue 打标签、明确阶段、任务形态、验收点账本、执行边界和关闭条件；已批准 issue 树再按 L0/L1/L2/L3 管直接 parent 和 child。用户未确认 issue 前停止。
 13. 反方评审：向用户请求批准前，先 red-team 推荐方案，使用 `references/options-and-red-team.md`。
 14. 停在决策产物：使用 `references/artifacts.md` 输出 brief、issue、ADR 或 implementation handoff。
 
@@ -239,7 +254,7 @@ issue gate 前先写一段可给用户核对的 `需求复述`。如果无法基
 
 ## Handoff Rules
 
-用户批准方案后，先完成 issue gate：默认输出或更新 Standalone Complete Issue，包含目标、非目标、事实证据、方案结论、范围、验收证据、执行边界、预算、停止 / 升级条件和标签；涉及后端 API / 状态入口时写入已确认的接口验收预期；等待用户确认 issue 内容。
+用户批准方案后，先完成 issue gate：默认输出或更新 Standalone Complete Issue，包含目标、非目标、事实证据、方案结论、任务形态、范围、验收点账本、执行边界、预算、停止 / 升级条件和标签；涉及后端 API / 状态入口时写入已确认的接口验收预期；等待用户确认 issue 内容。
 
 只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才提出 issue 树升级理由和 L0/L1/L2/L3 草案，并等待用户批准。已批准 issue 树进入实现前，必须有已确认的执行 issue。
 

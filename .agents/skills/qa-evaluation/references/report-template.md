@@ -25,6 +25,12 @@
 - 未覆盖项：
 - 本轮轮转深挖域：
 
+## Acceptance Point Settlement
+
+| 编号 | 结论 | 证据 | 残余风险 |
+| --- | --- | --- | --- |
+| AC-001 | green / red / 未验证 |  |  |
+
 ## Evidence Classification
 
 - 自动化门禁 / CI / artifact：
@@ -40,6 +46,13 @@
 - 是否存在 `High` 问题：
 - 当前是否建议继续推进：
 - 当前最主要的风险：
+
+## Context Capsule
+
+- Built:
+- Lives in:
+- Decisions / gotchas:
+- Extend from:
 
 ## Findings
 

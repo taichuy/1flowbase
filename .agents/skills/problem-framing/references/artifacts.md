@@ -61,9 +61,18 @@
 
 ## 不采用方案
 
+## 任务形态
+- 类型：greenfield | existing-codebase | hybrid-foundation
+- 旧债策略：本次引入问题 blocker | 既有债务 warning / 后续 issue | 本次明确纳入范围
+
 ## 范围边界
 - 范围内：
 - 范围外：
+
+## 验收点账本
+| 编号 | 类型 | 验收点 | 证据 | 结算阶段 |
+| --- | --- | --- | --- | --- |
+| AC-001 | 新需求 / 回归断言 |  |  | 本地 / QA / CI-beta / 用户验收 |
 
 ## 验收证据
 - 用户可见结果：
@@ -98,6 +107,7 @@ Rules:
 - L0 记录事实、冲突和总清单；L1 记录用户批准的决策；L2 记录工作流和依赖顺序；L3 记录单一执行任务。
 - Standalone 和 L3 issue 必须填写 `执行边界`；L2 issue 不得直接当实现任务使用。
 - issue 标题必须使用 `[状态]标题`，并和 `phase:*` 标签同步。
+- `验收点账本` 是需求结算口径；机械质量门禁只能作为证据，不能替代 AC 点本身。
 
 ## ADR Draft
 
@@ -137,11 +147,20 @@ Proposed
 
 ## Constraints
 
+## Acceptance Points
+- AC-001:
+
 ## Files / Areas To Inspect First
 
 ## Tests To Add First
 
 ## Verification Evidence
+
+## Context Capsule To Return
+- Built:
+- Lives in:
+- Decisions / gotchas:
+- Extend from:
 
 ## Stop / Escalate If
 ```
@@ -151,4 +170,5 @@ Rules:
 - 除非用户明确要求，handoff 不是完整 implementation plan；完整开发计划必须回到 Standalone Complete Issue 或已批准 issue 树。
 - Handoff 只能从已确认 Standalone Complete Issue，或已批准 L1、已收敛 L2 和明确 L3 生成。
 - 每个实现任务都必须能追溯到已批准范围或验收证据。
+- context capsule 只写位置、决策、风险和扩展入口等压缩指针；不要复制代码或重述完整 diff，代码仓库仍是真值来源。
 - 实现中发现新决策时，回到 `problem-framing`。
