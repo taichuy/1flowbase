@@ -1062,26 +1062,23 @@ function McpToolsTab({
         title: i18nText('settings', 'auto.tool_name'),
         dataIndex: 'name',
         width: 220,
-        render: (_, record) => (
-          <Space direction="vertical" size={0}>
-            <Typography.Text strong>{record.name}</Typography.Text>
-            <Typography.Text type="secondary">{record.tool_id}</Typography.Text>
-          </Space>
-        )
-      },
-      {
-        key: 'method',
-        title: 'method',
-        dataIndex: 'method',
-        width: 120,
         ellipsis: true
       },
       {
-        key: 'path',
-        title: 'path',
-        dataIndex: 'path',
-        width: 280,
+        key: 'tool_id',
+        title: 'tool_id',
+        dataIndex: 'tool_id',
+        width: 180,
         ellipsis: true
+      },
+      {
+        key: 'operation',
+        title: 'operation',
+        dataIndex: 'operation',
+        width: 240,
+        ellipsis: true,
+        render: (_, record) =>
+          record.operation?.trim() ? record.operation : record.interface_id
       },
       {
         key: 'interface_id',
