@@ -1070,13 +1070,18 @@ function McpToolsTab({
         )
       },
       {
-        key: 'operation',
-        title: 'operation',
-        dataIndex: 'operation',
-        width: 240,
-        ellipsis: true,
-        render: (_, record) =>
-          record.operation?.trim() ? record.operation : record.interface_id
+        key: 'method',
+        title: 'method',
+        dataIndex: 'method',
+        width: 120,
+        ellipsis: true
+      },
+      {
+        key: 'path',
+        title: 'path',
+        dataIndex: 'path',
+        width: 280,
+        ellipsis: true
       },
       {
         key: 'interface_id',
@@ -1353,7 +1358,7 @@ function McpToolsTab({
   );
   const configuration = useUserPreferenceDataTableConfiguration<ConsoleMcpTool>(
     {
-      preferenceKey: 'settings.mcp-management.tools.v2',
+      preferenceKey: 'settings.mcp-management.tools.v3',
       columns: tableColumns
     }
   );

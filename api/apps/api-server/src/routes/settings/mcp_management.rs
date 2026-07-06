@@ -72,6 +72,8 @@ pub struct McpToolResponse {
     pub full_description: String,
     pub interface_id: String,
     pub operation: String,
+    pub method: String,
+    pub path: String,
     #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,
     #[schema(value_type = Object)]
@@ -587,7 +589,7 @@ pub async fn create_mcp_tool(
     require_csrf(&headers, &context)?;
     let interface_entry =
         bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
-    let operation = interface_operation(&interface_entry);
+    let operation_fields = interface_operation_fields(&interface_entry);
     let record = McpManagementService::new(state.store.clone())
         .create_tool(to_create_tool_command(
             context.user.id,
@@ -598,7 +600,8 @@ pub async fn create_mcp_tool(
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_tool_response_with_operation(
-            record, operation,
+            record,
+            operation_fields,
         ))),
     ))
 }
@@ -628,7 +631,7 @@ pub async fn update_mcp_tool(
     require_csrf(&headers, &context)?;
     let interface_entry =
         bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
-    let operation = interface_operation(&interface_entry);
+    let operation_fields = interface_operation_fields(&interface_entry);
     let record = McpManagementService::new(state.store.clone())
         .update_tool(to_update_tool_command(
             context.user.id,
@@ -638,7 +641,8 @@ pub async fn update_mcp_tool(
         )?)
         .await?;
     Ok(Json(ApiSuccess::new(to_tool_response_with_operation(
-        record, operation,
+        record,
+        operation_fields,
     ))))
 }
 
@@ -936,22 +940,33 @@ async fn bindable_mcp_interface(
     Ok(entry)
 }
 
+#[derive(Clone)]
+struct McpToolOperationFields {
+    operation: String,
+    method: String,
+    path: String,
+}
+
 async fn mcp_interface_operation_map(
     state: &ApiState,
     actor_user_id: Uuid,
-) -> Result<HashMap<String, String>, ApiError> {
+) -> Result<HashMap<String, McpToolOperationFields>, ApiError> {
     Ok(mcp_interface_catalog_entries(state, actor_user_id)
         .await?
         .into_iter()
         .map(|entry| {
-            let operation = interface_operation(&entry);
-            (entry.interface_id, operation)
+            let operation_fields = interface_operation_fields(&entry);
+            (entry.interface_id, operation_fields)
         })
         .collect())
 }
 
-fn interface_operation(entry: &domain::McpInterfaceCatalogEntry) -> String {
-    format!("{} {}", entry.method, entry.path)
+fn interface_operation_fields(entry: &domain::McpInterfaceCatalogEntry) -> McpToolOperationFields {
+    McpToolOperationFields {
+        operation: format!("{} {}", entry.method, entry.path),
+        method: entry.method.clone(),
+        path: entry.path.clone(),
+    }
 }
 
 fn mcp_interface_entry_from_operation(
@@ -1692,7 +1707,7 @@ fn to_update_tool_command(
 
 fn to_catalog_response(
     snapshot: domain::McpCatalogSnapshot,
-    operations: &HashMap<String, String>,
+    operations: &HashMap<String, McpToolOperationFields>,
 ) -> McpCatalogResponse {
     McpCatalogResponse {
         instances: snapshot
@@ -1717,7 +1732,7 @@ fn to_catalog_response(
 
 fn to_export_response(
     export: domain::McpExportPackage,
-    operations: &HashMap<String, String>,
+    operations: &HashMap<String, McpToolOperationFields>,
 ) -> McpExportPackageResponse {
     McpExportPackageResponse {
         instances: export
@@ -1789,19 +1804,23 @@ fn to_group_response(record: domain::McpGroupRecord) -> McpGroupResponse {
 
 fn to_tool_response(
     record: domain::McpToolRecord,
-    operations: &HashMap<String, String>,
+    operations: &HashMap<String, McpToolOperationFields>,
 ) -> McpToolResponse {
-    let operation = operations
+    let operation_fields = operations
         .get(&record.interface_id)
         .cloned()
-        .unwrap_or_else(|| record.interface_id.clone());
+        .unwrap_or_else(|| McpToolOperationFields {
+            operation: record.interface_id.clone(),
+            method: String::new(),
+            path: record.interface_id.clone(),
+        });
 
-    to_tool_response_with_operation(record, operation)
+    to_tool_response_with_operation(record, operation_fields)
 }
 
 fn to_tool_response_with_operation(
     record: domain::McpToolRecord,
-    operation: String,
+    operation_fields: McpToolOperationFields,
 ) -> McpToolResponse {
     McpToolResponse {
         id: record.id.to_string(),
@@ -1811,7 +1830,9 @@ fn to_tool_response_with_operation(
         short_description: record.short_description,
         full_description: record.full_description,
         interface_id: record.interface_id,
-        operation,
+        operation: operation_fields.operation,
+        method: operation_fields.method,
+        path: operation_fields.path,
         parameter_schema: record.parameter_schema,
         result_schema: record.result_schema,
         input_mapping: record.input_mapping,

@@ -261,9 +261,13 @@ function renderPanel(
 }
 
 function renderPanelWithMountedTool({
-  operation = 'POST /api/console/apps'
+  operation = 'POST /api/console/apps',
+  method = 'POST',
+  path = '/api/console/apps'
 }: {
   operation?: string;
+  method?: string;
+  path?: string;
 } = {}) {
   return render(
     <AppProviders>
@@ -296,6 +300,8 @@ function renderPanelWithMountedTool({
               full_description: 'Search customer',
               interface_id: 'create_app',
               operation,
+              method,
+              path,
               parameter_schema: {},
               result_schema: {},
               input_mapping: {},
@@ -413,11 +419,14 @@ describe('McpManagementPanel', () => {
       .not
       .toBeInTheDocument();
     expect(within(toolsPanel).queryByText('/ops/customer')).not.toBeInTheDocument();
-    expect(within(toolsPanel).getByRole('columnheader', { name: 'operation' }))
+    expect(within(toolsPanel).getByRole('columnheader', { name: 'method' }))
+      .toBeInTheDocument();
+    expect(within(toolsPanel).getByRole('columnheader', { name: 'path' }))
       .toBeInTheDocument();
     expect(within(toolsPanel).getByRole('columnheader', { name: 'interface_id' }))
       .toBeInTheDocument();
-    expect(within(toolsPanel).getByText('POST /api/console/apps')).toBeInTheDocument();
+    expect(within(toolsPanel).getByText('POST')).toBeInTheDocument();
+    expect(within(toolsPanel).getByText('/api/console/apps')).toBeInTheDocument();
     expect(within(toolsPanel).getByText('create_app')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
@@ -430,14 +439,23 @@ describe('McpManagementPanel', () => {
       .toBeGreaterThan(0);
   });
 
-  test('falls back to interface id when a stale tool response misses operation', () => {
-    renderPanelWithMountedTool({ operation: '' });
+  test('renders method and path as separate backend fields', () => {
+    renderPanelWithMountedTool({
+      operation: 'PATCH /api/runtime/models/users/update/{id}',
+      method: 'PATCH',
+      path: '/api/runtime/models/users/update/{id}'
+    });
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
 
-    expect(within(toolsPanel).getAllByText('create_app').length)
-      .toBeGreaterThan(0);
+    expect(within(toolsPanel).getByText('PATCH')).toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByText('/api/runtime/models/users/update/{id}')
+    ).toBeInTheDocument();
+    expect(
+      within(toolsPanel).queryByText('PATCH /api/runtime/models/users/update/{id}')
+    ).not.toBeInTheDocument();
   });
 
   test('shows step navigation actions only when the adjacent step exists', async () => {

@@ -319,6 +319,11 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
         create_tool_payload["data"]["operation"].as_str(),
         Some("POST /api/runtime/models/mcp_tool_orders/create")
     );
+    assert_eq!(create_tool_payload["data"]["method"].as_str(), Some("POST"));
+    assert_eq!(
+        create_tool_payload["data"]["path"].as_str(),
+        Some("/api/runtime/models/mcp_tool_orders/create")
+    );
     assert!(create_tool_payload["data"]
         .get("usage_description")
         .is_none());
@@ -364,6 +369,14 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
         update_tool_payload["data"]["operation"].as_str(),
         Some("PATCH /api/runtime/models/mcp_tool_orders/update/{id}")
     );
+    assert_eq!(
+        update_tool_payload["data"]["method"].as_str(),
+        Some("PATCH")
+    );
+    assert_eq!(
+        update_tool_payload["data"]["path"].as_str(),
+        Some("/api/runtime/models/mcp_tool_orders/update/{id}")
+    );
     assert!(update_tool_payload["data"]
         .get("usage_description")
         .is_none());
@@ -392,6 +405,11 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
     assert_eq!(
         catalog_tool["operation"].as_str(),
         Some("PATCH /api/runtime/models/mcp_tool_orders/update/{id}")
+    );
+    assert_eq!(catalog_tool["method"].as_str(), Some("PATCH"));
+    assert_eq!(
+        catalog_tool["path"].as_str(),
+        Some("/api/runtime/models/mcp_tool_orders/update/{id}")
     );
 }
 
