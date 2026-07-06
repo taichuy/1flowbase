@@ -112,8 +112,8 @@ const BUILTIN_CONSOLE_ROUTES: &[ConsoleRouteSpec] = &[
         navigation_slot: ConsoleNavigationSlot::Primary,
         parent_item_id: None,
         order: 100,
-        permission_codes: &["route_page.view.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
+        permission_codes: &[],
+        requirement: ConsolePermissionRequirement::Authenticated,
     },
     ConsoleRouteSpec {
         route_id: "frontstage",
@@ -145,8 +145,8 @@ const BUILTIN_CONSOLE_ROUTES: &[ConsoleRouteSpec] = &[
         navigation_slot: ConsoleNavigationSlot::Primary,
         parent_item_id: None,
         order: 400,
-        permission_codes: &["route_page.view.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
+        permission_codes: &[],
+        requirement: ConsolePermissionRequirement::Authenticated,
     },
     ConsoleRouteSpec {
         route_id: "settings",

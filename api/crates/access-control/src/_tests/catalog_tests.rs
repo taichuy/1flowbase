@@ -12,7 +12,7 @@ fn permission_catalog_seeds_expected_codes() {
     assert!(codes.contains(&"user.manage.all".to_string()));
     assert!(codes.contains(&"workspace.configure.all".to_string()));
     assert!(!codes.iter().any(|code| code.starts_with("team.")));
-    assert!(codes.contains(&"route_page.view.all".to_string()));
+    assert!(!codes.iter().any(|code| code.starts_with("route_page.")));
 }
 
 #[test]

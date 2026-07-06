@@ -431,7 +431,7 @@ describe('FrontStagePage - design controls', () => {
   });
 
   test('shows page context and design mode is unavailable without permission', () => {
-    authenticate(['route_page.view.all']);
+    authenticate([]);
     renderPage('page-1');
 
     expect(screen.getAllByText('页面 page-1').length).toBeGreaterThan(0);

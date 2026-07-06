@@ -153,6 +153,9 @@ async fn migration_smoke_creates_workspace_tables_and_workspace_scoped_indexes()
     assert!(role_columns.contains(&"is_default_member_role".to_string()));
     assert!(audit_log_columns.contains(&"workspace_id".to_string()));
     assert!(permission_codes.contains(&"workspace.configure.all".to_string()));
+    assert!(!permission_codes
+        .iter()
+        .any(|code| code.starts_with("route_page.")));
     assert_eq!(root_tenant_code.as_deref(), Some("root-tenant"));
 }
 

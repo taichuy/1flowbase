@@ -42,7 +42,7 @@ function authenticate() {
       introduction: '',
       preferred_locale: 'zh_Hans',
       effective_display_role: 'root',
-      permissions: ['route_page.view.all'],
+      permissions: [],
       meta: {
         ui: {
           locale: {

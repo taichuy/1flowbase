@@ -39,7 +39,7 @@ async fn role_service_rejects_root_mutation_and_replaces_permissions_for_team_ro
         .replace_permissions(ReplaceRolePermissionsCommand {
             actor_user_id: repository.root_user_id(),
             role_code: "qa".into(),
-            permission_codes: vec!["route_page.view.all".into(), "application.edit.own".into()],
+            permission_codes: vec!["application.view.own".into(), "application.edit.own".into()],
         })
         .await
         .unwrap();

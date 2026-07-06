@@ -71,7 +71,7 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'developer',
-      permissions: ['route_page.view.all']
+      permissions: []
     }
   });
 }

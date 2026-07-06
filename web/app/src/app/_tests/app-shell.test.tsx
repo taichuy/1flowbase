@@ -7,6 +7,83 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@1flowbase/api-client', () => ({
   getDefaultApiBaseUrl: vi.fn().mockReturnValue('http://127.0.0.1:7800'),
+  getConsoleNavigation: vi.fn().mockResolvedValue({
+    route_definitions: [
+      {
+        route_id: 'home',
+        surface_key: 'home',
+        path: '/',
+        surface_kind: 'system'
+      },
+      {
+        route_id: 'frontstage',
+        surface_key: 'frontstage',
+        path: '/frontstage',
+        surface_kind: 'system'
+      },
+      {
+        route_id: 'embedded-apps',
+        surface_key: 'embedded-apps',
+        path: '/embedded-apps',
+        surface_kind: 'system'
+      },
+      {
+        route_id: 'templates',
+        surface_key: 'templates',
+        path: '/templates',
+        surface_kind: 'system'
+      },
+      {
+        route_id: 'settings.api-key-authentication',
+        surface_key: 'api-key-authentication',
+        path: '/settings/api-key-authentication',
+        surface_kind: 'system'
+      }
+    ],
+    navigation_items: [
+      {
+        item_id: 'home',
+        route_id: 'home',
+        parent_item_id: null,
+        label_key: 'auto.workbench',
+        navigation_slot: 'primary',
+        order: 1
+      },
+      {
+        item_id: 'frontstage',
+        route_id: 'frontstage',
+        parent_item_id: null,
+        label_key: 'auto.frontstage',
+        navigation_slot: 'primary',
+        order: 2
+      },
+      {
+        item_id: 'embedded-apps',
+        route_id: 'embedded-apps',
+        parent_item_id: null,
+        label_key: 'auto.subsystem',
+        navigation_slot: 'primary',
+        order: 3
+      },
+      {
+        item_id: 'templates',
+        route_id: 'templates',
+        parent_item_id: null,
+        label_key: 'auto.templates',
+        navigation_slot: 'primary',
+        order: 4
+      },
+      {
+        item_id: 'settings.api-key-authentication',
+        route_id: 'settings.api-key-authentication',
+        parent_item_id: 'settings',
+        label_key: 'auto.api_key_authentication',
+        navigation_slot: 'settings',
+        order: 1
+      }
+    ],
+    permission_bindings: []
+  }),
   getConsoleApplicationCatalog: vi.fn().mockResolvedValue({
     types: [{ value: 'agent_flow', label: 'AgentFlow' }],
     tags: []
@@ -59,7 +136,7 @@ describe('App shell', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'manager',
-        permissions: ['route_page.view.all', 'embedded_app.view.all']
+        permissions: ['embedded_app.view.all']
       }
     });
   });
@@ -77,7 +154,7 @@ describe('App shell', () => {
       expect(header).not.toHaveStyle('--app-shell-edge-gap: 5%');
       expect(within(primaryNavigation).getByRole('menu')).toBeInTheDocument();
       expect(
-        within(primaryNavigation).getByRole('link', { name: '工作台' })
+        await within(primaryNavigation).findByRole('link', { name: '工作台' })
       ).toBeInTheDocument();
       expect(
         within(primaryNavigation).getByRole('link', { name: '子系统' })

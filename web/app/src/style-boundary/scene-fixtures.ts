@@ -363,7 +363,6 @@ export function seedStyleBoundaryAuth() {
       introduction: 'Boundary user',
       effective_display_role: 'root',
       permissions: [
-        'route_page.view.all',
         'application.view.all',
         'application.edit.own',
         'application.create.all',

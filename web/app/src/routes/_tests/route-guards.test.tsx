@@ -82,7 +82,7 @@ describe('RouteGuard', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'manager',
-        permissions: ['route_page.view.all']
+        permissions: []
       }
     });
 

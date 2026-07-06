@@ -87,10 +87,16 @@ const authApi = vi.hoisted(() => ({
   getScalarApiBaseUrl: vi.fn(() => 'http://127.0.0.1:3100')
 }));
 
+const consoleNavigationApi = vi.hoisted(() => ({
+  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+  fetchSettingsConsoleNavigation: vi.fn()
+}));
+
 vi.mock('../api/api-docs', () => docsApi);
 vi.mock('../api/model-providers', () => modelProvidersApi);
 vi.mock('../api/plugins', () => pluginsApi);
 vi.mock('../api/file-management', () => fileManagementApi);
+vi.mock('../api/console-navigation', () => consoleNavigationApi);
 vi.mock('../../auth/api/session', () => authApi);
 vi.mock('@scalar/api-reference-react', () => ({
   ApiReferenceReact: () => <div data-testid="settings-page-scalar">Scalar</div>
@@ -100,6 +106,47 @@ import { AppProviders } from '../../../app/AppProviders';
 import { AppRouterProvider } from '../../../app/router';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { SettingsSectionSurface } from '../components/SettingsSectionSurface';
+
+const settingsRouteRecords = {
+  docs: {
+    path: '/settings/docs',
+    label_key: 'auto.api_documentation'
+  },
+  'model-providers': {
+    path: '/settings/model-providers',
+    label_key: 'auto.model_providers'
+  },
+  files: {
+    path: '/settings/files',
+    label_key: 'auto.file_management'
+  }
+} as const;
+
+function settingsConsoleNavigation(
+  sectionKeys: Array<keyof typeof settingsRouteRecords> = [
+    'docs',
+    'model-providers',
+    'files'
+  ]
+) {
+  return {
+    route_definitions: sectionKeys.map((sectionKey) => ({
+      route_id: `settings.${sectionKey}`,
+      surface_key: sectionKey,
+      path: settingsRouteRecords[sectionKey].path,
+      surface_kind: 'system' as const
+    })),
+    navigation_items: sectionKeys.map((sectionKey, index) => ({
+      item_id: `settings.${sectionKey}`,
+      route_id: `settings.${sectionKey}`,
+      parent_item_id: 'settings',
+      label_key: settingsRouteRecords[sectionKey].label_key,
+      navigation_slot: 'settings' as const,
+      order: index + 1
+    })),
+    permission_bindings: []
+  };
+}
 
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 
@@ -140,6 +187,10 @@ function renderApp(pathname: string) {
 describe('settings section surface', () => {
   beforeEach(() => {
     resetAuthStore();
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockReset();
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+      settingsConsoleNavigation()
+    );
     useBreakpointSpy.mockReturnValue({
       xs: true,
       sm: true,
@@ -248,20 +299,20 @@ describe('settings section surface', () => {
   test.each([
     {
       pathname: '/settings/docs',
-      permissions: ['route_page.view.all', 'api_reference.view.all'],
+      permissions: ['api_reference.view.all'],
       heading: null,
       level: null,
       visibleText: '暂无接口分类'
     },
     {
       pathname: '/settings/model-providers',
-      permissions: ['route_page.view.all', 'state_model.view.all'],
+      permissions: ['state_model.view.all'],
       heading: '模型供应商',
       level: 5
     },
     {
       pathname: '/settings/files',
-      permissions: ['route_page.view.all', 'file_table.view.own'],
+      permissions: ['file_table.view.own'],
       heading: null,
       level: null,
       visibleTab: '文件表'

@@ -39,14 +39,16 @@ describe('route truth layer', () => {
   });
 
   test('declares guard and permission metadata for formal console routes', () => {
-    expect(APP_ROUTES.find((route) => route.id === 'home')?.permissionKey).toBe(
-      'route_page.view.all'
-    );
+    expect(APP_ROUTES.find((route) => route.id === 'home')?.permissionKey).toBeNull();
     expect(APP_ROUTES.find((route) => route.id === 'frontstage')?.permissionKey).toBeNull();
     expect(APP_ROUTES.find((route) => route.id === 'frontstage')?.guard).toBe('session-required');
+    expect(
+      APP_ROUTES.find((route) => route.id === 'application-detail')?.permissionKey
+    ).toBeNull();
     expect(APP_ROUTES.find((route) => route.id === 'embedded-apps')?.permissionKey).toBe(
       'embedded_app.view.all'
     );
+    expect(APP_ROUTES.find((route) => route.id === 'templates')?.permissionKey).toBeNull();
     expect(APP_ROUTES.find((route) => route.id === 'settings')?.permissionKey).toBeNull();
     expect(APP_ROUTES.find((route) => route.id === 'sign-in')?.guard).toBe('public-only');
   });

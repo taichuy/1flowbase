@@ -99,7 +99,7 @@ describe('Navigation', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'developer',
-        permissions: ['route_page.view.all']
+        permissions: []
       }
     });
 
@@ -169,7 +169,6 @@ describe('Navigation', () => {
         introduction: '',
         effective_display_role: 'developer',
         permissions: [
-          'route_page.view.all',
           'embedded_app.view.all',
           'template.view.all'
         ]

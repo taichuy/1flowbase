@@ -183,7 +183,6 @@ function authenticateWithPermissions(
 
 function authenticateAsModelProviderManager() {
   authenticateWithPermissions([
-    'route_page.view.all',
     'state_model.view.all',
     'state_model.manage.all'
   ]);
@@ -659,7 +658,6 @@ describe('ModelProvidersPage - catalog and family version', () => {
 
   test('renders catalog and instance metadata for view-only users without manage actions', async () => {
     authenticateWithPermissions([
-      'route_page.view.all',
       'state_model.view.all'
     ]);
 

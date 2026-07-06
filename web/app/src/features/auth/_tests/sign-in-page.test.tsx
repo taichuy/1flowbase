@@ -72,7 +72,7 @@ describe('SignInPage', () => {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'manager',
-      permissions: ['route_page.view.all']
+      permissions: []
     });
 
     render(
@@ -155,7 +155,7 @@ describe('SignInPage', () => {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'manager',
-      permissions: ['route_page.view.all']
+      permissions: []
     });
 
     render(

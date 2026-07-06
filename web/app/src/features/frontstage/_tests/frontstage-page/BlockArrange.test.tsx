@@ -581,7 +581,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await act(async () => {
       resetAuthStore();
-      authenticate(['route_page.view.all']);
+      authenticate([]);
     });
     view.rerender(
       <AppProviders>
@@ -632,7 +632,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await act(async () => {
       resetAuthStore();
-      authenticate(['route_page.view.all']);
+      authenticate([]);
     });
     view.rerender(
       <AppProviders>
@@ -923,7 +923,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await act(async () => {
       resetAuthStore();
-      authenticate(['route_page.view.all']);
+      authenticate([]);
     });
     view.rerender(
       <AppProviders>

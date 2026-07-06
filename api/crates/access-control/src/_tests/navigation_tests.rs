@@ -62,22 +62,22 @@ fn settings_members_route_actor_sees_only_members_settings_entries() {
     let navigation = accessible_console_navigation(&actor);
 
     let item_ids = item_ids(&navigation);
+    assert!(item_ids.contains(&"home"));
     assert!(item_ids.contains(&"frontstage"));
+    assert!(item_ids.contains(&"templates"));
     assert!(item_ids.contains(&"settings"));
     assert!(item_ids.contains(&"settings.members"));
     assert!(!item_ids.contains(&"settings.docs"));
     assert!(!item_ids.contains(&"settings.roles"));
-    assert!(!item_ids.contains(&"templates"));
 
     let route_ids = route_ids(&navigation);
     assert!(!route_ids.contains(&"settings.docs"));
     assert!(!route_ids.contains(&"settings.roles"));
-    assert!(!route_ids.contains(&"templates"));
 }
 
 #[test]
-fn route_page_actor_sees_workbench_and_templates() {
-    let actor = scoped_actor(&["route_page.view.all"]);
+fn authenticated_actor_sees_workbench_and_templates_without_route_page_permission() {
+    let actor = scoped_actor(&[]);
 
     let navigation = accessible_console_navigation(&actor);
 

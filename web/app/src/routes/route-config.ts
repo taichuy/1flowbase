@@ -17,7 +17,7 @@ export const APP_ROUTES: AppRouteDefinition[] = [
     navLabelKey: "auto.workbench",
     chromeSlot: 'primary',
     selectedMatchers: [(pathname) => pathname === '/'],
-    permissionKey: 'route_page.view.all',
+    permissionKey: null,
     guard: 'session-required'
   },
   {
@@ -39,7 +39,7 @@ export const APP_ROUTES: AppRouteDefinition[] = [
     navLabelKey: null,
     chromeSlot: 'hidden',
     selectedMatchers: [(pathname) => /^\/applications\/[^/]+(\/|$)/.test(pathname)],
-    permissionKey: 'route_page.view.all',
+    permissionKey: null,
     guard: 'session-required'
   },
   {
@@ -59,7 +59,7 @@ export const APP_ROUTES: AppRouteDefinition[] = [
     selectedMatchers: [
       (pathname) => pathname === '/templates' || pathname.startsWith('/templates/')
     ],
-    permissionKey: 'route_page.view.all',
+    permissionKey: null,
     guard: 'session-required'
   },
   {

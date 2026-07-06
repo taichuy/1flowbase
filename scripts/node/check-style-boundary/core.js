@@ -17,7 +17,6 @@ const TEMPORARY_FRONTEND_STARTUP_TIMEOUT_MS = 30_000;
 const TEMPORARY_FRONTEND_POLL_INTERVAL_MS = 500;
 const TEMPORARY_FRONTEND_STOP_TIMEOUT_MS = 5_000;
 const STYLE_BOUNDARY_USER_PERMISSIONS = [
-  'route_page.view.all',
   'application.view.all',
   'application.edit.own',
   'application.create.all',

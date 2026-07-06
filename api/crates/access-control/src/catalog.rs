@@ -59,18 +59,6 @@ pub fn permission_catalog() -> Vec<PermissionDefinition> {
             ("use", &["own", "all"]),
         ],
     );
-    push_permissions(
-        &mut permissions,
-        "route_page",
-        &[
-            ("view", &["own", "all"]),
-            ("create", &["all"]),
-            ("edit", &["own", "all"]),
-            ("delete", &["own", "all"]),
-            ("publish", &["own", "all"]),
-            ("use", &["own", "all"]),
-        ],
-    );
     push_permissions(&mut permissions, "frontstage", &[("page", &["design"])]);
     push_permissions(&mut permissions, "ui_block", &[("javascript", &["native"])]);
     push_permissions(
@@ -180,7 +168,6 @@ pub fn builtin_role_templates() -> Vec<RoleTemplate> {
         "application",
         "flow",
         "publish_endpoint",
-        "route_page",
         "frontstage",
         "state_model",
         "state_data",

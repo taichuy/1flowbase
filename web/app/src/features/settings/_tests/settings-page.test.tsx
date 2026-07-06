@@ -756,7 +756,7 @@ describe('SettingsPage', () => {
   });
 
   test('uses backend settings registry order instead of permissions for /settings redirects', async () => {
-    authenticateWithPermissions(['route_page.view.all']);
+    authenticateWithPermissions([]);
     const view = renderApp('/settings');
 
     await waitFor(
@@ -776,7 +776,6 @@ describe('SettingsPage', () => {
       settingsConsoleNavigation(['data-models', 'members'])
     );
     authenticateWithPermissions([
-      'route_page.view.all',
       'api_reference.view.all',
       'user.view.all'
     ]);
@@ -796,7 +795,6 @@ describe('SettingsPage', () => {
       settingsConsoleNavigation(['data-models', 'members'])
     );
     authenticateWithPermissions([
-      'route_page.view.all',
       'api_reference.view.all',
       'user.view.all'
     ]);
@@ -817,7 +815,6 @@ describe('SettingsPage', () => {
       new Error('registry unavailable')
     );
     authenticateWithPermissions([
-      'route_page.view.all',
       'api_reference.view.all'
     ]);
 
@@ -837,7 +834,6 @@ describe('SettingsPage', () => {
       new Promise(() => undefined)
     );
     authenticateWithPermissions([
-      'route_page.view.all',
       'api_reference.view.all'
     ]);
 
@@ -849,7 +845,7 @@ describe('SettingsPage', () => {
   });
 
   test('renders /settings/members when user.view.all is present', async () => {
-    authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
+    authenticateWithPermissions(['user.view.all']);
 
     renderApp('/settings/members');
 
@@ -874,7 +870,6 @@ describe('SettingsPage', () => {
 
   test('renders auth center actions and opens configuration drawer', async () => {
     authenticateWithPermissions([
-      'route_page.view.all',
       'user.view.all',
       'user.manage.all'
     ]);
@@ -958,7 +953,6 @@ describe('SettingsPage', () => {
 
   test('initializes auth center config form from authenticator fields', async () => {
     authenticateWithPermissions([
-      'route_page.view.all',
       'user.view.all',
       'user.manage.all'
     ]);
@@ -1028,7 +1022,6 @@ describe('SettingsPage', () => {
 
   test('submits auth center config, refreshes the list, and closes the drawer', async () => {
     authenticateWithPermissions([
-      'route_page.view.all',
       'user.view.all',
       'user.manage.all'
     ]);
@@ -1138,7 +1131,6 @@ describe('SettingsPage', () => {
 
   test('shows auth center config errors in the drawer', async () => {
     authenticateWithPermissions([
-      'route_page.view.all',
       'user.view.all',
       'user.manage.all'
     ]);
@@ -1181,7 +1173,7 @@ describe('SettingsPage', () => {
   });
 
   test('shows auth center manage permission error in the drawer', async () => {
-    authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
+    authenticateWithPermissions(['user.view.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
@@ -1220,7 +1212,6 @@ describe('SettingsPage', () => {
 
   test('shows auth center csrf error in the drawer', async () => {
     authenticateWithPermissions([
-      'route_page.view.all',
       'user.view.all',
       'user.manage.all'
     ]);
@@ -1262,7 +1253,7 @@ describe('SettingsPage', () => {
   });
 
   test('opens auth center configuration drawer when extension config fields are absent', async () => {
-    authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
+    authenticateWithPermissions(['user.view.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
@@ -1317,7 +1308,7 @@ describe('SettingsPage', () => {
 
   test('allows root safe member edits while keeping destructive actions locked', async () => {
     authenticateWithPermissions(
-      ['route_page.view.all', 'user.view.all', 'user.manage.all'],
+      ['user.view.all', 'user.manage.all'],
       'root'
     );
     rolesApi.fetchSettingsRoles.mockResolvedValue([
@@ -1497,7 +1488,7 @@ describe('SettingsPage', () => {
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
       settingsConsoleNavigation(['api-key-authentication'])
     );
-    authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
+    authenticateWithPermissions(['user.view.all']);
 
     renderApp('/settings/docs');
 
@@ -1514,7 +1505,6 @@ describe('SettingsPage', () => {
 
   test('shows 数据源 when state_model.view.all is present', async () => {
     authenticateWithPermissions([
-      'route_page.view.all',
       'state_model.view.all'
     ]);
 
@@ -1535,7 +1525,6 @@ describe('SettingsPage', () => {
 
   test('shows 系统运行 when system_runtime.view.all is present', async () => {
     authenticateWithPermissions([
-      'route_page.view.all',
       'system_runtime.view.all'
     ]);
 
@@ -1556,7 +1545,6 @@ describe('SettingsPage', () => {
 
   test('shows 基础设施 and 内存观察 when plugin_config.view.all is present', async () => {
     authenticateWithPermissions([
-      'route_page.view.all',
       'plugin_config.view.all'
     ]);
 
@@ -1580,7 +1568,6 @@ describe('SettingsPage', () => {
 
   test('renders memory observation as a settings section route', async () => {
     authenticateWithPermissions([
-      'route_page.view.all',
       'plugin_config.view.all'
     ]);
     hostInfrastructureApi.fetchSettingsHostInfrastructureMemoryOverview.mockResolvedValue(
@@ -1743,7 +1730,7 @@ describe('SettingsPage', () => {
   }, 10000);
 
   test('shows 文件管理 when file_table.view.own is present', async () => {
-    authenticateWithPermissions(['route_page.view.all', 'file_table.view.own']);
+    authenticateWithPermissions(['file_table.view.own']);
 
     renderApp('/settings/files');
 
@@ -1759,7 +1746,7 @@ describe('SettingsPage', () => {
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
       settingsConsoleNavigation(['api-key-authentication'])
     );
-    authenticateWithPermissions(['route_page.view.all']);
+    authenticateWithPermissions([]);
 
     renderApp('/settings');
 

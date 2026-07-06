@@ -301,7 +301,7 @@ describe('section shell routing', () => {
   test(
     'section shell redirects /me to /me/profile',
     async () => {
-      authenticateWithPermissions(['route_page.view.all']);
+      authenticateWithPermissions([]);
 
       renderApp('/me');
 
@@ -315,7 +315,7 @@ describe('section shell routing', () => {
   test(
     'redirects /settings to first backend registry section',
     async () => {
-      authenticateWithPermissions(['route_page.view.all', 'user.view.all']);
+      authenticateWithPermissions(['user.view.all']);
 
       renderApp('/settings');
 
@@ -336,7 +336,6 @@ describe('section shell routing', () => {
         settingsConsoleNavigation(['api-key-authentication', 'roles'])
       );
       authenticateWithPermissions([
-        'route_page.view.all',
         'settings_route.visible.settings.roles'
       ]);
 
@@ -359,7 +358,6 @@ describe('section shell routing', () => {
         settingsConsoleNavigation(['api-key-authentication', 'data-models'])
       );
       authenticateWithPermissions([
-        'route_page.view.all',
         'settings_route.visible.settings.data-models'
       ]);
 
@@ -382,7 +380,6 @@ describe('section shell routing', () => {
         settingsConsoleNavigation(['api-key-authentication', 'files'])
       );
       authenticateWithPermissions([
-        'route_page.view.all',
         'settings_route.visible.settings.files'
       ]);
 
@@ -406,7 +403,7 @@ describe('section shell routing', () => {
         navigation_items: [],
         permission_bindings: []
       });
-      authenticateWithPermissions(['route_page.view.all']);
+      authenticateWithPermissions([]);
 
       renderApp('/settings/docs');
 

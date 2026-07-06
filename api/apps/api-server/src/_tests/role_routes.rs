@@ -50,7 +50,7 @@ async fn role_routes_create_replace_permissions_and_protect_root() {
                 .body(Body::from(
                     json!({
                         "permission_codes": [
-                            "route_page.view.all",
+                            "application.view.own",
                             "application.edit.own"
                         ]
                     })
@@ -547,7 +547,7 @@ async fn root_can_login_create_member_create_role_and_bind_permissions() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "permission_codes": ["route_page.view.all"]
+                        "permission_codes": ["application.view.own"]
                     })
                     .to_string(),
                 ))

@@ -164,7 +164,7 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'manager',
-      permissions: ['route_page.view.all', 'application.view.all']
+      permissions: ['application.view.all']
     }
   });
 }

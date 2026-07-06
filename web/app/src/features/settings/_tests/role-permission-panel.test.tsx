@@ -492,13 +492,6 @@ describe('RolePermissionPanel', () => {
   test('groups settings route visibility permissions under 路由页面 with a friendly resource label', async () => {
     permissionsApi.fetchSettingsPermissions.mockResolvedValue([
       {
-        code: 'route_page.view.all',
-        resource: 'route_page',
-        action: 'view',
-        scope: 'all',
-        name: '查看路由页面'
-      },
-      {
         code: 'settings_route.visible.settings.docs',
         resource: 'settings_route',
         action: 'visible',

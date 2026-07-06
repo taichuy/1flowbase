@@ -47,7 +47,7 @@ function authenticate(
       preferred_locale: preferredLocale,
       meta,
       effective_display_role: 'manager',
-      permissions: ['route_page.view.all']
+      permissions: []
     }
   });
 }
@@ -117,7 +117,7 @@ describe('MePage', () => {
         introduction: 'updated intro',
         preferred_locale: null,
         effective_display_role: 'manager',
-        permissions: ['route_page.view.all']
+        permissions: []
       });
 
       renderApp('/me/profile');

@@ -454,7 +454,7 @@ function mockRuntimeSessions(
   });
 
   test('connects ready runtime run plan state into the PageCanvas slot', async () => {
-    authenticate(['route_page.view.all']);
+    authenticate([]);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
 
     render(
@@ -486,7 +486,7 @@ function mockRuntimeSessions(
   });
 
   test('surfaces catalog-missing runtime run plan state from the PageCanvas container', async () => {
-    authenticate(['route_page.view.all']);
+    authenticate([]);
     mockFrontstageBlockCatalog([]);
 
     render(

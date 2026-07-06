@@ -180,7 +180,6 @@ function authenticateWithPermissions(
 
 function authenticateAsModelProviderManager() {
   authenticateWithPermissions([
-    'route_page.view.all',
     'state_model.view.all',
     'state_model.manage.all'
   ]);
