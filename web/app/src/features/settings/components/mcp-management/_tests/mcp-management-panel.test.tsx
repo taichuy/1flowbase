@@ -446,6 +446,30 @@ describe('McpManagementPanel', () => {
       .toBeGreaterThan(0);
   });
 
+  test('generates a random instance_id from the instance modal action', async () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.123456789);
+
+    try {
+      renderPanel();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+      fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+      const dialog = await screen.findByRole('dialog');
+      const instanceIdField = within(dialog).getByLabelText('instance_id');
+
+      expect(instanceIdField).toHaveValue('');
+
+      fireEvent.click(
+        within(dialog).getByRole('button', { name: '随机生成 instance_id' })
+      );
+
+      expect(instanceIdField).toHaveValue('04fzzzxj');
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
   test('shows step navigation actions only when the adjacent step exists', async () => {
     renderPanel();
 

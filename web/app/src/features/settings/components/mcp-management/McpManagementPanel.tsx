@@ -932,7 +932,28 @@ function McpInstancesTab({
             label="instance_id"
             rules={[{ required: true }]}
           >
-            <Input disabled={Boolean(editingInstance)} />
+            <Input
+              disabled={Boolean(editingInstance)}
+              addonAfter={
+                editingInstance ? undefined : (
+                  <Tooltip title="随机生成 instance_id">
+                    <Button
+                      type="text"
+                      htmlType="button"
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      aria-label="随机生成 instance_id"
+                      onClick={() => {
+                        instanceForm.setFieldValue(
+                          'instance_id',
+                          buildRandomToolIdSeed()
+                        );
+                      }}
+                    />
+                  </Tooltip>
+                )
+              }
+            />
           </Form.Item>
           <Form.Item name="name" label="name" rules={[{ required: true }]}>
             <Input />
