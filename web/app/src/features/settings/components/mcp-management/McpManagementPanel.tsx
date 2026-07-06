@@ -1070,11 +1070,13 @@ function McpToolsTab({
         )
       },
       {
-        key: 'operation',
+        key: 'interface_id',
         title: 'operation',
         dataIndex: 'operation',
         width: 240,
-        ellipsis: true
+        ellipsis: true,
+        render: (_, record) =>
+          record.operation?.trim() ? record.operation : record.interface_id
       },
       {
         key: 'risk_level',

@@ -260,7 +260,11 @@ function renderPanel(
   );
 }
 
-function renderPanelWithMountedTool() {
+function renderPanelWithMountedTool({
+  operation = 'POST /api/console/apps'
+}: {
+  operation?: string;
+} = {}) {
   return render(
     <AppProviders>
       <McpManagementPanel
@@ -291,7 +295,7 @@ function renderPanelWithMountedTool() {
               short_description: 'Search customer',
               full_description: 'Search customer',
               interface_id: 'create_app',
-              operation: 'POST /api/console/apps',
+              operation,
               parameter_schema: {},
               result_schema: {},
               input_mapping: {},
@@ -420,6 +424,15 @@ describe('McpManagementPanel', () => {
       .toBeInTheDocument();
     expect(within(instancesPanel).getAllByText('/ops/customer').length)
       .toBeGreaterThan(0);
+  });
+
+  test('falls back to interface id when a stale tool response misses operation', () => {
+    renderPanelWithMountedTool({ operation: '' });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
+
+    expect(within(toolsPanel).getByText('create_app')).toBeInTheDocument();
   });
 
   test('shows step navigation actions only when the adjacent step exists', async () => {
