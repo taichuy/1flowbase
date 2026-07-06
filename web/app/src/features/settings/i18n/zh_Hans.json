@@ -681,6 +681,7 @@
     "add_group": "新增分组",
     "add_tool_binding": "挂载 Tool",
     "edit_tool_binding": "编辑 Tool 挂载",
+    "mount_path": "挂载路径",
     "api_key_authentication": "API key",
     "user_api_key_description": "管理当前用户的 pat_ API Key，用于按账号角色权限调用控制台和运行时接口。",
     "user_api_key_security_notice": "完整 key 只会在添加后显示一次；列表只保留 key 前缀、状态和使用时间。",

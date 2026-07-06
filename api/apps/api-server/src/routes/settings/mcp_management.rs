@@ -1,6 +1,9 @@
 mod debug_execute;
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+};
 
 use axum::{
     extract::{Path, Query, State},
@@ -68,6 +71,7 @@ pub struct McpToolResponse {
     pub short_description: String,
     pub full_description: String,
     pub interface_id: String,
+    pub operation: String,
     #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,
     #[schema(value_type = Object)]
@@ -368,7 +372,11 @@ pub async fn get_mcp_catalog(
     let context = require_session(&state, &headers).await?;
     let service = McpManagementService::new(state.store.clone());
     let snapshot = service.read_workspace_catalog(context.user.id).await?;
-    Ok(Json(ApiSuccess::new(to_catalog_response(snapshot))))
+    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    Ok(Json(ApiSuccess::new(to_catalog_response(
+        snapshot,
+        &operations,
+    ))))
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/interface-capabilities", params(McpInterfaceCatalogQuery), responses((status = 200, body = [McpInterfaceCatalogEntryResponse])))]
@@ -426,7 +434,11 @@ pub async fn export_mcp_catalog(
     let export = McpManagementService::new(state.store.clone())
         .export_workspace_catalog(context.user.id)
         .await?;
-    Ok(Json(ApiSuccess::new(to_export_response(export))))
+    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    Ok(Json(ApiSuccess::new(to_export_response(
+        export,
+        &operations,
+    ))))
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/instances/export", responses((status = 200, body = McpInstanceDirectoryExportPackageResponse)))]
@@ -555,8 +567,13 @@ pub async fn list_mcp_tools(
     let snapshot = McpManagementService::new(state.store.clone())
         .read_workspace_catalog(context.user.id)
         .await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
     Ok(Json(ApiSuccess::new(
-        snapshot.tools.into_iter().map(to_tool_response).collect(),
+        snapshot
+            .tools
+            .into_iter()
+            .map(|record| to_tool_response(record, &operations))
+            .collect(),
     )))
 }
 
@@ -570,6 +587,7 @@ pub async fn create_mcp_tool(
     require_csrf(&headers, &context)?;
     let interface_entry =
         bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
+    let operation = interface_operation(&interface_entry);
     let record = McpManagementService::new(state.store.clone())
         .create_tool(to_create_tool_command(
             context.user.id,
@@ -579,7 +597,9 @@ pub async fn create_mcp_tool(
         .await?;
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_tool_response(record))),
+        Json(ApiSuccess::new(to_tool_response_with_operation(
+            record, operation,
+        ))),
     ))
 }
 
@@ -593,7 +613,8 @@ pub async fn get_mcp_tool(
     let record = McpManagementService::new(state.store.clone())
         .get_tool(context.user.id, &tool_id)
         .await?;
-    Ok(Json(ApiSuccess::new(to_tool_response(record))))
+    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    Ok(Json(ApiSuccess::new(to_tool_response(record, &operations))))
 }
 
 #[utoipa::path(put, path = "/api/console/mcp/tools/{tool_id}", request_body = UpdateMcpToolBody, responses((status = 200, body = McpToolResponse)))]
@@ -607,6 +628,7 @@ pub async fn update_mcp_tool(
     require_csrf(&headers, &context)?;
     let interface_entry =
         bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
+    let operation = interface_operation(&interface_entry);
     let record = McpManagementService::new(state.store.clone())
         .update_tool(to_update_tool_command(
             context.user.id,
@@ -615,7 +637,9 @@ pub async fn update_mcp_tool(
             interface_entry,
         )?)
         .await?;
-    Ok(Json(ApiSuccess::new(to_tool_response(record))))
+    Ok(Json(ApiSuccess::new(to_tool_response_with_operation(
+        record, operation,
+    ))))
 }
 
 #[utoipa::path(delete, path = "/api/console/mcp/tools/{tool_id}", responses((status = 204)))]
@@ -646,7 +670,8 @@ pub async fn refresh_mcp_tool_description(
             tool_id,
         })
         .await?;
-    Ok(Json(ApiSuccess::new(to_tool_response(record))))
+    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    Ok(Json(ApiSuccess::new(to_tool_response(record, &operations))))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/tools/{tool_id}/description-check", request_body = McpDescriptionCheckBody, responses((status = 200, body = McpDescriptionCheckResponse)))]
@@ -909,6 +934,24 @@ async fn bindable_mcp_interface(
     }
 
     Ok(entry)
+}
+
+async fn mcp_interface_operation_map(
+    state: &ApiState,
+    actor_user_id: Uuid,
+) -> Result<HashMap<String, String>, ApiError> {
+    Ok(mcp_interface_catalog_entries(state, actor_user_id)
+        .await?
+        .into_iter()
+        .map(|entry| {
+            let operation = interface_operation(&entry);
+            (entry.interface_id, operation)
+        })
+        .collect())
+}
+
+fn interface_operation(entry: &domain::McpInterfaceCatalogEntry) -> String {
+    format!("{} {}", entry.method, entry.path)
 }
 
 fn mcp_interface_entry_from_operation(
@@ -1647,7 +1690,10 @@ fn to_update_tool_command(
     })
 }
 
-fn to_catalog_response(snapshot: domain::McpCatalogSnapshot) -> McpCatalogResponse {
+fn to_catalog_response(
+    snapshot: domain::McpCatalogSnapshot,
+    operations: &HashMap<String, String>,
+) -> McpCatalogResponse {
     McpCatalogResponse {
         instances: snapshot
             .instances
@@ -1655,7 +1701,11 @@ fn to_catalog_response(snapshot: domain::McpCatalogSnapshot) -> McpCatalogRespon
             .map(to_instance_response)
             .collect(),
         groups: snapshot.groups.into_iter().map(to_group_response).collect(),
-        tools: snapshot.tools.into_iter().map(to_tool_response).collect(),
+        tools: snapshot
+            .tools
+            .into_iter()
+            .map(|record| to_tool_response(record, operations))
+            .collect(),
         bindings: snapshot
             .bindings
             .into_iter()
@@ -1665,7 +1715,10 @@ fn to_catalog_response(snapshot: domain::McpCatalogSnapshot) -> McpCatalogRespon
     }
 }
 
-fn to_export_response(export: domain::McpExportPackage) -> McpExportPackageResponse {
+fn to_export_response(
+    export: domain::McpExportPackage,
+    operations: &HashMap<String, String>,
+) -> McpExportPackageResponse {
     McpExportPackageResponse {
         instances: export
             .instances
@@ -1673,7 +1726,11 @@ fn to_export_response(export: domain::McpExportPackage) -> McpExportPackageRespo
             .map(to_instance_response)
             .collect(),
         groups: export.groups.into_iter().map(to_group_response).collect(),
-        tools: export.tools.into_iter().map(to_tool_response).collect(),
+        tools: export
+            .tools
+            .into_iter()
+            .map(|record| to_tool_response(record, operations))
+            .collect(),
         bindings: export
             .bindings
             .into_iter()
@@ -1730,7 +1787,22 @@ fn to_group_response(record: domain::McpGroupRecord) -> McpGroupResponse {
     }
 }
 
-fn to_tool_response(record: domain::McpToolRecord) -> McpToolResponse {
+fn to_tool_response(
+    record: domain::McpToolRecord,
+    operations: &HashMap<String, String>,
+) -> McpToolResponse {
+    let operation = operations
+        .get(&record.interface_id)
+        .cloned()
+        .unwrap_or_else(|| record.interface_id.clone());
+
+    to_tool_response_with_operation(record, operation)
+}
+
+fn to_tool_response_with_operation(
+    record: domain::McpToolRecord,
+    operation: String,
+) -> McpToolResponse {
     McpToolResponse {
         id: record.id.to_string(),
         workspace_id: record.workspace_id.to_string(),
@@ -1739,6 +1811,7 @@ fn to_tool_response(record: domain::McpToolRecord) -> McpToolResponse {
         short_description: record.short_description,
         full_description: record.full_description,
         interface_id: record.interface_id,
+        operation,
         parameter_schema: record.parameter_schema,
         result_schema: record.result_schema,
         input_mapping: record.input_mapping,

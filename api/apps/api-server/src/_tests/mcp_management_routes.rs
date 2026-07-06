@@ -315,6 +315,10 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
         create_tool_payload["data"]["interface_id"].as_str(),
         Some(create_interface_id.as_str())
     );
+    assert_eq!(
+        create_tool_payload["data"]["operation"].as_str(),
+        Some("POST /api/runtime/models/mcp_tool_orders/create")
+    );
     assert!(create_tool_payload["data"]
         .get("usage_description")
         .is_none());
@@ -356,10 +360,39 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
         update_tool_payload["data"]["interface_id"].as_str(),
         Some(update_interface_id.as_str())
     );
+    assert_eq!(
+        update_tool_payload["data"]["operation"].as_str(),
+        Some("PATCH /api/runtime/models/mcp_tool_orders/update/{id}")
+    );
     assert!(update_tool_payload["data"]
         .get("usage_description")
         .is_none());
     assert!(update_tool_payload["data"].get("audit_policy").is_none());
+
+    let catalog_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/mcp/catalog")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(catalog_response.status(), StatusCode::OK);
+    let catalog_payload = response_json(catalog_response).await;
+    let catalog_tool = catalog_payload["data"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["tool_id"].as_str() == Some("mcp_tool_orders_create"))
+        .expect("updated tool should be returned in MCP catalog");
+    assert_eq!(
+        catalog_tool["operation"].as_str(),
+        Some("PATCH /api/runtime/models/mcp_tool_orders/update/{id}")
+    );
 }
 
 #[tokio::test]

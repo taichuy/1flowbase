@@ -189,7 +189,7 @@ export function McpToolDebugPanel({
   const runDebug = async (responseMode: DebugResponseMode) => {
     try {
       if (!interfaceId || !executeDebug) {
-        throw new Error('interface_id 是必填参数');
+        throw new Error('operation 是必填参数');
       }
       const mcpArguments = buildMcpArguments(debugFields, argumentValues);
       setDebugRunningMode(responseMode);

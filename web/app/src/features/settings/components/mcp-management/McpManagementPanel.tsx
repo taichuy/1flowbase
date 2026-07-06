@@ -726,7 +726,7 @@ function McpInstancesTab({
                   </Form.Item>
                   <Form.Item
                     name="group_path"
-                    label="group_path"
+                    label={i18nText('settings', 'auto.mount_path')}
                     rules={[{ required: true }]}
                   >
                     <Input placeholder="/ops" />
@@ -856,7 +856,10 @@ function McpInstancesTab({
             rowKey="id"
             size="small"
             columns={[
-              { title: 'group_path', dataIndex: 'group_path' },
+              {
+                title: i18nText('settings', 'auto.mount_path'),
+                dataIndex: 'group_path'
+              },
               { title: 'tool_id', dataIndex: 'tool_id' },
               { title: 'display_alias', dataIndex: 'display_alias' },
               {
@@ -978,7 +981,6 @@ function McpToolsTab({
     editingTool,
     step,
     keyword,
-    pathFilter,
     interfaceId,
     riskLevel,
     status,
@@ -1003,11 +1005,6 @@ function McpToolsTab({
   const setKeyword = useCallback(
     (value: SetStateAction<string>) =>
       dispatchToolsState({ type: 'setKeyword', value }),
-    []
-  );
-  const setPathFilter = useCallback(
-    (value: SetStateAction<string>) =>
-      dispatchToolsState({ type: 'setPathFilter', value }),
     []
   );
   const setInterfaceId = useCallback(
@@ -1073,9 +1070,9 @@ function McpToolsTab({
         )
       },
       {
-        key: 'interface_id',
-        title: 'interface_id',
-        dataIndex: 'interface_id',
+        key: 'operation',
+        title: 'operation',
+        dataIndex: 'operation',
         width: 240,
         ellipsis: true
       },
@@ -1252,33 +1249,11 @@ function McpToolsTab({
       onOk: applyMapping
     });
   }
-  const bindingPathsByToolId = useMemo(() => {
-    const paths = new Map<string, Set<string>>();
-
-    for (const binding of catalog.bindings) {
-      const current = paths.get(binding.tool_id) ?? new Set<string>();
-      current.add(binding.group_path);
-      paths.set(binding.tool_id, current);
-    }
-
-    return new Map(
-      Array.from(paths, ([toolId, groupPaths]) => [
-        toolId,
-        Array.from(groupPaths)
-      ])
-    );
-  }, [catalog.bindings]);
-
   const filteredTools = catalog.tools.filter((tool) => {
     const text =
-      `${tool.name} ${tool.tool_id} ${tool.interface_id}`.toLowerCase();
-    const paths = bindingPathsByToolId.get(tool.tool_id) ?? [];
+      `${tool.name} ${tool.tool_id} ${tool.operation} ${tool.interface_id}`.toLowerCase();
     return (
       (!keyword || text.includes(keyword.toLowerCase())) &&
-      (!pathFilter ||
-        paths.some((path) =>
-          path.toLowerCase().includes(pathFilter.toLowerCase())
-        )) &&
       (!interfaceId || tool.interface_id === interfaceId) &&
       (!riskLevel || tool.risk_level === riskLevel) &&
       (!status || tool.status === status) &&
@@ -1295,18 +1270,6 @@ function McpToolsTab({
   const tableColumns = useMemo<Array<DataTableColumn<ConsoleMcpTool>>>(
     () => [
       ...columns,
-      {
-        key: 'paths',
-        title: 'group_path',
-        width: 180,
-        render: (_, record) => (
-          <Space wrap size={[4, 4]}>
-            {(bindingPathsByToolId.get(record.tool_id) ?? ['/']).map((path) => (
-              <Tag key={path}>{path}</Tag>
-            ))}
-          </Space>
-        )
-      },
       {
         key: 'actions',
         title: i18nText('settings', 'auto.operation'),
@@ -1370,7 +1333,6 @@ function McpToolsTab({
       }
     ],
     [
-      bindingPathsByToolId,
       canManage,
       columns,
       form,
@@ -1393,21 +1355,15 @@ function McpToolsTab({
         <Space wrap>
           <Input.Search
             allowClear
-            placeholder="keyword / tool_id / interface_id"
+            placeholder="keyword / tool_id / operation"
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-          />
-          <Input
-            allowClear
-            placeholder="group_path"
-            value={pathFilter}
-            onChange={(event) => setPathFilter(event.target.value)}
           />
           <Select
             allowClear
             showSearch
             optionFilterProp="label"
-            placeholder="interface_id"
+            placeholder="operation"
             value={interfaceId}
             options={interfaceCapabilities.map((entry) => ({
               label: `${interfaceOptionLabel(entry)} ${entry.interface_id}`,
@@ -1671,7 +1627,7 @@ function McpToolsTab({
           <div hidden={step !== 'interface'}>
             <Form.Item
               name="interface_id"
-              label="interface_id"
+              label="operation"
               rules={[{ required: true }]}
             >
               <Select

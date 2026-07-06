@@ -681,6 +681,7 @@
     "add_group": "Add group",
     "add_tool_binding": "Mount Tool",
     "edit_tool_binding": "Edit Tool mount",
+    "mount_path": "Mount path",
     "api_key_authentication": "API key",
     "user_api_key_description": "Manage pat_ API Keys for the current user so requests can use the account role permissions.",
     "user_api_key_security_notice": "The full key is shown only after creation; the list only keeps key prefix, status, and usage time.",

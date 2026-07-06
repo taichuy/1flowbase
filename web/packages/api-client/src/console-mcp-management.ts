@@ -32,6 +32,7 @@ export interface ConsoleMcpTool {
   short_description: string;
   full_description: string;
   interface_id: string;
+  operation: string;
   parameter_schema: unknown;
   result_schema: unknown;
   input_mapping: unknown;

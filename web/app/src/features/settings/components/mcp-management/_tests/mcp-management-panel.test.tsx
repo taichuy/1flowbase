@@ -260,6 +260,83 @@ function renderPanel(
   );
 }
 
+function renderPanelWithMountedTool() {
+  return render(
+    <AppProviders>
+      <McpManagementPanel
+        canManage
+        catalog={{
+          instances: [
+            {
+              id: 'instance-record-1',
+              workspace_id: 'workspace-1',
+              instance_id: 'ops_mcp',
+              name: 'Ops MCP',
+              description_short: null,
+              status: 'enabled',
+              default_entry_path: '/',
+              created_by: 'user-1',
+              updated_by: 'user-1',
+              created_at: '2026-07-06T00:00:00Z',
+              updated_at: '2026-07-06T00:00:00Z'
+            }
+          ],
+          groups: [],
+          tools: [
+            {
+              id: 'tool-record-1',
+              workspace_id: 'workspace-1',
+              tool_id: 'search_customer',
+              name: 'Search customer',
+              short_description: 'Search customer',
+              full_description: 'Search customer',
+              interface_id: 'create_app',
+              operation: 'POST /api/console/apps',
+              parameter_schema: {},
+              result_schema: {},
+              input_mapping: {},
+              output_mapping: {},
+              permission_code: null,
+              risk_level: 'low',
+              des_id: 'des-1',
+              des_id_required: false,
+              status: 'enabled',
+              revision: 1
+            }
+          ],
+          bindings: [
+            {
+              id: 'binding-1',
+              instance_record_id: 'instance-record-1',
+              tool_record_id: 'tool-record-1',
+              group_path: '/ops/customer',
+              tool_id: 'search_customer',
+              display_alias: null,
+              visible: true,
+              sort_order: 0
+            }
+          ],
+          meta_tool_config: {
+            id: 'meta-1',
+            workspace_id: 'workspace-1',
+            list_default_limit: 20,
+            list_max_depth: 3,
+            list_regex_enabled: false,
+            list_regex_max_length: 120,
+            list_return_fields: [],
+            get_include_mapping_summary: true,
+            get_include_interface_summary: true,
+            call_default_des_id_policy: 'optional',
+            call_high_risk_requires_des_id: true,
+            call_validation_error_format: 'json'
+          }
+        }}
+        interfaceCapabilities={interfaceCapabilities}
+      />
+    </AppProviders>
+  );
+}
+
 async function selectAntdOption(label: string) {
   const [option] = await screen.findAllByText((_, element) => {
     return Boolean(
@@ -319,6 +396,32 @@ describe('McpManagementPanel', () => {
     );
   });
 
+  test('keeps mount paths in binding management instead of the tool table', () => {
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
+
+    expect(within(toolsPanel).queryByPlaceholderText('group_path'))
+      .not
+      .toBeInTheDocument();
+    expect(within(toolsPanel).queryByRole('columnheader', { name: 'group_path' }))
+      .not
+      .toBeInTheDocument();
+    expect(within(toolsPanel).queryByText('/ops/customer')).not.toBeInTheDocument();
+    expect(within(toolsPanel).getByText('POST /api/console/apps')).toBeInTheDocument();
+    expect(within(toolsPanel).queryByText('create_app')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+
+    expect(within(instancesPanel).getByLabelText('挂载路径')).toBeInTheDocument();
+    expect(within(instancesPanel).getByRole('columnheader', { name: '挂载路径' }))
+      .toBeInTheDocument();
+    expect(within(instancesPanel).getAllByText('/ops/customer').length)
+      .toBeGreaterThan(0);
+  });
+
   test('shows step navigation actions only when the adjacent step exists', async () => {
     renderPanel();
 
@@ -341,7 +444,7 @@ describe('McpManagementPanel', () => {
     expect(
       within(dialog).getByRole('button', { name: /下一步/ })
     ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('interface_id')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('operation')).toBeInTheDocument();
 
     clickSegmentedOption(dialog, 'debug');
     expect(
@@ -465,7 +568,7 @@ describe('McpManagementPanel', () => {
 
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_id' })
+      within(dialog).getByRole('combobox', { name: 'operation' })
     );
     await selectAntdOption('create_app');
 
@@ -536,7 +639,7 @@ describe('McpManagementPanel', () => {
 
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_id' })
+      within(dialog).getByRole('combobox', { name: 'operation' })
     );
     await selectAntdOption('create_app');
 
@@ -745,7 +848,7 @@ describe('McpManagementPanel', () => {
     await setFullDescription('Create app');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_id' })
+      within(dialog).getByRole('combobox', { name: 'operation' })
     );
     await selectAntdOption('create_app');
 
@@ -864,7 +967,7 @@ describe('McpManagementPanel', () => {
     await setFullDescription('Publish application API');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_id' })
+      within(dialog).getByRole('combobox', { name: 'operation' })
     );
     await selectAntdOption('publish_application_api');
 
@@ -1045,7 +1148,7 @@ describe('McpManagementPanel', () => {
     await setFullDescription('Create app');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_id' })
+      within(dialog).getByRole('combobox', { name: 'operation' })
     );
     await selectAntdOption('create_app');
     clickSegmentedOption(dialog, 'input_mapping');
@@ -1096,7 +1199,7 @@ describe('McpManagementPanel', () => {
     await setFullDescription('Create app');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_id' })
+      within(dialog).getByRole('combobox', { name: 'operation' })
     );
     await selectAntdOption('create_app');
 
@@ -1175,7 +1278,7 @@ describe('McpManagementPanel', () => {
     await setFullDescription('Create app');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_id' })
+      within(dialog).getByRole('combobox', { name: 'operation' })
     );
     await selectAntdOption('create_app');
 
@@ -1302,7 +1405,7 @@ describe('McpManagementPanel', () => {
 
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_id' })
+      within(dialog).getByRole('combobox', { name: 'operation' })
     );
     await selectAntdOption('create_app');
 
@@ -1353,7 +1456,7 @@ describe('McpManagementPanel', () => {
     await setFullDescription('Create app');
     clickSegmentedOption(dialog, 'interface');
     fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_id' })
+      within(dialog).getByRole('combobox', { name: 'operation' })
     );
     await selectAntdOption('create_app');
 
