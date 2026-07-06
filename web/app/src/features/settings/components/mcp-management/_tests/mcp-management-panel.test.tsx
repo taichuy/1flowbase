@@ -413,8 +413,12 @@ describe('McpManagementPanel', () => {
       .not
       .toBeInTheDocument();
     expect(within(toolsPanel).queryByText('/ops/customer')).not.toBeInTheDocument();
+    expect(within(toolsPanel).getByRole('columnheader', { name: 'operation' }))
+      .toBeInTheDocument();
+    expect(within(toolsPanel).getByRole('columnheader', { name: 'interface_id' }))
+      .toBeInTheDocument();
     expect(within(toolsPanel).getByText('POST /api/console/apps')).toBeInTheDocument();
-    expect(within(toolsPanel).queryByText('create_app')).not.toBeInTheDocument();
+    expect(within(toolsPanel).getByText('create_app')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
@@ -432,7 +436,8 @@ describe('McpManagementPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
 
-    expect(within(toolsPanel).getByText('create_app')).toBeInTheDocument();
+    expect(within(toolsPanel).getAllByText('create_app').length)
+      .toBeGreaterThan(0);
   });
 
   test('shows step navigation actions only when the adjacent step exists', async () => {
