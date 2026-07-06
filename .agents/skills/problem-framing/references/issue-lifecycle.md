@@ -48,7 +48,19 @@
 | Standalone Complete Issue | 默认形态；一个 issue 足以承载目标、取舍、范围、验收和执行边界 | 完整需求上下文、方案结论、执行边界、预算、停止 / 升级条件 | 用户确认后可以直接进入实现 |
 | Issue Tree | 用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream | L0/L1/L2/L3 parent-child 关系、ADR、workstream 和执行任务 | 只有已确认执行 issue 可以进入实现 |
 
-Standalone Complete Issue 必须包含：目标、非目标、已确认事实和证据、待验证假设、方案结论、范围边界、验收证据、执行边界、预算、停止 / 升级条件、标签和关闭条件。
+Standalone Complete Issue 必须包含：目标、非目标、已确认事实和证据、待验证假设、方案结论、任务形态、范围边界、验收点账本、执行边界、预算、停止 / 升级条件、标签和关闭条件。
+
+## Task Archetype
+
+issue gate 必须写明任务形态，决定验收与旧债策略：
+
+| Archetype | Use When | Acceptance Bias | Debt Policy |
+| --- | --- | --- | --- |
+| `greenfield` | 新能力、新模块或空白子系统 | 证明基础可运行、入口清楚、最小回归成立 | 可把基础缺口列为当前 blocker |
+| `existing-codebase` | 既有代码增量修改 | 证明当前目标和直接回归，不重新审完整项目 | 默认只阻断本次引入问题；旧债写 warning 或后续 issue |
+| `hybrid-foundation` | 既有系统中新增承载后续功能的 foundation | 先证明 foundation 稳定入口和后续扩展边界 | 只阻断 foundation 引入的问题，后续功能另列 AC 点 |
+
+任务形态不是标签；它写在 issue 正文和 handoff 中，帮助 `test-driven-development`、实现 Skill 和 `qa-evaluation` 使用同一验收预算。
 
 ## Issue Hierarchy Levels
 
@@ -85,7 +97,7 @@ Rules:
 - L1 必须留下用户批准的决策或 ADR 状态；AI 可以推荐，但不能把推荐当成已批准。
 - L1 决策 issue 不直接承载大段实现；批准后拆 L2 / L3。
 - L2 workstream 只能拆分已批准范围、依赖和顺序；不能把新想法塞进当前 parent。进入实现前必须有直接 L3 children，或把该 issue 改标为 L3。
-- Standalone 和 L3 必须写清单一目标、主要文件/模块、验证命令或证据、停止条件；验证证据默认拆成“本地结果验证”和“延后到 beta / CI / 专门质量工作区的全局门禁”。若需要超过 3 条重验证命令、workspace 级 build/test/clippy、服务重启或 `api-debug`，必须在 issue / handoff 阶段前置说明收益、成本和不可延后原因，避免实现期临时打断协作。Standalone 或 L3 发现架构边界问题时，必须回到 issue gate / L1，而不是边做边改。
+- Standalone 和 L3 必须写清单一目标、任务形态、验收点账本、主要文件/模块、验证命令或证据、停止条件；验证证据默认拆成“本地结果验证”和“延后到 beta / CI / 专门质量工作区的全局门禁”。若需要超过 3 条重验证命令、workspace 级 build/test/clippy、服务重启或 `api-debug`，必须在 issue / handoff 阶段前置说明收益、成本和不可延后原因，避免实现期临时打断协作。Standalone 或 L3 发现架构边界问题时，必须回到 issue gate / L1，而不是边做边改。
 - 没有 L0 时，L1 可以临时作为最高层 parent，但不得改称 L0。
 
 ## Required Labels

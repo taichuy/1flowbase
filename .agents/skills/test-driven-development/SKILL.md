@@ -29,16 +29,25 @@ description: Use when implementing 1flowbase features, bug fixes, refactors, bac
 - 可接受替代证据：用户在当前任务中明确说跳过 issue、直接实现或无需确认。
 - 没有 issue 或跳过证据时，停止；回到 `problem-framing` 创建 / 更新 issue 并等待用户确认。
 - 后端 API / 状态入口测试必须承接已确认的验收预期；缺少预期时回到 `problem-framing`，不要在 TDD 阶段重定需求。
+- 已确认 issue / handoff 有 `AC-001` 这类验收点时，红灯测试必须声明覆盖哪个验收点；缺少可测试验收点时先回 `problem-framing` 补齐口径。
 - 改产品代码前检查 `problem-framing/references/design-rules.md`；命中规则时停止，回到 `problem-framing` 给更小 redesign。
 
 ## Workflow
 
-1. 写一个最小失败测试，表达目标行为或复现缺陷。
+1. 写一个最小失败测试，表达目标行为或复现缺陷，并在测试名、注释或交付说明中映射到对应验收点。
 2. 运行定向测试，确认失败原因符合预期。
 3. 写最小实现让测试通过。
 4. 绿灯后再重构，重构后保持绿灯。
 5. 按变更风险补必要回归：定向测试优先，只补当前任务结果和直接风险所需的类型、lint、build 或 smoke。
 6. workspace 级 cargo / pnpm build、clippy、full test、服务重启、`api-debug`，或超过 3 条重验证命令的收益和成本，必须在 `problem-framing` / L3 issue / handoff 阶段前置说明。实现期发现未预期重验证需求时，默认不打断开发，交付说明标为 beta / CI / 全局门禁未验证；只有缺少该证据会让继续实现不安全或无法判断当前任务是否完成时，才暂停并说明原因。
+
+## Test Authenticity Gate
+
+新增或调整测试时，先确认测试不是空壳证明：
+
+- 测试必须绑定真实业务入口、route / service / component 行为或领域规则；只断言 mock 调用次数、渲染占位元素或固定字符串时，不能单独结算验收点。
+- 覆盖回归时，失败原因必须来自被修行为缺失或 contract 不匹配；不要用宽松断言、跳过分支、fixture 造假或 coverage ignore 让红灯变绿。
+- existing-codebase 任务只要求当前验收点和直接风险的测试真实性；既有测试缺口写入 QA warning 或后续 issue，除非用户已纳入范围。
 
 ## Backend API Red Test
 
@@ -57,6 +66,7 @@ description: Use when implementing 1flowbase features, bug fixes, refactors, bac
 交付说明至少覆盖：
 
 - 新增或调整的测试
+- 测试覆盖的验收点编号；未覆盖的验收点写明原因和替代证据
 - 红灯确认方式
 - 通过的验证命令，以及哪些属于本地结果验证、哪些延后到 beta / CI / 专门质量工作区
 - 后端 API 任务的预期 response / 状态结果如何被测试断言覆盖
@@ -70,6 +80,7 @@ warning 与 coverage 产物统一落到 `tmp/test-governance/`。
 - 方案确认后直接进入实现，没检查 issue gate。
 - 实现前没检查 design rules，顺手新增模糊 helper、bool 分支或 pass-through 层。
 - 只测 mock 调用次数，不测真实行为。
+- 用空壳测试、宽松断言或未绑定真实代码的测试结算验收点。
 - 后端接口只测 service 内部逻辑，没有覆盖 route 认证、DTO、status / error shape 或状态副作用。
 - 为了通过测试扩大实现范围。
 - 把全局质量门禁当成本地 TDD 收尾默认步骤，导致长任务验证成本失控。

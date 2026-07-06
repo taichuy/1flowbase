@@ -44,6 +44,9 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - `Error handling`: 检查静默 fallback、默认值兜底、吞错、泛化错误、绕过逻辑和无业务语义防御代码。只有错误路径真实存在且符合当前边界时才建议错误处理；不应该发生的状态优先暴露问题、收敛状态来源或修正数据流。
 - `Scope and boundary`: 检查实现是否只覆盖已确认范围，是否顺手重构无关逻辑，是否为了局部方便破坏领域模型、状态模型、权限模型、contract 或前后端职责边界，是否把复杂度扩散到多个调用点或隐式约定里。
 - `Test compatibility`: 失败测试必须先对照当前 spec / ADR / 已确认验收预期 / 后端 DTO contract / 用户任务边界。旧测试不是兼容要求本身；若旧断言与新确认行为冲突，报告为过期测试期望或测试债，要求更新 / 删除对应测试证据，不得为了让旧测试通过添加 legacy alias、fallback、回退路径或弱化状态 / contract。无法证明新行为已被确认时，只能写 `未验证，不下确定结论`。
+- `Acceptance point settlement`: issue / handoff 有 `AC-001` 这类验收点时，QA 必须逐点给 `green / red / 未验证`、证据和残余风险；机械门禁通过只能作为证据，不能替代验收点结论。
+- `Context capsule`: 交付后若验收点通过，输出压缩 capsule：做了什么、在哪里、关键决策 / gotchas、后续扩展入口。capsule 只写指针，不复制代码；代码仓库仍是真值来源。
+- `Quality rule change`: 新增或调整 AGENTS / skills / repo hygiene / 质量门禁规则时，必须检查目标、验收证据、预算和停止条件；质量规则本身还要有反方样例、确定性 fixture 或历史证据、人工确认点。
 
 ## Quick Reference
 
@@ -51,6 +54,8 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - 先按 `references/gate-lanes.md` 选择门禁 lane：`Dev Acceptance Gate`、`PR Merge Gate`、`Project Health Gate`
 - 默认 `Dev Acceptance Gate / task mode`；用户明确要求 PR 校验、全量门禁、项目体检或完整 QA 审计时，才升级到对应 lane
 - `Dev Acceptance Gate` 追求快速反馈：复用 TDD 红绿结果，按风险向量选择最小证据链，证据足够或预算耗尽就停，不用仓库级门禁惩罚局部开发
+- `existing-codebase` 任务默认只把本次引入的问题作为 blocker；既有债务、旧覆盖率缺口或历史 warning 只有被当前 issue 明确纳入时才阻断当前验收
+- 有验收点账本时，QA 输出必须按点结算；没有账本时才按目标 / 风险维度组织结论
 - 本地开发分支只证明当前任务结果、直接相关 contract 和主路径风险；workspace 级 cargo / pnpm build / clippy / full test、coverage、verify-repo、repo hygiene、i18n hygiene 等重门禁默认延后到 beta / CI / 专门质量工作区
 - `PR Merge Gate` 追求合并信心：优先 GitHub Actions / artifact / beta 质量门禁结果，报告 blocker、warning、advisory、资源耗时和合并风险
 - `Project Health Gate` 追求维护者感知：先按 `references/project-evaluation-checklist.md` 建质量维度矩阵，再读取远端完整门禁、artifact、warningFiles、beta 质量工作区产物和必要本地证据，输出全局快照、风险热力图、趋势、轮转深挖和维护建议
@@ -116,6 +121,8 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 
 - 把 QA 当成修复流程
 - 把开发后验收、PR 门禁和项目体检混成同一套重门禁
+- 把机械质量门禁通过当成需求验收点已通过
+- 把既有旧债当成本次增量任务 blocker，导致 scope 膨胀
 - 项目体检被当前错误脚本、最新日志或单个 artifact 锚定，跳过质量维度矩阵
 - 没有证据就下结论
 - 把代码审查写成 QA 报告
