@@ -3,7 +3,12 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const { log } = require('./cli.js');
-const { buildLocalLoopbackEnv, commandExists, parseEnvFile } = require('./env.js');
+const {
+  buildLocalLoopbackEnv,
+  commandExists,
+  parseEnvFile,
+  resolveCommandPath,
+} = require('./env.js');
 const { getRepoRoot } = require('./services.js');
 
 const DEFAULT_MIDDLEWARE_HOST_PORTS = {
@@ -11,10 +16,13 @@ const DEFAULT_MIDDLEWARE_HOST_PORTS = {
 };
 
 function runCommand(command, args, options = {}) {
-  return spawnSync(command, args, {
+  const resolvedCommand = resolveCommandPath(command) || command;
+  const extension = path.extname(resolvedCommand).toLowerCase();
+  return spawnSync(resolvedCommand, args, {
     cwd: options.cwd || getRepoRoot(),
     env: { ...buildLocalLoopbackEnv(process.env), ...(options.env || {}) },
     encoding: 'utf8',
+    shell: process.platform === 'win32' && (extension === '.cmd' || extension === '.bat'),
     stdio: options.captureOutput ? ['ignore', 'pipe', 'pipe'] : 'inherit',
   });
 }

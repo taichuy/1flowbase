@@ -140,10 +140,12 @@ function waitForServicePort(service, waitForPortImpl = waitForPort) {
 }
 
 function runCommand(command, args, options = {}) {
-  return spawnSync(command, args, {
+  const resolvedCommand = resolveCommandPath(command) || command;
+  return spawnSync(resolvedCommand, args, {
     cwd: options.cwd || process.cwd(),
     env: options.env || process.env,
     encoding: 'utf8',
+    maxBuffer: options.maxBuffer || 8 * 1024 * 1024,
     stdio: options.captureOutput ? ['ignore', 'pipe', 'pipe'] : 'inherit',
   });
 }
