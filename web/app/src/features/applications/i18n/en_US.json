@@ -279,6 +279,12 @@
     "template_imported": "Template imported",
     "template_preview_failed": "Template preview failed",
     "template_ready_to_import": "Template is ready to import",
+    "run_waiting_callback_without_output": "Waiting for callback backfill. No output yet.",
+    "run_waiting_human_without_output": "Waiting for manual input. No output yet.",
+    "run_running_without_output": "Running. No output yet.",
+    "run_failed_without_output": "Run failed without output.",
+    "run_cancelled_without_output": "Run cancelled without output.",
+    "run_status_without_output": "No output for the current status yet.",
     "unresolved_node_count": "Unresolved nodes {{value1}}",
     "unresolved_nodes": "Unresolved nodes"
   }

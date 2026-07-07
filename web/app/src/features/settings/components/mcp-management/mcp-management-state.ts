@@ -5,10 +5,14 @@ import type {
 } from '@1flowbase/api-client';
 import type { SetStateAction } from 'react';
 
+export type McpDirectoryEditorMode = 'group' | 'binding';
+
 export interface McpInstancesState {
   editingInstance: ConsoleMcpInstance | null;
   editingBinding: ConsoleMcpToolBinding | null;
   instanceModalOpen: boolean;
+  directoryModalOpen: boolean;
+  directoryEditorMode: McpDirectoryEditorMode;
   exportingInstances: boolean;
   requestedInstanceId: string;
 }
@@ -23,6 +27,11 @@ export type McpInstancesAction =
       value: SetStateAction<ConsoleMcpToolBinding | null>;
     }
   | { type: 'setInstanceModalOpen'; value: SetStateAction<boolean> }
+  | { type: 'setDirectoryModalOpen'; value: SetStateAction<boolean> }
+  | {
+      type: 'setDirectoryEditorMode';
+      value: SetStateAction<McpDirectoryEditorMode>;
+    }
   | { type: 'setExportingInstances'; value: SetStateAction<boolean> }
   | { type: 'setRequestedInstanceId'; value: SetStateAction<string> };
 
@@ -33,6 +42,8 @@ export function createInitialMcpInstancesState(
     editingInstance: null,
     editingBinding: null,
     instanceModalOpen: false,
+    directoryModalOpen: false,
+    directoryEditorMode: 'group',
     exportingInstances: false,
     requestedInstanceId
   };
@@ -109,6 +120,22 @@ export function mcpInstancesReducer(
         instanceModalOpen: resolveSetState(
           action.value,
           state.instanceModalOpen
+        )
+      };
+    case 'setDirectoryModalOpen':
+      return {
+        ...state,
+        directoryModalOpen: resolveSetState(
+          action.value,
+          state.directoryModalOpen
+        )
+      };
+    case 'setDirectoryEditorMode':
+      return {
+        ...state,
+        directoryEditorMode: resolveSetState(
+          action.value,
+          state.directoryEditorMode
         )
       };
     case 'setExportingInstances':

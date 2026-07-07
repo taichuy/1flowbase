@@ -279,6 +279,12 @@
     "template_imported": "模板已导入",
     "template_preview_failed": "模板预览失败",
     "template_ready_to_import": "模板依赖已就绪",
+    "run_waiting_callback_without_output": "等待 Callback 回填中，暂时还没有输出。",
+    "run_waiting_human_without_output": "等待人工输入中，暂时还没有输出。",
+    "run_running_without_output": "运行中，暂时还没有输出。",
+    "run_failed_without_output": "运行失败，未产生输出。",
+    "run_cancelled_without_output": "运行已取消，未产生输出。",
+    "run_status_without_output": "当前状态暂时没有输出。",
     "unresolved_node_count": "未知节点 {{value1}}",
     "unresolved_nodes": "未知节点"
   }

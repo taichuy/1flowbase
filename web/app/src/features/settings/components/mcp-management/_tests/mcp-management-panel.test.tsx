@@ -435,34 +435,70 @@ describe('McpManagementPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
 
-    expect(within(toolsPanel).queryByPlaceholderText('group_path'))
-      .not
-      .toBeInTheDocument();
-    expect(within(toolsPanel).queryByRole('columnheader', { name: 'group_path' }))
-      .not
-      .toBeInTheDocument();
-    expect(within(toolsPanel).queryByText('/ops/customer')).not.toBeInTheDocument();
-    expect(within(toolsPanel).getByRole('columnheader', { name: 'Tool 名称' }))
-      .toBeInTheDocument();
-    expect(within(toolsPanel).getByRole('columnheader', { name: 'tool_id' }))
-      .toBeInTheDocument();
+    expect(
+      within(toolsPanel).queryByPlaceholderText('group_path')
+    ).not.toBeInTheDocument();
+    expect(
+      within(toolsPanel).queryByRole('columnheader', { name: 'group_path' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(toolsPanel).queryByText('/ops/customer')
+    ).not.toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByRole('columnheader', { name: 'Tool 名称' })
+    ).toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByRole('columnheader', { name: 'tool_id' })
+    ).toBeInTheDocument();
     expect(within(toolsPanel).getByText('Search customer')).toBeInTheDocument();
     expect(within(toolsPanel).getByText('search_customer')).toBeInTheDocument();
-    expect(within(toolsPanel).getByRole('columnheader', { name: 'operation' }))
-      .toBeInTheDocument();
-    expect(within(toolsPanel).getByRole('columnheader', { name: 'interface_id' }))
-      .toBeInTheDocument();
-    expect(within(toolsPanel).getByText('POST /api/console/apps')).toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByRole('columnheader', { name: 'operation' })
+    ).toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByRole('columnheader', { name: 'interface_id' })
+    ).toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByText('POST /api/console/apps')
+    ).toBeInTheDocument();
     expect(within(toolsPanel).getByText('create_app')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
 
-    expect(within(instancesPanel).getByLabelText('挂载路径')).toBeInTheDocument();
-    expect(within(instancesPanel).getByRole('columnheader', { name: '挂载路径' }))
-      .toBeInTheDocument();
-    expect(within(instancesPanel).getAllByText('/ops/customer').length)
-      .toBeGreaterThan(0);
+    expect(
+      within(instancesPanel).queryByLabelText('挂载路径')
+    ).not.toBeInTheDocument();
+    expect(
+      within(instancesPanel).queryByRole('columnheader', { name: '挂载路径' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(instancesPanel).queryByText('/ops/customer')
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const modalScrollBody = screen.getByTestId(
+      'fixed-height-modal-scroll-body'
+    );
+
+    expect(modalScrollBody).toHaveClass('mcp-management__directory-modal');
+    expect(within(dialog).getByLabelText('path')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('挂载路径')).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByText('挂载 Tool'));
+
+    expect(within(dialog).queryByLabelText('path')).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText('挂载路径')).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('columnheader', { name: '挂载路径' })
+    ).toBeInTheDocument();
+    expect(within(dialog).getAllByText('/ops/customer').length).toBeGreaterThan(
+      0
+    );
   });
 
   test('falls back to interface id when a stale tool response misses operation', () => {
@@ -471,8 +507,9 @@ describe('McpManagementPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
 
-    expect(within(toolsPanel).getAllByText('create_app').length)
-      .toBeGreaterThan(0);
+    expect(
+      within(toolsPanel).getAllByText('create_app').length
+    ).toBeGreaterThan(0);
   });
 
   test('generates a random instance_id from the instance modal action', async () => {
@@ -563,11 +600,7 @@ describe('McpManagementPanel', () => {
   });
 
   test('opens the requested tab from the URL search param', () => {
-    window.history.replaceState(
-      {},
-      '',
-      '/settings/mcp-management?tab=tools'
-    );
+    window.history.replaceState({}, '', '/settings/mcp-management?tab=tools');
 
     renderPanel();
 

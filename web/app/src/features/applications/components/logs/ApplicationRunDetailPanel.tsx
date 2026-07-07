@@ -79,6 +79,32 @@ function mapRunStatusToSessionStatus(
   }
 }
 
+function fallbackConversationAnswerContent(
+  item: ApplicationRunConversationMessage
+) {
+  if (!item.is_current || item.status === 'succeeded') {
+    return null;
+  }
+
+  switch (item.status) {
+    case 'waiting_callback':
+      return i18nText(
+        'applications',
+        'auto.run_waiting_callback_without_output'
+      );
+    case 'waiting_human':
+      return i18nText('applications', 'auto.run_waiting_human_without_output');
+    case 'running':
+      return i18nText('applications', 'auto.run_running_without_output');
+    case 'failed':
+      return i18nText('applications', 'auto.run_failed_without_output');
+    case 'cancelled':
+      return i18nText('applications', 'auto.run_cancelled_without_output');
+    default:
+      return i18nText('applications', 'auto.run_status_without_output');
+  }
+}
+
 const runConversationContext: AgentFlowRunContext = {
   environmentLabel: 'draft',
   remembered: false,
@@ -164,7 +190,8 @@ function mapConversationItemToMessages(
 
   const messages: AgentFlowDebugMessage[] = [];
   const queryContent = nonEmptyString(item.query);
-  const answerContent = nonEmptyString(item.answer);
+  const answerContent =
+    nonEmptyString(item.answer) ?? fallbackConversationAnswerContent(item);
 
   if (queryContent) {
     messages.push({
@@ -328,9 +355,12 @@ function RunConversation({
   }, [conversationPage, refetchInitialConversation]);
 
   function handleOpenMessageLog(message: AgentFlowDebugMessage) {
+    if (message.canOpenDetail === false) {
+      return;
+    }
+
     const detailRunId =
-      nonEmptyString(message.detailRunId) ??
-      (message.canOpenDetail === false ? null : nonEmptyString(message.runId));
+      nonEmptyString(message.detailRunId) ?? nonEmptyString(message.runId);
 
     if (detailRunId !== runId) {
       return;
