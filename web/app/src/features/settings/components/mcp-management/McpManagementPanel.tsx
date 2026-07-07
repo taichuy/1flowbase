@@ -33,6 +33,7 @@ import {
   Typography,
   message
 } from 'antd';
+import { useRouterState } from '@tanstack/react-router';
 import {
   useCallback,
   useEffect,
@@ -109,6 +110,11 @@ import {
   statusColor,
   stringifyJson
 } from './mcp-management-utils';
+import {
+  isMcpManagementTabKey,
+  resolveMcpManagementTabKey,
+  updateMcpManagementTabQuery
+} from './mcp-management-route-state';
 import './mcp-management-panel.css';
 
 type InstanceFormValues = SaveConsoleMcpInstanceBody;
@@ -241,9 +247,34 @@ export function McpManagementPanel({
   catalog: ConsoleMcpCatalog;
   interfaceCapabilities: ConsoleMcpInterfaceCapability[];
 }) {
+  const locationSearch = useRouterState({
+    select: (state) => state.location.search as Record<string, unknown>
+  });
+  const requestedTab =
+    typeof locationSearch.tab === 'string' ? locationSearch.tab : null;
+  const activeTab = resolveMcpManagementTabKey(requestedTab);
+  const handleTabChange = useCallback(
+    (nextTab: string) => {
+      if (!isMcpManagementTabKey(nextTab) || nextTab === activeTab) {
+        return;
+      }
+
+      updateMcpManagementTabQuery(nextTab);
+    },
+    [activeTab]
+  );
+
+  useEffect(() => {
+    if (requestedTab !== activeTab) {
+      updateMcpManagementTabQuery(activeTab, 'replace');
+    }
+  }, [activeTab, requestedTab]);
+
   return (
     <Tabs
+      activeKey={activeTab}
       className="mcp-management"
+      onChange={handleTabChange}
       items={[
         {
           key: 'instances',

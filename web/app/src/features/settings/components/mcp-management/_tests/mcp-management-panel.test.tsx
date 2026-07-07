@@ -65,6 +65,34 @@ const vditorMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/mcp-management', () => mcpManagementApi);
+vi.mock('@tanstack/react-router', async () => {
+  const React = await import('react');
+
+  return {
+    useRouterState: ({
+      select
+    }: {
+      select: (state: {
+        location: { search: Record<string, string> };
+      }) => unknown;
+    }) => {
+      const search = React.useSyncExternalStore(
+        (onStoreChange) => {
+          window.addEventListener('popstate', onStoreChange);
+          return () => window.removeEventListener('popstate', onStoreChange);
+        },
+        () => window.location.search,
+        () => window.location.search
+      );
+
+      return select({
+        location: {
+          search: Object.fromEntries(new URLSearchParams(search))
+        }
+      });
+    }
+  };
+});
 vi.mock('vditor', () => ({
   __esModule: true,
   default: vditorMock.constructor
@@ -383,6 +411,7 @@ describe('McpManagementPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vditorMock.instances.length = 0;
+    window.history.replaceState({}, '', '/settings/mcp-management');
     mcpManagementApi.executeSettingsMcpToolDebug.mockImplementation(
       async (body: { debug_response_mode?: string; mcp_arguments: unknown }) =>
         body.debug_response_mode === 'debug_details'
@@ -531,6 +560,35 @@ describe('McpManagementPanel', () => {
       statusField.compareDocumentPosition(fullDescriptionField) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+  });
+
+  test('opens the requested tab from the URL search param', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/settings/mcp-management?tab=tools'
+    );
+
+    renderPanel();
+
+    expect(screen.getByRole('tab', { name: 'Tool 配置' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
+
+  test('pushes the selected tab into the URL search param', async () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 配置' }));
+
+    await waitFor(() => {
+      expect(window.location.search).toBe('?tab=meta');
+    });
+    expect(screen.getByRole('tab', { name: 'MCP 配置' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
   });
 
   test('uses Vditor instant rendering mode for full description', async () => {
