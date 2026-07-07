@@ -75,7 +75,8 @@ pub async fn start_flow_debug_run(
         state.provider_secret_master_key.clone(),
     )
     .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
-    .with_file_storage_registry(state.file_storage_registry.clone());
+    .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_llm_routing_counter_store(state.infrastructure.cache_store());
     let detail = runtime_service
         .start_flow_debug_run(StartFlowDebugRunCommand {
             actor_user_id: context.user.id,
@@ -103,7 +104,8 @@ pub async fn start_flow_debug_run(
             background_state.api_node_id.clone(),
             background_state.provider_install_root.clone(),
         )
-        .with_file_storage_registry(background_state.file_storage_registry.clone());
+        .with_file_storage_registry(background_state.file_storage_registry.clone())
+        .with_llm_routing_counter_store(background_state.infrastructure.cache_store());
         let continue_result = scope_application_activity(
             id,
             background_service.continue_flow_debug_run(ContinueFlowDebugRunCommand {
@@ -172,7 +174,8 @@ pub async fn start_flow_debug_run_stream(
         state.provider_secret_master_key.clone(),
     )
     .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
-    .with_file_storage_registry(state.file_storage_registry.clone());
+    .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_llm_routing_counter_store(state.infrastructure.cache_store());
     let shell = runtime_service
         .open_flow_debug_run_shell(StartFlowDebugRunCommand {
             actor_user_id: context.user.id,
@@ -229,6 +232,7 @@ pub async fn start_flow_debug_run_stream(
             background_state.provider_install_root.clone(),
         )
         .with_file_storage_registry(background_state.file_storage_registry.clone())
+        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         let prepare_result = scope_application_activity(
             id,
@@ -420,6 +424,7 @@ pub async fn cancel_flow_run(
     )
     .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
     .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
 
     let detail = runtime_service
@@ -484,6 +489,7 @@ pub async fn resume_flow_run(
         )
         .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
         .with_file_storage_registry(state.file_storage_registry.clone())
+        .with_llm_routing_counter_store(state.infrastructure.cache_store())
         .resume_flow_run(ResumeFlowRunCommand {
             actor_user_id: context.user.id,
             application_id: id,
@@ -546,6 +552,7 @@ pub async fn complete_callback_task(
         )
         .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
         .with_file_storage_registry(state.file_storage_registry.clone())
+        .with_llm_routing_counter_store(state.infrastructure.cache_store())
         .complete_callback_task(CompleteCallbackTaskCommand {
             actor_user_id: context.user.id,
             application_id: id,
@@ -606,6 +613,7 @@ pub async fn start_node_debug_preview(
         )
         .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
         .with_file_storage_registry(state.file_storage_registry.clone())
+        .with_llm_routing_counter_store(state.infrastructure.cache_store())
         .start_node_debug_preview(StartNodeDebugPreviewCommand {
             actor_user_id: context.user.id,
             application_id: id,

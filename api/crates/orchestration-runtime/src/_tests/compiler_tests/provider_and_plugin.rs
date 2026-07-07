@@ -673,6 +673,43 @@ fn compile_failover_queue_routes_with_frozen_targets() {
 }
 
 #[test]
+fn compile_ignores_legacy_source_instance_id_in_failover_targets() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    document["graph"]["nodes"][1]["config"]["model_provider"] = json!({
+        "routing_mode": "failover_queue",
+        "queue_template_id": "queue-template-1",
+        "queue_targets": [
+            {
+                "source_instance_id": "provider-selected",
+                "provider_code": "fixture_provider",
+                "protocol": "openai_compatible",
+                "upstream_model_id": "gpt-5.4-mini"
+            }
+        ]
+    });
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
+    let routing = plan.nodes["node-llm"]
+        .llm_runtime
+        .as_ref()
+        .and_then(|runtime| runtime.routing.as_ref())
+        .expect("llm runtime should still expose the failover routing shell");
+
+    assert!(plan.compile_issues.iter().any(|issue| {
+        issue.code == CompileIssueCode::MissingProviderInstance
+            && issue
+                .message
+                .contains("failover target 0 is missing provider_instance_id")
+    }));
+    assert_eq!(
+        routing.queue_targets.len(),
+        0,
+        "legacy source_instance_id must not compile into a runnable target"
+    );
+}
+
+#[test]
 fn compile_collects_missing_provider_issue() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);

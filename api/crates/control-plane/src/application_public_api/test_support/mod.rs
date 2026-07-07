@@ -303,6 +303,29 @@ impl CacheStore for ApplicationPublicApiTestCache {
         Ok(true)
     }
 
+    async fn increment_counter(
+        &self,
+        key: &str,
+        amount: i64,
+        ttl: Option<time::Duration>,
+    ) -> Result<i64> {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test cache mutex poisoned");
+        inner.last_ttl = ttl;
+        let current = inner
+            .keys
+            .get(key)
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0);
+        let next = current + amount;
+        inner
+            .keys
+            .insert(key.to_string(), serde_json::Value::Number(next.into()));
+        Ok(next)
+    }
+
     async fn delete(&self, key: &str) -> Result<()> {
         self.inner
             .lock()

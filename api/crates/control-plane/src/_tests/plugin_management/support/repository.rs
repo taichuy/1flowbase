@@ -967,6 +967,7 @@ impl ModelProviderRepository for MemoryPluginManagementRepository {
                 .map(|record| record.created_at)
                 .unwrap_or(now),
             updated_at: now,
+            model_distribution_rules: Vec::new(),
         };
         main_instances.insert(key, record.clone());
         Ok(record)

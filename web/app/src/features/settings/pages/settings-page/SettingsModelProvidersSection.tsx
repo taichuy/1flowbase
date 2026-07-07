@@ -345,6 +345,21 @@ export function SettingsModelProvidersSection({
       ) : null,
     [errorMessage]
   );
+  const modalMainInstance =
+    mainInstanceQuery.data ??
+    (modalProviderOption
+      ? {
+          provider_code: modalProviderOption.provider_code,
+          auto_include_new_instances:
+            modalProviderOption.main_instance.auto_include_new_instances,
+          model_distribution_rules: modalProviderOption.model_groups.map(
+            (group) => ({
+              model_id: group.model_id,
+              distribution_rule: group.distribution_rule
+            })
+          )
+        }
+      : null);
 
   return (
     <>
@@ -586,16 +601,7 @@ export function SettingsModelProvidersSection({
         open={instanceModalState !== null}
         catalogEntry={modalCatalogEntry}
         providerDisplayName={instanceModalState?.displayName ?? null}
-        mainInstance={
-          mainInstanceQuery.data ??
-          (modalProviderOption
-            ? {
-                provider_code: modalProviderOption.provider_code,
-                auto_include_new_instances:
-                  modalProviderOption.main_instance.auto_include_new_instances
-              }
-            : null)
-        }
+        mainInstance={modalMainInstance}
         modelGroups={modalProviderOption?.model_groups ?? []}
         instances={modalInstances}
         updatingMainInstance={updateMainInstanceSettingsMutation.isPending}
@@ -643,13 +649,39 @@ export function SettingsModelProvidersSection({
           deleteMutation.mutate(instance.id);
         }}
         onToggleAutoIncludeNewInstances={(checked) => {
-          if (!instanceModalState) {
+          if (!instanceModalState || !modalMainInstance) {
             return;
           }
 
           updateMainInstanceSettingsMutation.mutate({
             providerCode: instanceModalState.providerCode,
-            auto_include_new_instances: checked
+            auto_include_new_instances: checked,
+            model_distribution_rules: modalMainInstance.model_distribution_rules
+          });
+        }}
+        onChangeDistributionRule={(modelId, distributionRule) => {
+          if (!instanceModalState || !modalMainInstance) {
+            return;
+          }
+
+          const existingRules = new Map(
+            modalMainInstance.model_distribution_rules.map((rule) => [
+              rule.model_id,
+              rule.distribution_rule
+            ])
+          );
+          existingRules.set(modelId, distributionRule);
+
+          updateMainInstanceSettingsMutation.mutate({
+            providerCode: instanceModalState.providerCode,
+            auto_include_new_instances:
+              modalMainInstance.auto_include_new_instances,
+            model_distribution_rules: Array.from(existingRules.entries()).map(
+              ([model_id, distribution_rule]) => ({
+                model_id,
+                distribution_rule
+              })
+            )
           });
         }}
         onToggleIncludedInMain={(instance, checked) => {

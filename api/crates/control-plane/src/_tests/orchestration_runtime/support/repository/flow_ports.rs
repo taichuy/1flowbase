@@ -975,6 +975,7 @@ impl ModelProviderRepository for InMemoryOrchestrationRuntimeRepository {
                 .map(|record| record.created_at)
                 .unwrap_or(now),
             updated_at: now,
+            model_distribution_rules: Vec::new(),
         };
         inner.main_instances_by_provider.insert(key, record.clone());
         Ok(record)

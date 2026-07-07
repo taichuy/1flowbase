@@ -470,6 +470,8 @@ async fn failover_queue_retries_next_target_before_first_token() {
                     upstream_model_id: "backup-model".to_string(),
                 },
             ],
+            distribution_rule: LlmDistributionRule::None,
+            distribution_key: None,
             context_policy: json!({}),
             stream_policy: json!({}),
         }),
@@ -515,6 +517,131 @@ async fn failover_queue_retries_next_target_before_first_token() {
 }
 
 #[tokio::test]
+async fn round_robin_distribution_rotates_first_attempt_across_runs() {
+    // AC-006: round_robin rotates aggregate model attempts A/B/A via ephemeral counter.
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.llm_runtime = Some(round_robin_llm_runtime(LlmDistributionRule::RoundRobin));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let counter_store = Arc::new(RecordingRoutingCounterStore::default());
+    let invoker = RecordingSuccessInvoker {
+        calls: calls.clone(),
+    };
+
+    for _ in 0..3 {
+        let runtime_context = ExecutionRuntimeContext::from_plan_input(
+            &plan,
+            &serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]),
+        )
+        .with_llm_routing_counter_store(counter_store.clone());
+        start_flow_debug_run_with_runtime_context(
+            &plan,
+            &json!({ "node-start": { "query": "hello" } }),
+            runtime_context,
+            &invoker,
+        )
+        .await
+        .unwrap();
+    }
+
+    assert_eq!(
+        calls.lock().expect("calls mutex poisoned").as_slice(),
+        ["provider-a", "provider-b", "provider-a"]
+    );
+    let keys = counter_store
+        .keys
+        .lock()
+        .expect("counter keys mutex poisoned");
+    assert!(keys.iter().all(|key| key.contains("workspace:workspace-1")));
+    assert!(keys
+        .iter()
+        .all(|key| key.contains("provider:fixture_provider")));
+    assert!(keys.iter().all(|key| key.contains("model:gpt-5.4-mini")));
+    assert!(keys.iter().all(|key| key.contains("targets:")));
+}
+
+#[tokio::test]
+async fn none_distribution_keeps_existing_attempt_order_across_runs() {
+    // AC-007: none preserves the current ordered failover behavior.
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.llm_runtime = Some(round_robin_llm_runtime(LlmDistributionRule::None));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let counter_store = Arc::new(RecordingRoutingCounterStore::default());
+    let invoker = RecordingSuccessInvoker {
+        calls: calls.clone(),
+    };
+
+    for _ in 0..3 {
+        let runtime_context = ExecutionRuntimeContext::from_plan_input(
+            &plan,
+            &serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]),
+        )
+        .with_llm_routing_counter_store(counter_store.clone());
+        start_flow_debug_run_with_runtime_context(
+            &plan,
+            &json!({ "node-start": { "query": "hello" } }),
+            runtime_context,
+            &invoker,
+        )
+        .await
+        .unwrap();
+    }
+
+    assert_eq!(
+        calls.lock().expect("calls mutex poisoned").as_slice(),
+        ["provider-a", "provider-a", "provider-a"]
+    );
+    assert!(counter_store
+        .keys
+        .lock()
+        .expect("counter keys mutex poisoned")
+        .is_empty());
+}
+
+fn round_robin_llm_runtime(distribution_rule: LlmDistributionRule) -> CompiledLlmRuntime {
+    CompiledLlmRuntime {
+        provider_instance_id: "provider-a".to_string(),
+        provider_code: "fixture_provider".to_string(),
+        protocol: "openai_compatible".to_string(),
+        model: "gpt-5.4-mini".to_string(),
+        routing: Some(CompiledLlmRouting {
+            routing_mode: LlmRoutingMode::FailoverQueue,
+            fixed_model_target: None,
+            queue_template_id: None,
+            queue_snapshot_id: None,
+            queue_targets: vec![
+                CompiledLlmRouteTarget {
+                    provider_instance_id: "provider-a".to_string(),
+                    provider_code: "fixture_provider".to_string(),
+                    protocol: "openai_compatible".to_string(),
+                    upstream_model_id: "gpt-5.4-mini".to_string(),
+                },
+                CompiledLlmRouteTarget {
+                    provider_instance_id: "provider-b".to_string(),
+                    provider_code: "fixture_provider".to_string(),
+                    protocol: "openai_compatible".to_string(),
+                    upstream_model_id: "gpt-5.4-mini".to_string(),
+                },
+            ],
+            distribution_rule,
+            distribution_key: Some(
+                "llm-router:workspace:workspace-1:provider:fixture_provider:model:gpt-5.4-mini:targets:test"
+                    .to_string(),
+            ),
+            context_policy: json!({}),
+            stream_policy: json!({}),
+        }),
+    }
+}
+
+#[tokio::test]
 async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_token() {
     let mut plan = base_plan();
     let llm = plan
@@ -545,6 +672,8 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
                     upstream_model_id: "backup-model".to_string(),
                 },
             ],
+            distribution_rule: LlmDistributionRule::None,
+            distribution_key: None,
             context_policy: json!({}),
             stream_policy: json!({}),
         }),

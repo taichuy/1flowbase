@@ -87,8 +87,10 @@ impl ApplicationCompileContextRepository for ApplicationPublicApiTestRepository 
             })
             .collect::<BTreeMap<_, _>>();
         Ok(orchestration_runtime::compiler::FlowCompileContext {
+            workspace_id: Some(workspace_id),
             provider_families: Default::default(),
             provider_instances: Default::default(),
+            model_distribution_rules: Default::default(),
             node_contributions: Default::default(),
             js_dependencies,
         })

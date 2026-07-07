@@ -13,7 +13,8 @@ import {
   updateSettingsModelProviderInstance,
   updateSettingsModelProviderMainInstance,
   validateSettingsModelProviderInstance,
-  type SettingsModelProviderInstance
+  type SettingsModelProviderInstance,
+  type SettingsModelProviderMainInstance
 } from '../../../api/model-providers';
 import {
   deleteSettingsPluginFamily,
@@ -190,6 +191,7 @@ export function useModelProviderMutations({
     mutationFn: async (input: {
       providerCode: string;
       auto_include_new_instances: boolean;
+      model_distribution_rules: SettingsModelProviderMainInstance['model_distribution_rules'];
     }) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
@@ -198,7 +200,8 @@ export function useModelProviderMutations({
       return updateSettingsModelProviderMainInstance(
         input.providerCode,
         {
-          auto_include_new_instances: input.auto_include_new_instances
+          auto_include_new_instances: input.auto_include_new_instances,
+          model_distribution_rules: input.model_distribution_rules
         },
         csrfToken
       );

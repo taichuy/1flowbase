@@ -39,12 +39,15 @@ where
             workspace_id,
             provider_code: command.provider_code.clone(),
             auto_include_new_instances: command.auto_include_new_instances,
+            model_distribution_rules: command.model_distribution_rules.clone(),
             updated_by: command.actor_user_id,
         })
         .await?;
+    let model_distribution_rules = model_distribution_rules(&record);
     Ok(ModelProviderMainInstanceView {
         provider_code: record.provider_code,
         auto_include_new_instances: record.auto_include_new_instances,
+        model_distribution_rules,
     })
 }
 
@@ -63,5 +66,19 @@ fn to_view(
     ModelProviderMainInstanceView {
         provider_code: provider_code.to_string(),
         auto_include_new_instances: auto_include_new_instances(record),
+        model_distribution_rules: record.map(model_distribution_rules).unwrap_or_default(),
     }
+}
+
+fn model_distribution_rules(
+    record: &domain::ModelProviderMainInstanceRecord,
+) -> Vec<domain::ModelProviderMainModelDistributionRule> {
+    record
+        .model_distribution_rules
+        .iter()
+        .map(|rule| domain::ModelProviderMainModelDistributionRule {
+            model_id: rule.model_id.clone(),
+            distribution_rule: rule.distribution_rule,
+        })
+        .collect()
 }

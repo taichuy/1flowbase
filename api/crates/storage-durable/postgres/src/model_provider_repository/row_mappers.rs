@@ -29,11 +29,29 @@ pub(super) fn map_main_instance(
         workspace_id: row.get("workspace_id"),
         provider_code: row.get("provider_code"),
         auto_include_new_instances: row.get("auto_include_new_instances"),
+        model_distribution_rules: Vec::new(),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     })
+}
+
+pub(super) fn map_main_model_distribution_rule(
+    row: sqlx::postgres::PgRow,
+) -> Result<domain::ModelProviderMainModelDistributionRuleRecord> {
+    PgModelProviderMapper::to_main_model_distribution_rule_record(
+        StoredModelProviderMainModelDistributionRuleRow {
+            workspace_id: row.get("workspace_id"),
+            provider_code: row.get("provider_code"),
+            model_id: row.get("model_id"),
+            distribution_rule: row.get("distribution_rule"),
+            created_by: row.get("created_by"),
+            updated_by: row.get("updated_by"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        },
+    )
 }
 
 pub(super) fn map_catalog_cache(

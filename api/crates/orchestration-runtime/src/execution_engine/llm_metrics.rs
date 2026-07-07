@@ -1,16 +1,41 @@
 use super::*;
 
-pub(super) fn llm_attempt_runtimes(runtime: &CompiledLlmRuntime) -> Vec<CompiledLlmRuntime> {
+const LLM_ROUTING_COUNTER_TTL: time::Duration = time::Duration::hours(1);
+
+pub(super) async fn llm_attempt_runtimes(
+    runtime: &CompiledLlmRuntime,
+    runtime_context: &ExecutionRuntimeContext,
+) -> Result<Vec<CompiledLlmRuntime>> {
     let Some(routing) = runtime.routing.as_ref() else {
-        return vec![runtime.clone()];
+        return Ok(vec![runtime.clone()]);
     };
     if routing.routing_mode != LlmRoutingMode::FailoverQueue || routing.queue_targets.is_empty() {
-        return vec![runtime.clone()];
+        return Ok(vec![runtime.clone()]);
     }
 
-    routing
+    let rotate_by = if routing.distribution_rule
+        == crate::compiled_plan::LlmDistributionRule::RoundRobin
+        && routing.queue_targets.len() > 1
+    {
+        let distribution_key = routing
+            .distribution_key
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow!("round_robin llm routing is missing distribution_key"))?;
+        let counter = runtime_context
+            .next_llm_routing_counter(distribution_key, Some(LLM_ROUTING_COUNTER_TTL))
+            .await?;
+        (counter - 1).rem_euclid(routing.queue_targets.len() as i64) as usize
+    } else {
+        0
+    };
+
+    Ok(routing
         .queue_targets
         .iter()
+        .cycle()
+        .skip(rotate_by)
+        .take(routing.queue_targets.len())
         .map(|target| {
             let mut attempt = runtime.clone();
             attempt.provider_instance_id = target.provider_instance_id.clone();
@@ -19,7 +44,7 @@ pub(super) fn llm_attempt_runtimes(runtime: &CompiledLlmRuntime) -> Vec<Compiled
             attempt.model = target.upstream_model_id.clone();
             attempt
         })
-        .collect()
+        .collect())
 }
 
 pub(super) struct AttemptMetricInput<'a> {

@@ -494,7 +494,8 @@ pub(crate) async fn execute_blocking_native_run(
         state.api_node_id.clone(),
         state.provider_install_root.clone(),
     )
-    .with_file_storage_registry(state.file_storage_registry.clone());
+    .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_llm_routing_counter_store(state.infrastructure.cache_store());
     let execution_result = scope_application_activity(
         run.application_id,
         runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
@@ -629,6 +630,7 @@ async fn start_native_run_stream(
             background_state.provider_install_root.clone(),
         )
         .with_file_storage_registry(background_state.file_storage_registry.clone())
+        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         if let Err(runtime_error) = scope_application_activity(
             run.application_id,
@@ -768,6 +770,7 @@ pub async fn resume_native_run(
         state.provider_install_root.clone(),
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
     let result =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)

@@ -64,6 +64,7 @@
       "model_groups": [
         {
           "model_id": "gpt-4o-mini",
+          "distribution_rule": "none",
           "model": {
             "model_id": "gpt-4o-mini",
             "display_name": "GPT-4o Mini",
@@ -95,6 +96,7 @@
         },
         {
           "model_id": "gpt-4o",
+          "distribution_rule": "none",
           "model": {
             "model_id": "gpt-4o",
             "display_name": "GPT-4o",
@@ -145,6 +147,7 @@
       "model_groups": [
         {
           "model_id": "claude-3-5-sonnet",
+          "distribution_rule": "none",
           "model": {
             "model_id": "claude-3-5-sonnet",
             "display_name": "Claude 3.5 Sonnet",

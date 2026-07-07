@@ -65,6 +65,18 @@ async fn model_provider_service_options_group_models_by_model_id_with_ordered_in
         })
         .await
         .unwrap();
+    service
+        .update_main_instance(UpdateModelProviderMainInstanceCommand {
+            actor_user_id: repository.actor.user_id,
+            provider_code: "fixture_provider".to_string(),
+            auto_include_new_instances: true,
+            model_distribution_rules: Some(vec![domain::ModelProviderMainModelDistributionRule {
+                model_id: "fixture_chat".to_string(),
+                distribution_rule: domain::ModelProviderDistributionRule::RoundRobin,
+            }]),
+        })
+        .await
+        .unwrap();
     repository
         .create_instance(&CreateModelProviderInstanceInput {
             instance_id: Uuid::now_v7(),
@@ -171,6 +183,10 @@ async fn model_provider_service_options_group_models_by_model_id_with_ordered_in
         .unwrap();
     assert_eq!(fixture_chat_group.model.descriptor.model_id, "fixture_chat");
     assert_eq!(
+        fixture_chat_group.distribution_rule,
+        domain::ModelProviderDistributionRule::RoundRobin
+    );
+    assert_eq!(
         fixture_chat_group
             .targets
             .iter()
@@ -199,6 +215,10 @@ async fn model_provider_service_options_group_models_by_model_id_with_ordered_in
         .iter()
         .find(|group| group.model_id == "custom-enabled")
         .unwrap();
+    assert_eq!(
+        custom_group.distribution_rule,
+        domain::ModelProviderDistributionRule::None
+    );
     assert_eq!(
         custom_group
             .targets

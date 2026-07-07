@@ -77,6 +77,13 @@ pub struct UpdateModelProviderBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateModelProviderMainInstanceBody {
     pub auto_include_new_instances: bool,
+    pub model_distribution_rules: Option<Vec<ModelProviderMainModelDistributionRuleBody>>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ModelProviderMainModelDistributionRuleBody {
+    pub model_id: String,
+    pub distribution_rule: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -329,6 +336,7 @@ pub struct DeletedResponse {
 pub struct ModelProviderMainInstanceResponse {
     pub provider_code: String,
     pub auto_include_new_instances: bool,
+    pub model_distribution_rules: Vec<ModelProviderMainModelDistributionRuleResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -342,8 +350,15 @@ pub struct ModelProviderMainInstanceSummaryResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ModelProviderOptionGroupResponse {
     pub model_id: String,
+    pub distribution_rule: String,
     pub model: ProviderModelDescriptorResponse,
     pub targets: Vec<ModelProviderOptionTargetResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderMainModelDistributionRuleResponse {
+    pub model_id: String,
+    pub distribution_rule: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -404,6 +419,16 @@ fn format_optional_time(value: Option<time::OffsetDateTime>) -> Option<String> {
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(raw)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
+}
+
+fn parse_distribution_rule(raw: &str) -> Result<domain::ModelProviderDistributionRule, ApiError> {
+    match raw {
+        "none" => Ok(domain::ModelProviderDistributionRule::None),
+        "round_robin" => Ok(domain::ModelProviderDistributionRule::RoundRobin),
+        _ => {
+            Err(control_plane::errors::ControlPlaneError::InvalidInput("distribution_rule").into())
+        }
+    }
 }
 
 fn normalize_provider_icon(provider_code: &str, icon: Option<String>) -> Option<String> {
@@ -687,7 +712,30 @@ fn to_main_instance_response(
     ModelProviderMainInstanceResponse {
         provider_code: view.provider_code,
         auto_include_new_instances: view.auto_include_new_instances,
+        model_distribution_rules: view
+            .model_distribution_rules
+            .into_iter()
+            .map(to_main_model_distribution_rule_response)
+            .collect(),
     }
+}
+
+fn to_main_model_distribution_rule_response(
+    rule: domain::ModelProviderMainModelDistributionRule,
+) -> ModelProviderMainModelDistributionRuleResponse {
+    ModelProviderMainModelDistributionRuleResponse {
+        model_id: rule.model_id,
+        distribution_rule: rule.distribution_rule.as_str().to_string(),
+    }
+}
+
+fn to_main_model_distribution_rule(
+    rule: ModelProviderMainModelDistributionRuleBody,
+) -> Result<domain::ModelProviderMainModelDistributionRule, ApiError> {
+    Ok(domain::ModelProviderMainModelDistributionRule {
+        model_id: rule.model_id,
+        distribution_rule: parse_distribution_rule(&rule.distribution_rule)?,
+    })
 }
 
 fn to_model_catalog_response(
@@ -729,6 +777,7 @@ fn to_option_response(option: ModelProviderOptionEntry) -> ModelProviderOptionRe
             .into_iter()
             .map(|group| ModelProviderOptionGroupResponse {
                 model_id: group.model_id,
+                distribution_rule: group.distribution_rule.as_str().to_string(),
                 model: to_model_descriptor_response(group.model),
                 targets: group
                     .targets
@@ -998,11 +1047,21 @@ pub async fn update_main_instance(
 ) -> Result<Json<ApiSuccess<ModelProviderMainInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let model_distribution_rules = body
+        .model_distribution_rules
+        .map(|rules| {
+            rules
+                .into_iter()
+                .map(to_main_model_distribution_rule)
+                .collect::<Result<Vec<_>, ApiError>>()
+        })
+        .transpose()?;
     let view = service(&state)
         .update_main_instance(UpdateModelProviderMainInstanceCommand {
             actor_user_id: context.user.id,
             provider_code,
             auto_include_new_instances: body.auto_include_new_instances,
+            model_distribution_rules,
         })
         .await?;
 

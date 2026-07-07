@@ -177,6 +177,49 @@ describe('useModelProviderMutations', () => {
     );
   });
 
+  test('AC-001 sends model_distribution_rules when updating main-instance model settings', async () => {
+    const mutations = setupMutations();
+    modelProvidersApi.updateSettingsModelProviderMainInstance.mockResolvedValue({
+      provider_code: 'openai_compatible',
+      auto_include_new_instances: true,
+      model_distribution_rules: [
+        {
+          model_id: 'gpt-4o-mini',
+          distribution_rule: 'round_robin'
+        }
+      ]
+    });
+
+    await act(async () => {
+      await mutations.current.updateMainInstanceSettingsMutation.mutateAsync({
+        providerCode: 'openai_compatible',
+        auto_include_new_instances: true,
+        model_distribution_rules: [
+          {
+            model_id: 'gpt-4o-mini',
+            distribution_rule: 'round_robin'
+          }
+        ]
+      });
+    });
+
+    expect(
+      modelProvidersApi.updateSettingsModelProviderMainInstance
+    ).toHaveBeenCalledWith(
+      'openai_compatible',
+      {
+        auto_include_new_instances: true,
+        model_distribution_rules: [
+          {
+            model_id: 'gpt-4o-mini',
+            distribution_rule: 'round_robin'
+          }
+        ]
+      },
+      'csrf-123'
+    );
+  });
+
   test('passes official plugin host compatibility override to install and upgrade mutations', async () => {
     const mutations = setupMutations();
     const compatibilityOverride = {

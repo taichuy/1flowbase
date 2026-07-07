@@ -74,6 +74,14 @@ pub enum LlmRoutingMode {
     FailoverQueue,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmDistributionRule {
+    #[default]
+    None,
+    RoundRobin,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledLlmRouting {
     pub routing_mode: LlmRoutingMode,
@@ -83,6 +91,10 @@ pub struct CompiledLlmRouting {
     pub queue_snapshot_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queue_targets: Vec<CompiledLlmRouteTarget>,
+    #[serde(default)]
+    pub distribution_rule: LlmDistributionRule,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distribution_key: Option<String>,
     #[serde(default = "default_llm_context_policy")]
     pub context_policy: serde_json::Value,
     pub stream_policy: serde_json::Value,

@@ -15,14 +15,11 @@ export interface LlmProviderOption {
   parameterForm: AgentFlowModelProviderOptions['providers'][number]['parameter_form'];
   modelGroups: LlmModelGroup[];
   models: LlmModelOption[];
-  targetCount: number;
 }
 
 export interface LlmModelGroup {
   key: string;
   label: string;
-  targetOrderLabel: string;
-  targetInstanceIds: string[];
   models: LlmModelOption[];
 }
 
@@ -34,24 +31,11 @@ export interface LlmModelOption {
   providerCode: string;
   protocol: string;
   providerIcon?: string | null;
-  sourceInstanceId: string;
-  sourceInstanceLabel: string;
-  targetCount: number;
-  targetLabels: string[];
   contextWindow: number | null;
   effectiveContextWindow: number | null;
   maxOutputTokens: number | null;
   supportsToolCall: boolean;
   supportsMultimodal: boolean;
-  tag?: string;
-}
-
-function toTag(source: string) {
-  if (!source) {
-    return undefined;
-  }
-
-  return source.replace(/_/g, ' ').toUpperCase();
 }
 
 function encodeModelSelectionValue(providerCode: string, modelId: string) {
@@ -63,10 +47,6 @@ function mapLlmModelOption(
   group: AgentFlowModelProviderOptions['providers'][number]['model_groups'][number]
 ): LlmModelOption {
   const model = group.model;
-  const firstTarget = group.targets[0] ?? null;
-  const targetLabels = group.targets.map(
-    (target) => target.source_instance_display_name
-  );
 
   return {
     value: model.model_id,
@@ -79,16 +59,11 @@ function mapLlmModelOption(
     providerCode: provider.provider_code,
     protocol: provider.protocol,
     providerIcon: provider.icon,
-    sourceInstanceId: firstTarget?.source_instance_id ?? '',
-    sourceInstanceLabel: firstTarget?.source_instance_display_name ?? '',
-    targetCount: group.targets.length,
-    targetLabels,
     contextWindow: model.context_window,
     effectiveContextWindow: model.context_window,
     maxOutputTokens: model.max_output_tokens,
     supportsToolCall: model.supports_tool_call,
-    supportsMultimodal: model.supports_multimodal,
-    tag: toTag(model.source)
+    supportsMultimodal: model.supports_multimodal
   };
 }
 
@@ -216,7 +191,6 @@ function localizeParameterForm(
 export function buildLlmModelMetadataSummary(model: LlmModelOption) {
   return [
     model.value,
-    model.tag,
     model.effectiveContextWindow !== null
       ? i18nText('agentFlow', 'auto.context', {
           value1: formatLlmTokenCount(model.effectiveContextWindow)
@@ -261,10 +235,6 @@ export function listLlmProviderOptions(
       return {
         key: group.model_id,
         label: group.model.display_name || group.model_id,
-        targetOrderLabel: model.targetLabels.join(' -> '),
-        targetInstanceIds: group.targets.map(
-          (target) => target.source_instance_id
-        ),
         models: [model]
       };
     });
@@ -277,11 +247,7 @@ export function listLlmProviderOptions(
       icon: provider.icon,
       parameterForm: localizeParameterForm(options, provider),
       modelGroups,
-      models: modelGroups.flatMap((group) => group.models),
-      targetCount: provider.model_groups.reduce(
-        (total, group) => total + group.targets.length,
-        0
-      )
+      models: modelGroups.flatMap((group) => group.models)
     };
   });
 }

@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 fn compile_context() -> FlowCompileContext {
     FlowCompileContext {
+        workspace_id: None,
         provider_families: BTreeMap::from([(
             "fixture_provider".to_string(),
             FlowCompileProviderFamily {
@@ -35,6 +36,7 @@ fn compile_context() -> FlowCompileContext {
                 allow_custom_models: false,
             },
         )]),
+        model_distribution_rules: BTreeMap::new(),
         node_contributions: BTreeMap::new(),
         js_dependencies: BTreeMap::new(),
     }

@@ -17,4 +17,10 @@ pub trait EphemeralKvStore: Send + Sync {
         value: serde_json::Value,
         ttl: Option<time::Duration>,
     ) -> anyhow::Result<bool>;
+    async fn increment_counter(
+        &self,
+        key: &str,
+        amount: i64,
+        ttl: Option<time::Duration>,
+    ) -> anyhow::Result<i64>;
 }

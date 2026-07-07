@@ -419,6 +419,92 @@ function getStyleBoundaryCommonResponse(
 ): Response | null {
   if (
     method.toUpperCase() === 'GET' &&
+    requestUrl.pathname === '/api/console/navigation'
+  ) {
+    return createStyleBoundaryJsonResponse({
+      data: {
+        route_definitions: [
+          {
+            route_id: 'home',
+            surface_key: 'home',
+            path: '/',
+            surface_kind: 'system'
+          },
+          {
+            route_id: 'frontstage',
+            surface_key: 'frontstage',
+            path: '/frontstage',
+            surface_kind: 'system'
+          },
+          {
+            route_id: 'embedded-apps',
+            surface_key: 'embedded-apps',
+            path: '/embedded-apps',
+            surface_kind: 'system'
+          },
+          {
+            route_id: 'templates',
+            surface_key: 'templates',
+            path: '/templates',
+            surface_kind: 'system'
+          },
+          {
+            route_id: 'settings.model-providers',
+            surface_key: 'model-providers',
+            path: '/settings/model-providers',
+            surface_kind: 'system'
+          }
+        ],
+        navigation_items: [
+          {
+            item_id: 'home',
+            route_id: 'home',
+            parent_item_id: null,
+            label_key: 'auto.workbench',
+            navigation_slot: 'primary',
+            order: 1
+          },
+          {
+            item_id: 'frontstage',
+            route_id: 'frontstage',
+            parent_item_id: null,
+            label_key: 'auto.frontstage',
+            navigation_slot: 'primary',
+            order: 2
+          },
+          {
+            item_id: 'embedded-apps',
+            route_id: 'embedded-apps',
+            parent_item_id: null,
+            label_key: 'auto.subsystem',
+            navigation_slot: 'primary',
+            order: 3
+          },
+          {
+            item_id: 'templates',
+            route_id: 'templates',
+            parent_item_id: null,
+            label_key: 'auto.templates',
+            navigation_slot: 'primary',
+            order: 4
+          },
+          {
+            item_id: 'model-providers',
+            route_id: 'settings.model-providers',
+            parent_item_id: 'settings',
+            label_key: 'auto.model_providers',
+            navigation_slot: 'settings',
+            order: 1
+          }
+        ],
+        permission_bindings: []
+      },
+      meta: null
+    });
+  }
+
+  if (
+    method.toUpperCase() === 'GET' &&
     requestUrl.pathname === '/api/console/system/release-status'
   ) {
     return createStyleBoundaryJsonResponse({

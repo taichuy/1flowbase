@@ -128,6 +128,7 @@ async fn model_provider_service_create_instance_inherits_provider_main_instance_
             actor_user_id: repository.actor.user_id,
             provider_code: "fixture_provider".to_string(),
             auto_include_new_instances: false,
+            model_distribution_rules: None,
         })
         .await
         .unwrap();

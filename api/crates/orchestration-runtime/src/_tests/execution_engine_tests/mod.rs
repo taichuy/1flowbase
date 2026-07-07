@@ -20,11 +20,12 @@ use crate::{
     compiled_plan::{
         CompiledBinding, CompiledCodeRuntime, CompiledEdge, CompiledLlmRouteTarget,
         CompiledLlmRouting, CompiledLlmRuntime, CompiledNode, CompiledOutput, CompiledPlan,
-        CompiledPluginRuntime, LlmRoutingMode,
+        CompiledPluginRuntime, LlmDistributionRule, LlmRoutingMode,
     },
     execution_engine::{
-        resume_flow_debug_run, start_flow_debug_run, CapabilityInvocationOutput, CapabilityInvoker,
-        CodeInvocationOutput, CodeInvoker, ProviderInvocationOutput, ProviderInvoker,
+        resume_flow_debug_run, start_flow_debug_run, start_flow_debug_run_with_runtime_context,
+        CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
+        ExecutionRuntimeContext, LlmRoutingCounterStore, ProviderInvocationOutput, ProviderInvoker,
     },
     execution_state::ExecutionStopReason,
 };
@@ -205,6 +206,7 @@ impl_noop_code_invoker!(
     FailFirstFailoverInvoker,
     FailAfterTokenFinishErrorFailoverInvoker,
     SequentialLlmToolCallInvoker,
+    RecordingSuccessInvoker,
 );
 
 struct RuntimeContractErrorInvoker;
@@ -543,6 +545,80 @@ impl CapabilityInvoker for FailFirstFailoverInvoker {
         _input_payload: serde_json::Value,
     ) -> Result<CapabilityInvocationOutput> {
         unreachable!("failover plan does not execute capability nodes")
+    }
+}
+
+#[derive(Default)]
+struct RecordingRoutingCounterStore {
+    values: Mutex<BTreeMap<String, i64>>,
+    keys: Mutex<Vec<String>>,
+}
+
+#[async_trait]
+impl LlmRoutingCounterStore for RecordingRoutingCounterStore {
+    async fn increment_counter(
+        &self,
+        key: &str,
+        amount: i64,
+        _ttl: Option<time::Duration>,
+    ) -> Result<i64> {
+        self.keys
+            .lock()
+            .expect("counter keys mutex poisoned")
+            .push(key.to_string());
+        let mut values = self.values.lock().expect("counter values mutex poisoned");
+        let next = values.get(key).copied().unwrap_or(0) + amount;
+        values.insert(key.to_string(), next);
+        Ok(next)
+    }
+}
+
+struct RecordingSuccessInvoker {
+    calls: Arc<Mutex<Vec<String>>>,
+}
+
+#[async_trait]
+impl ProviderInvoker for RecordingSuccessInvoker {
+    async fn invoke_llm(
+        &self,
+        runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        self.calls
+            .lock()
+            .expect("calls mutex poisoned")
+            .push(runtime.provider_instance_id.clone());
+        Ok(final_provider_output(format!(
+            "winner:{}",
+            runtime.provider_instance_id
+        )))
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for RecordingSuccessInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: serde_json::Value,
+        _input_payload: serde_json::Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("round-robin plan does not execute capability nodes")
+    }
+}
+
+fn final_provider_output(content: String) -> ProviderInvocationOutput {
+    ProviderInvocationOutput {
+        events: vec![ProviderStreamEvent::Finish {
+            reason: ProviderFinishReason::Stop,
+        }],
+        result: ProviderInvocationResult {
+            final_content: Some(content),
+            finish_reason: Some(ProviderFinishReason::Stop),
+            ..ProviderInvocationResult::default()
+        },
+        first_token_at: None,
+        time_to_first_token_ms: None,
     }
 }
 

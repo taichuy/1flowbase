@@ -288,6 +288,7 @@ where
             background_state.provider_install_root.clone(),
         )
         .with_file_storage_registry(background_state.file_storage_registry.clone())
+        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         if let Err(runtime_error) = runtime_service
             .start_published_flow_run(StartPublishedFlowRunCommand {
@@ -396,6 +397,7 @@ where
             background_state.provider_install_root.clone(),
         )
         .with_file_storage_registry(background_state.file_storage_registry.clone())
+        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         match ApplicationPublishedCallbackResumeService::new(
             background_state.store.clone(),

@@ -73,6 +73,7 @@ pub struct UpdateModelProviderMainInstanceCommand {
     pub actor_user_id: Uuid,
     pub provider_code: String,
     pub auto_include_new_instances: bool,
+    pub model_distribution_rules: Option<Vec<domain::ModelProviderMainModelDistributionRule>>,
 }
 
 pub type ModelProviderConfiguredModelInput = domain::ModelProviderConfiguredModel;
@@ -140,6 +141,7 @@ pub struct ModelProviderInstanceView {
 pub struct ModelProviderMainInstanceView {
     pub provider_code: String,
     pub auto_include_new_instances: bool,
+    pub model_distribution_rules: Vec<domain::ModelProviderMainModelDistributionRule>,
 }
 
 #[derive(Debug, Clone)]
@@ -205,6 +207,7 @@ pub struct ModelProviderMainInstanceSummary {
 #[derive(Debug, Clone)]
 pub struct ModelProviderOptionGroup {
     pub model_id: String,
+    pub distribution_rule: domain::ModelProviderDistributionRule,
     pub model: LocalizedProviderModelDescriptor,
     pub targets: Vec<ModelProviderOptionTarget>,
 }

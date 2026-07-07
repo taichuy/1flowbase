@@ -39,6 +39,15 @@ impl CacheStore for FakeInfrastructure {
         Ok(true)
     }
 
+    async fn increment_counter(
+        &self,
+        _key: &str,
+        amount: i64,
+        _ttl: Option<Duration>,
+    ) -> anyhow::Result<i64> {
+        Ok(amount)
+    }
+
     async fn delete(&self, _key: &str) -> anyhow::Result<()> {
         Ok(())
     }

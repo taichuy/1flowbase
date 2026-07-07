@@ -1,4 +1,13 @@
-import { Alert, Empty, Space, Switch, Table, Tabs, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Empty,
+  Space,
+  Switch,
+  Table,
+  Tabs,
+  Tag,
+  Typography
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
@@ -14,6 +23,8 @@ import { i18nText } from '../../../../shared/i18n/text';
 type ModelGroup =
   SettingsModelProviderOptions['providers'][number]['model_groups'][number];
 type ModelGroupTarget = ModelGroup['targets'][number];
+type DistributionRule =
+  SettingsModelProviderMainInstance['model_distribution_rules'][number]['distribution_rule'];
 
 const SOURCE_INSTANCE_TAG_COLORS = [
   'blue',
@@ -33,6 +44,19 @@ function sourceInstanceTagColor(sourceInstanceDisplayName: string) {
   ) % SOURCE_INSTANCE_TAG_COLORS.length;
 
   return SOURCE_INSTANCE_TAG_COLORS[colorIndex];
+}
+
+function distributionRuleOptions() {
+  return [
+    {
+      value: 'none',
+      label: i18nText('settings', 'auto.distribution_rule_none')
+    },
+    {
+      value: 'round_robin',
+      label: i18nText('settings', 'auto.distribution_rule_round_robin')
+    }
+  ] satisfies Array<{ value: DistributionRule; label: string }>;
 }
 
 export function ModelProviderInstancesModal({
@@ -55,6 +79,7 @@ export function ModelProviderInstancesModal({
   onRefreshModels,
   onDelete,
   onToggleAutoIncludeNewInstances,
+  onChangeDistributionRule,
   onToggleIncludedInMain
 }: {
   open: boolean;
@@ -79,6 +104,10 @@ export function ModelProviderInstancesModal({
   onRefreshModels: (instance: SettingsModelProviderInstance) => void;
   onDelete: (instance: SettingsModelProviderInstance) => void;
   onToggleAutoIncludeNewInstances: (checked: boolean) => void;
+  onChangeDistributionRule: (
+    modelId: string,
+    distributionRule: DistributionRule
+  ) => void;
   onToggleIncludedInMain: (
     instance: SettingsModelProviderInstance,
     checked: boolean
@@ -156,6 +185,32 @@ export function ModelProviderInstancesModal({
             group.targets.map(renderModelGroupTargetTag)
           )}
         </div>
+      )
+    },
+    {
+      key: 'distribution_rule',
+      title: i18nText('settings', 'auto.distribution_rule'),
+      width: 160,
+      render: (_, group) => (
+        <select
+          aria-label={i18nText('settings', 'auto.distribution_rule')}
+          className="model-provider-panel__distribution-rule-select"
+          disabled={!canManage || updatingMainInstance || !mainInstance}
+          value={group.distribution_rule}
+          onChange={(event) =>
+            onChangeDistributionRule(
+              group.model_id,
+              event.currentTarget.value as DistributionRule
+            )
+          }
+        >
+          <option value="" disabled hidden />
+          {distributionRuleOptions().map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       )
     }
   ];

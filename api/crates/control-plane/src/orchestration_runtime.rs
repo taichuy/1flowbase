@@ -25,7 +25,7 @@ use crate::{
     plugin_management::ready_current_node_plugin_installation,
     ports::{
         AppendRunEventInput, ApplicationJsDependencySelectionRepository, ApplicationRepository,
-        CompleteCallbackTaskInput, FlowRepository, ModelDefinitionRepository,
+        CacheStore, CompleteCallbackTaskInput, FlowRepository, ModelDefinitionRepository,
         ModelProviderRepository, NodeContributionRepository, OrchestrationRuntimeRepository,
         PluginRepository, ProviderRuntimePort, RuntimeEventEnvelope, RuntimeEventStream,
         UpdateFlowRunInput, UpdateNodeRunInput,
@@ -272,6 +272,8 @@ pub struct OrchestrationRuntimeService<R, H> {
     runtime: H,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     file_storage_registry: Option<Arc<storage_object::FileStorageDriverRegistry>>,
+    llm_routing_counter_store:
+        Option<Arc<dyn orchestration_runtime::execution_engine::LlmRoutingCounterStore>>,
     provider_secret_master_key: String,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
     api_node_id: Option<String>,
@@ -304,6 +306,7 @@ where
             runtime,
             runtime_engine,
             file_storage_registry: None,
+            llm_routing_counter_store: None,
             provider_secret_master_key: provider_secret_master_key.into(),
             runtime_event_stream: None,
             api_node_id: None,
@@ -329,9 +332,31 @@ where
         self
     }
 
+    pub fn with_llm_routing_counter_store(mut self, cache_store: Arc<dyn CacheStore>) -> Self {
+        self.llm_routing_counter_store =
+            Some(Arc::new(CacheStoreLlmRoutingCounterStore { cache_store }));
+        self
+    }
+
     pub fn with_runtime_event_stream(mut self, stream: Arc<dyn RuntimeEventStream>) -> Self {
         self.runtime_event_stream = Some(stream);
         self
+    }
+
+    pub(super) fn execution_runtime_context(
+        &self,
+        plan: &orchestration_runtime::compiled_plan::CompiledPlan,
+        variable_pool: &serde_json::Map<String, Value>,
+    ) -> orchestration_runtime::execution_engine::ExecutionRuntimeContext {
+        let context =
+            orchestration_runtime::execution_engine::ExecutionRuntimeContext::from_plan_input(
+                plan,
+                variable_pool,
+            );
+        match &self.llm_routing_counter_store {
+            Some(store) => context.with_llm_routing_counter_store(store.clone()),
+            None => context,
+        }
     }
 
     fn runtime_invoker(&self, workspace_id: Uuid) -> RuntimeProviderInvoker<R, H> {
@@ -430,7 +455,7 @@ where
         let invoker = self.runtime_invoker(application.workspace_id);
         let started_at = OffsetDateTime::now_utc();
         let http_file_persister = self.http_response_file_persister(actor.clone());
-        let preview = orchestration_runtime::preview_executor::run_node_preview_with_http_file_persister(
+        let preview = orchestration_runtime::preview_executor::run_node_preview_with_http_file_persister_and_counter_store(
             &compiled_plan,
             &command.node_id,
             &command.input_payload,
@@ -438,6 +463,7 @@ where
             http_file_persister.as_ref().map(|persister| {
                 persister as &dyn orchestration_runtime::execution_engine::HttpResponseFilePersister
             }),
+            self.llm_routing_counter_store.clone(),
         )
         .await?;
         let compiled_record = self
@@ -757,14 +783,18 @@ where
             .and_then(|payload| payload.get(&waiting_node_id))
             .cloned()
             .ok_or_else(|| anyhow!("resume payload is missing node input for {waiting_node_id}"))?;
-        let outcome = orchestration_runtime::execution_engine::resume_flow_debug_run(
-            &compiled_plan,
-            &snapshot,
-            &waiting_node_id,
-            &resume_patch,
-            &self.runtime_invoker(application.workspace_id),
-        )
-        .await?;
+        let runtime_context =
+            self.execution_runtime_context(&compiled_plan, &snapshot.variable_pool);
+        let outcome =
+            orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context(
+                &compiled_plan,
+                &snapshot,
+                &waiting_node_id,
+                &resume_patch,
+                runtime_context,
+                &self.runtime_invoker(application.workspace_id),
+            )
+            .await?;
         let waiting_node_resume = if let Some(node_run_id) = checkpoint.node_run_id {
             let waiting_node = current_detail
                 .node_runs
@@ -879,14 +909,18 @@ where
         }
         let snapshot = checkpoint_snapshot_from_record(&checkpoint)?;
         let waiting_node_id = checkpoint_node_id(&checkpoint)?;
-        let outcome = orchestration_runtime::execution_engine::resume_flow_debug_run(
-            &compiled_plan,
-            &snapshot,
-            &waiting_node_id,
-            &command.response_payload,
-            &self.runtime_invoker(application.workspace_id),
-        )
-        .await?;
+        let runtime_context =
+            self.execution_runtime_context(&compiled_plan, &snapshot.variable_pool);
+        let outcome =
+            orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context(
+                &compiled_plan,
+                &snapshot,
+                &waiting_node_id,
+                &command.response_payload,
+                runtime_context,
+                &self.runtime_invoker(application.workspace_id),
+            )
+            .await?;
 
         let waiting_node = detail
             .node_runs
@@ -1022,14 +1056,18 @@ where
         }
 
         let snapshot = checkpoint_snapshot_from_record(checkpoint)?;
-        let outcome = orchestration_runtime::execution_engine::resume_flow_debug_run(
-            compiled_plan,
-            &snapshot,
-            &waiting_node_id,
-            &execution.output_payload,
-            &self.runtime_invoker(application.workspace_id),
-        )
-        .await?;
+        let runtime_context =
+            self.execution_runtime_context(compiled_plan, &snapshot.variable_pool);
+        let outcome =
+            orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context(
+                compiled_plan,
+                &snapshot,
+                &waiting_node_id,
+                &execution.output_payload,
+                runtime_context,
+                &self.runtime_invoker(application.workspace_id),
+            )
+            .await?;
         let side_effect_receipt = execution
             .metrics_payload
             .get("side_effect_receipt")
@@ -1156,6 +1194,24 @@ where
             ),
         )
         .await;
+    }
+}
+
+struct CacheStoreLlmRoutingCounterStore {
+    cache_store: Arc<dyn CacheStore>,
+}
+
+#[async_trait]
+impl orchestration_runtime::execution_engine::LlmRoutingCounterStore
+    for CacheStoreLlmRoutingCounterStore
+{
+    async fn increment_counter(
+        &self,
+        key: &str,
+        amount: i64,
+        ttl: Option<time::Duration>,
+    ) -> Result<i64> {
+        self.cache_store.increment_counter(key, amount, ttl).await
     }
 }
 
