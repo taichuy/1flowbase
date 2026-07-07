@@ -16,6 +16,14 @@
   min-width: 280px;
 }
 
+.mcp-management__directory-toolbar {
+  width: 100%;
+}
+
+.mcp-management__directory-toolbar .mcp-management__instance-select {
+  width: min(420px, 100%);
+}
+
 .mcp-management__directory-tree {
   flex: 0 0 320px;
   max-height: 520px;

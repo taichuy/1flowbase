@@ -494,8 +494,11 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).queryByLabelText('path')).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText('挂载路径')).toBeInTheDocument();
     expect(
-      within(dialog).getByRole('columnheader', { name: '挂载路径' })
-    ).toBeInTheDocument();
+      within(dialog).queryByRole('columnheader', { name: '挂载路径' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('columnheader', { name: 'display_alias' })
+    ).not.toBeInTheDocument();
     expect(within(dialog).getAllByText('/ops/customer').length).toBeGreaterThan(
       0
     );

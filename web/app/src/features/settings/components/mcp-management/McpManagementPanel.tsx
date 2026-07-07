@@ -57,10 +57,8 @@ import {
   createSettingsMcpInstance,
   createSettingsMcpTool,
   createSettingsMcpToolBinding,
-  deleteSettingsMcpGroup,
   deleteSettingsMcpInstance,
   deleteSettingsMcpTool,
-  deleteSettingsMcpToolBinding,
   executeSettingsMcpToolDebug,
   exportSettingsMcpCatalog,
   exportSettingsMcpInstanceDirectory,
@@ -426,17 +424,6 @@ function McpInstancesTab({
       });
     }
   });
-  const deleteGroupMutation = useMutation({
-    mutationFn: (values: { instanceId: string; path: string }) =>
-      deleteSettingsMcpGroup(values.instanceId, values.path, csrfToken),
-    onSuccess: async () => {
-      message.success(i18nText('settings', 'auto.mcp_deleted'));
-      groupForm.resetFields();
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
-    }
-  });
   const saveBindingMutation = useMutation({
     mutationFn: (values: BindingFormValues) => {
       const body = {
@@ -457,16 +444,6 @@ function McpInstancesTab({
       message.success(i18nText('settings', 'auto.mcp_saved'));
       bindingForm.resetFields();
       setEditingBinding(null);
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
-    }
-  });
-  const deleteBindingMutation = useMutation({
-    mutationFn: (bindingId: string) =>
-      deleteSettingsMcpToolBinding(bindingId, csrfToken),
-    onSuccess: async () => {
-      message.success(i18nText('settings', 'auto.mcp_deleted'));
       await queryClient.invalidateQueries({
         queryKey: settingsMcpCatalogQueryKey
       });
@@ -524,16 +501,6 @@ function McpInstancesTab({
       tools: catalog.tools
     });
   }, [catalog.bindings, catalog.groups, catalog.tools, selectedInstance]);
-
-  function resolveInstanceId(binding: ConsoleMcpToolBinding) {
-    return (
-      catalog.instances.find(
-        (instance) => instance.id === binding.instance_record_id
-      )?.instance_id ??
-      selectedInstance?.instance_id ??
-      ''
-    );
-  }
 
   const instanceColumns: ColumnsType<ConsoleMcpInstance> = [
     {
@@ -694,7 +661,13 @@ function McpInstancesTab({
             size="middle"
             className="mcp-management__stack"
           >
-            <Flex justify="flex-end" align="center" wrap="wrap" gap={12}>
+            <Flex
+              className="mcp-management__directory-toolbar"
+              vertical
+              justify="center"
+              align="center"
+              gap={12}
+            >
               <Segmented
                 value={directoryEditorMode}
                 options={[
@@ -894,134 +867,6 @@ function McpInstancesTab({
                 </Flex>
               </div>
             </Flex>
-            <Table
-              rowKey="id"
-              size="small"
-              columns={[
-                { title: 'path', dataIndex: 'path' },
-                { title: 'display_name', dataIndex: 'display_name' },
-                {
-                  title: 'enabled',
-                  dataIndex: 'enabled',
-                  render: (value) => String(value)
-                },
-                {
-                  title: i18nText('settings', 'auto.operation'),
-                  render: (_, record) => (
-                    <Space>
-                      <Button
-                        icon={<EditOutlined />}
-                        size="small"
-                        disabled={!canManage}
-                        onClick={() => {
-                          setDirectoryEditorMode('group');
-                          const instance = catalog.instances.find(
-                            (item) => item.id === record.instance_record_id
-                          );
-                          groupForm.setFieldsValue({
-                            instance_id:
-                              instance?.instance_id ??
-                              selectedInstance.instance_id,
-                            path: record.path,
-                            display_name: record.display_name,
-                            description_short: record.description_short,
-                            enabled: record.enabled,
-                            sort_order: record.sort_order
-                          });
-                        }}
-                      />
-                      <Popconfirm
-                        title={i18nText(
-                          'settings',
-                          'auto.mcp_hard_delete_confirm'
-                        )}
-                        disabled={!canManage}
-                        onConfirm={() => {
-                          const instance = catalog.instances.find(
-                            (item) => item.id === record.instance_record_id
-                          );
-                          deleteGroupMutation.mutate({
-                            instanceId:
-                              instance?.instance_id ??
-                              selectedInstance.instance_id,
-                            path: record.path
-                          });
-                        }}
-                      >
-                        <Button
-                          danger
-                          icon={<DeleteOutlined />}
-                          size="small"
-                          disabled={!canManage}
-                        />
-                      </Popconfirm>
-                    </Space>
-                  )
-                }
-              ]}
-              dataSource={catalog.groups}
-              pagination={false}
-            />
-            <Table
-              rowKey="id"
-              size="small"
-              columns={[
-                {
-                  title: i18nText('settings', 'auto.mount_path'),
-                  dataIndex: 'group_path'
-                },
-                { title: 'tool_id', dataIndex: 'tool_id' },
-                { title: 'display_alias', dataIndex: 'display_alias' },
-                {
-                  title: 'visible',
-                  dataIndex: 'visible',
-                  render: (value) => String(value)
-                },
-                {
-                  title: i18nText('settings', 'auto.operation'),
-                  render: (_, record) => (
-                    <Space>
-                      <Button
-                        icon={<EditOutlined />}
-                        size="small"
-                        disabled={!canManage}
-                        onClick={() => {
-                          setDirectoryEditorMode('binding');
-                          setEditingBinding(record);
-                          bindingForm.setFieldsValue({
-                            instance_id: resolveInstanceId(record),
-                            group_path: record.group_path,
-                            tool_id: record.tool_id,
-                            display_alias: record.display_alias,
-                            visible: record.visible,
-                            sort_order: record.sort_order
-                          });
-                        }}
-                      />
-                      <Popconfirm
-                        title={i18nText(
-                          'settings',
-                          'auto.mcp_hard_delete_confirm'
-                        )}
-                        disabled={!canManage}
-                        onConfirm={() =>
-                          deleteBindingMutation.mutate(record.id)
-                        }
-                      >
-                        <Button
-                          danger
-                          icon={<DeleteOutlined />}
-                          size="small"
-                          disabled={!canManage}
-                        />
-                      </Popconfirm>
-                    </Space>
-                  )
-                }
-              ]}
-              dataSource={catalog.bindings}
-              pagination={false}
-            />
           </Space>
         </FixedHeightModal>
       ) : null}
