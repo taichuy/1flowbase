@@ -28,7 +28,7 @@ const styleBoundaryProviderInstances = [
   }
 ];
 
-const styleBoundaryMcpCatalog = {
+export const styleBoundaryMcpCatalog = {
   instances: [
     {
       id: 'mcp-instance-record-1',
@@ -64,6 +64,7 @@ const styleBoundaryMcpCatalog = {
       short_description: 'Read runtime profile',
       full_description: 'Read the current system runtime profile.',
       interface_id: 'get_runtime_profile',
+      operation: 'GET /api/console/system/runtime-profile',
       parameter_schema: {
         type: 'object',
         properties: {
@@ -124,7 +125,7 @@ const styleBoundaryMcpCatalog = {
   }
 };
 
-const styleBoundaryMcpInterfaceCapabilities = [
+export const styleBoundaryMcpInterfaceCapabilities = [
   {
     interface_id: 'get_runtime_profile',
     method: 'GET',
@@ -142,6 +143,16 @@ const styleBoundaryMcpInterfaceCapabilities = [
       },
       additionalProperties: false
     },
+    parameter_descriptors: [
+      {
+        name: 'query.locale',
+        field_type: 'string',
+        parameter_type: 'url' as const,
+        description: 'Locale',
+        required: false,
+        schema: { type: 'string' }
+      }
+    ],
     result_schema: { type: 'object' },
     permission_code: null,
     security: [{ sessionCookie: [] }],

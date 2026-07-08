@@ -486,11 +486,27 @@ describe('McpManagementPanel', () => {
     );
 
     expect(modalScrollBody).toHaveClass('mcp-management__directory-modal');
+    expect(
+      within(dialog).getByRole('tab', { name: '新增分组' })
+    ).toHaveAttribute('aria-selected', 'true');
+    expect(
+      within(dialog).getByRole('tab', { name: '挂载 Tool' })
+    ).toHaveAttribute('aria-selected', 'false');
     expect(within(dialog).getByLabelText('path')).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('combobox', { name: '路径' })
+    ).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText('挂载路径')).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('tree')).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByText('挂载 Tool'));
+    fireEvent.click(within(dialog).getByRole('tab', { name: '挂载 Tool' }));
 
+    expect(
+      within(dialog).getByRole('tab', { name: '新增分组' })
+    ).toHaveAttribute('aria-selected', 'false');
+    expect(
+      within(dialog).getByRole('tab', { name: '挂载 Tool' })
+    ).toHaveAttribute('aria-selected', 'true');
     expect(within(dialog).queryByLabelText('path')).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText('挂载路径')).toBeInTheDocument();
     expect(
@@ -499,8 +515,29 @@ describe('McpManagementPanel', () => {
     expect(
       within(dialog).queryByRole('columnheader', { name: 'display_alias' })
     ).not.toBeInTheDocument();
-    expect(within(dialog).getAllByText('/ops/customer').length).toBeGreaterThan(
-      0
+  });
+
+  test('uses the group form path as the binding mount path', () => {
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    fireEvent.change(within(dialog).getByLabelText('path'), {
+      target: { value: '/ops/customer' }
+    });
+
+    expect(within(dialog).getByLabelText('path')).toHaveValue('/ops/customer');
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: '挂载 Tool' }));
+
+    expect(within(dialog).getByLabelText('挂载路径')).toHaveValue(
+      '/ops/customer'
     );
   });
 

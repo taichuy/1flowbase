@@ -98,6 +98,10 @@ export default defineConfig(({ mode }) => {
           target: apiProxyTarget,
           changeOrigin: true
         },
+        '/v1': {
+          target: apiProxyTarget,
+          changeOrigin: true
+        },
         '/health': {
           target: apiProxyTarget,
           changeOrigin: true

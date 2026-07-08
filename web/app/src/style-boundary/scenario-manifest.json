@@ -806,22 +806,12 @@
     ],
     "boundaryNodes": [
       {
-        "id": "section-shell",
-        "selector": ".section-page-layout__shell",
+        "id": "mcp-management-root",
+        "selector": ".mcp-management",
         "propertyAssertions": [
           {
-            "property": "display",
-            "expected": "flex"
-          }
-        ]
-      },
-      {
-        "id": "mcp-management-directory-tree",
-        "selector": ".mcp-management__directory-tree",
-        "propertyAssertions": [
-          {
-            "property": "overflow",
-            "expected": "auto"
+            "property": "min-height",
+            "expected": "0px"
           }
         ]
       }

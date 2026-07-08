@@ -317,7 +317,6 @@ export function SettingsModelProvidersSection({
   const errorMessage =
     getErrorMessage(catalogQuery.error) ??
     getErrorMessage(familiesQuery.error) ??
-    getErrorMessage(officialCatalogQuery.error) ??
     getErrorMessage(instancesQuery.error) ??
     getErrorMessage(optionsQuery.error) ??
     getErrorMessage(mainInstanceQuery.error) ??
@@ -344,6 +343,9 @@ export function SettingsModelProvidersSection({
         <Alert type="error" showIcon message={errorMessage} />
       ) : null,
     [errorMessage]
+  );
+  const officialCatalogErrorMessage = getErrorMessage(
+    officialCatalogQuery.error
   );
   const modalMainInstance =
     mainInstanceQuery.data ??
@@ -377,7 +379,7 @@ export function SettingsModelProvidersSection({
                 overviewRows={overviewRows}
                 entries={families}
                 currentCatalogEntries={currentCatalogEntriesByProviderCode}
-                loading={catalogQuery.isLoading || familiesQuery.isLoading}
+                loading={familiesQuery.isLoading}
                 canManage={canManage}
                 deletingProviderCode={
                   familyDeleteMutation.isPending
@@ -493,6 +495,7 @@ export function SettingsModelProvidersSection({
               <OfficialPluginInstallPanel
                 sourceMeta={officialSourceMeta}
                 entries={officialCatalogEntries}
+                catalogErrorMessage={officialCatalogErrorMessage}
                 familiesByProviderCode={familiesByProviderCode}
                 searchQuery={officialSearchQuery}
                 loading={officialCatalogQuery.isLoading}

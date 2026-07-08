@@ -15,6 +15,7 @@ export interface McpInstancesState {
   directoryEditorMode: McpDirectoryEditorMode;
   exportingInstances: boolean;
   requestedInstanceId: string;
+  selectedDirectoryKey: string;
 }
 
 export type McpInstancesAction =
@@ -33,7 +34,8 @@ export type McpInstancesAction =
       value: SetStateAction<McpDirectoryEditorMode>;
     }
   | { type: 'setExportingInstances'; value: SetStateAction<boolean> }
-  | { type: 'setRequestedInstanceId'; value: SetStateAction<string> };
+  | { type: 'setRequestedInstanceId'; value: SetStateAction<string> }
+  | { type: 'setSelectedDirectoryKey'; value: SetStateAction<string> };
 
 export function createInitialMcpInstancesState(
   requestedInstanceId: string
@@ -45,7 +47,8 @@ export function createInitialMcpInstancesState(
     directoryModalOpen: false,
     directoryEditorMode: 'group',
     exportingInstances: false,
-    requestedInstanceId
+    requestedInstanceId,
+    selectedDirectoryKey: ''
   };
 }
 
@@ -152,6 +155,14 @@ export function mcpInstancesReducer(
         requestedInstanceId: resolveSetState(
           action.value,
           state.requestedInstanceId
+        )
+      };
+    case 'setSelectedDirectoryKey':
+      return {
+        ...state,
+        selectedDirectoryKey: resolveSetState(
+          action.value,
+          state.selectedDirectoryKey
         )
       };
   }

@@ -26,6 +26,7 @@ describe('mcp management view model', () => {
           instance_record_id: 'instance-record-1',
           path: '/crm',
           display_name: 'CRM',
+          description_short: null,
           enabled: true,
           sort_order: 0
         }
@@ -65,24 +66,36 @@ describe('mcp management view model', () => {
       {
         key: 'instance:workspace_ops:/',
         title: 'Workspace Ops /',
+        node_type: 'instance',
+        path: '/',
         children: [
           {
             key: 'group:/crm',
             title: 'CRM /crm',
+            node_type: 'group',
+            path: '/crm',
             children: [
               {
                 key: 'binding:binding-1',
-                title: 'Create customer customer_create'
+                title: 'Create customer customer_create',
+                node_type: 'binding',
+                path: '/crm',
+                binding_id: 'binding-1'
               }
             ]
           },
           {
             key: 'group:/ops',
             title: '/ops',
+            node_type: 'group',
+            path: '/ops',
             children: [
               {
                 key: 'binding:binding-2',
-                title: 'Customer Create Ops customer_create'
+                title: 'Customer Create Ops customer_create',
+                node_type: 'binding',
+                path: '/ops',
+                binding_id: 'binding-2'
               }
             ]
           }
