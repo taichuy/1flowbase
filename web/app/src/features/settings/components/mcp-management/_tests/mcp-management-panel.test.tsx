@@ -503,7 +503,7 @@ describe('McpManagementPanel', () => {
       within(dialog).queryByRole('combobox', { name: '路径' })
     ).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText('挂载路径')).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole('tree')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('tree')).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole('tab', { name: '挂载 Tool' }));
 

@@ -351,3 +351,73 @@
     padding-bottom: 0;
   }
 }
+
+.mcp-management__directory-layout {
+  display: flex;
+  gap: 24px;
+  min-height: 480px;
+  height: 520px;
+}
+
+.mcp-management__directory-tree-panel {
+  flex: 0 0 320px;
+  border-right: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  padding-right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.mcp-management__directory-form-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-left: 8px;
+  overflow-y: auto;
+}
+
+.mcp-management__tree-node-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-right: 8px;
+}
+
+.mcp-management__tree-node-actions {
+  display: none;
+}
+
+.mcp-management__tree-node-title:hover .mcp-management__tree-node-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mcp-management__tree-node-actions .ant-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+.mcp-management__tree-node-actions .ant-btn:hover {
+  color: var(--ant-color-primary);
+}
+
+.mcp-management__tree-node-actions .ant-btn-dangerous:hover {
+  color: var(--ant-color-error);
+}
+
+.mcp-management__directory-tree-panel .ant-tree-node-content-wrapper {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+}
+
+.mcp-management__directory-tree-panel .ant-tree-iconEle {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin-right: 4px !important;
+}
+

@@ -37,6 +37,7 @@ export type McpDirectoryTreeNode = {
   title: string;
   node_type: 'instance' | 'group' | 'binding';
   path: string;
+  display_name?: string;
   binding_id?: string;
   children?: McpDirectoryTreeNode[];
 };
@@ -139,6 +140,7 @@ export function buildMcpDirectoryTreeData({
           group.display_name && group.display_name !== path
             ? `${group.display_name} ${path}`
             : path,
+        display_name: group.display_name || undefined,
         node_type: 'group' as const,
         path,
         children: groupBindings.map((binding) => {
