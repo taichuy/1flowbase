@@ -61,3 +61,4 @@ api/storage/*
 web/app/.env
 .claude/*
 .agents/skills/fuck-my-shit-mountain/*
+docker/1flowbase.code-workspace
