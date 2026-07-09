@@ -745,8 +745,7 @@ function McpInstancesTab({
         <FixedHeightModal
           open
           className="mcp-management__directory-fixed-modal"
-          width={1200}
-          height="min(860px, calc(100vh - 96px))"
+          width={840}
           footer={null}
           title={i18nText('settings', 'auto.directory_editor')}
           scrollBodyClassName="mcp-management__directory-modal"
@@ -923,26 +922,24 @@ function McpInstancesTab({
                       }}
                       onFinish={(values) => saveBindingMutation.mutate(values)}
                     >
-                      <Form.Item
-                        label={i18nText(
-                          'settings',
-                          'auto.edit_tool_binding'
-                        )}
-                      >
-                        <Select
-                          allowClear
-                          aria-label={i18nText(
-                            'settings',
-                            'auto.edit_tool_binding'
-                          )}
-                          disabled={bindingOptions.length === 0}
-                          optionFilterProp="label"
-                          options={bindingOptions}
-                          showSearch
-                          value={editingBinding?.id}
-                          onChange={(value) => applyBindingSelection(value)}
-                        />
-                      </Form.Item>
+                      {bindingOptions.length > 0 ? (
+                        <Form.Item
+                          label={i18nText('settings', 'auto.edit_tool_binding')}
+                        >
+                          <Select
+                            allowClear
+                            aria-label={i18nText(
+                              'settings',
+                              'auto.edit_tool_binding'
+                            )}
+                            optionFilterProp="label"
+                            options={bindingOptions}
+                            showSearch
+                            value={editingBinding?.id}
+                            onChange={(value) => applyBindingSelection(value)}
+                          />
+                        </Form.Item>
+                      ) : null}
                       <Form.Item
                         name="instance_id"
                         hidden

@@ -67,7 +67,11 @@ function getServiceDefinitions(repoRoot) {
   const apiServerEnvDir = path.join(repoRoot, 'api', 'apps', 'api-server');
   const apiServerEnvFile = path.join(apiServerEnvDir, '.env');
   const apiServerEnvExampleFile = path.join(apiServerEnvDir, '.env.example');
+  const webAppEnvDir = path.join(repoRoot, 'web', 'app');
+  const webAppEnvFile = path.join(webAppEnvDir, '.env');
+  const webAppEnvExampleFile = path.join(webAppEnvDir, '.env.example');
   const localEnv = parseEnvFile(apiServerEnvFile);
+  const webEnv = parseEnvFile(webAppEnvFile);
   const apiServerAddress = parseServiceAddress(
     localEnv.API_SERVER_ADDR,
     DEFAULT_API_SERVER_ADDR,
@@ -78,7 +82,10 @@ function getServiceDefinitions(repoRoot) {
     DEFAULT_PLUGIN_RUNNER_ADDR,
     DEFAULT_PLUGIN_RUNNER_PORT
   );
-  const webPort = parsePositivePort(localEnv.VITE_DEV_SERVER_PORT, DEFAULT_WEB_PORT);
+  const webPort = parsePositivePort(
+    webEnv.VITE_DEV_SERVER_PORT || localEnv.VITE_DEV_SERVER_PORT,
+    DEFAULT_WEB_PORT
+  );
 
   return {
     web: {
@@ -92,7 +99,8 @@ function getServiceDefinitions(repoRoot) {
       probeHost: '127.0.0.1',
       port: webPort,
       startupTimeoutMs: FRONTEND_COLD_STARTUP_TIMEOUT_MS,
-      envFile: apiServerEnvFile,
+      envFile: webAppEnvFile,
+      envExampleFile: webAppEnvExampleFile,
       logFile: path.join(paths.logDir, 'web.log'),
       pidFile: path.join(paths.pidDir, 'web.json'),
     },

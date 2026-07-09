@@ -15,6 +15,15 @@ describe('vite config', () => {
     expect(source).toContain('target: apiProxyTarget');
   });
 
+  test('can expose the dev proxy to configured frontend origins', async () => {
+    const source = await readFile(path.resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+
+    expect(source).toContain('VITE_DEV_CORS_ALLOWED_ORIGINS');
+    expect(source).toContain('devCorsAllowedOrigins');
+    expect(source).toContain('credentials: true');
+    expect(source).toContain('origin: devCorsAllowedOrigins');
+  });
+
   test('keeps heavyweight route pages behind dynamic imports', async () => {
     const source = await readFile(
       path.resolve(process.cwd(), 'src/app/router.tsx'),

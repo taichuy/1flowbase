@@ -93,17 +93,25 @@ test('getServiceDefinitions uses repo default ports and explicit backend binarie
   assert.deepEqual(services['plugin-runner'].args, ['run', '-p', 'plugin-runner', '--bin', 'plugin-runner']);
 });
 
-test('getServiceDefinitions reads worktree service ports from api env file', () => {
+test('getServiceDefinitions reads frontend env from web app env file', () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-ports-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
+  const webAppDir = path.join(tempRepoRoot, 'web', 'app');
   fs.mkdirSync(apiServerDir, { recursive: true });
+  fs.mkdirSync(webAppDir, { recursive: true });
   fs.writeFileSync(
     path.join(apiServerDir, '.env'),
     [
       'API_SERVER_ADDR=0.0.0.0:7900',
       'PLUGIN_RUNNER_ADDR=0.0.0.0:7901',
-      'VITE_DEV_SERVER_PORT=3200',
       'VITE_API_PROXY_TARGET=http://127.0.0.1:7900',
+    ].join('\n')
+  );
+  fs.writeFileSync(
+    path.join(webAppDir, '.env'),
+    [
+      'VITE_DEV_SERVER_PORT=3200',
+      'VITE_API_PROXY_TARGET=https://1flowbase.example.test',
     ].join('\n')
   );
 
@@ -112,9 +120,12 @@ test('getServiceDefinitions reads worktree service ports from api env file', () 
   assert.equal(services.web.port, 3200);
   assert.equal(services['api-server'].port, 7900);
   assert.equal(services['plugin-runner'].port, 7901);
-  assert.equal(services.web.envFile, path.join(apiServerDir, '.env'));
+  assert.equal(services.web.envFile, path.join(webAppDir, '.env'));
   assert.equal(services['plugin-runner'].envFile, path.join(apiServerDir, '.env'));
-  assert.equal(buildServiceEnv(services.web, {}).VITE_API_PROXY_TARGET, 'http://127.0.0.1:7900');
+  assert.equal(
+    buildServiceEnv(services.web, {}).VITE_API_PROXY_TARGET,
+    'https://1flowbase.example.test'
+  );
   assert.equal(buildServiceEnv(services['plugin-runner'], {}).PLUGIN_RUNNER_ADDR, '0.0.0.0:7901');
 });
 
