@@ -39,10 +39,26 @@ function parseAllowedHosts(value?: string) {
   return hosts.length > 0 ? hosts : undefined;
 }
 
+function parseAllowedOrigins(value?: string) {
+  const origins = String(value || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.includes('*')) {
+    return true;
+  }
+
+  return origins.length > 0 ? origins : undefined;
+}
+
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
   const devServerPort = Number.parseInt(env.VITE_DEV_SERVER_PORT || '3100', 10);
   const devAllowedHosts = parseAllowedHosts(env.VITE_DEV_ALLOWED_HOSTS);
+  const devCorsAllowedOrigins = parseAllowedOrigins(
+    env.VITE_DEV_CORS_ALLOWED_ORIGINS
+  );
   const apiProxyTarget = (
     env.VITE_API_PROXY_TARGET ||
     env.VITE_API_BASE_URL ||
@@ -85,6 +101,14 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       ...(devAllowedHosts ? { allowedHosts: devAllowedHosts } : {}),
+      ...(devCorsAllowedOrigins
+        ? {
+            cors: {
+              origin: devCorsAllowedOrigins,
+              credentials: true
+            }
+          }
+        : {}),
       port: Number.isInteger(devServerPort) && devServerPort > 0 ? devServerPort : 3100,
       strictPort: true,
       fs: {

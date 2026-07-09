@@ -289,8 +289,10 @@ function renderPanel(
 }
 
 function renderPanelWithMountedTool({
+  includeBinding = true,
   operation = 'POST /api/console/apps'
 }: {
+  includeBinding?: boolean;
   operation?: string;
 } = {}) {
   return render(
@@ -336,18 +338,20 @@ function renderPanelWithMountedTool({
               revision: 1
             }
           ],
-          bindings: [
-            {
-              id: 'binding-1',
-              instance_record_id: 'instance-record-1',
-              tool_record_id: 'tool-record-1',
-              group_path: '/ops/customer',
-              tool_id: 'search_customer',
-              display_alias: null,
-              visible: true,
-              sort_order: 0
-            }
-          ],
+          bindings: includeBinding
+            ? [
+                {
+                  id: 'binding-1',
+                  instance_record_id: 'instance-record-1',
+                  tool_record_id: 'tool-record-1',
+                  group_path: '/ops/customer',
+                  tool_id: 'search_customer',
+                  display_alias: null,
+                  visible: true,
+                  sort_order: 0
+                }
+              ]
+            : [],
           meta_tool_config: {
             id: 'meta-1',
             workspace_id: 'workspace-1',
@@ -481,10 +485,12 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const modalShell = dialog.closest('.ant-modal');
     const modalScrollBody = screen.getByTestId(
       'fixed-height-modal-scroll-body'
     );
 
+    expect(modalShell).toHaveStyle({ width: '840px' });
     expect(modalScrollBody).toHaveClass('mcp-management__directory-modal');
     expect(
       within(dialog).getByRole('tab', { name: '新增分组' })
@@ -515,6 +521,29 @@ describe('McpManagementPanel', () => {
     expect(
       within(dialog).queryByRole('columnheader', { name: 'display_alias' })
     ).not.toBeInTheDocument();
+    expect(
+      within(dialog).getAllByLabelText('编辑 Tool 挂载').length
+    ).toBeGreaterThan(0);
+  });
+
+  test('hides the edit binding selector when there are no existing tool bindings', () => {
+    renderPanelWithMountedTool({ includeBinding: false });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    fireEvent.click(within(dialog).getByRole('tab', { name: '挂载 Tool' }));
+
+    expect(within(dialog).queryAllByLabelText('编辑 Tool 挂载')).toHaveLength(
+      0
+    );
+    expect(within(dialog).getByLabelText('挂载路径')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('tool_id')).toBeInTheDocument();
   });
 
   test('uses the group form path as the binding mount path', () => {

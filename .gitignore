@@ -59,6 +59,8 @@ api/apps/api-server/.env
 docs/superpowers/specs/1flowbase/2026-04-21-1flowbase-product-vision.md
 api/storage/*
 web/app/.env
+web/app/.env.local
+web/app/.env.*.local
 .claude/*
 .agents/skills/fuck-my-shit-mountain/*
 docker/1flowbase.code-workspace
