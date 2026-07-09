@@ -380,6 +380,23 @@ impl ModelProviderCatalogSource {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelProviderDistributionRule {
+    #[default]
+    None,
+    RoundRobin,
+}
+
+impl ModelProviderDistributionRule {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::RoundRobin => "round_robin",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelProviderConfiguredModel {
     pub model_id: String,
@@ -390,10 +407,29 @@ pub struct ModelProviderConfiguredModel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelProviderMainModelDistributionRule {
+    pub model_id: String,
+    pub distribution_rule: ModelProviderDistributionRule,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelProviderMainModelDistributionRuleRecord {
+    pub workspace_id: Uuid,
+    pub provider_code: String,
+    pub model_id: String,
+    pub distribution_rule: ModelProviderDistributionRule,
+    pub created_by: Uuid,
+    pub updated_by: Uuid,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelProviderMainInstanceRecord {
     pub workspace_id: Uuid,
     pub provider_code: String,
     pub auto_include_new_instances: bool,
+    pub model_distribution_rules: Vec<ModelProviderMainModelDistributionRuleRecord>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,

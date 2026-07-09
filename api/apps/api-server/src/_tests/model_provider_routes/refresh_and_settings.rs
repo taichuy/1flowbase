@@ -135,6 +135,9 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         schemas[request_schema_name]["properties"]["auto_include_new_instances"]["type"].as_str(),
         Some("boolean")
     );
+    assert!(schemas[request_schema_name]["properties"]
+        .get("model_distribution_rules")
+        .is_some());
     assert!(schemas[request_schema_name]
         .get("properties")
         .and_then(|properties| properties.get("routing_mode"))
@@ -164,6 +167,9 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
             .and_then(|value| value.split('/').next_back()),
         Some("ModelProviderOptionGroupResponse")
     );
+    assert!(schemas["ModelProviderOptionGroupResponse"]["properties"]
+        .get("distribution_rule")
+        .is_some());
     assert_eq!(
         schema_ref_name(&schemas["ModelProviderOptionResponse"]["properties"]["parameter_form"])
             .as_deref(),
@@ -266,6 +272,13 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
     assert_eq!(
         update_main_instance_payload["data"]["auto_include_new_instances"].as_bool(),
         Some(false)
+    );
+    assert_eq!(
+        update_main_instance_payload["data"]["model_distribution_rules"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
     );
 
     let excluded = app
@@ -379,6 +392,50 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         Some(true)
     );
 
+    let update_distribution_rule = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/model-providers/providers/fixture_provider/main-instance")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "auto_include_new_instances": false,
+                        "model_distribution_rules": [
+                            {
+                                "model_id": "fixture_chat",
+                                "distribution_rule": "round_robin"
+                            }
+                        ]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_distribution_rule.status(), StatusCode::OK);
+    let update_distribution_rule_payload: Value = serde_json::from_slice(
+        &to_bytes(update_distribution_rule.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        update_distribution_rule_payload["data"]["model_distribution_rules"][0]["model_id"]
+            .as_str(),
+        Some("fixture_chat")
+    );
+    assert_eq!(
+        update_distribution_rule_payload["data"]["model_distribution_rules"][0]
+            ["distribution_rule"]
+            .as_str(),
+        Some("round_robin")
+    );
+
     let options = app
         .clone()
         .oneshot(
@@ -436,6 +493,10 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .iter()
         .find(|group| group["model_id"].as_str() == Some("fixture_chat"))
         .expect("fixture_chat group");
+    assert_eq!(
+        alpha_group["distribution_rule"].as_str(),
+        Some("round_robin")
+    );
     let alpha_target = alpha_group["targets"]
         .as_array()
         .unwrap()
@@ -459,6 +520,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .iter()
         .find(|group| group["model_id"].as_str() == Some("custom-beta"))
         .expect("custom-beta group");
+    assert_eq!(beta_group["distribution_rule"].as_str(), Some("none"));
     let beta_target = beta_group["targets"]
         .as_array()
         .unwrap()

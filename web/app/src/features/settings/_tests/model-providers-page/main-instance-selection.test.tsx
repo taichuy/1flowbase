@@ -145,13 +145,13 @@ vi.mock('@scalar/api-reference-react', () => ({
 }));
 
 import { AppProviders } from '../../../../app/AppProviders';
-import { AppRouterProvider } from '../../../../app/router';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import {
   buildMainInstanceSettings,
   buildSettingsModelProviderInstances,
   buildSettingsModelProviderOptions
 } from '../model-provider-test-fixtures';
+import { SettingsModelProvidersSection } from '../../pages/settings-page/SettingsModelProvidersSection';
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 
 function authenticateWithPermissions(
@@ -193,7 +193,7 @@ function renderApp(pathname: string) {
 
   return render(
     <AppProviders>
-      <AppRouterProvider />
+      <SettingsModelProvidersSection canManage />
     </AppProviders>
   );
 }
@@ -470,7 +470,8 @@ describe('ModelProvidersPage - main instance selection', () => {
           expect(csrfToken).toBe('csrf-123');
           mainInstanceState = {
             provider_code: providerCode,
-            auto_include_new_instances: input.auto_include_new_instances
+            auto_include_new_instances: input.auto_include_new_instances,
+            model_distribution_rules: input.model_distribution_rules ?? []
           };
 
           return mainInstanceState;
@@ -518,11 +519,23 @@ describe('ModelProvidersPage - main instance selection', () => {
         ).toHaveBeenCalledWith(
           'openai_compatible',
           {
-            auto_include_new_instances: false
+            auto_include_new_instances: false,
+            model_distribution_rules: [
+              {
+                model_id: primaryContractProviderModels[0].model_id,
+                distribution_rule: 'none'
+              },
+              {
+                model_id: primaryContractProviderModels[1].model_id,
+                distribution_rule: 'none'
+              }
+            ]
           },
           'csrf-123'
         );
       });
+
+      fireEvent.click(within(modal).getByRole('tab', { name: '来源管理' }));
 
       const includedSwitch = within(modal).getByRole('switch', {
         name: '注入主实例 OpenAI Backup'

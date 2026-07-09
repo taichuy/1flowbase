@@ -153,6 +153,7 @@ import {
   buildSettingsModelProviderOptions
 } from '../model-provider-test-fixtures';
 import { SettingsModelProvidersSection } from '../../pages/settings-page/SettingsModelProvidersSection';
+import { ModelProviderInstancesModal } from '../../components/model-providers/ModelProviderInstancesModal';
 
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 
@@ -599,7 +600,11 @@ describe('ModelProvidersPage - instances modal', () => {
         options
       );
 
-      renderApp('/settings/model-providers');
+      render(
+        <AppProviders>
+          <SettingsModelProvidersSection canManage />
+        </AppProviders>
+      );
 
       const modal = await openProviderInstancesModal();
       expect(screen.getByTestId('fixed-height-modal-scroll-body')).toHaveClass(
@@ -664,6 +669,91 @@ describe('ModelProvidersPage - instances modal', () => {
       expect(
         within(modal).getAllByText('OpenAI Backup').length
       ).toBeGreaterThanOrEqual(1);
+    }
+  );
+
+  test(
+    'AC-001 renders distribution_rule in the main-instance aggregation table and emits the DTO field value',
+    { timeout: 15000 },
+    async () => {
+      authenticateAsModelProviderManager();
+      let mainInstanceState = buildMainInstanceSettings(true, 'none');
+      const distributionRuleChangeSpy = vi.fn(
+        (modelId: string, distributionRule: 'none' | 'round_robin') => {
+          mainInstanceState = {
+            ...mainInstanceState,
+            model_distribution_rules:
+              mainInstanceState.model_distribution_rules.map((rule) =>
+                rule.model_id === modelId
+                  ? { ...rule, distribution_rule: distributionRule }
+                  : rule
+              )
+          };
+        }
+      );
+
+      modelProvidersApi.fetchSettingsModelProviderMainInstance.mockImplementation(
+        async () => mainInstanceState
+      );
+      render(
+        <AppProviders>
+          <ModelProviderInstancesModal
+            open
+            catalogEntry={modelProviderCatalogEntries[0]}
+            providerDisplayName="OpenAI Compatible"
+            mainInstance={mainInstanceState}
+            modelGroups={
+              buildSettingsModelProviderOptions().providers[0].model_groups
+            }
+            instances={buildSettingsModelProviderInstances()}
+            updatingMainInstance={false}
+            updatingInstanceId={null}
+            refreshingCandidates={false}
+            refreshing={false}
+            deleting={false}
+            canManage={true}
+            versionSwitchNotice={null}
+            onClose={vi.fn()}
+            onEdit={vi.fn()}
+            onRefreshCandidates={vi.fn()}
+            onRefreshModels={vi.fn()}
+            onDelete={vi.fn()}
+            onToggleAutoIncludeNewInstances={vi.fn()}
+            onChangeDistributionRule={distributionRuleChangeSpy}
+            onToggleIncludedInMain={vi.fn()}
+          />
+        </AppProviders>
+      );
+
+      const modal = await screen.findByRole('dialog', {
+        name: /OpenAI Compatible 实例/
+      });
+      const mainInstanceTable = within(modal).getByRole('table', {
+        name: '主实例'
+      });
+      expect(
+        within(mainInstanceTable).getByRole('columnheader', {
+          name: '分发规则'
+        })
+      ).toBeInTheDocument();
+
+      const distributionRuleSelect = mainInstanceTable.querySelector(
+        'select.model-provider-panel__distribution-rule-select'
+      );
+      if (!(distributionRuleSelect instanceof HTMLSelectElement)) {
+        throw new Error('expected distribution rule select');
+      }
+      expect(distributionRuleSelect).not.toBeDisabled();
+      expect((await screen.findAllByText('无')).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText('轮询')).length).toBeGreaterThan(0);
+      fireEvent.change(distributionRuleSelect, {
+        target: { value: 'round_robin' }
+      });
+
+      expect(distributionRuleChangeSpy).toHaveBeenCalledWith(
+        primaryContractProviderModels[0].model_id,
+        'round_robin'
+      );
     }
   );
 

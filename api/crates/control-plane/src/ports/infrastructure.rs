@@ -619,6 +619,13 @@ pub trait CacheStore: Send + Sync {
         ttl: Option<time::Duration>,
     ) -> anyhow::Result<bool>;
 
+    async fn increment_counter(
+        &self,
+        key: &str,
+        amount: i64,
+        ttl: Option<time::Duration>,
+    ) -> anyhow::Result<i64>;
+
     async fn delete(&self, key: &str) -> anyhow::Result<()>;
 
     async fn touch(&self, key: &str, ttl: time::Duration) -> anyhow::Result<bool>;

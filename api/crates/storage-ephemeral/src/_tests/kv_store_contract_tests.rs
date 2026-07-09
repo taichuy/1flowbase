@@ -34,6 +34,34 @@ async fn memory_kv_store_set_if_absent_only_writes_once() {
 }
 
 #[tokio::test]
+async fn memory_kv_store_increments_counter_from_zero_and_respects_ttl() {
+    // AC-004: missing counter keys start at 0 and increment atomically inside the store.
+    let store = MemoryKvStore::new("flowbase:test");
+
+    assert_eq!(
+        store
+            .increment_counter("counter:short", 1, Some(Duration::milliseconds(60)))
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store
+            .increment_counter("counter:short", 2, None)
+            .await
+            .unwrap(),
+        3
+    );
+    assert_eq!(
+        store.get_json("counter:short").await.unwrap(),
+        Some(json!(3))
+    );
+
+    tokio::time::sleep(std::time::Duration::from_millis(90)).await;
+    assert_eq!(store.get_json("counter:short").await.unwrap(), None);
+}
+
+#[tokio::test]
 async fn memory_kv_store_prefixes_namespace_and_extends_ttl() {
     let store = MemoryKvStore::new("flowbase:test");
     store

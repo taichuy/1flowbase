@@ -163,6 +163,7 @@ async fn memory_model_provider_repository_scopes_main_instance_settings_by_works
             workspace_id: workspace_a,
             provider_code: "fixture_provider".to_string(),
             auto_include_new_instances: false,
+            model_distribution_rules: None,
             updated_by: repository.actor.user_id,
         })
         .await
@@ -293,6 +294,7 @@ async fn model_provider_service_updates_provider_main_instance_settings_without_
             actor_user_id: repository.actor.user_id,
             provider_code: "fixture_provider".to_string(),
             auto_include_new_instances: false,
+            model_distribution_rules: None,
         })
         .await
         .unwrap();

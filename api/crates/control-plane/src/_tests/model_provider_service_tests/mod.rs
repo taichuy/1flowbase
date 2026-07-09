@@ -835,10 +835,47 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
         let mut main_instances = self.main_instances.write().await;
         let key = Self::main_instance_key(input.workspace_id, &input.provider_code);
         let existing = main_instances.get(&key).cloned();
+        let model_distribution_rules = input
+            .model_distribution_rules
+            .as_ref()
+            .map(|rules| {
+                rules
+                    .iter()
+                    .map(|rule| {
+                        let existing_rule = existing.as_ref().and_then(|record| {
+                            record
+                                .model_distribution_rules
+                                .iter()
+                                .find(|existing_rule| existing_rule.model_id == rule.model_id)
+                        });
+                        domain::ModelProviderMainModelDistributionRuleRecord {
+                            workspace_id: input.workspace_id,
+                            provider_code: input.provider_code.clone(),
+                            model_id: rule.model_id.clone(),
+                            distribution_rule: rule.distribution_rule,
+                            created_by: existing_rule
+                                .map(|record| record.created_by)
+                                .unwrap_or(input.updated_by),
+                            updated_by: input.updated_by,
+                            created_at: existing_rule
+                                .map(|record| record.created_at)
+                                .unwrap_or(now),
+                            updated_at: now,
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(|| {
+                existing
+                    .as_ref()
+                    .map(|record| record.model_distribution_rules.clone())
+                    .unwrap_or_default()
+            });
         let record = ModelProviderMainInstanceRecord {
             workspace_id: input.workspace_id,
             provider_code: input.provider_code.clone(),
             auto_include_new_instances: input.auto_include_new_instances,
+            model_distribution_rules,
             created_by: existing
                 .as_ref()
                 .map(|record| record.created_by)

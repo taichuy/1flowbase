@@ -229,6 +229,7 @@ async fn model_provider_repository_persists_main_instance_defaults_and_instance_
             workspace_id: workspace.id,
             provider_code: "fixture_provider".into(),
             auto_include_new_instances: true,
+            model_distribution_rules: None,
             updated_by: actor.id,
         },
     )
@@ -270,6 +271,7 @@ async fn model_provider_repository_persists_main_instance_defaults_and_instance_
             workspace_id: workspace.id,
             provider_code: "fixture_provider".into(),
             auto_include_new_instances: false,
+            model_distribution_rules: None,
             updated_by: actor.id,
         },
     )
@@ -340,6 +342,85 @@ async fn model_provider_repository_persists_main_instance_defaults_and_instance_
     .await
     .unwrap();
     assert!(updated_true.included_in_main);
+}
+
+#[tokio::test]
+async fn model_provider_repository_persists_main_model_distribution_rules_without_touching_instances(
+) {
+    // AC-003: distribution rules are scoped by workspace + provider_code + model_id.
+    let (store, workspace, actor, installation_id) = seed_store().await;
+    let instance = ModelProviderRepository::create_instance(
+        &store,
+        &CreateModelProviderInstanceInput {
+            instance_id: Uuid::now_v7(),
+            workspace_id: workspace.id,
+            installation_id,
+            provider_code: "fixture_provider".into(),
+            protocol: "openai_compatible".into(),
+            display_name: "Primary".into(),
+            status: ModelProviderInstanceStatus::Ready,
+            config_json: json!({ "base_url": "https://primary.example.com/v1" }),
+            configured_models: vec![],
+            enabled_model_ids: vec!["fixture_chat".into(), "custom-stable".into()],
+            included_in_main: Some(true),
+            created_by: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+
+    let record = ModelProviderRepository::upsert_main_instance(
+        &store,
+        &UpsertModelProviderMainInstanceInput {
+            workspace_id: workspace.id,
+            provider_code: "fixture_provider".into(),
+            auto_include_new_instances: true,
+            model_distribution_rules: Some(vec![domain::ModelProviderMainModelDistributionRule {
+                model_id: "fixture_chat".into(),
+                distribution_rule: domain::ModelProviderDistributionRule::RoundRobin,
+            }]),
+            updated_by: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(record.model_distribution_rules.len(), 1);
+    assert_eq!(record.model_distribution_rules[0].model_id, "fixture_chat");
+    assert_eq!(
+        record.model_distribution_rules[0].distribution_rule,
+        domain::ModelProviderDistributionRule::RoundRobin
+    );
+
+    let fetched =
+        ModelProviderRepository::get_main_instance(&store, workspace.id, "fixture_provider")
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(
+        fetched.model_distribution_rules,
+        record.model_distribution_rules
+    );
+
+    let instance_columns: Vec<String> = sqlx::query_scalar(
+        r#"
+        select column_name
+        from information_schema.columns
+        where table_name = 'model_provider_instances'
+          and table_schema = current_schema()
+        "#,
+    )
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert!(!instance_columns.contains(&"distribution_rule".to_string()));
+    assert_eq!(
+        ModelProviderRepository::get_instance(&store, workspace.id, instance.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .enabled_model_ids,
+        vec!["fixture_chat".to_string(), "custom-stable".to_string()]
+    );
 }
 
 #[tokio::test]

@@ -242,6 +242,23 @@ describe('style boundary registry', () => {
     ).toBeInTheDocument();
   }, 15000);
 
+  test('renders the settings mcp management scene and opens the directory editor', async () => {
+    const scene = getRuntimeScene('page.settings-mcp-management');
+
+    render(
+      <AppProviders>
+        <StyleBoundaryHarness scene={scene} />
+      </AppProviders>
+    );
+
+    expect(await screen.findByText('Workspace Ops')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('dialog', { name: '目录编辑' }, { timeout: 8000 })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '新增分组' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '挂载 Tool' })).toBeInTheDocument();
+  }, 15_000);
+
   test('seeds model provider instances with enabled model ids instead of validation history', async () => {
     const scene = getRuntimeScene('page.settings');
 

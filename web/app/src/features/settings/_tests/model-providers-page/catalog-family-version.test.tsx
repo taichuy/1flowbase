@@ -117,6 +117,11 @@ const pluginsApi = vi.hoisted(() => ({
   fetchSettingsPluginTask: vi.fn()
 }));
 
+const consoleNavigationApi = vi.hoisted(() => ({
+  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+  fetchSettingsConsoleNavigation: vi.fn()
+}));
+
 const systemRuntimeApi = vi.hoisted(() => ({
   settingsSystemRuntimeQueryKey: ['settings', 'system-runtime'],
   fetchSettingsSystemRuntimeProfile: vi.fn()
@@ -138,6 +143,7 @@ vi.mock('../../api/permissions', () => permissionsApi);
 vi.mock('../../api/api-docs', () => docsApi);
 vi.mock('../../api/model-providers', () => modelProvidersApi);
 vi.mock('../../api/plugins', () => pluginsApi);
+vi.mock('../../api/console-navigation', () => consoleNavigationApi);
 vi.mock('../../api/system-runtime', () => systemRuntimeApi);
 vi.mock('../../api/file-management', () => fileManagementApi);
 vi.mock('@scalar/api-reference-react', () => ({
@@ -216,6 +222,27 @@ describe('ModelProvidersPage - catalog and family version', () => {
       permission_codes: []
     });
     permissionsApi.fetchSettingsPermissions.mockResolvedValue([]);
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue({
+      route_definitions: [
+        {
+          route_id: 'settings.model-providers',
+          surface_key: 'model-providers',
+          path: '/settings/model-providers',
+          surface_kind: 'system'
+        }
+      ],
+      navigation_items: [
+        {
+          item_id: 'model-providers',
+          route_id: 'settings.model-providers',
+          parent_item_id: 'settings',
+          label_key: 'auto.model_providers',
+          navigation_slot: 'settings',
+          order: 1
+        }
+      ],
+      permission_bindings: []
+    });
     docsApi.fetchSettingsApiDocsCatalog.mockResolvedValue({
       title: '1flowbase API',
       version: '0.1.0',
@@ -483,6 +510,51 @@ describe('ModelProvidersPage - catalog and family version', () => {
       );
     });
   }, 20000);
+
+  test('keeps official catalog registry errors out of the installed provider status area', async () => {
+    authenticateAsModelProviderManager();
+    pluginsApi.fetchSettingsOfficialPluginCatalog.mockRejectedValue(
+      new Error('official plugin registry returned an error status')
+    );
+
+    const view = renderApp('/settings/model-providers');
+
+    const catalogRow = await screen.findByRole(
+      'row',
+      {
+        name: /OpenAI Compatible/
+      },
+      { timeout: 10_000 }
+    );
+
+    expect(catalogRow).toBeInTheDocument();
+    expect(
+      within(catalogRow).getByRole('button', { name: '管理' })
+    ).toBeInTheDocument();
+    expect(
+      view.container.querySelector('.settings-section-surface__status')
+        ?.textContent ?? ''
+    ).not.toContain('official plugin registry returned an error status');
+    expect(
+      view.container.querySelector('.model-provider-panel__official')
+    ).toHaveTextContent('official plugin registry returned an error status');
+  });
+
+  test('does not keep the installed provider table loading while only the local model-provider catalog is pending', async () => {
+    authenticateAsModelProviderManager();
+    modelProvidersApi.fetchSettingsModelProviderCatalog.mockReturnValue(
+      new Promise(() => undefined)
+    );
+    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([]);
+
+    renderApp('/settings/model-providers');
+
+    expect(
+      await screen.findByText('暂无可用供应商', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('正在加载供应商目录...')).not.toBeInTheDocument();
+    expect(await screen.findByText('可用实例')).toBeInTheDocument();
+  });
 
   test('disables creating provider instances when the current node artifact is unavailable', async () => {
     authenticateAsModelProviderManager();

@@ -6,28 +6,53 @@
   width: 100%;
 }
 
-.mcp-management__form-pane {
-  flex: 1 1 320px;
-  min-width: 280px;
-  max-width: 520px;
+.mcp-management__directory-modal {
+  --mcp-management-directory-form-width: 760px;
 }
 
 .mcp-management__instance-select {
-  min-width: 280px;
+  width: 100%;
 }
 
-.mcp-management__directory-tree {
-  flex: 0 0 320px;
-  max-height: 520px;
-  overflow: auto;
-  border: 1px solid var(--ant-color-border);
-  border-radius: 6px;
-  padding: 12px;
+.mcp-management__directory-toolbar {
+  width: min(100%, var(--mcp-management-directory-form-width));
+  margin: 0 auto;
 }
 
-.mcp-management__directory-config {
-  flex: 1 1 520px;
-  min-width: 0;
+.mcp-management__directory-fixed-modal .ant-modal-content,
+.mcp-management__directory-fixed-modal .ant-modal-header {
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.fixed-height-modal__scroll-body.mcp-management__directory-modal {
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.mcp-management__directory-control {
+  width: 100%;
+}
+
+.mcp-management__directory-tabs {
+  width: min(100%, var(--mcp-management-directory-form-width));
+  margin: 0 auto;
+}
+
+.mcp-management__directory-form {
+  width: 100%;
+}
+
+.mcp-management__directory-form .ant-form-item {
+  margin-bottom: 14px;
+}
+
+.mcp-management__directory-form .ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+.mcp-management__directory-form .ant-input,
+.mcp-management__directory-form .ant-select,
+.mcp-management__directory-form .ant-input-number {
+  width: 100%;
 }
 
 .mcp-management__segmented {
@@ -302,10 +327,7 @@
 }
 
 @media (max-width: 768px) {
-  .mcp-management__directory-tree,
-  .mcp-management__directory-config,
-  .mcp-management__instance-select {
-    flex-basis: 100%;
+  .mcp-management__directory-control {
     width: 100%;
   }
 

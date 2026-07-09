@@ -92,6 +92,7 @@ export function buildSettingsModelProviderOptions() {
         model_groups: [
           {
             model_id: primaryContractProviderModels[0].model_id,
+            distribution_rule: 'none',
             model: primaryContractProviderModels[0],
             targets: [
               {
@@ -103,6 +104,7 @@ export function buildSettingsModelProviderOptions() {
           },
           {
             model_id: primaryContractProviderModels[1].model_id,
+            distribution_rule: 'none',
             model: primaryContractProviderModels[1],
             targets: [
               {
@@ -118,9 +120,16 @@ export function buildSettingsModelProviderOptions() {
   };
 }
 
-export function buildMainInstanceSettings(autoIncludeNewInstances = true) {
+export function buildMainInstanceSettings(
+  autoIncludeNewInstances = true,
+  distributionRule: 'none' | 'round_robin' = 'none'
+) {
   return {
     provider_code: modelProviderCatalogEntries[0].provider_code,
-    auto_include_new_instances: autoIncludeNewInstances
+    auto_include_new_instances: autoIncludeNewInstances,
+    model_distribution_rules: primaryContractProviderModels.map((model) => ({
+      model_id: model.model_id,
+      distribution_rule: distributionRule
+    }))
   };
 }

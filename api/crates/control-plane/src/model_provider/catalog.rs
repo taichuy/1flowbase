@@ -193,6 +193,7 @@ where
         let main_instance = repository
             .get_main_instance(actor.current_workspace_id, &provider_code)
             .await?;
+        let distribution_rules = model_distribution_rules_by_id(main_instance.as_ref());
         let mut model_groups: Vec<ModelProviderOptionGroup> = Vec::new();
         let mut model_group_indexes: HashMap<String, usize> = HashMap::new();
         for instance in instances {
@@ -220,6 +221,10 @@ where
 
                 model_group_indexes.insert(model_id.clone(), model_groups.len());
                 model_groups.push(ModelProviderOptionGroup {
+                    distribution_rule: distribution_rules
+                        .get(&model_id)
+                        .copied()
+                        .unwrap_or_default(),
                     model_id,
                     model,
                     targets: vec![target],
@@ -252,6 +257,20 @@ where
         providers: options,
         i18n_catalog,
     })
+}
+
+fn model_distribution_rules_by_id(
+    main_instance: Option<&domain::ModelProviderMainInstanceRecord>,
+) -> HashMap<String, domain::ModelProviderDistributionRule> {
+    main_instance
+        .map(|record| {
+            record
+                .model_distribution_rules
+                .iter()
+                .map(|rule| (rule.model_id.clone(), rule.distribution_rule))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn model_provider_projection_view(

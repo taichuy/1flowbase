@@ -20,6 +20,7 @@ import {
   seedStyleBoundaryTemplateFetch,
   styleBoundaryNodeContributions
 } from './scene-fixtures';
+import { SettingsMcpManagementStyleBoundaryScene } from './SettingsMcpManagementStyleBoundaryScene';
 import { useAuthStore } from '../state/auth-store';
 import type { StyleBoundaryRuntimeScene } from './types';
 
@@ -175,7 +176,7 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
   },
   'page.settings-mcp-management': () => {
     seedStyleBoundarySettingsFetch();
-    return renderRouterScene('/settings/mcp-management');
+    return <SettingsMcpManagementStyleBoundaryScene />;
   },
   'page.settings-docs': () => {
     seedStyleBoundarySettingsFetch();

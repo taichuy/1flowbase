@@ -114,6 +114,36 @@ async fn moka_cache_store_supports_ephemeral_set_if_absent() {
 }
 
 #[tokio::test]
+async fn moka_cache_store_increments_counter_atomically_and_expires_with_ttl() {
+    // AC-004: counter primitive is a store-level atomic increment with TTL.
+    let store = MokaCacheStore::new("flowbase:test", 128);
+    let key = "llm-router:workspace:w1:provider:p1:model:m1:targets:t1";
+
+    let first = CacheStore::increment_counter(&store, key, 1, Some(Duration::milliseconds(80)))
+        .await
+        .unwrap();
+    let second = CacheStore::increment_counter(&store, key, 1, Some(Duration::milliseconds(80)))
+        .await
+        .unwrap();
+
+    assert_eq!(first, 1);
+    assert_eq!(second, 2);
+    assert_eq!(
+        CacheStore::get_json(&store, key).await.unwrap(),
+        Some(json!(2))
+    );
+
+    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+    assert_eq!(CacheStore::get_json(&store, key).await.unwrap(), None);
+    assert_eq!(
+        CacheStore::increment_counter(&store, key, 1, None)
+            .await
+            .unwrap(),
+        1
+    );
+}
+
+#[tokio::test]
 async fn moka_cache_store_rejects_oversized_ephemeral_values() {
     let store = MokaCacheStore::new("flowbase:test", 128);
     let oversized = json!({ "blob": "x".repeat(2 * 1024 * 1024) });

@@ -7,7 +7,13 @@ import {
 const modelProviderApiFixtures = vi.hoisted(() => ({
   mainInstance: {
     provider_code: 'openai_compatible',
-    auto_include_new_instances: true
+    auto_include_new_instances: true,
+    model_distribution_rules: [
+      {
+        model_id: 'gpt-4o-mini',
+        distribution_rule: 'none'
+      }
+    ]
   },
   options: {
     locale_meta: {
@@ -44,6 +50,7 @@ const modelProviderApiFixtures = vi.hoisted(() => ({
         model_groups: [
           {
             model_id: 'gpt-4o-mini',
+            distribution_rule: 'none',
             model: {
               model_id: 'gpt-4o-mini',
               display_name: 'GPT-4o Mini',

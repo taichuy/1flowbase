@@ -270,7 +270,8 @@ describe('section shell routing', () => {
     });
     modelProvidersApi.fetchSettingsModelProviderMainInstance.mockResolvedValue({
       provider_code: 'openai_compatible',
-      auto_include_new_instances: true
+      auto_include_new_instances: true,
+      distribution_rule: 'none'
     });
     dataModelsApi.fetchSettingsDataSourceInstances.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataModels.mockResolvedValue([]);

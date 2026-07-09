@@ -87,11 +87,7 @@ where
         &flow_run,
         compiled_plan_start_node_id(&compiled_plan),
     );
-    let runtime_context =
-        orchestration_runtime::execution_engine::ExecutionRuntimeContext::from_plan_input(
-            &compiled_plan,
-            &variable_pool,
-        );
+    let runtime_context = service.execution_runtime_context(&compiled_plan, &variable_pool);
     let mut active_node_ids =
         orchestration_runtime::execution_engine::branching::initial_active_node_ids(&compiled_plan);
     let mut last_output_payload = json!({});

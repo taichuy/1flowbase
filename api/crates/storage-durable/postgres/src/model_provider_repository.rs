@@ -19,8 +19,8 @@ use uuid::Uuid;
 use crate::{
     mappers::model_provider_mapper::{
         PgModelProviderMapper, StoredModelProviderCatalogCacheRow, StoredModelProviderInstanceRow,
-        StoredModelProviderMainInstanceRow, StoredModelProviderPreviewSessionRow,
-        StoredModelProviderSecretRow,
+        StoredModelProviderMainInstanceRow, StoredModelProviderMainModelDistributionRuleRow,
+        StoredModelProviderPreviewSessionRow, StoredModelProviderSecretRow,
     },
     repositories::PgControlPlaneStore,
 };
@@ -31,9 +31,42 @@ mod secret_crypto;
 use row_mappers::{
     map_catalog_cache, map_catalog_entry, map_catalog_source, map_catalog_sync_run,
     map_failover_queue_item, map_failover_queue_snapshot, map_failover_queue_template,
-    map_instance, map_main_instance, map_preview_session, map_secret,
+    map_instance, map_main_instance, map_main_model_distribution_rule, map_preview_session,
+    map_secret,
 };
 use secret_crypto::{decrypt_secret_json, encrypt_secret_json};
+
+async fn list_main_model_distribution_rules(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    provider_code: &str,
+) -> Result<Vec<domain::ModelProviderMainModelDistributionRuleRecord>> {
+    let rows = sqlx::query(
+        r#"
+        select
+            workspace_id,
+            provider_code,
+            model_id,
+            distribution_rule,
+            created_by,
+            updated_by,
+            created_at,
+            updated_at
+        from model_provider_main_model_distribution_rules
+        where workspace_id = $1
+          and provider_code = $2
+        order by model_id asc
+        "#,
+    )
+    .bind(workspace_id)
+    .bind(provider_code)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(map_main_model_distribution_rule)
+        .collect()
+}
 
 #[async_trait]
 impl ModelProviderRepository for PgControlPlaneStore {
@@ -463,7 +496,8 @@ impl ModelProviderRepository for PgControlPlaneStore {
         &self,
         input: &UpsertModelProviderMainInstanceInput,
     ) -> Result<domain::ModelProviderMainInstanceRecord> {
-        let row = sqlx::query(
+        let mut tx = self.pool().begin().await?;
+        sqlx::query(
             r#"
             insert into model_provider_main_instances (
                 id,
@@ -493,10 +527,52 @@ impl ModelProviderRepository for PgControlPlaneStore {
         .bind(&input.provider_code)
         .bind(input.auto_include_new_instances)
         .bind(input.updated_by)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *tx)
         .await?;
 
-        map_main_instance(row)
+        if let Some(model_distribution_rules) = input.model_distribution_rules.as_ref() {
+            sqlx::query(
+                r#"
+                delete from model_provider_main_model_distribution_rules
+                where workspace_id = $1
+                  and provider_code = $2
+                "#,
+            )
+            .bind(input.workspace_id)
+            .bind(&input.provider_code)
+            .execute(&mut *tx)
+            .await?;
+
+            for rule in model_distribution_rules {
+                sqlx::query(
+                    r#"
+                    insert into model_provider_main_model_distribution_rules (
+                        id,
+                        workspace_id,
+                        provider_code,
+                        model_id,
+                        distribution_rule,
+                        created_by,
+                        updated_by
+                    ) values ($1, $2, $3, $4, $5, $6, $6)
+                    "#,
+                )
+                .bind(Uuid::now_v7())
+                .bind(input.workspace_id)
+                .bind(&input.provider_code)
+                .bind(&rule.model_id)
+                .bind(rule.distribution_rule.as_str())
+                .bind(input.updated_by)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        tx.commit().await?;
+
+        self.get_main_instance(input.workspace_id, &input.provider_code)
+            .await?
+            .ok_or_else(|| anyhow!("model provider main instance was not returned after upsert"))
     }
 
     async fn get_main_instance(
@@ -524,7 +600,13 @@ impl ModelProviderRepository for PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
 
-        row.map(map_main_instance).transpose()
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let mut record = map_main_instance(row)?;
+        record.model_distribution_rules =
+            list_main_model_distribution_rules(self.pool(), workspace_id, provider_code).await?;
+        Ok(Some(record))
     }
 
     async fn create_preview_session(

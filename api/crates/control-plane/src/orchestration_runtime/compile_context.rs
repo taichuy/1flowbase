@@ -28,9 +28,11 @@ where
         .collect::<BTreeSet<_>>();
     let mut provider_families = BTreeMap::new();
     let mut provider_instances = BTreeMap::new();
+    let mut provider_codes = BTreeSet::new();
     let mut node_contributions = BTreeMap::new();
 
     for instance in instances {
+        provider_codes.insert(instance.provider_code.clone());
         let available_models = available_models_for_instance(repository, &instance).await?;
         let allow_custom_models = allow_custom_models(&instance);
         let installation_runnable = installation_is_runnable(
@@ -80,6 +82,22 @@ where
             );
     }
 
+    let mut model_distribution_rules = BTreeMap::new();
+    for provider_code in provider_codes {
+        let Some(main_instance) = repository
+            .get_main_instance(workspace_id, &provider_code)
+            .await?
+        else {
+            continue;
+        };
+        for rule in main_instance.model_distribution_rules {
+            model_distribution_rules.insert(
+                (provider_code.clone(), rule.model_id),
+                map_llm_distribution_rule(rule.distribution_rule),
+            );
+        }
+    }
+
     for entry in contributions {
         let key = node_contribution_lookup_key(
             &entry.plugin_id,
@@ -111,11 +129,26 @@ where
     }
 
     Ok(orchestration_runtime::compiler::FlowCompileContext {
+        workspace_id: Some(workspace_id),
         provider_families,
         provider_instances,
+        model_distribution_rules,
         node_contributions,
         js_dependencies: BTreeMap::new(),
     })
+}
+
+fn map_llm_distribution_rule(
+    rule: domain::ModelProviderDistributionRule,
+) -> orchestration_runtime::compiled_plan::LlmDistributionRule {
+    match rule {
+        domain::ModelProviderDistributionRule::None => {
+            orchestration_runtime::compiled_plan::LlmDistributionRule::None
+        }
+        domain::ModelProviderDistributionRule::RoundRobin => {
+            orchestration_runtime::compiled_plan::LlmDistributionRule::RoundRobin
+        }
+    }
 }
 
 pub(crate) async fn build_application_compile_context<R>(

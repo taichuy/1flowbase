@@ -8,7 +8,7 @@ use crate::compiled_plan::{
     CodeExecutorCapability, CodeIsolationProfile, CompileIssue, CompileIssueCode, CompiledBinding,
     CompiledCodeDependency, CompiledCodeRuntime, CompiledEdge, CompiledLlmRouteTarget,
     CompiledLlmRouting, CompiledLlmRuntime, CompiledNode, CompiledOutput, CompiledPlan,
-    CompiledPluginRuntime, LlmRoutingMode,
+    CompiledPluginRuntime, LlmDistributionRule, LlmRoutingMode,
 };
 use crate::output_schema::{history_messages_schema, output_schema_is_llm_context_messages};
 use crate::payload_builder::PublicOutputContract;
@@ -25,8 +25,10 @@ const FLOW_SCHEMA_VERSION: &str = "1flowbase.flow/v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FlowCompileContext {
+    pub workspace_id: Option<uuid::Uuid>,
     pub provider_families: BTreeMap<String, FlowCompileProviderFamily>,
     pub provider_instances: BTreeMap<String, FlowCompileProviderInstance>,
+    pub model_distribution_rules: BTreeMap<(String, String), LlmDistributionRule>,
     pub node_contributions: BTreeMap<String, FlowCompileNodeContribution>,
     pub js_dependencies: BTreeMap<String, FlowCompileJsDependency>,
 }

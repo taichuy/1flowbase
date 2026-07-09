@@ -10,6 +10,7 @@ type DirectoryGroup = {
   instance_record_id: string;
   path: string;
   display_name: string;
+  description_short: string | null;
   enabled: boolean;
   sort_order: number;
 };
@@ -34,10 +35,13 @@ type DirectoryTool = {
 export type McpDirectoryTreeNode = {
   key: string;
   title: string;
+  node_type: 'instance' | 'group' | 'binding';
+  path: string;
+  binding_id?: string;
   children?: McpDirectoryTreeNode[];
 };
 
-function normalizePath(path: string | null | undefined) {
+export function normalizeMcpDirectoryPath(path: string | null | undefined) {
   const value = path?.trim();
 
   if (!value || value === '/') {
@@ -93,17 +97,18 @@ export function buildMcpDirectoryTreeData({
   );
   const toolByRecordId = new Map(tools.map((tool) => [tool.id, tool]));
   const groupByPath = new Map(
-    instanceGroups.map((group) => [normalizePath(group.path), group])
+    instanceGroups.map((group) => [normalizeMcpDirectoryPath(group.path), group])
   );
 
   for (const binding of instanceBindings) {
-    const path = normalizePath(binding.group_path);
+    const path = normalizeMcpDirectoryPath(binding.group_path);
     if (!groupByPath.has(path)) {
       groupByPath.set(path, {
         id: path,
         instance_record_id: instance.id,
         path,
         display_name: path === '/' ? '/' : '',
+        description_short: null,
         enabled: true,
         sort_order: Number.MAX_SAFE_INTEGER
       });
@@ -117,9 +122,11 @@ export function buildMcpDirectoryTreeData({
         left.path.localeCompare(right.path)
     )
     .map((group) => {
-      const path = normalizePath(group.path);
+      const path = normalizeMcpDirectoryPath(group.path);
       const groupBindings = instanceBindings
-        .filter((binding) => normalizePath(binding.group_path) === path)
+        .filter(
+          (binding) => normalizeMcpDirectoryPath(binding.group_path) === path
+        )
         .sort(
           (left, right) =>
             left.sort_order - right.sort_order ||
@@ -132,24 +139,31 @@ export function buildMcpDirectoryTreeData({
           group.display_name && group.display_name !== path
             ? `${group.display_name} ${path}`
             : path,
+        node_type: 'group' as const,
+        path,
         children: groupBindings.map((binding) => {
           const tool = toolByRecordId.get(binding.tool_record_id);
           const label = binding.display_alias || tool?.name || binding.tool_id;
 
           return {
             key: `binding:${binding.id}`,
-            title: `${label} ${binding.tool_id}`
+            title: `${label} ${binding.tool_id}`,
+            node_type: 'binding' as const,
+            path,
+            binding_id: binding.id
           };
         })
       };
     });
 
-  const rootPath = normalizePath(instance.default_entry_path);
+  const rootPath = normalizeMcpDirectoryPath(instance.default_entry_path);
 
   return [
     {
       key: `instance:${instance.instance_id}:${rootPath}`,
       title: `${instance.name} ${rootPath}`,
+      node_type: 'instance',
+      path: rootPath,
       children: groupNodes
     }
   ];

@@ -125,6 +125,77 @@ async fn plugin_management_service_lists_provider_families_with_current_and_late
 }
 
 #[tokio::test]
+async fn plugin_management_service_lists_provider_families_without_official_catalog() {
+    #[derive(Clone)]
+    struct UnavailableOfficialSource;
+
+    #[async_trait]
+    impl OfficialPluginSourcePort for UnavailableOfficialSource {
+        async fn list_official_catalog(&self) -> Result<OfficialPluginCatalogSnapshot> {
+            anyhow::bail!("official plugin registry returned an error status")
+        }
+
+        async fn download_plugin(
+            &self,
+            _entry: &OfficialPluginSourceEntry,
+        ) -> Result<DownloadedOfficialPluginPackage> {
+            unreachable!("download is not used in this read-only test");
+        }
+
+        fn trusted_public_keys(&self) -> Vec<plugin_framework::TrustedPublicKey> {
+            Vec::new()
+        }
+    }
+
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("plugin-family-offline-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(UnavailableOfficialSource),
+        &install_root,
+    );
+
+    let installation_id = seed_test_installation(
+        &repository,
+        &install_root,
+        "openai_compatible",
+        "0.1.0",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    repository
+        .create_assignment(&CreatePluginAssignmentInput {
+            installation_id,
+            workspace_id: repository.actor.current_workspace_id,
+            provider_code: "openai_compatible".into(),
+            actor_user_id: repository.actor.user_id,
+        })
+        .await
+        .unwrap();
+
+    let families = service
+        .list_families(
+            repository.actor.user_id,
+            PluginCatalogFilter::default(),
+            requested_locales(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(families.entries.len(), 1);
+    assert_eq!(families.entries[0].provider_code, "openai_compatible");
+    assert_eq!(families.entries[0].current_version, "0.1.0");
+    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.1.0"));
+    assert!(!families.entries[0].has_update);
+}
+
+#[tokio::test]
 async fn plugin_management_service_list_catalog_does_not_refresh_artifact_snapshot() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
@@ -496,8 +567,8 @@ async fn plugin_management_service_keeps_only_latest_official_entry_per_provider
         .unwrap();
     assert_eq!(families.entries.len(), 1);
     assert_eq!(families.entries[0].current_version, "0.1.0");
-    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.2.0"));
-    assert!(families.entries[0].has_update);
+    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.1.0"));
+    assert!(!families.entries[0].has_update);
 }
 
 #[tokio::test]

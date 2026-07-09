@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -80,10 +83,11 @@ const LLM_TOOL_CALLBACK_KIND: &str = "llm_tool_calls";
 const LLM_TOOL_CALLBACK_STATE_KEY: &str = "__llm_tool_callback";
 const RESPONSES_WEBSOCKET_TRANSPORT: &str = "responses_websocket";
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Clone, Default)]
 pub struct ExecutionRuntimeContext {
     tools: Vec<Value>,
     client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
 }
 
 impl ExecutionRuntimeContext {
@@ -91,7 +95,28 @@ impl ExecutionRuntimeContext {
         Self {
             tools: run_level_provider_tools(plan, variable_pool),
             client_protocol_envelope: client_protocol_envelope_from_variable_pool(variable_pool),
+            llm_routing_counter_store: None,
         }
+    }
+
+    pub fn with_llm_routing_counter_store(
+        mut self,
+        store: Arc<dyn LlmRoutingCounterStore>,
+    ) -> Self {
+        self.llm_routing_counter_store = Some(store);
+        self
+    }
+
+    async fn next_llm_routing_counter(
+        &self,
+        key: &str,
+        ttl: Option<time::Duration>,
+    ) -> Result<i64> {
+        let store = self
+            .llm_routing_counter_store
+            .as_ref()
+            .ok_or_else(|| anyhow!("llm routing counter store is not configured"))?;
+        store.increment_counter(key, 1, ttl).await
     }
 }
 
@@ -119,6 +144,16 @@ pub trait ProviderInvoker: Send + Sync {
         runtime: &CompiledLlmRuntime,
         input: ProviderInvocationInput,
     ) -> Result<ProviderInvocationOutput>;
+}
+
+#[async_trait]
+pub trait LlmRoutingCounterStore: Send + Sync {
+    async fn increment_counter(
+        &self,
+        key: &str,
+        amount: i64,
+        ttl: Option<time::Duration>,
+    ) -> Result<i64>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -180,6 +215,23 @@ where
     execute_from(plan, 0, variable_pool, None, &runtime_context, invoker).await
 }
 
+pub async fn start_flow_debug_run_with_runtime_context<I>(
+    plan: &CompiledPlan,
+    input_payload: &Value,
+    runtime_context: ExecutionRuntimeContext,
+    invoker: &I,
+) -> Result<FlowDebugExecutionOutcome>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
+    let variable_pool = input_payload
+        .as_object()
+        .cloned()
+        .ok_or_else(|| anyhow!("input payload must be an object"))?;
+
+    execute_from(plan, 0, variable_pool, None, &runtime_context, invoker).await
+}
+
 pub async fn resume_flow_debug_run<I>(
     plan: &CompiledPlan,
     checkpoint: &CheckpointSnapshot,
@@ -190,12 +242,34 @@ pub async fn resume_flow_debug_run<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    let runtime_context = ExecutionRuntimeContext::from_plan_input(plan, &checkpoint.variable_pool);
+    resume_flow_debug_run_with_runtime_context(
+        plan,
+        checkpoint,
+        waiting_node_id,
+        resume_payload,
+        runtime_context,
+        invoker,
+    )
+    .await
+}
+
+pub async fn resume_flow_debug_run_with_runtime_context<I>(
+    plan: &CompiledPlan,
+    checkpoint: &CheckpointSnapshot,
+    waiting_node_id: &str,
+    resume_payload: &Value,
+    runtime_context: ExecutionRuntimeContext,
+    invoker: &I,
+) -> Result<FlowDebugExecutionOutcome>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
     let waiting_node = plan
         .nodes
         .get(waiting_node_id)
         .ok_or_else(|| anyhow!("waiting node not found: {waiting_node_id}"))?;
     let mut variable_pool = checkpoint.variable_pool.clone();
-    let runtime_context = ExecutionRuntimeContext::from_plan_input(plan, &variable_pool);
 
     if pending_llm_tool_callback_state(&variable_pool, waiting_node_id).is_some() {
         append_llm_tool_result_messages(&mut variable_pool, waiting_node_id, resume_payload)?;
@@ -852,7 +926,7 @@ where
             node.node_id
         )
     })?;
-    let attempt_runtimes = llm_attempt_runtimes(runtime);
+    let attempt_runtimes = llm_attempt_runtimes(runtime, runtime_context).await?;
     let failover_enabled = runtime
         .routing
         .as_ref()

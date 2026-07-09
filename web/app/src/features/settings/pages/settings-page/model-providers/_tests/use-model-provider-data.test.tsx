@@ -113,7 +113,8 @@ describe('useModelProviderData', () => {
     });
     modelProvidersApi.fetchSettingsModelProviderMainInstance.mockResolvedValue({
       provider_code: 'openai_compatible',
-      auto_include_new_instances: true
+      auto_include_new_instances: true,
+      model_distribution_rules: []
     });
     pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([
       {

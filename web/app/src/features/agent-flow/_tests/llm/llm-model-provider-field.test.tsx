@@ -271,7 +271,7 @@ describe('LlmModelField', () => {
     });
   });
 
-  test('opens a unified model dialog and writes the selected grouped model back to the llm node config', async () => {
+  test('AC-002 AC-005 AC-007 opens a provider-model dialog without exposing source instances and saves only the aggregate model identity', async () => {
     let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
     const { container } = renderWithProviders(
@@ -300,19 +300,20 @@ describe('LlmModelField', () => {
       await screen.findByText(primaryProviderOption.display_name)
     ).toBeInTheDocument();
     expect(
-      await screen.findByText(
+      screen.queryByText(
         primaryProviderFirstGroup.targets
           .map((target) => target.source_instance_display_name)
           .join(' -> ')
       )
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(
-      await screen.findByText(
+      screen.queryByText(
         primaryProviderSecondGroup.targets
           .map((target) => target.source_instance_display_name)
           .join(' -> ')
       )
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('个来源实例 ·')).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: '模型供应商设置' })
     ).toBeInTheDocument();
@@ -324,13 +325,11 @@ describe('LlmModelField', () => {
         (node) => node.id === 'node-llm'
       );
 
+      expect(llmNode?.config.model_provider).toEqual({
+        provider_code: 'openai_compatible',
+        model_id: primaryProviderSecondModel.model_id
+      });
       expect(llmNode?.config).toMatchObject({
-        model_provider: {
-          provider_code: 'openai_compatible',
-          model_id: primaryProviderSecondModel.model_id,
-          provider_label: primaryProviderOption.display_name,
-          model_label: primaryProviderSecondModel.display_name
-        },
         llm_parameters: {
           schema_version: '1.0.0',
           items: {
@@ -341,12 +340,36 @@ describe('LlmModelField', () => {
           }
         }
       });
-      expect(
-        (llmNode?.config.model_provider as Record<string, unknown>)
-          .source_instance_id
-      ).toBeUndefined();
     });
   }, 10_000);
+
+  test('AC-005 does not match llm model search by source instance label or source_instance_id', async () => {
+    const sourceInstanceLabel =
+      primaryProviderFirstGroup.targets[0].source_instance_display_name;
+    const sourceInstanceId =
+      primaryProviderFirstGroup.targets[0].source_instance_id;
+
+    renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={createInitialState()}>
+        <SelectionSeed nodeId="node-llm" />
+        <NodeConfigTab />
+      </AgentFlowEditorStoreProvider>
+    );
+
+    await openModelSettings();
+    await openModelDropdown();
+
+    const combobox = screen.getByRole('combobox', {
+      name: '选择供应商和模型'
+    });
+    fireEvent.change(combobox, { target: { value: sourceInstanceLabel } });
+
+    expect(await screen.findByText('没有匹配的模型结果')).toBeInTheDocument();
+
+    fireEvent.change(combobox, { target: { value: sourceInstanceId } });
+
+    expect(await screen.findByText('没有匹配的模型结果')).toBeInTheDocument();
+  });
 
   test('renders the model settings inside the canvas body with minimum width and half-height', async () => {
     const { container } = renderWithProviders(
@@ -1034,21 +1057,13 @@ describe('LlmModelField', () => {
     await clickModelOption(secondaryProviderFirstModel.display_name);
 
     await waitFor(() => {
-      expect(latestDocument.graph.nodes).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: 'node-llm',
-            config: expect.objectContaining({
-              model_provider: expect.objectContaining({
-                provider_code: secondaryProviderOption.provider_code,
-                model_id: secondaryProviderFirstModel.model_id,
-                provider_label: secondaryProviderOption.display_name,
-                model_label: secondaryProviderFirstModel.display_name
-              })
-            })
-          })
-        ])
+      const llmNode = latestDocument.graph.nodes.find(
+        (node) => node.id === 'node-llm'
       );
+      expect(llmNode?.config.model_provider).toEqual({
+        provider_code: secondaryProviderOption.provider_code,
+        model_id: secondaryProviderFirstModel.model_id
+      });
     });
     await waitFor(() => {
       expect(

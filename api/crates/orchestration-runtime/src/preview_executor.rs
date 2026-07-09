@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{anyhow, Result};
 use serde_json::{json, Map, Value};
 
@@ -7,7 +9,7 @@ use crate::{
     execution_engine::{
         execute_code_node, execute_http_request_node, execute_llm_node,
         execute_variable_assignment_node, CapabilityInvoker, CodeInvoker, ExecutionRuntimeContext,
-        HttpResponseFilePersister, ProviderInvoker,
+        HttpResponseFilePersister, LlmRoutingCounterStore, ProviderInvoker,
     },
     node_errors::build_node_type_not_implemented_error_payload,
 };
@@ -121,16 +123,70 @@ pub async fn run_node_preview_with_http_file_persister<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
-    let node = plan
-        .nodes
-        .get(target_node_id)
-        .ok_or_else(|| anyhow!("target node not found: {target_node_id}"))?;
     let mut variable_pool = input_payload
         .as_object()
         .cloned()
         .ok_or_else(|| anyhow!("input payload must be an object"))?;
     materialize_start_nodes_in_variable_pool(plan, &mut variable_pool);
     let runtime_context = ExecutionRuntimeContext::from_plan_input(plan, &variable_pool);
+    run_node_preview_with_prepared_context(
+        plan,
+        target_node_id,
+        variable_pool,
+        runtime_context,
+        invoker,
+        http_file_persister,
+    )
+    .await
+}
+
+pub async fn run_node_preview_with_http_file_persister_and_counter_store<I>(
+    plan: &CompiledPlan,
+    target_node_id: &str,
+    input_payload: &Value,
+    invoker: &I,
+    http_file_persister: Option<&dyn HttpResponseFilePersister>,
+    llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
+) -> Result<NodePreviewOutcome>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
+    let mut variable_pool = input_payload
+        .as_object()
+        .cloned()
+        .ok_or_else(|| anyhow!("input payload must be an object"))?;
+    materialize_start_nodes_in_variable_pool(plan, &mut variable_pool);
+    let runtime_context = match llm_routing_counter_store {
+        Some(store) => ExecutionRuntimeContext::from_plan_input(plan, &variable_pool)
+            .with_llm_routing_counter_store(store),
+        None => ExecutionRuntimeContext::from_plan_input(plan, &variable_pool),
+    };
+    run_node_preview_with_prepared_context(
+        plan,
+        target_node_id,
+        variable_pool,
+        runtime_context,
+        invoker,
+        http_file_persister,
+    )
+    .await
+}
+
+async fn run_node_preview_with_prepared_context<I>(
+    plan: &CompiledPlan,
+    target_node_id: &str,
+    mut variable_pool: Map<String, Value>,
+    runtime_context: ExecutionRuntimeContext,
+    invoker: &I,
+    http_file_persister: Option<&dyn HttpResponseFilePersister>,
+) -> Result<NodePreviewOutcome>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
+    let node = plan
+        .nodes
+        .get(target_node_id)
+        .ok_or_else(|| anyhow!("target node not found: {target_node_id}"))?;
     let resolved_inputs = if node.node_type == "start" {
         variable_pool
             .get(target_node_id)

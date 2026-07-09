@@ -37,6 +37,14 @@ impl MemoryKvStore {
     fn expires_at(ttl: Option<time::Duration>) -> Option<OffsetDateTime> {
         ttl.map(|ttl| OffsetDateTime::now_utc() + ttl)
     }
+
+    fn ensure_counter_ttl(ttl: Option<time::Duration>) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            ttl.is_none_or(|ttl| ttl > time::Duration::ZERO),
+            "counter_ttl_must_be_positive"
+        );
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -127,5 +135,52 @@ impl EphemeralKvStore for MemoryKvStore {
             },
         );
         Ok(true)
+    }
+
+    async fn increment_counter(
+        &self,
+        key: &str,
+        amount: i64,
+        ttl: Option<time::Duration>,
+    ) -> anyhow::Result<i64> {
+        Self::ensure_counter_ttl(ttl)?;
+
+        let namespaced_key = self.namespaced_key(key);
+        let mut map = self.inner.write().await;
+        let now = OffsetDateTime::now_utc();
+        let existing = map.get(&namespaced_key).cloned();
+        let active_entry = existing.filter(|entry| {
+            !entry
+                .expires_at
+                .is_some_and(|deadline| deadline <= OffsetDateTime::now_utc())
+        });
+        if active_entry.is_none() {
+            map.remove(&namespaced_key);
+        }
+
+        let current = active_entry
+            .as_ref()
+            .map(|entry| {
+                entry
+                    .value
+                    .as_i64()
+                    .ok_or_else(|| anyhow::anyhow!("counter_value_must_be_integer"))
+            })
+            .transpose()?
+            .unwrap_or(0);
+        let next = current
+            .checked_add(amount)
+            .ok_or_else(|| anyhow::anyhow!("counter_value_overflow"))?;
+        let expires_at = ttl
+            .map(|ttl| now + ttl)
+            .or_else(|| active_entry.as_ref().and_then(|entry| entry.expires_at));
+        map.insert(
+            namespaced_key,
+            MemoryEntry {
+                value: serde_json::Value::Number(next.into()),
+                expires_at,
+            },
+        );
+        Ok(next)
     }
 }

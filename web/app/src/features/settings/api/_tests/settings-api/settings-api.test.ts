@@ -400,7 +400,13 @@ describe('settings api wrappers', () => {
       model_count: 2
     } satisfies SettingsModelProviderInstance;
     const mainInstanceInput = {
-      auto_include_new_instances: false
+      auto_include_new_instances: false,
+      model_distribution_rules: [
+        {
+          model_id: 'gpt-4o-mini',
+          distribution_rule: 'none'
+        }
+      ]
     } satisfies UpdateSettingsModelProviderMainInstanceInput;
 
     expect(settingsModelProviderCatalogQueryKey).toEqual([
@@ -459,7 +465,13 @@ describe('settings api wrappers', () => {
     );
     vi.mocked(getConsoleModelProviderMainInstance).mockResolvedValueOnce({
       provider_code: 'openai_compatible',
-      auto_include_new_instances: false
+      auto_include_new_instances: false,
+      model_distribution_rules: [
+        {
+          model_id: 'gpt-4o-mini',
+          distribution_rule: 'none'
+        }
+      ]
     });
     const fetchedMainInstance =
       await fetchSettingsModelProviderMainInstance('openai_compatible');
@@ -556,11 +568,23 @@ describe('settings api wrappers', () => {
     );
     expect(fetchedMainInstance).toEqual({
       provider_code: 'openai_compatible',
-      auto_include_new_instances: false
+      auto_include_new_instances: false,
+      model_distribution_rules: [
+        {
+          model_id: 'gpt-4o-mini',
+          distribution_rule: 'none'
+        }
+      ]
     } satisfies SettingsModelProviderMainInstance);
     expect(mainInstanceResult).toEqual({
       provider_code: 'openai_compatible',
-      auto_include_new_instances: true
+      auto_include_new_instances: true,
+      model_distribution_rules: [
+        {
+          model_id: 'gpt-4o-mini',
+          distribution_rule: 'none'
+        }
+      ]
     } satisfies SettingsModelProviderMainInstance);
     expect(validatedInstance.instance).not.toHaveProperty(
       'validation_model_id'
@@ -596,6 +620,7 @@ describe('settings api wrappers', () => {
         model_groups: [
           expect.objectContaining({
             model_id: 'gpt-4o-mini',
+            distribution_rule: 'none',
             targets: [
               expect.objectContaining({
                 source_instance_id: 'provider-openai-prod',

@@ -484,6 +484,28 @@
   vertical-align: top;
 }
 
+.model-provider-panel__distribution-rule-select {
+  width: 132px;
+  height: 30px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 6px;
+  background: #ffffff;
+  color: rgba(15, 23, 42, 0.88);
+  font: inherit;
+  padding: 0 28px 0 10px;
+}
+
+.model-provider-panel__distribution-rule-select:focus-visible {
+  outline: 2px solid rgba(22, 119, 255, 0.36);
+  outline-offset: 1px;
+}
+
+.model-provider-panel__distribution-rule-select:disabled {
+  color: rgba(15, 23, 42, 0.38);
+  background: rgba(15, 23, 42, 0.04);
+  cursor: not-allowed;
+}
+
 .model-provider-panel__main-instance-targets {
   display: flex;
   flex-wrap: wrap;

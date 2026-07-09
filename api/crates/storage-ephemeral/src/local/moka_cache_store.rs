@@ -63,6 +63,7 @@ pub struct MokaCacheStore {
     namespace: String,
     cache: Cache<String, CacheEntry>,
     set_if_absent_guard: Arc<Mutex<()>>,
+    counter_guard: Arc<Mutex<()>>,
 }
 
 impl MokaCacheStore {
@@ -74,6 +75,7 @@ impl MokaCacheStore {
                 .expire_after(CacheEntryExpiry)
                 .build(),
             set_if_absent_guard: Arc::new(Mutex::new(())),
+            counter_guard: Arc::new(Mutex::new(())),
         }
     }
 
@@ -117,6 +119,14 @@ impl MokaCacheStore {
         ttl.is_some_and(|value| value <= time::Duration::ZERO)
     }
 
+    fn ensure_counter_ttl(ttl: Option<time::Duration>) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            ttl.is_none_or(|ttl| ttl > time::Duration::ZERO),
+            "counter_ttl_must_be_positive"
+        );
+        Ok(())
+    }
+
     async fn get_entry(&self, key: &str) -> Option<CacheEntry> {
         self.cache.get(&self.namespaced_key(key)).await
     }
@@ -148,6 +158,64 @@ impl MokaCacheStore {
                 },
             )
             .await;
+    }
+
+    async fn increment_counter_entry(
+        &self,
+        key: &str,
+        amount: i64,
+        ttl: Option<time::Duration>,
+    ) -> anyhow::Result<i64> {
+        Self::ensure_counter_ttl(ttl)?;
+
+        let _guard = self.counter_guard.lock().await;
+        let namespaced_key = self.namespaced_key(key);
+        let now = OffsetDateTime::now_utc();
+        let mut existing = self.cache.get(&namespaced_key).await;
+        if existing
+            .as_ref()
+            .and_then(|entry| entry.expires_at)
+            .is_some_and(|deadline| deadline <= now)
+        {
+            self.cache.invalidate(&namespaced_key).await;
+            existing = None;
+        }
+
+        let current = existing
+            .as_ref()
+            .map(|entry| {
+                entry
+                    .value
+                    .as_i64()
+                    .ok_or_else(|| anyhow::anyhow!("counter_value_must_be_integer"))
+            })
+            .transpose()?
+            .unwrap_or(0);
+        let next = current
+            .checked_add(amount)
+            .ok_or_else(|| anyhow::anyhow!("counter_value_overflow"))?;
+        let next_ttl = ttl.or_else(|| {
+            existing
+                .as_ref()
+                .and_then(|entry| entry.expires_at)
+                .map(|expires_at| expires_at - now)
+                .filter(|remaining| *remaining > time::Duration::ZERO)
+        });
+        self.cache
+            .insert(
+                namespaced_key,
+                CacheEntry {
+                    value: serde_json::Value::Number(next.into()),
+                    ttl: next_ttl,
+                    created_at: existing
+                        .as_ref()
+                        .map(|entry| entry.created_at)
+                        .unwrap_or(now),
+                    expires_at: Self::entry_expires_at(now, next_ttl),
+                },
+            )
+            .await;
+        Ok(next)
     }
 
     fn entry_size_bytes(entry: &CacheEntry) -> u64 {
@@ -269,6 +337,15 @@ impl CacheStore for MokaCacheStore {
         ttl: Option<time::Duration>,
     ) -> anyhow::Result<bool> {
         EphemeralKvStore::set_if_absent_json(self, key, value, ttl).await
+    }
+
+    async fn increment_counter(
+        &self,
+        key: &str,
+        amount: i64,
+        ttl: Option<time::Duration>,
+    ) -> anyhow::Result<i64> {
+        self.increment_counter_entry(key, amount, ttl).await
     }
 
     async fn delete(&self, key: &str) -> anyhow::Result<()> {
@@ -492,5 +569,14 @@ impl EphemeralKvStore for MokaCacheStore {
             )
             .await;
         Ok(true)
+    }
+
+    async fn increment_counter(
+        &self,
+        key: &str,
+        amount: i64,
+        ttl: Option<time::Duration>,
+    ) -> anyhow::Result<i64> {
+        self.increment_counter_entry(key, amount, ttl).await
     }
 }

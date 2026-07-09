@@ -36,11 +36,7 @@ import { i18nText } from '../../../../../shared/i18n/text';
 
 const EMPTY_MODEL_PROVIDER = {
   provider_code: '',
-  model_id: '',
-  protocol: undefined,
-  provider_label: undefined,
-  model_label: undefined,
-  schema_fetched_at: undefined
+  model_id: ''
 } as const;
 
 const MODEL_SETTINGS_MOUSE_LEAVE_CLOSE_DELAY_MS = 2_000;
@@ -73,11 +69,8 @@ function getModelSearchText(
     provider.label,
     provider.providerCode,
     group.label,
-    group.targetOrderLabel,
-    group.targetInstanceIds.join(' '),
     model.label,
-    model.value,
-    model.tag
+    model.value
   ]
     .filter(Boolean)
     .join(' ')
@@ -87,11 +80,7 @@ function getModelSearchText(
 function buildModelSelection(nextModel: LlmModelOption) {
   return {
     provider_code: nextModel.providerCode,
-    model_id: nextModel.value,
-    protocol: nextModel.protocol,
-    provider_label: nextModel.providerLabel,
-    model_label: nextModel.label,
-    schema_fetched_at: new Date().toISOString()
+    model_id: nextModel.value
   };
 }
 
@@ -500,9 +489,7 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
                                   'auto.master_instance_aggregation'
                                 )}
                                 {provider.modelGroups.length}{' '}
-                                {i18nText('agentFlow', 'auto.models')} ·{' '}
-                                {i18nText('agentFlow', 'auto.source_examples')}
-                                {provider.targetCount}
+                                {i18nText('agentFlow', 'auto.models')}
                               </div>
                             </div>
                           </div>
@@ -520,16 +507,7 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
                                 className="agent-flow-model-settings__provider-group"
                               >
                                 <div className="agent-flow-model-settings__group-head">
-                                  <span>
-                                    {group.targetOrderLabel || group.label}
-                                  </span>
-                                  <span>
-                                    {i18nText(
-                                      'agentFlow',
-                                      'auto.source_examples'
-                                    )}
-                                    {group.targetInstanceIds.length}
-                                  </span>
+                                  <span>{group.label}</span>
                                 </div>
                                 <div className="agent-flow-model-settings__options">
                                   {group.models.map((option) => {
@@ -571,9 +549,6 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
                                                 option.maxOutputTokens
                                               )}
                                             </span>
-                                          ) : null}
-                                          {option.tag ? (
-                                            <span>{option.tag}</span>
                                           ) : null}
                                         </span>
                                       </button>

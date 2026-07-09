@@ -77,6 +77,8 @@ export interface ConsoleModelProviderConfiguredModel {
   supports_multimodal?: boolean | null;
 }
 
+export type ConsoleModelProviderDistributionRule = 'none' | 'round_robin';
+
 export interface ConsoleModelProviderCatalogEntry {
   installation_id: string;
   provider_code: string;
@@ -153,6 +155,12 @@ export interface UpdateConsoleModelProviderInput {
 export interface ConsoleModelProviderMainInstance {
   provider_code: string;
   auto_include_new_instances: boolean;
+  model_distribution_rules: ConsoleModelProviderMainModelDistributionRule[];
+}
+
+export interface ConsoleModelProviderMainModelDistributionRule {
+  model_id: string;
+  distribution_rule: ConsoleModelProviderDistributionRule;
 }
 
 export interface ConsoleValidateModelProviderResult {
@@ -183,6 +191,7 @@ export interface ConsoleModelProviderMainInstanceSummary {
 
 export interface ConsoleModelProviderOptionGroup {
   model_id: string;
+  distribution_rule: ConsoleModelProviderDistributionRule;
   model: ConsoleProviderModelDescriptor;
   targets: ConsoleModelProviderOptionTarget[];
 }
@@ -223,6 +232,7 @@ export interface ConsoleModelProviderCatalogFilter {
 
 export interface UpdateConsoleModelProviderMainInstanceInput {
   auto_include_new_instances: boolean;
+  model_distribution_rules?: ConsoleModelProviderMainModelDistributionRule[];
 }
 
 function buildModelProviderCatalogPath(

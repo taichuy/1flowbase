@@ -575,12 +575,6 @@ where
                     .then_with(|| right.id.cmp(&left.id))
             });
         }
-        let official_by_provider = self.official_source.list_official_catalog().await?.entries;
-        let official_by_provider = normalize_official_entries(official_by_provider)
-            .into_iter()
-            .map(|entry| (entry.provider_code.clone(), entry))
-            .collect::<HashMap<_, _>>();
-
         let mut families = Vec::with_capacity(assignments.len());
         let mut i18n_catalog = BTreeMap::new();
         for assignment in assignments {
@@ -602,9 +596,17 @@ where
                 &mut i18n_catalog,
                 trim_json_bundles(&namespace, &projection.i18n_bundles, &locales),
             );
-            let latest_version = official_by_provider
+            let latest_version = installations_by_provider
                 .get(&assignment.provider_code)
-                .map(|entry| entry.latest_version.clone());
+                .into_iter()
+                .flatten()
+                .filter(|installation| is_model_provider_installation(installation))
+                .max_by(|left, right| {
+                    compare_plugin_versions(&left.plugin_version, &right.plugin_version)
+                        .then_with(|| left.created_at.cmp(&right.created_at))
+                        .then_with(|| left.id.cmp(&right.id))
+                })
+                .map(|installation| installation.plugin_version.clone());
             let installed_versions = installations_by_provider
                 .get(&assignment.provider_code)
                 .into_iter()

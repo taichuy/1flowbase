@@ -473,6 +473,7 @@ function OfficialPluginCard({
 export function OfficialPluginInstallPanel({
   sourceMeta,
   entries,
+  catalogErrorMessage,
   familiesByProviderCode,
   loading,
   canManage,
@@ -491,6 +492,7 @@ export function OfficialPluginInstallPanel({
     registryUrl: string;
   } | null;
   entries: SettingsOfficialPluginCatalogEntry[];
+  catalogErrorMessage?: string | null;
   familiesByProviderCode: Record<string, SettingsPluginFamilyEntry | undefined>;
   loading?: boolean;
   canManage: boolean;
@@ -601,20 +603,29 @@ export function OfficialPluginInstallPanel({
         }))}
       />
 
+      {catalogErrorMessage ? (
+        <Alert type="error" showIcon message={catalogErrorMessage} />
+      ) : null}
+
       {normalizedEntries.length === 0 ? (
-        <div className="model-provider-panel__empty">
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={
-              loading
-                ? i18nText('settings', 'auto.loading_official_supplier_catalog')
-                : i18nText(
-                    'settings',
-                    'auto.currently_official_supplier_install'
-                  )
-            }
-          />
-        </div>
+        catalogErrorMessage ? null : (
+          <div className="model-provider-panel__empty">
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={
+                loading
+                  ? i18nText(
+                      'settings',
+                      'auto.loading_official_supplier_catalog'
+                    )
+                  : i18nText(
+                      'settings',
+                      'auto.currently_official_supplier_install'
+                    )
+              }
+            />
+          </div>
+        )
       ) : (
         <div className="model-provider-panel__official-grid">
           {visibleEntries.map((entry) => (

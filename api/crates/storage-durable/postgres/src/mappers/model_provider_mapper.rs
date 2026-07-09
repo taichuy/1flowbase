@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 use domain::{
     ModelProviderCatalogCacheRecord, ModelProviderCatalogRefreshStatus, ModelProviderCatalogSource,
-    ModelProviderDiscoveryMode, ModelProviderInstanceRecord, ModelProviderInstanceStatus,
-    ModelProviderMainInstanceRecord, ModelProviderSecretRecord,
+    ModelProviderDiscoveryMode, ModelProviderDistributionRule, ModelProviderInstanceRecord,
+    ModelProviderInstanceStatus, ModelProviderMainInstanceRecord, ModelProviderSecretRecord,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -31,6 +31,19 @@ pub struct StoredModelProviderMainInstanceRow {
     pub workspace_id: Uuid,
     pub provider_code: String,
     pub auto_include_new_instances: bool,
+    pub model_distribution_rules: Vec<domain::ModelProviderMainModelDistributionRuleRecord>,
+    pub created_by: Uuid,
+    pub updated_by: Uuid,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct StoredModelProviderMainModelDistributionRuleRow {
+    pub workspace_id: Uuid,
+    pub provider_code: String,
+    pub model_id: String,
+    pub distribution_rule: String,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,
@@ -102,6 +115,22 @@ impl PgModelProviderMapper {
             workspace_id: row.workspace_id,
             provider_code: row.provider_code,
             auto_include_new_instances: row.auto_include_new_instances,
+            model_distribution_rules: row.model_distribution_rules,
+            created_by: row.created_by,
+            updated_by: row.updated_by,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+
+    pub fn to_main_model_distribution_rule_record(
+        row: StoredModelProviderMainModelDistributionRuleRow,
+    ) -> Result<domain::ModelProviderMainModelDistributionRuleRecord> {
+        Ok(domain::ModelProviderMainModelDistributionRuleRecord {
+            workspace_id: row.workspace_id,
+            provider_code: row.provider_code,
+            model_id: row.model_id,
+            distribution_rule: parse_distribution_rule(&row.distribution_rule)?,
             created_by: row.created_by,
             updated_by: row.updated_by,
             created_at: row.created_at,
@@ -159,6 +188,14 @@ pub fn parse_instance_status(value: &str) -> Result<ModelProviderInstanceStatus>
         "invalid" => Ok(ModelProviderInstanceStatus::Invalid),
         "disabled" => Ok(ModelProviderInstanceStatus::Disabled),
         _ => Err(anyhow!("unknown model provider instance status: {value}")),
+    }
+}
+
+pub fn parse_distribution_rule(value: &str) -> Result<ModelProviderDistributionRule> {
+    match value {
+        "none" => Ok(ModelProviderDistributionRule::None),
+        "round_robin" => Ok(ModelProviderDistributionRule::RoundRobin),
+        _ => Err(anyhow!("unknown model provider distribution rule: {value}")),
     }
 }
 

@@ -65,6 +65,34 @@ const vditorMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/mcp-management', () => mcpManagementApi);
+vi.mock('@tanstack/react-router', async () => {
+  const React = await import('react');
+
+  return {
+    useRouterState: ({
+      select
+    }: {
+      select: (state: {
+        location: { search: Record<string, string> };
+      }) => unknown;
+    }) => {
+      const search = React.useSyncExternalStore(
+        (onStoreChange) => {
+          window.addEventListener('popstate', onStoreChange);
+          return () => window.removeEventListener('popstate', onStoreChange);
+        },
+        () => window.location.search,
+        () => window.location.search
+      );
+
+      return select({
+        location: {
+          search: Object.fromEntries(new URLSearchParams(search))
+        }
+      });
+    }
+  };
+});
 vi.mock('vditor', () => ({
   __esModule: true,
   default: vditorMock.constructor
@@ -383,6 +411,7 @@ describe('McpManagementPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vditorMock.instances.length = 0;
+    window.history.replaceState({}, '', '/settings/mcp-management');
     mcpManagementApi.executeSettingsMcpToolDebug.mockImplementation(
       async (body: { debug_response_mode?: string; mcp_arguments: unknown }) =>
         body.debug_response_mode === 'debug_details'
@@ -406,34 +435,110 @@ describe('McpManagementPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
 
-    expect(within(toolsPanel).queryByPlaceholderText('group_path'))
-      .not
-      .toBeInTheDocument();
-    expect(within(toolsPanel).queryByRole('columnheader', { name: 'group_path' }))
-      .not
-      .toBeInTheDocument();
-    expect(within(toolsPanel).queryByText('/ops/customer')).not.toBeInTheDocument();
-    expect(within(toolsPanel).getByRole('columnheader', { name: 'Tool 名称' }))
-      .toBeInTheDocument();
-    expect(within(toolsPanel).getByRole('columnheader', { name: 'tool_id' }))
-      .toBeInTheDocument();
+    expect(
+      within(toolsPanel).queryByPlaceholderText('group_path')
+    ).not.toBeInTheDocument();
+    expect(
+      within(toolsPanel).queryByRole('columnheader', { name: 'group_path' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(toolsPanel).queryByText('/ops/customer')
+    ).not.toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByRole('columnheader', { name: 'Tool 名称' })
+    ).toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByRole('columnheader', { name: 'tool_id' })
+    ).toBeInTheDocument();
     expect(within(toolsPanel).getByText('Search customer')).toBeInTheDocument();
     expect(within(toolsPanel).getByText('search_customer')).toBeInTheDocument();
-    expect(within(toolsPanel).getByRole('columnheader', { name: 'operation' }))
-      .toBeInTheDocument();
-    expect(within(toolsPanel).getByRole('columnheader', { name: 'interface_id' }))
-      .toBeInTheDocument();
-    expect(within(toolsPanel).getByText('POST /api/console/apps')).toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByRole('columnheader', { name: 'operation' })
+    ).toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByRole('columnheader', { name: 'interface_id' })
+    ).toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByText('POST /api/console/apps')
+    ).toBeInTheDocument();
     expect(within(toolsPanel).getByText('create_app')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
 
-    expect(within(instancesPanel).getByLabelText('挂载路径')).toBeInTheDocument();
-    expect(within(instancesPanel).getByRole('columnheader', { name: '挂载路径' }))
-      .toBeInTheDocument();
-    expect(within(instancesPanel).getAllByText('/ops/customer').length)
-      .toBeGreaterThan(0);
+    expect(
+      within(instancesPanel).queryByLabelText('挂载路径')
+    ).not.toBeInTheDocument();
+    expect(
+      within(instancesPanel).queryByRole('columnheader', { name: '挂载路径' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(instancesPanel).queryByText('/ops/customer')
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const modalScrollBody = screen.getByTestId(
+      'fixed-height-modal-scroll-body'
+    );
+
+    expect(modalScrollBody).toHaveClass('mcp-management__directory-modal');
+    expect(
+      within(dialog).getByRole('tab', { name: '新增分组' })
+    ).toHaveAttribute('aria-selected', 'true');
+    expect(
+      within(dialog).getByRole('tab', { name: '挂载 Tool' })
+    ).toHaveAttribute('aria-selected', 'false');
+    expect(within(dialog).getByLabelText('path')).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('combobox', { name: '路径' })
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('挂载路径')).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('tree')).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: '挂载 Tool' }));
+
+    expect(
+      within(dialog).getByRole('tab', { name: '新增分组' })
+    ).toHaveAttribute('aria-selected', 'false');
+    expect(
+      within(dialog).getByRole('tab', { name: '挂载 Tool' })
+    ).toHaveAttribute('aria-selected', 'true');
+    expect(within(dialog).queryByLabelText('path')).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText('挂载路径')).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('columnheader', { name: '挂载路径' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('columnheader', { name: 'display_alias' })
+    ).not.toBeInTheDocument();
+  });
+
+  test('uses the group form path as the binding mount path', () => {
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    fireEvent.change(within(dialog).getByLabelText('path'), {
+      target: { value: '/ops/customer' }
+    });
+
+    expect(within(dialog).getByLabelText('path')).toHaveValue('/ops/customer');
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: '挂载 Tool' }));
+
+    expect(within(dialog).getByLabelText('挂载路径')).toHaveValue(
+      '/ops/customer'
+    );
   });
 
   test('falls back to interface id when a stale tool response misses operation', () => {
@@ -442,8 +547,9 @@ describe('McpManagementPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
 
-    expect(within(toolsPanel).getAllByText('create_app').length)
-      .toBeGreaterThan(0);
+    expect(
+      within(toolsPanel).getAllByText('create_app').length
+    ).toBeGreaterThan(0);
   });
 
   test('generates a random instance_id from the instance modal action', async () => {
@@ -531,6 +637,31 @@ describe('McpManagementPanel', () => {
       statusField.compareDocumentPosition(fullDescriptionField) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+  });
+
+  test('opens the requested tab from the URL search param', () => {
+    window.history.replaceState({}, '', '/settings/mcp-management?tab=tools');
+
+    renderPanel();
+
+    expect(screen.getByRole('tab', { name: 'Tool 配置' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
+
+  test('pushes the selected tab into the URL search param', async () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 配置' }));
+
+    await waitFor(() => {
+      expect(window.location.search).toBe('?tab=meta');
+    });
+    expect(screen.getByRole('tab', { name: 'MCP 配置' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
   });
 
   test('uses Vditor instant rendering mode for full description', async () => {
