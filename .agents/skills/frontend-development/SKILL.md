@@ -38,7 +38,7 @@ description: "Use for 1flowbase frontend implementation in web/: building, fixin
 - 前端展示和交互所需业务数据以后端接口为唯一真值来源；缺字段、排序、筛选、计数、权限、状态原因或聚合结果时，先补后端 DTO / API / 聚合查询。
 - 接口字段名沿用后端 DTO / 领域语义；UI 展示名可以本地化，但不得为展示文案另起接口字段别名。
 - 先定主路径、详情规则、反馈位置和模块协作，再拆组件、落结构、补样式。
-- 新抽象、公共 props、bool/flag 分支、helper/manager/utils、pass-through 组件或重复 defensive check，先读 `problem-framing/references/design-rules.md`；命中则回到 `problem-framing` 做更小 redesign。
+- 新抽象、公共 props、bool/flag 分支、helper/manager/utils、pass-through 组件或重复 defensive check，先读 `../_shared/design-rules.md`；命中则回到 `problem-framing` 做更小 redesign。
 
 ## Implementation Routing
 

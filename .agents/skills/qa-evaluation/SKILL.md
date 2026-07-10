@@ -51,21 +51,21 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 ## Quick Reference
 
 - 开发阶段默认不加载完整质量门禁；功能完成后再主动进入 `qa-evaluation`
-- 先按 `references/gate-lanes.md` 选择门禁 lane：`Dev Acceptance Gate`、`PR Merge Gate`、`Project Health Gate`
+- 先按 `references/governance/gate-lanes.md` 选择门禁 lane：`Dev Acceptance Gate`、`PR Merge Gate`、`Project Health Gate`
 - 默认 `Dev Acceptance Gate / task mode`；用户明确要求 PR 校验、全量门禁、项目体检或完整 QA 审计时，才升级到对应 lane
 - `Dev Acceptance Gate` 追求快速反馈：复用 TDD 红绿结果，按风险向量选择最小证据链，证据足够或预算耗尽就停，不用仓库级门禁惩罚局部开发
 - `existing-codebase` 任务默认只把本次引入的问题作为 blocker；既有债务、旧覆盖率缺口或历史 warning 只有被当前 issue 明确纳入时才阻断当前验收
 - 有验收点账本时，QA 输出必须按点结算；没有账本时才按目标 / 风险维度组织结论
 - 本地开发分支只证明当前任务结果、直接相关 contract 和主路径风险；workspace 级 cargo / pnpm build / clippy / full test、coverage、verify-repo、repo hygiene、i18n hygiene 等重门禁默认延后到 beta / CI / 专门质量工作区
 - `PR Merge Gate` 追求合并信心：优先 GitHub Actions / artifact / beta 质量门禁结果，报告 blocker、warning、advisory、资源耗时和合并风险
-- `Project Health Gate` 追求维护者感知：先按 `references/project-evaluation-checklist.md` 建质量维度矩阵，再读取远端完整门禁、artifact、warningFiles、beta 质量工作区产物和必要本地证据，输出全局快照、风险热力图、趋势、轮转深挖和维护建议
+- `Project Health Gate` 追求维护者感知：先按 `references/governance/project-evaluation-checklist.md` 建质量维度矩阵，再读取远端完整门禁、artifact、warningFiles、beta 质量工作区产物和必要本地证据，输出全局快照、风险热力图、趋势、轮转深挖和维护建议
 - `Project Health Gate` 不得只围绕当前失败脚本或错误报告展开；脚本失败必须先归入对应质量维度、硬性门禁失败、warning 或未覆盖项，再进入 findings
 - 失败测试必须分流为产品回归、contract 破坏、测试环境问题或旧测试期望过期；只有当前 spec / contract / 验收预期仍支持旧断言时，才把失败作为 blocker。旧测试与新 contract 不兼容时，QA 报告要求更新测试，不要求实现兼容旧断言
 - 评估前先读 `.memory/AGENTS.md`、`.memory/user-memory.md`、项目记忆、反馈记忆和相关 spec
-- 仓库质量门禁“怎么选、怎么组合、各自覆盖什么”看 `references/repo-quality-gates.md`
-- 多语言 key / value hygiene、warning 解释和修复边界看 `references/i18n-hygiene-gate.md`
-- 需要处理周期性质量门禁值守、GitHub Issue / Actions 报告闭环或无权限贡献者本地门禁取证时，看 `references/quality-gate-watch.md`
-- 评估范围命中容器镜像、Trivy、GHCR、Dockerfile、基础镜像或镜像漏洞报告时，再加载 `references/container-image-security.md`
+- 仓库质量门禁“怎么选、怎么组合、各自覆盖什么”看 `references/governance/repo-quality-gates.md`
+- 多语言 key / value hygiene、warning 解释和修复边界看 `references/frontend/i18n-hygiene-gate.md`
+- 需要处理周期性质量门禁值守、GitHub Issue / Actions 报告闭环或无权限贡献者本地门禁取证时，看 `references/governance/quality-gate-watch.md`
+- 评估范围命中容器镜像、Trivy、GHCR、Dockerfile、基础镜像或镜像漏洞报告时，再加载 `references/security/container-image-security.md`
 - 如果评估范围命中后端，必须先读 `api/AGENTS.md`，再对齐 `.memory/project-memory` 中最近的后端规范、计划和插件边界记忆，不能沿用旧口径
 - `task mode / Dev Acceptance Gate` 必查：验收场景、交互流、变化传播、状态 / API / 数据映射、关键回归；后端 API 任务必须把已确认验收预期与 TDD / 定向接口 evidence 对照，不能只凭编译、cargo 或代码阅读下结论
 - `project evaluation mode / Project Health Gate` 必查：UI 一致性、流程逻辑、响应式降级、API 契约、状态数据一致性、架构边界、测试缺口、风险热力图和维护建议；后端接口体检使用 mock / fixture / 受控数据跑质量门禁，检查状态是否正常、返回结构是否稳定、值是否正确、过期 / 禁用 / 缺失状态是否符合预期
@@ -73,10 +73,10 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - 用户可见文案硬边界：不得改 locale value、按钮/菜单/标题/导航/placeholder/empty/error/help text、schema label、节点展示名或默认 alias 等任何用户能看到的字符串；发现错字、不一致或表达问题时只写 finding / warning，并要求产品或开发者确认新文案
 - i18n hygiene 修复边界：不得为了消除重复 value、未引用 key 或 common 抽取 warning 改文案值；只能复用既有 key、调整 key 引用、合并重复 key、删除确认失效 key，或保留相同文案值并说明原因
 - 临时兼容旧字段必须标记 `@field-contract-compat source=... alias=... remove_by=yyyy-mm-dd`，带废弃计划和测试；QA 报告和 `repo-hygiene` 必须把它作为 warning 暴露
-- 命中过度抽象、无用代码、空转封装、死代码或无意义 helper / manager / utils 时，加载 `references/maintainability-dead-abstraction.md`；只能基于调用方、边界、运行路径或历史证据输出 finding / warning
-- 命中碎片化拆分、微型私有方法、业务流程连贯性下降、静默 fallback、默认值兜底、吞错、绕过逻辑或无语义防御代码时，必须使用本文件 `Code Acceptance Checks` 和 `references/anti-patterns.md` 归类；未经用户确认不得直接修复
+- 命中过度抽象、无用代码、空转封装、死代码或无意义 helper / manager / utils 时，加载 `references/governance/maintainability-dead-abstraction.md`；只能基于调用方、边界、运行路径或历史证据输出 finding / warning
+- 命中碎片化拆分、微型私有方法、业务流程连贯性下降、静默 fallback、默认值兜底、吞错、绕过逻辑或无语义防御代码时，必须使用本文件 `Code Acceptance Checks` 和 `references/governance/anti-patterns.md` 归类；未经用户确认不得直接修复
 - 热点修改复盘必查：高频文件、提交意图、反复修改原因、缺失的前置判断规则，以及应更新的 `skills / AGENTS / scripts/node` 门禁；报告重点是预防下一次 AI 返工，不是只列业务代码修复建议
-- 评估范围命中前端页面、导航、样式、共享壳层或第三方组件覆写时，必须加载 `references/frontend-quality-gates.md`
+- 评估范围命中前端页面、导航、样式、共享壳层或第三方组件覆写时，必须加载 `references/frontend/frontend-quality-gates.md`
 - 评估范围命中前端页面运行态、受保护页面、路由跳转、浏览器截图或控制台证据时，优先运行 `node scripts/node/page-debug.js`
 - 评估范围命中前端样式边界时，优先读取 `node scripts/node/check-style-boundary.js ...` 的运行结果；它只说明边界/扩散是否通过，不直接说明泛 UI 质量
 - 评估范围命中共享 console API DTO、`style-boundary` mock、settings / agent-flow 的 model provider consumer 时，必须检查 `node scripts/node/cli/test-contracts.js` 或等价四条定向 contract consumer vitest，并确认 `verify-repo` 已包含该 gate
@@ -84,7 +84,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - 没有运行时证据时，前端样式结论默认降级为受限结论
 - 只要评估范围涉及后端 API、状态入口、插件边界、runtime、`Resource Action Kernel`、HostExtension registry 或 `route / service / repository / domain / mapper` 分层，就必须加载后端专项检查
 - 后端任务必查：已确认验收预期、三平面、接口包装、认证 / CSRF / ACL、状态写入口、接口返回结构和值正确性、过期 / 禁用 / 缺失状态、`HostExtension / RuntimeExtension / CapabilityPlugin` 边界、HostExtension manifest contribution、pre-state infra provider、route/worker/migration registry、`storage-durable/postgres` 内 `storage-postgres` 的 repository/mapper 拆分、`storage-durable / storage-object` 边界、`workspace/system` 命名面、`SYSTEM_SCOPE_ID`、runtime `scope_id`、无 legacy alias、验证命令、API evidence 与 blast radius
-- 后端范围命中系统内置数据模型、runtime read models、数据建模定义 metadata、字段描述、API exposure 或 scope grant 时，必须加载 `references/builtin-data-model-contract-gate.md`；重点检查 system-owned contract 与 user-owned metadata overlay 是否被实现和 migration/reconcile 同时守住。
+- 后端范围命中系统内置数据模型、runtime read models、数据建模定义 metadata、字段描述、API exposure 或 scope grant 时，必须加载 `references/backend/builtin-data-model-contract-gate.md`；重点检查 system-owned contract 与 user-owned metadata overlay 是否被实现和 migration/reconcile 同时守住。
 - Provider / 上游 runtime 错误属于透传 contract：QA 不得把 provider stdout / stderr / upstream error 原样进入 `RuntimeContract` / API response 误判为泄漏或要求脱敏；应检查宿主是否改写、截断、翻译、吞掉或泛化上游信息，导致 provider / 协议排障信息损失
 - 后端范围命中 Rust 代码时，必须额外检查类型不变量、错误边界、状态方法、事务、幂等、async 阻塞、锁跨 await、数据库约束和 Rust 质量门禁
 - Rust 后端验收必须核对 completion self-check；缺少证据时对应项只能写 `未验证`，不能下通过结论
@@ -97,25 +97,25 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 
 ## Implementation
 
-- Mode selection and session bias: `references/modes.md`
-- Gate lane model and resource budgets: `references/gate-lanes.md`
-- Repository quality gate routing: `references/repo-quality-gates.md`
-- I18n hygiene gate: `references/i18n-hygiene-gate.md`
-- Quality gate watch scenarios: `references/quality-gate-watch.md`
-- Hotspot prevention review: `references/hotspot-prevention.md`
-- Maintainability / dead abstraction checks: `references/maintainability-dead-abstraction.md`
-- Task-scoped checks: `references/task-mode-checklist.md`
-- Full-project checks: `references/project-evaluation-checklist.md`
-- Frontend quality gates: `references/frontend-quality-gates.md`
+- Mode selection and session bias: `references/governance/modes.md`
+- Gate lane model and resource budgets: `references/governance/gate-lanes.md`
+- Repository quality gate routing: `references/governance/repo-quality-gates.md`
+- I18n hygiene gate: `references/frontend/i18n-hygiene-gate.md`
+- Quality gate watch scenarios: `references/governance/quality-gate-watch.md`
+- Hotspot prevention review: `references/governance/hotspot-prevention.md`
+- Maintainability / dead abstraction checks: `references/governance/maintainability-dead-abstraction.md`
+- Task-scoped checks: `references/governance/task-mode-checklist.md`
+- Full-project checks: `references/governance/project-evaluation-checklist.md`
+- Frontend quality gates: `references/frontend/frontend-quality-gates.md`
 - Route-scoped runtime evidence: `node scripts/node/page-debug.js snapshot|open ...`
-- Backend regression and API evidence steps: `references/backend-regression-steps.md`
-- Builtin data model contract QA gate: `references/builtin-data-model-contract-gate.md`
-- Scope_id routing semantics: `references/scope-id-routing.md`
+- Backend regression and API evidence steps: `references/backend/backend-regression-steps.md`
+- Builtin data model contract QA gate: `references/backend/builtin-data-model-contract-gate.md`
+- Scope_id routing semantics: `references/backend/scope-id-routing.md`
 - Authenticated backend API evidence: `node scripts/node/tooling.js api-debug [METHOD] <api-path-or-url> ...`
-- Rust backend quality checks: `references/rust-backend-quality-gates.md`
-- Report output: `references/report-template.md`
-- Severity rules: `references/severity-rules.md`
-- Anti-patterns: `references/anti-patterns.md`
+- Rust backend quality checks: `references/backend/rust-backend-quality-gates.md`
+- Report output: `references/governance/report-template.md`
+- Severity rules: `references/governance/severity-rules.md`
+- Anti-patterns: `references/governance/anti-patterns.md`
 
 ## Common Mistakes
 

@@ -194,7 +194,7 @@ issue gate 前必须判断任务形态，并把结论写入 issue / handoff：
 
 ## Design Rules Gate
 
-方案进入 issue gate 或实现 handoff 前，若会新增抽象、公共接口、bool/flag 参数、通用 helper/manager/utils、重复校验、pass-through 层或非显然注释，先读取 `references/design-rules.md`。命中规则时停止，先给更小 redesign，不创建实现 issue、不进入实现。
+方案进入 issue gate 或实现 handoff 前，若会新增抽象、公共接口、bool/flag 参数、通用 helper/manager/utils、重复校验、pass-through 层或非显然注释，先读取 `../_shared/design-rules.md`。命中规则时停止，先给更小 redesign，不创建实现 issue、不进入实现。
 
 ## Backend API Acceptance Framing
 
@@ -227,7 +227,7 @@ issue gate 前必须判断任务形态，并把结论写入 issue / handoff：
 5. 执行追问收敛：issue gate 前先写可核对的 `需求复述`；若最终产品效果、触发结果、范围边界、验收证据或关键隐含问题说不清，使用 `Grilling Pass` 批量追问；每轮给选项、推荐和影响，三轮后把剩余未知写入 issue 假设。
 6. 先做简短对齐：普通需求按 `Strategy Advice Format` 输出 2-3 个轻量方向，明确推荐其中一个，并等待用户确认；命中策略建议、多方向选择、数据 / contract / 架构风险时，方向必须命名为保守 / 平衡 / 激进；命中设计对齐时，把复杂度归属和长期维护影响写入方向说明。
 7. 检查阶段顺序：使用本文件 `Phase Order Gate` 判断当前只允许输出什么；到阶段边界就停。
-8. 检查设计规则：方案可能引入抽象、接口、flag、helper、重复校验或 pass-through 时，读取 `references/design-rules.md`；违反时先输出更小 redesign。
+8. 检查设计规则：方案可能引入抽象、接口、flag、helper、重复校验或 pass-through 时，读取 `../_shared/design-rules.md`；违反时先输出更小 redesign。
 9. 选择 issue 形态：需要落地开发时，读取 `references/issue-lifecycle.md` 选择形态，并读取 `references/artifacts.md` 的 `Issue Draft` 生成内容；完整 Issue 格式只在该模板维护，正文不复制字段骨架。默认建立 Standalone Complete Issue；只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才申请升级为 L0/L1/L2/L3 issue 树。
 10. 拆分概念：在命名 API、service、enum、目录或 migration 前，先识别被混用的概念。
 11. 建立矩阵：任务涉及 defaults、contract、schema、state、permissions、migration、history 或 user content 时，使用 `references/domain-matrix.md`。
@@ -258,7 +258,7 @@ issue gate 前必须判断任务形态，并把结论写入 issue / handoff：
 - 当前阶段允许的产物已经输出，下一阶段尚未得到用户确认。
 - 用户已确认方案，但 Standalone Complete Issue 或已批准 issue 树执行 issue 草案尚未创建或尚未确认。
 - 设计对齐已经形成可审阅的目标、非目标、关键约束、复杂度分配、方向和推荐。
-- 方案触发 `references/design-rules.md`，需要先给更小 redesign。
+- 方案触发 `../_shared/design-rules.md`，需要先给更小 redesign。
 - 三个方案和一个清晰推荐已经给出。
 - 当前轮阻塞问题已经批量提出，正在等待用户选择。
 - 三轮追问后仍无法明确的内容已经写入假设、风险或待确认项。

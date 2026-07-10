@@ -20,7 +20,7 @@ last_verified_at: 2026-05-28 21
 decision_policy: verify_before_decision
 scope:
   - .agents/skills/frontend-development/references/i18n-rules.md
-  - .agents/skills/qa-evaluation/references/i18n-hygiene-gate.md
+  - .agents/skills/qa-evaluation/references/frontend/i18n-hygiene-gate.md
   - scripts/node/i18n-hygiene
 ---
 
@@ -53,4 +53,4 @@ scope:
 ## 已落地规则
 
 - `.agents/skills/frontend-development/references/i18n-rules.md`
-- `.agents/skills/qa-evaluation/references/i18n-hygiene-gate.md`
+- `.agents/skills/qa-evaluation/references/frontend/i18n-hygiene-gate.md`
