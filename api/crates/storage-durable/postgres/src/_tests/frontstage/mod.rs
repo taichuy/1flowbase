@@ -79,7 +79,7 @@ async fn page_creation_keeps_one_default_tab_and_last_tab_is_guarded() {
     assert!(error.to_string().contains("frontstage_page_requires_tab"));
 }
 
-const PAGE_TABS_MIGRATION_VERSION: i64 = 20260710120000;
+const PAGE_TABS_MIGRATION_VERSION: i64 = 20260710130000;
 const FRONTSTAGE_WORKSPACE_INTEGRITY_MIGRATION_VERSION: i64 = 20260710193500;
 const FRONTSTAGE_PAGE_OWNER_KIND_MIGRATION_VERSION: i64 = 20260710210000;
 const FRONTSTAGE_PLACEMENT_INTEGRITY_MIGRATION_VERSION: i64 = 20260710223000;
@@ -1290,7 +1290,7 @@ fn page_tabs_up_migration_preflight_precedes_schema_changes_and_uses_transaction
         "SQLx must execute this migration transactionally"
     );
 
-    let sql = include_str!("../../../migrations/20260710120000_add_frontstage_page_tabs.up.sql");
+    let sql = include_str!("../../../migrations/20260710130000_add_frontstage_page_tabs.up.sql");
     let preflight = sql
         .find("frontstage page tabs preflight rejected legacy data")
         .expect("preflight exception must exist");
