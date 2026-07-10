@@ -61,7 +61,7 @@
 结论：
 
 - 先跑 `interaction-architecture-gate`
-- 如果 gate 显示问题落在入口、层级、交互一致性，再升级到 `frontend-logic-design`
+- 如果 gate 显示问题落在入口、层级、交互一致性，在 gate 内完成完整结构诊断
 
 ## Scenario 6: External Inspiration Drift
 
@@ -114,7 +114,7 @@
 
 - 先收敛页面目标、核心动作、关键状态和必须模块
 - 新页面把需求收敛后默认继续实现，不等额外确认
-- 如果问题落在入口、层级和交互直觉，先跑 `interaction-architecture-gate`，必要时升级到 `frontend-logic-design`
+- 如果问题落在入口、层级和交互直觉，先跑 `interaction-architecture-gate` 并完成所需诊断
 
 ## Scenario 10: Clear UI Request But No Requirement Reply
 
@@ -144,4 +144,4 @@
 
 - 先跑 `interaction-architecture-gate`
 - 先把首屏主任务、L1 / L2 / L3 和反馈落点说清
-- 如果同类对象会出现多种点击结果，再升级到 `frontend-logic-design`
+- 如果同类对象会出现多种点击结果，在 gate 内补一致性矩阵后再实现

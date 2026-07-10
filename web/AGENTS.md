@@ -4,7 +4,7 @@
 
 ## Skills
 - 做前端实现、页面、壳层、组件、交互时：使用 `frontend-development`
-- 只要涉及导航、层级、入口、详情容器、L0 / L1 / L2 / L3 或同类对象行为统一，先跑 `frontend-development` 的交互架构 gate；命中结构问题时补 `frontend-logic-design`
+- 只要涉及导航、层级、入口、详情容器、L0 / L1 / L2 / L3 或同类对象行为统一，使用 `frontend-development` 的交互架构 gate 完成诊断并冻结规则
 - 做质量评估、回归审计时：使用 `qa-evaluation`
 
 ## Directory Rules

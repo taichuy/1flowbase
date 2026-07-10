@@ -20,7 +20,7 @@
 
 | 热点类型 | 典型信号 | 应沉淀到哪里 |
 | --- | --- | --- |
-| UI 信息架构 churn | 同一页面反复移动入口、标题、卡片、按钮、modal | `frontend-development` / `frontend-logic-design` |
+| UI 信息架构 churn | 同一页面反复移动入口、标题、卡片、按钮、modal | `frontend-development` 的 `interaction-architecture-gate` |
 | 运行态真值 churn | cache、last run、snapshot、latest、run detail 多入口互相补丁 | `backend-development` state consistency；必要时补 QA gate |
 | 质量门禁 churn | lint、format、clippy、CI、coverage 反复补救 | `qa-evaluation` 与 `scripts/node` |
 | 目录 / 文件压力 | 高频文件接近或超过 1200/1500 行，目录横向膨胀 | AGENTS directory rules 或新增 size/churn report |

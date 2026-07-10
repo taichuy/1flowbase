@@ -31,7 +31,7 @@ test('classifyHotspot maps frontend UI churn to frontend interaction gate', () =
     {
       type: 'frontend-ui-churn',
       suggestedGate: 'frontend interaction architecture gate',
-      preventionTarget: 'frontend-development / frontend-logic-design',
+      preventionTarget: 'frontend-development interaction-architecture-gate',
     }
   );
 });
@@ -61,7 +61,7 @@ test('classifyHotspot does not treat every agent-flow UI edit as runtime truth c
     {
       type: 'frontend-ui-churn',
       suggestedGate: 'frontend interaction architecture gate',
-      preventionTarget: 'frontend-development / frontend-logic-design',
+      preventionTarget: 'frontend-development interaction-architecture-gate',
     }
   );
 });

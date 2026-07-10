@@ -516,27 +516,24 @@ describe('McpManagementPanel', () => {
     expect(modalShell).toHaveStyle({ width: '840px' });
     expect(modalScrollBody).toHaveClass('mcp-management__directory-modal');
     expect(
-      within(dialog).getByRole('tab', { name: '分组' })
-    ).toHaveAttribute('aria-selected', 'true');
+      within(dialog).getByRole('button', { name: '新建分组' })
+    ).toBeInTheDocument();
     expect(
-      within(dialog).getByRole('tab', { name: 'Tool 挂载' })
-    ).toHaveAttribute('aria-selected', 'false');
+      within(dialog).getByRole('button', { name: '挂载 Tool' })
+    ).toBeInTheDocument();
     expect(within(dialog).getByLabelText('路径')).toBeInTheDocument();
     expect(
       within(dialog).queryByRole('combobox', { name: '路径' })
     ).not.toBeInTheDocument();
-    expect(within(dialog).queryByLabelText('挂载路径')).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText('挂载路径')).not.toBeVisible();
     expect(within(dialog).getByRole('tree')).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     expect(
-      within(dialog).getByRole('tab', { name: '分组' })
-    ).toHaveAttribute('aria-selected', 'false');
-    expect(
-      within(dialog).getByRole('tab', { name: 'Tool 挂载' })
-    ).toHaveAttribute('aria-selected', 'true');
-    expect(within(dialog).queryByLabelText('路径')).not.toBeInTheDocument();
+      within(dialog).getByRole('heading', { name: '新建 Tool 挂载' })
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('路径')).not.toBeVisible();
     expect(within(dialog).getByLabelText('挂载路径')).toBeInTheDocument();
     expect(
       within(dialog).queryByRole('columnheader', { name: '挂载路径' })
@@ -560,7 +557,7 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     expect(within(dialog).queryAllByLabelText('编辑 Tool 挂载')).toHaveLength(
       0
@@ -585,18 +582,22 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).getByLabelText('显示名称')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('简短描述')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('启用')).toBeInTheDocument();
-    expect(within(dialog).queryByLabelText('display_name')).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText('display_name')
+    ).not.toBeInTheDocument();
     expect(
       within(dialog).queryByLabelText('description_short')
     ).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText('enabled')).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     expect(within(dialog).getByLabelText('tool_id')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('可见')).toBeInTheDocument();
     expect(within(dialog).queryByLabelText('显示别名')).not.toBeInTheDocument();
-    expect(within(dialog).queryByLabelText('display_alias')).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText('display_alias')
+    ).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText('visible')).not.toBeInTheDocument();
   });
 
@@ -611,13 +612,9 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
     const rootLabel = within(dialog).getByText('Ops MCP /');
-    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
-    expect(rootNode).toBeInstanceOf(HTMLElement);
-    fireEvent.click(
-      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
-    );
+    fireEvent.click(rootLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     expect(within(dialog).queryByLabelText('显示别名')).not.toBeInTheDocument();
 
@@ -628,7 +625,9 @@ describe('McpManagementPanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
 
     await waitFor(() => {
-      expect(mcpManagementApi.createSettingsMcpToolBinding).toHaveBeenCalledWith(
+      expect(
+        mcpManagementApi.createSettingsMcpToolBinding
+      ).toHaveBeenCalledWith(
         'ops_mcp',
         expect.objectContaining({
           tool_id: 'search_customer',
@@ -637,7 +636,9 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
-    expect(screen.getByRole('dialog', { name: '目录编辑' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: '目录编辑' })
+    ).toBeInTheDocument();
   });
 
   test('keeps the directory editor open and selects the saved group', async () => {
@@ -652,11 +653,8 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const rootLabel = within(dialog).getByText('Ops MCP /');
-    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
-    expect(rootNode).toBeInstanceOf(HTMLElement);
-    fireEvent.click(
-      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
-    );
+    fireEvent.click(rootLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
       target: { value: 'Customer Ops' }
     });
@@ -671,10 +669,12 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
-    expect(screen.getByRole('dialog', { name: '目录编辑' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: '目录编辑' })
+    ).toBeInTheDocument();
   });
 
-  test('exposes create actions on the instance root without a top toolbar', () => {
+  test('exposes explicit creation actions beside the directory tree', () => {
     renderPanelWithMountedTool({ includeBinding: false });
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
@@ -684,82 +684,40 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const rootLabel = within(dialog).getByText('Ops MCP /');
-    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
-    expect(rootNode).toBeInstanceOf(HTMLElement);
     expect(
-      within(rootNode as HTMLElement).getAllByRole('button', { name: '新增' })
-    ).toHaveLength(1);
-    const status = dialog.querySelector('.mcp-management__directory-editor-status');
-    expect(status).toBeInstanceOf(HTMLElement);
-    expect(status).toHaveTextContent('当前状态');
-    expect(status).toHaveTextContent('新增');
-    expect(status).toHaveTextContent('分组');
+      within(dialog).getByRole('button', { name: '新建分组' })
+    ).toBeInTheDocument();
     expect(
-      dialog.querySelector('.mcp-management__directory-tree-toolbar')
+      within(dialog).getByRole('button', { name: '挂载 Tool' })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: '新增' })
     ).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('heading', { name: '新建分组' })
+    ).toBeInTheDocument();
   });
 
-  test('starts a child path from the selected group actions', () => {
+  test('starts a child path from the selected group', () => {
     renderPanelWithMountedTool({ includeGroup: true });
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-
     fireEvent.click(
       within(instancesPanel).getByRole('button', { name: '目录编辑' })
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const tree = within(dialog).getByRole('tree');
-    expandTreeRootIfCollapsed(tree);
+    expandTreeRootIfCollapsed(within(dialog).getByRole('tree'));
+    fireEvent.click(within(dialog).getByText('ops'));
+    fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
 
-    const groupLabel = within(dialog).getByText('ops');
-    const groupNode = groupLabel.closest('.ant-tree-node-content-wrapper');
-    expect(groupNode).toBeInstanceOf(HTMLElement);
-    fireEvent.mouseEnter(groupNode as HTMLElement);
-    fireEvent.click(
-      within(groupNode as HTMLElement).getByRole('button', {
-        name: '新增'
-      })
-    );
-
-    const modalScrollBody = screen.getByTestId(
-      'fixed-height-modal-scroll-body'
-    );
-    const treePanel = dialog.querySelector('.mcp-management__directory-tree-panel');
-    expect(treePanel).toBeInstanceOf(HTMLElement);
-
-    expect(within(dialog).getByRole('tab', { name: '分组' })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
     expect(within(dialog).getByText(/新增至父目录/)).toBeInTheDocument();
-    expect(within(dialog).getByText('/ops')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('路径')).toHaveValue('/ops/');
+    expect(within(dialog).getByText('目标目录： /ops')).toBeInTheDocument();
     expect(
-      within(dialog).getByRole('button', {
-        name: '取消子分组新建'
-      })
+      within(dialog).getByRole('button', { name: '取消子分组新建' })
     ).toBeInTheDocument();
-    expect(
-      dialog.querySelector('.mcp-management__directory-tree-toolbar')
-    ).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole('button', { name: '新增子分组' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole('button', { name: '新建分组' })
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(
-      within(dialog).getByRole('button', {
-        name: '取消子分组新建'
-      })
-    );
-
-    expect(within(dialog).queryByText(/新增至父目录/)).not.toBeInTheDocument();
-    expect(within(dialog).getByLabelText('路径')).toHaveValue('/');
   });
 
   test('mounts a Tool under the selected group without losing tree selection', async () => {
@@ -779,26 +737,17 @@ describe('McpManagementPanel', () => {
     fireEvent.click(groupLabel);
     await waitFor(() => {
       expect(
-        within(dialog).getByText('ops').closest('.ant-tree-node-content-wrapper')
+        within(dialog)
+          .getByText('ops')
+          .closest('.ant-tree-node-content-wrapper')
       ).toHaveClass('ant-tree-node-selected');
     });
 
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
-    const currentGroupLabel = within(dialog).getByText('ops');
-    const currentGroupNode = currentGroupLabel.closest(
-      '.ant-tree-node-content-wrapper'
-    );
-    fireEvent.mouseEnter(currentGroupNode as HTMLElement);
-    fireEvent.click(
-      within(currentGroupNode as HTMLElement).getByRole('button', {
-        name: '新增'
-      })
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
-    expect(within(dialog).getByRole('tab', { name: 'Tool 挂载' })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
+    expect(
+      within(dialog).getByRole('heading', { name: '新建 Tool 挂载' })
+    ).toBeInTheDocument();
     expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/ops');
     expect(
       within(dialog).getByText('ops').closest('.ant-tree-node-content-wrapper')
@@ -832,11 +781,93 @@ describe('McpManagementPanel', () => {
 
     expect(rootNode).toHaveClass('ant-tree-node-selected');
     expect(groupNode).not.toHaveClass('ant-tree-node-selected');
-    const status = dialog.querySelector('.mcp-management__directory-editor-status');
+    const status = dialog.querySelector(
+      '.mcp-management__directory-editor-status'
+    );
     expect(status).toBeInstanceOf(HTMLElement);
     expect(status).toHaveTextContent('编辑');
     expect(status).toHaveTextContent('分组');
     expect(within(dialog).getByLabelText('显示名称')).toHaveValue('ops');
+  });
+
+  test('selects a group node and opens that group for editing', () => {
+    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const tree = within(dialog).getByRole('tree');
+    expandTreeRootIfCollapsed(tree);
+    fireEvent.click(within(dialog).getByText('ops'));
+
+    expect(
+      within(dialog).getByText('ops').closest('.ant-tree-node-content-wrapper')
+    ).toHaveClass('ant-tree-node-selected');
+    expect(within(dialog).getByLabelText('显示名称')).toHaveValue('ops');
+    expect(
+      within(dialog).getByRole('button', { name: '保存分组' })
+    ).toBeInTheDocument();
+  });
+
+  test('confirms before closing an editor with unsaved changes', async () => {
+    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    fireEvent.change(within(dialog).getByLabelText('显示名称'), {
+      target: { value: 'Unsaved group' }
+    });
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('显示名称')).toHaveValue(
+        'Unsaved group'
+      );
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '关闭目录编辑' })
+    );
+
+    expect(screen.getByText('放弃未保存的更改？')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '放弃更改' })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }));
+    expect(
+      screen.getByRole('dialog', { name: '目录编辑' })
+    ).toBeInTheDocument();
+  });
+
+  test('shows explicit group and Tool creation actions without editor tabs', () => {
+    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+
+    expect(
+      within(dialog).getByRole('button', { name: '新建分组' })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: '挂载 Tool' })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('tab', { name: '分组' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('tab', { name: 'Tool 挂载' })
+    ).not.toBeInTheDocument();
   });
 
   test('does not preview a duplicate draft group when the path already exists', () => {
@@ -872,11 +903,15 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
 
-    expect(within(dialog).queryByLabelText('sort_order')).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText('sort_order')
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
-    expect(within(dialog).queryByLabelText('sort_order')).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText('sort_order')
+    ).not.toBeInTheDocument();
   });
 
   test('places directory cancel and save actions in the modal footer for both editor tabs', () => {
@@ -895,7 +930,7 @@ describe('McpManagementPanel', () => {
     );
 
     const cancelButton = within(dialog).getByRole('button', {
-      name: /取\s*消/
+      name: '关闭目录编辑'
     });
     const saveButton = within(dialog).getByRole('button', { name: /保存/ });
 
@@ -912,10 +947,10 @@ describe('McpManagementPanel', () => {
       within(modalScrollBody).queryByRole('button', { name: /保存/ })
     ).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     const bindingCancelButton = within(dialog).getByRole('button', {
-      name: /取\s*消/
+      name: '关闭目录编辑'
     });
     const bindingSaveButton = within(dialog).getByRole('button', {
       name: /保存/
@@ -949,9 +984,8 @@ describe('McpManagementPanel', () => {
     const rootLabel = within(dialog).getByText('Ops MCP /');
     const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
     expect(rootNode).toBeInstanceOf(HTMLElement);
-    fireEvent.click(
-      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
-    );
+    fireEvent.click(rootLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
       target: { value: 'Customer Ops' }
     });
@@ -960,7 +994,9 @@ describe('McpManagementPanel', () => {
     });
 
     await waitFor(() => {
-      expect(within(dialog).getByRole('tree')).toHaveTextContent('Customer Ops');
+      expect(within(dialog).getByRole('tree')).toHaveTextContent(
+        'Customer Ops'
+      );
     });
     const currentTree = within(dialog).getByRole('tree');
     expect(currentTree).toHaveTextContent('Tools for customer operations');
@@ -981,7 +1017,9 @@ describe('McpManagementPanel', () => {
       screen.getByRole('dialog', { name: '目录编辑' })
     ).getByRole('tree');
 
-    expect(tree.querySelector('.ant-tree-draggable-icon')).not.toBeInTheDocument();
+    expect(
+      tree.querySelector('.ant-tree-draggable-icon')
+    ).not.toBeInTheDocument();
   });
 
   test('renders draft binding nodes with the tool id and short description in the tree', async () => {
@@ -995,27 +1033,27 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
     const rootLabel = within(dialog).getByText('Ops MCP /');
-    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
-    expect(rootNode).toBeInstanceOf(HTMLElement);
-    fireEvent.click(
-      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
-    );
+    fireEvent.click(rootLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'tool_id' })
     );
     await selectAntdOption('Search customer');
 
     await waitFor(() => {
-      expect(within(dialog).getByRole('tree')).toHaveTextContent('search_customer');
+      expect(within(dialog).getByRole('tree')).toHaveTextContent(
+        'search_customer'
+      );
     });
     const currentTree = within(dialog).getByRole('tree');
     expect(currentTree).toHaveTextContent('Find matching customers');
-    expect(currentTree).not.toHaveTextContent('Search customer search_customer');
+    expect(currentTree).not.toHaveTextContent(
+      'Search customer search_customer'
+    );
   });
 
-  test('clears an unsaved Tool draft when switching tabs', async () => {
+  test('replaces an unsaved Tool draft when starting a group creation session', async () => {
     renderPanelWithMountedTool({ includeBinding: false });
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
@@ -1025,20 +1063,18 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
     const rootLabel = within(dialog).getByText('Ops MCP /');
-    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
-    expect(rootNode).toBeInstanceOf(HTMLElement);
-    fireEvent.click(
-      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
-    );
+    fireEvent.click(rootLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
     await waitFor(() => {
       expect(within(dialog).getByRole('tree')).toHaveTextContent('未命名 Tool');
     });
 
-    fireEvent.click(within(dialog).getByRole('tab', { name: '分组' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
 
-    expect(within(dialog).getByRole('tree')).not.toHaveTextContent('未命名 Tool');
+    expect(within(dialog).getByRole('tree')).not.toHaveTextContent(
+      '未命名 Tool'
+    );
     expect(within(dialog).getByLabelText('显示名称')).toHaveValue('');
   });
 
@@ -1054,26 +1090,24 @@ describe('McpManagementPanel', () => {
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
     expandTreeRootIfCollapsed(tree);
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     const rootLabel = within(dialog).getByText('Ops MCP /');
     const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
-    fireEvent.click(
-      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
-    );
+    fireEvent.click(rootLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
     await waitFor(() => {
       expect(within(dialog).getByRole('tree')).toHaveTextContent('未命名 Tool');
     });
 
     const groupLabel = within(dialog).getByText('ops');
-    const groupNode = groupLabel.closest('.ant-tree-node-content-wrapper');
-    fireEvent.mouseEnter(groupNode as HTMLElement);
-    fireEvent.click(
-      within(groupNode as HTMLElement).getByRole('button', { name: '新增' })
-    );
+    fireEvent.click(groupLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     await waitFor(() => {
-      expect(within(within(dialog).getByRole('tree')).getAllByText('未命名 Tool')).toHaveLength(1);
+      expect(
+        within(within(dialog).getByRole('tree')).getAllByText('未命名 Tool')
+      ).toHaveLength(1);
       expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/ops');
     });
   });
@@ -1095,7 +1129,7 @@ describe('McpManagementPanel', () => {
 
     expect(within(dialog).getByLabelText('路径')).toHaveValue('/ops/customer');
 
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/');
   });

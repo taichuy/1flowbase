@@ -11,11 +11,10 @@
 # 本项目 skills
 1.`problem-framing`：需求类请求动工前使用；普通需求先给 2-3 个轻量做法并等待确认，高风险/多方向需求再做三方案、issue/ADR 和实现交接。
 2.`frontend-development`：前端页面、UI 结构、工作区流程、节点开发、schema UI、交互和视觉结构变更时使用。
-3.`frontend-logic-design`：前端信息架构、导航层级、入口、下钻路径或同类对象行为不清晰时使用。
-4.`backend-development`：后端 API、状态流转、模块边界、核心业务逻辑、状态写入口和一致性设计变更时使用。
-5.`test-driven-development`：功能、缺陷、重构或行为变化可用自动化测试覆盖时，在实现前使用。
-6.`qa-evaluation`：进入自检、验收、回归、交付或质量评估阶段时使用，输出证据驱动的 QA 结论。
-7.`github-solution-research`：具体工程问题可能已有 GitHub 开源证据或方案时使用；搜索 issue、PR、repo、code，比较候选项目并提炼本地适配与验证计划。
+3.`backend-development`：后端 API、状态流转、模块边界、核心业务逻辑、状态写入口和一致性设计变更时使用。
+4.`test-driven-development`：功能、缺陷、重构或行为变化可用自动化测试覆盖时，在实现前使用。
+5.`qa-evaluation`：进入自检、验收、回归、交付或质量评估阶段时使用，输出证据驱动的 QA 结论。
+6.`github-solution-research`：具体工程问题可能已有 GitHub 开源证据或方案时使用；搜索 issue、PR、repo、code，比较候选项目并提炼本地适配与验证计划。
 
 # 质量控制
 1.进入自检、验收、回归或交付阶段时，使用skill `qa-evaluation`；

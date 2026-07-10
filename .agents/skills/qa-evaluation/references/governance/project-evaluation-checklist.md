@@ -48,6 +48,6 @@
 
 ## Escalation
 
-- 前端结构问题联动 `frontend-logic-design`
+- 前端结构问题联动 `frontend-development` 的 `interaction-architecture-gate`
 - 前端实现一致性问题联动 `frontend-development`
 - 后端契约、状态和边界问题联动 `backend-development`

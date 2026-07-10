@@ -44,7 +44,7 @@ description: "Use for 1flowbase frontend implementation in web/: building, fixin
 
 - 页面 recipe、工作区语法、详情模型：读 `references/workspace-rules.md`。
 - 目录落点、接口消费、schema UI 分层：读 `references/placement-rules.md`。
-- 入口、层级、L0 / L1 / L2 / L3、详情容器或同类对象行为：先读 `references/interaction-architecture-gate.md`；命中结构性问题再用 `frontend-logic-design`。
+- 入口、层级、L0 / L1 / L2 / L3、详情容器或同类对象行为：读 `references/interaction-architecture-gate.md`，完成结构诊断并冻结交互规则后再实现。
 - 多语言资源归属、key / value 语义和 unused-key 规则：读 `references/i18n-rules.md`。
 - 视觉基线、第三方 slot、共享样式边界：读 `references/visual-baseline.md`；需要运行态证据时再读 `references/browser-verification.md`。
 - 报表 / 图表 / ECharts / JS Block chart primitive：读 `references/chart-reporting.md`。

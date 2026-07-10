@@ -10,11 +10,23 @@
     "unnamed": "未命名",
     "unnamed_tool": "未命名 Tool",
     "visible": "可见",
-    "add_current_type": "新增",
     "current_action": "当前状态",
     "creating": "新增",
     "editing": "编辑",
     "group_type": "分组",
-    "tool_mount_type": "Tool 挂载"
+    "tool_mount_type": "Tool 挂载",
+    "create_group": "新建分组",
+    "mount_tool": "挂载 Tool",
+    "edit_group": "编辑分组",
+    "edit_tool_mount": "编辑 Tool 挂载",
+    "create_tool_mount": "新建 Tool 挂载",
+    "target_directory": "目标目录：",
+    "save_group": "保存分组",
+    "save_tool_mount": "保存 Tool 挂载",
+    "discard_unsaved_changes_title": "放弃未保存的更改？",
+    "discard_unsaved_changes_description": "当前编辑内容尚未保存，继续操作将丢失这些更改。",
+    "discard_unsaved_changes": "放弃更改",
+    "continue_editing": "继续编辑",
+    "close_directory_editor": "关闭目录编辑"
   }
 }

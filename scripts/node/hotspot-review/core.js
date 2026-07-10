@@ -181,7 +181,7 @@ function classifyHotspot({ file, subjects = [], lines = null }) {
     return {
       type: 'frontend-ui-churn',
       suggestedGate: 'frontend interaction architecture gate',
-      preventionTarget: 'frontend-development / frontend-logic-design',
+      preventionTarget: 'frontend-development interaction-architecture-gate',
     };
   }
 

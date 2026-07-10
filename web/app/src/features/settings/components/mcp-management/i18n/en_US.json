@@ -10,11 +10,23 @@
     "unnamed": "Unnamed",
     "unnamed_tool": "Unnamed Tool",
     "visible": "Visible",
-    "add_current_type": "Add",
     "current_action": "Current status",
     "creating": "Creating",
     "editing": "Editing",
     "group_type": "Group",
-    "tool_mount_type": "Tool mount"
+    "tool_mount_type": "Tool mount",
+    "create_group": "New group",
+    "mount_tool": "Mount Tool",
+    "edit_group": "Edit group",
+    "edit_tool_mount": "Edit Tool mount",
+    "create_tool_mount": "New Tool mount",
+    "target_directory": "Target directory:",
+    "save_group": "Save group",
+    "save_tool_mount": "Save Tool mount",
+    "discard_unsaved_changes_title": "Discard unsaved changes?",
+    "discard_unsaved_changes_description": "The current editor has unsaved changes. Continuing will discard them.",
+    "discard_unsaved_changes": "Discard changes",
+    "continue_editing": "Continue editing",
+    "close_directory_editor": "Close directory editor"
   }
 }

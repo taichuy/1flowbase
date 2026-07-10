@@ -20,7 +20,7 @@
 
 | 问题类型 | 需要联动 |
 | --- | --- |
-| 信息架构、入口层级、L0 / L1 / L2 / L3 深度关系 | `frontend-logic-design` |
+| 信息架构、入口层级、L0 / L1 / L2 / L3 深度关系 | `frontend-development` 的 `interaction-architecture-gate` |
 | 前端页面语法、交互一致性、视觉系统约束 | `frontend-development` |
 | 后端 API 契约、状态入口、边界污染 | `backend-development` |
 

@@ -90,7 +90,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - Rust 后端验收必须核对 completion self-check；缺少证据时对应项只能写 `未验证`，不能下通过结论
 - 同一工作区内执行后端 `cargo` 验证命令时默认串行，不要为了加速 QA 并发启动多条 `cargo test / check / clippy` 导致锁等待和结论失真
 - 验证预算由 gate lane 决定：开发后验收用最小证据链和早停；PR 门禁用 CI / gate DAG / artifact；项目体检用全量维度覆盖、风险热力图和轮转深挖
-- 前端层级、入口、L0 / L1 / L2 / L3 问题：联动 `frontend-logic-design`
+- 前端层级、入口、L0 / L1 / L2 / L3 问题：使用 `frontend-development` 的 `interaction-architecture-gate`
 - 后端契约、状态入口、边界污染问题：联动 `backend-development`
 - 项目体检发现非硬性维护问题时，联动 `problem-framing` 输出现状、方向、风险收益和建议；硬性门禁失败才进入质量回归修复
 - 无法验证时必须明确写：`未验证，不下确定结论`
