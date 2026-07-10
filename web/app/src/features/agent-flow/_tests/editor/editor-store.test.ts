@@ -114,11 +114,7 @@ describe('agent flow editor store', () => {
       focusedFieldKey: 'bindings.answer_template',
       openInspectorSectionKey: 'outputs'
     });
-    store.getState().setPanelState({
-      historyOpen: true,
-      debugConsoleOpen: true,
-      nodeDetailTab: 'lastRun'
-    });
+    store.getState().setPanelState({ historyOpen: true });
     store.getState().setInteractionState({
       activeContainerPath: ['node-iteration-1'],
       highlightedIssueId: 'issue-1'
@@ -151,14 +147,12 @@ describe('agent flow editor store', () => {
     expect(store.getState().focusedFieldKey).toBe('bindings.answer_template');
     expect(store.getState().openInspectorSectionKey).toBe('outputs');
     expect(store.getState().historyOpen).toBe(true);
-    expect(store.getState().debugConsoleOpen).toBe(true);
-    expect(store.getState().nodeDetailTab).toBe('lastRun');
     expect(store.getState().activeContainerPath).toEqual(['node-iteration-1']);
     expect(store.getState().highlightedIssueId).toBe('issue-1');
     expect(store.getState().viewport).toEqual({ x: 12, y: 24, zoom: 1.1 });
   });
 
-  test('tracks node detail tab and width in panel state', () => {
+  test('keeps application-specific panel state outside the shared store', () => {
     const store = createAgentFlowEditorStore({
       flow_id: 'flow-1',
       draft: {
@@ -170,40 +164,12 @@ describe('agent flow editor store', () => {
       autosave_interval_seconds: 30,
       versions: []
     });
+    const state = store.getState() as unknown as Record<string, unknown>;
 
-    expect(store.getState().nodeDetailTab).toBe('config');
-    expect(store.getState().nodeDetailWidth).toBe(NODE_DETAIL_DEFAULT_WIDTH);
-
-    store.getState().setPanelState({
-      nodeDetailTab: 'lastRun',
-      nodeDetailWidth: 488
-    });
-
-    expect(store.getState().nodeDetailTab).toBe('lastRun');
-    expect(store.getState().nodeDetailWidth).toBe(488);
-  });
-
-  test('keeps node detail width when switching tabs', () => {
-    const store = createAgentFlowEditorStore({
-      flow_id: 'flow-1',
-      draft: {
-        id: 'draft-1',
-        flow_id: 'flow-1',
-        updated_at: '2026-04-16T10:00:00Z',
-        document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
-      },
-      autosave_interval_seconds: 30,
-      versions: []
-    });
-
-    store.getState().setPanelState({
-      nodeDetailWidth: 560,
-      nodeDetailTab: 'config'
-    });
-    store.getState().setPanelState({ nodeDetailTab: 'lastRun' });
-
-    expect(store.getState().nodeDetailWidth).toBe(560);
-    expect(store.getState().nodeDetailTab).toBe('lastRun');
+    expect(state.nodeDetailWidth).toBe(NODE_DETAIL_DEFAULT_WIDTH);
+    expect(state).not.toHaveProperty('debugConsoleOpen');
+    expect(state).not.toHaveProperty('debugConsoleWidth');
+    expect(state).not.toHaveProperty('nodeDetailTab');
   });
 
   test('keeps node detail width when replacing from server state', () => {
@@ -220,11 +186,7 @@ describe('agent flow editor store', () => {
       versions: []
     });
 
-    store.getState().setPanelState({
-      nodeDetailWidth: 560,
-      nodeDetailTab: 'lastRun'
-    });
-
+    store.getState().setPanelState({ nodeDetailWidth: 560 });
     store.getState().replaceFromServerState({
       flow_id: 'flow-1',
       draft: {
@@ -233,10 +195,7 @@ describe('agent flow editor store', () => {
         updated_at: '2026-04-16T10:05:00Z',
         document: {
           ...initialDocument,
-          meta: {
-            ...initialDocument.meta,
-            name: 'Server synced'
-          }
+          meta: { ...initialDocument.meta, name: 'Server synced' }
         }
       },
       autosave_interval_seconds: 30,
@@ -245,6 +204,6 @@ describe('agent flow editor store', () => {
 
     expect(store.getState().workingDocument.meta.name).toBe('Server synced');
     expect(store.getState().nodeDetailWidth).toBe(560);
-    expect(store.getState().nodeDetailTab).toBe('config');
   });
+
 });

@@ -16,26 +16,16 @@ import {
   fetchOrchestrationState,
   orchestrationQueryKey
 } from '../api/orchestration';
-import { AgentFlowEditorShell } from '../components/editor/AgentFlowEditorShell';
-import type {
-  AgentFlowCanvasFrameProps,
-  AgentFlowEditorCapabilities
-} from '../components/editor/canvas-frame/types';
+import { AgentFlowEditorAssembly } from '../components/editor/AgentFlowEditorAssembly';
 import { i18nText } from '../../../shared/i18n/text';
 
 export function AgentFlowEditorPage({
   applicationId,
   applicationName,
-  workflowTriggerContext = null,
-  capabilities,
-  nodePickerOptionsBuilder,
   topSlot
 }: {
   applicationId: string;
   applicationName: string;
-  workflowTriggerContext?: unknown;
-  capabilities?: AgentFlowEditorCapabilities;
-  nodePickerOptionsBuilder?: AgentFlowCanvasFrameProps['nodePickerOptionsBuilder'];
   topSlot?: ReactNode;
 }) {
   const orchestrationQuery = useQuery({
@@ -100,12 +90,9 @@ export function AgentFlowEditorPage({
   const nodeContributions = nodeContributionsQuery.data;
 
   return (
-    <AgentFlowEditorShell
+    <AgentFlowEditorAssembly
       applicationId={applicationId}
       applicationName={applicationName}
-      workflowTriggerContext={workflowTriggerContext}
-      capabilities={capabilities}
-      nodePickerOptionsBuilder={nodePickerOptionsBuilder}
       initialState={state}
       initialEnvironmentVariables={environmentVariablesQuery.data}
       nodeContributions={nodeContributions}

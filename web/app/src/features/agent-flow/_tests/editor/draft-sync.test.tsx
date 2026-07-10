@@ -75,7 +75,9 @@ describe('useDraftSync', () => {
 
         return {
           draftSync,
-          selectedNodeId: useAgentFlowEditorStore((state) => state.selectedNodeId),
+          selectedNodeId: useAgentFlowEditorStore(
+            (state) => state.selectedNodeId
+          ),
           activeContainerPath: useAgentFlowEditorStore(
             (state) => state.activeContainerPath
           ),
@@ -85,9 +87,13 @@ describe('useDraftSync', () => {
           focusedFieldKey: useAgentFlowEditorStore(
             (state) => state.focusedFieldKey
           ),
-          workingDocument: useAgentFlowEditorStore((state) => state.workingDocument),
+          workingDocument: useAgentFlowEditorStore(
+            (state) => state.workingDocument
+          ),
           setSelection: useAgentFlowEditorStore((state) => state.setSelection),
-          setPanelState: useAgentFlowEditorStore((state) => state.setPanelState),
+          setPanelState: useAgentFlowEditorStore(
+            (state) => state.setPanelState
+          ),
           setInteractionState: useAgentFlowEditorStore(
             (state) => state.setInteractionState
           )
@@ -156,7 +162,9 @@ describe('useDraftSync', () => {
           saveDraftOverride,
           getCurrentDocument: () => latestDocumentRef.current
         }),
-        workingDocument: useAgentFlowEditorStore((state) => state.workingDocument)
+        workingDocument: useAgentFlowEditorStore(
+          (state) => state.workingDocument
+        )
       }),
       { wrapper }
     );
@@ -216,20 +224,20 @@ describe('useDraftSync', () => {
 
         return {
           draftSync,
-          selectedNodeId: useAgentFlowEditorStore((state) => state.selectedNodeId),
+          selectedNodeId: useAgentFlowEditorStore(
+            (state) => state.selectedNodeId
+          ),
           focusedFieldKey: useAgentFlowEditorStore(
             (state) => state.focusedFieldKey
           ),
           historyOpen: useAgentFlowEditorStore((state) => state.historyOpen),
-          debugConsoleOpen: useAgentFlowEditorStore(
-            (state) => state.debugConsoleOpen
-          ),
-          nodeDetailTab: useAgentFlowEditorStore((state) => state.nodeDetailTab),
           activeContainerPath: useAgentFlowEditorStore(
             (state) => state.activeContainerPath
           ),
           setSelection: useAgentFlowEditorStore((state) => state.setSelection),
-          setPanelState: useAgentFlowEditorStore((state) => state.setPanelState),
+          setPanelState: useAgentFlowEditorStore(
+            (state) => state.setPanelState
+          ),
           setInteractionState: useAgentFlowEditorStore(
             (state) => state.setInteractionState
           )
@@ -245,9 +253,7 @@ describe('useDraftSync', () => {
         focusedFieldKey: 'bindings.answer_template'
       });
       result.current.setPanelState({
-        historyOpen: true,
-        debugConsoleOpen: true,
-        nodeDetailTab: 'lastRun'
+        historyOpen: true
       });
       result.current.setInteractionState({
         activeContainerPath: ['node-iteration-1']
@@ -261,8 +267,6 @@ describe('useDraftSync', () => {
     expect(result.current.selectedNodeId).toBe('node-answer');
     expect(result.current.focusedFieldKey).toBe('bindings.answer_template');
     expect(result.current.historyOpen).toBe(true);
-    expect(result.current.debugConsoleOpen).toBe(true);
-    expect(result.current.nodeDetailTab).toBe('lastRun');
     expect(result.current.activeContainerPath).toEqual(['node-iteration-1']);
   });
 

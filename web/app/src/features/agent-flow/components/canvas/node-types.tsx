@@ -34,7 +34,7 @@ export interface AgentFlowCanvasNodeData extends Record<string, unknown> {
     option: NodePickerOption,
     sourceHandleId?: string | null
   ) => void;
-  onRunNode: (nodeId: string) => void;
+  onRunNode?: (nodeId: string) => void;
   onReplaceNode: (targetId: string, option: NodePickerOption) => void;
   onDeleteNode: (nodeId: string) => void;
 }

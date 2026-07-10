@@ -200,6 +200,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
   let dateNowSpy: { mockRestore: () => void } | undefined;
 
   beforeEach(async () => {
+    window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.clear();
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
     await appI18n.changeLanguage('zh_Hans');
@@ -743,4 +744,77 @@ describe('ApplicationLogsPage - floating windows shell', () => {
       width: '490px'
     });
   }, 20_000);
+
+  test('opens a paginated-out run directly from the trace deep link', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/applications/app-1/logs?run_id=run-deep&view=trace'
+    );
+    runtimeApi.fetchApplicationRuns.mockResolvedValue(applicationRunsPage([]));
+    runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+      conversationMessagesPage([])
+    );
+
+    render(
+      <AppProviders>
+        <ApplicationLogsPage applicationId="app-1" />
+      </AppProviders>
+    );
+
+    expect(
+      await screen.findByTestId('application-logs-floating-run-detail')
+    ).toBeInTheDocument();
+    const traceWindow = await screen.findByTestId(
+      'application-logs-floating-conversation-log'
+    );
+    expect(
+      within(traceWindow).getByRole('tab', { name: '追踪' })
+    ).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => {
+      expect(runtimeApi.fetchApplicationRunTraceTree).toHaveBeenCalledWith(
+        'app-1',
+        'run-deep'
+      );
+    });
+    expect(window.location.search).toBe('?run_id=run-deep&view=trace');
+
+    fireEvent.click(
+      within(traceWindow).getByRole('button', { name: '关闭对话日志' })
+    );
+    expect(window.location.search).toBe('?run_id=run-deep');
+    expect(
+      screen.getByTestId('application-logs-floating-run-detail')
+    ).toBeInTheDocument();
+  });
+
+  test('syncs the URL when switching and closing run details', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/applications/app-1/logs?run_id=run-deep&view=trace'
+    );
+    runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+      conversationMessagesPage([])
+    );
+
+    render(
+      <AppProviders>
+        <ApplicationLogsPage applicationId="app-1" />
+      </AppProviders>
+    );
+
+    await screen.findByTestId('application-logs-floating-run-detail');
+    fireEvent.click(
+      await screen.findByRole('button', { name: '查看运行详情' })
+    );
+
+    expect(window.location.search).toBe('?run_id=run-1');
+    expect(
+      screen.queryByTestId('application-logs-floating-conversation-log')
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭运行详情' }));
+    expect(window.location.search).toBe('');
+  });
 });
