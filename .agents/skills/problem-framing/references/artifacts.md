@@ -29,6 +29,8 @@
 
 ## Issue Draft
 
+这是 `problem-framing` 的 Issue 字段、顺序和 Markdown 格式的唯一模板。`SKILL.md` 只规定何时生成、如何选择 Issue 形态以及何时读取本节，不复制完整字段骨架；调整 Issue 格式时只修改本节，并同步检查 `references/issue-lifecycle.md` 的语义规则是否仍一致。
+
 ```md
 ## Issue 元数据
 - 标题：[状态]标题

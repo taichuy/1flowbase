@@ -58,6 +58,16 @@ Forbidden:
 - 任何策略建议、多方向选择，或涉及数据 / contract / 架构风险的决策，都必须给出 3 个方向：保守 / conservative、平衡 / balanced、激进 / aggressive。
 - 推荐必须绑定证据；无证据支撑的判断标为假设。
 
+## Causal Mechanism Gate
+
+需求对齐不能只回答用户表面提出的问题。先识别用户未直接提出、但可能改变目标、方案、风险或验收的关键问题，并讲清它与原问题之间的因果关系。
+
+- 只有当隐含问题会实质改变目标、范围、方案选择、风险判断或验收证据时，才把它提升为需要讨论的问题。
+- 拆解只持续到因果机制足以支持决策和验收；不能增加判断力、行动信息或验证能力的抽象层级应删除。
+- 解释清楚“什么条件通过什么机制导致什么结果”，不要用更多层级、术语或概念替代机制说明。
+- 不得以寻找更关键问题为由扩大路线图、平台边界或清理范围；无法证明影响时标记为假设或不展开。
+- 如果表面问题只是症状，必须指出更可能的驱动因素或约束；证据不足时明确区分事实、推断和待验证假设。
+
 ## Strategy Advice Format
 
 当用户要策略建议、方案选择、方向判断、设计对齐结论，或当前输出属于 `alignment` / `decision` 阶段时，必须使用这个骨架；不要只给编号列表，不要把推荐埋在第一个方案里，不要先给推荐方案再补其他方案。
@@ -108,6 +118,7 @@ issue gate 前先写一段可给用户核对的 `需求复述`。如果无法基
 - `触发与结果`: 谁在什么场景触发，成功、失败、空状态、无权限或过期状态分别应该怎样表现。
 - `范围边界`: 这次做什么、不做什么，哪些历史问题、兼容逻辑或路线图事项不带入。
 - `验收证据`: 用户或维护者用什么截图、接口响应、测试、日志或 issue 条件确认需求已满足。
+- `关键隐含问题`: 是否存在用户未直接提出、但会改变目标、方案、风险或验收的问题；若存在，说明其因果影响，若不存在则不为了显得深入而补抽象层级。
 
 - 每轮尽可能一次性抛出当前阶段所有阻塞问题，避免逐条挤牙膏式追问。
 - 每个问题必须给出可选项、推荐选项和选择后的影响。
@@ -136,6 +147,7 @@ issue gate 前先写一段可给用户核对的 `需求复述`。如果无法基
 - `可选方向`: 2-4 个方向；每个方向说明收益、代价、风险、长期维护影响和复杂度归属。
 - `核心取舍`: 当前需要用户判断的 1-3 个取舍，例如快速修复 vs 长期收敛、局部特判 vs 统一模型、兼容旧逻辑 vs 收敛新逻辑、调用方承担复杂度 vs 模块内部承接复杂度、复杂度显式建模 vs 隐式散落在分支里。
 - `推荐倾向`: 推荐哪个方向，为什么不推荐其他方向，该判断依赖哪些假设，为什么这是更合理的复杂度分配方式。
+- `因果机制`: 当前现象由哪些条件、状态或约束驱动；推荐方向通过什么机制改变结果，而不只是增加新的结构或抽象名称。
 
 设计硬规则：
 
@@ -209,19 +221,20 @@ issue gate 前必须判断任务形态，并把结论写入 issue / handoff：
 ## Workflow
 
 1. 整理事实：分离已确认事实、假设、未知点、不变量、失败模式和需要用户决策的问题。
-2. 做计算表达假设：使用本文件 `Computational Framing` 判断数学 / 算法 / 数据结构 / 物理公式是否应该成为方案生成维度；命中则写入方向和风险收益，不命中则不要展开。
-3. 检查设计对齐：使用本文件 `Design Alignment Gate` 判断是否需要补齐业务目标、非目标、关键约束、复杂度分配、可选方向、核心取舍和推荐倾向；命中后端 API / 状态入口时补齐 `Backend API Acceptance Framing`。
-4. 执行追问收敛：issue gate 前先写可核对的 `需求复述`；若最终产品效果、触发结果、范围边界或验收证据说不清，使用 `Grilling Pass` 批量追问；每轮给选项、推荐和影响，三轮后把剩余未知写入 issue 假设。
-5. 先做简短对齐：普通需求按 `Strategy Advice Format` 输出 2-3 个轻量方向，明确推荐其中一个，并等待用户确认；命中策略建议、多方向选择、数据 / contract / 架构风险时，方向必须命名为保守 / 平衡 / 激进；命中设计对齐时，把复杂度归属和长期维护影响写入方向说明。
-6. 检查阶段顺序：使用本文件 `Phase Order Gate` 判断当前只允许输出什么；到阶段边界就停。
-7. 检查设计规则：方案可能引入抽象、接口、flag、helper、重复校验或 pass-through 时，读取 `references/design-rules.md`；违反时先输出更小 redesign。
-8. 选择 issue 形态：需要落地开发时，使用 `references/issue-lifecycle.md` 默认建立 Standalone Complete Issue；只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才申请升级为 L0/L1/L2/L3 issue 树。
-9. 拆分概念：在命名 API、service、enum、目录或 migration 前，先识别被混用的概念。
-10. 建立矩阵：任务涉及 defaults、contract、schema、state、permissions、migration、history 或 user content 时，使用 `references/domain-matrix.md`。
-11. 输出方案：存在多个有效方向，或任务涉及数据 / contract / 架构风险时，必须使用保守 / conservative、平衡 / balanced、激进 / aggressive 三方向；用户批准前不要压缩成单一最佳答案。
-12. 管理 issue：需要落地开发时，先按 Standalone Complete Issue 打标签、明确阶段、任务形态、验收点账本、执行边界和关闭条件；已批准 issue 树再按 L0/L1/L2/L3 管直接 parent 和 child。用户未确认 issue 前停止。
-13. 反方评审：向用户请求批准前，先 red-team 推荐方案，使用 `references/options-and-red-team.md`。
-14. 停在决策产物：使用 `references/artifacts.md` 输出 brief、issue、ADR 或 implementation handoff。
+2. 追问因果机制：使用 `Causal Mechanism Gate` 找出可能改变决策的关键隐含问题，说明条件、机制与结果；删除不能增加判断力、行动信息或验证能力的抽象层级。
+3. 做计算表达假设：使用本文件 `Computational Framing` 判断数学 / 算法 / 数据结构 / 物理公式是否应该成为方案生成维度；命中则写入方向和风险收益，不命中则不要展开。
+4. 检查设计对齐：使用本文件 `Design Alignment Gate` 判断是否需要补齐业务目标、非目标、关键约束、复杂度分配、因果机制、可选方向、核心取舍和推荐倾向；命中后端 API / 状态入口时补齐 `Backend API Acceptance Framing`。
+5. 执行追问收敛：issue gate 前先写可核对的 `需求复述`；若最终产品效果、触发结果、范围边界、验收证据或关键隐含问题说不清，使用 `Grilling Pass` 批量追问；每轮给选项、推荐和影响，三轮后把剩余未知写入 issue 假设。
+6. 先做简短对齐：普通需求按 `Strategy Advice Format` 输出 2-3 个轻量方向，明确推荐其中一个，并等待用户确认；命中策略建议、多方向选择、数据 / contract / 架构风险时，方向必须命名为保守 / 平衡 / 激进；命中设计对齐时，把复杂度归属和长期维护影响写入方向说明。
+7. 检查阶段顺序：使用本文件 `Phase Order Gate` 判断当前只允许输出什么；到阶段边界就停。
+8. 检查设计规则：方案可能引入抽象、接口、flag、helper、重复校验或 pass-through 时，读取 `references/design-rules.md`；违反时先输出更小 redesign。
+9. 选择 issue 形态：需要落地开发时，读取 `references/issue-lifecycle.md` 选择形态，并读取 `references/artifacts.md` 的 `Issue Draft` 生成内容；完整 Issue 格式只在该模板维护，正文不复制字段骨架。默认建立 Standalone Complete Issue；只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才申请升级为 L0/L1/L2/L3 issue 树。
+10. 拆分概念：在命名 API、service、enum、目录或 migration 前，先识别被混用的概念。
+11. 建立矩阵：任务涉及 defaults、contract、schema、state、permissions、migration、history 或 user content 时，使用 `references/domain-matrix.md`。
+12. 输出方案：存在多个有效方向，或任务涉及数据 / contract / 架构风险时，必须使用保守 / conservative、平衡 / balanced、激进 / aggressive 三方向；用户批准前不要压缩成单一最佳答案。
+13. 管理 issue：需要落地开发时，按已选择的 Issue 形态生成草案并等待用户确认；字段、顺序和格式以 `references/artifacts.md` 的 `Issue Draft` 为唯一模板，分级、标签和生命周期以 `references/issue-lifecycle.md` 为准。
+14. 反方评审：向用户请求批准前，先 red-team 推荐方案，使用 `references/options-and-red-team.md`。
+15. 停在决策产物：使用 `references/artifacts.md` 输出 brief、issue、ADR 或 implementation handoff。
 
 ## User Decision Format
 
@@ -254,7 +267,7 @@ issue gate 前必须判断任务形态，并把结论写入 issue / handoff：
 
 ## Handoff Rules
 
-用户批准方案后，先完成 issue gate：默认输出或更新 Standalone Complete Issue，包含目标、非目标、事实证据、方案结论、任务形态、范围、验收点账本、执行边界、预算、停止 / 升级条件和标签；涉及后端 API / 状态入口时写入已确认的接口验收预期；等待用户确认 issue 内容。
+用户批准方案后，先完成 issue gate：默认输出或更新 Standalone Complete Issue；Issue 的字段、顺序和 Markdown 格式以 `references/artifacts.md` 的 `Issue Draft` 为唯一模板，层级、分级、标签和生命周期以 `references/issue-lifecycle.md` 为准。涉及后端 API / 状态入口时，把已确认的接口验收预期填入模板对应部分；等待用户确认 issue 内容。
 
 只有用户明确要求、已有 parent issue，或单体 issue 无法安全承载多个独立决策 / workstream 时，才提出 issue 树升级理由和 L0/L1/L2/L3 草案，并等待用户批准。已批准 issue 树进入实现前，必须有已确认的执行 issue。
 

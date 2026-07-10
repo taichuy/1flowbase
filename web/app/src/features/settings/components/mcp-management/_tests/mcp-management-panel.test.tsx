@@ -408,6 +408,15 @@ function clickSegmentedOption(root: HTMLElement, label: string) {
   fireEvent.click(option);
 }
 
+function expandTreeRootIfCollapsed(tree: HTMLElement) {
+  const rootItem = within(tree).getAllByRole('treeitem')[0];
+  if (rootItem?.getAttribute('aria-expanded') === 'false') {
+    const switcher = rootItem.querySelector('.ant-tree-switcher');
+    expect(switcher).toBeInstanceOf(HTMLElement);
+    fireEvent.click(switcher as HTMLElement);
+  }
+}
+
 function visibleTextEntries(root: HTMLElement, text: string) {
   return within(root)
     .getAllByText(text)
@@ -603,6 +612,12 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
+    expect(rootNode).toBeInstanceOf(HTMLElement);
+    fireEvent.click(
+      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
+    );
 
     expect(within(dialog).queryByLabelText('显示别名')).not.toBeInTheDocument();
 
@@ -622,11 +637,7 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
-    await waitFor(() => {
-      expect(
-        screen.queryByRole('dialog', { name: '目录编辑' })
-      ).not.toBeInTheDocument();
-    });
+    expect(screen.getByRole('dialog', { name: '目录编辑' })).toBeInTheDocument();
   });
 
   test('keeps the directory editor open and selects the saved group', async () => {
@@ -640,6 +651,12 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
+    expect(rootNode).toBeInstanceOf(HTMLElement);
+    fireEvent.click(
+      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
+    );
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
       target: { value: 'Customer Ops' }
     });
@@ -695,9 +712,7 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
-    const rootSwitcher = tree.querySelector('.ant-tree-switcher');
-    expect(rootSwitcher).toBeInstanceOf(HTMLElement);
-    fireEvent.click(rootSwitcher as HTMLElement);
+    expandTreeRootIfCollapsed(tree);
 
     const groupLabel = within(dialog).getByText('ops');
     const groupNode = groupLabel.closest('.ant-tree-node-content-wrapper');
@@ -747,7 +762,7 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).getByLabelText('路径')).toHaveValue('/');
   });
 
-  test('mounts a Tool under the selected group without losing tree selection', () => {
+  test('mounts a Tool under the selected group without losing tree selection', async () => {
     renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
@@ -758,19 +773,24 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
-    const rootSwitcher = tree.querySelector('.ant-tree-switcher');
-    expect(rootSwitcher).toBeInstanceOf(HTMLElement);
-    fireEvent.click(rootSwitcher as HTMLElement);
+    expandTreeRootIfCollapsed(tree);
 
     const groupLabel = within(dialog).getByText('ops');
     fireEvent.click(groupLabel);
-    const selectedGroup = groupLabel.closest('.ant-tree-node-content-wrapper');
-    expect(selectedGroup).toHaveClass('ant-tree-node-selected');
+    await waitFor(() => {
+      expect(
+        within(dialog).getByText('ops').closest('.ant-tree-node-content-wrapper')
+      ).toHaveClass('ant-tree-node-selected');
+    });
 
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
-    fireEvent.mouseEnter(selectedGroup as HTMLElement);
+    const currentGroupLabel = within(dialog).getByText('ops');
+    const currentGroupNode = currentGroupLabel.closest(
+      '.ant-tree-node-content-wrapper'
+    );
+    fireEvent.mouseEnter(currentGroupNode as HTMLElement);
     fireEvent.click(
-      within(selectedGroup as HTMLElement).getByRole('button', {
+      within(currentGroupNode as HTMLElement).getByRole('button', {
         name: '新增'
       })
     );
@@ -780,7 +800,9 @@ describe('McpManagementPanel', () => {
       'true'
     );
     expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/ops');
-    expect(selectedGroup).toHaveClass('ant-tree-node-selected');
+    expect(
+      within(dialog).getByText('ops').closest('.ant-tree-node-content-wrapper')
+    ).toHaveClass('ant-tree-node-selected');
   });
 
   test('edits a group directly without changing the selected directory', () => {
@@ -794,9 +816,7 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
-    const rootSwitcher = tree.querySelector('.ant-tree-switcher');
-    expect(rootSwitcher).toBeInstanceOf(HTMLElement);
-    fireEvent.click(rootSwitcher as HTMLElement);
+    expandTreeRootIfCollapsed(tree);
 
     const rootLabel = within(dialog).getByText('Ops MCP /');
     const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
@@ -831,9 +851,7 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
-    const rootSwitcher = tree.querySelector('.ant-tree-switcher');
-    expect(rootSwitcher).toBeInstanceOf(HTMLElement);
-    fireEvent.click(rootSwitcher as HTMLElement);
+    expandTreeRootIfCollapsed(tree);
 
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
       target: { value: 'ops' }
@@ -928,6 +946,12 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
+    expect(rootNode).toBeInstanceOf(HTMLElement);
+    fireEvent.click(
+      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
+    );
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
       target: { value: 'Customer Ops' }
     });
@@ -935,16 +959,12 @@ describe('McpManagementPanel', () => {
       target: { value: 'Tools for customer operations' }
     });
 
-    const tree = within(dialog).getByRole('tree');
-    const rootSwitcher = tree.querySelector('.ant-tree-switcher');
-    expect(rootSwitcher).toBeInstanceOf(HTMLElement);
-    fireEvent.click(rootSwitcher as HTMLElement);
-
     await waitFor(() => {
-      expect(tree).toHaveTextContent('Customer Ops');
+      expect(within(dialog).getByRole('tree')).toHaveTextContent('Customer Ops');
     });
-    expect(tree).toHaveTextContent('Tools for customer operations');
-    expect(tree).not.toHaveTextContent('Customer Ops /customer_ops');
+    const currentTree = within(dialog).getByRole('tree');
+    expect(currentTree).toHaveTextContent('Tools for customer operations');
+    expect(currentTree).not.toHaveTextContent('Customer Ops /customer_ops');
   });
 
   test('hides the directory tree drag handle while keeping nodes draggable', () => {
@@ -976,21 +996,86 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
+    expect(rootNode).toBeInstanceOf(HTMLElement);
+    fireEvent.click(
+      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
+    );
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'tool_id' })
     );
     await selectAntdOption('Search customer');
 
+    await waitFor(() => {
+      expect(within(dialog).getByRole('tree')).toHaveTextContent('search_customer');
+    });
+    const currentTree = within(dialog).getByRole('tree');
+    expect(currentTree).toHaveTextContent('Find matching customers');
+    expect(currentTree).not.toHaveTextContent('Search customer search_customer');
+  });
+
+  test('clears an unsaved Tool draft when switching tabs', async () => {
+    renderPanelWithMountedTool({ includeBinding: false });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
+    expect(rootNode).toBeInstanceOf(HTMLElement);
+    fireEvent.click(
+      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
+    );
+    await waitFor(() => {
+      expect(within(dialog).getByRole('tree')).toHaveTextContent('未命名 Tool');
+    });
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: '分组' }));
+
+    expect(within(dialog).getByRole('tree')).not.toHaveTextContent('未命名 Tool');
+    expect(within(dialog).getByLabelText('显示名称')).toHaveValue('');
+  });
+
+  test('moves the single Tool draft when adding under another group', async () => {
+    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
-    const rootSwitcher = tree.querySelector('.ant-tree-switcher');
-    expect(rootSwitcher).toBeInstanceOf(HTMLElement);
-    fireEvent.click(rootSwitcher as HTMLElement);
+    expandTreeRootIfCollapsed(tree);
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Tool 挂载' }));
+
+    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
+    fireEvent.click(
+      within(rootNode as HTMLElement).getByRole('button', { name: '新增' })
+    );
+    await waitFor(() => {
+      expect(within(dialog).getByRole('tree')).toHaveTextContent('未命名 Tool');
+    });
+
+    const groupLabel = within(dialog).getByText('ops');
+    const groupNode = groupLabel.closest('.ant-tree-node-content-wrapper');
+    fireEvent.mouseEnter(groupNode as HTMLElement);
+    fireEvent.click(
+      within(groupNode as HTMLElement).getByRole('button', { name: '新增' })
+    );
 
     await waitFor(() => {
-      expect(tree).toHaveTextContent('search_customer');
+      expect(within(within(dialog).getByRole('tree')).getAllByText('未命名 Tool')).toHaveLength(1);
+      expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/ops');
     });
-    expect(tree).toHaveTextContent('Find matching customers');
-    expect(tree).not.toHaveTextContent('Search customer search_customer');
   });
 
   test('does not carry a draft group path into the binding mount path', () => {
