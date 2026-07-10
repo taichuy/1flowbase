@@ -1,5 +1,15 @@
 {
   "auto": {
-    "instance_description": "Description"
+    "add_child_path": "Add child path",
+    "cancel_child_group_creation": "Cancel child group creation",
+    "directory_path": "Path",
+    "display_name": "Display name",
+    "enabled": "Enabled",
+    "group_description_short": "Short description",
+    "instance_description": "Description",
+    "parent_group_prefix": "Adding under parent:",
+    "unnamed": "Unnamed",
+    "unnamed_tool": "Unnamed Tool",
+    "visible": "Visible"
   }
 }

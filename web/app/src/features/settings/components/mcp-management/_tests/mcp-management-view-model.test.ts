@@ -26,7 +26,7 @@ describe('mcp management view model', () => {
           instance_record_id: 'instance-record-1',
           path: '/crm',
           display_name: 'CRM',
-          description_short: null,
+          description_short: 'Customer operations',
           enabled: true,
           sort_order: 0
         }
@@ -57,7 +57,7 @@ describe('mcp management view model', () => {
         {
           id: 'tool-record-1',
           tool_id: 'customer_create',
-          name: 'Create customer'
+          short_description: 'Create a customer account.'
         }
       ]
     });
@@ -71,13 +71,16 @@ describe('mcp management view model', () => {
         children: [
           {
             key: 'group:/crm',
-            title: 'CRM /crm',
+            title: 'CRM',
+            display_name: 'CRM',
+            description_short: 'Customer operations',
             node_type: 'group',
             path: '/crm',
             children: [
               {
                 key: 'binding:binding-1',
-                title: 'Create customer customer_create',
+                title: 'customer_create',
+                tool_short_description: 'Create a customer account.',
                 node_type: 'binding',
                 path: '/crm',
                 binding_id: 'binding-1'
@@ -87,12 +90,15 @@ describe('mcp management view model', () => {
           {
             key: 'group:/ops',
             title: '/ops',
+            display_name: undefined,
+            description_short: undefined,
             node_type: 'group',
             path: '/ops',
             children: [
               {
                 key: 'binding:binding-2',
-                title: 'Customer Create Ops customer_create',
+                title: 'customer_create',
+                tool_short_description: 'Create a customer account.',
                 node_type: 'binding',
                 path: '/ops',
                 binding_id: 'binding-2'

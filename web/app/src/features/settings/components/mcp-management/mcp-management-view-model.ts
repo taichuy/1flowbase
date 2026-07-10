@@ -29,7 +29,7 @@ type DirectoryBinding = {
 type DirectoryTool = {
   id: string;
   tool_id: string;
-  name: string;
+  short_description: string;
 };
 
 export type McpDirectoryTreeNode = {
@@ -38,6 +38,8 @@ export type McpDirectoryTreeNode = {
   node_type: 'instance' | 'group' | 'binding';
   path: string;
   display_name?: string;
+  description_short?: string | null;
+  tool_short_description?: string;
   binding_id?: string;
   children?: McpDirectoryTreeNode[];
 };
@@ -136,20 +138,18 @@ export function buildMcpDirectoryTreeData({
 
       return {
         key: `group:${path}`,
-        title:
-          group.display_name && group.display_name !== path
-            ? `${group.display_name} ${path}`
-            : path,
+        title: group.display_name || path,
         display_name: group.display_name || undefined,
+        description_short: group.description_short ?? undefined,
         node_type: 'group' as const,
         path,
         children: groupBindings.map((binding) => {
           const tool = toolByRecordId.get(binding.tool_record_id);
-          const label = binding.display_alias || tool?.name || binding.tool_id;
 
           return {
             key: `binding:${binding.id}`,
-            title: `${label} ${binding.tool_id}`,
+            title: binding.tool_id,
+            tool_short_description: tool?.short_description,
             node_type: 'binding' as const,
             path,
             binding_id: binding.id

@@ -1,5 +1,15 @@
 {
   "auto": {
-    "instance_description": "描述"
+    "add_child_path": "新增子路径",
+    "cancel_child_group_creation": "取消子分组新建",
+    "directory_path": "路径",
+    "display_name": "显示名称",
+    "enabled": "启用",
+    "group_description_short": "简短描述",
+    "instance_description": "描述",
+    "parent_group_prefix": "新增至父目录：",
+    "unnamed": "未命名",
+    "unnamed_tool": "未命名 Tool",
+    "visible": "可见"
   }
 }
