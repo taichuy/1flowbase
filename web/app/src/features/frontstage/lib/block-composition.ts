@@ -190,7 +190,13 @@ function createBlockFromInput(
     runtime: {
       kind: input.runtime?.kind ?? 'unknown',
       entry: input.runtime?.entry ?? null,
-      hint: input.runtime?.hint ?? input.runtime?.kind ?? 'unknown'
+      hint: input.runtime?.hint ?? input.runtime?.kind ?? 'unknown',
+      ...(input.runtime?.code_template_version
+        ? { code_template_version: input.runtime.code_template_version }
+        : {}),
+      ...(input.runtime?.code_template_language
+        ? { code_template_language: input.runtime.code_template_language }
+        : {})
     }
   };
 }

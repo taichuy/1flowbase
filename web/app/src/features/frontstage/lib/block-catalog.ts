@@ -6,6 +6,7 @@ import {
   type FrontendBlockRuntime,
   type FrontendBlockUiCapability
 } from '@1flowbase/page-protocol';
+import { createFrontendBlockCodeCapabilities } from '@1flowbase/page-protocol';
 
 import type { FrontstageBlockCatalogEntry } from '../api/block-catalog';
 
@@ -61,6 +62,7 @@ export interface NormalizedFrontstageBlockCatalogEntry {
   permissions: NormalizedFrontstageBlockPermissions;
   contextContract: NormalizedFrontstageBlockContextContract;
   uiCapabilities: FrontstageBlockUiCapability[];
+  codeCapabilities?: ReturnType<typeof createFrontendBlockCodeCapabilities>;
   raw: FrontstageBlockCatalogEntry;
 }
 
@@ -125,6 +127,7 @@ export function normalizeFrontstageBlockCatalog(
       }
     ) as FrontstageBlockUiCapability[];
 
+    const codeCapabilities = createFrontendBlockCodeCapabilities(entry);
     items.push({
       id: `${entry.provider_code}:${entry.contribution_code}`,
       runtimeKind,
@@ -145,6 +148,9 @@ export function normalizeFrontstageBlockCatalog(
         inputSchema: entry.context_contract.input_schema
       },
       uiCapabilities: capabilities,
+      ...(codeCapabilities.template || codeCapabilities.allowedImports.length > 0
+        ? { codeCapabilities }
+        : {}),
       raw: entry
     });
   }

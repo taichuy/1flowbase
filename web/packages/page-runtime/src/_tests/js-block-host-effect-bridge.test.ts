@@ -11,7 +11,7 @@ describe('JS block host mediator effect bridge', () => {
     const bridge = createJsBlockHostEffectBridge({
       mediator: createBlockContextMediator({
         allowedActions: ['record.save'],
-        allowedDataModels: ['records'],
+        allowedQueries: ['records'],
         allowedDataOperations: ['query']
       }),
       resolveEffect: (message) => {
@@ -19,7 +19,7 @@ describe('JS block host mediator effect bridge', () => {
       },
       handlers: {
         data: (effect) => ({
-          operation: effect.operation,
+          queryId: effect.queryId,
           rows: [{ id: 'record-1' }]
         }),
         action: (effect) => ({
@@ -34,8 +34,8 @@ describe('JS block host mediator effect bridge', () => {
       type: 'data',
       requestId: 'request-1',
       effectId: 'effect-data',
-      operation: 'query',
-      payload: { model: 'records', where: { id: 'record-1' } }
+      queryId: 'records',
+      params: { where: { id: 'record-1' } }
     });
     const actionResult = bridge.handle({
       direction: 'worker_to_host',
@@ -71,7 +71,7 @@ describe('JS block host mediator effect bridge', () => {
         requestId: 'request-1',
         effectId: 'effect-data',
         ok: true,
-        value: { operation: 'query', rows: [{ id: 'record-1' }] }
+        value: { queryId: 'records', rows: [{ id: 'record-1' }] }
       },
       {
         direction: 'host_to_worker',
@@ -89,7 +89,7 @@ describe('JS block host mediator effect bridge', () => {
     const bridge = createJsBlockHostEffectBridge({
       mediator: createBlockContextMediator({
         allowedActions: ['record.save'],
-        allowedDataModels: ['records'],
+        allowedQueries: ['records'],
         allowedDataOperations: ['query']
       }),
       resolveEffect: (message) => {
@@ -102,8 +102,7 @@ describe('JS block host mediator effect bridge', () => {
       type: 'data',
       requestId: 'request-1',
       effectId: 'effect-data',
-      operation: 'query',
-      payload: { model: 'private_records' }
+      queryId: 'private_records'
     });
     bridge.handle({
       direction: 'worker_to_host',
@@ -122,12 +121,12 @@ describe('JS block host mediator effect bridge', () => {
         ok: false,
         error: {
           kind: 'runtime_error',
-          message: 'Data model is not allowed: private_records.',
+          message: 'Query is not allowed: private_records.',
           errors: [
             {
               code: 'query_denied',
-              path: 'payload.model',
-              message: 'Data model is not allowed: private_records.'
+              path: 'data.queryId',
+              message: 'Query is not allowed: private_records.'
             }
           ]
         }
@@ -231,7 +230,7 @@ describe('JS block host mediator effect bridge', () => {
     const bridge = createJsBlockHostEffectBridge({
       mediator: createBlockContextMediator({
         allowedActions: ['record.save'],
-        allowedDataModels: ['records'],
+        allowedQueries: ['records'],
         allowedDataOperations: ['query']
       }),
       resolveEffect: (message) => {
@@ -247,8 +246,7 @@ describe('JS block host mediator effect bridge', () => {
       direction: 'worker_to_host',
       type: 'data',
       requestId: 'request-1',
-      operation: 'query',
-      payload: { model: 'records' }
+      queryId: 'records'
     });
     bridge.handle({
       direction: 'worker_to_host',
@@ -260,6 +258,66 @@ describe('JS block host mediator effect bridge', () => {
     expect(messages).toEqual([]);
     expect(dataHandler).not.toHaveBeenCalled();
     expect(actionHandler).not.toHaveBeenCalled();
+  });
+
+  test('AC-010 rejects allowed effects when the host has no matching handler', () => {
+    const messages: unknown[] = [];
+    const bridge = createJsBlockHostEffectBridge({
+      mediator: createBlockContextMediator({
+        allowedActions: ['record.save'],
+        allowedQueries: ['records'],
+        allowedDataOperations: ['query']
+      }),
+      resolveEffect: (message) => {
+        messages.push(message);
+      }
+    });
+
+    bridge.handle({
+      direction: 'worker_to_host',
+      type: 'data',
+      requestId: 'request-1',
+      effectId: 'effect-data',
+      queryId: 'records'
+    });
+    bridge.handle({
+      direction: 'worker_to_host',
+      type: 'action',
+      requestId: 'request-1',
+      effectId: 'effect-action',
+      actionId: 'record.save'
+    });
+
+    expect(messages).toEqual([
+      expect.objectContaining({
+        type: 'effect_result',
+        effectId: 'effect-data',
+        ok: false,
+        error: expect.objectContaining({
+          kind: 'runtime_error',
+          errors: [
+            expect.objectContaining({
+              code: 'query_denied',
+              path: 'data.handler'
+            })
+          ]
+        })
+      }),
+      expect.objectContaining({
+        type: 'effect_result',
+        effectId: 'effect-action',
+        ok: false,
+        error: expect.objectContaining({
+          kind: 'runtime_error',
+          errors: [
+            expect.objectContaining({
+              code: 'action_denied',
+              path: 'action.handler'
+            })
+          ]
+        })
+      })
+    ]);
   });
 
   test('preserves mediator state such as event chain depth', () => {

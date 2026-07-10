@@ -17,17 +17,32 @@ const pageTreeApi = vi.hoisted(() => ({
 
 const pageContentApi = vi.hoisted(() => ({
   fetchFrontstagePageContent: vi.fn(),
-  frontstagePageContentQueryKey: vi.fn((workspaceId: string, pageId: string) => [
+  frontstagePageContentQueryKey: vi.fn(
+    (workspaceId: string, pageId: string, tabId: string) => [
+      'frontstage',
+      workspaceId,
+      'pages',
+      pageId,
+      'tabs',
+      tabId,
+      'content'
+    ]
+  )
+}));
+const pageTabsApi = vi.hoisted(() => ({
+  fetchFrontstagePageTabs: vi.fn(),
+  frontstagePageTabsQueryKey: vi.fn((workspaceId: string, pageId: string) => [
     'frontstage',
     workspaceId,
     'pages',
     pageId,
-    'content'
+    'tabs'
   ])
 }));
 
 vi.mock('../api/page-tree', () => pageTreeApi);
 vi.mock('../api/page-content', () => pageContentApi);
+vi.mock('../api/page-tabs', () => pageTabsApi);
 
 import { AppProviders } from '../../../app/AppProviders';
 import { AppRouterProvider } from '../../../app/router';
@@ -78,7 +93,6 @@ function createPageContent(pageId: string) {
       kind: 'page' as const,
       parentId: null,
       rank: '001000',
-      schemaRootUid: `root-${pageId}`
     },
     schema: {
       rootUid: `root-${pageId}`,
@@ -106,6 +120,19 @@ describe('frontstage page content query route wiring', () => {
     vi.clearAllMocks();
     resetAuthStore();
     authenticate();
+    pageTabsApi.fetchFrontstagePageTabs.mockImplementation(
+      (_workspaceId: string, pageId: string) =>
+        Promise.resolve([
+          {
+            id: `tab-${pageId}`,
+            page_id: pageId,
+            title: '概览',
+            rank: '001000',
+            is_default: true,
+            document_root_uid: `root-${pageId}`
+          }
+        ])
+    );
   });
 
   test(
@@ -123,7 +150,8 @@ describe('frontstage page content query route wiring', () => {
       await waitFor(() => {
         expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
           'workspace-1',
-          'page-1'
+          'page-1',
+          'tab-page-1'
         );
       });
       expect((await screen.findAllByText('页面 page-1')).length).toBeGreaterThan(
@@ -133,6 +161,59 @@ describe('frontstage page content query route wiring', () => {
     },
     FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT
   );
+
+  test.each([
+    [
+      'no default tab',
+      [
+        {
+          id: 'tab-non-default',
+          page_id: 'page-1',
+          title: 'Non-default',
+          rank: 'a',
+          is_default: false,
+          document_root_uid: 'root-non-default'
+        }
+      ]
+    ],
+    [
+      'multiple default tabs',
+      [
+        {
+          id: 'tab-first',
+          page_id: 'page-1',
+          title: 'First',
+          rank: 'a',
+          is_default: true,
+          document_root_uid: 'root-first'
+        },
+        {
+          id: 'tab-second',
+          page_id: 'page-1',
+          title: 'Second',
+          rank: 'b',
+          is_default: true,
+          document_root_uid: 'root-second'
+        }
+      ]
+    ]
+  ])('shows an unavailable state when the page has %s', async (_case, tabs) => {
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([
+      createPageNode('page-1')
+    ]);
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue(tabs);
+
+    renderApp('/frontstage/pages/page-1');
+
+    expect(
+      await screen.findByText('页面标签页配置不可用')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('当前页面必须且只能有一个默认标签页。')
+    ).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/frontstage/pages/page-1');
+    expect(pageContentApi.fetchFrontstagePageContent).not.toHaveBeenCalled();
+  });
 
   test('passes page detail loading state to the frontstage page container', async () => {
     pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([
@@ -147,7 +228,8 @@ describe('frontstage page content query route wiring', () => {
     expect(await screen.findByText('页面内容加载中')).toBeInTheDocument();
     expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
       'workspace-1',
-      'page-1'
+      'page-1',
+      'tab-page-1'
     );
   });
 
@@ -180,10 +262,13 @@ describe('frontstage page content query route wiring', () => {
     await waitFor(() => {
       expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
         'workspace-1',
-        'hidden-page'
+        'hidden-page',
+        'tab-hidden-page'
       );
     });
-    expect(window.location.pathname).toBe('/frontstage/pages/hidden-page');
+    expect(window.location.pathname).toBe(
+      '/frontstage/pages/hidden-page/tabs/tab-hidden-page'
+    );
     expect(await screen.findByText('无权限访问')).toBeInTheDocument();
     expect(
       screen.queryByText('raw backend permission detail')
@@ -217,12 +302,15 @@ describe('frontstage page content query route wiring', () => {
       renderApp('/frontstage');
 
       await waitFor(() => {
-        expect(window.location.pathname).toBe('/frontstage/pages/page-1');
+        expect(window.location.pathname).toBe(
+          '/frontstage/pages/page-1/tabs/tab-page-1'
+        );
       });
       expect(window.location.pathname).not.toContain('workspace-1');
       expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
-        'workspace-1',
-        'page-1'
+      'workspace-1',
+      'page-1',
+      'tab-page-1'
       );
     },
     FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT

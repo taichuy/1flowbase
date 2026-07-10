@@ -27,6 +27,16 @@ function createCatalogEntry(
       inputSchema: {}
     },
     uiCapabilities: [],
+    codeCapabilities: {
+      template: {
+        source: 'export default { render: () => null };',
+        version: '2.4.0',
+        language: 'tsx'
+      },
+      allowedImports: [],
+      monacoExtraLibs: [],
+      workerModuleSources: []
+    },
     raw: {} as NormalizedFrontstageBlockCatalogEntry['raw'],
     ...overrides
   };
@@ -49,7 +59,7 @@ describe('AddBlockCatalogPickerDrawer', () => {
     ).toBeInTheDocument();
   });
 
-  test('renders catalog entries with built-in templates defaulting to blank', () => {
+  test('selects the catalog entry without a second template choice', () => {
     const onSelect = vi.fn();
     const entry = createCatalogEntry();
     render(
@@ -65,33 +75,28 @@ describe('AddBlockCatalogPickerDrawer', () => {
     expect(screen.getByText('iframe')).toBeInTheDocument();
     expect(screen.getByText('1flowbase')).toBeInTheDocument();
     expect(screen.getByText('frontstage.js-ui-block')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Blank JS Block' })).toBeChecked();
-    expect(screen.getByRole('radio', { name: 'Data Table' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '选择' }));
 
-    expect(onSelect).toHaveBeenCalledWith(entry, 'blank');
+    expect(onSelect).toHaveBeenCalledWith(entry);
   });
 
-  test('emits the selected catalog entry and template id', () => {
-    const onSelect = vi.fn();
-    const entry = createCatalogEntry();
+  test('disables entries without a catalog code template', () => {
+    const entry = createCatalogEntry({ codeCapabilities: undefined });
     render(
       <AddBlockCatalogPickerDrawer
         open
         items={[entry]}
-        onSelect={onSelect}
+        onSelect={vi.fn()}
         onClose={vi.fn()}
       />
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Data Table' }));
-    fireEvent.click(screen.getByRole('button', { name: '选择' }));
-
-    expect(onSelect).toHaveBeenCalledWith(entry, 'data-table');
+    expect(screen.getByRole('button', { name: '选择' })).toBeDisabled();
   });
 
-  test('disables template selection and catalog selection while saving or loading', () => {
+  test('disables catalog selection while saving or loading', () => {
     const entry = createCatalogEntry();
     const { rerender } = render(
       <AddBlockCatalogPickerDrawer
@@ -103,7 +108,6 @@ describe('AddBlockCatalogPickerDrawer', () => {
       />
     );
 
-    expect(screen.getByRole('radio', { name: 'Blank JS Block' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '选择' })).toBeDisabled();
 
     rerender(
@@ -116,41 +120,6 @@ describe('AddBlockCatalogPickerDrawer', () => {
       />
     );
 
-    expect(screen.getByRole('radio', { name: 'Blank JS Block' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '选择' })).toBeDisabled();
-  });
-
-  test('resets template selection to blank when reopened', () => {
-    const entry = createCatalogEntry();
-    const { rerender } = render(
-      <AddBlockCatalogPickerDrawer
-        open
-        items={[entry]}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Create Form' }));
-    expect(screen.getByRole('radio', { name: 'Create Form' })).toBeChecked();
-
-    rerender(
-      <AddBlockCatalogPickerDrawer
-        open={false}
-        items={[entry]}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-      />
-    );
-    rerender(
-      <AddBlockCatalogPickerDrawer
-        open
-        items={[entry]}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-      />
-    );
-
-    expect(screen.getByRole('radio', { name: 'Blank JS Block' })).toBeChecked();
   });
 });

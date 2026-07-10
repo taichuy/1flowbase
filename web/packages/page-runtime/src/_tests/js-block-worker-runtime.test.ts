@@ -413,8 +413,8 @@ const block = defineBlock({
       direction: 'worker_to_host',
       type: 'data',
       requestId: 'request-1',
-      operation: 'late.query',
-      payload: { ok: true }
+      queryId: 'late.query',
+      params: { ok: true }
     });
     const afterLateAction = reduceJsBlockRuntimeSession(afterLateData, {
       direction: 'worker_to_host',

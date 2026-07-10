@@ -3,11 +3,11 @@ use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        CreatePluginAssignmentInput, CreatePluginTaskInput, PluginRepository,
-        UpdatePluginArtifactSnapshotInput, UpdatePluginDesiredStateInput,
-        UpdatePluginRuntimeSnapshotInput, UpdatePluginTaskStatusInput,
-        UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
-        UpsertPluginPackageCatalogProjectionInput,
+        CommitPluginInstallationProjectionInput, CreatePluginAssignmentInput,
+        CreatePluginTaskInput, PluginRepository, UpdatePluginArtifactSnapshotInput,
+        UpdatePluginDesiredStateInput, UpdatePluginRuntimeSnapshotInput,
+        UpdatePluginTaskStatusInput, UpsertPluginArtifactInstanceInput,
+        UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
     },
 };
 use sqlx::Row;
@@ -21,7 +21,9 @@ use crate::{
     repositories::PgControlPlaneStore,
 };
 
-fn map_installation(row: sqlx::postgres::PgRow) -> Result<domain::PluginInstallationRecord> {
+pub(crate) fn map_installation(
+    row: sqlx::postgres::PgRow,
+) -> Result<domain::PluginInstallationRecord> {
     PgPluginMapper::to_installation_record(StoredPluginInstallationRow {
         id: row.get("id"),
         provider_code: row.get("provider_code"),
@@ -113,6 +115,16 @@ fn map_catalog_projection(
 
 #[async_trait]
 impl PluginRepository for PgControlPlaneStore {
+    async fn commit_plugin_installation_projection(
+        &self,
+        input: &CommitPluginInstallationProjectionInput,
+    ) -> Result<domain::PluginInstallationRecord> {
+        crate::plugin_installation_commit_repository::commit_plugin_installation_projection(
+            self, input,
+        )
+        .await
+    }
+
     async fn upsert_installation(
         &self,
         input: &UpsertPluginInstallationInput,

@@ -677,3 +677,152 @@ async fn plugin_repository_lists_only_pending_restart_host_extensions() {
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].contract_version, "1flowbase.host_extension/v1");
 }
+
+fn installation_commit_input(
+    installation_id: Uuid,
+    actor_user_id: Uuid,
+    title: &str,
+    runtime: &str,
+) -> control_plane::ports::CommitPluginInstallationProjectionInput {
+    use control_plane::ports::{
+        CommitPluginInstallationProjectionInput, FrontendBlockCatalogRegistryInput,
+        ReplaceInstallationFrontendBlocksInput, ReplaceInstallationJsDependenciesInput,
+        ReplaceInstallationNodeContributionsInput, UpsertPluginArtifactInstanceInput,
+    };
+
+    CommitPluginInstallationProjectionInput {
+        installation: UpsertPluginInstallationInput {
+            installation_id,
+            provider_code: "fixture_frontend_blocks".into(),
+            plugin_id: "fixture_frontend_blocks@0.1.0".into(),
+            plugin_version: "0.1.0".into(),
+            contract_version: "1flowbase.capability/v1".into(),
+            protocol: "stdio_json".into(),
+            display_name: title.into(),
+            source_kind: "uploaded".into(),
+            trust_level: "checksum_only".into(),
+            verification_status: PluginVerificationStatus::Valid,
+            desired_state: PluginDesiredState::Disabled,
+            artifact_status: PluginArtifactStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Inactive,
+            availability_status: PluginAvailabilityStatus::Disabled,
+            package_path: None,
+            installed_path: "/tmp/fixture_frontend_blocks/0.1.0".into(),
+            checksum: None,
+            manifest_fingerprint: Some("sha256:fixture".into()),
+            signature_status: None,
+            signature_algorithm: None,
+            signing_key_id: None,
+            last_load_error: None,
+            metadata_json: json!({"block_contributions": ["hero_banner"]}),
+            actor_user_id,
+        },
+        artifact_instance: UpsertPluginArtifactInstanceInput {
+            node_id: "test-node".into(),
+            installation_id,
+            local_version: Some("0.1.0".into()),
+            local_checksum: None,
+            installed_path: Some("/tmp/fixture_frontend_blocks/0.1.0".into()),
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Inactive,
+            checked_at: time::OffsetDateTime::now_utc(),
+            last_error: None,
+        },
+        package_catalog: None,
+        node_contributions: ReplaceInstallationNodeContributionsInput {
+            installation_id,
+            provider_code: "fixture_frontend_blocks".into(),
+            plugin_id: "fixture_frontend_blocks@0.1.0".into(),
+            plugin_version: "0.1.0".into(),
+            entries: Vec::new(),
+        },
+        js_dependencies: ReplaceInstallationJsDependenciesInput {
+            installation_id,
+            provider_code: "fixture_frontend_blocks".into(),
+            plugin_id: "fixture_frontend_blocks@0.1.0".into(),
+            plugin_version: "0.1.0".into(),
+            entries: Vec::new(),
+        },
+        frontend_blocks: ReplaceInstallationFrontendBlocksInput {
+            installation_id,
+            provider_code: "fixture_frontend_blocks".into(),
+            plugin_id: "fixture_frontend_blocks@0.1.0".into(),
+            plugin_version: "0.1.0".into(),
+            entries: vec![FrontendBlockCatalogRegistryInput {
+                contribution_code: "hero_banner".into(),
+                title: title.into(),
+                runtime: runtime.into(),
+                entry: "blocks/hero/index.html".into(),
+                code_template: None,
+                code_template_version: None,
+                code_template_language: None,
+                code_modules: Vec::new(),
+                context_contract: domain::FrontendBlockContextContract {
+                    primitives: vec!["text".into()],
+                    input_schema: json!({"type": "object"}),
+                },
+                permissions: domain::FrontendBlockPermissions {
+                    network: "none".into(),
+                    storage: "none".into(),
+                    secrets: "none".into(),
+                },
+                ui_capabilities: Vec::new(),
+            }],
+        },
+    }
+}
+
+#[tokio::test]
+async fn plugin_installation_commit_rolls_back_new_installation_when_frontend_catalog_violates_constraint(
+) {
+    let (store, _workspace, actor) = seed_store().await;
+    let installation_id = Uuid::now_v7();
+    let error = PluginRepository::commit_plugin_installation_projection(
+        &store,
+        &installation_commit_input(installation_id, actor.id, "Invalid", "invalid"),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("frontend_block_catalog_runtime_check"));
+    assert!(PluginRepository::get_installation(&store, installation_id)
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn plugin_installation_commit_preserves_previous_installation_and_catalog_on_reinstall_failure(
+) {
+    let (store, _workspace, actor) = seed_store().await;
+    let installation_id = Uuid::now_v7();
+    PluginRepository::commit_plugin_installation_projection(
+        &store,
+        &installation_commit_input(installation_id, actor.id, "Original", "iframe"),
+    )
+    .await
+    .unwrap();
+
+    PluginRepository::commit_plugin_installation_projection(
+        &store,
+        &installation_commit_input(installation_id, actor.id, "Changed", "invalid"),
+    )
+    .await
+    .unwrap_err();
+
+    let installation = PluginRepository::get_installation(&store, installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(installation.display_name, "Original");
+    let catalog: (String, String) = sqlx::query_as(
+        "select title, runtime from frontend_block_catalog where installation_id = $1",
+    )
+    .bind(installation_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(catalog, ("Original".into(), "iframe".into()));
+}

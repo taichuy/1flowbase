@@ -215,7 +215,7 @@ async function runRequest(
 ): Promise<void> {
   const evaluation = evaluateJsBlockSource({
     source: request.source,
-    modules
+    modules: selectRequestModules(modules, request.allowedImports)
   });
 
   if (!evaluation.ok) {
@@ -255,6 +255,23 @@ async function runRequest(
     requestId: request.requestId,
     schema
   });
+}
+
+function selectRequestModules(
+  modules: JsBlockInjectedModuleMap,
+  allowedImports: string[] | undefined
+): JsBlockInjectedModuleMap {
+  if (!allowedImports) {
+    return modules;
+  }
+  return Object.fromEntries(
+    allowedImports
+      .filter((source) => Object.hasOwn(modules, source))
+      .map((source) => [
+        source,
+        modules[source as keyof JsBlockInjectedModuleMap]
+      ])
+  ) as JsBlockInjectedModuleMap;
 }
 
 function createBlockContext(
@@ -297,43 +314,13 @@ function createBlockContext(
       }
     },
     data: {
-      async query(model, params) {
+      async query(queryId, params) {
         return requestHostEffect({
           direction: 'worker_to_host',
           type: 'data',
           requestId: request.requestId,
-          operation: 'query',
-          payload: {
-            ...(isRecord(params) ? params : {}),
-            model
-          }
-        });
-      },
-      async create(model, input) {
-        return requestHostEffect({
-          direction: 'worker_to_host',
-          type: 'data',
-          requestId: request.requestId,
-          operation: 'create',
-          payload: { model, input }
-        });
-      },
-      async update(model, id, input) {
-        return requestHostEffect({
-          direction: 'worker_to_host',
-          type: 'data',
-          requestId: request.requestId,
-          operation: 'update',
-          payload: { model, id, input }
-        });
-      },
-      async delete(model, id) {
-        await requestHostEffect({
-          direction: 'worker_to_host',
-          type: 'data',
-          requestId: request.requestId,
-          operation: 'delete',
-          payload: { model, id }
+          queryId,
+          ...(isRecord(params) ? { params } : {})
         });
       }
     },

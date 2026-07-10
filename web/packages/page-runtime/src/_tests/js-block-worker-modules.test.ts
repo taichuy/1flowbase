@@ -4,6 +4,7 @@ import {
   attachDefaultJsBlockWorkerRuntime,
   createDefaultJsBlockInjectedModules,
   createDefaultJsBlockWorkerExecutor,
+  createCatalogJsBlockRuntimeCapabilities,
   JS_BLOCK_ALLOWED_IMPORTS,
   JS_BLOCK_DEFAULT_MODULE_SOURCES
 } from '../index';
@@ -26,6 +27,25 @@ export default defineBlock({
 `;
 
 describe('JS block default worker modules', () => {
+  test('uses catalog modules for editor types, import allowlist, and worker injection', () => {
+    const capabilities = createCatalogJsBlockRuntimeCapabilities({
+      code_template: 'export default {}',
+      code_template_version: '1.0.0',
+      code_template_language: 'tsx',
+      code_modules: [
+        {
+          source: '@1flowbase/block-sdk',
+          type_declarations: 'export declare function defineBlock(): unknown;'
+        }
+      ]
+    });
+
+    expect(capabilities.allowedImports).toEqual(['@1flowbase/block-sdk']);
+    expect(capabilities.monacoExtraLibs[0]?.content).toContain('defineBlock');
+    expect(Object.keys(capabilities.workerModules)).toEqual([
+      '@1flowbase/block-sdk'
+    ]);
+  });
   test('keeps default module sources aligned with the source policy allowlist', () => {
     expect(JS_BLOCK_DEFAULT_MODULE_SOURCES).toEqual(JS_BLOCK_ALLOWED_IMPORTS);
   });

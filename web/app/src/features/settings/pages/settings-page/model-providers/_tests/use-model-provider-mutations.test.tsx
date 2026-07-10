@@ -44,8 +44,13 @@ const pluginsApi = vi.hoisted(() => ({
   uploadSettingsPluginPackage: vi.fn()
 }));
 
+const blockCatalogApi = vi.hoisted(() => ({
+  frontstageBlockCatalogQueryKeyPrefix: ['frontstage', 'block-catalog']
+}));
+
 vi.mock('../../../../api/model-providers', () => modelProvidersApi);
 vi.mock('../../../../api/plugins', () => pluginsApi);
+vi.mock('../../../../../frontstage/api/block-catalog', () => blockCatalogApi);
 vi.mock(
   '../../../../components/model-providers/plugin-installation-status',
   () => ({
@@ -254,5 +259,78 @@ describe('useModelProviderMutations', () => {
       'csrf-123',
       compatibilityOverride
     );
+  });
+
+  test('invalidates active and removes inactive frontstage catalog caches after plugin changes', async () => {
+    const queryClient = createQueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+    pluginsApi.uploadSettingsPluginPackage.mockResolvedValue({
+      installation: {
+        display_name: 'Blocks',
+        plugin_version: '1.0.0',
+        trust_level: 'official',
+        availability_status: 'available'
+      }
+    });
+    const mutations = setupMutations(queryClient);
+
+    pluginsApi.installSettingsOfficialPlugin.mockResolvedValue({
+      installation: {},
+      task: {
+        ...buildPluginTask('task-install-success'),
+        status: 'succeeded',
+        finished_at: '2026-07-10T13:00:00Z'
+      }
+    });
+
+    await act(async () => {
+      await mutations.current.officialInstallMutation.mutateAsync({
+        pluginId: 'official.blocks'
+      });
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix
+    });
+    expect(removeSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix,
+      type: 'inactive'
+    });
+
+    invalidateSpy.mockClear();
+    removeSpy.mockClear();
+
+    await act(async () => {
+      await mutations.current.uploadMutation.mutateAsync(
+        new File(['plugin'], 'blocks.1flowbasepkg')
+      );
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix
+    });
+    expect(removeSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix,
+      type: 'inactive'
+    });
+
+    invalidateSpy.mockClear();
+    removeSpy.mockClear();
+    pluginsApi.deleteSettingsPluginFamily.mockResolvedValue(undefined);
+
+    await act(async () => {
+      await mutations.current.familyDeleteMutation.mutateAsync(
+        'official.blocks'
+      );
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix
+    });
+    expect(removeSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix,
+      type: 'inactive'
+    });
   });
 });

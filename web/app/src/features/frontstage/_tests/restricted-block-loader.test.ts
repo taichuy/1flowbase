@@ -73,7 +73,7 @@ function createLimits(
     maxRenderNodes: 250,
     allowedActions: ['record.save'],
     allowedEvents: ['record.saved'],
-    allowedDataModels: ['records'],
+    allowedQueries: ['records'],
     allowedDataOperations: ['query'],
     maxEventChainDepth: 4,
     ...overrides
@@ -84,7 +84,12 @@ describe('restricted block loader core', () => {
   test('builds a stable run request with schema validation options and mediator policy', () => {
     const result = createRestrictedBlockRunPlan({
       block: createBlock(),
-      catalogEntry: createCatalogEntry(),
+      catalogEntry: createCatalogEntry({
+        codeCapabilities: {
+          template: null,
+          allowedImports: ['@1flowbase/block-sdk', 'antd']
+        }
+      }),
       code: 'export default { render() {} }',
       contextSnapshot: {
         workspaceId: 'workspace-1',
@@ -111,7 +116,8 @@ describe('restricted block loader core', () => {
           timeoutMs: 1000,
           maxRenderDepth: 8,
           maxRenderNodes: 250
-        }
+        },
+        allowedImports: ['@1flowbase/block-sdk', 'antd']
       },
       schemaValidationOptions: {
         maxDepth: 8,
@@ -123,7 +129,7 @@ describe('restricted block loader core', () => {
       mediatorPolicy: {
         allowedEvents: [],
         allowedActions: ['record.save'],
-        allowedDataModels: ['records'],
+        allowedQueries: ['records'],
         allowedDataOperations: ['query'],
         maxEventChainDepth: 4
       }

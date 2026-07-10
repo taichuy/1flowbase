@@ -4,6 +4,7 @@ import {
   BLOCK_CONTEXT_KEYS,
   BLOCK_RUNTIME_ERROR_CODES,
   BLOCK_UI_PRIMITIVES,
+  createBlockRuntimeDiagnostic,
   validateBlockUiSchema
 } from '../index';
 
@@ -60,6 +61,25 @@ function deepSchema(depth: number): unknown {
 }
 
 describe('block UI schema protocol', () => {
+  test('creates contextual diagnostics with source location', () => {
+    expect(
+      createBlockRuntimeDiagnostic({
+        pageId: 'page-1',
+        tabId: 'tab-1',
+        blockId: 'block-1',
+        phase: 'compile',
+        code: 'import_denied',
+        message: 'Import denied',
+        sourceLocation: { line: 2, column: 8, endLine: 2, endColumn: 20 }
+      })
+    ).toMatchObject({
+      pageId: 'page-1',
+      tabId: 'tab-1',
+      blockId: 'block-1',
+      phase: 'compile',
+      sourceLocation: { line: 2, column: 8 }
+    });
+  });
   test('exports the first controlled primitive and error code sets', () => {
     expect(BLOCK_UI_PRIMITIVES).toEqual(expectedPrimitives);
     expect(BLOCK_RUNTIME_ERROR_CODES).toEqual(expectedErrorCodes);

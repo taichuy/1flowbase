@@ -23,6 +23,7 @@ export interface JsBlockRunRequest {
   state: Record<string, unknown>;
   contextSnapshot: Record<string, unknown>;
   limits: JsBlockRuntimeLimits;
+  allowedImports?: string[];
 }
 
 export type JsBlockRunErrorKind =
@@ -84,8 +85,8 @@ export type JsBlockWorkerEffect =
       type: 'data';
       requestId: string;
       effectId?: string;
-      operation: string;
-      payload?: unknown;
+      queryId: string;
+      params?: unknown;
     }
   | {
       type: 'action';
@@ -223,8 +224,8 @@ export interface JsBlockWorkerDataRequestMessage {
   type: 'data';
   requestId: string;
   effectId?: string;
-  operation: string;
-  payload?: unknown;
+  queryId: string;
+  params?: unknown;
 }
 
 export interface JsBlockWorkerActionRequestMessage {
@@ -366,7 +367,9 @@ function reduceRunMessage(
   }
 
   const request = requestResult.request;
-  const sourceResult = transformJsBlockSource(request.source);
+  const sourceResult = transformJsBlockSource(request.source, {
+    allowedImports: request.allowedImports
+  });
   const requestState: JsBlockRuntimeRequestState = {
     requestId: request.requestId,
     blockId: request.blockId,
@@ -679,6 +682,13 @@ function readRunRequest(
   if (!limits.ok) {
     return limits;
   }
+  const allowedImports = readOptionalStringArray(
+    value.allowedImports,
+    'message.request.allowedImports'
+  );
+  if (!allowedImports.ok) {
+    return allowedImports;
+  }
 
   return {
     ok: true,
@@ -689,9 +699,25 @@ function readRunRequest(
       props: props.value,
       state: state.value,
       contextSnapshot: contextSnapshot.value,
-      limits: limits.value
+      limits: limits.value,
+      allowedImports: allowedImports.value
     }
   };
+}
+
+function readOptionalStringArray(
+  value: unknown,
+  path: string
+):
+  | { ok: true; value: string[] | undefined }
+  | { ok: false; rejection: JsBlockRuntimeRejection } {
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    return invalid(path, 'Run message allowedImports must be a string array.');
+  }
+  return { ok: true, value };
 }
 
 function readRuntimeLimits(
@@ -781,9 +807,9 @@ function readWorkerEffect(
   }
 
   if (effectType === 'data') {
-    const operation = readString(message, 'operation', 'message.operation');
-    if (!operation.ok) {
-      return operation;
+    const queryId = readString(message, 'queryId', 'message.queryId');
+    if (!queryId.ok) {
+      return queryId;
     }
     const effectId =
       typeof message.effectId === 'string' && message.effectId.length > 0
@@ -795,8 +821,8 @@ function readWorkerEffect(
         type: 'data',
         requestId,
         ...(effectId ? { effectId } : {}),
-        operation: operation.value,
-        payload: message.payload
+        queryId: queryId.value,
+        params: message.params
       }
     };
   }

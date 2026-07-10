@@ -1,0 +1,197 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { AppProviders } from '../../../../app/AppProviders';
+import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
+import { FrontstagePageTabs } from '../../components/FrontstagePageTabs';
+
+const pageTabsApi = vi.hoisted(() => ({
+  createFrontstagePageTab: vi.fn(),
+  deleteFrontstagePageTab: vi.fn(),
+  fetchFrontstagePageTabs: vi.fn(),
+  moveFrontstagePageTab: vi.fn(),
+  renameFrontstagePageTab: vi.fn(),
+  frontstagePageTabsQueryKey: vi.fn((workspaceId: string, pageId: string) => [
+    'frontstage',
+    workspaceId,
+    'pages',
+    pageId,
+    'tabs'
+  ])
+}));
+
+vi.mock('../../api/page-tabs', () => pageTabsApi);
+
+function authenticate() {
+  resetAuthStore();
+  useAuthStore.getState().setAuthenticated({
+    csrfToken: 'csrf-123',
+    actor: {
+      id: 'actor-1',
+      account: 'developer',
+      effective_display_role: 'developer',
+      current_workspace_id: 'workspace-1'
+    },
+    me: {
+      id: 'user-1',
+      account: 'developer',
+      email: 'developer@example.com',
+      phone: null,
+      nickname: 'Developer',
+      name: 'Developer',
+      avatar_url: null,
+      introduction: '',
+      effective_display_role: 'developer',
+      permissions: ['frontstage.page.design']
+    }
+  });
+}
+
+function renderTabs(tabId = 'tab-1') {
+  const onNavigateTab = vi.fn();
+  render(
+    <AppProviders>
+      <FrontstagePageTabs
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId={tabId}
+        isDesignMode
+        onNavigateTab={onNavigateTab}
+      />
+    </AppProviders>
+  );
+  return onNavigateTab;
+}
+
+describe('FrontstagePageTabs', () => {
+  beforeEach(() => {
+    authenticate();
+    vi.clearAllMocks();
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
+      { id: 'tab-1', page_id: 'page-1', title: '概览', rank: '001000', is_default: true },
+      { id: 'tab-2', page_id: 'page-1', title: '详情', rank: '002000', is_default: false }
+    ]);
+    pageTabsApi.createFrontstagePageTab.mockResolvedValue({
+      id: 'tab-3',
+      page_id: 'page-1',
+      title: '分析',
+      rank: '003000',
+      is_default: false
+    });
+    pageTabsApi.renameFrontstagePageTab.mockResolvedValue({
+      id: 'tab-2',
+      page_id: 'page-1',
+      title: '明细',
+      rank: '002000',
+      is_default: false
+    });
+    pageTabsApi.moveFrontstagePageTab.mockResolvedValue({
+      id: 'tab-2',
+      page_id: 'page-1',
+      title: '详情',
+      rank: '000000',
+      is_default: false
+    });
+    pageTabsApi.deleteFrontstagePageTab.mockResolvedValue(undefined);
+  });
+
+  test('AC-005 restores the selected tab from the URL and navigates on tab change', async () => {
+    const utils = renderTabs('tab-2');
+
+    expect(await screen.findByRole('tab', { name: '详情' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    fireEvent.click(screen.getByRole('tab', { name: '概览' }));
+    expect(utils).toHaveBeenCalledWith('tab-1');
+  });
+
+  test('shows one tab only in UI mode and clearly reports last-tab deletion rejection', async () => {
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValueOnce([
+      { id: 'tab-1', page_id: 'page-1', title: '概览', rank: '001000', is_default: true }
+    ]);
+    pageTabsApi.deleteFrontstagePageTab.mockRejectedValueOnce(
+      new Error('page must keep at least one tab')
+    );
+    renderTabs();
+
+    expect(await screen.findByRole('tab', { name: '概览' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '删除当前标签页' }));
+
+    expect(
+      await screen.findByText('page must keep at least one tab')
+    ).toBeInTheDocument();
+  });
+
+  test('hides a single tab in runtime mode', async () => {
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValueOnce([
+      { id: 'tab-1', page_id: 'page-1', title: '概览', rank: '001000', is_default: true }
+    ]);
+    render(
+      <AppProviders>
+        <FrontstagePageTabs
+          workspaceId="workspace-1"
+          pageId="page-1"
+          tabId="tab-1"
+          isDesignMode={false}
+          onNavigateTab={vi.fn()}
+        />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(pageTabsApi.fetchFrontstagePageTabs).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+  });
+
+  test('AC-002 wires UI mode tab create, rename, move, and delete actions', async () => {
+    const utils = renderTabs('tab-2');
+
+    await screen.findByRole('tab', { name: '详情' });
+    fireEvent.change(screen.getByRole('textbox', { name: '标签页名称' }), {
+      target: { value: '分析' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '新建标签页' }));
+    await waitFor(() => {
+      expect(pageTabsApi.createFrontstagePageTab).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        { title: '分析', rank: '003000' },
+        'csrf-123'
+      );
+    });
+    expect(utils).toHaveBeenCalledWith('tab-3');
+
+    fireEvent.change(screen.getByRole('textbox', { name: '标签页名称' }), {
+      target: { value: '明细' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '重命名当前标签页' }));
+    fireEvent.click(screen.getByRole('button', { name: '前移当前标签页' }));
+    fireEvent.click(screen.getByRole('button', { name: '删除当前标签页' }));
+
+    await waitFor(() => {
+      expect(pageTabsApi.renameFrontstagePageTab).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        'tab-2',
+        { title: '明细' },
+        'csrf-123'
+      );
+      expect(pageTabsApi.moveFrontstagePageTab).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        'tab-2',
+        { rank: '000000' },
+        'csrf-123'
+      );
+      expect(pageTabsApi.deleteFrontstagePageTab).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        'tab-2',
+        'csrf-123'
+      );
+    });
+    expect(utils).toHaveBeenCalledWith('tab-1');
+  });
+});

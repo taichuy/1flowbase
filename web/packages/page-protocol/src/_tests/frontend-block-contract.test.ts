@@ -5,6 +5,7 @@ import {
   FRONTEND_BLOCK_PACKAGE_BOUNDARIES,
   FRONTEND_BLOCK_RUNTIMES,
   FRONTEND_BLOCK_UI_CAPABILITIES,
+  createFrontendBlockCodeCapabilities,
   isFrontendBlockContextPrimitive,
   isFrontendBlockPackageBoundary,
   isFrontendBlockRuntime,
@@ -17,6 +18,35 @@ import {
 } from '../index';
 
 describe('frontend block contract vocabulary', () => {
+  test('projects catalog modules into editor, import, and worker capabilities', () => {
+    expect(
+      createFrontendBlockCodeCapabilities({
+        code_template: 'export default {}',
+        code_template_version: '1.0.0',
+        code_template_language: 'tsx',
+        code_modules: [
+          {
+            source: '@1flowbase/block-sdk',
+            type_declarations: 'export declare function defineBlock(): unknown;'
+          }
+        ]
+      })
+    ).toEqual({
+      template: {
+        source: 'export default {}',
+        version: '1.0.0',
+        language: 'tsx'
+      },
+      allowedImports: ['@1flowbase/block-sdk'],
+      monacoExtraLibs: [
+        {
+          filePath: 'file:///node_modules/@1flowbase/block-sdk/index.d.ts',
+          content: 'export declare function defineBlock(): unknown;'
+        }
+      ],
+      workerModuleSources: ['@1flowbase/block-sdk']
+    });
+  });
   test('exports the backend-aligned manifest and catalog vocabularies', () => {
     expect(FRONTEND_BLOCK_RUNTIMES).toEqual(['iframe']);
     expect(FRONTEND_BLOCK_CONTEXT_PRIMITIVES).toEqual([

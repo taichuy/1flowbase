@@ -20,6 +20,7 @@ pub(crate) struct MemoryPluginManagementRepository {
     audit_events: Arc<RwLock<Vec<String>>>,
     artifact_snapshot_updates: Arc<RwLock<Vec<Uuid>>>,
     created_task_status_override: Arc<RwLock<Option<PluginTaskStatus>>>,
+    fail_installation_catalog_commit: Arc<RwLock<bool>>,
 }
 
 impl MemoryPluginManagementRepository {
@@ -46,11 +47,16 @@ impl MemoryPluginManagementRepository {
             audit_events: Arc::new(RwLock::new(Vec::new())),
             artifact_snapshot_updates: Arc::new(RwLock::new(Vec::new())),
             created_task_status_override: Arc::new(RwLock::new(None)),
+            fail_installation_catalog_commit: Arc::new(RwLock::new(false)),
         }
     }
 
     pub(crate) async fn audit_events(&self) -> Vec<String> {
         self.audit_events.read().await.clone()
+    }
+
+    pub(crate) async fn fail_next_installation_catalog_commit(&self) {
+        *self.fail_installation_catalog_commit.write().await = true;
     }
 
     pub(crate) async fn artifact_snapshot_update_count(&self) -> usize {
@@ -235,6 +241,60 @@ impl AuthRepository for MemoryPluginManagementRepository {
 
 #[async_trait]
 impl PluginRepository for MemoryPluginManagementRepository {
+    async fn commit_plugin_installation_projection(
+        &self,
+        input: &CommitPluginInstallationProjectionInput,
+    ) -> Result<PluginInstallationRecord> {
+        let installations = self.installations.read().await.clone();
+        let plugin_ids = self.plugin_ids.read().await.clone();
+        let catalog_projections = self.catalog_projections.read().await.clone();
+        let artifact_instances = self.artifact_instances.read().await.clone();
+        let node_contributions = self.node_contributions.read().await.clone();
+        let js_dependencies = self.js_dependencies.read().await.clone();
+        let frontend_blocks = self.frontend_blocks.read().await.clone();
+
+        let result = async {
+            let installation = self.upsert_installation(&input.installation).await?;
+            let mut artifact_instance = input.artifact_instance.clone();
+            artifact_instance.installation_id = installation.id;
+            self.upsert_artifact_instance(&artifact_instance).await?;
+            if let Some(package_catalog) = &input.package_catalog {
+                let mut package_catalog = package_catalog.clone();
+                package_catalog.installation_id = installation.id;
+                self.upsert_plugin_package_catalog_projection(&package_catalog)
+                    .await?;
+            }
+            let mut node_contributions = input.node_contributions.clone();
+            node_contributions.installation_id = installation.id;
+            self.replace_installation_node_contributions(&node_contributions)
+                .await?;
+            let mut js_dependencies = input.js_dependencies.clone();
+            js_dependencies.installation_id = installation.id;
+            self.replace_installation_js_dependencies(&js_dependencies)
+                .await?;
+            if std::mem::take(&mut *self.fail_installation_catalog_commit.write().await) {
+                anyhow::bail!("frontend block catalog constraint violation");
+            }
+            let mut frontend_blocks = input.frontend_blocks.clone();
+            frontend_blocks.installation_id = installation.id;
+            self.replace_installation_frontend_blocks(&frontend_blocks)
+                .await?;
+            Ok(installation)
+        }
+        .await;
+
+        if result.is_err() {
+            *self.installations.write().await = installations;
+            *self.plugin_ids.write().await = plugin_ids;
+            *self.catalog_projections.write().await = catalog_projections;
+            *self.artifact_instances.write().await = artifact_instances;
+            *self.node_contributions.write().await = node_contributions;
+            *self.js_dependencies.write().await = js_dependencies;
+            *self.frontend_blocks.write().await = frontend_blocks;
+        }
+        result
+    }
+
     async fn upsert_installation(
         &self,
         input: &UpsertPluginInstallationInput,
@@ -768,6 +828,10 @@ impl FrontendBlockCatalogRepository for MemoryPluginManagementRepository {
                     title: entry.title.clone(),
                     runtime: entry.runtime.clone(),
                     entry: entry.entry.clone(),
+                    code_template: entry.code_template.clone(),
+                    code_template_version: entry.code_template_version.clone(),
+                    code_template_language: entry.code_template_language.clone(),
+                    code_modules: entry.code_modules.clone(),
                     context_contract: entry.context_contract.clone(),
                     permissions: entry.permissions.clone(),
                     ui_capabilities: entry.ui_capabilities.clone(),

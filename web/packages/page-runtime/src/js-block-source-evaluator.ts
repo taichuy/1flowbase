@@ -60,7 +60,9 @@ export function evaluateJsBlockSource(
 ): JsBlockSourceEvaluationResult {
   const compiledSource =
     typeof input.source === 'string'
-      ? transformJsBlockSource(input.source)
+      ? transformJsBlockSource(input.source, {
+          allowedImports: Object.keys(input.modules)
+        })
       : input.source;
 
   if (!compiledSource.ok) {

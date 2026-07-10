@@ -12,6 +12,14 @@ export type BlockRender = (ctx: BlockContext) => BlockUiSchema;
 
 export type BlockInitialState = Readonly<BlockContextRecord>;
 
+export interface BlockDataCapability {
+  query<T = unknown>(queryId: string, input?: unknown): Promise<T>;
+}
+
+export interface BlockActionCapability {
+  invoke<T = unknown>(actionId: string, input?: unknown): Promise<T>;
+}
+
 export interface BlockDefinitionInput {
   readonly id?: string;
   readonly title?: string;

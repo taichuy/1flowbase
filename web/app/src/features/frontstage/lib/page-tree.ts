@@ -235,7 +235,7 @@ export function resolveSelectedPageId({
   return {
     selectedPageId: fallbackPageId,
     navigationTarget: fallbackPageId ?? undefined,
-    shouldNavigate: Boolean(fallbackPageId)
+    shouldNavigate: Boolean(currentSelectedPageId) || Boolean(fallbackPageId)
   };
 }
 

@@ -12,6 +12,7 @@ import {
 interface UseFrontstagePageContentSaveInput {
   workspaceId: string | null | undefined;
   pageId: string | null | undefined;
+  tabId: string | null | undefined;
 }
 
 function requireValue(value: string | null | undefined, label: string): string {
@@ -38,15 +39,21 @@ function toError(error: unknown): Error {
 
 export function useFrontstagePageContentSave({
   workspaceId,
-  pageId
+  pageId,
+  tabId
 }: UseFrontstagePageContentSaveInput) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<Error | null>(null);
 
   const queryKey = useMemo(
-    () => frontstagePageContentQueryKey(workspaceId ?? '', pageId ?? ''),
-    [pageId, workspaceId]
+    () =>
+      frontstagePageContentQueryKey(
+        workspaceId ?? '',
+        pageId ?? '',
+        tabId ?? ''
+      ),
+    [pageId, tabId, workspaceId]
   );
 
   const clearMutationError = () => {
@@ -62,6 +69,7 @@ export function useFrontstagePageContentSave({
       saveFrontstagePageContent(
         requireValue(workspaceId, 'workspace id'),
         requireValue(pageId, 'page id'),
+        requireValue(tabId, 'tab id'),
         input,
         requireCsrfToken(csrfToken)
       ),

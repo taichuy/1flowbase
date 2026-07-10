@@ -8,6 +8,6 @@ export const DEFAULT_JS_BLOCK_TRIAL_LIMITS: RestrictedBlockLoaderLimits = {
   maxEventChainDepth: 4,
   allowedActions: [],
   allowedEvents: [],
-  allowedDataModels: [],
+  allowedQueries: [],
   allowedDataOperations: []
 };

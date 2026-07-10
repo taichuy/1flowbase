@@ -80,7 +80,6 @@ function createPageContent(blocks?: Array<Record<string, unknown>>) {
       kind: 'page' as const,
       parentId: null,
       rank: '001000',
-      schemaRootUid: 'root-1'
     },
     schema: { rootUid: 'root-1', payload: { blocks: payload } },
     root: { uid: 'root-1', payload: { blocks: payload } }

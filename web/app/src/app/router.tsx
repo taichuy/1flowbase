@@ -24,6 +24,10 @@ import {
   fetchFrontstagePageTree,
   frontstagePageTreeQueryKey
 } from '../features/frontstage/api/page-tree';
+import {
+  fetchFrontstagePageTabs,
+  frontstagePageTabsQueryKey
+} from '../features/frontstage/api/page-tabs';
 import { useFrontstagePageTreeMutations } from '../features/frontstage/hooks/use-frontstage-page-tree-mutations';
 import { isForbiddenResponseError } from '../features/frontstage/lib/api-errors';
 import { resolveSelectedPageId } from '../features/frontstage/lib/page-tree';
@@ -33,6 +37,10 @@ import type { MeSectionKey } from '../features/me/lib/me-sections';
 import { MePage } from '../features/me/pages/MePage';
 import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import { RouteGuard } from '../routes/route-guards';
+import {
+  FRONTSTAGE_PAGE_PATH,
+  FRONTSTAGE_PAGE_TAB_PATH
+} from '../routes/route-config';
 import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../state/auth-store';
 import { i18nText } from '../shared/i18n/text';
@@ -247,10 +255,12 @@ function renderMeRoute(requestedSectionKey?: MeSectionKey) {
 
 function FrontStageWorkspaceContent({
   workspaceId,
-  pageId
+  pageId,
+  tabId
 }: {
   workspaceId: string;
   pageId?: string;
+  tabId?: string;
 }) {
   const navigate = useNavigate();
   const pageTreeQuery = useQuery({
@@ -267,26 +277,72 @@ function FrontStageWorkspaceContent({
       }).selectedPageId
     : null;
   const shouldLoadPageContent = Boolean(pageId && selectedPageId);
-  const pageContentQuery = useQuery({
+  const pageTabsQuery = useQuery({
     queryKey: selectedPageId
-      ? frontstagePageContentQueryKey(workspaceId, selectedPageId)
+      ? frontstagePageTabsQueryKey(workspaceId, selectedPageId)
+      : ['frontstage', workspaceId, 'pages', 'unselected', 'tabs'],
+    queryFn: () => {
+      if (!selectedPageId) {
+        throw new Error('FrontStage page tabs query requires selected page');
+      }
+
+      return fetchFrontstagePageTabs(workspaceId, selectedPageId);
+    },
+    enabled: Boolean(selectedPageId),
+    retry: false
+  });
+  const pageContentQuery = useQuery({
+    queryKey: selectedPageId && tabId
+      ? frontstagePageContentQueryKey(workspaceId, selectedPageId, tabId)
       : ['frontstage', workspaceId, 'pages', 'unselected', 'content'],
     queryFn: () => {
       if (!selectedPageId) {
         throw new Error('FrontStage page content query requires selected page');
       }
 
-      return fetchFrontstagePageContent(workspaceId, selectedPageId);
+      if (!tabId) {
+        throw new Error('FrontStage page content query requires selected tab');
+      }
+
+      return fetchFrontstagePageContent(workspaceId, selectedPageId, tabId);
     },
-    enabled: shouldLoadPageContent,
+    enabled: shouldLoadPageContent && Boolean(tabId),
     retry: false
   });
+
+  if (selectedPageId && !tabId && pageTabsQuery.data) {
+    const defaultTabs = pageTabsQuery.data.filter((tab) => tab.is_default);
+    if (defaultTabs.length === 1) {
+      return (
+        <Navigate
+          to={FRONTSTAGE_PAGE_TAB_PATH}
+          params={{ pageId: selectedPageId, tabId: defaultTabs[0].id }}
+          replace
+        />
+      );
+    }
+
+    return (
+      <Result
+        status="error"
+        title={i18nText(
+          'frontstage',
+          'auto.page_tabs_invalid_default_title'
+        )}
+        subTitle={i18nText(
+          'frontstage',
+          'auto.page_tabs_invalid_default_detail'
+        )}
+      />
+    );
+  }
 
   return (
     <LazyRouteBoundary>
       <FrontStagePage
         workspaceId={workspaceId}
         pageId={pageId}
+        tabId={tabId}
         initialPageTree={pageTreeFromApi}
         isPageTreeLoading={pageTreeQuery.isLoading}
         hasPageTreeLoadError={pageTreeQuery.isError}
@@ -313,7 +369,7 @@ function FrontStageWorkspaceContent({
         onNavigatePage={(nextPageId) => {
           if (nextPageId) {
             void navigate({
-              to: '/frontstage/pages/$pageId',
+              to: FRONTSTAGE_PAGE_PATH,
               params: { pageId: nextPageId }
             });
           } else {
@@ -322,12 +378,19 @@ function FrontStageWorkspaceContent({
             });
           }
         }}
+        onNavigateTab={(nextTabId) => {
+          if (!selectedPageId) return;
+          void navigate({
+            to: FRONTSTAGE_PAGE_TAB_PATH,
+            params: { pageId: selectedPageId, tabId: nextTabId }
+          });
+        }}
       />
     </LazyRouteBoundary>
   );
 }
 
-function FrontStageRoute({ pageId }: { pageId?: string }) {
+function FrontStageRoute({ pageId, tabId }: { pageId?: string; tabId?: string }) {
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
   );
@@ -335,7 +398,11 @@ function FrontStageRoute({ pageId }: { pageId?: string }) {
   return (
     <RouteGuard routeId="frontstage">
       {workspaceId ? (
-        <FrontStageWorkspaceContent workspaceId={workspaceId} pageId={pageId} />
+        <FrontStageWorkspaceContent
+          workspaceId={workspaceId}
+          pageId={pageId}
+          tabId={tabId}
+        />
       ) : (
         <Navigate to="/" replace />
       )}
@@ -475,12 +542,23 @@ const frontstageRootRoute = createRoute({
 
 const frontstagePageRoute = createRoute({
   getParentRoute: () => shellRoute,
-  path: '/frontstage/pages/$pageId',
+  path: FRONTSTAGE_PAGE_PATH,
   notFoundComponent: NotFoundPage,
   component: () => {
     const { pageId } = frontstagePageRoute.useParams();
 
     return <FrontStageRoute pageId={pageId} />;
+  }
+});
+
+const frontstagePageTabRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: FRONTSTAGE_PAGE_TAB_PATH,
+  notFoundComponent: NotFoundPage,
+  component: () => {
+    const { pageId, tabId } = frontstagePageTabRoute.useParams();
+
+    return <FrontStageRoute pageId={pageId} tabId={tabId} />;
   }
 });
 
@@ -522,7 +600,8 @@ const routeTree = rootRoute.addChildren([
     meProfileRoute,
     meSecurityRoute,
     frontstageRootRoute,
-    frontstagePageRoute
+    frontstagePageRoute,
+    frontstagePageTabRoute
   ]),
   signInRoute
 ]);

@@ -11,6 +11,13 @@ export interface ConsoleFrontendBlockPermissions {
   secrets: string;
 }
 
+export interface ConsoleFrontendBlockCodeModule {
+  source:
+    | '@1flowbase/block-sdk'
+    | '@1flowbase/block-renderer/antd-facade';
+  type_declarations: string;
+}
+
 export interface ConsoleFrontendBlockCatalogEntry {
   installation_id: string;
   provider_code: string;
@@ -20,6 +27,10 @@ export interface ConsoleFrontendBlockCatalogEntry {
   title: string;
   runtime: string;
   entry: string;
+  code_template?: string | null;
+  code_template_version?: string | null;
+  code_template_language?: 'jsx' | 'tsx' | null;
+  code_modules?: ConsoleFrontendBlockCodeModule[];
   context_contract: ConsoleFrontendBlockContextContract;
   permissions: ConsoleFrontendBlockPermissions;
   ui_capabilities: string[];

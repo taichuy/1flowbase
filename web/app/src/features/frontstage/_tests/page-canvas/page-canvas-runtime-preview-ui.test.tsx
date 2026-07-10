@@ -18,7 +18,6 @@ function createPageContent(
       kind: 'page',
       parentId: null,
       rank: '001000',
-      schemaRootUid: 'root-1'
     },
     schema: {
       rootUid: 'root-1',
@@ -111,7 +110,7 @@ describe('PageCanvas runtime preview UI', () => {
               allowedDataPermissions: []
             },
             mediatorPolicy: {
-              allowedDataModels: [],
+              allowedQueries: [],
               allowedDataOperations: [],
               allowedActions: [],
               allowedEvents: [],
@@ -223,7 +222,7 @@ describe('PageCanvas runtime preview UI', () => {
               allowedDataPermissions: []
             },
             mediatorPolicy: {
-              allowedDataModels: [],
+              allowedQueries: [],
               allowedDataOperations: [],
               allowedActions: [],
               allowedEvents: [],

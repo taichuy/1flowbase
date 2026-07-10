@@ -1,15 +1,24 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const consoleNavigationApi = vi.hoisted(() => ({
   settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
   fetchSettingsConsoleNavigation: vi.fn()
 }));
+const frontstageNavigationApi = vi.hoisted(() => ({
+  frontstagePageTreeQueryKey: vi.fn((workspaceId: string) => [
+    'frontstage',
+    workspaceId,
+    'page-tree'
+  ]),
+  fetchFrontstagePageTree: vi.fn()
+}));
 
 vi.mock(
   '../../features/settings/api/console-navigation',
   () => consoleNavigationApi
 );
+vi.mock('../../features/frontstage/api/page-tree', () => frontstageNavigationApi);
 
 import { AppProviders } from '../../app/AppProviders';
 import { Navigation } from '../Navigation';
@@ -77,6 +86,66 @@ describe('Navigation', () => {
         'templates'
       ])
     );
+    frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([]);
+  });
+
+  test('AC-001 renders topbar pages from the same accessible frontstage navigation tree', async () => {
+    resetAuthStore();
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-123',
+      actor: {
+        id: 'actor-1',
+        account: 'normal-user',
+        effective_display_role: 'developer',
+        current_workspace_id: 'workspace-123'
+      },
+      me: null
+    });
+    frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([
+      {
+        id: 'group-sales',
+        title: '销售',
+        kind: 'group',
+        placement: 'topbar',
+        children: [
+          {
+            id: 'page-sales',
+            title: '销售看板',
+            kind: 'page',
+            placement: 'topbar',
+            children: []
+          }
+        ]
+      },
+      {
+        id: 'page-internal',
+        title: '内部页面',
+        kind: 'page',
+        placement: 'sidebar',
+        children: []
+      }
+    ]);
+
+    renderNavigation('/frontstage/pages/page-sales/tabs/tab-1');
+
+    const nav = await screen.findByRole('navigation', { name: 'Primary' });
+    fireEvent.mouseEnter(
+      await within(nav).findByRole('menuitem', { name: '销售' })
+    );
+    expect(await screen.findByRole('link', { name: '销售看板' })).toHaveAttribute(
+      'href',
+      '/frontstage/pages/page-sales'
+    );
+    expect(screen.getByRole('link', { name: '销售看板' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(within(nav).getByRole('link', { name: '前台' })).not.toHaveAttribute(
+      'aria-current'
+    );
+    expect(within(nav).queryByRole('link', { name: '内部页面' })).not.toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: '工作台' })).toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: '模板' })).toBeInTheDocument();
   });
 
   test('links 前台 to base frontstage path when workspace is available', async () => {

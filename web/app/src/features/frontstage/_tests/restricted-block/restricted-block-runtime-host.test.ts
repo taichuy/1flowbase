@@ -77,7 +77,7 @@ function createRunPlan(
     mediatorPolicy: {
       allowedEvents: ['record.saved'],
       allowedActions: ['record.save'],
-      allowedDataModels: ['records'],
+      allowedQueries: ['records'],
       allowedDataOperations: ['query'],
       maxEventChainDepth: 4
     },

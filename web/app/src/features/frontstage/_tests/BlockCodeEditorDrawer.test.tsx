@@ -7,8 +7,30 @@ import type { FrontstageBlockInstance } from '../lib/page-document';
 const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
+const blockCatalogHook = vi.hoisted(() => ({
+  useFrontstageBlockCatalog: vi.fn()
+}));
 
 vi.mock('../hooks/use-frontstage-block-code', () => blockCodeHook);
+vi.mock('../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
+vi.mock('@monaco-editor/react', () => ({
+  default: ({
+    value,
+    onChange,
+    options
+  }: {
+    value?: string;
+    onChange?: (value?: string) => void;
+    options?: { readOnly?: boolean };
+  }) => (
+    <textarea
+      aria-label="Block code draft"
+      value={value}
+      disabled={options?.readOnly}
+      onChange={(event) => onChange?.(event.target.value)}
+    />
+  )
+}));
 
 const block: FrontstageBlockInstance = {
   id: 'hero-block',
@@ -65,6 +87,34 @@ describe('BlockCodeEditorDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockBlockCodeState();
+    blockCatalogHook.useFrontstageBlockCatalog.mockReturnValue({ items: [] });
+  });
+
+  test('renders structured diagnostics for the selected target', () => {
+    render(
+      <BlockCodeEditorDrawer
+        open
+        onClose={() => undefined}
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        diagnostics={[
+          {
+            pageId: 'page-1',
+            tabId: 'tab-1',
+            blockId: 'hero-block',
+            phase: 'compile',
+            code: 'import_denied',
+            message: 'Import denied',
+            sourceLocation: { line: 2, column: 4 }
+          }
+        ]}
+      />
+    );
+
+    expect(screen.getByText('Import denied')).toBeInTheDocument();
+    expect(screen.getByText(/compile · 2:4/)).toBeInTheDocument();
   });
 
   test('shows selected block metadata and loads code draft through the block code hook', async () => {

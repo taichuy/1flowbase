@@ -20,6 +20,7 @@ pub mod model_provider_repository;
 pub mod node_contribution_repository;
 pub mod orchestration_runtime_repository;
 pub mod physical_schema_repository;
+mod plugin_installation_commit_repository;
 pub mod plugin_repository;
 pub mod plugin_worker_repository;
 pub mod repositories;

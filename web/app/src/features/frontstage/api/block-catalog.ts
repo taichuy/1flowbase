@@ -7,8 +7,27 @@ import {
 
 export type FrontstageBlockCatalogEntry = ConsoleFrontendBlockCatalogEntry;
 
-export const frontstageBlockCatalogQueryKey = () =>
-  ['frontstage', 'block-catalog'] as const;
+export const frontstageBlockCatalogQueryKeyPrefix = [
+  'frontstage',
+  'block-catalog'
+] as const;
+
+export function frontstageBlockCatalogQueryKey({
+  workspaceId,
+  actorId,
+  permissionFingerprint
+}: {
+  workspaceId: string;
+  actorId: string;
+  permissionFingerprint: string;
+}) {
+  return [
+    ...frontstageBlockCatalogQueryKeyPrefix,
+    workspaceId,
+    actorId,
+    permissionFingerprint
+  ] as const;
+}
 
 export function getFrontstageBlockCatalogApiBaseUrl(
   locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'

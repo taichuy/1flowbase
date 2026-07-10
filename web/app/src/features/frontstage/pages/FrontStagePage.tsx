@@ -20,6 +20,7 @@ import { AddBlockCatalogPickerDrawer } from '../components/AddBlockCatalogPicker
 import { BlockCodeEditorDrawer } from '../components/BlockCodeEditorDrawer';
 import { BlockConfigurationDrawer } from '../components/BlockConfigurationDrawer';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
+import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import { PageCanvas } from '../components/PageCanvas';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
@@ -33,14 +34,11 @@ import {
   createFrontstageBlockCompositionState,
   moveFrontstageBlock,
   removeFrontstageBlock,
+  updateFrontstageBlockLayout,
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
-import {
-  createFrontstageBuiltInJsBlockTemplateCode,
-  type FrontstageBuiltInJsBlockTemplateId
-} from '../lib/block-templates';
 import { createFrontstageBlockConfigurationModel } from '../lib/block-configuration';
-import { createFrontstageJsBlockDataEffectHandler } from '../lib/js-block-data-effect-handler';
+import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import {
   createFrontstagePageDocument,
   createFrontstagePageDocumentSaveInput
@@ -86,7 +84,9 @@ import './frontstage-page.css';
 export const FrontStagePage: FC<FrontStagePageProps> = ({
   workspaceId,
   pageId,
+  tabId,
   onNavigatePage,
+  onNavigateTab,
   initialPageTree,
   isPageTreeLoading,
   hasPageTreeLoadError,
@@ -147,14 +147,23 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         pageTree: normalizePageTree(initialPageTree ?? [])
       }).selectedPageId
   );
-  const blockCatalog = useFrontstageBlockCatalog();
+  const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
   const pageContentSave = useFrontstagePageContentSave({
     workspaceId,
-    pageId: selectedPageId
+    pageId: selectedPageId,
+    tabId
   });
-  const jsBlockDataEffectHandler = useMemo(
-    () => createFrontstageJsBlockDataEffectHandler({ csrfToken }),
-    [csrfToken]
+  const jsBlockCapabilityHandlers = useMemo(
+    () =>
+      selectedPageId && tabId
+        ? createFrontstageJsBlockCapabilityHandlers({
+            workspaceId,
+            pageId: selectedPageId,
+            tabId,
+            csrfToken
+          })
+        : undefined,
+    [csrfToken, selectedPageId, tabId, workspaceId]
   );
   const displayedPageContent = savedPageContent ?? pageContent;
   const hasLoadedSelectedPageContent = Boolean(
@@ -210,7 +219,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   ]);
   const pageCanvasRuntimeSessions = useFrontstagePageCanvasRuntimeSessions({
     runtimeRunPlanState: pageCanvasRuntimeRunPlanState,
-    dataEffectHandler: jsBlockDataEffectHandler
+    handlers: jsBlockCapabilityHandlers
   });
   const blockCompositionState = useMemo(
     () =>
@@ -944,11 +953,18 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   };
 
   const handleSelectBlockCatalogEntry = async (
-    entry: NormalizedFrontstageBlockCatalogEntry,
-    templateId: FrontstageBuiltInJsBlockTemplateId
+    entry: NormalizedFrontstageBlockCatalogEntry
   ) => {
     const sourceContent = activePageContent;
     if (!canAddBlock || !sourceContent || !blockCompositionState) {
+      return;
+    }
+
+    const codeTemplate = entry.codeCapabilities?.template;
+    if (!codeTemplate) {
+      setBlockSaveError(
+        i18nText("frontstage", "auto.catalog_entry_missing_code_template")
+      );
       return;
     }
 
@@ -983,19 +999,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       }
 
       const codeRef = createdBlock.codeRef;
-      const blockId = createdBlock.id;
 
       await saveFrontstageBlockCode(
         workspaceId,
         selectedPageId ?? sourceContent.page.id,
         {
           codeRef,
-          code: createFrontstageBuiltInJsBlockTemplateCode({
-            templateId,
-            blockId,
-            codeRef,
-            contributionCode: entry.contributionCode
-          })
+          code: codeTemplate.source
         },
         requireCsrfToken(csrfToken)
       );
@@ -1064,6 +1074,16 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           <div className="frontstage-page-workspace__body">
             {renderPageTreeErrorBanner}
 
+            {selectedPageId && tabId && onNavigateTab ? (
+              <FrontstagePageTabs
+                workspaceId={workspaceId}
+                pageId={selectedPageId}
+                tabId={tabId}
+                isDesignMode={canEnterDesignMode && isDesignMode}
+                onNavigateTab={onNavigateTab}
+              />
+            ) : null}
+
             {canEnterDesignMode && isDesignMode && isPageContentSavePending ? (
               <Typography.Text
                 type="secondary"
@@ -1118,6 +1138,18 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               isDesignMode={canEnterDesignMode && isDesignMode}
               designActions={designActions}
               toolbarDisabled={isPageContentSavePending}
+              onResponsiveLayoutSave={
+                canEnterDesignMode && isDesignMode
+                  ? (layouts) => {
+                      if (!blockCompositionState || !activePageContent) return;
+                      let next = blockCompositionState;
+                      for (const [blockId, blockLayouts] of Object.entries(layouts)) {
+                        next = updateFrontstageBlockLayout(next, blockId, blockLayouts);
+                      }
+                      void saveBlockComposition(activePageContent, next);
+                    }
+                  : undefined
+              }
               showTitle={false}
             />
             {canEnterDesignMode && isDesignMode ? (
@@ -1149,7 +1181,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                 catalogEntry={matchingJsBlockCatalogEntry}
                 code={selectedBlockCode.draft}
                 contextSnapshot={jsBlockTrialContextSnapshot}
-                dataEffectHandler={jsBlockDataEffectHandler}
+                handlers={jsBlockCapabilityHandlers}
                 limits={jsBlockTrialLimits}
                 onCodeChange={selectedBlockCode.setDraft}
                 onContextSnapshotChange={setJsBlockTrialContextSnapshot}
@@ -1176,8 +1208,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             loading={blockCatalog.loading}
             error={blockCatalog.error}
             saving={isPageContentSavePending}
-            onSelect={(entry, templateId) => {
-              void handleSelectBlockCatalogEntry(entry, templateId);
+            onSelect={(entry) => {
+              void handleSelectBlockCatalogEntry(entry);
             }}
             onClose={() => setIsAddBlockPickerOpen(false)}
           />

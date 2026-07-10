@@ -35,6 +35,7 @@ import {
   type RecentVersionSwitchNotice,
   type UploadResultSummary
 } from './model-providers/shared';
+import { frontstageBlockCatalogQueryKeyPrefix } from '../../../frontstage/api/block-catalog';
 import { useModelProviderData } from './model-providers/use-model-provider-data';
 import { useModelProviderMutations } from './model-providers/use-model-provider-mutations';
 import { useOfficialPluginTask } from './model-providers/use-official-plugin-task';
@@ -255,8 +256,15 @@ export function SettingsModelProvidersSection({
       }),
       queryClient.invalidateQueries({
         queryKey: settingsOfficialPluginsQueryKey
+      }),
+      queryClient.invalidateQueries({
+        queryKey: frontstageBlockCatalogQueryKeyPrefix
       })
     ]);
+    queryClient.removeQueries({
+      queryKey: frontstageBlockCatalogQueryKeyPrefix,
+      type: 'inactive'
+    });
   };
   const { officialInstallState, setOfficialInstallState, pluginTaskQuery } =
     useOfficialPluginTask({

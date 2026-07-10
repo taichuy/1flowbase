@@ -708,6 +708,12 @@ async fn plugin_management_service_syncs_frontend_block_catalog_and_requires_ass
     assert_eq!(entries[0].contribution_code, "hero_banner");
     assert_eq!(entries[0].runtime, "iframe");
     assert_eq!(entries[0].entry, "blocks/hero/index.html");
+    assert_eq!(entries[0].code_template_version.as_deref(), Some("1.0.0"));
+    assert!(entries[0]
+        .code_template
+        .as_deref()
+        .is_some_and(|template| template.contains("defineBlock")));
+    assert_eq!(entries[0].code_modules[0].source, "@1flowbase/block-sdk");
     assert_eq!(
         entries[0].context_contract.primitives,
         vec!["text", "image"]
@@ -717,6 +723,140 @@ async fn plugin_management_service_syncs_frontend_block_catalog_and_requires_ass
         entries[0].ui_capabilities,
         vec!["responsive", "configurable"]
     );
+}
+
+#[tokio::test]
+async fn plugin_install_catalog_failure_rolls_back_new_installation_and_artifact() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let nonce = Uuid::now_v7().to_string();
+    let package_root = std::env::temp_dir().join(format!("frontend-block-failure-{nonce}"));
+    let install_root = std::env::temp_dir().join(format!("frontend-block-failure-install-{nonce}"));
+    create_frontend_block_fixture(&package_root);
+    repository.fail_next_installation_catalog_commit().await;
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+
+    let error = service
+        .install_plugin(InstallPluginCommand {
+            actor_user_id: repository.actor.user_id,
+            package_root: package_root.display().to_string(),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("constraint violation"));
+    assert!(PluginRepository::list_installations(&repository)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(!install_root
+        .join("installed/fixture_frontend_blocks/0.1.0")
+        .exists());
+    assert!(PluginRepository::list_tasks(&repository)
+        .await
+        .unwrap()
+        .iter()
+        .any(|task| task.status == PluginTaskStatus::Failed));
+}
+
+#[tokio::test]
+async fn plugin_reinstall_catalog_failure_preserves_previous_installation_catalog_and_artifact() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let nonce = Uuid::now_v7().to_string();
+    let package_root = std::env::temp_dir().join(format!("frontend-block-reinstall-{nonce}"));
+    let install_root =
+        std::env::temp_dir().join(format!("frontend-block-reinstall-install-{nonce}"));
+    create_frontend_block_fixture(&package_root);
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let original = service
+        .install_plugin(InstallPluginCommand {
+            actor_user_id: repository.actor.user_id,
+            package_root: package_root.display().to_string(),
+        })
+        .await
+        .unwrap()
+        .installation;
+    let installed_entry = PathBuf::from(&original.installed_path).join("blocks/hero/index.html");
+    let original_artifact = fs::read_to_string(&installed_entry).unwrap();
+
+    let manifest_path = package_root.join("manifest.yaml");
+    let manifest = fs::read_to_string(&manifest_path).unwrap();
+    fs::write(
+        &manifest_path,
+        manifest
+            .replacen("version: 0.1.0", "version: 0.2.0", 1)
+            .replace("title: Hero Banner", "title: Changed Banner"),
+    )
+    .unwrap();
+    fs::write(
+        package_root.join("blocks/hero/index.html"),
+        "<div>changed</div>",
+    )
+    .unwrap();
+    repository.fail_next_installation_catalog_commit().await;
+
+    service
+        .install_plugin(InstallPluginCommand {
+            actor_user_id: repository.actor.user_id,
+            package_root: package_root.display().to_string(),
+        })
+        .await
+        .unwrap_err();
+
+    let preserved = PluginRepository::get_installation(&repository, original.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(preserved.plugin_version, original.plugin_version);
+    assert_eq!(preserved.artifact_status, original.artifact_status);
+    assert_eq!(
+        fs::read_to_string(installed_entry).unwrap(),
+        original_artifact
+    );
+    assert!(!install_root
+        .join("installed/fixture_frontend_blocks/0.2.0")
+        .exists());
+    assert!(PluginRepository::list_tasks(&repository)
+        .await
+        .unwrap()
+        .iter()
+        .any(|task| task.status == PluginTaskStatus::Failed));
+    service
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: repository.actor.user_id,
+            installation_id: original.id,
+        })
+        .await
+        .unwrap();
+    service
+        .assign_plugin(AssignPluginCommand {
+            actor_user_id: repository.actor.user_id,
+            installation_id: original.id,
+        })
+        .await
+        .unwrap();
+    let entries =
+        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&repository, workspace_id)
+            .await
+            .unwrap();
+    assert_eq!(entries[0].title, "Hero Banner");
 }
 
 #[tokio::test]

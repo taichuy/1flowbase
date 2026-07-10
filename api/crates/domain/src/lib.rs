@@ -60,7 +60,8 @@ pub use flow::{
     WORKFLOW_SYNC_TIMEOUT_MS,
 };
 pub use frontend_block_catalog::{
-    FrontendBlockCatalogEntry, FrontendBlockContextContract, FrontendBlockPermissions,
+    FrontendBlockCatalogEntry, FrontendBlockCodeModule, FrontendBlockContextContract,
+    FrontendBlockPermissions,
 };
 pub use frontstage::{FrontstagePageKind, FrontstagePageRecord, FrontstagePageTreeNode};
 pub use host_extension::{

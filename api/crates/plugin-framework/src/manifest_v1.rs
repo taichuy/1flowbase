@@ -149,6 +149,13 @@ pub struct FrontendBlockContextContractManifest {
     pub input_schema: Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontendBlockCodeModuleManifest {
+    pub source: String,
+    pub type_declarations: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FrontendBlockContributionManifest {
@@ -156,6 +163,14 @@ pub struct FrontendBlockContributionManifest {
     pub title: String,
     pub runtime: String,
     pub entry: String,
+    #[serde(default)]
+    pub code_template: Option<String>,
+    #[serde(default)]
+    pub code_template_version: Option<String>,
+    #[serde(default)]
+    pub code_template_language: Option<String>,
+    #[serde(default)]
+    pub code_modules: Vec<FrontendBlockCodeModuleManifest>,
     pub context_contract: FrontendBlockContextContractManifest,
     pub permissions: FrontendBlockPermissionsManifest,
     #[serde(default)]
@@ -458,6 +473,59 @@ fn validate_frontend_block_contributions(
         )?;
         validate_non_empty(&contribution.title, "block_contributions[].title")?;
         validate_non_empty(&contribution.entry, "block_contributions[].entry")?;
+        match (
+            contribution.code_template.as_deref(),
+            contribution.code_template_version.as_deref(),
+            contribution.code_template_language.as_deref(),
+        ) {
+            (Some(code_template), Some(code_template_version), Some(code_template_language)) => {
+                validate_non_empty(code_template, "block_contributions[].code_template")?;
+                validate_non_empty(
+                    code_template_version,
+                    "block_contributions[].code_template_version",
+                )?;
+                validate_allowed(
+                    code_template_language,
+                    "block_contributions[].code_template_language",
+                    &["jsx", "tsx"],
+                )?;
+                if code_template.len() > 256 * 1024 {
+                    return Err(PluginFrameworkError::invalid_provider_package(
+                        "block_contributions[].code_template exceeds 262144 bytes",
+                    ));
+                }
+            }
+            (Some(_), None, _) => {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "block_contributions[].code_template_version is required when code_template is set",
+                ));
+            }
+            (None, Some(_), _) | (None, None, Some(_)) => {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "block_contributions[].code_template is required when code_template_version is set",
+                ));
+            }
+            (Some(_), Some(_), None) => {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "block_contributions[].code_template_language is required when code_template is set",
+                ));
+            }
+            (None, None, None) => {}
+        }
+        for code_module in &contribution.code_modules {
+            validate_allowed(
+                &code_module.source,
+                "block_contributions[].code_modules[].source",
+                &[
+                    "@1flowbase/block-sdk",
+                    "@1flowbase/block-renderer/antd-facade",
+                ],
+            )?;
+            validate_non_empty(
+                &code_module.type_declarations,
+                "block_contributions[].code_modules[].type_declarations",
+            )?;
+        }
         validate_allowed(
             &contribution.runtime,
             "block_contributions[].runtime",

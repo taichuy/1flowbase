@@ -77,6 +77,48 @@ export interface SaveFrontstageBlockCodeInput {
   code: string;
 }
 
+export interface DispatchFrontstageQueryInput {
+  query_id: string;
+  params?: unknown;
+}
+
+export interface DispatchFrontstageActionInput {
+  action_id: string;
+  params?: unknown;
+}
+
+export function dispatchFrontstageQuery<T = unknown>(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: DispatchFrontstageQueryInput,
+  baseUrl?: string
+): Promise<T> {
+  return apiFetch<T>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/queries/dispatch`,
+    method: 'POST',
+    body: input,
+    baseUrl
+  });
+}
+
+export function dispatchFrontstageAction<T = unknown>(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: DispatchFrontstageActionInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<T> {
+  return apiFetch<T>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/actions/dispatch`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
 export function listFrontstagePages(
   workspaceId: string,
   baseUrl?: string

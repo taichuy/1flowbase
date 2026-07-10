@@ -11,9 +11,9 @@ use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
     ports::{
-        CreateFrontstagePageInput, FrontstagePageRepository, MoveFrontstagePageInput,
-        SaveFrontstageBlockCodeInput, SaveFrontstagePageContentInput,
-        UpdateFrontstagePageMetadataInput,
+        CreateFrontstagePageInput, CreateFrontstagePageTabInput, FrontstagePageRepository,
+        MoveFrontstagePageInput, SaveFrontstageBlockCodeInput, SaveFrontstageTabDocumentInput,
+        UpdateFrontstagePageMetadataInput, UpdateFrontstagePageTabInput,
     },
 };
 
@@ -25,6 +25,7 @@ pub struct CreateFrontstageGroupCommand {
     pub tooltip: Option<String>,
     pub parent_id: Option<Uuid>,
     pub rank: Option<String>,
+    pub placement: domain::frontstage::FrontstageNavigationPlacement,
 }
 
 pub struct CreateFrontstagePageCommand {
@@ -35,6 +36,7 @@ pub struct CreateFrontstagePageCommand {
     pub tooltip: Option<String>,
     pub parent_id: Option<Uuid>,
     pub rank: Option<String>,
+    pub placement: domain::frontstage::FrontstageNavigationPlacement,
 }
 
 pub struct UpdateFrontstagePageMetadataCommand {
@@ -45,6 +47,7 @@ pub struct UpdateFrontstagePageMetadataCommand {
     pub icon: Option<Option<String>>,
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
+    pub placement: Option<domain::frontstage::FrontstageNavigationPlacement>,
 }
 
 pub struct MoveFrontstagePageCommand {
@@ -65,6 +68,31 @@ pub struct GetFrontstagePageDetailCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub page_id: Uuid,
+    pub tab_id: Uuid,
+}
+
+pub struct CreateFrontstagePageTabCommand {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub page_id: Uuid,
+    pub title: Option<String>,
+    pub rank: Option<String>,
+}
+
+pub struct UpdateFrontstagePageTabCommand {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub page_id: Uuid,
+    pub tab_id: Uuid,
+    pub title: Option<Option<String>>,
+    pub rank: Option<String>,
+}
+
+pub struct DeleteFrontstagePageTabCommand {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub page_id: Uuid,
+    pub tab_id: Uuid,
 }
 
 pub struct GetFrontstageBlockCodeCommand {
@@ -74,10 +102,11 @@ pub struct GetFrontstageBlockCodeCommand {
     pub code_ref: String,
 }
 
-pub struct SaveFrontstagePageContentCommand {
+pub struct SaveFrontstageTabDocumentCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub page_id: Uuid,
+    pub tab_id: Uuid,
     pub schema_payload: serde_json::Value,
     pub root_payload: serde_json::Value,
 }
@@ -148,29 +177,35 @@ where
                 title: command.title,
                 icon: command.icon,
                 tooltip: command.tooltip,
+                placement: command.placement,
                 rank: normalize_rank(command.rank),
-                schema_root_uid: None,
+                default_tab: None,
             })
             .await?;
-        self.audit(&actor, &created, "frontstage.page_group_created")
+        self.audit(&actor, &created.page, "frontstage.page_group_created")
             .await?;
 
-        Ok(created)
+        Ok(created.page)
     }
 
     pub async fn create_page(
         &self,
         command: CreateFrontstagePageCommand,
-    ) -> Result<domain::FrontstagePageRecord> {
+    ) -> Result<domain::frontstage::FrontstagePageCreation> {
         let actor = self
             .repository
             .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
-        self.ensure_page_parent(command.workspace_id, command.parent_id)
-            .await?;
+        self.ensure_page_parent_placement(
+            command.workspace_id,
+            command.parent_id,
+            command.placement,
+        )
+        .await?;
 
         let page_id = Uuid::now_v7();
+        let tab_id = Uuid::now_v7();
         let created = self
             .repository
             .create_frontstage_page(&CreateFrontstagePageInput {
@@ -182,11 +217,21 @@ where
                 title: command.title,
                 icon: command.icon,
                 tooltip: command.tooltip,
+                placement: command.placement,
                 rank: normalize_rank(command.rank),
-                schema_root_uid: Some(reserved_schema_root_uid(page_id)),
+                default_tab: Some(CreateFrontstagePageTabInput {
+                    id: tab_id,
+                    workspace_id: command.workspace_id,
+                    actor_user_id: command.actor_user_id,
+                    page_id,
+                    title: Some("Default".to_owned()),
+                    rank: "a".to_owned(),
+                    is_default: true,
+                    document_root_uid: reserved_tab_document_root_uid(tab_id),
+                }),
             })
             .await?;
-        self.audit(&actor, &created, "frontstage.page_created")
+        self.audit(&actor, &created.page, "frontstage.page_created")
             .await?;
 
         Ok(created)
@@ -203,7 +248,7 @@ where
 
         let detail = self
             .repository
-            .get_frontstage_page_detail(command.workspace_id, command.page_id)
+            .get_frontstage_page_tab_detail(command.workspace_id, command.page_id, command.tab_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
         ensure_page_record(&detail.page)?;
@@ -228,6 +273,40 @@ where
             .await?;
         ensure_design_permission(&actor)?;
 
+        if let Some(placement) = command.placement {
+            let existing = self
+                .repository
+                .get_frontstage_page(command.workspace_id, command.page_id)
+                .await?
+                .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
+            if placement != existing.placement {
+                match existing.kind {
+                    domain::FrontstagePageKind::Group => {
+                        let has_children = self
+                            .repository
+                            .list_frontstage_pages(command.workspace_id)
+                            .await?
+                            .iter()
+                            .any(|page| page.parent_id == Some(existing.id));
+                        if has_children {
+                            return Err(ControlPlaneError::InvalidInput(
+                                "frontstage_group_placement_requires_empty_group",
+                            )
+                            .into());
+                        }
+                    }
+                    domain::FrontstagePageKind::Page => {
+                        self.ensure_page_parent_placement(
+                            command.workspace_id,
+                            existing.parent_id,
+                            placement,
+                        )
+                        .await?;
+                    }
+                }
+            }
+        }
+
         let updated = self
             .repository
             .update_frontstage_page_metadata(&UpdateFrontstagePageMetadataInput {
@@ -238,6 +317,7 @@ where
                 icon: command.icon,
                 tooltip: command.tooltip,
                 is_hidden: command.is_hidden,
+                placement: command.placement,
             })
             .await?;
         self.audit(&actor, &updated, "frontstage.page_metadata_updated")
@@ -266,8 +346,12 @@ where
                 return Err(ControlPlaneError::InvalidInput("parent_id").into());
             }
             domain::FrontstagePageKind::Page => {
-                self.ensure_page_parent(command.workspace_id, command.parent_id)
-                    .await?;
+                self.ensure_page_parent_placement(
+                    command.workspace_id,
+                    command.parent_id,
+                    existing.placement,
+                )
+                .await?;
             }
             domain::FrontstagePageKind::Group => {}
         }
@@ -308,9 +392,89 @@ where
         Ok(())
     }
 
-    pub async fn save_page_content(
+    pub async fn list_page_tabs(
         &self,
-        command: SaveFrontstagePageContentCommand,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+        page_id: Uuid,
+    ) -> Result<Vec<domain::frontstage::FrontstagePageTabRecord>> {
+        let actor = self
+            .repository
+            .load_actor_context_for_workspace(actor_user_id, workspace_id)
+            .await?;
+        self.ensure_page_visible(&actor, actor_user_id, workspace_id, page_id)
+            .await?;
+        self.repository
+            .list_frontstage_page_tabs(workspace_id, page_id)
+            .await
+    }
+
+    pub async fn create_page_tab(
+        &self,
+        command: CreateFrontstagePageTabCommand,
+    ) -> Result<domain::frontstage::FrontstagePageTabRecord> {
+        let actor = self
+            .repository
+            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .await?;
+        ensure_design_permission(&actor)?;
+        self.ensure_existing_page(command.workspace_id, command.page_id)
+            .await?;
+        let tab_id = Uuid::now_v7();
+        self.repository
+            .create_frontstage_page_tab(&CreateFrontstagePageTabInput {
+                id: tab_id,
+                workspace_id: command.workspace_id,
+                actor_user_id: command.actor_user_id,
+                page_id: command.page_id,
+                title: command.title,
+                rank: normalize_rank(command.rank),
+                is_default: false,
+                document_root_uid: reserved_tab_document_root_uid(tab_id),
+            })
+            .await
+    }
+
+    pub async fn update_page_tab(
+        &self,
+        command: UpdateFrontstagePageTabCommand,
+    ) -> Result<domain::frontstage::FrontstagePageTabRecord> {
+        let actor = self
+            .repository
+            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .await?;
+        ensure_design_permission(&actor)?;
+        self.repository
+            .update_frontstage_page_tab(&UpdateFrontstagePageTabInput {
+                workspace_id: command.workspace_id,
+                actor_user_id: command.actor_user_id,
+                page_id: command.page_id,
+                tab_id: command.tab_id,
+                title: command.title,
+                rank: command.rank.map(|rank| normalize_rank(Some(rank))),
+            })
+            .await
+    }
+
+    pub async fn delete_page_tab(&self, command: DeleteFrontstagePageTabCommand) -> Result<()> {
+        let actor = self
+            .repository
+            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .await?;
+        ensure_design_permission(&actor)?;
+        self.repository
+            .delete_frontstage_page_tab(
+                command.workspace_id,
+                command.page_id,
+                command.tab_id,
+                command.actor_user_id,
+            )
+            .await
+    }
+
+    pub async fn save_tab_document(
+        &self,
+        command: SaveFrontstageTabDocumentCommand,
     ) -> Result<domain::frontstage::FrontstagePageDetail> {
         let actor = self
             .repository
@@ -322,15 +486,16 @@ where
 
         let detail = self
             .repository
-            .save_frontstage_page_content(&SaveFrontstagePageContentInput {
+            .save_frontstage_tab_document(&SaveFrontstageTabDocumentInput {
                 workspace_id: command.workspace_id,
                 actor_user_id: command.actor_user_id,
                 page_id: command.page_id,
+                tab_id: command.tab_id,
                 schema_payload: command.schema_payload,
                 root_payload: command.root_payload,
             })
             .await?;
-        self.audit(&actor, &detail.page, "frontstage.page_content_saved")
+        self.audit(&actor, &detail.page, "frontstage.tab_document_saved")
             .await?;
 
         Ok(detail)
@@ -385,7 +550,12 @@ where
         Ok(saved)
     }
 
-    async fn ensure_page_parent(&self, workspace_id: Uuid, parent_id: Option<Uuid>) -> Result<()> {
+    async fn ensure_page_parent_placement(
+        &self,
+        workspace_id: Uuid,
+        parent_id: Option<Uuid>,
+        placement: domain::frontstage::FrontstageNavigationPlacement,
+    ) -> Result<()> {
         let Some(parent_id) = parent_id else {
             return Ok(());
         };
@@ -398,6 +568,11 @@ where
 
         if parent.kind != domain::FrontstagePageKind::Group {
             return Err(ControlPlaneError::InvalidInput("parent_id").into());
+        }
+        if parent.placement != placement {
+            return Err(
+                ControlPlaneError::InvalidInput("frontstage_page_placement_mismatch").into(),
+            );
         }
 
         Ok(())
@@ -506,8 +681,8 @@ fn normalize_rank(rank: Option<String>) -> String {
     rank.unwrap_or_default()
 }
 
-fn reserved_schema_root_uid(page_id: Uuid) -> String {
-    format!("frontstage_page_schema_root:{page_id}")
+fn reserved_tab_document_root_uid(tab_id: Uuid) -> String {
+    format!("frontstage.tab.{tab_id}.root")
 }
 
 fn build_visible_frontstage_page_tree(
@@ -806,9 +981,8 @@ mod tests {
             icon: None,
             tooltip: None,
             is_hidden: false,
+            placement: domain::frontstage::FrontstageNavigationPlacement::Sidebar,
             slug: None,
-            schema_root_uid: (kind == FrontstagePageKind::Page)
-                .then(|| format!("schema-root:{id}")),
             rank: rank.to_owned(),
             created_at: OffsetDateTime::UNIX_EPOCH,
             updated_at: OffsetDateTime::UNIX_EPOCH,

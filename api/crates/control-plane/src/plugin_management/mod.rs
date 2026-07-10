@@ -37,8 +37,8 @@ use crate::{
     },
     plugin_lifecycle::derive_availability_status,
     ports::{
-        AuthRepository, CreatePluginAssignmentInput, CreatePluginTaskInput,
-        FrontendBlockCatalogRegistryInput, FrontendBlockCatalogRepository,
+        AuthRepository, CommitPluginInstallationProjectionInput, CreatePluginAssignmentInput,
+        CreatePluginTaskInput, FrontendBlockCatalogRegistryInput, FrontendBlockCatalogRepository,
         JsDependencyRegistryInput, JsDependencyRepository, ModelProviderRepository,
         NodeContributionRegistryInput, NodeContributionRepository, OfficialPluginArtifact,
         OfficialPluginSourceEntry, OfficialPluginSourcePort, PluginRepository, ProviderRuntimePort,
@@ -47,6 +47,7 @@ use crate::{
         UpdatePluginDesiredStateInput, UpdatePluginRuntimeSnapshotInput,
         UpdatePluginTaskStatusInput, UpsertModelProviderCatalogCacheInput,
         UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
+        UpsertPluginPackageCatalogProjectionInput,
     },
     state_transition::ensure_plugin_task_transition,
 };

@@ -29,6 +29,16 @@ pub struct UpsertPluginInstallationInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct CommitPluginInstallationProjectionInput {
+    pub installation: UpsertPluginInstallationInput,
+    pub artifact_instance: UpsertPluginArtifactInstanceInput,
+    pub package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
+    pub node_contributions: ReplaceInstallationNodeContributionsInput,
+    pub js_dependencies: ReplaceInstallationJsDependenciesInput,
+    pub frontend_blocks: ReplaceInstallationFrontendBlocksInput,
+}
+
+#[derive(Debug, Clone)]
 pub struct CreatePluginAssignmentInput {
     pub installation_id: Uuid,
     pub workspace_id: Uuid,
@@ -187,6 +197,12 @@ pub trait OfficialPluginSourcePort: Send + Sync {
 
 #[async_trait]
 pub trait PluginRepository: Send + Sync {
+    async fn commit_plugin_installation_projection(
+        &self,
+        _input: &CommitPluginInstallationProjectionInput,
+    ) -> anyhow::Result<domain::PluginInstallationRecord> {
+        anyhow::bail!("plugin installation projection commit is not supported")
+    }
     async fn upsert_installation(
         &self,
         input: &UpsertPluginInstallationInput,
@@ -353,6 +369,10 @@ pub struct FrontendBlockCatalogRegistryInput {
     pub title: String,
     pub runtime: String,
     pub entry: String,
+    pub code_template: Option<String>,
+    pub code_template_version: Option<String>,
+    pub code_template_language: Option<String>,
+    pub code_modules: Vec<domain::FrontendBlockCodeModule>,
     pub context_contract: domain::FrontendBlockContextContract,
     pub permissions: domain::FrontendBlockPermissions,
     pub ui_capabilities: Vec<String>,

@@ -35,14 +35,11 @@ export interface BlockContextPage {
 }
 
 export interface BlockContextDataAccess {
-  query(resource: string, params?: BlockContextRecord): Promise<unknown>;
-  create(resource: string, input: BlockContextRecord): Promise<unknown>;
-  update(resource: string, id: string, input: BlockContextRecord): Promise<unknown>;
-  delete(resource: string, id: string): Promise<void>;
+  query(queryId: string, params?: BlockContextRecord): Promise<unknown>;
 }
 
 export interface BlockContextActions {
-  invoke(action: string, payload?: BlockContextRecord): Promise<unknown>;
+  invoke(actionId: string, params?: BlockContextRecord): Promise<unknown>;
 }
 
 export interface BlockContextEvents {

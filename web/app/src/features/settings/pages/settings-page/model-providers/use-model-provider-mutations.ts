@@ -42,6 +42,7 @@ import {
   type UploadResultSummary
 } from './shared';
 import { i18nText } from '../../../../../shared/i18n/text';
+import { frontstageBlockCatalogQueryKeyPrefix } from '../../../../frontstage/api/block-catalog';
 
 export function useModelProviderMutations({
   csrfToken,
@@ -90,6 +91,17 @@ export function useModelProviderMutations({
         queryKey: settingsOfficialPluginsQueryKey
       })
     ]);
+  }
+
+  async function invalidatePluginContributionQueries() {
+    await invalidateModelProviderQueries();
+    await queryClient.invalidateQueries({
+      queryKey: frontstageBlockCatalogQueryKeyPrefix
+    });
+    queryClient.removeQueries({
+      queryKey: frontstageBlockCatalogQueryKeyPrefix,
+      type: 'inactive'
+    });
   }
 
   const createMutation = useMutation({
@@ -290,7 +302,7 @@ export function useModelProviderMutations({
     onSuccess: async () => {
       setDrawerState(null);
       setInstanceModalState(null);
-      await invalidateModelProviderQueries();
+      await invalidatePluginContributionQueries();
     }
   });
 
@@ -331,7 +343,7 @@ export function useModelProviderMutations({
           status
         });
         if (status === 'success') {
-          await invalidateModelProviderQueries();
+          await invalidatePluginContributionQueries();
         }
         return;
       }
@@ -369,7 +381,7 @@ export function useModelProviderMutations({
           result.installation.availability_status
         ).label
       });
-      await invalidateModelProviderQueries();
+      await invalidatePluginContributionQueries();
     }
   });
 
@@ -384,7 +396,7 @@ export function useModelProviderMutations({
         csrfToken
       );
     },
-    onSuccess: invalidateModelProviderQueries
+    onSuccess: invalidatePluginContributionQueries
   });
 
   const installCurrentNodeArtifactMutation = useMutation({
@@ -398,7 +410,7 @@ export function useModelProviderMutations({
         csrfToken
       );
     },
-    onSuccess: invalidateModelProviderQueries
+    onSuccess: invalidatePluginContributionQueries
   });
 
   const versionMutation = useMutation({
@@ -457,7 +469,7 @@ export function useModelProviderMutations({
             ? detail.migrated_instance_count
             : null
       });
-      await invalidateModelProviderQueries();
+      await invalidatePluginContributionQueries();
     }
   });
 

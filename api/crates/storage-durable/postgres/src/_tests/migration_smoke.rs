@@ -460,7 +460,7 @@ async fn migration_smoke_creates_identity_join_scoped_readiness_without_replacin
             vec!["application_id", "name"],
         ),
         ("application_tag_bindings", vec!["application_id", "tag_id"]),
-        ("frontstage_page_schemas", vec!["page_id"]),
+        ("frontstage_page_schemas", vec!["tab_id"]),
         ("main_source_defaults", vec!["workspace_id"]),
         (
             "model_provider_instance_secrets",

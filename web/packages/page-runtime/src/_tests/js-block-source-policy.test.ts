@@ -14,6 +14,22 @@ export default defineBlock({
 `;
 
 describe('JS block source static policy', () => {
+  test('rejects imports outside a catalog-scoped allowlist', () => {
+    expect(
+      validateJsBlockSource(
+        "import { Button } from '@1flowbase/block-renderer/antd-facade'; export default {};",
+        { allowedImports: ['@1flowbase/block-sdk'] }
+      )
+    ).toMatchObject({
+      ok: false,
+      errors: [
+        {
+          code: 'import_denied',
+          sourceLocation: { line: 1, column: 1 }
+        }
+      ]
+    });
+  });
   test('accepts a block skeleton that imports only the first-party SDKs', () => {
     const result = validateJsBlockSource(validBlockSkeleton);
 

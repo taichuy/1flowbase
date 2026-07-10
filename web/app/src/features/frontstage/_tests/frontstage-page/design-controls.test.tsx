@@ -7,6 +7,7 @@ import {
 } from '@testing-library/react';
 import { useState } from 'react';
 import { expect, vi } from 'vitest';
+import { createDefaultJsBlockWorkerExecutor } from '@1flowbase/page-runtime';
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
@@ -19,7 +20,6 @@ import type {
   SaveFrontstagePageContentInput
 } from '../../api/page-content';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
-import { createFrontstageBuiltInJsBlockTemplateCode } from '../../lib/block-templates';
 import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
@@ -73,6 +73,19 @@ vi.mock(
 vi.mock('../../api/block-code', () => blockCodeApi);
 
 const SLOW_FRONTSTAGE_TEST_TIMEOUT = 20_000;
+const PLUGIN_CODE_TEMPLATE = `
+import { defineBlock } from '@1flowbase/block-sdk';
+import { Text } from '@1flowbase/block-renderer/antd-facade';
+
+export default defineBlock({
+  id: 'plugin-template',
+  title: 'Plugin Template',
+  initialState: {},
+  async render() {
+    return Text({ children: 'Plugin template ready' });
+  }
+});
+`.trim();
 
 vi.setConfig({ testTimeout: SLOW_FRONTSTAGE_TEST_TIMEOUT });
 
@@ -168,7 +181,6 @@ function createPageContent(
       kind: 'page',
       parentId: null,
       rank: '001000',
-      schemaRootUid: 'root-1'
     },
     schema: {
       rootUid: 'root-1',
@@ -358,6 +370,16 @@ function createCatalogEntry(
       inputSchema: {}
     },
     uiCapabilities: [],
+    codeCapabilities: {
+      template: {
+        source: PLUGIN_CODE_TEMPLATE,
+        version: '2.4.0',
+        language: 'tsx'
+      },
+      allowedImports: [],
+      monacoExtraLibs: [],
+      workerModuleSources: []
+    },
     raw: {} as NormalizedFrontstageBlockCatalogEntry['raw'],
     ...overrides
   };
@@ -554,7 +576,7 @@ describe('FrontStagePage - design controls', () => {
     expect(screen.getByText('保存中')).toBeInTheDocument();
   });
 
-  test('saves selected catalog block and writes blank JS template code', async () => {
+  test('AC-011 saves the selected runnable catalog template and auditable template metadata', async () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
     const saveState = mockPageContentSaveState();
@@ -609,7 +631,9 @@ describe('FrontStagePage - design controls', () => {
       runtime: {
         kind: 'iframe',
         entry: 'index.js',
-        hint: 'iframe'
+        hint: 'iframe',
+        code_template_version: '2.4.0',
+        code_template_language: 'tsx'
       }
     });
     expect(block).not.toHaveProperty('layout');
@@ -618,59 +642,61 @@ describe('FrontStagePage - design controls', () => {
       'page-1',
       expect.objectContaining({
         codeRef: 'frontstage-js-block-1-code',
-        code: createFrontstageBuiltInJsBlockTemplateCode({
-          templateId: 'blank',
-          blockId: 'frontstage-js-block-1',
-          codeRef: 'frontstage-js-block-1-code',
-          contributionCode: 'frontstage.js-ui-block'
-        })
+        code: PLUGIN_CODE_TEMPLATE
       }),
       'csrf-123'
     );
+
+    const runtimeMessages = await createDefaultJsBlockWorkerExecutor().handleMessage({
+      direction: 'host_to_worker',
+      type: 'run',
+      request: {
+        requestId: 'request-1',
+        blockId: 'frontstage-js-block-1',
+        source: PLUGIN_CODE_TEMPLATE,
+        props: {},
+        state: {},
+        contextSnapshot: {},
+        limits: { timeoutMs: 1000 }
+      }
+    });
+    expect(runtimeMessages).toEqual([
+      {
+        direction: 'worker_to_host',
+        type: 'rendered',
+        requestId: 'request-1',
+        schema: {
+          primitive: 'Text',
+          props: { children: 'Plugin template ready' }
+        }
+      }
+    ]);
   });
 
-  test.each([
-    ['Data Table', 'data-table'],
-    ['Create Form', 'create-form']
-  ] as const)(
-    'writes the selected %s JS template code when adding a block',
-    async (templateName, templateId) => {
-      authenticate(['frontstage.page.design']);
-      mockFrontstageBlockCatalog([createCatalogEntry()]);
-      mockPageContentSaveState();
-      render(
-        <AppProviders>
-          <FrontStagePageHarness
-            pageId="page-1"
-            initialPageTree={[createBackendPage('page-1')]}
-            pageContent={createPageContent()}
-          />
-        </AppProviders>
-      );
-      activateDesignMode();
-      fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
-      fireEvent.click(await screen.findByRole('radio', { name: templateName }));
-      fireEvent.click(screen.getByRole('button', { name: '选择' }));
+  test('AC-011 rejects a catalog entry without a code template before saving', async () => {
+    authenticate(['frontstage.page.design']);
+    mockFrontstageBlockCatalog([
+      createCatalogEntry({ codeCapabilities: undefined })
+    ]);
+    const saveState = mockPageContentSaveState();
 
-      await waitFor(() =>
-        expect(blockCodeApi.saveFrontstageBlockCode).toHaveBeenCalledTimes(1)
-      );
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent()}
+        />
+      </AppProviders>
+    );
 
-      expect(blockCodeApi.saveFrontstageBlockCode).toHaveBeenCalledWith(
-        'workspace-1',
-        'page-1',
-        expect.objectContaining({
-          code: createFrontstageBuiltInJsBlockTemplateCode({
-            templateId,
-            blockId: 'frontstage-js-block-1',
-            codeRef: 'frontstage-js-block-1-code',
-            contributionCode: 'frontstage.js-ui-block'
-          })
-        }),
-        'csrf-123'
-      );
-    }
-  );
+    activateDesignMode();
+    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+
+    expect(await screen.findByText('Catalog entry 缺少代码模板')).toBeInTheDocument();
+    expect(saveState.save).not.toHaveBeenCalled();
+    expect(blockCodeApi.saveFrontstageBlockCode).not.toHaveBeenCalled();
+  });
 
   test('disables Add Block while page content is saving', () => {
     authenticate(['frontstage.page.design']);

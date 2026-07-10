@@ -8,8 +8,8 @@ import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-conte
 
 const frontstageApi = vi.hoisted(() => ({
   frontstagePageContentQueryKey: vi.fn(
-    (workspaceId: string, pageId: string) =>
-      ['frontstage', workspaceId, 'pages', pageId, 'content'] as const
+    (workspaceId: string, pageId: string, tabId: string) =>
+      ['frontstage', workspaceId, 'pages', pageId, 'tabs', tabId, 'content'] as const
   ),
   saveFrontstagePageContent: vi.fn()
 }));
@@ -51,7 +51,6 @@ function createPageContent(title = '页面 1') {
       kind: 'page' as const,
       parentId: null,
       rank: '001000',
-      schemaRootUid: 'root-1'
     },
     schema: {
       rootUid: 'root-1',
@@ -92,7 +91,8 @@ function setupSave(queryClient = createQueryClient()) {
     () =>
       useFrontstagePageContentSave({
         workspaceId: 'workspace-1',
-        pageId: 'page-1'
+        pageId: 'page-1',
+        tabId: 'tab-1'
       }),
     { wrapper }
   );
@@ -128,12 +128,15 @@ describe('useFrontstagePageContentSave', () => {
       'workspace-1',
       'pages',
       'page-1',
+      'tabs',
+      'tab-1',
       'content'
     ];
 
     expect(frontstageApi.saveFrontstagePageContent).toHaveBeenCalledWith(
       'workspace-1',
       'page-1',
+      'tab-1',
       input,
       'csrf-123'
     );

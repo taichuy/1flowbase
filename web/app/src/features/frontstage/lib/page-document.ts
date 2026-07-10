@@ -28,6 +28,8 @@ export interface FrontstageBlockRuntimeHint {
   kind: string;
   entry: string | null;
   hint: string;
+  code_template_version?: string;
+  code_template_language?: 'jsx' | 'tsx';
 }
 
 export type FrontstageBlockLayout = Record<string, unknown> & {
@@ -102,7 +104,6 @@ function resolveRootUid(content: FrontstagePageContent): string {
   return (
     asOptionalString(content.root.uid) ??
     asOptionalString(content.schema.rootUid) ??
-    asOptionalString(content.page.schemaRootUid) ??
     content.page.id
   );
 }
@@ -253,7 +254,22 @@ function normalizeRuntime(
       entry:
         getFirstString(rawRuntime, ['entry', 'entrypoint', 'entry_point']) ??
         getFirstString(block, ['entry', 'runtimeEntry', 'runtime_entry']),
-      hint: getFirstString(rawRuntime, ['hint']) ?? kind
+      hint: getFirstString(rawRuntime, ['hint']) ?? kind,
+      ...(getFirstString(rawRuntime, ['code_template_version'])
+        ? {
+            code_template_version: getFirstString(rawRuntime, [
+              'code_template_version'
+            ]) as string
+          }
+        : {}),
+      ...(getFirstString(rawRuntime, ['code_template_language']) === 'jsx' ||
+      getFirstString(rawRuntime, ['code_template_language']) === 'tsx'
+        ? {
+            code_template_language: getFirstString(rawRuntime, [
+              'code_template_language'
+            ]) as 'jsx' | 'tsx'
+          }
+        : {})
     };
   }
 

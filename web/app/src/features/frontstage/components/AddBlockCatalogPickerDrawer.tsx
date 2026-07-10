@@ -4,19 +4,13 @@ import {
   Drawer,
   Empty,
   List,
-  Radio,
   Space,
   Tag,
   Typography
 } from 'antd';
 import type { FC } from 'react';
-import { useEffect, useMemo, useState } from 'react';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
-import {
-  listFrontstageBuiltInJsBlockTemplates,
-  type FrontstageBuiltInJsBlockTemplateId
-} from '../lib/block-templates';
 import { i18nText } from '../../../shared/i18n/text';
 
 export interface AddBlockCatalogPickerDrawerProps {
@@ -25,10 +19,7 @@ export interface AddBlockCatalogPickerDrawerProps {
   loading?: boolean;
   error?: Error | null;
   saving?: boolean;
-  onSelect: (
-    entry: NormalizedFrontstageBlockCatalogEntry,
-    templateId: FrontstageBuiltInJsBlockTemplateId
-  ) => void;
+  onSelect: (entry: NormalizedFrontstageBlockCatalogEntry) => void;
   onClose: () => void;
 }
 
@@ -36,18 +27,6 @@ export const AddBlockCatalogPickerDrawer: FC<
   AddBlockCatalogPickerDrawerProps
 > = ({ open, items, loading, error, saving, onSelect, onClose }) => {
   const isBusy = Boolean(loading || saving);
-  const templates = useMemo(() => listFrontstageBuiltInJsBlockTemplates(), []);
-  const [selectedTemplateId, setSelectedTemplateId] =
-    useState<FrontstageBuiltInJsBlockTemplateId>('blank');
-  const selectedTemplate = templates.find(
-    (template) => template.id === selectedTemplateId
-  );
-
-  useEffect(() => {
-    if (open) {
-      setSelectedTemplateId('blank');
-    }
-  }, [open]);
 
   return (
     <Drawer
@@ -58,32 +37,6 @@ export const AddBlockCatalogPickerDrawer: FC<
       width={520}
     >
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        <Space direction="vertical" size={6} style={{ width: '100%' }}>
-          <Typography.Text strong>{i18nText("frontstage", "auto.built_in_templates")}</Typography.Text>
-          <Radio.Group
-            value={selectedTemplateId}
-            disabled={isBusy}
-            onChange={(event) =>
-              setSelectedTemplateId(
-                event.target.value as FrontstageBuiltInJsBlockTemplateId
-              )
-            }
-          >
-            <Space direction="vertical" size={4}>
-              {templates.map((template) => (
-                <Radio key={template.id} value={template.id}>
-                  {template.title}
-                </Radio>
-              ))}
-            </Space>
-          </Radio.Group>
-          {selectedTemplate ? (
-            <Typography.Text type="secondary">
-              {selectedTemplate.description}
-            </Typography.Text>
-          ) : null}
-        </Space>
-
         {error ? (
           <Alert
             message={i18nText("frontstage", "auto.block_catalog_load_failed")}
@@ -106,37 +59,50 @@ export const AddBlockCatalogPickerDrawer: FC<
             loading={loading}
             dataSource={items}
             rowKey={(entry) => entry.id}
-            renderItem={(entry) => (
-              <List.Item
-                actions={[
-                  <Button
-                    key="select"
-                    aria-label={i18nText("frontstage", "auto.select")}
-                    type="primary"
-                    size="small"
-                    disabled={isBusy}
-                    loading={saving}
-                    onClick={() => onSelect(entry, selectedTemplateId)}
-                  >
-                    {i18nText("frontstage", "auto.select")}</Button>
-                ]}
-              >
-                <List.Item.Meta
-                  title={entry.title}
-                  description={
-                    <Space size={6} wrap>
-                      <Tag>{entry.runtimeKind}</Tag>
-                      <Typography.Text type="secondary">
-                        {entry.providerCode}
-                      </Typography.Text>
-                      <Typography.Text type="secondary">
-                        {entry.contributionCode}
-                      </Typography.Text>
-                    </Space>
-                  }
-                />
-              </List.Item>
-            )}
+            renderItem={(entry) => {
+              const hasCodeTemplate = Boolean(entry.codeCapabilities?.template);
+
+              return (
+                <List.Item
+                  actions={[
+                    <Button
+                      key="select"
+                      aria-label={i18nText("frontstage", "auto.select")}
+                      type="primary"
+                      size="small"
+                      disabled={isBusy || !hasCodeTemplate}
+                      loading={saving}
+                      onClick={() => onSelect(entry)}
+                    >
+                      {i18nText("frontstage", "auto.select")}</Button>
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={entry.title}
+                    description={
+                      <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                        <Space size={6} wrap>
+                          <Tag>{entry.runtimeKind}</Tag>
+                          <Typography.Text type="secondary">
+                            {entry.providerCode}
+                          </Typography.Text>
+                          <Typography.Text type="secondary">
+                            {entry.contributionCode}
+                          </Typography.Text>
+                        </Space>
+                        {!hasCodeTemplate ? (
+                          <Alert
+                            message={i18nText("frontstage", "auto.catalog_entry_missing_code_template")}
+                            type="error"
+                            showIcon
+                          />
+                        ) : null}
+                      </Space>
+                    }
+                  />
+                </List.Item>
+              );
+            }}
           />
         )}
       </Space>

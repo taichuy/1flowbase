@@ -125,7 +125,7 @@ export interface FrontstageBlockLimitsConfiguration {
   maxEventChainDepth: number | null;
   allowedActions: string[];
   allowedEvents: string[];
-  allowedDataModels: string[];
+  allowedQueries: string[];
   allowedDataOperations: FrontstageBlockContextDataBoundary['operations'];
 }
 
@@ -302,7 +302,7 @@ function createContextConfiguration(
       state: createBoundary('ctx.state'),
       data: {
         ...createBoundary('ctx.data'),
-        models: [...(limits.allowedDataModels ?? [])],
+        models: [...(limits.allowedQueries ?? [])],
         operations: [...(limits.allowedDataOperations ?? [])]
       },
       actions: {
@@ -327,7 +327,7 @@ function createLimitsConfiguration(
     maxEventChainDepth: readFiniteNumber(limits.maxEventChainDepth),
     allowedActions: [...(limits.allowedActions ?? [])],
     allowedEvents: [...(limits.allowedEvents ?? [])],
-    allowedDataModels: [...(limits.allowedDataModels ?? [])],
+    allowedQueries: [...(limits.allowedQueries ?? [])],
     allowedDataOperations: [...(limits.allowedDataOperations ?? [])]
   };
 }

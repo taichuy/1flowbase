@@ -1,7 +1,4 @@
-import type {
-  JsBlockHostDataEffect,
-  JsBlockHostEffectHandler
-} from '@1flowbase/page-runtime';
+import type { JsBlockHostEffectHandlers } from '@1flowbase/page-runtime';
 import type { Dispatch, SetStateAction } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -76,7 +73,7 @@ export interface UseFrontstagePageCanvasRuntimeSessionsInput {
     | null
     | undefined;
   runtimeSessionFactory?: FrontstagePageCanvasRuntimeSessionFactory;
-  dataEffectHandler?: JsBlockHostEffectHandler<JsBlockHostDataEffect>;
+  handlers?: JsBlockHostEffectHandlers;
 }
 
 export interface UseFrontstagePageCanvasRuntimeSessionsResult {
@@ -100,7 +97,7 @@ type InternalRuntimeSessionEntry =
 export function useFrontstagePageCanvasRuntimeSessions({
   runtimeRunPlanState,
   runtimeSessionFactory = createFrontstageRestrictedBlockRuntimeSession,
-  dataEffectHandler
+  handlers
 }: UseFrontstagePageCanvasRuntimeSessionsInput): UseFrontstagePageCanvasRuntimeSessionsResult {
   const activeRuntimeSessionsRef = useRef(
     new Map<string, ActiveRuntimeSession>()
@@ -145,7 +142,7 @@ export function useFrontstagePageCanvasRuntimeSessions({
         item,
         sessionKey,
         runtimeSessionFactory,
-        dataEffectHandler,
+        handlers,
         activeRuntimeSessions,
         setInternalEntries
       });
@@ -169,7 +166,7 @@ export function useFrontstagePageCanvasRuntimeSessions({
         ? currentEntries
         : nextEntries
     );
-  }, [dataEffectHandler, runtimeRunPlanState, runtimeSessionFactory]);
+  }, [handlers, runtimeRunPlanState, runtimeSessionFactory]);
 
   useEffect(
     () => () => {
@@ -207,16 +204,14 @@ function createAndRunRuntimeSession({
   item,
   sessionKey,
   runtimeSessionFactory,
-  dataEffectHandler,
+  handlers,
   activeRuntimeSessions,
   setInternalEntries
 }: {
   item: FrontstagePageCanvasRuntimeRunPlanReadyItem;
   sessionKey: string;
   runtimeSessionFactory: FrontstagePageCanvasRuntimeSessionFactory;
-  dataEffectHandler:
-    | JsBlockHostEffectHandler<JsBlockHostDataEffect>
-    | undefined;
+  handlers: JsBlockHostEffectHandlers | undefined;
   activeRuntimeSessions: Map<string, ActiveRuntimeSession>;
   setInternalEntries: Dispatch<SetStateAction<InternalRuntimeSessionEntry[]>>;
 }): InternalRuntimeSessionEntry {
@@ -228,8 +223,8 @@ function createAndRunRuntimeSession({
       runPlan: item.runPlan
     };
 
-    if (dataEffectHandler) {
-      runtimeOptions.handlers = { data: dataEffectHandler };
+    if (handlers) {
+      runtimeOptions.handlers = handlers;
     }
 
     session = runtimeSessionFactory(runtimeOptions);

@@ -68,8 +68,8 @@ export function createJsBlockHostEffectBridge(
   options: JsBlockHostEffectBridgeOptions
 ): JsBlockHostEffectBridge {
   const resolveEffect = options.resolveEffect;
-  const dataHandler = options.handlers?.data ?? defaultEffectHandler;
-  const actionHandler = options.handlers?.action ?? defaultEffectHandler;
+  const dataHandler = options.handlers?.data;
+  const actionHandler = options.handlers?.action;
 
   return {
     getMediatorState() {
@@ -93,18 +93,43 @@ export function createJsBlockHostEffectBridge(
       }
 
       if (effect.type === 'data') {
+        if (!dataHandler) {
+          resolveMissingHandler(effect, 'query_denied', 'data.handler', resolveEffect);
+          return { handled: true, transition };
+        }
         resolveAllowedEffect(effect, dataHandler, resolveEffect);
         return { handled: true, transition };
       }
 
+      if (!actionHandler) {
+        resolveMissingHandler(effect, 'action_denied', 'action.handler', resolveEffect);
+        return { handled: true, transition };
+      }
       resolveAllowedEffect(effect, actionHandler, resolveEffect);
       return { handled: true, transition };
     }
   };
 }
 
-function defaultEffectHandler(): undefined {
-  return undefined;
+function resolveMissingHandler(
+  effect: JsBlockHostEffectWithId<JsBlockHostResolvableEffect>,
+  code: BlockRuntimeErrorCode,
+  path: string,
+  resolveEffect: (message: JsBlockWorkerEffectResultMessage) => void
+): void {
+  const message = `Host handler is not registered for ${effect.type} capability.`;
+  resolveEffect({
+    direction: 'host_to_worker',
+    type: 'effect_result',
+    requestId: effect.requestId,
+    effectId: effect.effectId,
+    ok: false,
+    error: {
+      kind: 'runtime_error',
+      message,
+      errors: [{ code, path, message }]
+    }
+  });
 }
 
 function resolveAllowedEffect<Effect extends JsBlockHostResolvableEffect>(

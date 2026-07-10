@@ -219,11 +219,12 @@ export default defineBlock({
         kind: 'source_policy_failed',
         message: 'JS block source transform failed.',
         errors: [
-          {
-            code: 'transform_failed',
-            path: 'source.identifiers.window',
-            message: "Identifier 'window' is not allowed in JS block source."
-          }
+            {
+              code: 'transform_failed',
+              path: 'source.identifiers.window',
+              message: "Identifier 'window' is not allowed in JS block source.",
+              sourceLocation: { line: 1, column: 1 }
+            }
         ]
       }
     ]);
@@ -247,13 +248,10 @@ import { Text } from '@1flowbase/block-renderer/antd-facade';
 export default defineBlock({
   async render(ctx) {
     ctx.actions.invoke('record.refresh', { id: ctx.params.recordId });
-    ctx.data.query('records', {
+    ctx.data.query('records.list', {
       model: 'private_records',
       where: { id: ctx.params.recordId }
     });
-    ctx.data.create('records', { title: 'New' });
-    ctx.data.update('records', 'record-1', { title: 'Updated' });
-    ctx.data.delete('records', 'record-1');
     return Text({ children: 'Done' });
   }
 });
@@ -275,36 +273,11 @@ export default defineBlock({
         type: 'data',
         requestId: 'request-1',
         effectId: expect.any(String),
-        operation: 'query',
-        payload: { model: 'records', where: { id: 'record-1' } }
-      },
-      {
-        direction: 'worker_to_host',
-        type: 'data',
-        requestId: 'request-1',
-        effectId: expect.any(String),
-        operation: 'create',
-        payload: { model: 'records', input: { title: 'New' } }
-      },
-      {
-        direction: 'worker_to_host',
-        type: 'data',
-        requestId: 'request-1',
-        effectId: expect.any(String),
-        operation: 'update',
-        payload: {
-          model: 'records',
-          id: 'record-1',
-          input: { title: 'Updated' }
+        queryId: 'records.list',
+        params: {
+          model: 'private_records',
+          where: { id: 'record-1' }
         }
-      },
-      {
-        direction: 'worker_to_host',
-        type: 'data',
-        requestId: 'request-1',
-        effectId: expect.any(String),
-        operation: 'delete',
-        payload: { model: 'records', id: 'record-1' }
       },
       {
         direction: 'worker_to_host',
@@ -351,8 +324,8 @@ export default defineBlock({
         type: 'data',
         requestId: 'request-1',
         effectId: expect.any(String),
-        operation: 'query',
-        payload: { model: 'records', where: { id: 'record-1' } }
+        queryId: 'records',
+        params: { where: { id: 'record-1' } }
       }
     ]);
     const dataEffectId = getEffectId(messages[0]);
@@ -569,8 +542,7 @@ export default defineBlock({
         type: 'data',
         requestId: 'request-1',
         effectId,
-        operation: 'query',
-        payload: { model: 'records' }
+        queryId: 'records'
       }
     ]);
   });

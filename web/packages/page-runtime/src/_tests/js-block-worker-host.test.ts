@@ -216,7 +216,7 @@ describe('JS block worker host adapter', () => {
       effectBridge: {
         policy: {
           allowedEvents: ['record.saved'],
-          allowedDataModels: ['records'],
+          allowedQueries: ['records'],
           allowedDataOperations: ['query']
         },
         getContext: () => ({ tickId: 'tick-1' }),
@@ -232,8 +232,8 @@ describe('JS block worker host adapter', () => {
       type: 'data',
       requestId: 'request-1',
       effectId: 'effect-data',
-      operation: 'query',
-      payload: { model: 'records', where: { id: 'record-1' } }
+      queryId: 'records',
+      params: { where: { id: 'record-1' } }
     });
     worker.emitMessage({
       direction: 'worker_to_host',
