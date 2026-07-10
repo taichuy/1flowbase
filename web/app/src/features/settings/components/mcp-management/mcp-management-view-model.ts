@@ -54,6 +54,16 @@ export function normalizeMcpDirectoryPath(path: string | null | undefined) {
   return value.startsWith('/') ? value : `/${value}`;
 }
 
+function parentDirectoryPath(path: string) {
+  const segments = normalizeMcpDirectoryPath(path).split('/').filter(Boolean);
+  if (segments.length <= 1) return '/';
+  return `/${segments.slice(0, -1).join('/')}`;
+}
+
+function directoryName(path: string) {
+  return normalizeMcpDirectoryPath(path).split('/').filter(Boolean).at(-1) ?? '/';
+}
+
 function slugSegment(value: string) {
   return value
     .trim()
@@ -92,6 +102,7 @@ export function buildMcpDirectoryTreeData({
   bindings: DirectoryBinding[];
   tools: DirectoryTool[];
 }): McpDirectoryTreeNode[] {
+  const rootPath = normalizeMcpDirectoryPath(instance.default_entry_path);
   const instanceGroups = groups.filter(
     (group) => group.instance_record_id === instance.id
   );
@@ -99,74 +110,107 @@ export function buildMcpDirectoryTreeData({
     (binding) => binding.instance_record_id === instance.id
   );
   const toolByRecordId = new Map(tools.map((tool) => [tool.id, tool]));
+  const bindingById = new Map(
+    instanceBindings.map((binding) => [binding.id, binding])
+  );
   const groupByPath = new Map(
     instanceGroups.map((group) => [normalizeMcpDirectoryPath(group.path), group])
   );
+  const directoryPaths = new Set<string>();
+
+  const registerPath = (rawPath: string) => {
+    let path = normalizeMcpDirectoryPath(rawPath);
+    while (path !== rootPath && path !== '/') {
+      directoryPaths.add(path);
+      path = parentDirectoryPath(path);
+    }
+  };
+
+  for (const group of instanceGroups) registerPath(group.path);
+  for (const binding of instanceBindings) registerPath(binding.group_path);
+
+  const groupNodeByPath = new Map<string, McpDirectoryTreeNode>();
+  const sortedPaths = Array.from(directoryPaths).sort((left, right) => {
+    const leftGroup = groupByPath.get(left);
+    const rightGroup = groupByPath.get(right);
+    return (
+      (leftGroup?.sort_order ?? Number.MAX_SAFE_INTEGER) -
+        (rightGroup?.sort_order ?? Number.MAX_SAFE_INTEGER) ||
+      left.localeCompare(right)
+    );
+  });
+
+  for (const path of sortedPaths) {
+    const group = groupByPath.get(path);
+    groupNodeByPath.set(path, {
+      key: `group:${path}`,
+      title: group?.display_name || directoryName(path),
+      display_name: group?.display_name || undefined,
+      description_short: group?.description_short ?? undefined,
+      node_type: 'group',
+      path,
+      children: []
+    });
+  }
+
+  const rootNode: McpDirectoryTreeNode = {
+    key: `instance:${instance.instance_id}:${rootPath}`,
+    title: `${instance.name} ${rootPath}`,
+    node_type: 'instance',
+    path: rootPath,
+    children: []
+  };
+
+  for (const [path, node] of groupNodeByPath) {
+    const parentPath = parentDirectoryPath(path);
+    (parentPath === rootPath ? rootNode : groupNodeByPath.get(parentPath))
+      ?.children?.push(node);
+  }
 
   for (const binding of instanceBindings) {
     const path = normalizeMcpDirectoryPath(binding.group_path);
-    if (!groupByPath.has(path)) {
-      groupByPath.set(path, {
-        id: path,
-        instance_record_id: instance.id,
-        path,
-        display_name: path === '/' ? '/' : '',
-        description_short: null,
-        enabled: true,
-        sort_order: Number.MAX_SAFE_INTEGER
-      });
-    }
+    const tool = toolByRecordId.get(binding.tool_record_id);
+    const bindingNode: McpDirectoryTreeNode = {
+      key: `binding:${binding.id}`,
+      title: binding.tool_id,
+      tool_short_description: tool?.short_description,
+      node_type: 'binding',
+      path,
+      binding_id: binding.id
+    };
+
+    (path === rootPath ? rootNode : groupNodeByPath.get(path))
+      ?.children?.push(bindingNode);
   }
 
-  const groupNodes = Array.from(groupByPath.values())
-    .sort(
-      (left, right) =>
-        left.sort_order - right.sort_order ||
-        left.path.localeCompare(right.path)
-    )
-    .map((group) => {
-      const path = normalizeMcpDirectoryPath(group.path);
-      const groupBindings = instanceBindings
-        .filter(
-          (binding) => normalizeMcpDirectoryPath(binding.group_path) === path
-        )
-        .sort(
-          (left, right) =>
-            left.sort_order - right.sort_order ||
-            left.tool_id.localeCompare(right.tool_id)
+  const sortChildren = (node: McpDirectoryTreeNode) => {
+    node.children?.sort((left, right) => {
+      if (left.node_type !== right.node_type) {
+        return left.node_type === 'group' ? -1 : 1;
+      }
+      if (left.node_type === 'binding' && right.node_type === 'binding') {
+        const leftBinding = left.binding_id
+          ? bindingById.get(left.binding_id)
+          : undefined;
+        const rightBinding = right.binding_id
+          ? bindingById.get(right.binding_id)
+          : undefined;
+        return (
+          (leftBinding?.sort_order ?? 0) - (rightBinding?.sort_order ?? 0) ||
+          left.title.localeCompare(right.title)
         );
-
-      return {
-        key: `group:${path}`,
-        title: group.display_name || path,
-        display_name: group.display_name || undefined,
-        description_short: group.description_short ?? undefined,
-        node_type: 'group' as const,
-        path,
-        children: groupBindings.map((binding) => {
-          const tool = toolByRecordId.get(binding.tool_record_id);
-
-          return {
-            key: `binding:${binding.id}`,
-            title: binding.tool_id,
-            tool_short_description: tool?.short_description,
-            node_type: 'binding' as const,
-            path,
-            binding_id: binding.id
-          };
-        })
-      };
+      }
+      const leftGroup = groupByPath.get(left.path);
+      const rightGroup = groupByPath.get(right.path);
+      return (
+        (leftGroup?.sort_order ?? Number.MAX_SAFE_INTEGER) -
+          (rightGroup?.sort_order ?? Number.MAX_SAFE_INTEGER) ||
+        left.path.localeCompare(right.path)
+      );
     });
+    node.children?.forEach(sortChildren);
+  };
 
-  const rootPath = normalizeMcpDirectoryPath(instance.default_entry_path);
-
-  return [
-    {
-      key: `instance:${instance.instance_id}:${rootPath}`,
-      title: `${instance.name} ${rootPath}`,
-      node_type: 'instance',
-      path: rootPath,
-      children: groupNodes
-    }
-  ];
+  sortChildren(rootNode);
+  return [rootNode];
 }

@@ -89,7 +89,7 @@ describe('mcp management view model', () => {
           },
           {
             key: 'group:/ops',
-            title: '/ops',
+            title: 'ops',
             display_name: undefined,
             description_short: undefined,
             node_type: 'group',
@@ -108,5 +108,100 @@ describe('mcp management view model', () => {
         ]
       }
     ]);
+  });
+
+  test('shows bindings mounted directly on the instance root', () => {
+    const treeData = buildMcpDirectoryTreeData({
+      instance: {
+        id: 'instance-record-1',
+        instance_id: 'workspace_ops',
+        name: 'Workspace Ops',
+        default_entry_path: '/'
+      },
+      groups: [],
+      bindings: [
+        {
+          id: 'binding-root',
+          instance_record_id: 'instance-record-1',
+          tool_record_id: 'tool-record-1',
+          group_path: '/',
+          tool_id: 'customer_search',
+          display_alias: null,
+          visible: true,
+          sort_order: 0
+        }
+      ],
+      tools: [
+        {
+          id: 'tool-record-1',
+          tool_id: 'customer_search',
+          short_description: 'Search customers.'
+        }
+      ]
+    });
+
+    expect(treeData[0]?.children).toEqual([
+      expect.objectContaining({ key: 'binding:binding-root', path: '/' })
+    ]);
+  });
+
+  test('nests child group paths under their parent group', () => {
+    const treeData = buildMcpDirectoryTreeData({
+      instance: {
+        id: 'instance-record-1',
+        instance_id: 'workspace_ops',
+        name: 'Workspace Ops',
+        default_entry_path: '/'
+      },
+      groups: [
+        {
+          id: 'group-1',
+          instance_record_id: 'instance-record-1',
+          path: '/ops',
+          display_name: 'Ops',
+          description_short: null,
+          enabled: true,
+          sort_order: 0
+        },
+        {
+          id: 'group-2',
+          instance_record_id: 'instance-record-1',
+          path: '/ops/customer',
+          display_name: 'Customer',
+          description_short: null,
+          enabled: true,
+          sort_order: 0
+        }
+      ],
+      bindings: [
+        {
+          id: 'binding-1',
+          instance_record_id: 'instance-record-1',
+          tool_record_id: 'tool-record-1',
+          group_path: '/ops/customer',
+          tool_id: 'customer_search',
+          display_alias: null,
+          visible: true,
+          sort_order: 0
+        }
+      ],
+      tools: [
+        {
+          id: 'tool-record-1',
+          tool_id: 'customer_search',
+          short_description: 'Search customers.'
+        }
+      ]
+    });
+
+    expect(treeData[0]?.children?.[0]).toMatchObject({
+      key: 'group:/ops',
+      children: [
+        {
+          key: 'group:/ops/customer',
+          children: [{ key: 'binding:binding-1' }]
+        }
+      ]
+    });
   });
 });

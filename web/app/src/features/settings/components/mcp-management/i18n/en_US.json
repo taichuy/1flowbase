@@ -1,6 +1,5 @@
 {
   "auto": {
-    "add_child_path": "Add child path",
     "cancel_child_group_creation": "Cancel child group creation",
     "directory_path": "Path",
     "display_name": "Display name",
@@ -10,6 +9,12 @@
     "parent_group_prefix": "Adding under parent:",
     "unnamed": "Unnamed",
     "unnamed_tool": "Unnamed Tool",
-    "visible": "Visible"
+    "visible": "Visible",
+    "add_current_type": "Add",
+    "current_action": "Current status",
+    "creating": "Creating",
+    "editing": "Editing",
+    "group_type": "Group",
+    "tool_mount_type": "Tool mount"
   }
 }

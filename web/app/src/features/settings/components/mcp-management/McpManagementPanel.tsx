@@ -1,7 +1,6 @@
 import {
   DeleteOutlined,
   DownloadOutlined,
-  DragOutlined,
   EditOutlined,
   FileOutlined,
   FolderOpenOutlined,
@@ -337,6 +336,9 @@ function McpInstancesTab({
   const watchedToolId = Form.useWatch('tool_id', bindingForm);
 
   const [parentGroupPath, setParentGroupPath] = useState<string | null>(null);
+  const [directoryEditorIntent, setDirectoryEditorIntent] = useState<
+    'create' | 'edit'
+  >('create');
 
   const [instancesState, dispatchInstancesState] = useReducer(
     mcpInstancesReducer,
@@ -597,7 +599,8 @@ function McpInstancesTab({
     if (!rootNode.children) rootNode.children = [];
 
     // Check if in new group creation state
-    const isEditingGroup = selectedDirectoryKey && selectedDirectoryKey.startsWith('group:');
+    const isEditingGroup =
+      directoryEditorMode === 'group' && directoryEditorIntent === 'edit';
     if (directoryEditorMode === 'group' && !isEditingGroup) {
       const pathText = watchedPath?.trim() || '';
       const draftGroupPath = normalizeMcpDirectoryPath(pathText || '/');
@@ -640,7 +643,8 @@ function McpInstancesTab({
     }
 
     // Check if in new binding creation state
-    const isEditingBinding = selectedDirectoryKey && selectedDirectoryKey.startsWith('binding:');
+    const isEditingBinding =
+      directoryEditorMode === 'binding' && directoryEditorIntent === 'edit';
     if (directoryEditorMode === 'binding' && !isEditingBinding) {
       const targetPath = normalizeMcpDirectoryPath(watchedGroupPath || selectedInstance.default_entry_path);
       let targetNode: any = null;
@@ -686,6 +690,7 @@ function McpInstancesTab({
     selectedInstanceGroups,
     selectedInstanceBindings,
     catalog.tools,
+    groupByPath,
     directoryEditorMode,
     selectedDirectoryKey,
     watchedPath,
@@ -693,7 +698,8 @@ function McpInstancesTab({
     watchedGroupDescriptionShort,
     watchedGroupPath,
     watchedToolId,
-    parentGroupPath
+    parentGroupPath,
+    directoryEditorIntent
   ]);
 
   const handleTreeDrop = (info: any) => {
@@ -874,6 +880,7 @@ function McpInstancesTab({
         selectedInstance?.default_entry_path
     );
 
+    setDirectoryEditorIntent('create');
     setEditingBinding(null);
     bindingForm.resetFields();
     bindingForm.setFieldsValue({
@@ -896,6 +903,7 @@ function McpInstancesTab({
     }
 
     setDirectoryEditorMode('binding');
+    setDirectoryEditorIntent('edit');
     setEditingBinding(binding);
     bindingForm.setFieldsValue({
       instance_id: selectedInstance?.instance_id ?? '',
@@ -975,6 +983,10 @@ function McpInstancesTab({
                   sort_order: 0
                 });
                 setDirectoryEditorMode('group');
+                setDirectoryEditorIntent('create');
+                setSelectedDirectoryKey(
+                  `instance:${record.instance_id}:${normalizeMcpDirectoryPath(record.default_entry_path)}`
+                );
                 setDirectoryModalOpen(true);
               }}
             />
@@ -1087,21 +1099,30 @@ function McpInstancesTab({
     setParentGroupPath(null);
   };
 
-  const startChildGroupCreation = () => {
-    const selectedGroupPath = selectedDirectoryKey?.startsWith('group:')
-      ? selectedDirectoryKey.slice('group:'.length)
-      : undefined;
+  const selectedDirectoryPath = () => {
+    if (selectedDirectoryKey.startsWith('group:')) {
+      return normalizeMcpDirectoryPath(
+        selectedDirectoryKey.slice('group:'.length)
+      );
+    }
+    if (selectedDirectoryKey.startsWith('binding:')) {
+      const binding = bindingById.get(
+        selectedDirectoryKey.slice('binding:'.length)
+      );
+      return normalizeMcpDirectoryPath(binding?.group_path);
+    }
+    return normalizeMcpDirectoryPath(selectedInstance?.default_entry_path);
+  };
+
+  const startChildGroupCreation = (path?: string) => {
     const currentPath = normalizeMcpDirectoryPath(
-      selectedGroupPath ??
-        groupForm.getFieldValue('path') ??
-        selectedInstance?.default_entry_path ??
-        '/'
+      path ?? selectedDirectoryPath()
     );
 
     setDirectoryEditorMode('group');
+    setDirectoryEditorIntent('create');
     setEditingBinding(null);
     setParentGroupPath(currentPath);
-    setSelectedDirectoryKey('');
     groupForm.resetFields();
     groupForm.setFieldsValue({
       instance_id: selectedInstance?.instance_id ?? '',
@@ -1111,6 +1132,15 @@ function McpInstancesTab({
       enabled: true,
       sort_order: 0
     });
+  };
+
+  const startToolMount = (path?: string) => {
+    const targetPath = normalizeMcpDirectoryPath(
+      path ?? selectedDirectoryPath()
+    );
+    setParentGroupPath(null);
+    setDirectoryEditorMode('binding');
+    resetBindingFormForCreate(targetPath);
   };
 
   const cancelChildGroupCreation = () => {
@@ -1249,23 +1279,21 @@ function McpInstancesTab({
                 />
               </div>
 
-              <Space className="mcp-management__directory-tree-toolbar">
-                <Button
-                  icon={<PlusOutlined />}
-                  disabled={!canManage}
-                  onClick={startChildGroupCreation}
-                >
-                  {i18nText('settingsMcpManagement', 'auto.add_child_path')}
-                </Button>
-                {parentGroupPath ? (
-                  <Button onClick={cancelChildGroupCreation}>
-                    {i18nText(
-                      'settingsMcpManagement',
-                      'auto.cancel_child_group_creation'
-                    )}
-                  </Button>
-                ) : null}
-              </Space>
+              <div className="mcp-management__directory-editor-status">
+                <Typography.Text type="secondary">
+                  {i18nText('settingsMcpManagement', 'auto.current_action')}
+                </Typography.Text>
+                <Tag color={directoryEditorIntent === 'edit' ? 'blue' : 'green'}>
+                  {directoryEditorIntent === 'edit'
+                    ? i18nText('settingsMcpManagement', 'auto.editing')
+                    : i18nText('settingsMcpManagement', 'auto.creating')}
+                </Tag>
+                <Typography.Text strong>
+                  {directoryEditorMode === 'group'
+                    ? i18nText('settingsMcpManagement', 'auto.group_type')
+                    : i18nText('settingsMcpManagement', 'auto.tool_mount_type')}
+                </Typography.Text>
+              </div>
 
               <Tree
                 className="mcp-management__directory-tree"
@@ -1274,33 +1302,26 @@ function McpInstancesTab({
                 showIcon
                 selectedKeys={selectedDirectoryKey ? [selectedDirectoryKey] : []}
                 treeData={treeData}
-                onSelect={(selectedKeys) => {
-                  if (selectedKeys.length === 0) {
-                    setSelectedDirectoryKey('');
-                    return;
-                  }
+                onSelect={(selectedKeys, info) => {
+                  if (selectedKeys.length === 0) return;
                   const key = String(selectedKeys[0]);
-                  if (key.includes('__draft__')) {
-                    return;
-                  }
-                  setParentGroupPath(null);
+                  if (key.includes('__draft__')) return;
+
                   setSelectedDirectoryKey(key);
-                  const [type, ...parts] = key.split(':');
-                  if (type === 'group') {
-                    const path = parts.join(':');
-                    setDirectoryEditorMode('group');
-                    setEditingBinding(null);
-                    applyDirectoryPathToForms(path);
-                  } else if (type === 'binding') {
-                    const bindingId = parts.join(':');
-                    applyBindingSelection(bindingId);
+                  if (directoryEditorIntent === 'edit') return;
+
+                  const node = info.node as unknown as McpDirectoryTreeNode;
+                  const path = normalizeMcpDirectoryPath(node.path);
+                  if (directoryEditorMode === 'group') {
+                    startChildGroupCreation(path);
                   } else {
-                    setSelectedDirectoryKey('');
+                    startToolMount(path);
                   }
                 }}
                 onDrop={handleTreeDrop}
                 titleRender={(node: any) => {
                   const [type, ...parts] = node.key.split(':');
+                  const isInstance = type === 'instance';
                   const isGroup = type === 'group';
                   const isBinding = type === 'binding';
 
@@ -1338,9 +1359,55 @@ function McpInstancesTab({
                   return (
                     <span className="mcp-management__tree-node-title">
                       {titleNode}
-                      {canManage && (isGroup || isBinding) && (
-                        <span className="mcp-management__tree-node-actions" onClick={(e) => e.stopPropagation()}>
-                          <Popconfirm
+                      {canManage && (isInstance || isGroup || isBinding) && (
+                        <span
+                          className={
+                            isInstance
+                              ? 'mcp-management__tree-node-actions mcp-management__tree-node-actions--visible'
+                              : 'mcp-management__tree-node-actions'
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {!isInstance ? (
+                            <Tooltip title={i18nText('settings', 'auto.edit')}>
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<EditOutlined />}
+                              aria-label={i18nText('settings', 'auto.edit')}
+                              onClick={() => {
+                                if (isGroup) {
+                                  setParentGroupPath(null);
+                                  setDirectoryEditorMode('group');
+                                  setDirectoryEditorIntent('edit');
+                                  setEditingBinding(null);
+                                  applyDirectoryPathToForms(node.path);
+                                } else {
+                                  applyBindingSelection(parts.join(':'));
+                                }
+                              }}
+                            />
+                            </Tooltip>
+                          ) : null}
+                          {isInstance || isGroup ? (
+                            <Tooltip title={i18nText('settingsMcpManagement', 'auto.add_current_type')}>
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={<PlusOutlined />}
+                                aria-label={i18nText('settingsMcpManagement', 'auto.add_current_type')}
+                                onClick={() => {
+                                  if (directoryEditorMode === 'group') {
+                                    startChildGroupCreation(node.path);
+                                  } else {
+                                    startToolMount(node.path);
+                                  }
+                                }}
+                              />
+                            </Tooltip>
+                          ) : null}
+                          {!isInstance ? (
+                            <Popconfirm
                             title={i18nText('settings', 'auto.mcp_hard_delete_confirm')}
                             onConfirm={() => {
                               if (isGroup) {
@@ -1360,7 +1427,8 @@ function McpInstancesTab({
                               className="ant-btn-dangerous"
                               aria-label="Delete"
                             />
-                          </Popconfirm>
+                            </Popconfirm>
+                          ) : null}
                         </span>
                       )}
                     </span>
@@ -1390,6 +1458,7 @@ function McpInstancesTab({
                 onChange={(value) => {
                   const nextMode = value as McpDirectoryEditorMode;
                   setDirectoryEditorMode(nextMode);
+                  setDirectoryEditorIntent('create');
                   if (nextMode === 'group') {
                     const currentPath =
                       bindingForm.getFieldValue('group_path') ??
@@ -1398,6 +1467,7 @@ function McpInstancesTab({
                       applyDirectoryPathToForms(currentPath);
                     }
                     setEditingBinding(null);
+                    startChildGroupCreation(selectedDirectoryPath());
                     return;
                   }
 
@@ -1406,13 +1476,13 @@ function McpInstancesTab({
                       ? selectedDirectoryKey.slice('group:'.length)
                       : undefined;
                   resetBindingFormForCreate(
-                    selectedGroupPath ?? selectedInstance.default_entry_path
+                    selectedGroupPath ?? selectedDirectoryPath()
                   );
                 }}
                 items={[
                   {
                     key: 'group',
-                    label: i18nText('settings', 'auto.add_group'),
+                    label: i18nText('settingsMcpManagement', 'auto.group_type'),
                     children: (
                       <Form
                         form={groupForm}
@@ -1428,12 +1498,17 @@ function McpInstancesTab({
                         }}
                         onFinish={(values) =>
                           saveGroupMutation.mutate(values, {
-                            onSuccess: closeDirectoryModal
+                            onSuccess: () => {
+                              const savedPath = normalizeMcpDirectoryPath(values.path);
+                              setParentGroupPath(null);
+                              setSelectedDirectoryKey(`group:${savedPath}`);
+                              applyDirectoryPathToForms(savedPath);
+                            }
                           })
                         }
                       >
                         {parentGroupPath && (
-                          <div style={{ marginBottom: 12 }}>
+                          <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
                             <Typography.Text type="secondary">
                               {i18nText(
                                 'settingsMcpManagement',
@@ -1441,7 +1516,13 @@ function McpInstancesTab({
                               )}{' '}
                               <strong>{parentGroupPath}</strong>
                             </Typography.Text>
-                          </div>
+                            <Button type="link" size="small" onClick={cancelChildGroupCreation}>
+                              {i18nText(
+                                'settingsMcpManagement',
+                                'auto.cancel_child_group_creation'
+                              )}
+                            </Button>
+                          </Flex>
                         )}
                         <Form.Item
                           name="instance_id"
@@ -1536,7 +1617,7 @@ function McpInstancesTab({
                   },
                   {
                     key: 'binding',
-                    label: i18nText('settings', 'auto.add_tool_binding'),
+                    label: i18nText('settingsMcpManagement', 'auto.tool_mount_type'),
                     children: (
                       <Form
                         form={bindingForm}

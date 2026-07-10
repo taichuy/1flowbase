@@ -378,12 +378,6 @@
   overflow-y: auto;
 }
 
-.mcp-management__directory-tree-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 4px;
-}
-
 .mcp-management__directory-tree .ant-tree-treenode {
   align-items: flex-start;
   padding: 1px 0;
@@ -446,7 +440,8 @@
   display: none;
 }
 
-.mcp-management__tree-node-title:hover .mcp-management__tree-node-actions {
+.mcp-management__tree-node-title:hover .mcp-management__tree-node-actions,
+.mcp-management__tree-node-actions--visible {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -475,4 +470,11 @@
   align-items: center !important;
   justify-content: center !important;
   margin-right: 2px !important;
+}
+
+.mcp-management__directory-editor-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
 }

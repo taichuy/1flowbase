@@ -1,6 +1,5 @@
 {
   "auto": {
-    "add_child_path": "新增子路径",
     "cancel_child_group_creation": "取消子分组新建",
     "directory_path": "路径",
     "display_name": "显示名称",
@@ -10,6 +9,12 @@
     "parent_group_prefix": "新增至父目录：",
     "unnamed": "未命名",
     "unnamed_tool": "未命名 Tool",
-    "visible": "可见"
+    "visible": "可见",
+    "add_current_type": "新增",
+    "current_action": "当前状态",
+    "creating": "新增",
+    "editing": "编辑",
+    "group_type": "分组",
+    "tool_mount_type": "Tool 挂载"
   }
 }
