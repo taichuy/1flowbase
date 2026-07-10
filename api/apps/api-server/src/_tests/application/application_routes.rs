@@ -99,9 +99,9 @@ async fn application_routes_persist_workflow_trigger_type() {
                 .body(Body::from(
                     json!({
                         "application_type": "workflow",
-                        "workflow_trigger_type": "manual",
-                        "name": "Manual Workflow",
-                        "description": "manual workflow",
+                        "workflow_trigger_type": "schedule",
+                        "name": "Scheduled Workflow",
+                        "description": "scheduled workflow",
                         "icon": "RobotOutlined",
                         "icon_type": "iconfont",
                         "icon_background": "#E6F7F2"
@@ -117,7 +117,7 @@ async fn application_routes_persist_workflow_trigger_type() {
     let application_id = create_payload["data"]["id"].as_str().unwrap();
     assert_eq!(
         create_payload["data"]["workflow_trigger_type"].as_str(),
-        Some("manual")
+        Some("schedule")
     );
 
     let detail = app
@@ -135,12 +135,12 @@ async fn application_routes_persist_workflow_trigger_type() {
     let detail_payload = response_json(detail).await;
     assert_eq!(
         detail_payload["data"]["workflow_trigger_type"].as_str(),
-        Some("manual")
+        Some("schedule")
     );
 }
 
 #[tokio::test]
-async fn application_routes_reject_invalid_workflow_trigger_type() {
+async fn application_routes_reject_manual_workflow_trigger_type() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -156,9 +156,9 @@ async fn application_routes_reject_invalid_workflow_trigger_type() {
                 .body(Body::from(
                     json!({
                         "application_type": "workflow",
-                        "workflow_trigger_type": "webhook",
-                        "name": "Invalid Workflow",
-                        "description": "invalid workflow",
+                        "workflow_trigger_type": "manual",
+                        "name": "Manual Workflow",
+                        "description": "manual workflow",
                         "icon": null,
                         "icon_type": null,
                         "icon_background": null

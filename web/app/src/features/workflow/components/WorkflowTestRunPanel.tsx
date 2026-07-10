@@ -2,14 +2,11 @@ import { useMemo, useState } from 'react';
 import {
   Alert,
   Button,
-  Checkbox,
   Descriptions,
   Divider,
   Drawer,
   Form,
   Input,
-  InputNumber,
-  Select,
   Space,
   Tag,
   Typography
@@ -20,8 +17,7 @@ import type {
   ConsoleWorkflowExtensionParameterSource
 } from '@1flowbase/api-client';
 import type {
-  FlowAuthoringDocument,
-  FlowStartInputField
+  FlowAuthoringDocument
 } from '@1flowbase/flow-schema';
 
 import { useAuthStore } from '../../../state/auth-store';
@@ -48,7 +44,6 @@ const EXTENSION_SOURCE_LABEL_KEYS: Record<
 };
 
 type WorkflowTestRunFormValues = {
-  manualInputs?: Record<string, unknown>;
   schedulePayload?: string;
   extensionInputs?: Record<string, Record<string, unknown>>;
 };
@@ -59,36 +54,6 @@ export interface WorkflowTestRunPanelProps {
   document: FlowAuthoringDocument;
   triggerContext: WorkflowTriggerContext;
   onOpenTrace: (runId: string) => void;
-}
-
-function workflowStartInputFields(document: FlowAuthoringDocument) {
-  const startNode = document.graph.nodes.find(
-    (node) => node.type === 'workflow_start'
-  );
-  const inputFields = startNode?.config.input_fields;
-
-  return Array.isArray(inputFields)
-    ? (inputFields as FlowStartInputField[]).filter((field) => !field.hidden)
-    : [];
-}
-
-function inputControl(field: FlowStartInputField) {
-  switch (field.inputType) {
-    case 'paragraph':
-      return <Input.TextArea rows={3} placeholder={field.placeholder} />;
-    case 'number':
-      return <InputNumber style={{ width: '100%' }} />;
-    case 'checkbox':
-      return <Checkbox />;
-    case 'select':
-      return (
-        <Select options={(field.options ?? []).map((value) => ({ value }))} />
-      );
-    case 'url':
-      return <Input type="url" placeholder={field.placeholder} />;
-    default:
-      return <Input placeholder={field.placeholder} />;
-  }
 }
 
 function errorMessage(error: unknown) {
@@ -152,7 +117,6 @@ function triggerDeliveryLabel(triggerContext: WorkflowTriggerContext) {
   if (triggerContext.triggerType === 'extension') {
     return i18nText('workflow', 'auto.workflow_trigger_delivery_extension');
   }
-  return i18nText('workflow', 'auto.workflow_trigger_delivery_manual');
 }
 
 function WorkflowResult({ result }: { result: Record<string, unknown> }) {
@@ -192,18 +156,11 @@ export function WorkflowTestRunPanel({
   const [failure, setFailure] = useState<string | null>(null);
   const [form] = Form.useForm<WorkflowTestRunFormValues>();
   const csrfToken = useAuthStore((state) => state.csrfToken);
-  const inputFields = useMemo(
-    () => workflowStartInputFields(document),
-    [document]
-  );
   const extensionParameters =
     triggerContext.mapping?.extension?.parameters ?? [];
 
   const initialValues = useMemo<WorkflowTestRunFormValues>(
     () => ({
-      manualInputs: Object.fromEntries(
-        inputFields.map((field) => [field.key, field.defaultValue])
-      ),
       schedulePayload: JSON.stringify(
         triggerContext.schedule?.input_payload ?? {},
         null,
@@ -213,7 +170,7 @@ export function WorkflowTestRunPanel({
         EXTENSION_SOURCES.map((source) => [source, {}])
       )
     }),
-    [inputFields, triggerContext.schedule?.input_payload]
+    [triggerContext.schedule?.input_payload]
   );
 
   async function runWorkflow(values: WorkflowTestRunFormValues) {
@@ -228,13 +185,7 @@ export function WorkflowTestRunPanel({
     try {
       const triggerType = triggerContext.triggerType;
       const runInput =
-        triggerType === 'manual'
-          ? buildWorkflowTestRunInput({
-              document,
-              triggerType,
-              manualInputs: values.manualInputs ?? {}
-            })
-          : triggerType === 'schedule'
+        triggerType === 'schedule'
             ? buildWorkflowTestRunInput({
                 document,
                 triggerType,
@@ -283,35 +234,6 @@ export function WorkflowTestRunPanel({
           initialValues={initialValues}
           onFinish={runWorkflow}
         >
-          {triggerContext.triggerType === 'manual'
-            ? inputFields.map((field) => (
-                <Form.Item
-                  key={field.key}
-                  name={['manualInputs', field.key]}
-                  label={field.label}
-                  valuePropName={
-                    field.inputType === 'checkbox' ? 'checked' : 'value'
-                  }
-                  rules={
-                    field.required
-                      ? [
-                          {
-                            required: true,
-                            message: i18nText(
-                              'workflow',
-                              'auto.field_required',
-                              { value1: field.label }
-                            )
-                          }
-                        ]
-                      : undefined
-                  }
-                >
-                  {inputControl(field)}
-                </Form.Item>
-              ))
-            : null}
-
           {triggerContext.triggerType === 'schedule' ? (
             <Form.Item
               name="schedulePayload"

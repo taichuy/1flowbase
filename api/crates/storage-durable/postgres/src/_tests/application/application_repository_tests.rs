@@ -204,9 +204,9 @@ async fn create_workflow_application_persists_trigger_type() {
             actor_user_id,
             workspace_id,
             application_type: domain::ApplicationType::Workflow,
-            workflow_trigger_type: Some(domain::WorkflowTriggerType::Manual),
-            name: "Manual Workflow".into(),
-            description: "manual".into(),
+            workflow_trigger_type: Some(domain::WorkflowTriggerType::Schedule),
+            name: "Scheduled Workflow".into(),
+            description: "scheduled".into(),
             icon: None,
             icon_type: None,
             icon_background: None,
@@ -226,7 +226,7 @@ async fn create_workflow_application_persists_trigger_type() {
 
     assert_eq!(
         detail.workflow_trigger_type,
-        Some(domain::WorkflowTriggerType::Manual)
+        Some(domain::WorkflowTriggerType::Schedule)
     );
 }
 
@@ -361,4 +361,40 @@ async fn delete_application_cascades_flow_runtime_and_tag_bindings() {
             .unwrap();
         assert_eq!(count, 0, "{table} should be empty after application delete");
     }
+}
+
+#[tokio::test]
+async fn workflow_trigger_type_migration_normalizes_and_rejects_manual() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let workspace_id = seed_workspace(&store, "Workflow Trigger Constraint").await;
+    let actor_user_id = seed_user(&store, workspace_id, "workflow-trigger-constraint").await;
+    let created = <PgControlPlaneStore as ApplicationRepository>::create_application(
+        &store,
+        &CreateApplicationInput {
+            actor_user_id,
+            workspace_id,
+            application_type: domain::ApplicationType::Workflow,
+            workflow_trigger_type: Some(domain::WorkflowTriggerType::Extension),
+            name: "Extension Workflow".into(),
+            description: "extension".into(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let error =
+        sqlx::query("update applications set workflow_trigger_type = 'manual' where id = $1")
+            .bind(created.id)
+            .execute(&pool)
+            .await
+            .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("applications_workflow_trigger_type_check"));
 }

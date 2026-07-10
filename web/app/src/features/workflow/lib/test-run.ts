@@ -15,11 +15,6 @@ interface WorkflowTestRunBaseInput {
   triggerType: ConsoleWorkflowTriggerType;
 }
 
-interface ManualWorkflowTestRunInput extends WorkflowTestRunBaseInput {
-  triggerType: 'manual';
-  manualInputs: WorkflowInputValues;
-}
-
 interface ScheduleWorkflowTestRunInput extends WorkflowTestRunBaseInput {
   triggerType: 'schedule';
   schedulePayload: unknown;
@@ -32,7 +27,6 @@ interface ExtensionWorkflowTestRunInput extends WorkflowTestRunBaseInput {
 }
 
 export type WorkflowTestRunInput =
-  | ManualWorkflowTestRunInput
   | ScheduleWorkflowTestRunInput
   | ExtensionWorkflowTestRunInput;
 
@@ -115,9 +109,6 @@ export function buildWorkflowTestRunInput(input: WorkflowTestRunInput) {
   let values: WorkflowInputValues;
 
   switch (input.triggerType) {
-    case 'manual':
-      values = selectWorkflowInputs(input.manualInputs, allowedKeys);
-      break;
     case 'schedule':
       values = selectWorkflowInputs(asRecord(input.schedulePayload), allowedKeys);
       break;

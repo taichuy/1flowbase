@@ -51,7 +51,7 @@ function createTriggerContext(
 ): WorkflowTriggerContext {
   return {
     applicationId: 'app-1',
-    triggerType: 'manual',
+    triggerType: 'schedule',
     mapping: null,
     schedule: null,
     ...overrides
@@ -129,20 +129,6 @@ afterEach(() => {
 });
 
 describe('WorkflowTestRunPanel', () => {
-  test('AC-103 renders manual workflow inputs without chat controls', async () => {
-    renderPanel();
-
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByLabelText('Customer ID')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Force')).toBeInTheDocument();
-    expect(
-      within(dialog).queryByPlaceholderText(/消息|message/i)
-    ).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByText(/预览对话|conversation/i)
-    ).not.toBeInTheDocument();
-  });
-
   test('AC-103 uses schedule input_payload as editable JSON default', async () => {
     renderPanel(
       createTriggerContext({
@@ -223,10 +209,11 @@ describe('WorkflowTestRunPanel', () => {
       startRun
     );
 
-    fireEvent.change(await screen.findByLabelText('Customer ID'), {
-      target: { value: 'C-42' }
+    fireEvent.change(await screen.findByLabelText('输入 payload'), {
+      target: {
+        value: JSON.stringify({ customer_id: 'C-42', force: true })
+      }
     });
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Force' }));
     fireEvent.submit(
       screen.getByRole('form', { name: 'Workflow 测试运行表单' })
     );
@@ -251,7 +238,7 @@ describe('WorkflowTestRunPanel', () => {
     expect(screen.getByText('ticket-C-42')).toBeInTheDocument();
     expect(screen.getByText('已成功')).toBeInTheDocument();
     expect(screen.getByText('Trigger Delivery')).toBeInTheDocument();
-    expect(screen.getByText('手动测试运行')).toBeInTheDocument();
+    expect(screen.getByText('定时触发测试（不进入真实调度队列）')).toBeInTheDocument();
     expect(screen.getByText('run-1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '查看执行 Trace' }));
@@ -264,8 +251,8 @@ describe('WorkflowTestRunPanel', () => {
       .mockRejectedValue(new Error('Workflow input validation failed'));
     renderPanel(createTriggerContext(), vi.fn(), startRun);
 
-    fireEvent.change(await screen.findByLabelText('Customer ID'), {
-      target: { value: 'C-42' }
+    fireEvent.change(await screen.findByLabelText('输入 payload'), {
+      target: { value: JSON.stringify({ customer_id: 'C-42' }) }
     });
     fireEvent.submit(
       screen.getByRole('form', { name: 'Workflow 测试运行表单' })

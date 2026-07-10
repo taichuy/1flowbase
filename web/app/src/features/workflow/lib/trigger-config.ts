@@ -7,7 +7,7 @@ import type {
 } from '../../applications/api/public-api';
 import { getStartInputFields } from '../../agent-flow/lib/variables/start-node-variables';
 
-export type WorkflowTriggerType = 'extension' | 'schedule' | 'manual';
+export type WorkflowTriggerType = 'extension' | 'schedule';
 export type WorkflowExtensionHttpMethod =
   | 'GET'
   | 'POST'
@@ -60,8 +60,7 @@ export const WORKFLOW_EXTENSION_PARAMETER_SOURCES: WorkflowExtensionParameterSou
   ['path', 'query', 'form', 'body'];
 export const WORKFLOW_TRIGGER_TYPES: WorkflowTriggerType[] = [
   'extension',
-  'schedule',
-  'manual'
+  'schedule'
 ];
 
 export const DEFAULT_WORKFLOW_TRIGGER_VALUES: WorkflowTriggerFormValues = {

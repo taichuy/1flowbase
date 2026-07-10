@@ -616,33 +616,6 @@ describe('NodeDetailPanel', () => {
   );
 
   test(
-    'keeps manual workflow trigger detail focused on start input fields',
-    () => {
-      renderWithProviders(
-        <AgentFlowEditorStoreProvider
-          initialState={createWorkflowInitialState()}
-        >
-          <SelectionSeed nodeId="node-workflow-start" />
-          <WorkflowNodeDetailPanel
-            onClose={vi.fn()}
-            triggerContext={{
-              applicationId: 'app-workflow',
-              triggerType: 'manual',
-              mapping: createWorkflowApiMappingWithExtension(),
-              schedule: createWorkflowScheduleTrigger()
-            }}
-          />
-        </AgentFlowEditorStoreProvider>
-      );
-
-      expect(screen.getByText('输入参数')).toBeInTheDocument();
-      expect(screen.queryByLabelText('接口 slug')).not.toBeInTheDocument();
-      expect(screen.queryByLabelText('定时表达式')).not.toBeInTheDocument();
-    },
-    NODE_DETAIL_PANEL_TEST_TIMEOUT
-  );
-
-  test(
     'renders exception handling as a three-state strategy selector',
     async () => {
       renderWithProviders(

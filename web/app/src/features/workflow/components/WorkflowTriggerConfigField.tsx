@@ -3,7 +3,7 @@ import type {
   FlowNodeDocument
 } from '@1flowbase/flow-schema';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Form, Typography } from 'antd';
+import { Alert, Button, Form } from 'antd';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -121,14 +121,6 @@ export function WorkflowTriggerConfigField({
 
   if (!context?.triggerType || node?.type !== 'workflow_start') {
     return null;
-  }
-
-  if (context.triggerType === 'manual') {
-    return (
-      <Typography.Text type="secondary">
-        {t('auto.workflow_trigger_type_manual')}
-      </Typography.Text>
-    );
   }
 
   return (

@@ -22,7 +22,7 @@ function createWorkflowInitialState() {
 
 const workflowTriggerContext = {
   applicationId: 'app-1',
-  triggerType: 'manual' as const,
+  triggerType: 'schedule' as const,
   mapping: undefined,
   schedule: null
 };

@@ -116,10 +116,6 @@ export function createWorkflowStartTriggerSummary(value: unknown) {
     return i18nText('workflow', 'auto.workflow_trigger_not_configured');
   }
 
-  if (context.triggerType === 'manual') {
-    return i18nText('workflow', 'auto.workflow_trigger_type_manual');
-  }
-
   if (context.triggerType === 'schedule') {
     const schedule = context.schedule;
 

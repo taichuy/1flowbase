@@ -8,8 +8,7 @@ import { applicationsQueryKey, createApplication } from '../api/applications';
 
 const WORKFLOW_TRIGGER_TYPE_OPTIONS: ConsoleWorkflowTriggerType[] = [
   'extension',
-  'schedule',
-  'manual'
+  'schedule'
 ];
 const DEFAULT_WORKFLOW_TRIGGER_TYPE: ConsoleWorkflowTriggerType = 'extension';
 
@@ -19,8 +18,6 @@ function workflowTriggerTypeLabelKey(type: ConsoleWorkflowTriggerType) {
       return 'auto.workflow_trigger_type_extension';
     case 'schedule':
       return 'auto.workflow_trigger_type_schedule';
-    case 'manual':
-      return 'auto.workflow_trigger_type_manual';
   }
 }
 

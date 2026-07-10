@@ -15,7 +15,6 @@ const labels: Record<string, string> = {
   'auto.workflow_trigger_type': '触发器类型',
   'auto.workflow_trigger_type_extension': '扩展接口触发',
   'auto.workflow_trigger_type_schedule': '定时触发',
-  'auto.workflow_trigger_type_manual': '手动触发',
   'auto.workflow_extension_slug': '接口 slug',
   'auto.workflow_extension_slug_help': 'Slug help',
   'auto.workflow_extension_method': 'HTTP method',

@@ -37,11 +37,10 @@ fn parse_workflow_trigger_type_accepts_known_storage_values() {
             .unwrap(),
         WorkflowTriggerType::Schedule
     ));
-    assert!(matches!(
+    assert!(
         storage_postgres::mappers::application_mapper::parse_workflow_trigger_type("manual")
-            .unwrap(),
-        WorkflowTriggerType::Manual
-    ));
+            .is_err()
+    );
 }
 
 #[test]

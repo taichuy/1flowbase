@@ -68,7 +68,11 @@ describe('ApplicationCreateModal', () => {
       name: '触发器类型'
     });
     fireEvent.mouseDown(triggerTypeSelect);
-    fireEvent.click(await screen.findByText('手动触发'));
+    const triggerOptions = await screen.findAllByRole('option');
+    expect(triggerOptions.map((option) => option.textContent)).toEqual([
+      'extension',
+      'schedule'
+    ]);
     expect(
       screen.queryByRole('textbox', { name: '接口 slug' })
     ).not.toBeInTheDocument();
@@ -96,7 +100,7 @@ describe('ApplicationCreateModal', () => {
       expect(applicationsApi.createApplication).toHaveBeenCalledWith(
         expect.objectContaining({
           application_type: 'workflow',
-          workflow_trigger_type: 'manual',
+          workflow_trigger_type: 'extension',
           name: 'Daily workflow'
         }),
         'csrf-123'

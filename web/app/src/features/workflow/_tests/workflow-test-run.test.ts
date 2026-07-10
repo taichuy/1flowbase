@@ -49,26 +49,6 @@ function createWorkflowDocument() {
 }
 
 describe('Workflow test-run contract', () => {
-  test('AC-102 builds manual inputs under the workflow_start node id', () => {
-    expect(
-      buildWorkflowTestRunInput({
-        document: createWorkflowDocument(),
-        triggerType: 'manual',
-        manualInputs: {
-          customer_id: 'C-42',
-          force: true
-        }
-      })
-    ).toEqual({
-      input_payload: {
-        'node-workflow-start': {
-          customer_id: 'C-42',
-          force: true
-        }
-      }
-    });
-  });
-
   test('AC-102 builds schedule payload under the workflow_start node id', () => {
     expect(
       buildWorkflowTestRunInput({
