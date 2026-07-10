@@ -1,7 +1,4 @@
 import { registerNodeDefinition } from '../agent-flow/lib/node-definitions/registry';
-import { registerAgentFlowRenderers } from '../agent-flow/schema/agent-flow-renderer-registry';
-import { registerContractFieldRenderers } from '../agent-flow/schema/node-schema-fragments';
-import { WorkflowTriggerConfigField } from './components/WorkflowTriggerConfigField';
 import { WorkflowStartCardDescription } from './components/WorkflowStartCardDescription';
 import {
   createWorkflowEndContract,
@@ -24,11 +21,3 @@ registerNodeDefinition('workflow_end', {
   meta: workflowEndNodeMeta,
   editableOutputContract: true
 });
-
-registerAgentFlowRenderers({
-  fields: {
-    workflow_trigger_config: WorkflowTriggerConfigField
-  }
-});
-
-registerContractFieldRenderers(['workflow_trigger_config']);

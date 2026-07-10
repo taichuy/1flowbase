@@ -15,6 +15,7 @@ import { appI18n } from '../../../shared/i18n/app-i18n';
 import { writeLocalePreferenceToStorage } from '../../../shared/user-preferences/locale-preference';
 
 import { NodeConfigTab } from '../components/detail/tabs/NodeConfigTab';
+import { StartInputFieldsField } from '../components/detail/fields/StartInputFieldsField';
 import { AgentFlowEditorStoreProvider } from '../store/editor/AgentFlowEditorStoreProvider';
 import { useAgentFlowEditorStore } from '../store/editor/provider';
 import { selectWorkingDocument } from '../store/editor/selectors';
@@ -384,5 +385,42 @@ describe('start input fields', () => {
     expect(startNode?.config.input_fields).toEqual([
       expect.objectContaining({ key: 'first_name' })
     ]);
+  });
+
+  test('AC-1237 shows parameter source only when source options are provided', async () => {
+    const onWorkflowChange = vi.fn();
+    const { rerender } = renderWithProviders(
+      <StartInputFieldsField
+        value={[]}
+        sourceOptions={[
+          { value: 'path', label: 'path' },
+          { value: 'query', label: 'query' },
+          { value: 'body', label: 'body' },
+          { value: 'form', label: 'form' }
+        ]}
+        onChange={onWorkflowChange}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '新增输入字段' }));
+
+    expect(
+      await screen.findByRole('combobox', { name: '输入字段参数来源' })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '保存输入字段' }));
+    expect(onWorkflowChange).toHaveBeenCalledWith([
+      expect.objectContaining({ source: 'path' })
+    ]);
+
+    rerender(
+      <AppProviders>
+        <StartInputFieldsField value={[]} onChange={vi.fn()} />
+      </AppProviders>
+    );
+    fireEvent.click(screen.getByRole('button', { name: '新增输入字段' }));
+
+    expect(
+      screen.queryByRole('combobox', { name: '输入字段参数来源' })
+    ).not.toBeInTheDocument();
   });
 });

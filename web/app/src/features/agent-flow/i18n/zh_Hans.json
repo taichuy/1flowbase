@@ -546,6 +546,8 @@
     "input_node_reference_variable": "输入节点引用变量",
     "add_new_filter": "新增过滤条件",
     "input_field_type": "输入字段类型",
+    "parameter_source": "参数来源",
+    "input_field_parameter_source": "输入字段参数来源",
     "workflow": "工作流",
     "input_field_options": "输入字段选项 {{value1}}",
     "saved": "已保存",

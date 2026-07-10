@@ -546,6 +546,8 @@
     "input_node_reference_variable": "Input node reference variable",
     "add_new_filter": "Add new filter",
     "input_field_type": "Input field type",
+    "parameter_source": "Parameter source",
+    "input_field_parameter_source": "Input field parameter source",
     "workflow": "Workflow",
     "input_field_options": "Input field options {{value1}}",
     "saved": "saved",

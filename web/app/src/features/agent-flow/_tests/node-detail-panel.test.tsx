@@ -16,11 +16,6 @@ import {
 import { AppProviders } from '../../../app/AppProviders';
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
-import * as applicationPublicApi from '../../applications/api/public-api';
-import type {
-  ApplicationApiMapping,
-  WorkflowScheduleTrigger
-} from '../../applications/api/public-api';
 import {
   modelProviderOptionsContract,
   modelProviderOptionsProviders
@@ -28,7 +23,6 @@ import {
 
 import { NodeConfigTab } from '../components/detail/tabs/NodeConfigTab';
 import { NodeDetailPanel } from '../components/detail/NodeDetailPanel';
-import { WorkflowNodeDetailPanel } from '../../workflow/components/WorkflowNodeDetailPanel';
 import '../../workflow/register';
 import * as modelProviderOptionsApi from '../api/model-provider-options';
 import { AgentFlowEditorStoreProvider } from '../store/editor/AgentFlowEditorStoreProvider';
@@ -57,14 +51,6 @@ const resolveAgentFlowNodeSchemaSpy = vi.spyOn(
 const createAgentFlowNodeSchemaAdapterSpy = vi.spyOn(
   nodeSchemaAdapterApi,
   'createAgentFlowNodeSchemaAdapter'
-);
-const saveApplicationApiMappingSpy = vi.spyOn(
-  applicationPublicApi,
-  'saveApplicationApiMapping'
-);
-const saveWorkflowScheduleTriggerSpy = vi.spyOn(
-  applicationPublicApi,
-  'saveWorkflowScheduleTrigger'
 );
 
 function createInitialState() {
@@ -114,54 +100,6 @@ function createWorkflowInitialState() {
     autosave_interval_seconds: 30,
     user_protection_limit: 10,
     versions: []
-  };
-}
-
-function createWorkflowApiMappingWithExtension(): ApplicationApiMapping {
-  return {
-    input: {
-      query_target: 'node-workflow-start.query',
-      model_target: null,
-      inputs_target: 'node-workflow-start.inputs',
-      history_target: null,
-      attachments_target: null
-    },
-    output: {
-      answer_selector: null,
-      usage_selector: null,
-      files_selector: null,
-      error_selector: null
-    },
-    extension: {
-      slug: 'orders',
-      method: 'POST',
-      response_mode: 'sync',
-      parameters: [
-        {
-          source: 'query',
-          name: 'customer_id',
-          target: 'node-workflow-start.customer_id'
-        }
-      ]
-    }
-  };
-}
-
-function createWorkflowScheduleTrigger(): WorkflowScheduleTrigger {
-  return {
-    id: 'schedule-1',
-    workspace_id: 'workspace-1',
-    application_id: 'app-workflow',
-    enabled: true,
-    cron: '0 9 * * *',
-    timezone: 'Asia/Shanghai',
-    input_payload: {
-      customer_id: 'daily'
-    },
-    created_by: 'user-1',
-    updated_by: 'user-1',
-    created_at: '2026-04-16T10:00:00Z',
-    updated_at: '2026-04-16T10:00:00Z'
   };
 }
 
@@ -255,14 +193,6 @@ describe('NodeDetailPanel', () => {
     });
     resolveAgentFlowNodeSchemaSpy.mockClear();
     createAgentFlowNodeSchemaAdapterSpy.mockClear();
-    saveApplicationApiMappingSpy.mockReset();
-    saveApplicationApiMappingSpy.mockResolvedValue(
-      createWorkflowApiMappingWithExtension()
-    );
-    saveWorkflowScheduleTriggerSpy.mockReset();
-    saveWorkflowScheduleTriggerSpy.mockResolvedValue(
-      createWorkflowScheduleTrigger()
-    );
     resetAuthStore();
     useAuthStore.getState().setAuthenticated({
       csrfToken: 'csrf-123',
@@ -505,111 +435,96 @@ describe('NodeDetailPanel', () => {
   );
 
   test(
-    'renders extension trigger configuration in the workflow start node detail',
+    'renders the standard node shell with only workflow start input settings',
     () => {
       renderWithProviders(
         <AgentFlowEditorStoreProvider
           initialState={createWorkflowInitialState()}
         >
           <SelectionSeed nodeId="node-workflow-start" />
-          <WorkflowNodeDetailPanel
+          <NodeDetailPanel
+            activeTab="config"
             onClose={vi.fn()}
-            triggerContext={{
+            onTabChange={vi.fn()}
+            workflowTriggerContext={{
               applicationId: 'app-workflow',
               triggerType: 'extension',
-              mapping: createWorkflowApiMappingWithExtension(),
+              mapping: null,
               schedule: null
             }}
           />
         </AgentFlowEditorStoreProvider>
       );
 
-      expect(screen.getByLabelText('接口 slug')).toHaveValue('orders');
-      expect(screen.getByText('HTTP 方法')).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: 'POST' })).toBeChecked();
+      expect(screen.getByTestId('node-detail-header')).toBeInTheDocument();
       expect(
-        screen.getByText('客户 ID · node-workflow-start.customer_id')
+        screen.getByTestId('inspector-field-config.input_fields')
       ).toBeInTheDocument();
+      expect(screen.queryByLabelText('接口 slug')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('定时表达式')).not.toBeInTheDocument();
     },
     NODE_DETAIL_PANEL_TEST_TIMEOUT
   );
 
   test(
-    'saves extension trigger mapping from the workflow start node detail',
-    async () => {
-      renderWithProviders(
-        <AgentFlowEditorStoreProvider
-          initialState={createWorkflowInitialState()}
-        >
-          <SelectionSeed nodeId="node-workflow-start" />
-          <WorkflowNodeDetailPanel
-            onClose={vi.fn()}
-            triggerContext={{
-              applicationId: 'app-workflow',
-              triggerType: 'extension',
-              mapping: createWorkflowApiMappingWithExtension(),
-              schedule: null
-            }}
-          />
-        </AgentFlowEditorStoreProvider>
-      );
-
-      fireEvent.change(screen.getByLabelText('接口 slug'), {
-        target: { value: 'orders_v2' }
-      });
-      fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
-
-      await waitFor(() => {
-        expect(saveApplicationApiMappingSpy).toHaveBeenCalledWith(
-          'app-workflow',
-          expect.objectContaining({
-            extension: expect.objectContaining({
-              slug: 'orders_v2',
-              method: 'POST',
-              response_mode: 'sync',
-              parameters: [
-                {
-                  source: 'query',
-                  name: 'customer_id',
-                  target: 'node-workflow-start.customer_id'
-                }
-              ]
-            })
-          }),
-          'csrf-123'
-        );
-      });
-      expect(saveWorkflowScheduleTriggerSpy).not.toHaveBeenCalled();
-    },
-    NODE_DETAIL_PANEL_TEST_TIMEOUT
-  );
-
-  test(
-    'uses the application trigger type instead of mapping shape for workflow start schedule detail',
+    'does not expose extension mapping actions in workflow start details',
     () => {
       renderWithProviders(
         <AgentFlowEditorStoreProvider
           initialState={createWorkflowInitialState()}
         >
           <SelectionSeed nodeId="node-workflow-start" />
-          <WorkflowNodeDetailPanel
+          <NodeDetailPanel
+            activeTab="config"
             onClose={vi.fn()}
-            triggerContext={{
+            onTabChange={vi.fn()}
+            workflowTriggerContext={{
               applicationId: 'app-workflow',
-              triggerType: 'schedule',
-              mapping: createWorkflowApiMappingWithExtension(),
-              schedule: createWorkflowScheduleTrigger()
+              triggerType: 'extension',
+              mapping: null,
+              schedule: null
             }}
           />
         </AgentFlowEditorStoreProvider>
       );
 
-      expect(screen.getByLabelText('定时表达式')).toHaveValue('0 9 * * *');
-      expect(screen.getByLabelText('时区')).toHaveValue('Asia/Shanghai');
-      expect(screen.getByLabelText('输入 payload')).toHaveValue(
-        JSON.stringify({ customer_id: 'daily' }, null, 2)
+      expect(screen.queryByText('触发器配置')).not.toBeInTheDocument();
+      expect(screen.queryByText('目标 selector')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: '保存修改' })
+      ).not.toBeInTheDocument();
+    },
+    NODE_DETAIL_PANEL_TEST_TIMEOUT
+  );
+
+  test(
+    'keeps schedule context outside workflow start node details',
+    () => {
+      renderWithProviders(
+        <AgentFlowEditorStoreProvider
+          initialState={createWorkflowInitialState()}
+        >
+          <SelectionSeed nodeId="node-workflow-start" />
+          <NodeDetailPanel
+            activeTab="config"
+            onClose={vi.fn()}
+            onTabChange={vi.fn()}
+            workflowTriggerContext={{
+              applicationId: 'app-workflow',
+              triggerType: 'schedule',
+              mapping: null,
+              schedule: null
+            }}
+          />
+        </AgentFlowEditorStoreProvider>
       );
+
+      expect(
+        screen.getByTestId('inspector-field-config.input_fields')
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText('定时表达式')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('时区')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('输入 payload')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('接口 slug')).not.toBeInTheDocument();
     },
     NODE_DETAIL_PANEL_TEST_TIMEOUT

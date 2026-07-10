@@ -26,7 +26,8 @@ function createWorkflowDocument() {
       label: 'Customer ID',
       inputType: 'text',
       valueType: 'string',
-      required: true
+      required: true,
+      source: 'path'
     },
     {
       key: 'force',
@@ -34,7 +35,25 @@ function createWorkflowDocument() {
       inputType: 'checkbox',
       valueType: 'boolean',
       required: false,
-      defaultValue: false
+      defaultValue: false,
+      source: 'query'
+    },
+    {
+      key: 'payload',
+      label: 'Payload',
+      inputType: 'json',
+      valueType: 'object',
+      required: false,
+      source: 'body'
+    },
+    {
+      key: 'attachment',
+      label: 'Attachment',
+      inputType: 'text',
+      valueType: 'string',
+      required: false,
+      defaultValue: 'none',
+      source: 'form'
     }
   ];
   endNode.outputs = [
@@ -50,9 +69,22 @@ function createWorkflowDocument() {
 
 describe('Workflow test-run contract', () => {
   test('AC-102 builds schedule payload under the workflow_start node id', () => {
+    const document = createWorkflowDocument();
+    const startNode = document.graph.nodes.find(
+      (node) => node.type === 'workflow_start'
+    );
+    if (!startNode || !Array.isArray(startNode.config.input_fields)) {
+      throw new Error('workflow_start input fields are missing');
+    }
+    startNode.config.input_fields = startNode.config.input_fields.map((field) => {
+      const scheduleField = { ...field };
+      delete scheduleField.source;
+      return scheduleField;
+    });
+
     expect(
       buildWorkflowTestRunInput({
-        document: createWorkflowDocument(),
+        document,
         triggerType: 'schedule',
         schedulePayload: {
           customer_id: 'C-42',
@@ -69,38 +101,66 @@ describe('Workflow test-run contract', () => {
     });
   });
 
-  test('AC-102 maps extension source values to workflow_start targets', () => {
+  test('AC-102 maps all HTTP sources directly from workflow_start input fields', () => {
     expect(
       buildWorkflowTestRunInput({
         document: createWorkflowDocument(),
         triggerType: 'extension',
-        extensionParameters: [
-          {
-            name: 'customerId',
-            source: 'path',
-            target: 'node-workflow-start.customer_id'
-          },
-          {
-            name: 'force',
-            source: 'query',
-            target: 'node-workflow-start.force'
-          }
-        ],
         extensionInputs: {
-          path: { customerId: 'C-42' },
+          path: { customer_id: 'C-42', undeclared: 'ignored' },
           query: { force: true },
-          form: {},
-          body: {}
+          body: { payload: { ticket: 'T-1' } },
+          form: { attachment: 'invoice.pdf' }
         }
       })
     ).toEqual({
       input_payload: {
         'node-workflow-start': {
           customer_id: 'C-42',
-          force: true
+          force: true,
+          payload: { ticket: 'T-1' },
+          attachment: 'invoice.pdf'
         }
       }
     });
+  });
+
+  test('AC-102 applies declared defaults without creating undeclared inputs', () => {
+    expect(
+      buildWorkflowTestRunInput({
+        document: createWorkflowDocument(),
+        triggerType: 'extension',
+        extensionInputs: {
+          path: { customer_id: 'C-42' },
+          query: {},
+          body: {},
+          form: {}
+        }
+      })
+    ).toEqual({
+      input_payload: {
+        'node-workflow-start': {
+          customer_id: 'C-42',
+          force: false,
+          attachment: 'none'
+        }
+      }
+    });
+  });
+
+  test('AC-102 rejects a missing required workflow_start input', () => {
+    expect(() =>
+      buildWorkflowTestRunInput({
+        document: createWorkflowDocument(),
+        triggerType: 'extension',
+        extensionInputs: {
+          path: {},
+          query: {},
+          body: {},
+          form: {}
+        }
+      })
+    ).toThrow('Missing required workflow input: customer_id');
   });
 
   test('AC-104 reads Workflow Result from flow_run.output_payload', () => {

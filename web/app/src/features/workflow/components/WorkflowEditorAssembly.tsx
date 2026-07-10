@@ -36,23 +36,21 @@ export function WorkflowEditorAssembly({
   restoreVersionOverride
 }: WorkflowEditorAssemblyProps) {
   return (
-    <div data-testid="workflow-editor-assembly">
-      <FlowEditorKernel
-        initialState={initialState}
-        slots={{
-          canvas: (
-            <WorkflowCanvasFrame
-              applicationId={applicationId}
-              applicationName={applicationName}
-              initialEnvironmentVariables={initialEnvironmentVariables}
-              nodeContributions={nodeContributions}
-              triggerContext={workflowTriggerContext}
-              saveDraftOverride={saveDraftOverride}
-              restoreVersionOverride={restoreVersionOverride}
-            />
-          )
-        }}
-      />
-    </div>
+    <FlowEditorKernel
+      initialState={initialState}
+      slots={{
+        canvas: (
+          <WorkflowCanvasFrame
+            applicationId={applicationId}
+            applicationName={applicationName}
+            initialEnvironmentVariables={initialEnvironmentVariables}
+            nodeContributions={nodeContributions}
+            triggerContext={workflowTriggerContext}
+            saveDraftOverride={saveDraftOverride}
+            restoreVersionOverride={restoreVersionOverride}
+          />
+        )
+      }}
+    />
   );
 }

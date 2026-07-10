@@ -48,6 +48,7 @@ mod native_run;
 mod openai_compat;
 mod resume;
 mod run_service;
+mod workflow_start_http_inputs;
 
 fn actor_user_id() -> Uuid {
     Uuid::from_u128(0x11111111111111111111111111111111)

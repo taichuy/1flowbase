@@ -13,10 +13,12 @@ import {
 } from '../../../lib/variables/start-node-variables';
 import { FloatingSettingsPanel } from '../FloatingSettingsPanel';
 import { i18nText } from '../../../../../shared/i18n/text';
+import type { StartInputSourceOption } from './StartInputFieldsField';
 
 type StartInputFieldSettingsPanelProps = {
   mode: 'create' | 'edit';
   field: FlowStartInputField;
+  sourceOptions: StartInputSourceOption[];
   triggerRef: RefObject<HTMLElement | null>;
   onChange: (patch: Partial<FlowStartInputField>) => void;
   onClose: () => void;
@@ -47,6 +49,7 @@ function normalizeOptions(options: string[] | undefined) {
 export function StartInputFieldSettingsPanel({
   mode,
   field,
+  sourceOptions,
   triggerRef,
   onChange,
   onClose,
@@ -123,6 +126,21 @@ export function StartInputFieldSettingsPanel({
             onChange={handleTypeChange}
           />
         </div>
+        {sourceOptions.length > 0 ? (
+          <div className="agent-flow-start-input-fields__form-row">
+            <span>{i18nText('agentFlow', 'auto.parameter_source')}</span>
+            <Select
+              aria-label={i18nText(
+                'agentFlow',
+                'auto.input_field_parameter_source'
+              )}
+              options={sourceOptions}
+              value={field.source}
+              virtual={false}
+              onChange={(source) => onChange({ source })}
+            />
+          </div>
+        ) : null}
         <div className="agent-flow-start-input-fields__form-row">
           <span>{i18nText("agentFlow", "auto.variable_name")}</span>
           <Input

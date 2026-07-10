@@ -31,6 +31,7 @@ export function NodeDetailPanel({
   onResolveRunScope,
   previewActionsDisabled = false,
   runLoading = false,
+  workflowTriggerContext = null,
   activeTab,
   onTabChange
 }: {
@@ -45,6 +46,7 @@ export function NodeDetailPanel({
   onResolveRunScope?: ((runId: string | null) => void) | undefined;
   previewActionsDisabled?: boolean;
   runLoading?: boolean;
+  workflowTriggerContext?: unknown;
   activeTab: 'config' | 'lastRun';
   onTabChange: (tab: 'config' | 'lastRun') => void;
 }) {
@@ -75,6 +77,7 @@ export function NodeDetailPanel({
       nodeId: selectedNodeId,
       environmentVariables,
       issues,
+      workflowTriggerContext,
       setWorkingDocument,
       dispatch(actionKey, payload) {
         if (actionKey === 'openNodePicker') {
@@ -97,7 +100,8 @@ export function NodeDetailPanel({
     issues,
     openNodePicker,
     selectedNodeId,
-    setWorkingDocument
+    setWorkingDocument,
+    workflowTriggerContext
   ]);
 
   if (!runtime.selectedNodeId || !runtime.schema || !runtime.adapter) {

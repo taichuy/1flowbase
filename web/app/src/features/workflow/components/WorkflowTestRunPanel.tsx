@@ -13,20 +13,21 @@ import {
 } from 'antd';
 
 import type {
-  ConsoleApplicationRunDetail,
-  ConsoleWorkflowExtensionParameterSource
+  ConsoleApplicationRunDetail
 } from '@1flowbase/api-client';
-import type {
-  FlowAuthoringDocument
-} from '@1flowbase/flow-schema';
+import type { FlowAuthoringDocument, FlowStartInputSource } from '@1flowbase/flow-schema';
 
 import { useAuthStore } from '../../../state/auth-store';
 import { i18nText } from '../../../shared/i18n/text';
 import { startFlowDebugRun } from '../../agent-flow/api/runtime';
-import { buildWorkflowTestRunInput, readWorkflowResult } from '../lib/test-run';
+import {
+  buildWorkflowTestRunInput,
+  listWorkflowHttpInputFields,
+  readWorkflowResult
+} from '../lib/test-run';
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
 
-const EXTENSION_SOURCES: ConsoleWorkflowExtensionParameterSource[] = [
+const EXTENSION_SOURCES: FlowStartInputSource[] = [
   'path',
   'query',
   'form',
@@ -34,7 +35,7 @@ const EXTENSION_SOURCES: ConsoleWorkflowExtensionParameterSource[] = [
 ];
 
 const EXTENSION_SOURCE_LABEL_KEYS: Record<
-  ConsoleWorkflowExtensionParameterSource,
+  FlowStartInputSource,
   string
 > = {
   path: 'auto.workflow_test_run_path_parameters',
@@ -156,8 +157,10 @@ export function WorkflowTestRunPanel({
   const [failure, setFailure] = useState<string | null>(null);
   const [form] = Form.useForm<WorkflowTestRunFormValues>();
   const csrfToken = useAuthStore((state) => state.csrfToken);
-  const extensionParameters =
-    triggerContext.mapping?.extension?.parameters ?? [];
+  const extensionInputFields = useMemo(
+    () => listWorkflowHttpInputFields(document),
+    [document]
+  );
 
   const initialValues = useMemo<WorkflowTestRunFormValues>(
     () => ({
@@ -194,7 +197,6 @@ export function WorkflowTestRunPanel({
             : buildWorkflowTestRunInput({
                 document,
                 triggerType,
-                extensionParameters,
                 extensionInputs: {
                   path: values.extensionInputs?.path ?? {},
                   query: values.extensionInputs?.query ?? {},
@@ -267,11 +269,11 @@ export function WorkflowTestRunPanel({
 
           {triggerContext.triggerType === 'extension'
             ? EXTENSION_SOURCES.map((source) => {
-                const parameters = extensionParameters.filter(
-                  (parameter) => parameter.source === source
+                const fields = extensionInputFields.filter(
+                  (field) => field.source === source
                 );
 
-                if (parameters.length === 0) {
+                if (fields.length === 0) {
                   return null;
                 }
 
@@ -283,11 +285,11 @@ export function WorkflowTestRunPanel({
                         EXTENSION_SOURCE_LABEL_KEYS[source]
                       )}
                     </Typography.Title>
-                    {parameters.map((parameter) => (
+                    {fields.map((field) => (
                       <Form.Item
-                        key={`${source}-${parameter.name}`}
-                        name={['extensionInputs', source, parameter.name]}
-                        label={parameter.name}
+                        key={`${source}-${field.key}`}
+                        name={['extensionInputs', source, field.key]}
+                        label={field.key}
                       >
                         <Input />
                       </Form.Item>

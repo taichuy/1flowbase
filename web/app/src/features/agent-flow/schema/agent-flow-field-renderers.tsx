@@ -34,7 +34,10 @@ import { LlmModelField } from '../components/detail/fields/LlmModelField';
 import { LlmToolRegistrationsField } from '../components/detail/fields/LlmToolRegistrationsField';
 import { LlmPromptMessagesField } from '../components/detail/fields/LlmPromptMessagesField';
 import { LlmResponseFormatField } from '../components/detail/fields/LlmResponseFormatField';
-import { StartInputFieldsField } from '../components/detail/fields/StartInputFieldsField';
+import {
+  StartInputFieldsField,
+  type StartInputSourceOption
+} from '../components/detail/fields/StartInputFieldsField';
 import { StartModelListField } from '../components/detail/fields/StartModelListField';
 import { HttpRequestBodyField } from '../components/detail/fields/HttpRequestBodyField';
 import { HttpRequestCurlImportField } from '../components/detail/fields/HttpRequestCurlImportField';
@@ -669,6 +672,7 @@ function renderStartInputFieldsField({
   return (
     <StartInputFieldsField
       value={adapter.getValue(block.path)}
+      sourceOptions={(block.options ?? []) as StartInputSourceOption[]}
       onChange={(nextValue) => adapter.setValue(block.path, nextValue)}
     />
   );

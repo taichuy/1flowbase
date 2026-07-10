@@ -159,6 +159,15 @@ function normalizeOptions(value: unknown) {
     : undefined;
 }
 
+function normalizeStartInputSource(value: unknown) {
+  return value === 'path' ||
+    value === 'query' ||
+    value === 'body' ||
+    value === 'form'
+    ? value
+    : undefined;
+}
+
 export function normalizeStartInputField(
   value: unknown,
   index: number
@@ -182,7 +191,8 @@ export function normalizeStartInputField(
     defaultValue: normalizeDefaultValue(source.defaultValue, inputType),
     maxLength: normalizeMaxLength(source.maxLength),
     hidden: Boolean(source.hidden),
-    options: normalizeOptions(source.options)
+    options: normalizeOptions(source.options),
+    source: normalizeStartInputSource(source.source)
   };
 }
 

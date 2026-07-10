@@ -73,16 +73,20 @@ export function NodeDetailHeader({
           ) : null}
         </div>
         <Space className="agent-flow-node-detail__actions" size={4}>
-          <NodeRunButton
-            disabled={previewActionsDisabled}
-            onRunNode={onRunNode}
-            loading={runLoading}
-          />
-          <NodeDebugButton
-            disabled={previewActionsDisabled}
-            onDebugNode={onDebugNode}
-            loading={debugLoading}
-          />
+          {onRunNode ? (
+            <NodeRunButton
+              disabled={previewActionsDisabled}
+              onRunNode={onRunNode}
+              loading={runLoading}
+            />
+          ) : null}
+          {onDebugNode ? (
+            <NodeDebugButton
+              disabled={previewActionsDisabled}
+              onDebugNode={onDebugNode}
+              loading={debugLoading}
+            />
+          ) : null}
           {definitionMeta?.helpHref ? (
             <Button
               aria-label={i18nText("agentFlow", "auto.help_documentation")}

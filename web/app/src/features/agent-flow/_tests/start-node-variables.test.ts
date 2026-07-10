@@ -832,4 +832,39 @@ describe('start node variables', () => {
       })
     ]);
   });
+
+  test('AC-1237 preserves valid workflow parameter sources and drops invalid values', () => {
+    const document = createDefaultWorkflowDocument({ flowId: 'workflow-1' });
+    const startNode = document.graph.nodes.find(
+      (node) => node.type === 'workflow_start'
+    );
+
+    if (!startNode) {
+      throw new Error('expected workflow start node');
+    }
+
+    startNode.config.input_fields = [
+      {
+        key: 'order_id',
+        label: '订单 ID',
+        inputType: 'text',
+        valueType: 'string',
+        required: true,
+        source: 'path'
+      },
+      {
+        key: 'payload',
+        label: '请求体',
+        inputType: 'text',
+        valueType: 'string',
+        required: false,
+        source: 'cookie'
+      }
+    ];
+
+    expect(getStartInputFields(startNode)).toEqual([
+      expect.objectContaining({ key: 'order_id', source: 'path' }),
+      expect.not.objectContaining({ source: expect.anything() })
+    ]);
+  });
 });

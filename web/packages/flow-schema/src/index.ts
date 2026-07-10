@@ -42,6 +42,8 @@ export type FlowStartInputType =
   | 'file_list'
   | 'url';
 
+export type FlowStartInputSource = 'path' | 'query' | 'body' | 'form';
+
 export interface FlowStartInputField {
   key: string;
   label: string;
@@ -53,6 +55,7 @@ export interface FlowStartInputField {
   maxLength?: number;
   hidden?: boolean;
   options?: string[];
+  source?: FlowStartInputSource;
 }
 
 export interface FlowStartModelDescriptor {

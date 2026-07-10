@@ -31,7 +31,8 @@ function createWorkflowDocument() {
       label: 'Customer ID',
       inputType: 'text',
       valueType: 'string',
-      required: true
+      required: true,
+      source: 'path'
     },
     {
       key: 'force',
@@ -39,7 +40,8 @@ function createWorkflowDocument() {
       inputType: 'checkbox',
       valueType: 'boolean',
       required: false,
-      defaultValue: false
+      defaultValue: false,
+      source: 'query'
     }
   ];
 
@@ -154,49 +156,18 @@ describe('WorkflowTestRunPanel', () => {
     );
   });
 
-  test('AC-103 groups extension parameters by source', async () => {
+  test('AC-103 groups workflow start inputs by source', async () => {
     renderPanel(
       createTriggerContext({
         triggerType: 'extension',
-        mapping: {
-          input: {
-            query_target: 'node-workflow-start.query',
-            model_target: null,
-            inputs_target: null,
-            history_target: null,
-            attachments_target: null
-          },
-          output: {
-            answer_selector: null,
-            usage_selector: null,
-            files_selector: null,
-            error_selector: null
-          },
-          extension: {
-            slug: 'ticket',
-            method: 'POST',
-            response_mode: 'sync',
-            parameters: [
-              {
-                source: 'path',
-                name: 'customerId',
-                target: 'node-workflow-start.customer_id'
-              },
-              {
-                source: 'query',
-                name: 'force',
-                target: 'node-workflow-start.force'
-              }
-            ]
-          }
-        }
+        mapping: null
       })
     );
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Path 参数')).toBeInTheDocument();
     expect(within(dialog).getByText('Query 参数')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('customerId')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('customer_id')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('force')).toBeInTheDocument();
   });
 

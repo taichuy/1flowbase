@@ -28,35 +28,18 @@ export function createWorkflowStartContract(): NodeRuntimeUiContract {
     },
     outputs: [],
     panelSections: [
-      basicsPanelSection,
-      panelSection(
-        'trigger',
-        i18nText('workflow', 'auto.trigger_configuration'),
-        [
-          panelField({
-            key: 'workflow_trigger_config',
-            title: i18nText('workflow', 'auto.trigger_configuration'),
-            renderer: 'workflow_trigger_config',
-            valueType: 'json'
-          })
-        ]
-      ),
       panelSection('inputs', i18nText('workflow', 'auto.input_parameters'), [
         panelField({
           key: 'config.input_fields',
           title: i18nText('workflow', 'auto.input_parameters'),
           renderer: 'start_input_fields',
-          valueType: 'array'
-        })
-      ]),
-      panelSection('sync', i18nText('workflow', 'auto.sync_response'), [
-        panelField({
-          key: 'config.sync_timeout_ms',
-          title: i18nText('workflow', 'auto.sync_timeout'),
-          renderer: 'number',
-          valueType: 'number',
-          min: 1000,
-          step: 1000
+          valueType: 'array',
+          options: [
+            { value: 'path', label: 'path' },
+            { value: 'query', label: 'query' },
+            { value: 'body', label: 'body' },
+            { value: 'form', label: 'form' }
+          ]
         })
       ])
     ]
@@ -136,4 +119,3 @@ export function createWorkflowStartTriggerSummary(value: unknown) {
     ? `${extension.method} /api/ex/${extension.slug}`
     : i18nText('workflow', 'auto.workflow_trigger_not_configured');
 }
-

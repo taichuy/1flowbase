@@ -28,6 +28,24 @@ const workflowTriggerContext = {
 };
 
 describe('WorkflowEditor assembly', () => {
+  test('keeps the workflow canvas as the layout root', () => {
+    renderReactFlowScene(
+      <WorkflowEditorAssembly
+        applicationId="app-1"
+        applicationName="Ticket Workflow"
+        workflowTriggerContext={workflowTriggerContext}
+        initialState={createWorkflowInitialState()}
+      />
+    );
+
+    expect(
+      screen.getByRole('region', { name: 'Ticket Workflow workflow editor' })
+    ).toHaveClass('agent-flow-editor');
+    expect(
+      screen.queryByTestId('workflow-editor-assembly')
+    ).not.toBeInTheDocument();
+  });
+
   test('AC-001/005 uses workflow node picker options for workflow documents', async () => {
     renderReactFlowScene(
       <WorkflowEditorAssembly
@@ -85,4 +103,30 @@ describe('WorkflowEditor assembly', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('执行此节点')).not.toBeInTheDocument();
   }, 20_000);
+
+  test('reuses the standard node detail shell without node preview actions', () => {
+    renderReactFlowScene(
+      <WorkflowEditorAssembly
+        applicationId="app-1"
+        applicationName="Ticket Workflow"
+        workflowTriggerContext={workflowTriggerContext}
+        initialState={createWorkflowInitialState()}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Workflow Start'));
+
+    expect(screen.getByTestId('node-detail-header')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '设置' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '上次运行' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('separator', { name: '调整节点详情宽度' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '执行此节点' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '调试此节点' })
+    ).not.toBeInTheDocument();
+  });
 });

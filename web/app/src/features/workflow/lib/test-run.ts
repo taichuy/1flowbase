@@ -1,14 +1,16 @@
-import type {
-  ConsoleWorkflowExtensionParameterMapping,
-  ConsoleWorkflowTriggerType
-} from '@1flowbase/api-client';
+import type { ConsoleWorkflowTriggerType } from '@1flowbase/api-client';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
 type WorkflowInputValues = Record<string, unknown>;
-type WorkflowExtensionInputs = Record<
-  ConsoleWorkflowExtensionParameterMapping['source'],
-  WorkflowInputValues
->;
+type WorkflowInputSource = 'path' | 'query' | 'body' | 'form';
+type WorkflowExtensionInputs = Record<WorkflowInputSource, WorkflowInputValues>;
+
+interface WorkflowHttpInputField {
+  key: string;
+  source?: WorkflowInputSource;
+  required: boolean;
+  defaultValue?: unknown;
+}
 
 interface WorkflowTestRunBaseInput {
   document: FlowAuthoringDocument;
@@ -22,7 +24,6 @@ interface ScheduleWorkflowTestRunInput extends WorkflowTestRunBaseInput {
 
 interface ExtensionWorkflowTestRunInput extends WorkflowTestRunBaseInput {
   triggerType: 'extension';
-  extensionParameters: ConsoleWorkflowExtensionParameterMapping[];
   extensionInputs: WorkflowExtensionInputs;
 }
 
@@ -48,23 +49,45 @@ function workflowStartNode(document: FlowAuthoringDocument) {
   return startNode;
 }
 
-function workflowInputKeys(document: FlowAuthoringDocument) {
+export function listWorkflowHttpInputFields(document: FlowAuthoringDocument) {
   const startNode = workflowStartNode(document);
   const rawFields = startNode.config.input_fields;
 
   if (!Array.isArray(rawFields)) {
-    return new Set<string>();
+    return [];
   }
 
-  return new Set(
-    rawFields.flatMap((field) => {
-      if (typeof field !== 'object' || field === null) {
-        return [];
+  return rawFields.flatMap((field): WorkflowHttpInputField[] => {
+    if (typeof field !== 'object' || field === null) {
+      return [];
+    }
+
+    const inputField = field as Record<string, unknown>;
+    const key = inputField.key;
+    const source = inputField.source;
+    if (typeof key !== 'string' || key.length === 0) {
+      return [];
+    }
+
+    const normalizedSource =
+      source === 'path' ||
+      source === 'query' ||
+      source === 'body' ||
+      source === 'form'
+        ? source
+        : undefined;
+
+    return [
+      {
+        key,
+        ...(normalizedSource ? { source: normalizedSource } : {}),
+        required: inputField.required === true,
+        ...(Object.prototype.hasOwnProperty.call(inputField, 'defaultValue')
+          ? { defaultValue: inputField.defaultValue }
+          : {})
       }
-      const key = (field as Record<string, unknown>).key;
-      return typeof key === 'string' && key.length > 0 ? [key] : [];
-    })
-  );
+    ];
+  });
 }
 
 function selectWorkflowInputs(
@@ -77,26 +100,22 @@ function selectWorkflowInputs(
 }
 
 function extensionWorkflowInputs(
-  startNodeId: string,
-  allowedKeys: Set<string>,
-  parameters: ConsoleWorkflowExtensionParameterMapping[],
+  fields: WorkflowHttpInputField[],
   inputs: WorkflowExtensionInputs
 ) {
   const values: WorkflowInputValues = {};
 
-  for (const parameter of parameters) {
-    const selector = parameter.target.split('.');
-    if (
-      selector.length !== 2 ||
-      selector[0] !== startNodeId ||
-      !allowedKeys.has(selector[1])
-    ) {
+  for (const field of fields) {
+    if (!field.source) {
       continue;
     }
-
-    const sourceValues = inputs[parameter.source];
-    if (Object.prototype.hasOwnProperty.call(sourceValues, parameter.name)) {
-      values[selector[1]] = sourceValues[parameter.name];
+    const sourceValues = inputs[field.source];
+    if (Object.prototype.hasOwnProperty.call(sourceValues, field.key)) {
+      values[field.key] = sourceValues[field.key];
+    } else if (Object.prototype.hasOwnProperty.call(field, 'defaultValue')) {
+      values[field.key] = field.defaultValue;
+    } else if (field.required) {
+      throw new Error(`Missing required workflow input: ${field.key}`);
     }
   }
 
@@ -105,7 +124,8 @@ function extensionWorkflowInputs(
 
 export function buildWorkflowTestRunInput(input: WorkflowTestRunInput) {
   const startNode = workflowStartNode(input.document);
-  const allowedKeys = workflowInputKeys(input.document);
+  const inputFields = listWorkflowHttpInputFields(input.document);
+  const allowedKeys = new Set(inputFields.map((field) => field.key));
   let values: WorkflowInputValues;
 
   switch (input.triggerType) {
@@ -113,12 +133,7 @@ export function buildWorkflowTestRunInput(input: WorkflowTestRunInput) {
       values = selectWorkflowInputs(asRecord(input.schedulePayload), allowedKeys);
       break;
     case 'extension':
-      values = extensionWorkflowInputs(
-        startNode.id,
-        allowedKeys,
-        input.extensionParameters,
-        input.extensionInputs
-      );
+      values = extensionWorkflowInputs(inputFields, input.extensionInputs);
       break;
   }
 

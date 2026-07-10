@@ -1,7 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { App, Button, Typography } from 'antd';
-import { useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent
+} from 'react';
 import { useNavigate } from '@tanstack/react-router';
 
 import type {
@@ -24,13 +31,18 @@ import {
 import { AgentFlowCanvas } from '../../agent-flow/components/editor/AgentFlowCanvas';
 import { AgentFlowSideDock } from '../../agent-flow/components/editor/AgentFlowSideDock';
 import { ApplicationEnvironmentVariablesPanel } from '../../agent-flow/components/editor/ApplicationEnvironmentVariablesPanel';
+import { startCanvasFrameResize } from '../../agent-flow/components/editor/canvas-frame/resize';
+import { NodeDetailPanel } from '../../agent-flow/components/detail/NodeDetailPanel';
 import { VersionHistoryPanel } from '../../agent-flow/components/history/VersionHistoryPanel';
 import { IssuesDrawer } from '../../agent-flow/components/issues/IssuesDrawer';
 import { useContainerNavigation } from '../../agent-flow/hooks/interactions/use-container-navigation';
 import { useDraftSync } from '../../agent-flow/hooks/interactions/use-draft-sync';
 import { useEditorShortcuts } from '../../agent-flow/hooks/interactions/use-editor-shortcuts';
 import { useNodeDetailActions } from '../../agent-flow/hooks/interactions/use-node-detail-actions';
-import { clampNodeDetailWidth } from '../../agent-flow/lib/detail-panel-width';
+import {
+  clampNodeDetailWidth,
+  getNodeDetailLayout
+} from '../../agent-flow/lib/detail-panel-width';
 import type { AgentFlowEnvironmentVariable } from '../../agent-flow/lib/variables/application-environment-variables';
 import { useAgentFlowEditorStore } from '../../agent-flow/store/editor/provider';
 import {
@@ -47,7 +59,6 @@ import {
 import { buildWorkflowNodePickerOptions } from '../lib/picker-options';
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
 import { validateWorkflowDocument } from '../lib/validate-document';
-import { WorkflowNodeDetailPanel } from './WorkflowNodeDetailPanel';
 import { WorkflowOverlay } from './WorkflowOverlay';
 import { WorkflowTestRunPanel } from './WorkflowTestRunPanel';
 
@@ -115,11 +126,16 @@ export function WorkflowCanvasFrame({
   const viewportGetterRef = useRef<
     (() => FlowAuthoringDocument['editor']['viewport']) | null
   >(null);
+  const stopNodeDetailResizeRef = useRef<(() => void) | null>(null);
   documentRef.current = workingDocument;
   lastSavedDocumentRef.current = lastSavedDocument;
 
   const [environmentVariablesOpen, setEnvironmentVariablesOpen] =
     useState(false);
+  const [nodeDetailTab, setNodeDetailTab] = useState<'config' | 'lastRun'>(
+    'config'
+  );
+  const [isResizingNodeDetail, setIsResizingNodeDetail] = useState(false);
   const [environmentVariables, setEnvironmentVariables] = useState<
     AgentFlowEnvironmentVariable[]
   >(initialEnvironmentVariables);
@@ -160,6 +176,21 @@ export function WorkflowCanvasFrame({
   );
   const activeContainerId = activeContainerPath.at(-1) ?? null;
   const boundedNodeDetailWidth = clampNodeDetailWidth(nodeDetailWidth, 1200);
+  const nodeDetailLayout = getNodeDetailLayout(boundedNodeDetailWidth);
+
+  useEffect(() => {
+    const stopNodeDetailResize = stopNodeDetailResizeRef;
+
+    return () => stopNodeDetailResize.current?.();
+  }, []);
+
+  useEffect(() => {
+    if (selectedNodeId) {
+      return;
+    }
+
+    stopNodeDetailResizeRef.current?.();
+  }, [selectedNodeId]);
 
   const environmentVariablesMutation = useMutation({
     mutationFn: (variables: AgentFlowEnvironmentVariable[]) => {
@@ -210,6 +241,48 @@ export function WorkflowCanvasFrame({
   function openHistory() {
     setEnvironmentVariablesOpen(false);
     setPanelState({ historyOpen: true });
+  }
+
+  function handleNodeDetailResizeStart(
+    event: ReactMouseEvent<HTMLDivElement>
+  ) {
+    const startX = event.clientX;
+    const startWidth = boundedNodeDetailWidth;
+
+    stopNodeDetailResizeRef.current?.();
+    stopNodeDetailResizeRef.current = startCanvasFrameResize(event, {
+      cursor: 'col-resize',
+      onMove(moveEvent) {
+        setPanelState({
+          nodeDetailWidth: clampNodeDetailWidth(
+            startWidth + startX - moveEvent.clientX,
+            1200
+          )
+        });
+      },
+      onStart: () => setIsResizingNodeDetail(true),
+      onStop() {
+        setIsResizingNodeDetail(false);
+        stopNodeDetailResizeRef.current = null;
+      }
+    });
+  }
+
+  function handleNodeDetailResizeKeyDown(
+    event: ReactKeyboardEvent<HTMLDivElement>
+  ) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return;
+    }
+
+    event.preventDefault();
+    const direction = event.key === 'ArrowLeft' ? 1 : -1;
+    setPanelState({
+      nodeDetailWidth: clampNodeDetailWidth(
+        boundedNodeDetailWidth + direction * 24,
+        1200
+      )
+    });
   }
 
   return (
@@ -283,12 +356,33 @@ export function WorkflowCanvasFrame({
           }}
         />
         {selectedNodeId ? (
-          <div style={{ width: boundedNodeDetailWidth }}>
-            <WorkflowNodeDetailPanel
+          <div
+            className="agent-flow-editor__detail-dock"
+            data-layout={nodeDetailLayout}
+            data-resizing={isResizingNodeDetail ? 'true' : 'false'}
+            data-testid="agent-flow-editor-detail-dock"
+            style={{ width: `${boundedNodeDetailWidth}px` }}
+          >
+            <div
+              aria-label={i18nText(
+                'agentFlow',
+                'auto.adjust_node_detail_width'
+              )}
+              aria-orientation="vertical"
+              className="agent-flow-editor__detail-resize-handle"
+              onKeyDown={handleNodeDetailResizeKeyDown}
+              onMouseDown={handleNodeDetailResizeStart}
+              role="separator"
+              tabIndex={0}
+            />
+            <NodeDetailPanel
+              activeTab={nodeDetailTab}
+              applicationId={applicationId}
               environmentVariables={environmentVariables}
               issues={issues}
-              triggerContext={triggerContext}
               onClose={detailActions.closeDetail}
+              onTabChange={setNodeDetailTab}
+              workflowTriggerContext={triggerContext}
             />
           </div>
         ) : null}

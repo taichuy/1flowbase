@@ -8,7 +8,10 @@ import {
 import { Button, Empty, Typography } from 'antd';
 import { useRef, useState } from 'react';
 
-import type { FlowStartInputField } from '@1flowbase/flow-schema';
+import type {
+  FlowStartInputField,
+  FlowStartInputSource
+} from '@1flowbase/flow-schema';
 
 import { JsonPreviewBlock } from '../../../../../shared/ui/json-preview/JsonPreviewBlock';
 import { useStableListItemKeys } from '../../../hooks/interactions/use-stable-list-item-keys';
@@ -25,7 +28,15 @@ function normalizeList(value: unknown): FlowStartInputField[] {
     : [];
 }
 
-function createNextField(index: number): FlowStartInputField {
+export type StartInputSourceOption = {
+  value: FlowStartInputSource;
+  label: string;
+};
+
+function createNextField(
+  index: number,
+  sourceOptions: StartInputSourceOption[]
+): FlowStartInputField {
   const key = `input_${index + 1}`;
 
   return {
@@ -33,7 +44,8 @@ function createNextField(index: number): FlowStartInputField {
     label: key,
     inputType: 'text',
     valueType: 'string',
-    required: false
+    required: false,
+    source: sourceOptions[0]?.value
   };
 }
 
@@ -126,9 +138,11 @@ type EditingInputField = {
 
 export function StartInputFieldsField({
   value,
+  sourceOptions = [],
   onChange
 }: {
   value: unknown;
+  sourceOptions?: StartInputSourceOption[];
   onChange: (value: FlowStartInputField[]) => void;
 }) {
   const fields = normalizeList(value);
@@ -144,7 +158,7 @@ export function StartInputFieldsField({
   function openAddPanel() {
     setEditing({
       index: null,
-      field: createNextField(fields.length)
+      field: createNextField(fields.length, sourceOptions)
     });
   }
 
@@ -226,6 +240,7 @@ export function StartInputFieldsField({
     <StartInputFieldSettingsPanel
       mode={editing.index === null ? 'create' : 'edit'}
       field={editing.field}
+      sourceOptions={sourceOptions}
       triggerRef={triggerRef}
       onChange={updateDraft}
       onClose={closePanel}

@@ -330,7 +330,7 @@ describe('agent-flow node schema registry', () => {
     );
   });
 
-  test('exposes workflow start inputs and sync timeout through schema contract', () => {
+  test('exposes only workflow input fields through the start node contract', () => {
     const schema = resolveAgentFlowNodeSchema('workflow_start');
 
     expect(schema.nodeType).toBe('workflow_start');
@@ -343,20 +343,27 @@ describe('agent-flow node schema registry', () => {
             expect.objectContaining({
               kind: 'field',
               path: 'config.input_fields',
-              renderer: 'start_input_fields'
+              renderer: 'start_input_fields',
+              options: [
+                { value: 'path', label: 'path' },
+                { value: 'query', label: 'query' },
+                { value: 'body', label: 'body' },
+                { value: 'form', label: 'form' }
+              ]
             })
           ]
+        })
+      ])
+    );
+    expect(schema.detail.tabs.config.blocks).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'section',
+          title: '触发器配置'
         }),
         expect.objectContaining({
           kind: 'section',
-          title: '同步设置',
-          blocks: [
-            expect.objectContaining({
-              kind: 'field',
-              path: 'config.sync_timeout_ms',
-              renderer: 'number'
-            })
-          ]
+          title: '同步设置'
         })
       ])
     );
