@@ -304,7 +304,8 @@
 }
 
 .mcp-management__schema-editor .agent-flow-json-schema-settings__editor,
-.mcp-management__input-mapping-editor .agent-flow-json-schema-settings__editor {
+.mcp-management__input-mapping-editor .agent-flow-json-schema-settings__editor,
+.mcp-management__return-fields-editor .agent-flow-json-schema-settings__editor {
   height: 300px;
   overflow: hidden;
   border: 1px solid var(--ant-color-border);
@@ -320,6 +321,31 @@
   justify-content: center;
   color: var(--ant-color-text-secondary);
   font-size: 13px;
+}
+
+.mcp-management__return-fields-editor {
+  width: 100%;
+}
+
+.mcp-management__return-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mcp-management__return-field-rows {
+  display: flex;
+  max-height: 240px;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.mcp-management__return-field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
 }
 
 @media (max-width: 768px) {

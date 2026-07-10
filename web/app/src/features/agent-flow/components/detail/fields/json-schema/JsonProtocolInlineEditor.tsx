@@ -13,6 +13,7 @@ export function JsonProtocolInlineEditor<TValue>({
   ariaLabel,
   className,
   testId,
+  hint,
   value,
   stringifyValue,
   parseValue,
@@ -23,6 +24,7 @@ export function JsonProtocolInlineEditor<TValue>({
   ariaLabel: string;
   className?: string;
   testId?: string;
+  hint?: ReactNode;
   value: TValue;
   stringifyValue: (value: TValue) => string;
   parseValue: (value: string) => JsonProtocolEditorResult<TValue>;
@@ -110,7 +112,9 @@ export function JsonProtocolInlineEditor<TValue>({
         onChange={switchTab}
       />
       <Typography.Text type={protocolError ? 'danger' : 'secondary'}>
-        {protocolError ?? i18nText('agentFlow', 'auto.json_schema_parse_hint')}
+        {protocolError ??
+          hint ??
+          i18nText('agentFlow', 'auto.json_schema_parse_hint')}
       </Typography.Text>
     </div>
   );

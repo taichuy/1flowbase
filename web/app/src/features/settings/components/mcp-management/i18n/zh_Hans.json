@@ -33,6 +33,11 @@
     "list_max_depth": "最大目录深度",
     "list_regex_enabled": "允许正则路径查询",
     "list_regex_max_length": "正则表达式最大长度",
-    "list_return_fields": "列表返回字段"
+    "list_return_fields": "列表返回字段",
+    "add_list_return_field": "添加返回字段",
+    "delete_list_return_field": "删除返回字段 {{value1}}",
+    "list_return_fields_json_hint": "支持字符串数组 JSON",
+    "list_return_fields_array_error": "列表返回字段必须是字符串数组",
+    "list_return_fields_json_error": "列表返回字段 JSON 格式错误"
   }
 }

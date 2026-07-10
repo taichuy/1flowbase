@@ -1291,6 +1291,9 @@ describe('McpManagementPanel', () => {
     const dialog = screen.getByRole('dialog', {
       name: '目录发现配置 · Ops MCP'
     });
+    expect(
+      within(dialog).getByTestId('fixed-height-modal-scroll-body')
+    ).toBeInTheDocument();
     expect(within(dialog).getByText('ops_mcp')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('默认返回数量')).toHaveValue('20');
     expect(within(dialog).getByLabelText('最大目录深度')).toHaveValue('3');
@@ -1298,7 +1301,18 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).getByLabelText('正则表达式最大长度')).toHaveValue(
       '120'
     );
-    expect(within(dialog).getByLabelText('列表返回字段')).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('tab', { name: 'Schema 字段' })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('tab', { name: 'JSON 解析' })
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /添加返回字段/ })
+    );
+    fireEvent.change(within(dialog).getByLabelText('列表返回字段 1'), {
+      target: { value: 'id' }
+    });
     expect(
       within(dialog).queryByText('包含参数映射摘要')
     ).not.toBeInTheDocument();
@@ -1315,9 +1329,13 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('正则表达式最大长度'), {
       target: { value: '160' }
     });
-    fireEvent.change(within(dialog).getByLabelText('列表返回字段'), {
-      target: { value: '["id","name"]' }
-    });
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
+    fireEvent.change(
+      await within(dialog).findByLabelText('列表返回字段 JSON'),
+      {
+        target: { value: '["id","name"]' }
+      }
+    );
     fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
 
     await waitFor(() => {

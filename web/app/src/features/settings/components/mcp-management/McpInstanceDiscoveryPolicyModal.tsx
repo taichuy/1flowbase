@@ -1,16 +1,18 @@
-import { SaveOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  Button,
   Form,
   Input,
   InputNumber,
-  Modal,
+  Col,
+  Row,
   Space,
   Switch,
   Typography,
   message
 } from 'antd';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type {
   ConsoleMcpInstance,
   ConsoleMcpInstanceDiscoveryPolicy
@@ -22,7 +24,9 @@ import {
 } from '../../api/mcp-management';
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
-import { parseJsonText, stringifyJson } from './mcp-management-utils';
+import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
+import { JsonProtocolInlineEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonProtocolInlineEditor';
+import { stringifyJson } from './mcp-management-utils';
 
 type DiscoveryPolicyFormValues = Omit<
   ConsoleMcpInstanceDiscoveryPolicy,
@@ -32,8 +36,110 @@ type DiscoveryPolicyFormValues = Omit<
   | 'instance_id'
   | 'list_return_fields'
 > & {
-  list_return_fields_text: string;
+  list_return_fields: string[];
 };
+
+function parseReturnFields(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+
+    if (
+      !Array.isArray(parsed) ||
+      parsed.some((field) => typeof field !== 'string')
+    ) {
+      return {
+        ok: false as const,
+        message: i18nText(
+          'settingsMcpManagement',
+          'auto.list_return_fields_array_error'
+        )
+      };
+    }
+
+    return { ok: true as const, value: parsed };
+  } catch {
+    return {
+      ok: false as const,
+      message: i18nText(
+        'settingsMcpManagement',
+        'auto.list_return_fields_json_error'
+      )
+    };
+  }
+}
+
+function ReturnFieldsEditor({
+  value = [],
+  onChange,
+  onValidityChange
+}: {
+  value?: string[];
+  onChange?: (value: string[]) => void;
+  onValidityChange: (valid: boolean) => void;
+}) {
+  const fieldLabel = i18nText(
+    'settingsMcpManagement',
+    'auto.list_return_fields'
+  );
+
+  return (
+    <JsonProtocolInlineEditor
+      ariaLabel={`${fieldLabel} JSON`}
+      className="mcp-management__return-fields-editor"
+      hint={i18nText(
+        'settingsMcpManagement',
+        'auto.list_return_fields_json_hint'
+      )}
+      parseValue={parseReturnFields}
+      stringifyValue={stringifyJson}
+      value={value}
+      onChange={(nextValue) => onChange?.(nextValue)}
+      onValidityChange={onValidityChange}
+      renderFields={({ value: fields, onChange: setFields }) => (
+        <div className="mcp-management__return-fields">
+          <div className="mcp-management__return-field-rows">
+            {fields.map((field, index) => (
+              <div key={index} className="mcp-management__return-field-row">
+                <Input
+                  aria-label={`${fieldLabel} ${index + 1}`}
+                  value={field}
+                  onChange={(event) => {
+                    const nextFields = [...fields];
+                    nextFields[index] = event.target.value;
+                    setFields(nextFields);
+                  }}
+                />
+                <Button
+                  danger
+                  type="text"
+                  aria-label={i18nText(
+                    'settingsMcpManagement',
+                    'auto.delete_list_return_field',
+                    { value1: field || index + 1 }
+                  )}
+                  icon={<DeleteOutlined />}
+                  onClick={() =>
+                    setFields(
+                      fields.filter((_, fieldIndex) => fieldIndex !== index)
+                    )
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <Button
+            block
+            type="dashed"
+            icon={<PlusOutlined />}
+            onClick={() => setFields([...fields, ''])}
+          >
+            {i18nText('settingsMcpManagement', 'auto.add_list_return_field')}
+          </Button>
+        </div>
+      )}
+    />
+  );
+}
 
 export function McpInstanceDiscoveryPolicyModal({
   canManage,
@@ -51,13 +157,14 @@ export function McpInstanceDiscoveryPolicyModal({
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
   const [form] = Form.useForm<DiscoveryPolicyFormValues>();
-  const initialValues = useMemo(
+  const returnFieldsValidRef = useRef(true);
+  const initialValues = useMemo<DiscoveryPolicyFormValues>(
     () => ({
       list_default_limit: policy.list_default_limit,
       list_max_depth: policy.list_max_depth,
       list_regex_enabled: policy.list_regex_enabled,
       list_regex_max_length: policy.list_regex_max_length,
-      list_return_fields_text: stringifyJson(policy.list_return_fields)
+      list_return_fields: policy.list_return_fields as string[]
     }),
     [policy]
   );
@@ -77,10 +184,7 @@ export function McpInstanceDiscoveryPolicyModal({
           list_max_depth: values.list_max_depth,
           list_regex_enabled: values.list_regex_enabled,
           list_regex_max_length: values.list_regex_max_length,
-          list_return_fields: parseJsonText(
-            values.list_return_fields_text,
-            'list_return_fields'
-          )
+          list_return_fields: values.list_return_fields
         },
         csrfToken
       ),
@@ -97,18 +201,38 @@ export function McpInstanceDiscoveryPolicyModal({
   });
 
   return (
-    <Modal
+    <FixedHeightModal
       open={open}
       title={`${i18nText('settingsMcpManagement', 'auto.discovery_policy')} · ${instance.name}`}
       onCancel={onClose}
-      okText={i18nText('settings', 'auto.save')}
-      cancelText={i18nText('settings', 'auto.cancel')}
-      okButtonProps={{
-        icon: <SaveOutlined />,
-        disabled: !canManage,
-        loading: saveMutation.isPending
-      }}
-      onOk={() => form.submit()}
+      footer={
+        <Space>
+          <Button onClick={onClose}>
+            {i18nText('settings', 'auto.cancel')}
+          </Button>
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            disabled={!canManage}
+            loading={saveMutation.isPending}
+            onClick={() => {
+              if (!returnFieldsValidRef.current) {
+                message.error(
+                  i18nText(
+                    'settingsMcpManagement',
+                    'auto.list_return_fields_json_error'
+                  )
+                );
+                return;
+              }
+
+              form.submit();
+            }}
+          >
+            {i18nText('settings', 'auto.save')}
+          </Button>
+        </Space>
+      }
       destroyOnHidden
     >
       <Space
@@ -125,46 +249,68 @@ export function McpInstanceDiscoveryPolicyModal({
           initialValues={initialValues}
           onFinish={(values) => saveMutation.mutate(values)}
         >
+          <Row gutter={24}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="list_default_limit"
+                label={i18nText(
+                  'settingsMcpManagement',
+                  'auto.list_default_limit'
+                )}
+                rules={[{ required: true }]}
+              >
+                <InputNumber min={1} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="list_max_depth"
+                label={i18nText('settingsMcpManagement', 'auto.list_max_depth')}
+                rules={[{ required: true }]}
+              >
+                <InputNumber min={1} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={24}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="list_regex_enabled"
+                label={i18nText(
+                  'settingsMcpManagement',
+                  'auto.list_regex_enabled'
+                )}
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="list_regex_max_length"
+                label={i18nText(
+                  'settingsMcpManagement',
+                  'auto.list_regex_max_length'
+                )}
+                rules={[{ required: true }]}
+              >
+                <InputNumber min={1} />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item
-            name="list_default_limit"
-            label={i18nText('settingsMcpManagement', 'auto.list_default_limit')}
-            rules={[{ required: true }]}
-          >
-            <InputNumber min={1} />
-          </Form.Item>
-          <Form.Item
-            name="list_max_depth"
-            label={i18nText('settingsMcpManagement', 'auto.list_max_depth')}
-            rules={[{ required: true }]}
-          >
-            <InputNumber min={1} />
-          </Form.Item>
-          <Form.Item
-            name="list_regex_enabled"
-            label={i18nText('settingsMcpManagement', 'auto.list_regex_enabled')}
-            valuePropName="checked"
-          >
-            <Switch />
-          </Form.Item>
-          <Form.Item
-            name="list_regex_max_length"
-            label={i18nText(
-              'settingsMcpManagement',
-              'auto.list_regex_max_length'
-            )}
-            rules={[{ required: true }]}
-          >
-            <InputNumber min={1} />
-          </Form.Item>
-          <Form.Item
-            name="list_return_fields_text"
+            name="list_return_fields"
             label={i18nText('settingsMcpManagement', 'auto.list_return_fields')}
-            rules={[{ required: true }]}
+            required
           >
-            <Input.TextArea rows={5} />
+            <ReturnFieldsEditor
+              onValidityChange={(valid) => {
+                returnFieldsValidRef.current = valid;
+              }}
+            />
           </Form.Item>
         </Form>
       </Space>
-    </Modal>
+    </FixedHeightModal>
   );
 }

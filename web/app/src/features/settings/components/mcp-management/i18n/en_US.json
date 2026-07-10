@@ -33,6 +33,11 @@
     "list_max_depth": "Maximum directory depth",
     "list_regex_enabled": "Allow regex path search",
     "list_regex_max_length": "Maximum regex length",
-    "list_return_fields": "List response fields"
+    "list_return_fields": "List response fields",
+    "add_list_return_field": "Add response field",
+    "delete_list_return_field": "Delete response field {{value1}}",
+    "list_return_fields_json_hint": "Supports JSON string arrays",
+    "list_return_fields_array_error": "List response fields must be a string array",
+    "list_return_fields_json_error": "List response fields contain invalid JSON"
   }
 }
