@@ -32,7 +32,7 @@ export type BlockContextJsonValue =
 export interface BlockContextMediatorPolicy {
   allowedEvents?: readonly string[];
   allowedActions?: readonly string[];
-  allowedDataModels?: readonly string[];
+  allowedQueries?: readonly string[];
   allowedDataOperations?: readonly BlockContextMediatorDataOperation[];
   maxEventChainDepth?: number;
 }
@@ -83,13 +83,6 @@ type JsonNormalizationResult =
     };
 
 const DEFAULT_MAX_EVENT_CHAIN_DEPTH = 32;
-
-const DATA_DENIAL_CODES = {
-  query: 'query_denied',
-  create: 'create_denied',
-  update: 'update_denied',
-  delete: 'delete_denied'
-} as const satisfies Record<BlockContextMediatorDataOperation, BlockRuntimeErrorCode>;
 
 export function createBlockContextMediatorState(): BlockContextMediatorState {
   return {
@@ -231,64 +224,26 @@ function reduceDataEffect(
   effect: Extract<NormalizedEffect, { type: 'data' }>,
   policy: BlockContextMediatorPolicy
 ): BlockContextMediatorTransition {
-  if (!isDataOperation(effect.operation)) {
+  if (!toSet(policy.allowedQueries).has(effect.queryId)) {
     return reject(state, {
       requestId: effect.requestId,
-      code: 'data_operation_invalid',
-      path: 'data.operation',
-      message: `Data operation is invalid: ${effect.operation}.`
+      code: 'query_denied',
+      path: 'data.queryId',
+      message: `Query is not allowed: ${effect.queryId}.`
     });
   }
 
-  const denialCode = DATA_DENIAL_CODES[effect.operation];
-  if (!toSet(policy.allowedDataOperations).has(effect.operation)) {
-    return reject(state, {
-      requestId: effect.requestId,
-      code: denialCode,
-      path: 'data.operation',
-      message: `Data operation is not allowed: ${effect.operation}.`
-    });
-  }
-
-  const payloadResult = normalizeOptionalPayload(effect.payload);
+  const payloadResult = normalizeOptionalPayload(effect.params);
   if (!payloadResult.ok) {
     return rejectPayload(state, effect.requestId, payloadResult);
-  }
-
-  if (!isJsonRecord(payloadResult.value)) {
-    return reject(state, {
-      requestId: effect.requestId,
-      code: 'payload_invalid',
-      path: 'payload',
-      message: 'Data request payload must be an object.'
-    });
-  }
-
-  const model = payloadResult.value.model;
-  if (typeof model !== 'string' || model.length === 0) {
-    return reject(state, {
-      requestId: effect.requestId,
-      code: 'payload_invalid',
-      path: 'payload.model',
-      message: 'Data request payload.model must be a non-empty string.'
-    });
-  }
-
-  if (!toSet(policy.allowedDataModels).has(model)) {
-    return reject(state, {
-      requestId: effect.requestId,
-      code: denialCode,
-      path: 'payload.model',
-      message: `Data model is not allowed: ${model}.`
-    });
   }
 
   return allow(state, {
     type: 'data',
     requestId: effect.requestId,
     ...(effect.effectId ? { effectId: effect.effectId } : {}),
-    operation: effect.operation,
-    payload: payloadResult.value
+    queryId: effect.queryId,
+    ...(payloadResult.value === undefined ? {} : { params: payloadResult.value })
   });
 }
 
@@ -400,10 +355,11 @@ function normalizeEffect(
   }
 
   if (type.value === 'data') {
-    const operation = readStringProperty(value, 'operation', 'effect.operation');
-    if (!operation.ok) {
-      return effectInvalid(operation.path, operation.message, requestId.value);
+    const queryId = readStringProperty(value, 'queryId', 'effect.queryId');
+    if (!queryId.ok) {
+      return effectInvalid(queryId.path, queryId.message, requestId.value);
     }
+    const params = readOptionalProperty(value, 'params');
     const effectId = readOptionalStringProperty(
       value,
       'effectId',
@@ -419,8 +375,8 @@ function normalizeEffect(
         type: 'data',
         requestId: requestId.value,
         ...(effectId.value ? { effectId: effectId.value } : {}),
-        operation: operation.value,
-        ...(payload.hasValue ? { payload: payload.value } : {})
+        queryId: queryId.value,
+        ...(params.hasValue ? { params: params.value } : {})
       }
     };
   }
@@ -802,17 +758,6 @@ function isJsonRecord(
     typeof value === 'object' &&
     value !== null &&
     !Array.isArray(value)
-  );
-}
-
-function isDataOperation(
-  value: string
-): value is BlockContextMediatorDataOperation {
-  return (
-    value === 'query' ||
-    value === 'create' ||
-    value === 'update' ||
-    value === 'delete'
   );
 }
 

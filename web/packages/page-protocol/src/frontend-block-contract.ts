@@ -43,7 +43,43 @@ export interface FrontendBlockPermissions {
   secrets: string;
 }
 
-export interface FrontendBlockCatalogEntry {
+export const FRONTEND_BLOCK_CODE_MODULE_SOURCES = [
+  '@1flowbase/block-sdk',
+  '@1flowbase/block-renderer/antd-facade'
+] as const;
+
+export type FrontendBlockCodeModuleSource =
+  (typeof FRONTEND_BLOCK_CODE_MODULE_SOURCES)[number];
+
+export interface FrontendBlockCodeModule {
+  source: FrontendBlockCodeModuleSource;
+  type_declarations: string;
+}
+
+export interface FrontendBlockCodeContribution {
+  code_template?: string | null;
+  code_template_version?: string | null;
+  code_template_language?: 'jsx' | 'tsx' | null;
+  code_modules?: FrontendBlockCodeModule[];
+}
+
+export interface FrontendBlockMonacoExtraLib {
+  filePath: string;
+  content: string;
+}
+
+export interface FrontendBlockCodeCapabilities {
+  template: {
+    source: string;
+    version: string;
+    language: 'jsx' | 'tsx';
+  } | null;
+  allowedImports: FrontendBlockCodeModuleSource[];
+  monacoExtraLibs: FrontendBlockMonacoExtraLib[];
+  workerModuleSources: FrontendBlockCodeModuleSource[];
+}
+
+export interface FrontendBlockCatalogEntry extends FrontendBlockCodeContribution {
   installation_id: string;
   provider_code: string;
   plugin_id: string;
@@ -57,7 +93,7 @@ export interface FrontendBlockCatalogEntry {
   ui_capabilities: FrontendBlockUiCapability[];
 }
 
-export interface FrontendBlockManifestContribution {
+export interface FrontendBlockManifestContribution extends FrontendBlockCodeContribution {
   contribution_code: string;
   title: string;
   runtime: FrontendBlockRuntime;
@@ -65,6 +101,32 @@ export interface FrontendBlockManifestContribution {
   context_contract: FrontendBlockContextContract;
   permissions: FrontendBlockPermissions;
   ui_capabilities: FrontendBlockUiCapability[];
+}
+
+export function createFrontendBlockCodeCapabilities(
+  contribution: FrontendBlockCodeContribution
+): FrontendBlockCodeCapabilities {
+  const modules = (contribution.code_modules ?? []).filter((codeModule) =>
+    FRONTEND_BLOCK_CODE_MODULE_SOURCES.includes(codeModule.source)
+  );
+  return {
+    template:
+      contribution.code_template &&
+      contribution.code_template_version &&
+      contribution.code_template_language
+        ? {
+            source: contribution.code_template,
+            version: contribution.code_template_version,
+            language: contribution.code_template_language
+          }
+        : null,
+    allowedImports: modules.map((codeModule) => codeModule.source),
+    monacoExtraLibs: modules.map((codeModule) => ({
+      filePath: `file:///node_modules/${codeModule.source}/index.d.ts`,
+      content: codeModule.type_declarations
+    })),
+    workerModuleSources: modules.map((codeModule) => codeModule.source)
+  };
 }
 
 const frontendBlockRuntimeSet = new Set<string>(FRONTEND_BLOCK_RUNTIMES);

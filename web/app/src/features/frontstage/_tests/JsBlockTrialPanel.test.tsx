@@ -76,7 +76,7 @@ function createLimits(
     maxRenderNodes: 250,
     allowedActions: ['record.save'],
     allowedEvents: ['record.saved'],
-    allowedDataModels: ['records'],
+    allowedQueries: ['records'],
     allowedDataOperations: ['query'],
     maxEventChainDepth: 4,
     ...overrides
@@ -294,7 +294,7 @@ describe('JsBlockTrialPanel', () => {
         contextSnapshot={{ pageId: 'page-1' }}
         limits={createLimits()}
         runtimeSessionFactory={runtimeSessionFactory}
-        dataEffectHandler={dataEffectHandler}
+        handlers={{ data: dataEffectHandler }}
       />
     );
 
@@ -467,7 +467,7 @@ describe('JsBlockTrialPanel', () => {
     fireEvent.change(screen.getByLabelText('运行时限制'), {
       target: {
         value:
-          '{ "timeoutMs": 2000, "maxRenderDepth": 4, "maxRenderNodes": 120, "allowedActions": ["record.archive"], "allowedEvents": [], "allowedDataModels": ["cases"], "allowedDataOperations": ["query"], "maxEventChainDepth": 2 }'
+          '{ "timeoutMs": 2000, "maxRenderDepth": 4, "maxRenderNodes": 120, "allowedActions": ["record.archive"], "allowedEvents": [], "allowedQueries": ["cases"], "allowedDataOperations": ["query"], "maxEventChainDepth": 2 }'
       }
     });
     fireEvent.click(screen.getByRole('button', { name: '更新 limits' }));
@@ -477,7 +477,7 @@ describe('JsBlockTrialPanel', () => {
       maxRenderNodes: 120,
       allowedActions: ['record.archive'],
       allowedEvents: [],
-      allowedDataModels: ['cases'],
+      allowedQueries: ['cases'],
       allowedDataOperations: ['query'],
       maxEventChainDepth: 2
     });

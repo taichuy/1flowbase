@@ -59,11 +59,11 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
         insert into frontend_block_catalog (
             id, installation_id, provider_code, plugin_id, plugin_version, contribution_code,
             title, runtime, entry, context_contract, permission_network, permission_storage,
-            permission_secrets, ui_capabilities
+            permission_secrets, ui_capabilities, code_template, code_template_version, code_template_language, code_modules
         ) values (
             $1, $2, $3, $4, '0.1.0',
             'hero_banner', 'Hero Banner', 'iframe', 'blocks/hero/index.html',
-            $5, 'none', 'none', 'none', $6
+            $5, 'none', 'none', 'none', $6, $7, '1.0.0', 'tsx', $8
         )
         "#,
     )
@@ -76,6 +76,11 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
         "input_schema": { "type": "object" }
     }))
     .bind(json!(["responsive"]))
+    .bind("export default function HeroBanner() { return <section>Hero</section>; }")
+    .bind(json!([{
+        "source": "@1flowbase/block-sdk",
+        "type_declarations": "export declare function defineBlock(input: unknown): unknown;"
+    }]))
     .execute(&pool)
     .await
     .unwrap();
@@ -131,6 +136,16 @@ async fn frontend_block_catalog_route_lists_only_assigned_workspace_blocks() {
         Some("hero_banner")
     );
     assert_eq!(entries[0]["runtime"].as_str(), Some("iframe"));
+    assert_eq!(
+        entries[0]["code_template"].as_str(),
+        Some("export default function HeroBanner() { return <section>Hero</section>; }")
+    );
+    assert_eq!(entries[0]["code_template_version"].as_str(), Some("1.0.0"));
+    assert_eq!(entries[0]["code_template_language"].as_str(), Some("tsx"));
+    assert_eq!(
+        entries[0]["code_modules"][0]["source"].as_str(),
+        Some("@1flowbase/block-sdk")
+    );
     assert_eq!(
         entries[0]["context_contract"]["primitives"][0].as_str(),
         Some("text")

@@ -11,6 +11,10 @@ pub struct StoredFrontendBlockCatalogRow {
     pub title: String,
     pub runtime: String,
     pub entry: String,
+    pub code_template: Option<String>,
+    pub code_template_version: Option<String>,
+    pub code_template_language: Option<String>,
+    pub code_modules: Value,
     pub context_contract: Value,
     pub permission_network: String,
     pub permission_storage: String,
@@ -33,6 +37,10 @@ impl PgFrontendBlockCatalogMapper {
             title: row.title,
             runtime: row.runtime,
             entry: row.entry,
+            code_template: row.code_template,
+            code_template_version: row.code_template_version,
+            code_template_language: row.code_template_language,
+            code_modules: parse_code_modules(row.code_modules)?,
             context_contract: parse_context_contract(row.context_contract)?,
             permissions: domain::FrontendBlockPermissions {
                 network: row.permission_network,
@@ -42,6 +50,10 @@ impl PgFrontendBlockCatalogMapper {
             ui_capabilities: parse_string_array(row.ui_capabilities)?,
         })
     }
+}
+
+fn parse_code_modules(value: Value) -> Result<Vec<domain::FrontendBlockCodeModule>> {
+    serde_json::from_value(value).map_err(Into::into)
 }
 
 fn parse_context_contract(value: Value) -> Result<domain::FrontendBlockContextContract> {

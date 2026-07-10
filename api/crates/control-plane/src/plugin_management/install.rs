@@ -1,8 +1,8 @@
+use super::catalog::normalize_official_entries;
 use super::catalog_projection::{
     record_failed_catalog_projection, refresh_provider_package_catalog_projection,
 };
 use super::*;
-use super::{catalog::normalize_official_entries, filesystem::copy_installation_artifact};
 use sha2::{Digest, Sha256};
 
 pub struct InstallPluginCommand {
@@ -86,18 +86,55 @@ pub(super) fn load_plugin_manifest(path: impl AsRef<Path>) -> Result<PluginManif
     parse_plugin_manifest(&raw).map_err(map_framework_error)
 }
 
+trait InstallationProjectionIdentity {
+    fn installation_id(&self) -> Uuid;
+    fn provider_code(&self) -> &str;
+    fn plugin_id(&self) -> &str;
+    fn plugin_version(&self) -> &str;
+}
+
+impl InstallationProjectionIdentity for UpsertPluginInstallationInput {
+    fn installation_id(&self) -> Uuid {
+        self.installation_id
+    }
+    fn provider_code(&self) -> &str {
+        &self.provider_code
+    }
+    fn plugin_id(&self) -> &str {
+        &self.plugin_id
+    }
+    fn plugin_version(&self) -> &str {
+        &self.plugin_version
+    }
+}
+
+impl InstallationProjectionIdentity for domain::PluginInstallationRecord {
+    fn installation_id(&self) -> Uuid {
+        self.id
+    }
+    fn provider_code(&self) -> &str {
+        &self.provider_code
+    }
+    fn plugin_id(&self) -> &str {
+        &self.plugin_id
+    }
+    fn plugin_version(&self) -> &str {
+        &self.plugin_version
+    }
+}
+
 fn build_node_contribution_sync_input(
-    installation: &domain::PluginInstallationRecord,
+    installation: &impl InstallationProjectionIdentity,
     manifest: &PluginManifestV1,
 ) -> ReplaceInstallationNodeContributionsInput {
-    let plugin_unique_identifier = stable_plugin_unique_identifier(&installation.plugin_id);
-    let package_id = installation.plugin_id.clone();
+    let plugin_unique_identifier = stable_plugin_unique_identifier(installation.plugin_id());
+    let package_id = installation.plugin_id().to_string();
 
     ReplaceInstallationNodeContributionsInput {
-        installation_id: installation.id,
-        provider_code: installation.provider_code.clone(),
-        plugin_id: installation.plugin_id.clone(),
-        plugin_version: installation.plugin_version.clone(),
+        installation_id: installation.installation_id(),
+        provider_code: installation.provider_code().to_string(),
+        plugin_id: installation.plugin_id().to_string(),
+        plugin_version: installation.plugin_version().to_string(),
         entries: manifest
             .node_contributions
             .iter()
@@ -138,14 +175,14 @@ fn build_node_contribution_sync_input(
 }
 
 fn build_js_dependency_sync_input(
-    installation: &domain::PluginInstallationRecord,
+    installation: &impl InstallationProjectionIdentity,
     manifest: &PluginManifestV1,
 ) -> ReplaceInstallationJsDependenciesInput {
     ReplaceInstallationJsDependenciesInput {
-        installation_id: installation.id,
-        provider_code: installation.provider_code.clone(),
-        plugin_id: installation.plugin_id.clone(),
-        plugin_version: installation.plugin_version.clone(),
+        installation_id: installation.installation_id(),
+        provider_code: installation.provider_code().to_string(),
+        plugin_id: installation.plugin_id().to_string(),
+        plugin_version: installation.plugin_version().to_string(),
         entries: manifest
             .js_dependencies
             .iter()
@@ -173,14 +210,14 @@ fn build_js_dependency_sync_input(
 }
 
 fn build_frontend_block_sync_input(
-    installation: &domain::PluginInstallationRecord,
+    installation: &impl InstallationProjectionIdentity,
     manifest: &PluginManifestV1,
 ) -> ReplaceInstallationFrontendBlocksInput {
     ReplaceInstallationFrontendBlocksInput {
-        installation_id: installation.id,
-        provider_code: installation.provider_code.clone(),
-        plugin_id: installation.plugin_id.clone(),
-        plugin_version: installation.plugin_version.clone(),
+        installation_id: installation.installation_id(),
+        provider_code: installation.provider_code().to_string(),
+        plugin_id: installation.plugin_id().to_string(),
+        plugin_version: installation.plugin_version().to_string(),
         entries: manifest
             .block_contributions
             .iter()
@@ -189,6 +226,17 @@ fn build_frontend_block_sync_input(
                 title: block.title.clone(),
                 runtime: block.runtime.clone(),
                 entry: block.entry.clone(),
+                code_template: block.code_template.clone(),
+                code_template_version: block.code_template_version.clone(),
+                code_template_language: block.code_template_language.clone(),
+                code_modules: block
+                    .code_modules
+                    .iter()
+                    .map(|code_module| domain::FrontendBlockCodeModule {
+                        source: code_module.source.clone(),
+                        type_declarations: code_module.type_declarations.clone(),
+                    })
+                    .collect(),
                 context_contract: domain::FrontendBlockContextContract {
                     primitives: block.context_contract.primitives.clone(),
                     input_schema: block.context_contract.input_schema.clone(),
@@ -215,6 +263,42 @@ fn stable_plugin_unique_identifier(plugin_id: &str) -> String {
 fn stable_sha256_json(value: &serde_json::Value) -> String {
     let bytes = serde_json::to_vec(value).unwrap_or_default();
     format!("sha256:{:x}", Sha256::digest(bytes))
+}
+
+async fn commit_prepared_installation<R>(
+    repository: &R,
+    node_id: &str,
+    installation: UpsertPluginInstallationInput,
+    manifest: &PluginManifestV1,
+    package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
+) -> Result<domain::PluginInstallationRecord>
+where
+    R: PluginRepository,
+{
+    let artifact_instance = UpsertPluginArtifactInstanceInput {
+        node_id: node_id.to_string(),
+        installation_id: installation.installation_id,
+        local_version: Some(installation.plugin_version.clone()),
+        local_checksum: installation.checksum.clone(),
+        installed_path: Some(installation.installed_path.clone()),
+        artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+        runtime_status: domain::PluginRuntimeStatus::Inactive,
+        checked_at: OffsetDateTime::now_utc(),
+        last_error: None,
+    };
+    let node_contributions = build_node_contribution_sync_input(&installation, manifest);
+    let js_dependencies = build_js_dependency_sync_input(&installation, manifest);
+    let frontend_blocks = build_frontend_block_sync_input(&installation, manifest);
+    repository
+        .commit_plugin_installation_projection(&CommitPluginInstallationProjectionInput {
+            installation,
+            artifact_instance,
+            package_catalog,
+            node_contributions,
+            js_dependencies,
+            frontend_blocks,
+        })
+        .await
 }
 
 pub(super) fn map_model_discovery_mode(
@@ -596,35 +680,32 @@ where
                 .join("packages")
                 .join(&plugin_code)
                 .join(format!("{package_id}.1flowbasepkg"));
-            if let Some(package_bytes) = source_metadata.package_bytes.as_ref() {
-                if let Some(parent) = package_archive_path.parent() {
-                    fs::create_dir_all(parent).with_context(|| {
-                        format!(
-                            "failed to create plugin package archive directory {}",
-                            parent.display()
-                        )
-                    })?;
-                }
-                fs::write(&package_archive_path, package_bytes).with_context(|| {
-                    format!(
-                        "failed to persist plugin package archive at {}",
-                        package_archive_path.display()
-                    )
-                })?;
-            }
-            copy_installation_artifact(Path::new(&command.package_root), &install_path)?;
+            let mut staged_package = source_metadata
+                .package_bytes
+                .as_deref()
+                .map(|bytes| filesystem::StagedArtifactPath::prepare_file(bytes, &package_archive_path))
+                .transpose()?;
+            let mut staged_installation = filesystem::StagedArtifactPath::prepare_directory(
+                Path::new(&command.package_root),
+                &install_path,
+            )?;
             let manifest_fingerprint =
-                compute_manifest_fingerprint(&install_path.join("manifest.yaml"))
+                compute_manifest_fingerprint(&staged_installation.staged_path().join("manifest.yaml"))
                     .await
                     .map_err(map_framework_error)?;
             write_artifact_marker(
-                &install_path,
+                staged_installation.staged_path(),
                 &package_id,
                 &manifest.version,
                 source_metadata.checksum.as_deref(),
                 Some(&manifest_fingerprint),
             )?;
-            match package_kind {
+            staged_installation.activate()?;
+            if let Some(package) = staged_package.as_mut() {
+                package.activate()?;
+            }
+            let database_result = async {
+                match package_kind {
                 RoutedPluginPackageKind::HostExtension => {
                     ensure_root_actor(&actor)?;
                     ensure_uploaded_host_extensions_enabled(self.allow_uploaded_host_extensions)?;
@@ -676,7 +757,10 @@ where
                             plugin_install_audit_detail(&installation, &detail_json, true),
                         ))
                         .await?;
-                    Ok::<domain::PluginInstallationRecord, anyhow::Error>(installation)
+                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
+                        installation,
+                        false,
+                    ))
                 }
                 RoutedPluginPackageKind::ModelProviderRuntime => {
                     let installed_package = load_provider_package(&install_path)?;
@@ -758,7 +842,10 @@ where
                             plugin_install_audit_detail(&installation, &detail_json, false),
                         ))
                         .await?;
-                    Ok::<domain::PluginInstallationRecord, anyhow::Error>(installation)
+                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
+                        installation,
+                        false,
+                    ))
                 }
                 RoutedPluginPackageKind::DataSourceRuntime => {
                     let installed_package =
@@ -816,7 +903,10 @@ where
                             plugin_install_audit_detail(&installation, &detail_json, false),
                         ))
                         .await?;
-                    Ok::<domain::PluginInstallationRecord, anyhow::Error>(installation)
+                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
+                        installation,
+                        false,
+                    ))
                 }
                 RoutedPluginPackageKind::CapabilityPlugin => {
                     let manifest = load_plugin_manifest(&install_path)?;
@@ -833,9 +923,7 @@ where
                             .collect::<Vec<_>>(),
                     });
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
-                    let installation = self
-                        .repository
-                        .upsert_installation(&UpsertPluginInstallationInput {
+                    let installation_input = UpsertPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
                             provider_code: stable_plugin_unique_identifier(&manifest.plugin_id),
                             plugin_id: manifest.versioned_plugin_id().map_err(map_framework_error)?,
@@ -867,56 +955,64 @@ where
                             last_load_error: None,
                             metadata_json,
                             actor_user_id: command.actor_user_id,
-                        })
-                        .await?;
-                    self.repository
-                        .replace_installation_node_contributions(
-                            &build_node_contribution_sync_input(&installation, &manifest),
-                        )
-                        .await?;
-                    self.repository
-                        .replace_installation_js_dependencies(&build_js_dependency_sync_input(
-                            &installation,
-                            &manifest,
-                        ))
-                        .await?;
-                    self.repository
-                        .replace_installation_frontend_blocks(&build_frontend_block_sync_input(
-                            &installation,
-                            &manifest,
-                        ))
-                        .await?;
-                    self.repository
-                        .append_audit_log(&audit_log(
+                        };
+                    let installation = commit_prepared_installation(
+                        &self.repository,
+                        &self.node_id,
+                        installation_input,
+                        &manifest,
+                        None,
+                    )
+                    .await?;
+                    let _ = self.repository.append_audit_log(&audit_log(
                             Some(actor.current_workspace_id),
                             Some(command.actor_user_id),
                             "plugin_installation",
                             Some(installation.id),
                             "plugin.installed",
                             plugin_install_audit_detail(&installation, &detail_json, false),
-                        ))
-                        .await?;
-                    Ok::<domain::PluginInstallationRecord, anyhow::Error>(installation)
+                        )).await;
+                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
+                        installation,
+                        true,
+                    ))
+                }
                 }
             }
+            .await;
+            if database_result.is_err() {
+                let _ = staged_installation.rollback();
+                if let Some(package) = staged_package.as_mut() {
+                    let _ = package.rollback();
+                }
+            } else {
+                staged_installation.finish();
+                if let Some(package) = staged_package {
+                    package.finish();
+                }
+            }
+            database_result
         }
         .await;
 
         match installation_result {
-            Ok(installation) => {
-                if let Err(error) = self.record_ready_current_node_artifact(&installation).await {
-                    let _ = self
-                        .transition_task(
-                            &running_task,
-                            domain::PluginTaskStatus::Failed,
-                            Some(error.to_string()),
-                            json!({
-                                "installation_id": installation.id,
-                                "provider_code": installation.provider_code,
-                            }),
-                        )
-                        .await;
-                    return Err(error);
+            Ok((installation, artifact_committed)) => {
+                if !artifact_committed {
+                    if let Err(error) = self.record_ready_current_node_artifact(&installation).await
+                    {
+                        let _ = self
+                            .transition_task(
+                                &running_task,
+                                domain::PluginTaskStatus::Failed,
+                                Some(error.to_string()),
+                                json!({
+                                    "installation_id": installation.id,
+                                    "provider_code": installation.provider_code,
+                                }),
+                            )
+                            .await;
+                        return Err(error);
+                    }
                 }
                 let installed_message = if is_host_extension_installation(&installation) {
                     "installed; restart required"

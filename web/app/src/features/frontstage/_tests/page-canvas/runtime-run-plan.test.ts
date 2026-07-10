@@ -75,7 +75,7 @@ function createLimits(
     maxRenderNodes: 250,
     allowedActions: ['record.save'],
     allowedEvents: ['record.saved'],
-    allowedDataModels: ['records'],
+    allowedQueries: ['records'],
     allowedDataOperations: ['query'],
     maxEventChainDepth: 4,
     ...overrides

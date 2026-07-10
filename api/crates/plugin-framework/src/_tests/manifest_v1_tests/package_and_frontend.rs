@@ -331,6 +331,15 @@ block_contributions:
     title: Hero Banner
     runtime: iframe
     entry: blocks/hero/index.html
+    code_template: |
+      export default function HeroBanner() {
+        return <section>Hero</section>;
+      }
+    code_template_version: 1.0.0
+    code_template_language: tsx
+    code_modules:
+      - source: "@1flowbase/block-sdk"
+        type_declarations: "export declare function defineBlock(input: unknown): unknown;"
     context_contract:
       primitives:
         - text
@@ -353,8 +362,134 @@ block_contributions:
     assert_eq!(block.contribution_code, "hero_banner");
     assert_eq!(block.runtime, "iframe");
     assert_eq!(block.entry, "blocks/hero/index.html");
+    assert_eq!(
+        block.code_template.as_deref(),
+        Some("export default function HeroBanner() {\n  return <section>Hero</section>;\n}\n")
+    );
+    assert_eq!(block.code_template_version.as_deref(), Some("1.0.0"));
+    assert_eq!(block.code_template_language.as_deref(), Some("tsx"));
+    assert_eq!(block.code_modules[0].source, "@1flowbase/block-sdk");
     assert_eq!(block.context_contract.primitives, vec!["text", "image"]);
     assert_eq!(block.ui_capabilities, vec!["responsive", "configurable"]);
+}
+
+#[test]
+fn plugin_manifest_v1_keeps_missing_frontend_block_code_template_null() {
+    let manifest = parse_plugin_manifest(
+        r#"
+manifest_version: 1
+plugin_id: frontend_blocks_without_template@0.1.0
+version: 0.1.0
+vendor: acme
+display_name: Frontend Blocks Without Template
+description: frontend blocks without a code template
+source_kind: uploaded
+trust_level: checksum_only
+consumption_kind: capability_plugin
+execution_mode: declarative_only
+slot_codes:
+  - frontend_block
+binding_targets:
+  - workspace
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.capability/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: none
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/fixture-frontend-blocks
+block_contributions:
+  - contribution_code: hero_banner
+    title: Hero Banner
+    runtime: iframe
+    entry: blocks/hero/index.html
+    context_contract:
+      primitives: [text]
+      input_schema:
+        type: object
+    permissions:
+      network: none
+      storage: none
+      secrets: none
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(manifest.block_contributions[0].code_template, None);
+}
+
+#[test]
+fn plugin_manifest_v1_rejects_invalid_frontend_block_code_templates() {
+    let empty_template =
+        parse_plugin_manifest(&valid_frontend_block_manifest_with_code_template("   "))
+            .unwrap_err();
+    assert!(empty_template
+        .to_string()
+        .contains("block_contributions[].code_template cannot be empty"));
+
+    let oversized_template = "x".repeat(256 * 1024 + 1);
+    let oversized_error = parse_plugin_manifest(&valid_frontend_block_manifest_with_code_template(
+        &oversized_template,
+    ))
+    .unwrap_err();
+    assert!(oversized_error
+        .to_string()
+        .contains("block_contributions[].code_template exceeds 262144 bytes"));
+}
+
+fn valid_frontend_block_manifest_with_code_template(code_template: &str) -> String {
+    format!(
+        r#"
+manifest_version: 1
+plugin_id: frontend_blocks_with_template@0.1.0
+version: 0.1.0
+vendor: acme
+display_name: Frontend Blocks With Template
+description: frontend blocks with a code template
+source_kind: uploaded
+trust_level: checksum_only
+consumption_kind: capability_plugin
+execution_mode: declarative_only
+slot_codes: [frontend_block]
+binding_targets: [workspace]
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.capability/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: none
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/fixture-frontend-blocks
+block_contributions:
+  - contribution_code: hero_banner
+    title: Hero Banner
+    runtime: iframe
+    entry: blocks/hero/index.html
+    code_template: {code_template:?}
+    code_template_version: 1.0.0
+    code_template_language: tsx
+    code_modules: []
+    context_contract:
+      primitives: [text]
+      input_schema:
+        type: object
+    permissions:
+      network: none
+      storage: none
+      secrets: none
+"#
+    )
 }
 
 #[test]

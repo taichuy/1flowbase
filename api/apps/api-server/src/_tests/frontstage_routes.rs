@@ -159,13 +159,14 @@ async fn save_page_content(
     csrf: &str,
     workspace_id: &str,
     page_id: &str,
+    tab_id: &str,
     schema_payload: Value,
     root_payload: Value,
 ) -> (StatusCode, Value) {
     send_json(
         app,
         "PUT",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/content"),
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document"),
         cookie,
         csrf,
         json!({
@@ -176,6 +177,31 @@ async fn save_page_content(
                 "payload": root_payload
             }
         }),
+    )
+    .await
+}
+
+async fn dispatch_capability(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    workspace_id: &str,
+    page_id: &str,
+    tab_id: &str,
+    kind: &str,
+    capability_id_field: &str,
+    capability_id: &str,
+    params: Value,
+) -> (StatusCode, Value) {
+    send_json(
+        app,
+        "POST",
+        &format!(
+            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/{kind}/dispatch"
+        ),
+        cookie,
+        csrf,
+        json!({ capability_id_field: capability_id, "params": params }),
     )
     .await
 }
@@ -369,11 +395,35 @@ async fn workspace_member_without_design_permission_cannot_write() {
     )
     .await;
 
+    let root_workspace_id = current_workspace_id(&app, &root_cookie).await;
+    let (_, page_payload) = create_page(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &root_workspace_id,
+        Some("Protected"),
+        None,
+        "a",
+    )
+    .await;
+    let page_id = page_payload["data"]["id"].as_str().unwrap();
+
     let (cookie, csrf) = login_and_capture_cookie(&app, "frontstage-viewer", "temp-pass").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
     let (status, _) = create_group(&app, &cookie, &csrf, &workspace_id, Some("Group"), "a").await;
 
     assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (tab_status, _) = send_json(
+        &app,
+        "POST",
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs"),
+        &cookie,
+        &csrf,
+        json!({"title": "Denied"}),
+    )
+    .await;
+    assert_eq!(tab_status, StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -464,6 +514,96 @@ async fn patch_page_metadata_persists_tooltip_and_hidden_state() {
     assert_eq!(payload["data"][0]["icon"], json!("FileTextOutlined"));
     assert_eq!(payload["data"][0]["tooltip"], json!("展示在页面树"));
     assert_eq!(payload["data"][0]["is_hidden"], json!(true));
+}
+
+#[tokio::test]
+async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let (group_status, group_payload) = send_json(
+        &app,
+        "POST",
+        &format!("/api/console/frontstage/{workspace_id}/pages/groups"),
+        &cookie,
+        &csrf,
+        json!({"title": "Sidebar", "rank": "a", "placement": "sidebar"}),
+    )
+    .await;
+    assert_eq!(group_status, StatusCode::CREATED);
+    let group_id = group_payload["data"]["id"].as_str().unwrap();
+
+    let (create_status, create_payload) = send_json(
+        &app,
+        "POST",
+        &format!("/api/console/frontstage/{workspace_id}/pages"),
+        &cookie,
+        &csrf,
+        json!({
+            "title": "Topbar child",
+            "parent_id": group_id,
+            "rank": "a",
+            "placement": "topbar"
+        }),
+    )
+    .await;
+    assert_eq!(create_status, StatusCode::BAD_REQUEST);
+    assert_eq!(create_payload["code"], "frontstage_page_placement_mismatch");
+
+    let (page_status, page_payload) = send_json(
+        &app,
+        "POST",
+        &format!("/api/console/frontstage/{workspace_id}/pages"),
+        &cookie,
+        &csrf,
+        json!({"title": "Topbar root", "rank": "b", "placement": "topbar"}),
+    )
+    .await;
+    assert_eq!(page_status, StatusCode::CREATED);
+    let page_id = page_payload["data"]["id"].as_str().unwrap();
+
+    let (move_status, move_payload) = send_json(
+        &app,
+        "POST",
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/move"),
+        &cookie,
+        &csrf,
+        json!({"parent_id": group_id, "rank": "b"}),
+    )
+    .await;
+    assert_eq!(move_status, StatusCode::BAD_REQUEST);
+    assert_eq!(move_payload["code"], "frontstage_page_placement_mismatch");
+
+    let (valid_child_status, _) = send_json(
+        &app,
+        "POST",
+        &format!("/api/console/frontstage/{workspace_id}/pages"),
+        &cookie,
+        &csrf,
+        json!({
+            "title": "Sidebar child",
+            "parent_id": group_id,
+            "rank": "c",
+            "placement": "sidebar"
+        }),
+    )
+    .await;
+    assert_eq!(valid_child_status, StatusCode::CREATED);
+
+    let (metadata_status, metadata_payload) = send_json(
+        &app,
+        "PATCH",
+        &format!("/api/console/frontstage/{workspace_id}/pages/{group_id}"),
+        &cookie,
+        &csrf,
+        json!({"placement": "topbar"}),
+    )
+    .await;
+    assert_eq!(metadata_status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        metadata_payload["code"],
+        "frontstage_group_placement_requires_empty_group"
+    );
 }
 
 #[tokio::test]
@@ -655,11 +795,14 @@ async fn page_detail_and_block_code_round_trip_are_persisted_by_page_scope() {
     .await;
     assert_eq!(page_status, StatusCode::CREATED);
     let page_id = page_payload["data"]["id"].as_str().unwrap();
-    let schema_root_uid = page_payload["data"]["schema_root_uid"].as_str().unwrap();
+    let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
+    let schema_root_uid = page_payload["data"]["default_tab"]["document_root_uid"]
+        .as_str()
+        .unwrap();
 
     let (detail_status, detail_payload) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}"),
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}"),
         &cookie,
     )
     .await;
@@ -752,7 +895,10 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
     )
     .await;
     let page_id = page_payload["data"]["id"].as_str().unwrap();
-    let schema_root_uid = page_payload["data"]["schema_root_uid"].as_str().unwrap();
+    let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
+    let schema_root_uid = page_payload["data"]["default_tab"]["document_root_uid"]
+        .as_str()
+        .unwrap();
 
     let schema_payload = json!({
         "version": 1,
@@ -779,6 +925,7 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
         &csrf,
         &workspace_id,
         page_id,
+        tab_id,
         schema_payload.clone(),
         root_payload.clone(),
     )
@@ -796,7 +943,7 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
 
     let (detail_status, detail_payload) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}"),
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}"),
         &cookie,
     )
     .await;
@@ -821,9 +968,14 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
     )
     .await;
     let sibling_page_id = sibling_payload["data"]["id"].as_str().unwrap();
+    let sibling_tab_id = sibling_payload["data"]["default_tab"]["id"]
+        .as_str()
+        .unwrap();
     let (sibling_detail_status, sibling_detail_payload) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{sibling_page_id}"),
+        &format!(
+            "/api/console/frontstage/{workspace_id}/pages/{sibling_page_id}/tabs/{sibling_tab_id}"
+        ),
         &cookie,
     )
     .await;
@@ -844,12 +996,16 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
     )
     .await;
     let other_page_id = other_page_payload["data"]["id"].as_str().unwrap();
+    let other_tab_id = other_page_payload["data"]["default_tab"]["id"]
+        .as_str()
+        .unwrap();
     let (cross_workspace_status, _) = save_page_content(
         &app,
         &cookie,
         &csrf,
         &workspace_id,
         other_page_id,
+        other_tab_id,
         json!({ "version": 1, "nodes": [] }),
         json!({ "children": [] }),
     )
@@ -873,12 +1029,96 @@ async fn page_content_save_rejects_group_nodes() {
         &csrf,
         &workspace_id,
         group_id,
+        group_id,
         json!({ "version": 1 }),
         json!({ "children": [] }),
     )
     .await;
 
     assert_eq!(save_status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn page_tabs_keep_documents_isolated_and_reject_last_tab_deletion() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let (page_status, page_payload) = create_page(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        Some("Tabbed"),
+        None,
+        "a",
+    )
+    .await;
+    assert_eq!(page_status, StatusCode::CREATED);
+    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let default_tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
+    assert_eq!(
+        page_payload["data"]["default_tab"]["is_default"],
+        json!(true)
+    );
+
+    let (last_delete_status, _) = send_json(
+        &app,
+        "DELETE",
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{default_tab_id}"),
+        &cookie,
+        &csrf,
+        json!({}),
+    )
+    .await;
+    assert_eq!(last_delete_status, StatusCode::CONFLICT);
+
+    let (create_tab_status, tab_payload) = send_json(
+        &app,
+        "POST",
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs"),
+        &cookie,
+        &csrf,
+        json!({"title": "Details", "rank": "b"}),
+    )
+    .await;
+    assert_eq!(create_tab_status, StatusCode::CREATED);
+    let second_tab_id = tab_payload["data"]["id"].as_str().unwrap();
+    let second_root_uid = tab_payload["data"]["document_root_uid"].as_str().unwrap();
+
+    let second_schema =
+        json!({"version": 1, "root_uid": second_root_uid, "nodes": [{"uid": "second"}]});
+    let second_root =
+        json!({"uid": second_root_uid, "kind": "frontstage.tab.root", "children": ["second"]});
+    let (save_status, _) = save_page_content(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        page_id,
+        second_tab_id,
+        second_schema.clone(),
+        second_root.clone(),
+    )
+    .await;
+    assert_eq!(save_status, StatusCode::OK);
+
+    let (_, default_detail) = get_json(
+        &app,
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{default_tab_id}"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(
+        default_detail["data"]["schema"]["payload"]["nodes"],
+        json!([])
+    );
+    let (_, second_detail) = get_json(
+        &app,
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{second_tab_id}"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(second_detail["data"]["schema"]["payload"], second_schema);
 }
 
 #[tokio::test]
@@ -923,6 +1163,7 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
     )
     .await;
     let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
     let code_path =
         format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/hero");
     let (save_status, _) = send_json(
@@ -940,7 +1181,7 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
         login_and_capture_cookie(&app, "frontstage-code-viewer", "temp-pass").await;
     let (detail_status, _) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}"),
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}"),
         &viewer_cookie,
     )
     .await;
@@ -966,9 +1207,137 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
         &viewer_csrf,
         &workspace_id,
         page_id,
+        tab_id,
         json!({ "version": 1, "nodes": [] }),
         json!({ "children": [] }),
     )
     .await;
     assert_eq!(content_write_status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn ac_010_capability_dispatch_rejects_unknown_ids_and_rechecks_action_permission() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &root_cookie).await;
+    let (_, page_payload) = create_page(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &workspace_id,
+        Some("Capabilities"),
+        None,
+        "a",
+    )
+    .await;
+    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
+
+    let (unknown_query_status, unknown_query_payload) = dispatch_capability(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &workspace_id,
+        page_id,
+        tab_id,
+        "queries",
+        "query_id",
+        "frontstage.unknown.query",
+        json!({ "model": "users" }),
+    )
+    .await;
+    assert_eq!(unknown_query_status, StatusCode::NOT_FOUND);
+    assert_eq!(unknown_query_payload["code"], "resource_action");
+
+    let (unknown_action_status, unknown_action_payload) = dispatch_capability(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &workspace_id,
+        page_id,
+        tab_id,
+        "actions",
+        "action_id",
+        "frontstage.unknown.action",
+        json!({}),
+    )
+    .await;
+    assert_eq!(unknown_action_status, StatusCode::NOT_FOUND);
+    assert_eq!(unknown_action_payload["code"], "resource_action");
+
+    let member_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "frontstage-capability-designer",
+        "temp-pass",
+    )
+    .await;
+    create_role(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "frontstage_capability_designer",
+    )
+    .await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "frontstage_capability_designer",
+        &["frontstage.page.design"],
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["frontstage_capability_designer"],
+    )
+    .await;
+    let (member_cookie, member_csrf) =
+        login_and_capture_cookie(&app, "frontstage-capability-designer", "temp-pass").await;
+    let save_params = json!({
+        "schema": { "payload": { "version": 1, "nodes": [] } },
+        "root": { "payload": { "children": [] } }
+    });
+
+    let (allowed_status, _) = dispatch_capability(
+        &app,
+        &member_cookie,
+        &member_csrf,
+        &workspace_id,
+        page_id,
+        tab_id,
+        "actions",
+        "action_id",
+        "frontstage.page_tab.document.save",
+        save_params.clone(),
+    )
+    .await;
+    assert_eq!(allowed_status, StatusCode::OK);
+
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "frontstage_capability_designer",
+        &[],
+    )
+    .await;
+    let (revoked_status, _) = dispatch_capability(
+        &app,
+        &member_cookie,
+        &member_csrf,
+        &workspace_id,
+        page_id,
+        tab_id,
+        "actions",
+        "action_id",
+        "frontstage.page_tab.document.save",
+        save_params,
+    )
+    .await;
+    assert_eq!(revoked_status, StatusCode::FORBIDDEN);
 }

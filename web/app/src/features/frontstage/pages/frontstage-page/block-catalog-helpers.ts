@@ -6,6 +6,11 @@ function createCatalogBlockInput(
   entry: NormalizedFrontstageBlockCatalogEntry,
   blockIndex: number
 ): FrontstageBlockCompositionInput {
+  const codeTemplate = entry.codeCapabilities?.template;
+  if (!codeTemplate) {
+    throw new Error('Catalog entry is missing a code template.');
+  }
+
   const blockNumber = blockIndex + 1;
   const blockId = `frontstage-js-block-${blockNumber}`;
 
@@ -29,7 +34,9 @@ function createCatalogBlockInput(
     runtime: {
       kind: entry.runtimeKind,
       entry: entry.entry,
-      hint: entry.runtimeKind
+      hint: entry.runtimeKind,
+      code_template_version: codeTemplate.version,
+      code_template_language: codeTemplate.language
     }
   };
 }

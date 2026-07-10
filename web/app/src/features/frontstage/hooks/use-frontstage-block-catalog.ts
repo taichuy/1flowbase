@@ -1,8 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
+import { useAuthStore } from '../../../state/auth-store';
 import {
   fetchFrontstageBlockCatalog,
-  frontstageBlockCatalogQueryKey
+  frontstageBlockCatalogQueryKey,
+  frontstageBlockCatalogQueryKeyPrefix
 } from '../api/block-catalog';
 import {
   normalizeFrontstageBlockCatalog,
@@ -21,14 +24,53 @@ function toError(error: unknown): Error {
     : new Error('frontstage block catalog request failed');
 }
 
-export function useFrontstageBlockCatalog() {
+export function useFrontstageBlockCatalog({
+  workspaceId
+}: {
+  workspaceId: string | null | undefined;
+}) {
+  const queryClient = useQueryClient();
+  const sessionStatus = useAuthStore((state) => state.sessionStatus);
+  const actor = useAuthStore((state) => state.actor);
+  const me = useAuthStore((state) => state.me);
+  const permissionFingerprint = me
+    ? `role:${me.effective_display_role}|permissions:${[...me.permissions]
+        .sort()
+        .join(',')}`
+    : null;
+  const hasCatalogReadContext = Boolean(
+    sessionStatus === 'authenticated' &&
+      workspaceId &&
+      actor &&
+      me &&
+      permissionFingerprint &&
+      actor.current_workspace_id === workspaceId
+  );
+
+  useEffect(() => {
+    if (sessionStatus !== 'anonymous') {
+      return;
+    }
+
+    queryClient.removeQueries({
+      queryKey: frontstageBlockCatalogQueryKeyPrefix
+    });
+  }, [queryClient, sessionStatus]);
+
   const blockCatalogQuery = useQuery({
-    queryKey: frontstageBlockCatalogQueryKey(),
+    queryKey: frontstageBlockCatalogQueryKey({
+      workspaceId: workspaceId ?? 'missing-workspace',
+      actorId: actor?.id ?? 'missing-actor',
+      permissionFingerprint: permissionFingerprint ?? 'missing-permissions'
+    }),
     queryFn: fetchFrontstageBlockCatalog,
-    select: normalizeFrontstageBlockCatalog
+    select: normalizeFrontstageBlockCatalog,
+    enabled: hasCatalogReadContext
   });
 
-  const catalog = blockCatalogQuery.data ?? emptyCatalog;
+  const catalog = hasCatalogReadContext
+    ? (blockCatalogQuery.data ?? emptyCatalog)
+    : emptyCatalog;
 
   return {
     items: catalog.items,

@@ -20,7 +20,7 @@ import type { FrontstageBlockInstance } from './page-document';
 export interface RestrictedBlockLoaderLimits extends JsBlockRuntimeLimits {
   allowedActions?: readonly string[];
   allowedEvents?: readonly string[];
-  allowedDataModels?: readonly string[];
+  allowedQueries?: readonly string[];
   allowedDataOperations?: readonly BlockDataPermission[];
   maxEventChainDepth?: number;
 }
@@ -137,7 +137,8 @@ export function createRestrictedBlockRunPlan(
       props: { ...props },
       state: { ...state },
       contextSnapshot: { ...input.contextSnapshot },
-      limits: limits.value
+      limits: limits.value,
+      allowedImports: input.catalogEntry.codeCapabilities?.allowedImports ?? []
     },
     schemaValidationOptions: {
       maxDepth: limits.value.maxRenderDepth,
@@ -291,7 +292,7 @@ function createPolicy(
   return {
     allowedEvents,
     allowedActions,
-    allowedDataModels: [...(limits?.allowedDataModels ?? [])],
+    allowedQueries: [...(limits?.allowedQueries ?? [])],
     allowedDataOperations,
     maxEventChainDepth: limits?.maxEventChainDepth
   };

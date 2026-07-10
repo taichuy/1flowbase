@@ -55,7 +55,6 @@ function createDocument(
       kind: 'page',
       parentId: null,
       rank: '001000',
-      schemaRootUid: 'root-1'
     },
     rootUid: 'root-1',
     blocks,

@@ -27,6 +27,12 @@ pub struct FrontendBlockContextContractResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct FrontendBlockCodeModuleResponse {
+    pub source: String,
+    pub type_declarations: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FrontendBlockCatalogResponse {
     pub installation_id: String,
     pub provider_code: String,
@@ -36,6 +42,10 @@ pub struct FrontendBlockCatalogResponse {
     pub title: String,
     pub runtime: String,
     pub entry: String,
+    pub code_template: Option<String>,
+    pub code_template_version: Option<String>,
+    pub code_template_language: Option<String>,
+    pub code_modules: Vec<FrontendBlockCodeModuleResponse>,
     pub context_contract: FrontendBlockContextContractResponse,
     pub permissions: FrontendBlockPermissionsResponse,
     pub ui_capabilities: Vec<String>,
@@ -55,6 +65,17 @@ fn to_response(entry: domain::FrontendBlockCatalogEntry) -> FrontendBlockCatalog
         title: entry.title,
         runtime: entry.runtime,
         entry: entry.entry,
+        code_template: entry.code_template,
+        code_template_version: entry.code_template_version,
+        code_template_language: entry.code_template_language,
+        code_modules: entry
+            .code_modules
+            .into_iter()
+            .map(|code_module| FrontendBlockCodeModuleResponse {
+                source: code_module.source,
+                type_declarations: code_module.type_declarations,
+            })
+            .collect(),
         context_contract: FrontendBlockContextContractResponse {
             primitives: entry.context_contract.primitives,
             input_schema: entry.context_contract.input_schema,

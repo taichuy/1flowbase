@@ -23,6 +23,10 @@ fn map_catalog_row(row: sqlx::postgres::PgRow) -> Result<domain::FrontendBlockCa
         title: row.get("title"),
         runtime: row.get("runtime"),
         entry: row.get("entry"),
+        code_template: row.get("code_template"),
+        code_template_version: row.get("code_template_version"),
+        code_template_language: row.get("code_template_language"),
+        code_modules: row.get("code_modules"),
         context_contract: row.get("context_contract"),
         permission_network: row.get("permission_network"),
         permission_storage: row.get("permission_storage"),
@@ -66,13 +70,17 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
                     title,
                     runtime,
                     entry,
+                    code_template,
+                    code_template_version,
+                    code_template_language,
+                    code_modules,
                     context_contract,
                     permission_network,
                     permission_storage,
                     permission_secrets,
                     ui_capabilities
                 ) values (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
                 )
                 "#,
             )
@@ -86,6 +94,10 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
             .bind(&entry.title)
             .bind(&entry.runtime)
             .bind(&entry.entry)
+            .bind(&entry.code_template)
+            .bind(&entry.code_template_version)
+            .bind(&entry.code_template_language)
+            .bind(serde_json::to_value(&entry.code_modules)?)
             .bind(context_contract)
             .bind(&entry.permissions.network)
             .bind(&entry.permissions.storage)
@@ -114,6 +126,10 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
                 reg.title,
                 reg.runtime,
                 reg.entry,
+                reg.code_template,
+                reg.code_template_version,
+                reg.code_template_language,
+                reg.code_modules,
                 reg.context_contract,
                 reg.permission_network,
                 reg.permission_storage,

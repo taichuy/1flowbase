@@ -11,7 +11,9 @@ import type {
 export type FrontStagePageProps = {
   workspaceId: string;
   pageId?: string;
+  tabId?: string;
   onNavigatePage?: (pageId?: string) => void;
+  onNavigateTab?: (tabId: string) => void;
   initialPageTree?: FrontStageTreeNode[];
   isPageTreeLoading?: boolean;
   hasPageTreeLoadError?: boolean;

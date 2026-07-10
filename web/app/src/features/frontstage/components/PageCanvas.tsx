@@ -1,6 +1,12 @@
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 import type { CSSProperties, FC } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Responsive,
+  WidthProvider,
+  type Layout
+} from 'react-grid-layout/legacy';
+import 'react-grid-layout/css/styles.css';
 
 import type { FrontstagePageContent } from '../api/page-content';
 import { BlockHoverToolbar } from './BlockHoverToolbar';
@@ -19,6 +25,12 @@ import type {
 import type { FrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
 import { i18nText } from '../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
+import {
+  createFrontstagePersistedGridLayout,
+  createFrontstageResponsiveLayouts,
+  FRONTSTAGE_GRID_BREAKPOINTS,
+  FRONTSTAGE_GRID_COLUMNS
+} from '../lib/responsive-grid-layout';
 
 type DesignBlockActions = {
   onMoveUp: (blockId: string) => void;
@@ -48,8 +60,12 @@ type PageCanvasProps = {
   /** When true, all hover toolbar buttons are disabled (e.g. during save) */
   toolbarDisabled?: boolean;
   showTitle?: boolean;
+  onResponsiveLayoutSave?: (
+    layouts: Record<string, Record<string, { x: number; y: number; w: number; h: number }>>
+  ) => void;
 };
 
+const ResponsiveGridLayout = WidthProvider(Responsive);
 function formatPageTitle(content: FrontstagePageContent): string {
   return content.page.title?.trim() || i18nText("frontstage", "auto.unnamed_page");
 }
@@ -266,6 +282,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   designActions,
   toolbarDisabled = false,
   showTitle = true,
+  onResponsiveLayoutSave
 }) => {
   const document = useMemo(
     () => (content ? createFrontstagePageDocument(content) : null),
@@ -275,7 +292,15 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     () => (document ? createFrontstagePageRenderPlan(document) : null),
     [document]
   );
-  const renderItems = renderPlan?.items ?? [];
+  const renderItems = useMemo(() => renderPlan?.items ?? [], [renderPlan]);
+  const layouts = useMemo(
+    () => createFrontstageResponsiveLayouts(renderItems),
+    [renderItems]
+  );
+  const latestLayouts = useRef(layouts);
+  useEffect(() => {
+    latestLayouts.current = layouts;
+  }, [layouts]);
 
   if (isLoading) {
     return (
@@ -351,31 +376,50 @@ export const PageCanvas: FC<PageCanvasProps> = ({
           />
         </div>
       ) : (
-        <Space
-          data-testid="page-canvas-render-slots"
-          direction="vertical"
-          size={18}
-          style={{ width: '100%' }}
-        >
-          {renderItems.map((item, slotIndex) => (
-            <RenderPlanSlot
-              key={item.blockId}
-              item={item}
-              runtimeSessionEntry={findRuntimeSessionEntryForSlot({
-                item,
-                slotIndex,
-                runtimeSessionEntries
-              })}
-              isSelected={item.blockId === selectedBlockId}
-              onSelectBlock={onSelectBlock}
-              isDesignMode={isDesignMode}
-              designActions={designActions}
-              toolbarDisabled={toolbarDisabled}
-              canMoveUp={slotIndex > 0}
-              canMoveDown={slotIndex < renderItems.length - 1}
-            />
-          ))}
-        </Space>
+        <div data-testid="page-canvas-render-slots">
+          <ResponsiveGridLayout
+            breakpoints={FRONTSTAGE_GRID_BREAKPOINTS}
+            cols={FRONTSTAGE_GRID_COLUMNS}
+            layouts={layouts}
+            rowHeight={32}
+            margin={[16, 16]}
+            isDraggable={isDesignMode && !toolbarDisabled}
+            isResizable={isDesignMode && !toolbarDisabled}
+            draggableCancel="button, input, textarea, select, a"
+            onLayoutChange={(_layout: Layout, nextLayouts) => {
+              latestLayouts.current = nextLayouts;
+            }}
+            onDragStop={() => {
+              onResponsiveLayoutSave?.(
+                createFrontstagePersistedGridLayout(latestLayouts.current)
+              );
+            }}
+            onResizeStop={() => {
+              onResponsiveLayoutSave?.(
+                createFrontstagePersistedGridLayout(latestLayouts.current)
+              );
+            }}
+          >
+            {renderItems.map((item, slotIndex) => (
+              <RenderPlanSlot
+                key={item.blockId}
+                item={item}
+                runtimeSessionEntry={findRuntimeSessionEntryForSlot({
+                  item,
+                  slotIndex,
+                  runtimeSessionEntries
+                })}
+                isSelected={item.blockId === selectedBlockId}
+                onSelectBlock={onSelectBlock}
+                isDesignMode={isDesignMode}
+                designActions={designActions}
+                toolbarDisabled={toolbarDisabled}
+                canMoveUp={slotIndex > 0}
+                canMoveDown={slotIndex < renderItems.length - 1}
+              />
+            ))}
+          </ResponsiveGridLayout>
+        </div>
       )}
     </Space>
   );

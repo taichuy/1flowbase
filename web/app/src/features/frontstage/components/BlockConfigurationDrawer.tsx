@@ -354,7 +354,7 @@ function LimitsSection({
           key: 'data-models',
           label: i18nText("frontstage", "auto.allowed_data_models"),
           children: renderTags(
-            model.allowedDataModels,
+            model.allowedQueries,
             i18nText("frontstage", "auto.no_allowed_data_models")
           )
         },

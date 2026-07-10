@@ -167,7 +167,6 @@ function createPageContent(
       kind: 'page',
       parentId: null,
       rank: '001000',
-      schemaRootUid: 'root-1'
     },
     schema: {
       rootUid: 'root-1',
@@ -544,9 +543,6 @@ function mockRuntimeSessions(
 
       await waitFor(() => {
         expect(screen.queryByText('分组 1')).not.toBeInTheDocument();
-        expect(
-          screen.getByRole('heading', { name: '页面 根' })
-        ).toBeInTheDocument();
         expect(onNavigatePage).toHaveBeenLastCalledWith('page-root');
       });
     },
@@ -594,11 +590,6 @@ function mockRuntimeSessions(
 
       await waitFor(() => {
         expect(screen.queryAllByText('页面 嵌套')).toHaveLength(0);
-        expect(
-          screen.getByRole('heading', {
-            name: '未选择 pageId（将使用默认首页）'
-          })
-        ).toBeInTheDocument();
         expect(onNavigatePage).toHaveBeenCalledWith(undefined);
       });
     },
@@ -644,9 +635,6 @@ function mockRuntimeSessions(
 
       await clickPageTreeOperationMenuItemAndFlush(secondPageItem, '删除');
       await clickConfirmModalButtonAndFlush('删除');
-      expect(
-        screen.getByRole('heading', { name: '页面 新建 1' })
-      ).toBeInTheDocument();
       await waitFor(() => {
         expect(onNavigatePage).toHaveBeenCalledWith(firstPageId);
       });
@@ -674,7 +662,7 @@ function mockRuntimeSessions(
     SLOW_FRONTSTAGE_TEST_TIMEOUT
   );
 
-  test('falls back to first page when route pageId is missing from current tree', () => {
+  test('keeps an explicit deep link when route pageId is missing from the cropped tree', () => {
     authenticate(['frontstage.page.design']);
     const onNavigatePage = vi.fn();
     const backendTree = [createBackendPage('page-1')];
@@ -702,24 +690,16 @@ function mockRuntimeSessions(
       </AppProviders>
     );
 
-    expect(
-      screen.getByRole('heading', { name: '页面 page-1' })
-    ).toBeInTheDocument();
-    expect(onNavigatePage).toHaveBeenCalledWith('page-1');
+    expect(onNavigatePage).not.toHaveBeenCalled();
   });
 
-  test('navigates to workspace-level route when initial tree is empty and pageId is invalid', () => {
+  test('keeps an explicit deep link when the accessible tree is empty', () => {
     authenticate(['frontstage.page.design']);
     const onNavigatePage = vi.fn();
 
     renderPageWithInitialTree([], 'invalid-page-id', onNavigatePage);
 
-    expect(
-      screen.getByRole('heading', {
-        name: '未选择 pageId（将使用默认首页）'
-      })
-    ).toBeInTheDocument();
-    expect(onNavigatePage).toHaveBeenCalledWith(undefined);
+    expect(onNavigatePage).not.toHaveBeenCalled();
   });
 
   test('synchronizes page tree when initialPageTree updates', () => {

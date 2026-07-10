@@ -11,7 +11,7 @@ describe('BlockContext host mediator', () => {
     const mediator = createBlockContextMediator({
       allowedEvents: ['record.saved'],
       allowedActions: ['record.save'],
-      allowedDataModels: ['records'],
+      allowedQueries: ['records.list'],
       allowedDataOperations: ['query']
     });
 
@@ -55,15 +55,15 @@ describe('BlockContext host mediator', () => {
       mediator.handle({
         type: 'data',
         requestId: 'request-1',
-        operation: 'query',
-        payload: { model: 'records', where: { id: 'record-1' } }
+        queryId: 'records.list',
+        params: { where: { id: 'record-1' } }
       }).result
     ).toMatchObject({
       ok: true,
       effect: {
         type: 'data',
-        operation: 'query',
-        payload: { model: 'records', where: { id: 'record-1' } }
+        queryId: 'records.list',
+        params: { where: { id: 'record-1' } }
       }
     });
   });
@@ -81,37 +81,9 @@ describe('BlockContext host mediator', () => {
       {
         type: 'data',
         requestId: 'request-1',
-        operation: 'query',
-        payload: { model: 'private_records' }
+        queryId: 'private_records.list'
       },
       'query_denied'
-    ],
-    [
-      {
-        type: 'data',
-        requestId: 'request-1',
-        operation: 'create',
-        payload: { model: 'records', input: { title: 'Ready' } }
-      },
-      'create_denied'
-    ],
-    [
-      {
-        type: 'data',
-        requestId: 'request-1',
-        operation: 'update',
-        payload: { model: 'records', id: 'record-1', input: { title: 'Ready' } }
-      },
-      'update_denied'
-    ],
-    [
-      {
-        type: 'data',
-        requestId: 'request-1',
-        operation: 'delete',
-        payload: { model: 'records', id: 'record-1' }
-      },
-      'delete_denied'
     ]
   ] as const)(
     'rejects denied worker request with stable code %s',
@@ -122,7 +94,7 @@ describe('BlockContext host mediator', () => {
         {
           allowedEvents: ['record.saved'],
           allowedActions: ['record.save'],
-          allowedDataModels: ['records'],
+          allowedQueries: ['records.list'],
           allowedDataOperations: ['query']
         }
       );

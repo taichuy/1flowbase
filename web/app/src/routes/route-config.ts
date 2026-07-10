@@ -1,5 +1,9 @@
 import type { AppRouteId } from '@1flowbase/shared-types';
 
+export const FRONTSTAGE_PAGE_PATH = '/frontstage/pages/$pageId';
+export const FRONTSTAGE_PAGE_TAB_PATH =
+  '/frontstage/pages/$pageId/tabs/$tabId';
+
 export interface AppRouteDefinition {
   id: AppRouteId;
   path: string;
@@ -28,7 +32,7 @@ export const APP_ROUTES: AppRouteDefinition[] = [
     selectedMatchers: [
       (pathname) =>
         pathname === '/frontstage' ||
-        /^\/frontstage\/pages\/[^/]+$/.test(pathname)
+        /^\/frontstage\/pages\/[^/]+(?:\/tabs\/[^/]+)?$/.test(pathname)
     ],
     permissionKey: null,
     guard: 'session-required'

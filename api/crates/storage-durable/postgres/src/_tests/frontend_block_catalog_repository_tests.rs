@@ -11,6 +11,11 @@ use sqlx::PgPool;
 use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
+const FRONTEND_BLOCK_CODE_TEMPLATES_MIGRATION_SQL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/migrations/20260710163000_add_frontend_block_code_templates.sql"
+));
+
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
@@ -74,6 +79,75 @@ async fn seed_store() -> (
 }
 
 #[tokio::test]
+async fn frontend_block_code_template_migration_backfills_existing_rows() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    sqlx::raw_sql(
+        r#"
+        create table frontend_block_catalog (
+            id uuid primary key
+        );
+        insert into frontend_block_catalog (id) values ('00000000-0000-0000-0000-000000000001');
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::raw_sql(FRONTEND_BLOCK_CODE_TEMPLATES_MIGRATION_SQL)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let existing_row = sqlx::query(
+        r#"
+        select code_template, code_template_version, code_template_language, code_modules
+        from frontend_block_catalog
+        where id = '00000000-0000-0000-0000-000000000001'
+        "#,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        sqlx::Row::get::<Option<String>, _>(&existing_row, "code_template"),
+        None
+    );
+    assert_eq!(
+        sqlx::Row::get::<Option<String>, _>(&existing_row, "code_template_version"),
+        None
+    );
+    assert_eq!(
+        sqlx::Row::get::<Option<String>, _>(&existing_row, "code_template_language"),
+        None
+    );
+    assert_eq!(
+        sqlx::Row::get::<serde_json::Value, _>(&existing_row, "code_modules"),
+        json!([])
+    );
+
+    let code_modules_column = sqlx::query(
+        r#"
+        select is_nullable, column_default
+        from information_schema.columns
+        where table_schema = current_schema()
+          and table_name = 'frontend_block_catalog'
+          and column_name = 'code_modules'
+        "#,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        sqlx::Row::get::<String, _>(&code_modules_column, "is_nullable"),
+        "NO"
+    );
+    assert_eq!(
+        sqlx::Row::get::<Option<String>, _>(&code_modules_column, "column_default").as_deref(),
+        Some("'[]'::jsonb")
+    );
+}
+
+#[tokio::test]
 async fn frontend_block_catalog_repository_lists_only_assigned_workspace_blocks() {
     let (store, workspace, actor) = seed_store().await;
     let installation = PluginRepository::upsert_installation(
@@ -120,6 +194,13 @@ async fn frontend_block_catalog_repository_lists_only_assigned_workspace_blocks(
                 title: "Hero Banner".into(),
                 runtime: "iframe".into(),
                 entry: "blocks/hero/index.html".into(),
+                code_template: Some("export default {}".into()),
+                code_template_version: Some("1.0.0".into()),
+                code_template_language: Some("tsx".into()),
+                code_modules: vec![domain::FrontendBlockCodeModule {
+                    source: "@1flowbase/block-sdk".into(),
+                    type_declarations: "export declare function defineBlock(): unknown;".into(),
+                }],
                 context_contract: domain::FrontendBlockContextContract {
                     primitives: vec!["text".into(), "image".into()],
                     input_schema: json!({ "type": "object" }),
@@ -166,4 +247,71 @@ async fn frontend_block_catalog_repository_lists_only_assigned_workspace_blocks(
         entries[0].context_contract.primitives,
         vec!["text", "image"]
     );
+    assert_eq!(
+        entries[0].code_template.as_deref(),
+        Some("export default {}")
+    );
+    assert_eq!(entries[0].code_template_version.as_deref(), Some("1.0.0"));
+    assert_eq!(entries[0].code_template_language.as_deref(), Some("tsx"));
+    assert_eq!(entries[0].code_modules.len(), 1);
+
+    let code_modules_column = sqlx::query(
+        r#"
+        select is_nullable, column_default
+        from information_schema.columns
+        where table_schema = current_schema()
+          and table_name = 'frontend_block_catalog'
+          and column_name = 'code_modules'
+        "#,
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        sqlx::Row::get::<String, _>(&code_modules_column, "is_nullable"),
+        "NO"
+    );
+    assert_eq!(
+        sqlx::Row::get::<Option<String>, _>(&code_modules_column, "column_default").as_deref(),
+        Some("'[]'::jsonb")
+    );
+
+    let missing_version = sqlx::query(
+        r#"
+        update frontend_block_catalog
+        set code_template_version = null
+        where installation_id = $1
+          and contribution_code = 'hero_banner'
+        "#,
+    )
+    .bind(installation.id)
+    .execute(store.pool())
+    .await;
+    assert!(missing_version.is_err());
+
+    let oversized_template = sqlx::query(
+        r#"
+        update frontend_block_catalog
+        set code_template = repeat('x', 262145)
+        where installation_id = $1
+          and contribution_code = 'hero_banner'
+        "#,
+    )
+    .bind(installation.id)
+    .execute(store.pool())
+    .await;
+    assert!(oversized_template.is_err());
+
+    let unsupported_language = sqlx::query(
+        r#"
+        update frontend_block_catalog
+        set code_template_language = 'javascript'
+        where installation_id = $1
+          and contribution_code = 'hero_banner'
+        "#,
+    )
+    .bind(installation.id)
+    .execute(store.pool())
+    .await;
+    assert!(unsupported_language.is_err());
 }

@@ -125,7 +125,7 @@ function createLimits(
     maxEventChainDepth: 4,
     allowedActions: ['orders.refresh'],
     allowedEvents: ['orders.loaded'],
-    allowedDataModels: ['orders'],
+    allowedQueries: ['orders'],
     allowedDataOperations: ['query', 'update'],
     ...overrides
   };
@@ -281,7 +281,7 @@ describe('frontstage block configuration model', () => {
       maxEventChainDepth: 4,
       allowedActions: ['orders.refresh'],
       allowedEvents: ['orders.loaded'],
-      allowedDataModels: ['orders'],
+      allowedQueries: ['orders'],
       allowedDataOperations: ['query', 'update']
     });
   });
@@ -368,7 +368,7 @@ describe('frontstage block configuration model', () => {
     const limitsModel = section(model, 'limits')?.model as {
       allowedActions: unknown[];
       allowedEvents: unknown[];
-      allowedDataModels: unknown[];
+      allowedQueries: unknown[];
       allowedDataOperations: unknown[];
     };
 
@@ -387,13 +387,13 @@ describe('frontstage block configuration model', () => {
     expect(contextModel.catalog.inputSchema).not.toBe(
       catalogEntry.contextContract.inputSchema
     );
-    expect(contextModel.ctx.data.models).not.toBe(limits.allowedDataModels);
+    expect(contextModel.ctx.data.models).not.toBe(limits.allowedQueries);
     expect(contextModel.ctx.data.operations).not.toBe(
       limits.allowedDataOperations
     );
     expect(limitsModel.allowedActions).not.toBe(limits.allowedActions);
     expect(limitsModel.allowedEvents).not.toBe(limits.allowedEvents);
-    expect(limitsModel.allowedDataModels).not.toBe(limits.allowedDataModels);
+    expect(limitsModel.allowedQueries).not.toBe(limits.allowedQueries);
     expect(limitsModel.allowedDataOperations).not.toBe(
       limits.allowedDataOperations
     );

@@ -403,6 +403,14 @@ block_contributions:
     title: Hero Banner
     runtime: iframe
     entry: blocks/hero/index.html
+    code_template: |
+      import { defineBlock } from '@1flowbase/block-sdk';
+      export default defineBlock({ render() { return { primitive: 'Text' }; } });
+    code_template_version: 1.0.0
+    code_template_language: tsx
+    code_modules:
+      - source: "@1flowbase/block-sdk"
+        type_declarations: "export declare function defineBlock(input: unknown): unknown;"
     context_contract:
       primitives:
         - text

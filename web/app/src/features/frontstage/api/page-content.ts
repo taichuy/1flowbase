@@ -1,7 +1,5 @@
 import {
-  getFrontstagePageDetail,
-  saveFrontstagePageContent as saveConsoleFrontstagePageContent,
-  type ConsoleFrontstagePageDetail,
+  apiFetch,
   type ConsoleFrontstagePageNode
 } from '@1flowbase/api-client';
 
@@ -15,7 +13,6 @@ export interface FrontstagePageContentNode {
   kind: 'group' | 'page';
   parentId: string | null;
   rank: string;
-  schemaRootUid: string | null;
 }
 
 export interface FrontstagePageSchema {
@@ -43,13 +40,34 @@ export interface SaveFrontstagePageContentInput {
   root: SaveFrontstagePageContentPayloadInput;
 }
 
+interface FrontstagePageDetailDto {
+  page: Omit<ConsoleFrontstagePageNode, 'schema_root_uid'>;
+  tab: {
+    id: string;
+    page_id: string;
+    title: string | null;
+    rank: string;
+    is_default: boolean;
+    document_root_uid: string;
+  };
+  schema: {
+    root_uid: string;
+    payload: unknown;
+  };
+  root: {
+    uid: string;
+    payload: unknown;
+  };
+}
+
 export const frontstagePageContentQueryKey = (
   workspaceId: string,
-  pageId: string
-) => ['frontstage', workspaceId, 'pages', pageId, 'content'] as const;
+  pageId: string,
+  tabId: string
+) => ['frontstage', workspaceId, 'pages', pageId, 'tabs', tabId, 'content'] as const;
 
 function mapFrontstagePageNode(
-  page: ConsoleFrontstagePageNode
+  page: FrontstagePageDetailDto['page']
 ): FrontstagePageContentNode {
   return {
     id: page.id,
@@ -58,13 +76,12 @@ function mapFrontstagePageNode(
     tooltip: page.tooltip,
     kind: page.kind,
     parentId: page.parent_id,
-    rank: page.rank,
-    schemaRootUid: page.schema_root_uid
+    rank: page.rank
   };
 }
 
 function mapFrontstagePageContent(
-  detail: ConsoleFrontstagePageDetail
+  detail: FrontstagePageDetailDto
 ): FrontstagePageContent {
   return {
     page: mapFrontstagePageNode(detail.page),
@@ -81,13 +98,14 @@ function mapFrontstagePageContent(
 
 export async function fetchFrontstagePageContent(
   workspaceId: string,
-  pageId: string
+  pageId: string,
+  tabId: string
 ): Promise<FrontstagePageContent> {
-  const detail = await getFrontstagePageDetail(
-    workspaceId,
-    pageId,
-    getFrontstageApiBaseUrl()
-  );
+  const detail = await apiFetch<FrontstagePageDetailDto>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}`,
+    method: 'GET',
+    baseUrl: getFrontstageApiBaseUrl()
+  });
 
   return mapFrontstagePageContent(detail);
 }
@@ -95,16 +113,17 @@ export async function fetchFrontstagePageContent(
 export async function saveFrontstagePageContent(
   workspaceId: string,
   pageId: string,
+  tabId: string,
   input: SaveFrontstagePageContentInput,
   csrfToken: string
 ): Promise<FrontstagePageContent> {
-  const detail = await saveConsoleFrontstagePageContent(
-    workspaceId,
-    pageId,
-    input,
+  const detail = await apiFetch<FrontstagePageDetailDto>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/document`,
+    method: 'PUT',
+    body: input,
     csrfToken,
-    getFrontstageApiBaseUrl()
-  );
+    baseUrl: getFrontstageApiBaseUrl()
+  });
 
   return mapFrontstagePageContent(detail);
 }

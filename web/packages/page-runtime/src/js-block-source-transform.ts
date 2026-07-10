@@ -2,7 +2,8 @@ import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
 import {
   JS_BLOCK_ALLOWED_IMPORTS,
-  validateJsBlockSource
+  validateJsBlockSource,
+  type ValidateJsBlockSourceOptions
 } from './js-block-source-policy';
 import { isIdentifierPart, isIdentifierStart, isImportName, isLocalBindingName, isWhitespace } from './js-block-source-transform/identifiers';
 
@@ -110,9 +111,10 @@ const RESERVED_TRANSFORM_IDENTIFIERS = new Set([
 const allowedImportSources = new Set<string>(JS_BLOCK_ALLOWED_IMPORTS);
 
 export function transformJsBlockSource(
-  source: unknown
+  source: unknown,
+  options: ValidateJsBlockSourceOptions = {}
 ): JsBlockSourceTransformResult {
-  const policyResult = validateJsBlockSource(source);
+  const policyResult = validateJsBlockSource(source, options);
   if (!policyResult.ok) {
     return policyResult;
   }

@@ -105,7 +105,6 @@ function createPageContent(
       kind: 'page',
       parentId: null,
       rank: '001000',
-      schemaRootUid: 'root-1'
     },
     schema: {
       rootUid: 'root-1',
@@ -784,7 +783,6 @@ describe('FrontStagePage block arrange actions', () => {
               kind: 'page',
               parentId: null,
               rank: '002000',
-              schemaRootUid: 'root-2'
             },
             schema: {
               rootUid: 'root-2',
@@ -870,7 +868,6 @@ describe('FrontStagePage block arrange actions', () => {
               kind: 'page',
               parentId: null,
               rank: '002000',
-              schemaRootUid: 'root-2'
             },
             schema: {
               rootUid: 'root-2',

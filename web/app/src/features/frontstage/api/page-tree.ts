@@ -11,7 +11,11 @@ import {
   type ConsoleFrontstagePageTreeNode
 } from '@1flowbase/api-client';
 
-export type FrontstagePageTreeNode = ConsoleFrontstagePageTreeNode;
+export type FrontstageNavigationPlacement = 'topbar' | 'sidebar';
+export type FrontstagePageTreeNode = ConsoleFrontstagePageTreeNode & {
+  placement: FrontstageNavigationPlacement;
+  children: FrontstagePageTreeNode[];
+};
 export type FrontstagePageNode = ConsoleFrontstagePageNode;
 
 export interface CreateFrontstageNodeInput {
@@ -56,7 +60,10 @@ export function getFrontstageApiBaseUrl(
 export function fetchFrontstagePageTree(
   workspaceId: string
 ): Promise<FrontstagePageTreeNode[]> {
-  return listFrontstagePages(workspaceId, getFrontstageApiBaseUrl());
+  return listFrontstagePages(
+    workspaceId,
+    getFrontstageApiBaseUrl()
+  ) as Promise<FrontstagePageTreeNode[]>;
 }
 
 export function createFrontstagePageGroupNode(

@@ -19,6 +19,10 @@ export interface ValidateJsBlockSourceFailure {
   errors: BlockProtocolError[];
 }
 
+export interface ValidateJsBlockSourceOptions {
+  allowedImports?: readonly string[];
+}
+
 export type ValidateJsBlockSourceResult =
   | ValidateJsBlockSourceSuccess
   | ValidateJsBlockSourceFailure;
@@ -44,9 +48,7 @@ interface ScanResult {
   error?: BlockProtocolError;
 }
 
-const allowedImports = new Set<string>(
-  JS_BLOCK_ALLOWED_IMPORTS satisfies readonly JsBlockAllowedImport[]
-);
+JS_BLOCK_ALLOWED_IMPORTS satisfies readonly JsBlockAllowedImport[];
 
 const deniedGlobalIdentifiers = new Set([
   'window',
@@ -80,7 +82,8 @@ const deniedEscapeIdentifiers = new Set([
 const deniedCallForwarders = new Set(['call', 'apply', 'bind']);
 
 export function validateJsBlockSource(
-  source: unknown
+  source: unknown,
+  options: ValidateJsBlockSourceOptions = {}
 ): ValidateJsBlockSourceResult {
   try {
     if (typeof source !== 'string') {
@@ -97,7 +100,11 @@ export function validateJsBlockSource(
     }
 
     const errors = [
-      ...validateImports(source, scan.tokens),
+      ...validateImports(
+        source,
+        scan.tokens,
+        new Set(options.allowedImports ?? JS_BLOCK_ALLOWED_IMPORTS)
+      ),
       ...validateDeniedIdentifiers(source, scan.tokens)
     ];
 
@@ -327,7 +334,8 @@ function consumeTemplate(
 
 function validateImports(
   source: string,
-  tokens: SourceToken[]
+  tokens: SourceToken[],
+  allowedImportSources: ReadonlySet<string>
 ): BlockProtocolError[] {
   const errors: BlockProtocolError[] = [];
   let importIndex = 0;
@@ -338,7 +346,8 @@ function validateImports(
         source,
         tokens,
         tokenIndex,
-        importIndex
+        importIndex,
+        allowedImportSources
       );
       if (importError) {
         errors.push(importError);
@@ -349,12 +358,13 @@ function validateImports(
 
     if (token.value === 'export') {
       const exportedSource = readExportSource(source, tokens, tokenIndex);
-      if (exportedSource && !allowedImports.has(exportedSource.value)) {
+      if (exportedSource && !allowedImportSources.has(exportedSource.value)) {
         errors.push(
-          failureError(
-            'import_denied',
-            `source.imports[${importIndex}]`,
-            `Import source '${exportedSource.value}' is not allowed.`
+        failureError(
+          'import_denied',
+          `source.imports[${importIndex}]`,
+          `Import source '${exportedSource.value}' is not allowed.`,
+          sourceLocationAt(source, token.start)
           )
         );
       }
@@ -371,7 +381,8 @@ function validateImportToken(
   source: string,
   tokens: SourceToken[],
   tokenIndex: number,
-  importIndex: number
+  importIndex: number,
+  allowedImportSources: ReadonlySet<string>
 ): BlockProtocolError | undefined {
   const token = tokens[tokenIndex];
   const path = `source.imports[${importIndex}]`;
@@ -382,7 +393,8 @@ function validateImportToken(
     return failureError(
       'import_denied',
       path,
-      'Dynamic import and import host access are not allowed.'
+      'Dynamic import and import host access are not allowed.',
+      sourceLocationAt(source, token.start)
     );
   }
 
@@ -391,12 +403,13 @@ function validateImportToken(
     if (!sourceLiteral) {
       return failureError('syntax_invalid', 'source', 'Invalid import source.');
     }
-    return allowedImports.has(sourceLiteral.value)
+    return allowedImportSources.has(sourceLiteral.value)
       ? undefined
       : failureError(
           'import_denied',
           path,
-          `Import source '${sourceLiteral.value}' is not allowed.`
+          `Import source '${sourceLiteral.value}' is not allowed.`,
+          sourceLocationAt(source, token.start)
         );
   }
 
@@ -420,12 +433,13 @@ function validateImportToken(
     return failureError('syntax_invalid', 'source', 'Invalid import source.');
   }
 
-  return allowedImports.has(sourceLiteral.value)
+  return allowedImportSources.has(sourceLiteral.value)
     ? undefined
     : failureError(
         'import_denied',
         path,
-        `Import source '${sourceLiteral.value}' is not allowed.`
+        `Import source '${sourceLiteral.value}' is not allowed.`,
+        sourceLocationAt(source, token.start)
       );
 }
 
@@ -488,7 +502,8 @@ function validateDeniedIdentifiers(
         failureError(
           'transform_failed',
           `source.identifiers.${token.value}`,
-          `Identifier '${token.value}' is not allowed in JS block source.`
+          `Identifier '${token.value}' is not allowed in JS block source.`,
+          sourceLocationAt(source, token.start)
         )
       );
       return;
@@ -499,7 +514,8 @@ function validateDeniedIdentifiers(
         failureError(
           'transform_failed',
           `source.identifiers.${token.value}`,
-          `Identifier '${token.value}' is not allowed in JS block source.`
+          `Identifier '${token.value}' is not allowed in JS block source.`,
+          sourceLocationAt(source, token.start)
         )
       );
       return;
@@ -511,7 +527,8 @@ function validateDeniedIdentifiers(
         failureError(
           deniedPropertyAccess.code,
           `source.identifiers.${deniedPropertyAccess.identifier}`,
-          deniedPropertyAccess.message
+          deniedPropertyAccess.message,
+          sourceLocationAt(source, token.start)
         )
       );
       return;
@@ -525,7 +542,8 @@ function validateDeniedIdentifiers(
         failureError(
           token.value === 'require' ? 'import_denied' : 'transform_failed',
           `source.identifiers.${token.value}`,
-          `Call '${token.value}' is not allowed in JS block source.`
+          `Call '${token.value}' is not allowed in JS block source.`,
+          sourceLocationAt(source, token.start)
         )
       );
       return;
@@ -540,7 +558,8 @@ function validateDeniedIdentifiers(
         failureError(
           'transform_failed',
           `source.identifiers.${token.value}`,
-          `Constructor '${token.value}' is not allowed in JS block source.`
+          `Constructor '${token.value}' is not allowed in JS block source.`,
+          sourceLocationAt(source, token.start)
         )
       );
     }
@@ -830,7 +849,25 @@ function failure(
 function failureError(
   code: BlockProtocolError['code'],
   path: string,
-  message: string
+  message: string,
+  sourceLocation?: BlockProtocolError['sourceLocation']
 ): BlockProtocolError {
-  return { code, path, message };
+  return {
+    code,
+    path,
+    message,
+    ...(sourceLocation ? { sourceLocation } : {})
+  };
+}
+
+function sourceLocationAt(
+  source: string,
+  index: number
+): NonNullable<BlockProtocolError['sourceLocation']> {
+  const prefix = source.slice(0, index);
+  const lines = prefix.split('\n');
+  return {
+    line: lines.length,
+    column: (lines.at(-1)?.length ?? 0) + 1
+  };
 }

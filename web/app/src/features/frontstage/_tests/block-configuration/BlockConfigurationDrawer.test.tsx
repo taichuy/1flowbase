@@ -123,7 +123,7 @@ function createLimits(
     maxEventChainDepth: 4,
     allowedActions: ['orders.refresh'],
     allowedEvents: ['orders.loaded'],
-    allowedDataModels: ['orders'],
+    allowedQueries: ['orders'],
     allowedDataOperations: ['query', 'update'],
     ...overrides
   };
@@ -226,7 +226,7 @@ describe('BlockConfigurationDrawer', () => {
       limits: createLimits({
         allowedActions: [],
         allowedEvents: [],
-        allowedDataModels: [],
+        allowedQueries: [],
         allowedDataOperations: []
       })
     });

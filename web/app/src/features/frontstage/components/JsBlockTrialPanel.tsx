@@ -2,10 +2,7 @@ import {
   BLOCK_DATA_PERMISSIONS,
   type BlockDataPermission
 } from '@1flowbase/page-protocol';
-import type {
-  JsBlockHostDataEffect,
-  JsBlockHostEffectHandler
-} from '@1flowbase/page-runtime';
+import type { JsBlockHostEffectHandlers } from '@1flowbase/page-runtime';
 import { Alert, Button, Descriptions, Input, Space, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -36,7 +33,7 @@ export interface JsBlockTrialPanelProps {
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null | undefined;
   code: string;
   contextSnapshot: Record<string, unknown>;
-  dataEffectHandler?: JsBlockHostEffectHandler<JsBlockHostDataEffect>;
+  handlers?: JsBlockHostEffectHandlers;
   limits?: RestrictedBlockLoaderLimits;
   runtimeSnapshot?: RestrictedBlockRuntimeHostSnapshot;
   runtimeSessionFactory?: JsBlockTrialPanelRuntimeSessionFactory;
@@ -144,8 +141,8 @@ function toRuntimeLimitsDraft(
     return { ok: false, message: i18nText("frontstage", "auto.allowed_events_string_array") };
   }
 
-  const allowedDataModels = readStringArray(value, 'allowedDataModels');
-  if (!allowedDataModels.ok) {
+  const allowedQueries = readStringArray(value, 'allowedQueries');
+  if (!allowedQueries.ok) {
     return {
       ok: false,
       message: i18nText("frontstage", "auto.allowed_data_models_string_array")
@@ -179,8 +176,8 @@ function toRuntimeLimitsDraft(
   if (allowedEvents.value !== undefined) {
     limits.allowedEvents = allowedEvents.value;
   }
-  if (allowedDataModels.value !== undefined) {
-    limits.allowedDataModels = allowedDataModels.value;
+  if (allowedQueries.value !== undefined) {
+    limits.allowedQueries = allowedQueries.value;
   }
   if (allowedDataOperations.value !== undefined) {
     limits.allowedDataOperations = allowedDataOperations.value;
@@ -251,7 +248,7 @@ export function JsBlockTrialPanel({
   catalogEntry,
   code,
   contextSnapshot,
-  dataEffectHandler,
+  handlers,
   limits,
   runtimeSnapshot,
   runtimeSessionFactory = createFrontstageRestrictedBlockRuntimeSession,
@@ -360,8 +357,8 @@ export function JsBlockTrialPanel({
     const runtimeOptions: FrontstageRestrictedBlockRuntimeHostOptions = {
       runPlan
     };
-    if (dataEffectHandler) {
-      runtimeOptions.handlers = { data: dataEffectHandler };
+    if (handlers) {
+      runtimeOptions.handlers = handlers;
     }
 
     const session = runtimeSessionFactory(runtimeOptions);
@@ -580,7 +577,7 @@ export function JsBlockTrialPanel({
               {
                 key: 'models',
                 label: i18nText("frontstage", "auto.data_models"),
-                children: formatList(runPlan.mediatorPolicy.allowedDataModels)
+                children: formatList(runPlan.mediatorPolicy.allowedQueries)
               },
               {
                 key: 'operations',

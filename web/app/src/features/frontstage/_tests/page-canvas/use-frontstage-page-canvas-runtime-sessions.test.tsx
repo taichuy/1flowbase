@@ -50,7 +50,7 @@ function createRunPlan(
       allowedEvents: ['record.saved']
     },
     mediatorPolicy: {
-      allowedDataModels: ['records'],
+      allowedQueries: ['records'],
       allowedDataOperations: ['query'],
       allowedActions: ['record.save'],
       allowedEvents: ['record.saved'],
@@ -274,7 +274,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       useFrontstagePageCanvasRuntimeSessions({
         runtimeRunPlanState,
         runtimeSessionFactory,
-        dataEffectHandler
+        handlers: { data: dataEffectHandler }
       })
     );
 

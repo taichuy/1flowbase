@@ -84,7 +84,6 @@ function createPageContent(): FrontstagePageContent {
       kind: 'page',
       parentId: null,
       rank: '001000',
-      schemaRootUid: 'root-1'
     },
     schema: {
       rootUid: 'root-1',
@@ -115,7 +114,6 @@ function createCatalogMatchedPageContent(): FrontstagePageContent {
       kind: 'page',
       parentId: null,
       rank: '001000',
-      schemaRootUid: 'root-1'
     },
     schema: {
       rootUid: 'root-1',

@@ -8,7 +8,8 @@ import {
 } from '../api/block-code';
 import {
   fetchFrontstageBlockCatalog,
-  frontstageBlockCatalogQueryKey
+  frontstageBlockCatalogQueryKey,
+  frontstageBlockCatalogQueryKeyPrefix
 } from '../api/block-catalog';
 import {
   fetchFrontstagePageContent,
@@ -192,18 +193,20 @@ describe('frontstage page tree feature api', () => {
 
 describe('frontstage page content feature api', () => {
   test('uses a workspace and page scoped detail query key', () => {
-    expect(frontstagePageContentQueryKey('workspace-1', 'page-1')).toEqual([
+    expect(frontstagePageContentQueryKey('workspace-1', 'page-1', 'tab-1')).toEqual([
       'frontstage',
       'workspace-1',
       'pages',
       'page-1',
+      'tabs',
+      'tab-1',
       'content'
     ]);
   });
 
   test('adapts page detail DTOs to camelCase output', async () => {
     const detailSpy = vi
-      .spyOn(apiClient, 'getFrontstagePageDetail')
+      .spyOn(apiClient, 'apiFetch')
       .mockResolvedValue({
         page: {
           id: 'page-1',
@@ -227,15 +230,14 @@ describe('frontstage page content feature api', () => {
 
     try {
       await expect(
-        fetchFrontstagePageContent('workspace-1', 'page-1')
+        fetchFrontstagePageContent('workspace-1', 'page-1', 'tab-1')
       ).resolves.toEqual({
         page: {
           id: 'page-1',
           title: '页面 1',
           kind: 'page',
           parentId: 'group-1',
-          rank: '001000',
-          schemaRootUid: 'root-1'
+          rank: '001000'
         },
         schema: {
           rootUid: 'root-1',
@@ -246,11 +248,11 @@ describe('frontstage page content feature api', () => {
           payload: { kind: 'frontstage.page.root' }
         }
       });
-      expect(detailSpy).toHaveBeenCalledWith(
-        'workspace-1',
-        'page-1',
-        expect.any(String)
-      );
+      expect(detailSpy).toHaveBeenCalledWith({
+        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1',
+        method: 'GET',
+        baseUrl: expect.any(String)
+      });
     } finally {
       detailSpy.mockRestore();
     }
@@ -258,7 +260,7 @@ describe('frontstage page content feature api', () => {
 
   test('adapts page content save calls to api-client DTOs', async () => {
     const saveSpy = vi
-      .spyOn(apiClient, 'saveFrontstagePageContent')
+      .spyOn(apiClient, 'apiFetch')
       .mockResolvedValue({
         page: {
           id: 'page-1',
@@ -283,6 +285,7 @@ describe('frontstage page content feature api', () => {
         saveFrontstagePageContent(
           'workspace-1',
           'page-1',
+          'tab-1',
           {
             schema: {
               payload: { version: 1, nodes: [{ uid: 'hero-1' }] }
@@ -299,8 +302,7 @@ describe('frontstage page content feature api', () => {
           title: '页面 1',
           kind: 'page',
           parentId: 'group-1',
-          rank: '001000',
-          schemaRootUid: 'root-1'
+          rank: '001000'
         },
         schema: {
           rootUid: 'root-1',
@@ -311,10 +313,10 @@ describe('frontstage page content feature api', () => {
           payload: { children: ['hero-1'] }
         }
       });
-      expect(saveSpy).toHaveBeenCalledWith(
-        'workspace-1',
-        'page-1',
-        {
+      expect(saveSpy).toHaveBeenCalledWith({
+        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/document',
+        method: 'PUT',
+        body: {
           schema: {
             payload: { version: 1, nodes: [{ uid: 'hero-1' }] }
           },
@@ -322,9 +324,9 @@ describe('frontstage page content feature api', () => {
             payload: { children: ['hero-1'] }
           }
         },
-        'csrf-123',
-        expect.any(String)
-      );
+        csrfToken: 'csrf-123',
+        baseUrl: expect.any(String)
+      });
     } finally {
       saveSpy.mockRestore();
     }
@@ -403,11 +405,63 @@ describe('frontstage block code feature api', () => {
 });
 
 describe('frontstage block catalog feature api', () => {
-  test('uses a stable block catalog query key', () => {
-    expect(frontstageBlockCatalogQueryKey()).toEqual([
+  test('isolates block catalog keys by workspace, actor, and permissions', () => {
+    expect(frontstageBlockCatalogQueryKeyPrefix).toEqual([
       'frontstage',
       'block-catalog'
     ]);
+    expect(
+      frontstageBlockCatalogQueryKey({
+        workspaceId: 'workspace-1',
+        actorId: 'actor-1',
+        permissionFingerprint: 'role:member|permissions:frontstage.page.design'
+      })
+    ).toEqual([
+      'frontstage',
+      'block-catalog',
+      'workspace-1',
+      'actor-1',
+      'role:member|permissions:frontstage.page.design'
+    ]);
+    expect(
+      frontstageBlockCatalogQueryKey({
+        workspaceId: 'workspace-2',
+        actorId: 'actor-1',
+        permissionFingerprint: 'role:member|permissions:frontstage.page.design'
+      })
+    ).not.toEqual(
+      frontstageBlockCatalogQueryKey({
+        workspaceId: 'workspace-1',
+        actorId: 'actor-1',
+        permissionFingerprint: 'role:member|permissions:frontstage.page.design'
+      })
+    );
+    expect(
+      frontstageBlockCatalogQueryKey({
+        workspaceId: 'workspace-1',
+        actorId: 'actor-2',
+        permissionFingerprint: 'role:member|permissions:frontstage.page.design'
+      })
+    ).not.toEqual(
+      frontstageBlockCatalogQueryKey({
+        workspaceId: 'workspace-1',
+        actorId: 'actor-1',
+        permissionFingerprint: 'role:member|permissions:frontstage.page.design'
+      })
+    );
+    expect(
+      frontstageBlockCatalogQueryKey({
+        workspaceId: 'workspace-1',
+        actorId: 'actor-1',
+        permissionFingerprint: 'role:member|permissions:'
+      })
+    ).not.toEqual(
+      frontstageBlockCatalogQueryKey({
+        workspaceId: 'workspace-1',
+        actorId: 'actor-1',
+        permissionFingerprint: 'role:member|permissions:frontstage.page.design'
+      })
+    );
   });
 
   test('adapts block catalog reads to api-client DTOs', async () => {
