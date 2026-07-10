@@ -159,19 +159,51 @@ impl FlowRepository for PgControlPlaneStore {
         version_id: Uuid,
         summary: Option<String>,
         summary_is_custom: Option<bool>,
-        is_protected: Option<bool>,
+        is_user_protected: Option<bool>,
     ) -> Result<domain::FlowEditorState> {
         let mut tx = self.pool().begin().await?;
         let application_type =
             ensure_application_exists(&mut tx, workspace_id, application_id).await?;
         let state =
             ensure_editor_state(&mut tx, application_id, actor_user_id, application_type).await?;
+        if is_user_protected == Some(true) {
+            sqlx::query("select id from flows where id = $1 for update")
+                .bind(state.flow.id)
+                .execute(&mut *tx)
+                .await?;
+            let target_is_user_protected = sqlx::query_scalar::<_, bool>(
+                "select is_user_protected from flow_versions where flow_id = $1 and id = $2",
+            )
+            .bind(state.flow.id)
+            .bind(version_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("flow_version"))?;
+            let other_user_protected_count = sqlx::query_scalar::<_, i64>(
+                r#"
+                select count(*)
+                from flow_versions
+                where flow_id = $1 and id != $2 and is_user_protected = true
+                "#,
+            )
+            .bind(state.flow.id)
+            .bind(version_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            if !target_is_user_protected
+                && other_user_protected_count >= domain::FLOW_USER_PROTECTION_LIMIT as i64
+            {
+                return Err(ControlPlaneError::Conflict("flow_user_protection_limit").into());
+            }
+        }
+
         let updated = sqlx::query_scalar::<_, Uuid>(
             r#"
             update flow_versions
             set summary = coalesce($3, summary),
                 summary_is_custom = coalesce($4, summary_is_custom),
-                is_protected = coalesce($5, is_protected),
+                is_user_protected = coalesce($5, is_user_protected),
                 updated_by = $6,
                 updated_at = now()
             where flow_id = $1 and id = $2
@@ -182,7 +214,7 @@ impl FlowRepository for PgControlPlaneStore {
         .bind(version_id)
         .bind(summary)
         .bind(summary_is_custom)
-        .bind(is_protected)
+        .bind(is_user_protected)
         .bind(actor_user_id)
         .fetch_optional(&mut *tx)
         .await?;
@@ -399,10 +431,25 @@ async fn list_versions(
 ) -> Result<Vec<domain::FlowVersionRecord>> {
     let rows = sqlx::query(
         r#"
-        select id, flow_id, sequence, trigger, change_kind, summary, summary_is_custom, is_protected, document, created_at
+        select
+            id,
+            flow_id,
+            sequence,
+            trigger,
+            change_kind,
+            summary,
+            summary_is_custom,
+            is_user_protected,
+            exists (
+                select 1
+                from application_publication_versions publication
+                where publication.flow_version_id = flow_versions.id
+            ) as is_current_publication,
+            document,
+            created_at
         from flow_versions
         where flow_id = $1
-        order by is_protected desc, sequence asc
+        order by is_current_publication desc, is_user_protected desc, sequence asc
         "#,
     )
     .bind(flow_id)
@@ -419,7 +466,22 @@ async fn fetch_version(
 ) -> Result<Option<domain::FlowVersionRecord>> {
     let row = sqlx::query(
         r#"
-        select id, flow_id, sequence, trigger, change_kind, summary, summary_is_custom, is_protected, document, created_at
+        select
+            id,
+            flow_id,
+            sequence,
+            trigger,
+            change_kind,
+            summary,
+            summary_is_custom,
+            is_user_protected,
+            exists (
+                select 1
+                from application_publication_versions publication
+                where publication.flow_version_id = flow_versions.id
+            ) as is_current_publication,
+            document,
+            created_at
         from flow_versions
         where flow_id = $1 and id = $2
         "#,
@@ -458,7 +520,7 @@ async fn insert_version(
             change_kind,
             summary,
             summary_is_custom,
-            is_protected,
+            is_user_protected,
             document,
             created_by,
             updated_by
@@ -486,7 +548,7 @@ async fn trim_versions(tx: &mut Transaction<'_, Postgres>, flow_id: Uuid) -> Res
             select id
             from flow_versions
             where flow_id = $1
-              and is_protected = false
+              and is_user_protected = false
               and not exists (
                   select 1
                   from application_publication_versions publication
@@ -533,7 +595,8 @@ fn map_version_row(row: sqlx::postgres::PgRow) -> Result<domain::FlowVersionReco
         change_kind: row.get("change_kind"),
         summary: row.get("summary"),
         summary_is_custom: row.get("summary_is_custom"),
-        is_protected: row.get("is_protected"),
+        is_user_protected: row.get("is_user_protected"),
+        is_current_publication: row.get("is_current_publication"),
         document: row.get("document"),
         created_at: row.get("created_at"),
     })

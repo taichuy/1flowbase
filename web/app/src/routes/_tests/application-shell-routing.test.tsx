@@ -339,7 +339,8 @@ describe('application shell routing', () => {
         }
       },
       versions: [],
-      autosave_interval_seconds: 30
+      autosave_interval_seconds: 30,
+      user_protection_limit: 10,
     });
     nodeContributionsApi.fetchNodeContributions.mockReset();
     nodeContributionsApi.fetchNodeContributions.mockResolvedValue([]);
@@ -373,7 +374,8 @@ describe('application shell routing', () => {
         }
       },
       versions: [],
-      autosave_interval_seconds: 30
+      autosave_interval_seconds: 30,
+      user_protection_limit: 10,
     });
   });
 

@@ -181,7 +181,7 @@ async fn seed_flow_version_and_compiled_plan(
         r#"
         insert into flow_versions (
             id, flow_id, scope_id, sequence, trigger, change_kind, summary,
-            summary_is_custom, is_protected, document, created_by, updated_by
+            summary_is_custom, is_user_protected, document, created_by, updated_by
         ) values ($1, $2, (select scope_id from flows where id = $2), 1, 'autosave', 'logical', 'published', false, true, $3, $4, $4)
         "#,
     )
@@ -233,7 +233,7 @@ async fn seed_publication_revision(
         r#"
         insert into flow_versions (
             id, flow_id, scope_id, sequence, trigger, change_kind, summary,
-            summary_is_custom, is_protected, document, created_by, updated_by
+            summary_is_custom, is_user_protected, document, created_by, updated_by
         ) values ($1, $2, (select scope_id from flows where id = $2), $3, 'autosave', 'logical', 'published', false, true, $4, $5, $5)
         "#,
     )

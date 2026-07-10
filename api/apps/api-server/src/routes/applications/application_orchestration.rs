@@ -38,7 +38,7 @@ pub struct SaveDraftBody {
 pub struct UpdateVersionBody {
     pub summary: Option<String>,
     pub summary_is_custom: Option<bool>,
-    pub is_protected: Option<bool>,
+    pub is_user_protected: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -68,7 +68,8 @@ pub struct FlowVersionResponse {
     pub change_kind: String,
     pub summary: String,
     pub summary_is_custom: bool,
-    pub is_protected: bool,
+    pub is_user_protected: bool,
+    pub is_current_publication: bool,
     pub created_at: String,
 }
 
@@ -86,6 +87,7 @@ pub struct OrchestrationStateResponse {
     pub draft: FlowDraftResponse,
     pub versions: Vec<FlowVersionResponse>,
     pub autosave_interval_seconds: u16,
+    pub user_protection_limit: usize,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -287,11 +289,13 @@ fn to_response(state: domain::FlowEditorState) -> OrchestrationStateResponse {
                 change_kind: version.change_kind.as_str().to_string(),
                 summary: version.summary,
                 summary_is_custom: version.summary_is_custom,
-                is_protected: version.is_protected,
+                is_user_protected: version.is_user_protected,
+                is_current_publication: version.is_current_publication,
                 created_at: version.created_at.format(&Rfc3339).unwrap(),
             })
             .collect(),
         autosave_interval_seconds: state.autosave_interval_seconds,
+        user_protection_limit: domain::FLOW_USER_PROTECTION_LIMIT,
     }
 }
 
@@ -703,7 +707,7 @@ pub async fn update_version(
             version_id,
             summary: body.summary,
             summary_is_custom: body.summary_is_custom,
-            is_protected: body.is_protected,
+            is_user_protected: body.is_user_protected,
         })
         .await?;
 

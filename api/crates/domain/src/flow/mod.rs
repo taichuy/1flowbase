@@ -6,6 +6,7 @@ pub use crate::system_defaults::flow_document::{FLOW_SCHEMA_VERSION, WORKFLOW_SY
 pub use crate::system_defaults::runtime_policy::FLOW_AUTOSAVE_INTERVAL_SECONDS;
 
 pub const FLOW_HISTORY_LIMIT: usize = 30;
+pub const FLOW_USER_PROTECTION_LIMIT: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -65,7 +66,8 @@ pub struct FlowVersionRecord {
     pub change_kind: FlowChangeKind,
     pub summary: String,
     pub summary_is_custom: bool,
-    pub is_protected: bool,
+    pub is_user_protected: bool,
+    pub is_current_publication: bool,
     pub document: serde_json::Value,
     pub created_at: OffsetDateTime,
 }

@@ -9,7 +9,8 @@ export interface ConsoleFlowVersionSummary {
   change_kind: 'logical';
   summary: string;
   summary_is_custom?: boolean;
-  is_protected?: boolean;
+  is_user_protected: boolean;
+  is_current_publication: boolean;
   created_at: string;
 }
 
@@ -25,6 +26,7 @@ export interface ConsoleApplicationOrchestrationState {
   draft: ConsoleFlowDraftPayload;
   versions: ConsoleFlowVersionSummary[];
   autosave_interval_seconds: number;
+  user_protection_limit: number;
 }
 
 export interface SaveConsoleApplicationDraftInput {
@@ -36,7 +38,7 @@ export interface SaveConsoleApplicationDraftInput {
 export interface UpdateConsoleApplicationVersionInput {
   summary?: string;
   summary_is_custom?: boolean;
-  is_protected?: boolean;
+  is_user_protected?: boolean;
 }
 
 export interface ConsoleAgentFlowTemplateApplication {

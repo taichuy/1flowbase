@@ -15,6 +15,7 @@ describe('flow editor store', () => {
         document
       },
       autosave_interval_seconds: 30,
+      user_protection_limit: 10,
       versions: []
     });
     const state = store.getState() as unknown as Record<string, unknown>;

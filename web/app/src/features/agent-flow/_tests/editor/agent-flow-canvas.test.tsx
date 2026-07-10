@@ -15,7 +15,8 @@ function createInitialState() {
       document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
     },
     versions: [],
-    autosave_interval_seconds: 30
+    autosave_interval_seconds: 30,
+    user_protection_limit: 10,
   };
 }
 
@@ -103,7 +104,8 @@ describe('AgentFlowCanvas', () => {
         }
       },
       versions: [],
-      autosave_interval_seconds: 30
+      autosave_interval_seconds: 30,
+      user_protection_limit: 10,
     };
 
     renderReactFlowScene(

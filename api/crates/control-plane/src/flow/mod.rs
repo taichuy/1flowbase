@@ -42,7 +42,7 @@ pub struct UpdateFlowVersionMetadataCommand {
     pub version_id: Uuid,
     pub summary: Option<String>,
     pub summary_is_custom: Option<bool>,
-    pub is_protected: Option<bool>,
+    pub is_user_protected: Option<bool>,
 }
 
 pub struct PreviewAgentFlowTemplateCommand {
@@ -167,7 +167,7 @@ where
                 command.version_id,
                 command.summary,
                 command.summary_is_custom,
-                command.is_protected,
+                command.is_user_protected,
             )
             .await
     }
@@ -599,7 +599,8 @@ impl FlowRepository for InMemoryFlowRepository {
                 change_kind: domain::FlowChangeKind::Logical,
                 summary: summary.to_string(),
                 summary_is_custom: false,
-                is_protected: false,
+                is_user_protected: false,
+                is_current_publication: false,
                 document,
                 created_at: OffsetDateTime::now_utc(),
             });
@@ -657,7 +658,8 @@ impl FlowRepository for InMemoryFlowRepository {
             change_kind: domain::FlowChangeKind::Logical,
             summary: format!("恢复版本 {}", restored.sequence),
             summary_is_custom: false,
-            is_protected: false,
+            is_user_protected: false,
+            is_current_publication: false,
             document: restored.document,
             created_at: OffsetDateTime::now_utc(),
         });
@@ -674,7 +676,7 @@ impl FlowRepository for InMemoryFlowRepository {
         version_id: Uuid,
         summary: Option<String>,
         summary_is_custom: Option<bool>,
-        is_protected: Option<bool>,
+        is_user_protected: Option<bool>,
     ) -> Result<domain::FlowEditorState> {
         let application_type = ApplicationRepository::get_application(
             &self.applications,
@@ -694,11 +696,17 @@ impl FlowRepository for InMemoryFlowRepository {
             .or_insert_with(|| {
                 bootstrap_editor_state(application_id, actor_user_id, application_type)
             });
-        let version = state
+        let version_index = state
             .versions
-            .iter_mut()
-            .find(|version| version.id == version_id)
+            .iter()
+            .position(|version| version.id == version_id)
             .ok_or(ControlPlaneError::NotFound("flow_version"))?;
+        let user_protected_count = state
+            .versions
+            .iter()
+            .filter(|candidate| candidate.is_user_protected)
+            .count();
+        let version = &mut state.versions[version_index];
 
         if let Some(summary) = summary {
             version.summary = summary;
@@ -708,14 +716,20 @@ impl FlowRepository for InMemoryFlowRepository {
             version.summary_is_custom = summary_is_custom;
         }
 
-        if let Some(is_protected) = is_protected {
-            version.is_protected = is_protected;
+        if is_user_protected == Some(true)
+            && !version.is_user_protected
+            && user_protected_count >= domain::FLOW_USER_PROTECTION_LIMIT
+        {
+            return Err(ControlPlaneError::Conflict("flow_user_protection_limit").into());
+        }
+        if let Some(is_user_protected) = is_user_protected {
+            version.is_user_protected = is_user_protected;
         }
 
         state.versions.sort_by(|left, right| {
             right
-                .is_protected
-                .cmp(&left.is_protected)
+                .is_user_protected
+                .cmp(&left.is_user_protected)
                 .then_with(|| left.sequence.cmp(&right.sequence))
         });
 
@@ -753,7 +767,8 @@ fn bootstrap_editor_state(
             change_kind: domain::FlowChangeKind::Logical,
             summary: "初始化默认草稿".to_string(),
             summary_is_custom: false,
-            is_protected: false,
+            is_user_protected: false,
+            is_current_publication: false,
             document,
             created_at: OffsetDateTime::now_utc(),
         }],
@@ -771,7 +786,7 @@ fn document_schema_version(document: &serde_json::Value) -> &str {
 fn trim_versions(versions: &mut Vec<domain::FlowVersionRecord>) {
     let unprotected_count = versions
         .iter()
-        .filter(|version| !version.is_protected)
+        .filter(|version| !version.is_user_protected)
         .count();
 
     if unprotected_count > domain::FLOW_HISTORY_LIMIT {
@@ -779,7 +794,7 @@ fn trim_versions(versions: &mut Vec<domain::FlowVersionRecord>) {
         let mut removed = 0;
 
         versions.retain(|version| {
-            if !version.is_protected && removed < overflow {
+            if !version.is_user_protected && removed < overflow {
                 removed += 1;
                 false
             } else {
@@ -790,8 +805,8 @@ fn trim_versions(versions: &mut Vec<domain::FlowVersionRecord>) {
 
     versions.sort_by(|left, right| {
         right
-            .is_protected
-            .cmp(&left.is_protected)
+            .is_user_protected
+            .cmp(&left.is_user_protected)
             .then_with(|| left.sequence.cmp(&right.sequence))
     });
 }

@@ -36,6 +36,7 @@ import { useAgentFlowEditorStore } from '../../agent-flow/store/editor/provider'
 import {
   selectAutosaveStatus,
   selectLastSavedDocument,
+  selectUserProtectionLimit,
   selectVersions,
   selectWorkingDocument
 } from '../../agent-flow/store/editor/selectors';
@@ -84,6 +85,9 @@ export function WorkflowCanvasFrame({
   const lastSavedDocument = useAgentFlowEditorStore(selectLastSavedDocument);
   const autosaveStatus = useAgentFlowEditorStore(selectAutosaveStatus);
   const versions = useAgentFlowEditorStore(selectVersions);
+  const userProtectionLimit = useAgentFlowEditorStore(
+    selectUserProtectionLimit
+  );
   const autosaveIntervalMs = useAgentFlowEditorStore(
     (state) => state.autosaveIntervalMs
   );
@@ -317,6 +321,7 @@ export function WorkflowCanvasFrame({
           >
             <VersionHistoryPanel
               versions={versions}
+              userProtectionLimit={userProtectionLimit}
               restoring={isRestoringVersion}
               updatingVersionId={
                 versionMetadataMutation.isPending

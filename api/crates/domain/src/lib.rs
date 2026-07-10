@@ -57,7 +57,7 @@ pub use flow::{
     default_flow_document, default_flow_document_for_application, FlowChangeKind, FlowDraftRecord,
     FlowEditorState, FlowRecord, FlowVersionRecord, FlowVersionTrigger,
     FLOW_AUTOSAVE_INTERVAL_SECONDS, FLOW_HISTORY_LIMIT, FLOW_SCHEMA_VERSION,
-    WORKFLOW_SYNC_TIMEOUT_MS,
+    FLOW_USER_PROTECTION_LIMIT, WORKFLOW_SYNC_TIMEOUT_MS,
 };
 pub use frontend_block_catalog::{
     FrontendBlockCatalogEntry, FrontendBlockContextContract, FrontendBlockPermissions,

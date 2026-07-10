@@ -317,7 +317,7 @@ impl FlowRepository for InMemoryOrchestrationRuntimeRepository {
         version_id: Uuid,
         summary: Option<String>,
         summary_is_custom: Option<bool>,
-        is_protected: Option<bool>,
+        is_user_protected: Option<bool>,
     ) -> Result<domain::FlowEditorState> {
         FlowRepository::update_version_metadata(
             &self.flow,
@@ -327,7 +327,7 @@ impl FlowRepository for InMemoryOrchestrationRuntimeRepository {
             version_id,
             summary,
             summary_is_custom,
-            is_protected,
+            is_user_protected,
         )
         .await
     }

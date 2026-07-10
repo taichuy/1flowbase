@@ -1,6 +1,9 @@
 use std::sync::{Arc, OnceLock};
 
-use control_plane::ports::{ApplicationRepository, CreateApplicationInput, FlowRepository};
+use control_plane::{
+    errors::ControlPlaneError,
+    ports::{ApplicationRepository, CreateApplicationInput, FlowRepository},
+};
 use domain::{ApplicationType, FlowChangeKind, FlowVersionTrigger};
 use serde_json::json;
 use sqlx::{Connection, PgConnection};
@@ -251,7 +254,7 @@ async fn save_draft_only_appends_history_for_logical_changes() {
 
     assert_eq!(protected_state.versions[0].summary, "stable baseline");
     assert!(protected_state.versions[0].summary_is_custom);
-    assert!(protected_state.versions[0].is_protected);
+    assert!(protected_state.versions[0].is_user_protected);
 
     let mut current_document = protected_state.draft.document.clone();
     let mut current_state = protected_state;
@@ -275,14 +278,95 @@ async fn save_draft_only_appends_history_for_logical_changes() {
     assert!(current_state
         .versions
         .iter()
-        .any(|version| version.id == protected_version_id && version.is_protected));
+        .any(|version| version.id == protected_version_id && version.is_user_protected));
     assert!(
         current_state
             .versions
             .iter()
-            .filter(|version| !version.is_protected)
+            .filter(|version| !version.is_user_protected)
             .count()
             <= domain::FLOW_HISTORY_LIMIT
+    );
+}
+
+#[tokio::test]
+async fn update_version_metadata_rejects_an_eleventh_user_protected_version() {
+    let _permit = repository_test_semaphore().acquire_owned().await.unwrap();
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let workspace_id = seed_workspace(&store, "Flow Protection Limit Workspace").await;
+    let actor_user_id = seed_user(&store, workspace_id, "flow-protection-owner").await;
+    let application = seed_agent_flow_application(&store, workspace_id, actor_user_id).await;
+    let mut state = <PgControlPlaneStore as FlowRepository>::get_or_create_editor_state(
+        &store,
+        workspace_id,
+        application.id,
+        actor_user_id,
+    )
+    .await
+    .unwrap();
+    let mut document = state.draft.document.clone();
+
+    while state.versions.len() <= domain::FLOW_USER_PROTECTION_LIMIT {
+        let sequence = state.versions.len();
+        document["graph"]["nodes"][1]["bindings"]["prompt_messages"]["value"][0]["content"]
+            ["value"] = json!(format!("Protected prompt {sequence}"));
+        state = <PgControlPlaneStore as FlowRepository>::save_draft(
+            &store,
+            workspace_id,
+            application.id,
+            actor_user_id,
+            document.clone(),
+            FlowChangeKind::Logical,
+            &format!("protected update {sequence}"),
+        )
+        .await
+        .unwrap();
+    }
+
+    let user_protected_version_ids = state
+        .versions
+        .iter()
+        .take(domain::FLOW_USER_PROTECTION_LIMIT)
+        .map(|version| version.id)
+        .collect::<Vec<_>>();
+    for version_id in user_protected_version_ids {
+        state = <PgControlPlaneStore as FlowRepository>::update_version_metadata(
+            &store,
+            workspace_id,
+            application.id,
+            actor_user_id,
+            version_id,
+            None,
+            None,
+            Some(true),
+        )
+        .await
+        .unwrap();
+    }
+
+    let unprotected_version = state
+        .versions
+        .iter()
+        .find(|version| !version.is_user_protected)
+        .unwrap();
+    let error = <PgControlPlaneStore as FlowRepository>::update_version_metadata(
+        &store,
+        workspace_id,
+        application.id,
+        actor_user_id,
+        unprotected_version.id,
+        None,
+        None,
+        Some(true),
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(&ControlPlaneError::Conflict("flow_user_protection_limit"))
     );
 }
 
@@ -401,15 +485,16 @@ async fn save_draft_trim_keeps_current_publication_flow_version() {
         .unwrap();
     }
 
-    assert!(current_state
-        .versions
-        .iter()
-        .any(|version| version.id == published_version_id));
+    assert!(current_state.versions.iter().any(|version| {
+        version.id == published_version_id
+            && version.is_current_publication
+            && !version.is_user_protected
+    }));
     assert!(
         current_state
             .versions
             .iter()
-            .filter(|version| version.id != published_version_id && !version.is_protected)
+            .filter(|version| version.id != published_version_id && !version.is_user_protected)
             .count()
             <= domain::FLOW_HISTORY_LIMIT
     );

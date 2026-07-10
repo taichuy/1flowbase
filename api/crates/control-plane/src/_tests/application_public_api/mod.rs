@@ -934,10 +934,13 @@ async fn application_public_api_publish_uses_real_flow_version_and_compiled_plan
         .expect("publish should persist a compiled plan");
 
     assert_eq!(publication.flow_id, editor_state.flow.id);
-    assert!(editor_state
-        .versions
-        .iter()
-        .any(|version| version.id == publication.flow_version_id && version.is_protected));
+    assert!(
+        editor_state
+            .versions
+            .iter()
+            .any(|version| version.id == publication.flow_version_id
+                && version.is_current_publication)
+    );
     assert_eq!(compiled_plan.flow_id, editor_state.flow.id);
     assert_eq!(publication.document_snapshot, editor_state.draft.document);
     assert_ne!(
@@ -948,6 +951,52 @@ async fn application_public_api_publish_uses_real_flow_version_and_compiled_plan
         publication.document_snapshot["source"],
         "application_public_api_placeholder"
     );
+}
+
+#[tokio::test]
+async fn republishing_moves_current_publication_without_user_protecting_the_previous_version() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_application(actor_user_id(), "Republished Support Bot");
+    let repository = harness.repository();
+    let service = ApplicationPublicationService::new(repository.clone());
+
+    let first_publication = service
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let second_publication = service
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let editor_state = repository
+        .get_or_create_editor_state(application.workspace_id, application.id, actor_user_id())
+        .await
+        .unwrap();
+    let first_version = editor_state
+        .versions
+        .iter()
+        .find(|version| version.id == first_publication.flow_version_id)
+        .unwrap();
+    let second_version = editor_state
+        .versions
+        .iter()
+        .find(|version| version.id == second_publication.flow_version_id)
+        .unwrap();
+
+    assert!(!first_version.is_current_publication);
+    assert!(!first_version.is_user_protected);
+    assert!(second_version.is_current_publication);
+    assert!(!second_version.is_user_protected);
 }
 
 #[tokio::test]

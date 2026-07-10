@@ -16,3 +16,6 @@ export const selectAutosaveStatus = (state: FlowEditorState) =>
   state.autosaveStatus;
 
 export const selectVersions = (state: FlowEditorState) => state.versions;
+
+export const selectUserProtectionLimit = (state: FlowEditorState) =>
+  state.userProtectionLimit;

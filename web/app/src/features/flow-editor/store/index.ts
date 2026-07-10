@@ -31,13 +31,15 @@ function hasOwnProperty<Key extends PropertyKey>(
 }
 
 export interface FlowEditorState
-  extends DocumentSlice,
+  extends
+    DocumentSlice,
     SelectionSlice,
     ViewportSlice,
     PanelSlice,
     InteractionSlice,
     SyncSlice {
   autosaveIntervalMs: number;
+  userProtectionLimit: number;
   setWorkingDocument: (
     update:
       | FlowAuthoringDocument
@@ -50,10 +52,7 @@ export interface FlowEditorState
     payload: Partial<
       Pick<
         FlowEditorState,
-        | 'issuesOpen'
-        | 'historyOpen'
-        | 'nodeDetailWidth'
-        | 'nodePickerState'
+        'issuesOpen' | 'historyOpen' | 'nodeDetailWidth' | 'nodePickerState'
       >
     >
   ) => void;
@@ -122,10 +121,13 @@ export function createFlowEditorStore(
     lastChangeKind: null,
     lastChangeSummary: null,
     autosaveIntervalMs: state.autosave_interval_seconds * 1000,
+    userProtectionLimit: state.user_protection_limit,
     setWorkingDocument: (update) =>
       set((current) => {
         const workingDocument =
-          typeof update === 'function' ? update(current.workingDocument) : update;
+          typeof update === 'function'
+            ? update(current.workingDocument)
+            : update;
 
         if (workingDocument === current.workingDocument) {
           return current;
@@ -140,7 +142,10 @@ export function createFlowEditorStore(
           workingDocument,
           undoStack,
           viewport: workingDocument.editor.viewport,
-          isDirty: hasDocumentChanged(workingDocument, current.lastSavedDocument)
+          isDirty: hasDocumentChanged(
+            workingDocument,
+            current.lastSavedDocument
+          )
         };
       }),
     restorePreviousDocument: () =>
@@ -180,7 +185,10 @@ export function createFlowEditorStore(
           openInspectorSectionKey: selectedNodeId
             ? current.openInspectorSectionKey
             : null,
-          isDirty: hasDocumentChanged(previousDocument, current.lastSavedDocument)
+          isDirty: hasDocumentChanged(
+            previousDocument,
+            current.lastSavedDocument
+          )
         };
       }),
     setSelection: (payload) =>
@@ -217,16 +225,16 @@ export function createFlowEditorStore(
             }
           : current.connectingPayload,
         hoveredNodeId: hasOwnProperty(payload, 'hoveredNodeId')
-          ? payload.hoveredNodeId ?? null
+          ? (payload.hoveredNodeId ?? null)
           : current.hoveredNodeId,
         hoveredEdgeId: hasOwnProperty(payload, 'hoveredEdgeId')
-          ? payload.hoveredEdgeId ?? null
+          ? (payload.hoveredEdgeId ?? null)
           : current.hoveredEdgeId,
         highlightedIssueId: hasOwnProperty(payload, 'highlightedIssueId')
-          ? payload.highlightedIssueId ?? null
+          ? (payload.highlightedIssueId ?? null)
           : current.highlightedIssueId,
         pendingLocateNodeId: hasOwnProperty(payload, 'pendingLocateNodeId')
-          ? payload.pendingLocateNodeId ?? null
+          ? (payload.pendingLocateNodeId ?? null)
           : current.pendingLocateNodeId
       })),
     setAutosaveStatus: (autosaveStatus) => set({ autosaveStatus }),
@@ -270,7 +278,8 @@ export function createFlowEditorStore(
             nextWorkingDocument,
             nextState.draft.document
           ),
-          autosaveIntervalMs: nextState.autosave_interval_seconds * 1000
+          autosaveIntervalMs: nextState.autosave_interval_seconds * 1000,
+          userProtectionLimit: nextState.user_protection_limit
         };
       });
     },
@@ -318,7 +327,8 @@ export function createFlowEditorStore(
         isDirty: false,
         lastChangeKind: null,
         lastChangeSummary: null,
-        autosaveIntervalMs: nextState.autosave_interval_seconds * 1000
+        autosaveIntervalMs: nextState.autosave_interval_seconds * 1000,
+        userProtectionLimit: nextState.user_protection_limit
       }));
     },
     resetTransientInteractionState: () =>

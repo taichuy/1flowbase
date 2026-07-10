@@ -586,7 +586,8 @@ export function createStyleBoundaryOrchestrationState() {
       document: createStyleBoundaryAgentFlowDocument()
     },
     versions: [],
-    autosave_interval_seconds: 30
+    autosave_interval_seconds: 30,
+    user_protection_limit: 10,
   };
 }
 
@@ -1018,7 +1019,8 @@ export function seedStyleBoundaryApplicationFetch() {
               document: currentDraftDocument
             },
             versions: [],
-            autosave_interval_seconds: 30
+            autosave_interval_seconds: 30,
+            user_protection_limit: 10,
           },
           meta: null
         }),
@@ -1041,7 +1043,8 @@ export function seedStyleBoundaryApplicationFetch() {
               document: currentDraftDocument
             },
             versions: [],
-            autosave_interval_seconds: 30
+            autosave_interval_seconds: 30,
+            user_protection_limit: 10,
           },
           meta: null
         }),

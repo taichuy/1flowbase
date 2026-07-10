@@ -59,6 +59,7 @@ import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
   selectAutosaveStatus,
   selectLastSavedDocument,
+  selectUserProtectionLimit,
   selectVersions,
   selectWorkingDocument
 } from '../../store/editor/selectors';
@@ -126,6 +127,9 @@ export function AgentFlowCanvasFrame({
   );
   const autosaveStatus = useAgentFlowEditorStore(selectAutosaveStatus);
   const versions = useAgentFlowEditorStore(selectVersions);
+  const userProtectionLimit = useAgentFlowEditorStore(
+    selectUserProtectionLimit
+  );
   const draftMeta = useAgentFlowEditorStore((state) => state.draftMeta);
   const autosaveIntervalMs = useAgentFlowEditorStore(
     (state) => state.autosaveIntervalMs
@@ -874,7 +878,6 @@ export function AgentFlowCanvasFrame({
         saveDisabled={autosaveStatus === 'saving'}
         saveLoading={autosaveStatus === 'saving'}
         onOpenDebugConsole={openDebugConsole}
-
         onExportTemplate={() => exportTemplateMutation.mutate()}
         onOpenIssues={() => setPanelState({ issuesOpen: true })}
         onOpenHistory={openHistory}
@@ -1038,8 +1041,7 @@ export function AgentFlowCanvasFrame({
             sidebarWidth={boundedVariableCacheSidebarWidth}
           />
         ) : null}
-        {conversationLogOpen &&
-        conversationLogMessage ? (
+        {conversationLogOpen && conversationLogMessage ? (
           <AgentFlowSideDock
             className="agent-flow-editor__conversation-log-dock"
             data-testid="agent-flow-editor-conversation-log-dock"
@@ -1121,6 +1123,7 @@ export function AgentFlowCanvasFrame({
           >
             <VersionHistoryPanel
               versions={versions}
+              userProtectionLimit={userProtectionLimit}
               restoring={isRestoringVersion}
               updatingVersionId={
                 versionMetadataMutation.isPending

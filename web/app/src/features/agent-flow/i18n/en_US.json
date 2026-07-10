@@ -612,6 +612,8 @@
     "type": "Type",
     "last_round_user_messages": "Last round of user messages",
     "protected": "protected",
+    "current_publication": "Live version",
+    "user_protection_usage": "User protection {{value1}}/{{value2}}",
     "output": "Output {{value1}}",
     "adjust_height_downwards": "Adjust {{value1}} height downwards",
     "fallback_node_label": "node",

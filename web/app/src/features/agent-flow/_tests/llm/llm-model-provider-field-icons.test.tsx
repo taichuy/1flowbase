@@ -29,6 +29,7 @@ function createInitialState() {
       document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
     },
     autosave_interval_seconds: 30,
+    user_protection_limit: 10,
     versions: []
   };
 }

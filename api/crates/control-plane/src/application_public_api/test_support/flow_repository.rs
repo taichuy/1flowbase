@@ -19,7 +19,15 @@ impl FlowRepository for ApplicationPublicApiTestRepository {
             .filter(|application| application.workspace_id == workspace_id)
             .cloned()
             .ok_or(ControlPlaneError::NotFound("application"))?;
-        if let Some(state) = inner.editor_states.get(&application_id).cloned() {
+        if let Some(mut state) = inner.editor_states.get(&application_id).cloned() {
+            let current_publication_version_id = inner
+                .publications
+                .values()
+                .find(|publication| publication.application_id == application_id)
+                .map(|publication| publication.flow_version_id);
+            for version in &mut state.versions {
+                version.is_current_publication = Some(version.id) == current_publication_version_id;
+            }
             return Ok(state);
         }
 
@@ -57,7 +65,8 @@ impl FlowRepository for ApplicationPublicApiTestRepository {
                 change_kind: domain::FlowChangeKind::Logical,
                 summary: "初始化默认草稿".to_string(),
                 summary_is_custom: false,
-                is_protected: false,
+                is_user_protected: false,
+                is_current_publication: false,
                 document,
                 created_at: now,
             }],
@@ -108,7 +117,8 @@ impl FlowRepository for ApplicationPublicApiTestRepository {
                 change_kind,
                 summary: summary.to_string(),
                 summary_is_custom: false,
-                is_protected: false,
+                is_user_protected: false,
+                is_current_publication: false,
                 document,
                 created_at: now,
             });
@@ -135,24 +145,36 @@ impl FlowRepository for ApplicationPublicApiTestRepository {
         version_id: Uuid,
         summary: Option<String>,
         summary_is_custom: Option<bool>,
-        is_protected: Option<bool>,
+        is_user_protected: Option<bool>,
     ) -> Result<domain::FlowEditorState> {
         let mut state = self
             .get_or_create_editor_state(workspace_id, application_id, actor_user_id)
             .await?;
-        let version = state
+        let version_index = state
             .versions
-            .iter_mut()
-            .find(|version| version.id == version_id)
+            .iter()
+            .position(|version| version.id == version_id)
             .ok_or(ControlPlaneError::NotFound("flow_version"))?;
+        let user_protected_count = state
+            .versions
+            .iter()
+            .filter(|candidate| candidate.is_user_protected)
+            .count();
+        let version = &mut state.versions[version_index];
         if let Some(summary) = summary {
             version.summary = summary;
         }
         if let Some(summary_is_custom) = summary_is_custom {
             version.summary_is_custom = summary_is_custom;
         }
-        if let Some(is_protected) = is_protected {
-            version.is_protected = is_protected;
+        if is_user_protected == Some(true)
+            && !version.is_user_protected
+            && user_protected_count >= domain::FLOW_USER_PROTECTION_LIMIT
+        {
+            return Err(ControlPlaneError::Conflict("flow_user_protection_limit").into());
+        }
+        if let Some(is_user_protected) = is_user_protected {
+            version.is_user_protected = is_user_protected;
         }
         self.inner
             .lock()

@@ -95,7 +95,8 @@ function createInitialState(
       document
     },
     versions: [],
-    autosave_interval_seconds: 30
+    autosave_interval_seconds: 30,
+    user_protection_limit: 10
   };
 }
 
@@ -559,7 +560,8 @@ describe('AgentFlowEditorShell', () => {
               change_kind: 'logical',
               summary: '初始化默认草稿',
               summary_is_custom: false,
-              is_protected: false,
+              is_user_protected: false,
+              is_current_publication: false,
               created_at: '2026-04-15T09:00:00Z'
             }
           ]
@@ -722,7 +724,8 @@ describe('AgentFlowEditorShell', () => {
               change_kind: 'logical',
               summary: '初始化默认草稿',
               summary_is_custom: false,
-              is_protected: false,
+              is_user_protected: false,
+              is_current_publication: false,
               created_at: '2026-04-15T09:00:00Z'
             }
           ]
@@ -751,7 +754,8 @@ describe('AgentFlowEditorShell', () => {
         change_kind: 'logical' as const,
         summary: '初始化默认草稿',
         summary_is_custom: false,
-        is_protected: false,
+        is_user_protected: false,
+        is_current_publication: false,
         created_at: '2026-04-15T09:00:00Z'
       }
     ];
@@ -764,13 +768,15 @@ describe('AgentFlowEditorShell', () => {
         document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
       },
       versions,
-      autosave_interval_seconds: 30
+      autosave_interval_seconds: 30,
+      user_protection_limit: 10
     });
 
     render(
       <VersionHistoryPanel
         onClose={vi.fn()}
         versions={versions}
+        userProtectionLimit={10}
         restoring={false}
         onRestore={restoreVersion}
         onUpdate={vi.fn()}
@@ -794,7 +800,8 @@ describe('AgentFlowEditorShell', () => {
         change_kind: 'logical' as const,
         summary: '初始化默认草稿',
         summary_is_custom: false,
-        is_protected: false,
+        is_user_protected: false,
+        is_current_publication: false,
         created_at: '2026-04-15T09:00:00Z'
       }
     ];
@@ -804,6 +811,7 @@ describe('AgentFlowEditorShell', () => {
       <VersionHistoryPanel
         onClose={vi.fn()}
         versions={versions}
+        userProtectionLimit={10}
         restoring={false}
         onRestore={vi.fn()}
         onUpdate={updateVersion}
@@ -826,8 +834,85 @@ describe('AgentFlowEditorShell', () => {
     fireEvent.click(screen.getByRole('button', { name: '置顶保护 版本 1' }));
 
     expect(updateVersion).toHaveBeenLastCalledWith('version-1', {
-      is_protected: true
+      is_user_protected: true
     });
+  });
+
+  test('distinguishes the current publication from user protection', () => {
+    render(
+      <VersionHistoryPanel
+        onClose={vi.fn()}
+        userProtectionLimit={10}
+        versions={[
+          {
+            id: 'version-live',
+            sequence: 8,
+            trigger: 'autosave',
+            change_kind: 'logical',
+            summary: 'Published workflow',
+            summary_is_custom: false,
+            is_user_protected: false,
+            is_current_publication: true,
+            created_at: '2026-07-10T09:00:00Z'
+          }
+        ]}
+        restoring={false}
+        onRestore={vi.fn()}
+        onUpdate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('线上版本')).toBeInTheDocument();
+    expect(screen.queryByText('已保护')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '置顶保护 版本 8' })
+    ).toBeInTheDocument();
+  });
+
+  test('disables new user protection after the backend limit is reached', () => {
+    const protectedVersions = Array.from({ length: 10 }, (_, index) => ({
+      id: `protected-${index}`,
+      sequence: index + 1,
+      trigger: 'autosave' as const,
+      change_kind: 'logical' as const,
+      summary: `Protected ${index + 1}`,
+      summary_is_custom: false,
+      is_user_protected: true,
+      is_current_publication: false,
+      created_at: '2026-07-10T09:00:00Z'
+    }));
+
+    render(
+      <VersionHistoryPanel
+        onClose={vi.fn()}
+        userProtectionLimit={10}
+        versions={[
+          ...protectedVersions,
+          {
+            id: 'unprotected',
+            sequence: 11,
+            trigger: 'autosave',
+            change_kind: 'logical',
+            summary: 'Unprotected',
+            summary_is_custom: false,
+            is_user_protected: false,
+            is_current_publication: false,
+            created_at: '2026-07-10T09:01:00Z'
+          }
+        ]}
+        restoring={false}
+        onRestore={vi.fn()}
+        onUpdate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('用户保护 10/10')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '置顶保护 版本 11' })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: '取消置顶保护 版本 1' })
+    ).toBeEnabled();
   });
 
   test('renders editor chrome on small screens', async () => {

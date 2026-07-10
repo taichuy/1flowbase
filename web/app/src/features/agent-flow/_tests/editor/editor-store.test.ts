@@ -16,6 +16,7 @@ describe('agent flow editor store', () => {
         document: initialDocument
       },
       autosave_interval_seconds: 30,
+      user_protection_limit: 10,
       versions: []
     });
 
@@ -44,6 +45,7 @@ describe('agent flow editor store', () => {
         document: initialDocument
       },
       autosave_interval_seconds: 30,
+      user_protection_limit: 10,
       versions: []
     });
 
@@ -72,6 +74,7 @@ describe('agent flow editor store', () => {
         document: restoredDocument
       },
       autosave_interval_seconds: 30,
+      user_protection_limit: 10,
       versions: []
     });
 
@@ -105,6 +108,7 @@ describe('agent flow editor store', () => {
         document: initialDocument
       },
       autosave_interval_seconds: 30,
+      user_protection_limit: 10,
       versions: []
     });
 
@@ -132,6 +136,7 @@ describe('agent flow editor store', () => {
         document: savedDocument
       },
       autosave_interval_seconds: 45,
+      user_protection_limit: 10,
       versions: []
     });
 
@@ -162,6 +167,7 @@ describe('agent flow editor store', () => {
         document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
       },
       autosave_interval_seconds: 30,
+      user_protection_limit: 10,
       versions: []
     });
     const state = store.getState() as unknown as Record<string, unknown>;
@@ -183,6 +189,7 @@ describe('agent flow editor store', () => {
         document: initialDocument
       },
       autosave_interval_seconds: 30,
+      user_protection_limit: 10,
       versions: []
     });
 
@@ -199,6 +206,7 @@ describe('agent flow editor store', () => {
         }
       },
       autosave_interval_seconds: 30,
+      user_protection_limit: 10,
       versions: []
     });
 

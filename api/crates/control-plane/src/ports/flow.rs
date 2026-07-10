@@ -33,6 +33,6 @@ pub trait FlowRepository: Send + Sync {
         version_id: Uuid,
         summary: Option<String>,
         summary_is_custom: Option<bool>,
-        is_protected: Option<bool>,
+        is_user_protected: Option<bool>,
     ) -> anyhow::Result<domain::FlowEditorState>;
 }

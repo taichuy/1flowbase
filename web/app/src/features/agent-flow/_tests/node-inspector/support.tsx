@@ -91,6 +91,7 @@ export function createInitialState() {
       document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
     },
     autosave_interval_seconds: 30,
+    user_protection_limit: 10,
     versions: []
   };
 }
@@ -109,6 +110,7 @@ export function createInitialStateWithCodeNode() {
       document
     },
     autosave_interval_seconds: 30,
+    user_protection_limit: 10,
     versions: []
   };
 }
@@ -190,6 +192,7 @@ export function createInitialStateWithLoopNode() {
       document
     },
     autosave_interval_seconds: 30,
+    user_protection_limit: 10,
     versions: []
   };
 }
@@ -210,6 +213,7 @@ export function createInitialStateWithIfElseNode() {
       document
     },
     autosave_interval_seconds: 30,
+    user_protection_limit: 10,
     versions: []
   };
 }
@@ -241,6 +245,7 @@ export function createInitialStateWithDataModelNode(
       document
     },
     autosave_interval_seconds: 30,
+    user_protection_limit: 10,
     versions: []
   };
 }
@@ -270,6 +275,7 @@ export function createInitialStateWithHttpRequestNode() {
       document
     },
     autosave_interval_seconds: 30,
+    user_protection_limit: 10,
     versions: []
   };
 }

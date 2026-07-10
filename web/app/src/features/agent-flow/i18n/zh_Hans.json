@@ -612,6 +612,8 @@
     "type": "类型",
     "last_round_user_messages": "上一轮用户消息",
     "protected": "已保护",
+    "current_publication": "线上版本",
+    "user_protection_usage": "用户保护 {{value1}}/{{value2}}",
     "output": "输出 {{value1}}",
     "adjust_height_downwards": "向下调整{{value1}}高度",
     "fallback_node_label": "节点",

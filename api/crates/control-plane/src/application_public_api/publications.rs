@@ -180,37 +180,37 @@ where
             })
             .await?;
         let flow_version = latest_flow_version(&frozen_state)?;
-        let protected_state = flow_service
+        let publication_state = flow_service
             .update_version_metadata(UpdateFlowVersionMetadataCommand {
                 actor_user_id: command.actor_user_id,
                 application_id: application.id,
                 version_id: flow_version.id,
                 summary: Some("Published application public API".to_string()),
                 summary_is_custom: Some(false),
-                is_protected: Some(true),
+                is_user_protected: None,
             })
             .await?;
-        let protected_version = protected_state
+        let publication_version = publication_state
             .versions
             .iter()
             .find(|version| version.id == flow_version.id)
             .cloned()
             .ok_or(ControlPlaneError::NotFound("flow_version"))?;
-        let document = protected_state.draft.document.clone();
+        let document = publication_state.draft.document.clone();
         let compile_context = self
             .repository
             .build_application_compile_context(application.workspace_id, application.id)
             .await?;
         let compiled_plan = match application.application_type {
             domain::ApplicationType::AgentFlow => FlowCompiler::compile(
-                protected_state.flow.id,
-                &protected_state.draft.id.to_string(),
+                publication_state.flow.id,
+                &publication_state.draft.id.to_string(),
                 &document,
                 &compile_context,
             )?,
             domain::ApplicationType::Workflow => FlowCompiler::compile_workflow(
-                protected_state.flow.id,
-                &protected_state.draft.id.to_string(),
+                publication_state.flow.id,
+                &publication_state.draft.id.to_string(),
                 &document,
                 &compile_context,
             )?,
@@ -219,7 +219,7 @@ where
             .repository
             .upsert_application_compiled_plan(&build_compiled_plan_input(
                 command.actor_user_id,
-                &protected_state,
+                &publication_state,
                 &compiled_plan,
                 &document,
             )?)
@@ -234,9 +234,12 @@ where
                     extension_slug,
                     api_enabled: command.api_enabled,
                     compiled_plan_id: compiled_plan.id,
-                    flow_id: protected_state.flow.id,
-                    flow_version_id: protected_version.id,
-                    flow_schema_version: flow_document_schema_version(&protected_state, &document),
+                    flow_id: publication_state.flow.id,
+                    flow_version_id: publication_version.id,
+                    flow_schema_version: flow_document_schema_version(
+                        &publication_state,
+                        &document,
+                    ),
                     document_hash: flow_document_hash(&document),
                     document_snapshot: document,
                     runtime_profile_snapshot: json!({}),

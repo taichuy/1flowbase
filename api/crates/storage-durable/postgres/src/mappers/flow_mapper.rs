@@ -29,7 +29,8 @@ pub struct StoredFlowVersionRow {
     pub change_kind: String,
     pub summary: String,
     pub summary_is_custom: bool,
-    pub is_protected: bool,
+    pub is_user_protected: bool,
+    pub is_current_publication: bool,
     pub document: serde_json::Value,
     pub created_at: OffsetDateTime,
 }
@@ -65,7 +66,8 @@ impl PgFlowMapper {
             change_kind: parse_flow_change_kind(&row.change_kind)?,
             summary: row.summary,
             summary_is_custom: row.summary_is_custom,
-            is_protected: row.is_protected,
+            is_user_protected: row.is_user_protected,
+            is_current_publication: row.is_current_publication,
             document: row.document,
             created_at: row.created_at,
         })

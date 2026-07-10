@@ -90,7 +90,7 @@ async fn application_orchestration_routes_bootstrap_save_and_restore() {
                     json!({
                         "summary": "stable baseline",
                         "summary_is_custom": true,
-                        "is_protected": true
+                        "is_user_protected": true
                     })
                     .to_string(),
                 ))
@@ -116,8 +116,12 @@ async fn application_orchestration_routes_bootstrap_save_and_restore() {
         json!(true)
     );
     assert_eq!(
-        update_version_body["data"]["versions"][0]["is_protected"],
+        update_version_body["data"]["versions"][0]["is_user_protected"],
         json!(true)
+    );
+    assert_eq!(
+        update_version_body["data"]["versions"][0]["is_current_publication"],
+        json!(false)
     );
 
     document["graph"]["nodes"][1]["bindings"]["prompt_messages"]["value"][0]["content"]["value"] =

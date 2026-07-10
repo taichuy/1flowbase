@@ -30,6 +30,7 @@ function createInitialState(
       document
     },
     autosave_interval_seconds: 30,
+    user_protection_limit: 10,
     versions: []
   };
 }
