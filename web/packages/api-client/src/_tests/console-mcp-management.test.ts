@@ -13,12 +13,13 @@ import {
   exportConsoleMcpCatalog,
   exportConsoleMcpInstanceDirectory,
   fetchConsoleMcpCatalog,
+  fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
   fetchConsoleMcpListItems,
   fetchConsoleMcpTool,
   refreshConsoleMcpToolDescription,
   updateConsoleMcpInstance,
-  updateConsoleMcpMetaToolConfig,
+  updateConsoleMcpInstanceDiscoveryPolicy,
   updateConsoleMcpTool,
   updateConsoleMcpToolBinding,
   upsertConsoleMcpGroup
@@ -73,6 +74,13 @@ describe('console-mcp-management client', () => {
       name: 'single tool',
       request: () => fetchConsoleMcpTool('runtime/get'),
       expected: { path: '/api/console/mcp/tools/runtime%2Fget' }
+    },
+    {
+      name: 'instance discovery policy',
+      request: () => fetchConsoleMcpInstanceDiscoveryPolicy('workspace/ops'),
+      expected: {
+        path: '/api/console/mcp/instances/workspace%2Fops/discovery-policy'
+      }
     }
   ])('reads the $name route', async ({ request, expected }) => {
     await expect(request()).resolves.toMatchObject(expected);
@@ -319,25 +327,21 @@ describe('console-mcp-management client', () => {
       }
     },
     {
-      name: 'meta tool config update',
+      name: 'instance discovery policy update',
       request: () =>
-        updateConsoleMcpMetaToolConfig(
+        updateConsoleMcpInstanceDiscoveryPolicy(
+          'workspace_ops',
           {
             list_default_limit: 20,
             list_max_depth: 3,
             list_regex_enabled: false,
             list_regex_max_length: 128,
-            list_return_fields: ['path', 'name'],
-            get_include_mapping_summary: true,
-            get_include_interface_summary: true,
-            call_default_des_id_policy: 'required',
-            call_high_risk_requires_des_id: true,
-            call_validation_error_format: 'field_errors'
+            list_return_fields: ['path', 'name']
           },
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/mcp/meta-tool-config',
+        path: '/api/console/mcp/instances/workspace_ops/discovery-policy',
         method: 'PUT',
         csrfToken: 'csrf-123'
       }

@@ -39,13 +39,13 @@ export function SettingsMcpManagementStyleBoundaryScene() {
   useEffect(() => {
     let attempts = 0;
     const timer = window.setInterval(() => {
-      const directoryEditorButton = document.querySelector<HTMLButtonElement>(
-        '[aria-label="目录编辑"], [aria-label="Directory editor"]'
+      const discoveryPolicyButton = document.querySelector<HTMLButtonElement>(
+        '[aria-label="目录发现配置"], [aria-label="Discovery policy"]'
       );
 
       attempts += 1;
-      if (directoryEditorButton) {
-        directoryEditorButton.click();
+      if (discoveryPolicyButton) {
+        discoveryPolicyButton.click();
         window.clearInterval(timer);
       }
       if (attempts >= 60) {

@@ -491,8 +491,11 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         0
     );
     assert_eq!(
-        catalog_payload["data"]["meta_tool_config"]["list_default_limit"].as_i64(),
-        Some(50)
+        catalog_payload["data"]["discovery_policies"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
     );
 
     let create_instance_response = app
@@ -871,70 +874,30 @@ async fn mcp_tool_create_requires_tool_id() {
 }
 
 #[tokio::test]
-async fn mcp_meta_tool_config_updates_validate_and_shape_list_defaults() {
+async fn mcp_instance_discovery_policy_updates_validate_and_isolate_list_behavior() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
-    let catalog_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/api/console/mcp/catalog")
-                .header("cookie", &root_cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(catalog_response.status(), StatusCode::OK);
-
-    let create_instance_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/mcp/instances")
-                .header("cookie", &root_cookie)
-                .header("x-csrf-token", &root_csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "instance_id": "workspace_ops",
-                        "name": "Workspace Ops",
-                        "description_short": null,
-                        "status": "enabled",
-                        "default_entry_path": "/"
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(create_instance_response.status(), StatusCode::CREATED);
-
-    for (path, display_name, sort_order) in [
-        ("/system", "System", 1),
-        ("/system/runtime", "Runtime", 2),
-        ("/ops", "Operations", 3),
+    for (instance_id, name) in [
+        ("workspace_ops", "Workspace Ops"),
+        ("workspace_data", "Workspace Data"),
     ] {
-        let upsert_group_response = app
+        let create_instance_response = app
             .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/console/mcp/instances/workspace_ops/groups")
+                    .uri("/api/console/mcp/instances")
                     .header("cookie", &root_cookie)
                     .header("x-csrf-token", &root_csrf)
                     .header("content-type", "application/json")
                     .body(Body::from(
                         json!({
-                            "path": path,
-                            "display_name": display_name,
+                            "instance_id": instance_id,
+                            "name": name,
                             "description_short": null,
-                            "enabled": true,
-                            "sort_order": sort_order
+                            "status": "enabled",
+                            "default_entry_path": "/"
                         })
                         .to_string(),
                     ))
@@ -942,7 +905,38 @@ async fn mcp_meta_tool_config_updates_validate_and_shape_list_defaults() {
             )
             .await
             .unwrap();
-        assert_eq!(upsert_group_response.status(), StatusCode::OK);
+        assert_eq!(create_instance_response.status(), StatusCode::CREATED);
+
+        for (path, display_name, sort_order) in [
+            ("/system", "System", 1),
+            ("/system/runtime", "Runtime", 2),
+            ("/ops", "Operations", 3),
+        ] {
+            let upsert_group_response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/api/console/mcp/instances/{instance_id}/groups"))
+                        .header("cookie", &root_cookie)
+                        .header("x-csrf-token", &root_csrf)
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            json!({
+                                "path": path,
+                                "display_name": display_name,
+                                "description_short": null,
+                                "enabled": true,
+                                "sort_order": sort_order
+                            })
+                            .to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(upsert_group_response.status(), StatusCode::OK);
+        }
     }
 
     let invalid_return_fields_response = app
@@ -950,7 +944,7 @@ async fn mcp_meta_tool_config_updates_validate_and_shape_list_defaults() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/mcp/meta-tool-config")
+                .uri("/api/console/mcp/instances/workspace_ops/discovery-policy")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -960,12 +954,7 @@ async fn mcp_meta_tool_config_updates_validate_and_shape_list_defaults() {
                         "list_max_depth": 1,
                         "list_regex_enabled": true,
                         "list_regex_max_length": 16,
-                        "list_return_fields": ["id", "secret"],
-                        "get_include_mapping_summary": true,
-                        "get_include_interface_summary": true,
-                        "call_default_des_id_policy": "required",
-                        "call_high_risk_requires_des_id": true,
-                        "call_validation_error_format": "field_errors"
+                        "list_return_fields": ["id", "secret"]
                     })
                     .to_string(),
                 ))
@@ -983,50 +972,12 @@ async fn mcp_meta_tool_config_updates_validate_and_shape_list_defaults() {
         Some("list_return_fields")
     );
 
-    let invalid_des_policy_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri("/api/console/mcp/meta-tool-config")
-                .header("cookie", &root_cookie)
-                .header("x-csrf-token", &root_csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "list_default_limit": 1,
-                        "list_max_depth": 1,
-                        "list_regex_enabled": true,
-                        "list_regex_max_length": 16,
-                        "list_return_fields": ["id", "name"],
-                        "get_include_mapping_summary": true,
-                        "get_include_interface_summary": true,
-                        "call_default_des_id_policy": "frontend_only",
-                        "call_high_risk_requires_des_id": true,
-                        "call_validation_error_format": "field_errors"
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(
-        invalid_des_policy_response.status(),
-        StatusCode::BAD_REQUEST
-    );
-    let invalid_des_policy_payload = response_json(invalid_des_policy_response).await;
-    assert_eq!(
-        invalid_des_policy_payload["code"].as_str(),
-        Some("call_default_des_id_policy")
-    );
-
     let update_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/mcp/meta-tool-config")
+                .uri("/api/console/mcp/instances/workspace_ops/discovery-policy")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -1036,12 +987,7 @@ async fn mcp_meta_tool_config_updates_validate_and_shape_list_defaults() {
                         "list_max_depth": 1,
                         "list_regex_enabled": true,
                         "list_regex_max_length": 16,
-                        "list_return_fields": ["id", "name"],
-                        "get_include_mapping_summary": true,
-                        "get_include_interface_summary": true,
-                        "call_default_des_id_policy": "required",
-                        "call_high_risk_requires_des_id": true,
-                        "call_validation_error_format": "field_errors"
+                        "list_return_fields": ["id", "name"]
                     })
                     .to_string(),
                 ))
@@ -1052,15 +998,38 @@ async fn mcp_meta_tool_config_updates_validate_and_shape_list_defaults() {
     assert_eq!(update_response.status(), StatusCode::OK);
     let update_payload = response_json(update_response).await;
     assert_eq!(
-        update_payload["data"]["call_default_des_id_policy"].as_str(),
-        Some("required")
+        update_payload["data"]["instance_id"],
+        json!("workspace_ops")
     );
-    assert_eq!(
-        update_payload["data"]["call_validation_error_format"].as_str(),
-        Some("field_errors")
-    );
+    assert_eq!(update_payload["data"]["list_default_limit"], json!(1));
+    assert!(update_payload["data"]
+        .get("get_include_mapping_summary")
+        .is_none());
+    assert!(update_payload["data"]
+        .get("call_default_des_id_policy")
+        .is_none());
 
-    let instance_list_response = app
+    let data_policy_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/mcp/instances/workspace_data/discovery-policy")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(data_policy_response.status(), StatusCode::OK);
+    let data_policy_payload = response_json(data_policy_response).await;
+    assert_eq!(
+        data_policy_payload["data"]["instance_id"],
+        json!("workspace_data")
+    );
+    assert_eq!(data_policy_payload["data"]["list_default_limit"], json!(50));
+
+    let ops_list_response = app
         .clone()
         .oneshot(
             Request::builder()
@@ -1072,14 +1041,33 @@ async fn mcp_meta_tool_config_updates_validate_and_shape_list_defaults() {
         )
         .await
         .unwrap();
-    assert_eq!(instance_list_response.status(), StatusCode::OK);
-    let instance_list_payload = response_json(instance_list_response).await;
-    let instance_items = instance_list_payload["data"].as_array().unwrap();
-    assert_eq!(instance_items.len(), 1);
-    assert!(instance_items[0].get("id").is_some());
-    assert!(instance_items[0].get("name").is_some());
-    assert!(instance_items[0].get("path").is_none());
-    assert!(instance_items[0].get("children_count").is_none());
+    assert_eq!(ops_list_response.status(), StatusCode::OK);
+    let ops_list_payload = response_json(ops_list_response).await;
+    let ops_items = ops_list_payload["data"].as_array().unwrap();
+    assert_eq!(ops_items.len(), 1);
+    assert!(ops_items[0].get("id").is_some());
+    assert!(ops_items[0].get("name").is_some());
+    assert!(ops_items[0].get("path").is_none());
+    assert!(ops_items[0].get("children_count").is_none());
+
+    let data_list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/mcp/list?instance_id=workspace_data")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(data_list_response.status(), StatusCode::OK);
+    let data_list_payload = response_json(data_list_response).await;
+    let data_items = data_list_payload["data"].as_array().unwrap();
+    assert_eq!(data_items.len(), 3);
+    assert!(data_items[0].get("path").is_some());
+    assert!(data_items[0].get("children_count").is_some());
 
     let regex_list_response = app
         .clone()
@@ -1114,4 +1102,18 @@ async fn mcp_meta_tool_config_updates_validate_and_shape_list_defaults() {
     assert_eq!(long_regex_response.status(), StatusCode::BAD_REQUEST);
     let long_regex_payload = response_json(long_regex_response).await;
     assert_eq!(long_regex_payload["code"].as_str(), Some("path_regex"));
+
+    let legacy_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/mcp/meta-tool-config")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(legacy_response.status(), StatusCode::NOT_FOUND);
 }

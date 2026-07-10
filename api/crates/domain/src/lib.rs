@@ -72,9 +72,9 @@ pub use js_dependency::{
 };
 pub use mcp_management::{
     McpCatalogSnapshot, McpDescriptionCheckResult, McpExportPackage, McpGroupRecord,
-    McpInstanceDirectoryExportPackage, McpInstanceRecord, McpInstanceStatus,
-    McpInterfaceCatalogEntry, McpListItemKind, McpListItemSummary, McpMetaToolConfigRecord,
-    McpRiskLevel, McpToolBindingRecord, McpToolRecord, McpToolStatus,
+    McpInstanceDirectoryExportPackage, McpInstanceDiscoveryPolicyRecord, McpInstanceRecord,
+    McpInstanceStatus, McpInterfaceCatalogEntry, McpListItemKind, McpListItemSummary, McpRiskLevel,
+    McpToolBindingRecord, McpToolRecord, McpToolStatus,
 };
 pub use model_provider::{
     ModelCatalogSyncRunRecord, ModelFailoverQueueItemRecord, ModelFailoverQueueSnapshotRecord,

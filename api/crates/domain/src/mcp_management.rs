@@ -169,19 +169,15 @@ pub struct McpToolBindingRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct McpMetaToolConfigRecord {
+pub struct McpInstanceDiscoveryPolicyRecord {
     pub id: Uuid,
     pub workspace_id: Uuid,
+    pub instance_record_id: Uuid,
     pub list_default_limit: i32,
     pub list_max_depth: i32,
     pub list_regex_enabled: bool,
     pub list_regex_max_length: i32,
     pub list_return_fields: serde_json::Value,
-    pub get_include_mapping_summary: bool,
-    pub get_include_interface_summary: bool,
-    pub call_default_des_id_policy: String,
-    pub call_high_risk_requires_des_id: bool,
-    pub call_validation_error_format: String,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,
@@ -211,7 +207,7 @@ pub struct McpCatalogSnapshot {
     pub groups: Vec<McpGroupRecord>,
     pub tools: Vec<McpToolRecord>,
     pub bindings: Vec<McpToolBindingRecord>,
-    pub meta_tool_config: McpMetaToolConfigRecord,
+    pub discovery_policies: Vec<McpInstanceDiscoveryPolicyRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -220,7 +216,7 @@ pub struct McpExportPackage {
     pub groups: Vec<McpGroupRecord>,
     pub tools: Vec<McpToolRecord>,
     pub bindings: Vec<McpToolBindingRecord>,
-    pub meta_tool_config: McpMetaToolConfigRecord,
+    pub discovery_policies: Vec<McpInstanceDiscoveryPolicyRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -228,7 +224,7 @@ pub struct McpInstanceDirectoryExportPackage {
     pub instances: Vec<McpInstanceRecord>,
     pub groups: Vec<McpGroupRecord>,
     pub bindings: Vec<McpToolBindingRecord>,
-    pub meta_tool_config: McpMetaToolConfigRecord,
+    pub discovery_policies: Vec<McpInstanceDiscoveryPolicyRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

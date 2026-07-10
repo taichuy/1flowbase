@@ -56,19 +56,16 @@ export interface ConsoleMcpToolBinding {
   sort_order: number;
 }
 
-export interface ConsoleMcpMetaToolConfig {
+export interface ConsoleMcpInstanceDiscoveryPolicy {
   id: string;
   workspace_id: string;
+  instance_record_id: string;
+  instance_id: string;
   list_default_limit: number;
   list_max_depth: number;
   list_regex_enabled: boolean;
   list_regex_max_length: number;
   list_return_fields: unknown;
-  get_include_mapping_summary: boolean;
-  get_include_interface_summary: boolean;
-  call_default_des_id_policy: string;
-  call_high_risk_requires_des_id: boolean;
-  call_validation_error_format: string;
 }
 
 export type ConsoleMcpParameterType = 'url' | 'form' | 'json_body';
@@ -87,7 +84,7 @@ export interface ConsoleMcpCatalog {
   groups: ConsoleMcpGroup[];
   tools: ConsoleMcpTool[];
   bindings: ConsoleMcpToolBinding[];
-  meta_tool_config: ConsoleMcpMetaToolConfig;
+  discovery_policies: ConsoleMcpInstanceDiscoveryPolicy[];
 }
 
 export interface ConsoleMcpInterfaceCapability {
@@ -121,14 +118,14 @@ export interface ConsoleMcpExportPackage {
   groups: ConsoleMcpGroup[];
   tools: ConsoleMcpTool[];
   bindings: ConsoleMcpToolBinding[];
-  meta_tool_config: ConsoleMcpMetaToolConfig;
+  discovery_policies: ConsoleMcpInstanceDiscoveryPolicy[];
 }
 
 export interface ConsoleMcpInstanceDirectoryExportPackage {
   instances: ConsoleMcpInstance[];
   groups: ConsoleMcpGroup[];
   bindings: ConsoleMcpToolBinding[];
-  meta_tool_config: ConsoleMcpMetaToolConfig;
+  discovery_policies: ConsoleMcpInstanceDiscoveryPolicy[];
 }
 
 export interface SaveConsoleMcpInstanceBody {
@@ -173,9 +170,9 @@ export interface SaveConsoleMcpToolBindingBody {
   sort_order: number;
 }
 
-export type UpdateConsoleMcpMetaToolConfigBody = Omit<
-  ConsoleMcpMetaToolConfig,
-  'id' | 'workspace_id'
+export type UpdateConsoleMcpInstanceDiscoveryPolicyBody = Omit<
+  ConsoleMcpInstanceDiscoveryPolicy,
+  'id' | 'workspace_id' | 'instance_record_id' | 'instance_id'
 >;
 
 export type ConsoleMcpToolDebugResponseMode = 'tool_result' | 'debug_details';
@@ -453,16 +450,27 @@ export function deleteConsoleMcpToolBinding(
   });
 }
 
-export function updateConsoleMcpMetaToolConfig(
-  body: UpdateConsoleMcpMetaToolConfigBody,
+export function updateConsoleMcpInstanceDiscoveryPolicy(
+  instanceId: string,
+  body: UpdateConsoleMcpInstanceDiscoveryPolicyBody,
   csrfToken: string,
   baseUrl?: string
 ) {
-  return apiFetch<ConsoleMcpMetaToolConfig>({
-    path: '/api/console/mcp/meta-tool-config',
+  return apiFetch<ConsoleMcpInstanceDiscoveryPolicy>({
+    path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/discovery-policy`,
     method: 'PUT',
     body,
     csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleMcpInstanceDiscoveryPolicy(
+  instanceId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpInstanceDiscoveryPolicy>({
+    path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/discovery-policy`,
     baseUrl
   });
 }

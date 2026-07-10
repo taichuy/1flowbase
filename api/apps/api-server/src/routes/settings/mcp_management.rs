@@ -14,8 +14,9 @@ use axum::{
 };
 use control_plane::mcp_management::{
     CreateMcpInstanceCommand, CreateMcpToolBindingCommand, CreateMcpToolCommand,
-    McpManagementService, RefreshMcpToolDescriptionCommand, UpdateMcpMetaToolConfigCommand,
-    UpdateMcpToolBindingCommand, UpdateMcpToolCommand, UpsertMcpGroupCommand,
+    McpManagementService, RefreshMcpToolDescriptionCommand,
+    UpdateMcpInstanceDiscoveryPolicyCommand, UpdateMcpToolBindingCommand, UpdateMcpToolCommand,
+    UpsertMcpGroupCommand,
 };
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};
@@ -101,20 +102,17 @@ pub struct McpToolBindingResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct McpMetaToolConfigResponse {
+pub struct McpInstanceDiscoveryPolicyResponse {
     pub id: String,
     pub workspace_id: String,
+    pub instance_record_id: String,
+    pub instance_id: String,
     pub list_default_limit: i32,
     pub list_max_depth: i32,
     pub list_regex_enabled: bool,
     pub list_regex_max_length: i32,
     #[schema(value_type = Object)]
     pub list_return_fields: serde_json::Value,
-    pub get_include_mapping_summary: bool,
-    pub get_include_interface_summary: bool,
-    pub call_default_des_id_policy: String,
-    pub call_high_risk_requires_des_id: bool,
-    pub call_validation_error_format: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -123,7 +121,7 @@ pub struct McpCatalogResponse {
     pub groups: Vec<McpGroupResponse>,
     pub tools: Vec<McpToolResponse>,
     pub bindings: Vec<McpToolBindingResponse>,
-    pub meta_tool_config: McpMetaToolConfigResponse,
+    pub discovery_policies: Vec<McpInstanceDiscoveryPolicyResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -187,7 +185,7 @@ pub struct McpExportPackageResponse {
     pub groups: Vec<McpGroupResponse>,
     pub tools: Vec<McpToolResponse>,
     pub bindings: Vec<McpToolBindingResponse>,
-    pub meta_tool_config: McpMetaToolConfigResponse,
+    pub discovery_policies: Vec<McpInstanceDiscoveryPolicyResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -195,7 +193,7 @@ pub struct McpInstanceDirectoryExportPackageResponse {
     pub instances: Vec<McpInstanceResponse>,
     pub groups: Vec<McpGroupResponse>,
     pub bindings: Vec<McpToolBindingResponse>,
-    pub meta_tool_config: McpMetaToolConfigResponse,
+    pub discovery_policies: Vec<McpInstanceDiscoveryPolicyResponse>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -280,18 +278,13 @@ pub struct UpdateMcpToolBindingBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateMcpMetaToolConfigBody {
+pub struct UpdateMcpInstanceDiscoveryPolicyBody {
     pub list_default_limit: i32,
     pub list_max_depth: i32,
     pub list_regex_enabled: bool,
     pub list_regex_max_length: i32,
     #[schema(value_type = Object)]
     pub list_return_fields: serde_json::Value,
-    pub get_include_mapping_summary: bool,
-    pub get_include_interface_summary: bool,
-    pub call_default_des_id_policy: String,
-    pub call_high_risk_requires_des_id: bool,
-    pub call_validation_error_format: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -359,8 +352,8 @@ pub fn router() -> Router<Arc<ApiState>> {
         )
         .route("/mcp/debug/execute", post(execute_mcp_debug))
         .route(
-            "/mcp/meta-tool-config",
-            get(get_mcp_meta_tool_config).put(update_mcp_meta_tool_config),
+            "/mcp/instances/:instance_id/discovery-policy",
+            get(get_mcp_instance_discovery_policy).put(update_mcp_instance_discovery_policy),
         )
 }
 
@@ -376,7 +369,7 @@ pub async fn get_mcp_catalog(
     Ok(Json(ApiSuccess::new(to_catalog_response(
         snapshot,
         &operations,
-    ))))
+    )?)))
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/interface-capabilities", params(McpInterfaceCatalogQuery), responses((status = 200, body = [McpInterfaceCatalogEntryResponse])))]
@@ -415,8 +408,13 @@ pub async fn list_mcp_items(
             query.limit,
         )
         .await?;
-    let snapshot = service.read_workspace_catalog(context.user.id).await?;
-    let return_fields = list_response_field_set(&snapshot.meta_tool_config.list_return_fields)?;
+    let instance_id = query.instance_id.as_deref().ok_or(
+        control_plane::errors::ControlPlaneError::InvalidInput("instance_id"),
+    )?;
+    let discovery_policy = service
+        .get_instance_discovery_policy(context.user.id, instance_id)
+        .await?;
+    let return_fields = list_response_field_set(&discovery_policy.list_return_fields)?;
     Ok(Json(ApiSuccess::new(
         items
             .into_iter()
@@ -438,7 +436,7 @@ pub async fn export_mcp_catalog(
     Ok(Json(ApiSuccess::new(to_export_response(
         export,
         &operations,
-    ))))
+    )?)))
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/instances/export", responses((status = 200, body = McpInstanceDirectoryExportPackageResponse)))]
@@ -451,7 +449,7 @@ pub async fn export_mcp_instance_directory(
         .export_instance_directory(context.user.id)
         .await?;
     Ok(Json(ApiSuccess::new(
-        to_instance_directory_export_response(export),
+        to_instance_directory_export_response(export)?,
     )))
 }
 
@@ -774,44 +772,46 @@ pub async fn delete_mcp_tool_binding(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(get, path = "/api/console/mcp/meta-tool-config", responses((status = 200, body = McpMetaToolConfigResponse)))]
-pub async fn get_mcp_meta_tool_config(
+#[utoipa::path(get, path = "/api/console/mcp/instances/{instance_id}/discovery-policy", responses((status = 200, body = McpInstanceDiscoveryPolicyResponse)))]
+pub async fn get_mcp_instance_discovery_policy(
     State(state): State<Arc<ApiState>>,
+    Path(instance_id): Path<String>,
     headers: HeaderMap,
-) -> Result<Json<ApiSuccess<McpMetaToolConfigResponse>>, ApiError> {
+) -> Result<Json<ApiSuccess<McpInstanceDiscoveryPolicyResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let snapshot = McpManagementService::new(state.store.clone())
-        .read_workspace_catalog(context.user.id)
+    let record = McpManagementService::new(state.store.clone())
+        .get_instance_discovery_policy(context.user.id, &instance_id)
         .await?;
-    Ok(Json(ApiSuccess::new(to_meta_config_response(
-        snapshot.meta_tool_config,
+    Ok(Json(ApiSuccess::new(to_discovery_policy_response(
+        record,
+        instance_id,
     ))))
 }
 
-#[utoipa::path(put, path = "/api/console/mcp/meta-tool-config", request_body = UpdateMcpMetaToolConfigBody, responses((status = 200, body = McpMetaToolConfigResponse)))]
-pub async fn update_mcp_meta_tool_config(
+#[utoipa::path(put, path = "/api/console/mcp/instances/{instance_id}/discovery-policy", request_body = UpdateMcpInstanceDiscoveryPolicyBody, responses((status = 200, body = McpInstanceDiscoveryPolicyResponse)))]
+pub async fn update_mcp_instance_discovery_policy(
     State(state): State<Arc<ApiState>>,
+    Path(instance_id): Path<String>,
     headers: HeaderMap,
-    Json(body): Json<UpdateMcpMetaToolConfigBody>,
-) -> Result<Json<ApiSuccess<McpMetaToolConfigResponse>>, ApiError> {
+    Json(body): Json<UpdateMcpInstanceDiscoveryPolicyBody>,
+) -> Result<Json<ApiSuccess<McpInstanceDiscoveryPolicyResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let record = McpManagementService::new(state.store.clone())
-        .update_meta_tool_config(UpdateMcpMetaToolConfigCommand {
+        .update_instance_discovery_policy(UpdateMcpInstanceDiscoveryPolicyCommand {
             actor_user_id: context.user.id,
+            instance_id: instance_id.clone(),
             list_default_limit: body.list_default_limit,
             list_max_depth: body.list_max_depth,
             list_regex_enabled: body.list_regex_enabled,
             list_regex_max_length: body.list_regex_max_length,
             list_return_fields: body.list_return_fields,
-            get_include_mapping_summary: body.get_include_mapping_summary,
-            get_include_interface_summary: body.get_include_interface_summary,
-            call_default_des_id_policy: body.call_default_des_id_policy,
-            call_high_risk_requires_des_id: body.call_high_risk_requires_des_id,
-            call_validation_error_format: body.call_validation_error_format,
         })
         .await?;
-    Ok(Json(ApiSuccess::new(to_meta_config_response(record))))
+    Ok(Json(ApiSuccess::new(to_discovery_policy_response(
+        record,
+        instance_id,
+    ))))
 }
 
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
@@ -1693,8 +1693,10 @@ fn to_update_tool_command(
 fn to_catalog_response(
     snapshot: domain::McpCatalogSnapshot,
     operations: &HashMap<String, String>,
-) -> McpCatalogResponse {
-    McpCatalogResponse {
+) -> Result<McpCatalogResponse, ApiError> {
+    let discovery_policies =
+        discovery_policy_responses(&snapshot.instances, snapshot.discovery_policies)?;
+    Ok(McpCatalogResponse {
         instances: snapshot
             .instances
             .into_iter()
@@ -1711,15 +1713,17 @@ fn to_catalog_response(
             .into_iter()
             .map(to_binding_response)
             .collect(),
-        meta_tool_config: to_meta_config_response(snapshot.meta_tool_config),
-    }
+        discovery_policies,
+    })
 }
 
 fn to_export_response(
     export: domain::McpExportPackage,
     operations: &HashMap<String, String>,
-) -> McpExportPackageResponse {
-    McpExportPackageResponse {
+) -> Result<McpExportPackageResponse, ApiError> {
+    let discovery_policies =
+        discovery_policy_responses(&export.instances, export.discovery_policies)?;
+    Ok(McpExportPackageResponse {
         instances: export
             .instances
             .into_iter()
@@ -1736,14 +1740,16 @@ fn to_export_response(
             .into_iter()
             .map(to_binding_response)
             .collect(),
-        meta_tool_config: to_meta_config_response(export.meta_tool_config),
-    }
+        discovery_policies,
+    })
 }
 
 fn to_instance_directory_export_response(
     export: domain::McpInstanceDirectoryExportPackage,
-) -> McpInstanceDirectoryExportPackageResponse {
-    McpInstanceDirectoryExportPackageResponse {
+) -> Result<McpInstanceDirectoryExportPackageResponse, ApiError> {
+    let discovery_policies =
+        discovery_policy_responses(&export.instances, export.discovery_policies)?;
+    Ok(McpInstanceDirectoryExportPackageResponse {
         instances: export
             .instances
             .into_iter()
@@ -1755,8 +1761,8 @@ fn to_instance_directory_export_response(
             .into_iter()
             .map(to_binding_response)
             .collect(),
-        meta_tool_config: to_meta_config_response(export.meta_tool_config),
-    }
+        discovery_policies,
+    })
 }
 
 fn to_instance_response(record: domain::McpInstanceRecord) -> McpInstanceResponse {
@@ -1838,21 +1844,46 @@ fn to_binding_response(record: domain::McpToolBindingRecord) -> McpToolBindingRe
     }
 }
 
-fn to_meta_config_response(record: domain::McpMetaToolConfigRecord) -> McpMetaToolConfigResponse {
-    McpMetaToolConfigResponse {
+fn to_discovery_policy_response(
+    record: domain::McpInstanceDiscoveryPolicyRecord,
+    instance_id: String,
+) -> McpInstanceDiscoveryPolicyResponse {
+    McpInstanceDiscoveryPolicyResponse {
         id: record.id.to_string(),
         workspace_id: record.workspace_id.to_string(),
+        instance_record_id: record.instance_record_id.to_string(),
+        instance_id,
         list_default_limit: record.list_default_limit,
         list_max_depth: record.list_max_depth,
         list_regex_enabled: record.list_regex_enabled,
         list_regex_max_length: record.list_regex_max_length,
         list_return_fields: record.list_return_fields,
-        get_include_mapping_summary: record.get_include_mapping_summary,
-        get_include_interface_summary: record.get_include_interface_summary,
-        call_default_des_id_policy: record.call_default_des_id_policy,
-        call_high_risk_requires_des_id: record.call_high_risk_requires_des_id,
-        call_validation_error_format: record.call_validation_error_format,
     }
+}
+
+fn discovery_policy_responses(
+    instances: &[domain::McpInstanceRecord],
+    policies: Vec<domain::McpInstanceDiscoveryPolicyRecord>,
+) -> Result<Vec<McpInstanceDiscoveryPolicyResponse>, ApiError> {
+    let instance_ids = instances
+        .iter()
+        .map(|instance| (instance.id, instance.instance_id.clone()))
+        .collect::<HashMap<_, _>>();
+    policies
+        .into_iter()
+        .map(|policy| {
+            let instance_id = instance_ids
+                .get(&policy.instance_record_id)
+                .cloned()
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "MCP discovery policy references missing instance record {}",
+                        policy.instance_record_id
+                    )
+                })?;
+            Ok(to_discovery_policy_response(policy, instance_id))
+        })
+        .collect()
 }
 
 fn to_interface_response(

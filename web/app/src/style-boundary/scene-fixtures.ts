@@ -109,20 +109,19 @@ export const styleBoundaryMcpCatalog = {
       sort_order: 0
     }
   ],
-  meta_tool_config: {
-    id: 'mcp-meta-1',
-    workspace_id: 'workspace-1',
-    list_default_limit: 20,
-    list_max_depth: 3,
-    list_regex_enabled: false,
-    list_regex_max_length: 128,
-    list_return_fields: ['path', 'name', 'risk_level'],
-    get_include_mapping_summary: true,
-    get_include_interface_summary: true,
-    call_default_des_id_policy: 'required',
-    call_high_risk_requires_des_id: true,
-    call_validation_error_format: 'field_errors'
-  }
+  discovery_policies: [
+    {
+      id: 'mcp-discovery-policy-1',
+      workspace_id: 'workspace-1',
+      instance_record_id: 'mcp-instance-record-1',
+      instance_id: 'workspace_ops',
+      list_default_limit: 20,
+      list_max_depth: 3,
+      list_regex_enabled: false,
+      list_regex_max_length: 128,
+      list_return_fields: ['path', 'name', 'risk_level']
+    }
+  ]
 };
 
 export const styleBoundaryMcpInterfaceCapabilities = [
@@ -587,7 +586,7 @@ export function createStyleBoundaryOrchestrationState() {
     },
     versions: [],
     autosave_interval_seconds: 30,
-    user_protection_limit: 10,
+    user_protection_limit: 10
   };
 }
 
@@ -1020,7 +1019,7 @@ export function seedStyleBoundaryApplicationFetch() {
             },
             versions: [],
             autosave_interval_seconds: 30,
-            user_protection_limit: 10,
+            user_protection_limit: 10
           },
           meta: null
         }),
@@ -1044,7 +1043,7 @@ export function seedStyleBoundaryApplicationFetch() {
             },
             versions: [],
             autosave_interval_seconds: 30,
-            user_protection_limit: 10,
+            user_protection_limit: 10
           },
           meta: null
         }),

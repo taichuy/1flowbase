@@ -322,10 +322,6 @@
   font-size: 13px;
 }
 
-.mcp-management__meta-form {
-  max-width: 760px;
-}
-
 @media (max-width: 768px) {
   .mcp-management__directory-control {
     width: 100%;

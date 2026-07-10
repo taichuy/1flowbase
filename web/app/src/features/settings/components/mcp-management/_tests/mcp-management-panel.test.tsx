@@ -23,7 +23,7 @@ const mcpManagementApi = vi.hoisted(() => ({
   exportSettingsMcpInstanceDirectory: vi.fn(),
   refreshSettingsMcpToolDescription: vi.fn(),
   updateSettingsMcpInstance: vi.fn(),
-  updateSettingsMcpMetaToolConfig: vi.fn(),
+  updateSettingsMcpInstanceDiscoveryPolicy: vi.fn(),
   updateSettingsMcpTool: vi.fn(),
   updateSettingsMcpToolBinding: vi.fn(),
   upsertSettingsMcpGroup: vi.fn()
@@ -267,20 +267,7 @@ function renderPanel(
           groups: [],
           tools: [],
           bindings: [],
-          meta_tool_config: {
-            id: 'meta-1',
-            workspace_id: 'workspace-1',
-            list_default_limit: 20,
-            list_max_depth: 3,
-            list_regex_enabled: false,
-            list_regex_max_length: 120,
-            list_return_fields: [],
-            get_include_mapping_summary: true,
-            get_include_interface_summary: true,
-            call_default_des_id_policy: 'optional',
-            call_high_risk_requires_des_id: true,
-            call_validation_error_format: 'json'
-          }
+          discovery_policies: []
         }}
         interfaceCapabilities={capabilities}
       />
@@ -366,20 +353,19 @@ function renderPanelWithMountedTool({
                 }
               ]
             : [],
-          meta_tool_config: {
-            id: 'meta-1',
-            workspace_id: 'workspace-1',
-            list_default_limit: 20,
-            list_max_depth: 3,
-            list_regex_enabled: false,
-            list_regex_max_length: 120,
-            list_return_fields: [],
-            get_include_mapping_summary: true,
-            get_include_interface_summary: true,
-            call_default_des_id_policy: 'optional',
-            call_high_risk_requires_des_id: true,
-            call_validation_error_format: 'json'
-          }
+          discovery_policies: [
+            {
+              id: 'policy-1',
+              workspace_id: 'workspace-1',
+              instance_record_id: 'instance-record-1',
+              instance_id: 'ops_mcp',
+              list_default_limit: 20,
+              list_max_depth: 3,
+              list_regex_enabled: false,
+              list_regex_max_length: 120,
+              list_return_fields: []
+            }
+          ]
         }}
         interfaceCapabilities={interfaceCapabilities}
       />
@@ -544,6 +530,37 @@ describe('McpManagementPanel', () => {
     expect(
       within(dialog).getAllByLabelText('编辑 Tool 挂载').length
     ).toBeGreaterThan(0);
+  });
+
+  test('shows instance name and instance_id in separate columns with matching action icons', () => {
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+
+    expect(
+      within(instancesPanel)
+        .getAllByRole('columnheader')
+        .slice(0, 2)
+        .map((header) => header.textContent)
+    ).toEqual(['instance_id', '实例名称']);
+
+    const directoryEditorButton = within(instancesPanel).getByRole('button', {
+      name: '目录编辑'
+    });
+    const editButton = within(instancesPanel).getByRole('button', {
+      name: '编辑'
+    });
+
+    expect(
+      editButton.compareDocumentPosition(directoryEditorButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    expect(
+      directoryEditorButton.querySelector('.anticon-setting')
+    ).toBeInTheDocument();
+    expect(editButton.querySelector('.anticon-edit')).toBeInTheDocument();
   });
 
   test('hides the edit binding selector when there are no existing tool bindings', () => {
@@ -1243,18 +1260,81 @@ describe('McpManagementPanel', () => {
     );
   });
 
-  test('pushes the selected tab into the URL search param', async () => {
+  test('falls back from the removed meta tab to instances', async () => {
+    window.history.replaceState({}, '', '/settings/mcp-management?tab=meta');
     renderPanel();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP 配置' }));
-
     await waitFor(() => {
-      expect(window.location.search).toBe('?tab=meta');
+      expect(window.location.search).toBe('?tab=instances');
     });
-    expect(screen.getByRole('tab', { name: 'MCP 配置' })).toHaveAttribute(
+    expect(
+      screen.queryByRole('tab', { name: 'MCP 配置' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'MCP 实例' })).toHaveAttribute(
       'aria-selected',
       'true'
     );
+  });
+
+  test('edits only the selected instance discovery policy', async () => {
+    mcpManagementApi.updateSettingsMcpInstanceDiscoveryPolicy.mockResolvedValue(
+      {}
+    );
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录发现配置' })
+    );
+
+    const dialog = screen.getByRole('dialog', {
+      name: '目录发现配置 · Ops MCP'
+    });
+    expect(within(dialog).getByText('ops_mcp')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('默认返回数量')).toHaveValue('20');
+    expect(within(dialog).getByLabelText('最大目录深度')).toHaveValue('3');
+    expect(within(dialog).getByLabelText('允许正则路径查询')).not.toBeChecked();
+    expect(within(dialog).getByLabelText('正则表达式最大长度')).toHaveValue(
+      '120'
+    );
+    expect(within(dialog).getByLabelText('列表返回字段')).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText('包含参数映射摘要')
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('描述版本校验')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('参数错误格式')).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText('默认返回数量'), {
+      target: { value: '30' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('最大目录深度'), {
+      target: { value: '4' }
+    });
+    fireEvent.click(within(dialog).getByLabelText('允许正则路径查询'));
+    fireEvent.change(within(dialog).getByLabelText('正则表达式最大长度'), {
+      target: { value: '160' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('列表返回字段'), {
+      target: { value: '["id","name"]' }
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
+
+    await waitFor(() => {
+      expect(
+        mcpManagementApi.updateSettingsMcpInstanceDiscoveryPolicy
+      ).toHaveBeenCalledWith(
+        'ops_mcp',
+        {
+          list_default_limit: 30,
+          list_max_depth: 4,
+          list_regex_enabled: true,
+          list_regex_max_length: 160,
+          list_return_fields: ['id', 'name']
+        },
+        expect.any(String)
+      );
+    });
   });
 
   test('uses Vditor instant rendering mode for full description', async () => {

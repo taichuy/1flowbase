@@ -27,6 +27,12 @@
     "discard_unsaved_changes_description": "当前编辑内容尚未保存，继续操作将丢失这些更改。",
     "discard_unsaved_changes": "放弃更改",
     "continue_editing": "继续编辑",
-    "close_directory_editor": "关闭目录编辑"
+    "close_directory_editor": "关闭目录编辑",
+    "discovery_policy": "目录发现配置",
+    "list_default_limit": "默认返回数量",
+    "list_max_depth": "最大目录深度",
+    "list_regex_enabled": "允许正则路径查询",
+    "list_regex_max_length": "正则表达式最大长度",
+    "list_return_fields": "列表返回字段"
   }
 }

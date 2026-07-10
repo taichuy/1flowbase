@@ -133,16 +133,16 @@ fn des_id_required_input_mapping() -> serde_json::Value {
 
 #[tokio::test]
 async fn mcp_management_catalog_read_does_not_seed_default_instance() {
-    let (store, workspace, actor) = seed_store().await;
+    let (store, _workspace, actor) = seed_store().await;
     let service = McpManagementService::new(store);
 
     let first = service.read_workspace_catalog(actor.id).await.unwrap();
     assert!(first.instances.is_empty());
-    assert_eq!(first.meta_tool_config.workspace_id, workspace.id);
+    assert!(first.discovery_policies.is_empty());
 
     let second = service.read_workspace_catalog(actor.id).await.unwrap();
     assert!(second.instances.is_empty());
-    assert_eq!(second.meta_tool_config.workspace_id, workspace.id);
+    assert!(second.discovery_policies.is_empty());
 }
 
 #[tokio::test]
@@ -201,7 +201,7 @@ async fn mcp_catalog_read_allows_view_permission_without_manage() {
     let snapshot = service.read_workspace_catalog(viewer.id).await.unwrap();
 
     assert!(snapshot.instances.is_empty());
-    assert_eq!(snapshot.meta_tool_config.workspace_id, workspace.id);
+    assert!(snapshot.discovery_policies.is_empty());
 }
 
 #[tokio::test]
@@ -292,6 +292,8 @@ async fn mcp_management_refreshes_des_id_and_exports_configuration_only() {
     assert_eq!(export.instances.len(), 1);
     assert_eq!(export.bindings.len(), 1);
     assert_eq!(export.groups.len(), 1);
+    assert_eq!(export.discovery_policies.len(), 1);
+    assert_eq!(export.discovery_policies[0].instance_record_id, instance.id);
 
     service.delete_tool(actor.id, &tool.tool_id).await.unwrap();
     let missing = service
@@ -589,9 +591,11 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
     assert_eq!(directory_export.instances.len(), 2);
     assert_eq!(directory_export.bindings.len(), 5);
     assert_eq!(directory_export.groups.len(), 2);
+    assert_eq!(directory_export.discovery_policies.len(), 2);
 
     let full_export = service.export_workspace_catalog(actor.id).await.unwrap();
     assert_eq!(full_export.tools.len(), 2);
+    assert_eq!(full_export.discovery_policies.len(), 2);
 
     service
         .delete_group(actor.id, "workspace_ops", "/ops")

@@ -9,7 +9,7 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
-        McpManagementRepository, UpdateMcpInstanceInput, UpdateMcpMetaToolConfigInput,
+        McpManagementRepository, UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput,
         UpdateMcpToolBindingInput, UpdateMcpToolInput, UpsertMcpGroupInput,
     },
 };
@@ -83,18 +83,14 @@ pub struct UpdateMcpToolBindingCommand {
     pub sort_order: i32,
 }
 
-pub struct UpdateMcpMetaToolConfigCommand {
+pub struct UpdateMcpInstanceDiscoveryPolicyCommand {
     pub actor_user_id: Uuid,
+    pub instance_id: String,
     pub list_default_limit: i32,
     pub list_max_depth: i32,
     pub list_regex_enabled: bool,
     pub list_regex_max_length: i32,
     pub list_return_fields: serde_json::Value,
-    pub get_include_mapping_summary: bool,
-    pub get_include_interface_summary: bool,
-    pub call_default_des_id_policy: String,
-    pub call_high_risk_requires_des_id: bool,
-    pub call_validation_error_format: String,
 }
 
 pub struct McpManagementService<R> {
@@ -129,8 +125,9 @@ where
             .list_mcp_tool_bindings(&instance_record_ids)
             .await?;
         let tools = self.repository.list_mcp_tools(workspace_id).await?;
-        let meta_tool_config = self
-            .ensure_meta_tool_config(workspace_id, actor_user_id)
+        let discovery_policies = self
+            .repository
+            .list_mcp_instance_discovery_policies(&instance_record_ids)
             .await?;
 
         Ok(domain::McpCatalogSnapshot {
@@ -138,7 +135,7 @@ where
             groups,
             tools,
             bindings,
-            meta_tool_config,
+            discovery_policies,
         })
     }
 
@@ -392,39 +389,47 @@ where
             .await
     }
 
-    pub async fn update_meta_tool_config(
+    pub async fn get_instance_discovery_policy(
         &self,
-        command: UpdateMcpMetaToolConfigCommand,
-    ) -> Result<domain::McpMetaToolConfigRecord> {
+        actor_user_id: Uuid,
+        instance_id: &str,
+    ) -> Result<domain::McpInstanceDiscoveryPolicyRecord> {
+        let actor = self.authorize_view(actor_user_id).await?;
+        let instance = self
+            .repository
+            .get_mcp_instance(actor.current_workspace_id, instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
+        self.repository
+            .get_mcp_instance_discovery_policy(instance.id)
+            .await?
+            .ok_or_else(|| ControlPlaneError::NotFound("mcp_instance_discovery_policy").into())
+    }
+
+    pub async fn update_instance_discovery_policy(
+        &self,
+        command: UpdateMcpInstanceDiscoveryPolicyCommand,
+    ) -> Result<domain::McpInstanceDiscoveryPolicyRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
         validate_positive(command.list_default_limit, "list_default_limit")?;
         validate_positive(command.list_max_depth, "list_max_depth")?;
         validate_positive(command.list_regex_max_length, "list_regex_max_length")?;
         validate_list_return_fields(&command.list_return_fields)?;
-        validate_allowed_value(
-            &command.call_default_des_id_policy,
-            "call_default_des_id_policy",
-            &["tool_config", "required", "optional", "disabled"],
-        )?;
-        validate_allowed_value(
-            &command.call_validation_error_format,
-            "call_validation_error_format",
-            &["structured", "field_errors"],
-        )?;
+        let instance = self
+            .repository
+            .get_mcp_instance(actor.current_workspace_id, &command.instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
         self.repository
-            .update_mcp_meta_tool_config(&UpdateMcpMetaToolConfigInput {
+            .update_mcp_instance_discovery_policy(&UpdateMcpInstanceDiscoveryPolicyInput {
                 actor_user_id: command.actor_user_id,
                 workspace_id: actor.current_workspace_id,
+                instance_record_id: instance.id,
                 list_default_limit: command.list_default_limit,
                 list_max_depth: command.list_max_depth,
                 list_regex_enabled: command.list_regex_enabled,
                 list_regex_max_length: command.list_regex_max_length,
                 list_return_fields: command.list_return_fields,
-                get_include_mapping_summary: command.get_include_mapping_summary,
-                get_include_interface_summary: command.get_include_interface_summary,
-                call_default_des_id_policy: command.call_default_des_id_policy,
-                call_high_risk_requires_des_id: command.call_high_risk_requires_des_id,
-                call_validation_error_format: command.call_validation_error_format,
             })
             .await
     }
@@ -458,14 +463,6 @@ where
     ) -> Result<Vec<domain::McpListItemSummary>> {
         let actor = self.authorize_view(actor_user_id).await?;
         let workspace_id = actor.current_workspace_id;
-        let meta_config = self
-            .ensure_meta_tool_config(workspace_id, actor_user_id)
-            .await?;
-        let path_regex_filter = compile_list_path_regex(
-            path_regex,
-            meta_config.list_regex_enabled,
-            meta_config.list_regex_max_length,
-        )?;
         let instance = match instance_id {
             Some(instance_id) => {
                 self.repository
@@ -478,6 +475,16 @@ where
         if instance.status != domain::McpInstanceStatus::Enabled {
             return Err(ControlPlaneError::NotFound("mcp_instance").into());
         }
+        let discovery_policy = self
+            .repository
+            .get_mcp_instance_discovery_policy(instance.id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("mcp_instance_discovery_policy"))?;
+        let path_regex_filter = compile_list_path_regex(
+            path_regex,
+            discovery_policy.list_regex_enabled,
+            discovery_policy.list_regex_max_length,
+        )?;
 
         let groups = self.repository.list_mcp_groups(&[instance.id]).await?;
         let bindings = self
@@ -493,7 +500,7 @@ where
                 && path_matches_list_query(
                     base_path,
                     &group.path,
-                    meta_config.list_max_depth,
+                    discovery_policy.list_max_depth,
                     path_regex_filter.as_ref(),
                 )
         }) {
@@ -513,7 +520,7 @@ where
                 && path_matches_list_query(
                     base_path,
                     &binding.group_path,
-                    meta_config.list_max_depth,
+                    discovery_policy.list_max_depth,
                     path_regex_filter.as_ref(),
                 )
         }) {
@@ -537,7 +544,7 @@ where
             }
         }
 
-        let limit = limit.unwrap_or(meta_config.list_default_limit as usize);
+        let limit = limit.unwrap_or(discovery_policy.list_default_limit as usize);
         items.truncate(limit);
         Ok(items)
     }
@@ -562,7 +569,7 @@ where
             groups: snapshot.groups,
             tools: snapshot.tools,
             bindings: snapshot.bindings,
-            meta_tool_config: snapshot.meta_tool_config,
+            discovery_policies: snapshot.discovery_policies,
         })
     }
 
@@ -575,27 +582,8 @@ where
             instances: snapshot.instances,
             groups: snapshot.groups,
             bindings: snapshot.bindings,
-            meta_tool_config: snapshot.meta_tool_config,
+            discovery_policies: snapshot.discovery_policies,
         })
-    }
-
-    async fn ensure_meta_tool_config(
-        &self,
-        workspace_id: Uuid,
-        actor_user_id: Uuid,
-    ) -> Result<domain::McpMetaToolConfigRecord> {
-        match self
-            .repository
-            .get_mcp_meta_tool_config(workspace_id)
-            .await?
-        {
-            Some(config) => Ok(config),
-            None => {
-                self.repository
-                    .create_default_mcp_meta_tool_config(workspace_id, actor_user_id)
-                    .await
-            }
-        }
     }
 
     async fn authorize_view(&self, actor_user_id: Uuid) -> Result<domain::ActorContext> {
@@ -673,13 +661,6 @@ fn validate_list_return_fields(value: &serde_json::Value) -> Result<()> {
         {
             return Err(ControlPlaneError::InvalidInput("list_return_fields").into());
         }
-    }
-    Ok(())
-}
-
-fn validate_allowed_value(value: &str, field: &'static str, allowed_values: &[&str]) -> Result<()> {
-    if !allowed_values.contains(&value) {
-        return Err(ControlPlaneError::InvalidInput(field).into());
     }
     Ok(())
 }

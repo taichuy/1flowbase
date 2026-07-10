@@ -100,19 +100,15 @@ pub struct UpdateMcpToolBindingInput {
 }
 
 #[derive(Debug, Clone)]
-pub struct UpdateMcpMetaToolConfigInput {
+pub struct UpdateMcpInstanceDiscoveryPolicyInput {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
+    pub instance_record_id: Uuid,
     pub list_default_limit: i32,
     pub list_max_depth: i32,
     pub list_regex_enabled: bool,
     pub list_regex_max_length: i32,
     pub list_return_fields: serde_json::Value,
-    pub get_include_mapping_summary: bool,
-    pub get_include_interface_summary: bool,
-    pub call_default_des_id_policy: String,
-    pub call_high_risk_requires_des_id: bool,
-    pub call_validation_error_format: String,
 }
 
 #[async_trait]
@@ -203,17 +199,16 @@ pub trait McpManagementRepository: Send + Sync {
         binding_id: Uuid,
     ) -> anyhow::Result<()>;
 
-    async fn get_mcp_meta_tool_config(
+    async fn list_mcp_instance_discovery_policies(
         &self,
-        workspace_id: Uuid,
-    ) -> anyhow::Result<Option<domain::McpMetaToolConfigRecord>>;
-    async fn create_default_mcp_meta_tool_config(
+        instance_record_ids: &[Uuid],
+    ) -> anyhow::Result<Vec<domain::McpInstanceDiscoveryPolicyRecord>>;
+    async fn get_mcp_instance_discovery_policy(
         &self,
-        workspace_id: Uuid,
-        actor_user_id: Uuid,
-    ) -> anyhow::Result<domain::McpMetaToolConfigRecord>;
-    async fn update_mcp_meta_tool_config(
+        instance_record_id: Uuid,
+    ) -> anyhow::Result<Option<domain::McpInstanceDiscoveryPolicyRecord>>;
+    async fn update_mcp_instance_discovery_policy(
         &self,
-        input: &UpdateMcpMetaToolConfigInput,
-    ) -> anyhow::Result<domain::McpMetaToolConfigRecord>;
+        input: &UpdateMcpInstanceDiscoveryPolicyInput,
+    ) -> anyhow::Result<domain::McpInstanceDiscoveryPolicyRecord>;
 }

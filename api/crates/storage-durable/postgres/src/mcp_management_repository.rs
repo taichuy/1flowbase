@@ -4,7 +4,7 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         AuthRepository, CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
-        McpManagementRepository, UpdateMcpInstanceInput, UpdateMcpMetaToolConfigInput,
+        McpManagementRepository, UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput,
         UpdateMcpToolBindingInput, UpdateMcpToolInput, UpsertMcpGroupInput,
     },
 };
@@ -118,20 +118,18 @@ fn map_binding(row: sqlx::postgres::PgRow) -> Result<domain::McpToolBindingRecor
     })
 }
 
-fn map_meta_tool_config(row: sqlx::postgres::PgRow) -> Result<domain::McpMetaToolConfigRecord> {
-    Ok(domain::McpMetaToolConfigRecord {
+fn map_instance_discovery_policy(
+    row: sqlx::postgres::PgRow,
+) -> Result<domain::McpInstanceDiscoveryPolicyRecord> {
+    Ok(domain::McpInstanceDiscoveryPolicyRecord {
         id: row.get("id"),
         workspace_id: row.get("workspace_id"),
+        instance_record_id: row.get("instance_record_id"),
         list_default_limit: row.get("list_default_limit"),
         list_max_depth: row.get("list_max_depth"),
         list_regex_enabled: row.get("list_regex_enabled"),
         list_regex_max_length: row.get("list_regex_max_length"),
         list_return_fields: row.get("list_return_fields"),
-        get_include_mapping_summary: row.get("get_include_mapping_summary"),
-        get_include_interface_summary: row.get("get_include_interface_summary"),
-        call_default_des_id_policy: row.get("call_default_des_id_policy"),
-        call_high_risk_requires_des_id: row.get("call_high_risk_requires_des_id"),
-        call_validation_error_format: row.get("call_validation_error_format"),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),
         created_at: row.get("created_at"),
@@ -191,6 +189,7 @@ impl McpManagementRepository for PgControlPlaneStore {
         &self,
         input: &CreateMcpInstanceInput,
     ) -> Result<domain::McpInstanceRecord> {
+        let mut transaction = self.pool().begin().await?;
         let row = sqlx::query(
             r#"
             insert into mcp_instances (
@@ -217,9 +216,28 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(input.status.as_str())
         .bind(&input.default_entry_path)
         .bind(input.actor_user_id)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *transaction)
         .await?;
 
+        sqlx::query(
+            r#"
+            insert into mcp_instance_discovery_policies (
+                id,
+                workspace_id,
+                instance_record_id,
+                created_by,
+                updated_by
+            ) values ($1, $2, $3, $4, $4)
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(input.workspace_id)
+        .bind(input.id)
+        .bind(input.actor_user_id)
+        .execute(&mut *transaction)
+        .await?;
+
+        transaction.commit().await?;
         map_instance(row)
     }
 
@@ -675,92 +693,78 @@ impl McpManagementRepository for PgControlPlaneStore {
         Ok(())
     }
 
-    async fn get_mcp_meta_tool_config(
+    async fn list_mcp_instance_discovery_policies(
         &self,
-        workspace_id: Uuid,
-    ) -> Result<Option<domain::McpMetaToolConfigRecord>> {
+        instance_record_ids: &[Uuid],
+    ) -> Result<Vec<domain::McpInstanceDiscoveryPolicyRecord>> {
+        if instance_record_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query(
+            r#"
+            select *
+            from mcp_instance_discovery_policies
+            where instance_record_id = any($1)
+            order by instance_record_id asc
+            "#,
+        )
+        .bind(instance_record_ids)
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter()
+            .map(map_instance_discovery_policy)
+            .collect()
+    }
+
+    async fn get_mcp_instance_discovery_policy(
+        &self,
+        instance_record_id: Uuid,
+    ) -> Result<Option<domain::McpInstanceDiscoveryPolicyRecord>> {
         let row = sqlx::query(
             r#"
             select *
-            from mcp_meta_tool_configs
-            where workspace_id = $1
+            from mcp_instance_discovery_policies
+            where instance_record_id = $1
             "#,
         )
-        .bind(workspace_id)
+        .bind(instance_record_id)
         .fetch_optional(self.pool())
         .await?;
 
-        row.map(map_meta_tool_config).transpose()
+        row.map(map_instance_discovery_policy).transpose()
     }
 
-    async fn create_default_mcp_meta_tool_config(
+    async fn update_mcp_instance_discovery_policy(
         &self,
-        workspace_id: Uuid,
-        actor_user_id: Uuid,
-    ) -> Result<domain::McpMetaToolConfigRecord> {
+        input: &UpdateMcpInstanceDiscoveryPolicyInput,
+    ) -> Result<domain::McpInstanceDiscoveryPolicyRecord> {
         let row = sqlx::query(
             r#"
-            insert into mcp_meta_tool_configs (
-                id,
-                workspace_id,
-                created_by,
-                updated_by
-            ) values (
-                $1, $2, $3, $3
-            )
-            on conflict (workspace_id) do update
-            set updated_at = mcp_meta_tool_configs.updated_at
-            returning *
-            "#,
-        )
-        .bind(Uuid::now_v7())
-        .bind(workspace_id)
-        .bind(actor_user_id)
-        .fetch_one(self.pool())
-        .await?;
-
-        map_meta_tool_config(row)
-    }
-
-    async fn update_mcp_meta_tool_config(
-        &self,
-        input: &UpdateMcpMetaToolConfigInput,
-    ) -> Result<domain::McpMetaToolConfigRecord> {
-        let row = sqlx::query(
-            r#"
-            update mcp_meta_tool_configs
+            update mcp_instance_discovery_policies
             set
-                list_default_limit = $2,
-                list_max_depth = $3,
-                list_regex_enabled = $4,
-                list_regex_max_length = $5,
-                list_return_fields = $6,
-                get_include_mapping_summary = $7,
-                get_include_interface_summary = $8,
-                call_default_des_id_policy = $9,
-                call_high_risk_requires_des_id = $10,
-                call_validation_error_format = $11,
-                updated_by = $12,
+                list_default_limit = $3,
+                list_max_depth = $4,
+                list_regex_enabled = $5,
+                list_regex_max_length = $6,
+                list_return_fields = $7,
+                updated_by = $8,
                 updated_at = now()
-            where workspace_id = $1
+            where workspace_id = $1 and instance_record_id = $2
             returning *
             "#,
         )
         .bind(input.workspace_id)
+        .bind(input.instance_record_id)
         .bind(input.list_default_limit)
         .bind(input.list_max_depth)
         .bind(input.list_regex_enabled)
         .bind(input.list_regex_max_length)
         .bind(&input.list_return_fields)
-        .bind(input.get_include_mapping_summary)
-        .bind(input.get_include_interface_summary)
-        .bind(&input.call_default_des_id_policy)
-        .bind(input.call_high_risk_requires_des_id)
-        .bind(&input.call_validation_error_format)
         .bind(input.actor_user_id)
         .fetch_one(self.pool())
         .await?;
 
-        map_meta_tool_config(row)
+        map_instance_discovery_policy(row)
     }
 }

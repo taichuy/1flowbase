@@ -1,4 +1,4 @@
-export const mcpManagementTabKeys = ['instances', 'tools', 'meta'] as const;
+export const mcpManagementTabKeys = ['instances', 'tools'] as const;
 
 export type McpManagementTabKey = (typeof mcpManagementTabKeys)[number];
 
@@ -18,9 +18,7 @@ export function isMcpManagementTabKey(
 export function resolveMcpManagementTabKey(
   value: unknown
 ): McpManagementTabKey {
-  return isMcpManagementTabKey(value)
-    ? value
-    : defaultMcpManagementTabKey;
+  return isMcpManagementTabKey(value) ? value : defaultMcpManagementTabKey;
 }
 
 export function updateMcpManagementTabQuery(

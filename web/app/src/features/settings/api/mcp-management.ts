@@ -10,10 +10,11 @@ import {
   exportConsoleMcpCatalog,
   exportConsoleMcpInstanceDirectory,
   fetchConsoleMcpCatalog,
+  fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
   refreshConsoleMcpToolDescription,
   updateConsoleMcpInstance,
-  updateConsoleMcpMetaToolConfig,
+  updateConsoleMcpInstanceDiscoveryPolicy,
   updateConsoleMcpTool,
   updateConsoleMcpToolBinding,
   upsertConsoleMcpGroup,
@@ -25,7 +26,7 @@ import {
   type SaveConsoleMcpInstanceBody,
   type SaveConsoleMcpToolBindingBody,
   type SaveConsoleMcpToolBody,
-  type UpdateConsoleMcpMetaToolConfigBody,
+  type UpdateConsoleMcpInstanceDiscoveryPolicyBody,
   type UpdateConsoleMcpToolBody
 } from '@1flowbase/api-client';
 
@@ -55,6 +56,10 @@ export function fetchSettingsMcpInterfaceCapabilities() {
   return fetchConsoleMcpInterfaceCapabilities({ bindable_only: false });
 }
 
+export function fetchSettingsMcpInstanceDiscoveryPolicy(instanceId: string) {
+  return fetchConsoleMcpInstanceDiscoveryPolicy(instanceId);
+}
+
 export function exportSettingsMcpCatalog() {
   return exportConsoleMcpCatalog();
 }
@@ -78,7 +83,10 @@ export function updateSettingsMcpInstance(
   return updateConsoleMcpInstance(instanceId, body, csrfToken);
 }
 
-export function deleteSettingsMcpInstance(instanceId: string, csrfToken: string) {
+export function deleteSettingsMcpInstance(
+  instanceId: string,
+  csrfToken: string
+) {
   return deleteConsoleMcpInstance(instanceId, csrfToken);
 }
 
@@ -147,13 +155,17 @@ export function updateSettingsMcpToolBinding(
   return updateConsoleMcpToolBinding(bindingId, body, csrfToken);
 }
 
-export function deleteSettingsMcpToolBinding(bindingId: string, csrfToken: string) {
+export function deleteSettingsMcpToolBinding(
+  bindingId: string,
+  csrfToken: string
+) {
   return deleteConsoleMcpToolBinding(bindingId, csrfToken);
 }
 
-export function updateSettingsMcpMetaToolConfig(
-  body: UpdateConsoleMcpMetaToolConfigBody,
+export function updateSettingsMcpInstanceDiscoveryPolicy(
+  instanceId: string,
+  body: UpdateConsoleMcpInstanceDiscoveryPolicyBody,
   csrfToken: string
 ) {
-  return updateConsoleMcpMetaToolConfig(body, csrfToken);
+  return updateConsoleMcpInstanceDiscoveryPolicy(instanceId, body, csrfToken);
 }

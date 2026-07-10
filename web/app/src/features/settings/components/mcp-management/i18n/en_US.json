@@ -27,6 +27,12 @@
     "discard_unsaved_changes_description": "The current editor has unsaved changes. Continuing will discard them.",
     "discard_unsaved_changes": "Discard changes",
     "continue_editing": "Continue editing",
-    "close_directory_editor": "Close directory editor"
+    "close_directory_editor": "Close directory editor",
+    "discovery_policy": "Discovery settings",
+    "list_default_limit": "Default result limit",
+    "list_max_depth": "Maximum directory depth",
+    "list_regex_enabled": "Allow regex path search",
+    "list_regex_max_length": "Maximum regex length",
+    "list_return_fields": "List response fields"
   }
 }
