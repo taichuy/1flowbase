@@ -28,6 +28,7 @@ import {
 
 import { NodeConfigTab } from '../components/detail/tabs/NodeConfigTab';
 import { NodeDetailPanel } from '../components/detail/NodeDetailPanel';
+import { WorkflowNodeDetailPanel } from '../../workflow/components/WorkflowNodeDetailPanel';
 import '../../workflow/register';
 import * as modelProviderOptionsApi from '../api/model-provider-options';
 import { AgentFlowEditorStoreProvider } from '../store/editor/AgentFlowEditorStoreProvider';
@@ -279,7 +280,12 @@ describe('NodeDetailPanel', () => {
       renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
-          <NodeDetailPanel onClose={vi.fn()} onRunNode={undefined} />
+          <NodeDetailPanel
+            activeTab="config"
+            onTabChange={vi.fn()}
+            onClose={vi.fn()}
+            onRunNode={undefined}
+          />
         </AgentFlowEditorStoreProvider>
       );
 
@@ -295,7 +301,12 @@ describe('NodeDetailPanel', () => {
       renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
-          <NodeDetailPanel onClose={vi.fn()} onRunNode={undefined} />
+          <NodeDetailPanel
+            activeTab="config"
+            onTabChange={vi.fn()}
+            onClose={vi.fn()}
+            onRunNode={undefined}
+          />
         </AgentFlowEditorStoreProvider>
       );
 
@@ -320,6 +331,8 @@ describe('NodeDetailPanel', () => {
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeDetailPanel
+            activeTab="config"
+            onTabChange={vi.fn()}
             onClose={vi.fn()}
             onDebugNode={vi.fn()}
             onRunNode={vi.fn()}
@@ -349,6 +362,8 @@ describe('NodeDetailPanel', () => {
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeDetailPanel
+            activeTab="config"
+            onTabChange={vi.fn()}
             debugLoading
             onClose={vi.fn()}
             onDebugNode={vi.fn()}
@@ -377,7 +392,12 @@ describe('NodeDetailPanel', () => {
       renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
-          <NodeDetailPanel onClose={vi.fn()} onRunNode={undefined} />
+          <NodeDetailPanel
+            activeTab="config"
+            onTabChange={vi.fn()}
+            onClose={vi.fn()}
+            onRunNode={undefined}
+          />
         </AgentFlowEditorStoreProvider>
       );
 
@@ -399,7 +419,12 @@ describe('NodeDetailPanel', () => {
       renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
-          <NodeDetailPanel onClose={vi.fn()} onRunNode={undefined} />
+          <NodeDetailPanel
+            activeTab="config"
+            onTabChange={vi.fn()}
+            onClose={vi.fn()}
+            onRunNode={undefined}
+          />
         </AgentFlowEditorStoreProvider>
       );
 
@@ -485,11 +510,9 @@ describe('NodeDetailPanel', () => {
           initialState={createWorkflowInitialState()}
         >
           <SelectionSeed nodeId="node-workflow-start" />
-          <NodeDetailPanel
-            applicationId="app-workflow"
+          <WorkflowNodeDetailPanel
             onClose={vi.fn()}
-            onRunNode={undefined}
-            workflowTriggerContext={{
+            triggerContext={{
               applicationId: 'app-workflow',
               triggerType: 'extension',
               mapping: createWorkflowApiMappingWithExtension(),
@@ -518,11 +541,9 @@ describe('NodeDetailPanel', () => {
           initialState={createWorkflowInitialState()}
         >
           <SelectionSeed nodeId="node-workflow-start" />
-          <NodeDetailPanel
-            applicationId="app-workflow"
+          <WorkflowNodeDetailPanel
             onClose={vi.fn()}
-            onRunNode={undefined}
-            workflowTriggerContext={{
+            triggerContext={{
               applicationId: 'app-workflow',
               triggerType: 'extension',
               mapping: createWorkflowApiMappingWithExtension(),
@@ -570,11 +591,9 @@ describe('NodeDetailPanel', () => {
           initialState={createWorkflowInitialState()}
         >
           <SelectionSeed nodeId="node-workflow-start" />
-          <NodeDetailPanel
-            applicationId="app-workflow"
+          <WorkflowNodeDetailPanel
             onClose={vi.fn()}
-            onRunNode={undefined}
-            workflowTriggerContext={{
+            triggerContext={{
               applicationId: 'app-workflow',
               triggerType: 'schedule',
               mapping: createWorkflowApiMappingWithExtension(),
@@ -602,11 +621,9 @@ describe('NodeDetailPanel', () => {
           initialState={createWorkflowInitialState()}
         >
           <SelectionSeed nodeId="node-workflow-start" />
-          <NodeDetailPanel
-            applicationId="app-workflow"
+          <WorkflowNodeDetailPanel
             onClose={vi.fn()}
-            onRunNode={undefined}
-            workflowTriggerContext={{
+            triggerContext={{
               applicationId: 'app-workflow',
               triggerType: 'manual',
               mapping: createWorkflowApiMappingWithExtension(),

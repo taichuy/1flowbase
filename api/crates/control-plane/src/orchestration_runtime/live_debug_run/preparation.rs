@@ -249,12 +249,24 @@ where
             .build_compile_context(application.workspace_id, application.id)
             .await?;
 
-        let mut compiled_plan = orchestration_runtime::compiler::FlowCompiler::compile(
-            editor_state.flow.id,
-            &editor_state.draft.id.to_string(),
-            debug_document,
-            &compile_context,
-        )?;
+        let mut compiled_plan = match application.application_type {
+            domain::ApplicationType::AgentFlow => {
+                orchestration_runtime::compiler::FlowCompiler::compile(
+                    editor_state.flow.id,
+                    &editor_state.draft.id.to_string(),
+                    debug_document,
+                    &compile_context,
+                )?
+            }
+            domain::ApplicationType::Workflow => {
+                orchestration_runtime::compiler::FlowCompiler::compile_workflow(
+                    editor_state.flow.id,
+                    &editor_state.draft.id.to_string(),
+                    debug_document,
+                    &compile_context,
+                )?
+            }
+        };
         freeze_failover_queue_routes(&service.repository, &mut compiled_plan).await?;
         ensure_compiled_plan_runnable(&compiled_plan)?;
         let compiled_record = service

@@ -2,10 +2,8 @@ import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
-import { AgentFlowEditorShell } from '../../agent-flow/components/editor/AgentFlowEditorShell';
 import { renderReactFlowScene } from '../../../test/renderers/render-react-flow-scene';
-import { buildWorkflowNodePickerOptions } from '../lib/picker-options';
-import { WORKFLOW_EDITOR_CAPABILITIES } from '../lib/editor-capabilities';
+import { WorkflowEditorAssembly } from '../components/WorkflowEditorAssembly';
 
 function createWorkflowInitialState() {
   return {
@@ -21,14 +19,20 @@ function createWorkflowInitialState() {
   };
 }
 
+const workflowTriggerContext = {
+  applicationId: 'app-1',
+  triggerType: 'manual' as const,
+  mapping: undefined,
+  schedule: null
+};
+
 describe('WorkflowEditor assembly', () => {
-  test('uses workflow node picker options for workflow documents', async () => {
+  test('AC-001/005 uses workflow node picker options for workflow documents', async () => {
     renderReactFlowScene(
-      <AgentFlowEditorShell
+      <WorkflowEditorAssembly
         applicationId="app-1"
         applicationName="Ticket Workflow"
-        nodePickerOptionsBuilder={buildWorkflowNodePickerOptions}
-        capabilities={WORKFLOW_EDITOR_CAPABILITIES}
+        workflowTriggerContext={workflowTriggerContext}
         initialState={createWorkflowInitialState()}
       />
     );
@@ -53,13 +57,12 @@ describe('WorkflowEditor assembly', () => {
     ).not.toBeInTheDocument();
   }, 20_000);
 
-  test('hides conversation tooling for workflow editors', () => {
+  test('AC-004 hides conversation tooling for workflow editors', () => {
     renderReactFlowScene(
-      <AgentFlowEditorShell
+      <WorkflowEditorAssembly
         applicationId="app-1"
         applicationName="Ticket Workflow"
-        nodePickerOptionsBuilder={buildWorkflowNodePickerOptions}
-        capabilities={WORKFLOW_EDITOR_CAPABILITIES}
+        workflowTriggerContext={workflowTriggerContext}
         initialState={createWorkflowInitialState()}
       />
     );
@@ -76,5 +79,9 @@ describe('WorkflowEditor assembly', () => {
     expect(
       screen.getByRole('button', { name: '环境变量' })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '测试运行' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('执行此节点')).not.toBeInTheDocument();
   }, 20_000);
 });

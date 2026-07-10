@@ -31,7 +31,8 @@ export function NodeDetailPanel({
   onResolveRunScope,
   previewActionsDisabled = false,
   runLoading = false,
-  workflowTriggerContext = null
+  activeTab,
+  onTabChange
 }: {
   onClose: () => void;
   onDebugNode?: (() => void) | undefined;
@@ -44,10 +45,9 @@ export function NodeDetailPanel({
   onResolveRunScope?: ((runId: string | null) => void) | undefined;
   previewActionsDisabled?: boolean;
   runLoading?: boolean;
-  workflowTriggerContext?: unknown;
+  activeTab: 'config' | 'lastRun';
+  onTabChange: (tab: 'config' | 'lastRun') => void;
 }) {
-  const nodeDetailTab = useAgentFlowEditorStore((state) => state.nodeDetailTab);
-  const setPanelState = useAgentFlowEditorStore((state) => state.setPanelState);
   const document = useAgentFlowEditorStore((state) => state.workingDocument);
   const selectedNodeId = useAgentFlowEditorStore(
     (state) => state.selectedNodeId
@@ -75,7 +75,6 @@ export function NodeDetailPanel({
       nodeId: selectedNodeId,
       environmentVariables,
       issues,
-      workflowTriggerContext,
       setWorkingDocument,
       dispatch(actionKey, payload) {
         if (actionKey === 'openNodePicker') {
@@ -98,8 +97,7 @@ export function NodeDetailPanel({
     issues,
     openNodePicker,
     selectedNodeId,
-    setWorkingDocument,
-    workflowTriggerContext
+    setWorkingDocument
   ]);
 
   if (!runtime.selectedNodeId || !runtime.schema || !runtime.adapter) {
@@ -128,10 +126,8 @@ export function NodeDetailPanel({
           schema={runtime.schema}
         />
         <Tabs
-          activeKey={nodeDetailTab}
-          onChange={(key) =>
-            setPanelState({ nodeDetailTab: key as 'config' | 'lastRun' })
-          }
+          activeKey={activeTab}
+          onChange={(key) => onTabChange(key as 'config' | 'lastRun')}
           items={[
             {
               key: 'config',

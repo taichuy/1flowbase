@@ -1,24 +1,18 @@
-import type { AgentFlowEditorState } from './index';
+import type { FlowEditorState } from '../../../flow-editor/store';
 
-export const selectWorkingDocument = (state: AgentFlowEditorState) =>
+export const selectWorkingDocument = (state: FlowEditorState) =>
   state.workingDocument;
 
-export const selectLastSavedDocument = (state: AgentFlowEditorState) =>
+export const selectLastSavedDocument = (state: FlowEditorState) =>
   state.lastSavedDocument;
 
-export const selectSelectedNodeId = (state: AgentFlowEditorState) =>
+export const selectSelectedNodeId = (state: FlowEditorState) =>
   state.selectedNodeId;
 
-export const selectActiveContainerId = (state: AgentFlowEditorState) =>
+export const selectActiveContainerId = (state: FlowEditorState) =>
   state.activeContainerPath.at(-1) ?? null;
 
-export const selectAutosaveStatus = (state: AgentFlowEditorState) =>
+export const selectAutosaveStatus = (state: FlowEditorState) =>
   state.autosaveStatus;
 
-export const selectVersions = (state: AgentFlowEditorState) => state.versions;
-
-export const selectDebugConsoleOpen = (state: AgentFlowEditorState) =>
-  state.debugConsoleOpen;
-
-export const selectDebugConsoleWidth = (state: AgentFlowEditorState) =>
-  state.debugConsoleWidth;
+export const selectVersions = (state: FlowEditorState) => state.versions;

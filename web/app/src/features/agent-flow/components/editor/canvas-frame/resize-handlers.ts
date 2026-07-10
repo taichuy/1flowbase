@@ -48,10 +48,8 @@ interface CanvasFrameResizeHandlersInput {
   setIsResizingVariableCache: Dispatch<SetStateAction<boolean>>;
   setIsResizingVariableCacheSidebar: Dispatch<SetStateAction<boolean>>;
   setIsResizingVariablesDock: Dispatch<SetStateAction<boolean>>;
-  setPanelState: (state: {
-    debugConsoleWidth?: number;
-    nodeDetailWidth?: number;
-  }) => void;
+  setDebugConsoleWidth: Dispatch<SetStateAction<number>>;
+  setPanelState: (state: { nodeDetailWidth?: number }) => void;
   setSystemVariablesDockWidth: Dispatch<SetStateAction<number>>;
   setVariableCacheHeight: Dispatch<SetStateAction<number>>;
   setVariableCacheSidebarWidth: Dispatch<SetStateAction<number>>;
@@ -90,6 +88,7 @@ export function createCanvasFrameResizeHandlers({
   setIsResizingVariableCache,
   setIsResizingVariableCacheSidebar,
   setIsResizingVariablesDock,
+  setDebugConsoleWidth,
   setPanelState,
   setSystemVariablesDockWidth,
   setVariableCacheHeight,
@@ -150,7 +149,7 @@ export function createCanvasFrameResizeHandlers({
         )
       );
 
-      setPanelState({ debugConsoleWidth: nextWidth });
+      setDebugConsoleWidth(nextWidth);
     };
 
     stopDebugConsoleResizeRef.current = startCanvasFrameResize(event, {

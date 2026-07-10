@@ -58,8 +58,6 @@ import { useAuthStore } from '../../../../state/auth-store';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
   selectAutosaveStatus,
-  selectDebugConsoleOpen,
-  selectDebugConsoleWidth,
   selectLastSavedDocument,
   selectVersions,
   selectWorkingDocument
@@ -99,10 +97,7 @@ import {
   countIssuesByNodeId,
   getDocumentWithLatestViewport
 } from './canvas-frame/document';
-import {
-  DEFAULT_EDITOR_CAPABILITIES,
-  type AgentFlowCanvasFrameProps
-} from './canvas-frame/types';
+import { type AgentFlowCanvasFrameProps } from './canvas-frame/types';
 
 type NodePreviewAction = 'run' | 'debug';
 
@@ -113,9 +108,6 @@ const EMPTY_ENVIRONMENT_VARIABLES: NonNullable<
 export function AgentFlowCanvasFrame({
   applicationId,
   applicationName,
-  workflowTriggerContext = null,
-  capabilities = DEFAULT_EDITOR_CAPABILITIES,
-  nodePickerOptionsBuilder,
   initialEnvironmentVariables = EMPTY_ENVIRONMENT_VARIABLES,
   nodeContributions,
   saveDraftOverride,
@@ -138,8 +130,6 @@ export function AgentFlowCanvasFrame({
   const autosaveIntervalMs = useAgentFlowEditorStore(
     (state) => state.autosaveIntervalMs
   );
-  const debugConsoleOpen = useAgentFlowEditorStore(selectDebugConsoleOpen);
-  const debugConsoleWidth = useAgentFlowEditorStore(selectDebugConsoleWidth);
   const selectedNodeId = useAgentFlowEditorStore(
     (state) => state.selectedNodeId
   );
@@ -173,6 +163,13 @@ export function AgentFlowCanvasFrame({
   const stopVariableCacheResizeRef = useRef<(() => void) | null>(null);
   const stopVariableCacheSidebarResizeRef = useRef<(() => void) | null>(null);
   const [bodyWidth, setBodyWidth] = useState(0);
+  const [debugConsoleOpen, setDebugConsoleOpen] = useState(false);
+  const [debugConsoleWidth, setDebugConsoleWidth] = useState(
+    DEBUG_CONSOLE_DEFAULT_WIDTH
+  );
+  const [nodeDetailTab, setNodeDetailTab] = useState<'config' | 'lastRun'>(
+    'config'
+  );
   const [bodyHeight, setBodyHeight] = useState(0);
   const [isResizingNodeDetail, setIsResizingNodeDetail] = useState(false);
   const [isResizingDebugConsole, setIsResizingDebugConsole] = useState(false);
@@ -410,7 +407,7 @@ export function AgentFlowCanvasFrame({
       debugSession.rememberExternalRunDetail(
         nodeLastRunToFlowDebugRunDetail(lastRun)
       );
-      setPanelState({ nodeDetailTab: 'lastRun' });
+      setNodeDetailTab('lastRun');
       await queryClient.invalidateQueries({
         queryKey: ['applications', applicationId, 'runtime']
       });
@@ -432,8 +429,8 @@ export function AgentFlowCanvasFrame({
     [issues]
   );
   const nodePickerOptions = useMemo(
-    () => (nodePickerOptionsBuilder ?? buildNodePickerOptions)(nodeContributions),
-    [nodePickerOptionsBuilder, nodeContributions]
+    () => buildNodePickerOptions(nodeContributions),
+    [nodeContributions]
   );
 
   useEffect(() => {
@@ -628,6 +625,7 @@ export function AgentFlowCanvasFrame({
     setConversationVariablesDockWidth,
     setEnvironmentVariablesDockWidth,
     setHistoryDockWidth,
+    setDebugConsoleWidth,
     setIsResizingConversationLog,
     setIsResizingDebugConsole,
     setIsResizingHistoryDock,
@@ -812,16 +810,14 @@ export function AgentFlowCanvasFrame({
     setEnvironmentVariablesOpen(false);
     setSystemVariablesOpen(false);
     setConversationVariablesOpen(false);
-    setPanelState({
-      debugConsoleOpen: true,
-      debugConsoleWidth: debugConsoleWidth || DEBUG_CONSOLE_DEFAULT_WIDTH,
-      historyOpen: false
-    });
+    setDebugConsoleOpen(true);
+    setPanelState({ historyOpen: false });
   }
 
   function openEnvironmentVariables() {
     setConversationLogMessageId(null);
-    setPanelState({ debugConsoleOpen: false, historyOpen: false });
+    setDebugConsoleOpen(false);
+    setPanelState({ historyOpen: false });
     setSystemVariablesOpen(false);
     setConversationVariablesOpen(false);
     setEnvironmentVariablesOpen(true);
@@ -829,7 +825,8 @@ export function AgentFlowCanvasFrame({
 
   function openConversationVariables() {
     setConversationLogMessageId(null);
-    setPanelState({ debugConsoleOpen: false, historyOpen: false });
+    setDebugConsoleOpen(false);
+    setPanelState({ historyOpen: false });
     setSystemVariablesOpen(false);
     setEnvironmentVariablesOpen(false);
     setConversationVariablesOpen(true);
@@ -837,7 +834,8 @@ export function AgentFlowCanvasFrame({
 
   function openSystemVariables() {
     setConversationLogMessageId(null);
-    setPanelState({ debugConsoleOpen: false, historyOpen: false });
+    setDebugConsoleOpen(false);
+    setPanelState({ historyOpen: false });
     setEnvironmentVariablesOpen(false);
     setConversationVariablesOpen(false);
     setSystemVariablesOpen(true);
@@ -848,7 +846,8 @@ export function AgentFlowCanvasFrame({
     setSystemVariablesOpen(false);
     setConversationVariablesOpen(false);
     setConversationLogMessageId(null);
-    setPanelState({ debugConsoleOpen: false, historyOpen: true });
+    setDebugConsoleOpen(false);
+    setPanelState({ historyOpen: true });
   }
 
   const nodePreviewAction = nodePreviewMutation.isPending
@@ -875,9 +874,7 @@ export function AgentFlowCanvasFrame({
         saveDisabled={autosaveStatus === 'saving'}
         saveLoading={autosaveStatus === 'saving'}
         onOpenDebugConsole={openDebugConsole}
-        showConversationDebug={capabilities.conversationDebug}
-        showConversationVariables={capabilities.conversationVariables}
-        showSystemVariables={capabilities.systemVariables}
+
         onExportTemplate={() => exportTemplateMutation.mutate()}
         onOpenIssues={() => setPanelState({ issuesOpen: true })}
         onOpenHistory={openHistory}
@@ -912,7 +909,6 @@ export function AgentFlowCanvasFrame({
         <AgentFlowCanvas
           issueCountByNodeId={issueCountByNodeId}
           nodePickerOptions={nodePickerOptions}
-          workflowTriggerContext={workflowTriggerContext}
           onRunNode={handleRunNode}
           onViewportSnapshotChange={(viewport) => {
             viewportSnapshotRef.current = viewport;
@@ -1006,6 +1002,8 @@ export function AgentFlowCanvasFrame({
               tabIndex={0}
             />
             <NodeDetailPanel
+              activeTab={nodeDetailTab}
+              onTabChange={setNodeDetailTab}
               activeRunId={debugSession.activeRunId}
               applicationId={applicationId}
               debugLoading={nodePreviewAction === 'debug'}
@@ -1017,7 +1015,6 @@ export function AgentFlowCanvasFrame({
               onRunNode={selectedNodeId ? handleRunSelectedNode : undefined}
               previewActionsDisabled={nodePreviewMutation.isPending}
               runLoading={nodePreviewAction === 'run'}
-              workflowTriggerContext={workflowTriggerContext}
             />
           </div>
         ) : null}
@@ -1041,8 +1038,7 @@ export function AgentFlowCanvasFrame({
             sidebarWidth={boundedVariableCacheSidebarWidth}
           />
         ) : null}
-        {capabilities.conversationDebug &&
-        conversationLogOpen &&
+        {conversationLogOpen &&
         conversationLogMessage ? (
           <AgentFlowSideDock
             className="agent-flow-editor__conversation-log-dock"
@@ -1070,7 +1066,7 @@ export function AgentFlowCanvasFrame({
             />
           </AgentFlowSideDock>
         ) : null}
-        {capabilities.conversationDebug && debugConsoleOpen ? (
+        {debugConsoleOpen ? (
           <AgentFlowSideDock
             className="agent-flow-editor__debug-console-dock"
             data-testid="agent-flow-editor-debug-console-dock"
@@ -1091,7 +1087,7 @@ export function AgentFlowCanvasFrame({
               }}
               onClose={() => {
                 setConversationLogMessageId(null);
-                setPanelState({ debugConsoleOpen: false });
+                setDebugConsoleOpen(false);
               }}
               onLoadArtifact={(artifactRef) =>
                 fetchRuntimeDebugArtifact(applicationId, artifactRef)

@@ -127,7 +127,12 @@ describe('NodeInspector core', () => {
             latestDocument = document;
           }}
         />
-        <NodeDetailPanel onClose={vi.fn()} onRunNode={undefined} />
+        <NodeDetailPanel
+          activeTab="config"
+          onTabChange={vi.fn()}
+          onClose={vi.fn()}
+          onRunNode={undefined}
+        />
       </AgentFlowEditorStoreProvider>
     );
 

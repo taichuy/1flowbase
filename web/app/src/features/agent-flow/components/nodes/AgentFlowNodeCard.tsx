@@ -106,20 +106,22 @@ export function AgentFlowNodeCard({
       data.onReplaceNode(data.nodeId, option);
     }
   }));
-  const runMenuItems: NonNullable<MenuProps['items']> = !isUnresolvedNode
-    ? [
-        {
-          key: 'run',
-          icon: <PlayCircleOutlined />,
-          label: i18nText('agentFlow', 'auto.execute_this_node'),
-          onClick: ({ domEvent }) => {
-            domEvent.stopPropagation();
-            data.onSelectNode(data.nodeId);
-            data.onRunNode(data.nodeId);
+  const runNode = data.onRunNode;
+  const runMenuItems: NonNullable<MenuProps['items']> =
+    !isUnresolvedNode && runNode
+      ? [
+          {
+            key: 'run',
+            icon: <PlayCircleOutlined />,
+            label: i18nText('agentFlow', 'auto.execute_this_node'),
+            onClick: ({ domEvent }) => {
+              domEvent.stopPropagation();
+              data.onSelectNode(data.nodeId);
+              runNode(data.nodeId);
+            }
           }
-        }
-      ]
-    : [];
+        ]
+      : [];
   const menuItems: MenuProps['items'] = [
     ...runMenuItems,
     {
@@ -447,7 +449,7 @@ export function AgentFlowNodeCard({
           onMouseLeave={scheduleHideQuickActions}
           onPointerDown={stopActionEvent}
         >
-          {!isUnresolvedNode ? (
+          {!isUnresolvedNode && runNode ? (
             <Tooltip title={i18nText('agentFlow', 'auto.execute_this_node')}>
               <Button
                 aria-label={i18nText('agentFlow', 'auto.execute', {
@@ -461,7 +463,7 @@ export function AgentFlowNodeCard({
                 onClick={(event) => {
                   stopActionEvent(event);
                   data.onSelectNode(data.nodeId);
-                  data.onRunNode(data.nodeId);
+                  runNode(data.nodeId);
                 }}
               />
             </Tooltip>

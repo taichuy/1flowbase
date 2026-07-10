@@ -329,6 +329,34 @@ impl InMemoryOrchestrationRuntimeRepository {
             .await
     }
 
+    pub(super) async fn seed_application_with_type_for_actor(
+        &self,
+        actor_user_id: Uuid,
+        name: &str,
+        application_type: domain::ApplicationType,
+    ) -> Result<domain::ApplicationRecord> {
+        ApplicationRepository::create_application(
+            &self.flow,
+            &CreateApplicationInput {
+                actor_user_id,
+                workspace_id: Uuid::nil(),
+                application_type,
+                workflow_trigger_type: match application_type {
+                    domain::ApplicationType::AgentFlow => None,
+                    domain::ApplicationType::Workflow => {
+                        Some(domain::WorkflowTriggerType::Extension)
+                    }
+                },
+                name: name.to_string(),
+                description: String::new(),
+                icon: None,
+                icon_type: None,
+                icon_background: None,
+            },
+        )
+        .await
+    }
+
     pub(crate) fn default_provider_instance_id(&self) -> Uuid {
         self.default_provider_instance_id
     }

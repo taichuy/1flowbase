@@ -24,7 +24,8 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type Key
+  type Key,
+  type MouseEvent
 } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -168,6 +169,66 @@ function getViewportSize() {
 
 function nonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+type ApplicationLogsSearchState = {
+  runId: string | null;
+  view: 'trace' | null;
+};
+
+function readApplicationLogsSearchState(): ApplicationLogsSearchState {
+  if (typeof window === 'undefined') {
+    return { runId: null, view: null };
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const runId = nonEmptyString(searchParams.get('run_id'));
+
+  return {
+    runId,
+    view: runId && searchParams.get('view') === 'trace' ? 'trace' : null
+  };
+}
+
+function writeApplicationLogsSearchState(
+  state: ApplicationLogsSearchState,
+  mode: 'push' | 'replace' = 'push'
+) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  if (state.runId) {
+    url.searchParams.set('run_id', state.runId);
+  } else {
+    url.searchParams.delete('run_id');
+  }
+  if (state.runId && state.view === 'trace') {
+    url.searchParams.set('view', 'trace');
+  } else {
+    url.searchParams.delete('view');
+  }
+
+  window.history[mode === 'push' ? 'pushState' : 'replaceState'](
+    {},
+    '',
+    `${url.pathname}${url.search}${url.hash}`
+  );
+}
+
+function buildTraceDeepLinkMessage(runId: string): AgentFlowDebugMessage {
+  return {
+    id: `application-log-trace:${runId}`,
+    role: 'assistant',
+    content: '',
+    status: 'completed',
+    runId,
+    detailRunId: runId,
+    canOpenDetail: true,
+    rawOutput: null,
+    traceSummary: []
+  };
 }
 
 function archiveImportStorageKey(applicationId: string) {
@@ -317,9 +378,19 @@ export function ApplicationLogsPage({
   applicationId: string;
 }) {
   const { t } = useTranslation('applications');
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const initialSearchState = useMemo(readApplicationLogsSearchState, []);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(
+    initialSearchState.runId
+  );
   const [openConversationLogMessage, setOpenConversationLogMessage] =
-    useState<AgentFlowDebugMessage | null>(null);
+    useState<AgentFlowDebugMessage | null>(() =>
+      initialSearchState.runId && initialSearchState.view === 'trace'
+        ? buildTraceDeepLinkMessage(initialSearchState.runId)
+        : null
+    );
+  const [traceViewRequested, setTraceViewRequested] = useState(
+    initialSearchState.view === 'trace'
+  );
   const [openResumeTimelineRunId, setOpenResumeTimelineRunId] = useState<
     string | null
   >(null);
@@ -372,8 +443,11 @@ export function ApplicationLogsPage({
   const [exportingRunId, setExportingRunId] = useState<string | null>(null);
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
   const [activeFloatingWindow, setActiveFloatingWindow] =
-    useState<ApplicationLogsFloatingWindowKind>('run-detail');
+    useState<ApplicationLogsFloatingWindowKind>(
+      initialSearchState.view === 'trace' ? 'conversation-log' : 'run-detail'
+    );
   const archiveImportInputRef = useRef<HTMLInputElement | null>(null);
+  const tracePanelRef = useRef<HTMLDivElement | null>(null);
   const restoringArchiveImportRef = useRef(false);
   const { message } = App.useApp();
   const queryClient = useQueryClient();
@@ -439,9 +513,48 @@ export function ApplicationLogsPage({
     setPage(1);
   }, [applicationId]);
 
+  useEffect(() => {
+    function applyLocationSearch() {
+      const searchState = readApplicationLogsSearchState();
+      setSelectedRunId(searchState.runId);
+      setOpenConversationLogMessage(
+        searchState.runId && searchState.view === 'trace'
+          ? buildTraceDeepLinkMessage(searchState.runId)
+          : null
+      );
+      setTraceViewRequested(searchState.view === 'trace');
+      setOpenResumeTimelineRunId(null);
+      setActiveFloatingWindow(
+        searchState.view === 'trace' ? 'conversation-log' : 'run-detail'
+      );
+      setRunDetailRect(null);
+      setConversationLogRect(null);
+      setResumeTimelineRect(null);
+    }
+
+    window.addEventListener('popstate', applyLocationSearch);
+    return () => window.removeEventListener('popstate', applyLocationSearch);
+  }, [applicationId]);
+
+  useEffect(() => {
+    if (
+      !traceViewRequested ||
+      !openConversationLogMessage ||
+      !tracePanelRef.current
+    ) {
+      return;
+    }
+
+    const traceTab =
+      tracePanelRef.current.querySelectorAll<HTMLElement>('[role="tab"]')[1];
+    traceTab?.click();
+  }, [openConversationLogMessage, traceViewRequested]);
+
   function selectRun(run: ApplicationRunSummary | null) {
     const nextRunId = run ? run.id : null;
+    writeApplicationLogsSearchState({ runId: nextRunId, view: null });
     setSelectedRunId(nextRunId);
+    setTraceViewRequested(false);
     setOpenConversationLogMessage(null);
     setOpenResumeTimelineRunId(null);
     setActiveFloatingWindow('run-detail');
@@ -757,7 +870,25 @@ export function ApplicationLogsPage({
     }
   }
 
+  function handleConversationLogTabClick(event: MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement;
+    const tab = target.closest<HTMLElement>('[role="tab"]');
+    if (!tab || !selectedRunId) {
+      return;
+    }
+
+    const tabs =
+      tracePanelRef.current?.querySelectorAll<HTMLElement>('[role="tab"]');
+    const traceSelected = tabs?.[1] === tab;
+    setTraceViewRequested(traceSelected);
+    writeApplicationLogsSearchState({
+      runId: selectedRunId,
+      view: traceSelected ? 'trace' : null
+    });
+  }
+
   function openConversationLog(message: AgentFlowDebugMessage) {
+    setTraceViewRequested(false);
     setOpenConversationLogMessage(message);
     setActiveFloatingWindow('conversation-log');
 
@@ -1026,13 +1157,23 @@ export function ApplicationLogsPage({
           title={t('auto.conversation_logs')}
           onActivate={() => setActiveFloatingWindow('conversation-log')}
         >
-          <div className="application-logs-page__conversation-log-panel">
+          <div
+            ref={tracePanelRef}
+            className="application-logs-page__conversation-log-panel"
+            onClick={handleConversationLogTabClick}
+          >
             <ConversationLogPanel
               defaultTraceToolsExpanded
               message={openConversationLogMessage}
               onClose={() => {
+                writeApplicationLogsSearchState({
+                  runId: selectedRunId,
+                  view: null
+                });
+                setTraceViewRequested(false);
                 setOpenConversationLogMessage(null);
                 setConversationLogRect(null);
+                setActiveFloatingWindow('run-detail');
               }}
               onLoadArtifact={(artifactRef) =>
                 fetchRuntimeDebugArtifact(applicationId, artifactRef)

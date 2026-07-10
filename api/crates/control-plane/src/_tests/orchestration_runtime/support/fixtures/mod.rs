@@ -222,6 +222,37 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         }
     }
 
+    pub async fn seed_workflow_application_with_flow(
+        &self,
+        name: &str,
+    ) -> SeededPreviewApplication {
+        let actor_user_id = Uuid::now_v7();
+        let application = self
+            .repository
+            .seed_application_with_type_for_actor(
+                actor_user_id,
+                name,
+                domain::ApplicationType::Workflow,
+            )
+            .await
+            .expect("seed workflow application should succeed");
+        let editor_state = FlowRepository::get_or_create_editor_state(
+            &self.repository,
+            Uuid::nil(),
+            application.id,
+            actor_user_id,
+        )
+        .await
+        .expect("seed workflow flow should succeed");
+
+        SeededPreviewApplication {
+            actor_user_id,
+            application_id: application.id,
+            flow_id: editor_state.flow.id,
+            source_provider_instance_id: self.repository.default_provider_instance_id(),
+        }
+    }
+
     pub fn default_provider_instance_id(&self) -> Uuid {
         self.repository.default_provider_instance_id()
     }

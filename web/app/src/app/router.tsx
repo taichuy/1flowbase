@@ -169,6 +169,13 @@ const applicationApiRoute = createRoute({
 const applicationLogsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/applications/$applicationId/logs',
+  validateSearch: (search: Record<string, unknown>) => ({
+    run_id:
+      typeof search.run_id === 'string' && search.run_id.trim().length > 0
+        ? search.run_id
+        : undefined,
+    view: search.view === 'trace' ? ('trace' as const) : undefined
+  }),
   notFoundComponent: NotFoundPage,
   component: () => {
     const { applicationId } = applicationLogsRoute.useParams();
