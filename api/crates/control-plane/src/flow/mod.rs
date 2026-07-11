@@ -233,6 +233,7 @@ where
             .unwrap_or_else(|| preview.application.description.clone());
         let application = ApplicationService::new(self.repository.clone())
             .create_application(crate::application::CreateApplicationCommand {
+                workflow_trigger_config: None,
                 actor_user_id: command.actor_user_id,
                 application_type: domain::ApplicationType::AgentFlow,
                 workflow_trigger_type: None,
@@ -429,6 +430,7 @@ impl InMemoryFlowRepository {
         ApplicationRepository::create_application(
             &self.applications,
             &CreateApplicationInput {
+                workflow_trigger_config: None,
                 actor_user_id,
                 workspace_id: Uuid::nil(),
                 application_type: domain::ApplicationType::AgentFlow,
@@ -844,6 +846,7 @@ impl FlowService<InMemoryFlowRepository> {
     ) -> Result<domain::ApplicationRecord> {
         ApplicationService::new(self.repository.clone())
             .create_application(crate::application::CreateApplicationCommand {
+                workflow_trigger_config: None,
                 actor_user_id,
                 application_type,
                 workflow_trigger_type: match application_type {

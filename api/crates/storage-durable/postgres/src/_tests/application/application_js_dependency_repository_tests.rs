@@ -161,6 +161,7 @@ async fn application_js_dependency_repository_replaces_alias_target_and_preserve
     let (store, workspace, actor) = seed_store().await;
     let application = store
         .create_application(&CreateApplicationInput {
+            workflow_trigger_config: None,
             actor_user_id: actor.id,
             workspace_id: workspace.id,
             application_type: ApplicationType::AgentFlow,

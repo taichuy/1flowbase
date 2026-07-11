@@ -286,6 +286,17 @@
     "run_cancelled_without_output": "Run cancelled without output.",
     "run_status_without_output": "No output for the current status yet.",
     "unresolved_node_count": "Unresolved nodes {{value1}}",
-    "unresolved_nodes": "Unresolved nodes"
+    "unresolved_nodes": "Unresolved nodes",
+    "extension_subpath": "API subpath",
+    "extension_subpath_required": "Enter an API subpath",
+    "http_method": "HTTP method",
+    "response_mode": "Response mode",
+    "response_mode_sync": "Synchronous",
+    "response_mode_async": "Asynchronous",
+    "schedule_cron": "Cron expression",
+    "schedule_cron_required": "Enter a Cron expression",
+    "schedule_timezone": "Timezone",
+    "schedule_timezone_required": "Enter a timezone",
+    "schedule_disabled_hint": "The schedule is disabled by default. Enable it after publishing and confirming the configuration."
   }
 }

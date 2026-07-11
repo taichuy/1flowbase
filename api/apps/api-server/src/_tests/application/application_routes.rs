@@ -140,6 +140,125 @@ async fn application_routes_persist_workflow_trigger_type() {
 }
 
 #[tokio::test]
+async fn application_routes_create_schedule_trigger_disabled_by_default() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_type": "workflow",
+                        "workflow_trigger_type": "schedule",
+                        "workflow_trigger_config": {
+                            "cron": "0 9 * * 1-5",
+                            "timezone": "Asia/Shanghai",
+                            "input_payload": {"report": "daily"}
+                        },
+                        "name": "Scheduled Workflow",
+                        "description": "scheduled workflow",
+                        "icon": "RobotOutlined",
+                        "icon_type": "iconfont",
+                        "icon_background": "#E6F7F2"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let create_payload = response_json(create).await;
+    let application_id = create_payload["data"]["id"].as_str().unwrap();
+
+    let trigger = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/workflow-schedule-trigger"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(trigger.status(), StatusCode::OK);
+    let trigger_payload = response_json(trigger).await;
+    assert_eq!(trigger_payload["data"]["enabled"], json!(false));
+    assert_eq!(trigger_payload["data"]["cron"], json!("0 9 * * 1-5"));
+    assert_eq!(trigger_payload["data"]["timezone"], json!("Asia/Shanghai"));
+    assert_eq!(
+        trigger_payload["data"]["input_payload"],
+        json!({"report": "daily"})
+    );
+}
+
+#[tokio::test]
+async fn application_routes_create_extension_mapping_draft() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_type": "workflow",
+                        "workflow_trigger_type": "extension",
+                        "workflow_trigger_config": {
+                            "subpath": "orders/create",
+                            "http_method": "POST",
+                            "response_mode": "sync"
+                        },
+                        "name": "Order Workflow",
+                        "description": "order workflow",
+                        "icon": "RobotOutlined",
+                        "icon_type": "iconfont",
+                        "icon_background": "#E6F7F2"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let create_status = create.status();
+    let create_payload = response_json(create).await;
+    assert_eq!(create_status, StatusCode::CREATED, "{create_payload}");
+    let application_id = create_payload["data"]["id"].as_str().unwrap().to_string();
+    let mapping = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-mapping"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(mapping.status(), StatusCode::OK);
+    let payload = response_json(mapping).await;
+    assert_eq!(payload["data"]["extension"]["slug"], json!("orders/create"));
+    assert_eq!(payload["data"]["extension"]["method"], json!("POST"));
+    assert_eq!(payload["data"]["extension"]["response_mode"], json!("sync"));
+}
+
+#[tokio::test]
 async fn application_routes_reject_manual_workflow_trigger_type() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

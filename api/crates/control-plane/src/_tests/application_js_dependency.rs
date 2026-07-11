@@ -36,6 +36,7 @@ async fn application_js_dependency_selection_snapshots_workspace_catalog_entry()
     let app_service = ApplicationService::for_tests();
     let application = app_service
         .create_application(CreateApplicationCommand {
+            workflow_trigger_config: None,
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,
@@ -78,6 +79,7 @@ async fn application_js_dependency_selection_rejects_dependency_outside_workspac
     let app_service = ApplicationService::for_tests();
     let application = app_service
         .create_application(CreateApplicationCommand {
+            workflow_trigger_config: None,
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,
@@ -112,6 +114,7 @@ async fn application_js_dependency_selection_replaces_existing_alias_target() {
     let app_service = ApplicationService::for_tests();
     let application = app_service
         .create_application(CreateApplicationCommand {
+            workflow_trigger_config: None,
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,

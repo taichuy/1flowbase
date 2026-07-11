@@ -46,7 +46,7 @@ describe('ApplicationCreateModal', () => {
     ).toBeInTheDocument();
   }, 10_000);
 
-  test('creates workflow applications with only the trigger type before entering the editor', async () => {
+  test('creates extension workflows with their initial trigger configuration', async () => {
     const onCreated = vi.fn();
 
     render(
@@ -60,40 +60,13 @@ describe('ApplicationCreateModal', () => {
       </AppProviders>
     );
 
-    expect(screen.getByRole('radio', { name: /AgentFlow/i })).toBeEnabled();
-    expect(screen.getByRole('radio', { name: /Workflow/i })).toBeEnabled();
-
     fireEvent.click(screen.getByRole('radio', { name: /Workflow/i }));
-    const triggerTypeSelect = screen.getByRole('combobox', {
-      name: '触发器类型'
+    fireEvent.change(screen.getByRole('textbox', { name: '接口子路径' }), {
+      target: { value: 'orders/create' }
     });
-    fireEvent.mouseDown(triggerTypeSelect);
-    const triggerOptions = await screen.findAllByRole('option');
-    expect(triggerOptions.map((option) => option.textContent)).toEqual([
-      'extension',
-      'schedule'
-    ]);
-    expect(
-      screen.queryByRole('textbox', { name: '接口 slug' })
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText('HTTP method')).not.toBeInTheDocument();
-    expect(screen.queryByText('响应模式')).not.toBeInTheDocument();
-    expect(screen.queryByText('参数名')).not.toBeInTheDocument();
-    expect(screen.queryByText('目标 selector')).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('textbox', { name: '定时表达式' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('textbox', { name: '时区' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('textbox', { name: '输入 payload' })
-    ).not.toBeInTheDocument();
-
     fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
-      target: { value: 'Daily workflow' }
+      target: { value: 'Order workflow' }
     });
-
     fireEvent.click(screen.getByRole('button', { name: '创建应用' }));
 
     await waitFor(() => {
@@ -101,14 +74,68 @@ describe('ApplicationCreateModal', () => {
         expect.objectContaining({
           application_type: 'workflow',
           workflow_trigger_type: 'extension',
-          name: 'Daily workflow'
+          workflow_trigger_config: {
+            subpath: 'orders/create',
+            http_method: 'POST',
+            response_mode: 'sync'
+          },
+          name: 'Order workflow'
         }),
         'csrf-123'
       );
     });
-    expect(publicApi.saveWorkflowScheduleTrigger).not.toHaveBeenCalled();
-    expect(publicApi.saveApplicationApiMapping).not.toHaveBeenCalled();
     expect(onCreated).toHaveBeenCalledWith('app-workflow');
-    expect(screen.queryByText('未开放')).not.toBeInTheDocument();
+  });
+
+  test('creates schedule workflows disabled with cron configuration', async () => {
+    render(
+      <AppProviders>
+        <ApplicationCreateModal
+          open
+          csrfToken="csrf-123"
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+        />
+      </AppProviders>
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: /Workflow/i }));
+    const triggerTypeSelect = screen.getByRole('combobox', {
+      name: /workflow_trigger_type/
+    });
+    fireEvent.mouseDown(triggerTypeSelect);
+    const triggerOptions = document.querySelectorAll<HTMLElement>(
+      '.ant-select-item-option'
+    );
+    expect(triggerOptions).toHaveLength(2);
+    fireEvent.click(triggerOptions[1]);
+    const cronInput = await screen.findByRole('textbox', {
+      name: 'Cron 表达式'
+    });
+    fireEvent.change(cronInput, {
+      target: { value: '0 9 * * 1-5' }
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: '时区' }), {
+      target: { value: 'Asia/Shanghai' }
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
+      target: { value: 'Daily schedule' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '创建应用' }));
+
+    await waitFor(() => {
+      expect(applicationsApi.createApplication).toHaveBeenCalledWith(
+        expect.objectContaining({
+          application_type: 'workflow',
+          workflow_trigger_type: 'schedule',
+          workflow_trigger_config: {
+            cron: '0 9 * * 1-5',
+            timezone: 'Asia/Shanghai',
+            input_payload: {}
+          }
+        }),
+        'csrf-123'
+      );
+    });
   });
 });
