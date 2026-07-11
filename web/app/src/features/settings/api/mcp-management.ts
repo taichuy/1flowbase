@@ -2,6 +2,7 @@ import {
   createConsoleMcpInstance,
   createConsoleMcpTool,
   createConsoleMcpToolBinding,
+  deleteConsoleMcpClientCredential,
   deleteConsoleMcpGroup,
   deleteConsoleMcpInstance,
   deleteConsoleMcpTool,
@@ -10,9 +11,11 @@ import {
   exportConsoleMcpCatalog,
   exportConsoleMcpInstanceDirectory,
   fetchConsoleMcpCatalog,
+  fetchConsoleMcpClientCredential,
   fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
   refreshConsoleMcpToolDescription,
+  saveConsoleMcpClientCredential,
   updateConsoleMcpInstance,
   updateConsoleMcpInstanceDiscoveryPolicy,
   updateConsoleMcpTool,
@@ -58,6 +61,25 @@ export function fetchSettingsMcpInterfaceCapabilities() {
 
 export function fetchSettingsMcpInstanceDiscoveryPolicy(instanceId: string) {
   return fetchConsoleMcpInstanceDiscoveryPolicy(instanceId);
+}
+
+export function fetchSettingsMcpClientCredential(instanceId: string) {
+  return fetchConsoleMcpClientCredential(instanceId);
+}
+
+export function saveSettingsMcpClientCredential(
+  instanceId: string,
+  apiKey: string,
+  csrfToken: string
+) {
+  return saveConsoleMcpClientCredential(instanceId, apiKey, csrfToken);
+}
+
+export function deleteSettingsMcpClientCredential(
+  instanceId: string,
+  csrfToken: string
+) {
+  return deleteConsoleMcpClientCredential(instanceId, csrfToken);
 }
 
 export function exportSettingsMcpCatalog() {

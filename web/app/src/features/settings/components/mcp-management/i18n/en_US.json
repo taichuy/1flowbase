@@ -38,6 +38,20 @@
     "delete_list_return_field": "Delete response field {{value1}}",
     "list_return_fields_json_hint": "Supports JSON string arrays",
     "list_return_fields_array_error": "List response fields must be a string array",
-    "list_return_fields_json_error": "List response fields contain invalid JSON"
+    "list_return_fields_json_error": "List response fields contain invalid JSON",
+    "connect_client": "Connect client",
+    "client_configuration_title": "MCP client configuration",
+    "generate_api_key": "Generate API key",
+    "api_key": "API Key",
+    "complete_json_configuration": "Complete JSON configuration",
+    "copy_complete_json_configuration": "Copy complete JSON configuration",
+    "enlarge_complete_json_configuration": "Enlarge complete JSON configuration",
+    "api_key_encrypted_storage_notice": "When saving is enabled, the API key is encrypted for the current user, workspace, and MCP instance.",
+    "save_this_api_key": "Save this API key",
+    "save_api_key": "Save API key",
+    "encrypted_saved": "Encrypted and saved",
+    "delete_saved_api_key": "Delete saved API key",
+    "api_key_saved": "API key encrypted and saved",
+    "saved_api_key_deleted": "Saved API key deleted"
   }
 }

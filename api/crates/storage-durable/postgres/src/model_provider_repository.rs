@@ -26,7 +26,7 @@ use crate::{
 };
 
 mod row_mappers;
-mod secret_crypto;
+pub(crate) mod secret_crypto;
 
 use row_mappers::{
     map_catalog_cache, map_catalog_entry, map_catalog_source, map_catalog_sync_run,

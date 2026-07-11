@@ -14,6 +14,7 @@ const mcpManagementApi = vi.hoisted(() => ({
   createSettingsMcpInstance: vi.fn(),
   createSettingsMcpTool: vi.fn(),
   createSettingsMcpToolBinding: vi.fn(),
+  deleteSettingsMcpClientCredential: vi.fn(),
   deleteSettingsMcpGroup: vi.fn(),
   deleteSettingsMcpInstance: vi.fn(),
   deleteSettingsMcpTool: vi.fn(),
@@ -21,7 +22,11 @@ const mcpManagementApi = vi.hoisted(() => ({
   executeSettingsMcpToolDebug: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
   exportSettingsMcpInstanceDirectory: vi.fn(),
+  fetchSettingsMcpClientCredential: vi.fn(async () => ({
+    saved: false
+  })),
   refreshSettingsMcpToolDescription: vi.fn(),
+  saveSettingsMcpClientCredential: vi.fn(async () => ({ saved: true })),
   updateSettingsMcpInstance: vi.fn(),
   updateSettingsMcpInstanceDiscoveryPolicy: vi.fn(),
   updateSettingsMcpTool: vi.fn(),
@@ -425,6 +430,15 @@ describe('McpManagementPanel', () => {
     vi.clearAllMocks();
     vditorMock.instances.length = 0;
     window.history.replaceState({}, '', '/settings/mcp-management');
+    mcpManagementApi.fetchSettingsMcpClientCredential.mockResolvedValue({
+      saved: false
+    });
+    mcpManagementApi.saveSettingsMcpClientCredential.mockResolvedValue({
+      saved: true
+    });
+    mcpManagementApi.deleteSettingsMcpClientCredential.mockResolvedValue(
+      undefined
+    );
     mcpManagementApi.executeSettingsMcpToolDebug.mockImplementation(
       async (body: { debug_response_mode?: string; mcp_arguments: unknown }) =>
         body.debug_response_mode === 'debug_details'
@@ -1353,6 +1367,94 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
+  });
+
+  test('fills a temporary API key into a copy-ready MCP server JSON object', async () => {
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
+
+    expect(await screen.findByText('MCP 客户端配置')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      `${window.location.origin}/api/mcp/ops_mcp`
+    );
+    fireEvent.change(screen.getByLabelText('API Key'), {
+      target: { value: 'test-secret-key' }
+    });
+
+    const configuration = JSON.stringify(
+      {
+        type: 'http',
+        url: `${window.location.origin}/api/mcp/ops_mcp`,
+        headers: { Authorization: 'Bearer test-secret-key' }
+      },
+      null,
+      2
+    );
+    expect(
+      JSON.parse(screen.getByLabelText('完整 JSON 配置 JSON').textContent ?? '')
+    ).toEqual(JSON.parse(configuration));
+    expect(
+      screen.getByRole('button', { name: '复制完整 JSON 配置' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '放大查看完整 JSON 配置' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: '完整 JSON 配置' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('生成 API Key').closest('a')).toHaveAttribute(
+      'href',
+      '/settings/api-key-authentication'
+    );
+    expect(
+      within(screen.getByRole('dialog')).queryByRole('tab')
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '关 闭' }));
+    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
+    expect(await screen.findByLabelText('API Key')).toHaveValue('');
+  });
+
+  test('restores and deletes an encrypted saved MCP client API key', async () => {
+    mcpManagementApi.fetchSettingsMcpClientCredential.mockResolvedValue({
+      saved: true,
+      api_key: 'saved-secret-key'
+    });
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('API Key')).toHaveValue('saved-secret-key');
+    });
+    expect(screen.getByText('已加密保存')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /删除已保存 API Key/ }));
+
+    await waitFor(() => {
+      expect(
+        mcpManagementApi.deleteSettingsMcpClientCredential
+      ).toHaveBeenCalledWith('ops_mcp', expect.any(String));
+    });
+    expect(screen.getByLabelText('API Key')).toHaveValue('');
+  });
+
+  test('saves the MCP client API key only after the save switch is enabled', async () => {
+    renderPanelWithMountedTool();
+    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
+    fireEvent.change(await screen.findByLabelText('API Key'), {
+      target: { value: 'new-secret-key' }
+    });
+
+    fireEvent.click(screen.getByRole('switch', { name: '保存此 API Key' }));
+    fireEvent.click(screen.getByRole('button', { name: /保存 API Key/ }));
+
+    await waitFor(() => {
+      expect(
+        mcpManagementApi.saveSettingsMcpClientCredential
+      ).toHaveBeenCalledWith('ops_mcp', 'new-secret-key', expect.any(String));
+    });
+    expect(screen.getByText('已加密保存')).toBeInTheDocument();
   });
 
   test('uses Vditor instant rendering mode for full description', async () => {

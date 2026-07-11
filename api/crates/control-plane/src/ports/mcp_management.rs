@@ -111,6 +111,16 @@ pub struct UpdateMcpInstanceDiscoveryPolicyInput {
     pub list_return_fields: serde_json::Value,
 }
 
+#[derive(Debug, Clone)]
+pub struct UpsertMcpClientCredentialInput {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub instance_record_id: Uuid,
+    pub api_key: String,
+    pub master_key: String,
+}
+
 #[async_trait]
 pub trait McpManagementRepository: Send + Sync {
     async fn load_actor_context_for_user(
@@ -139,6 +149,24 @@ pub trait McpManagementRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
         instance_id: &str,
+    ) -> anyhow::Result<()>;
+
+    async fn get_mcp_client_credential(
+        &self,
+        user_id: Uuid,
+        workspace_id: Uuid,
+        instance_record_id: Uuid,
+        master_key: &str,
+    ) -> anyhow::Result<Option<String>>;
+    async fn upsert_mcp_client_credential(
+        &self,
+        input: &UpsertMcpClientCredentialInput,
+    ) -> anyhow::Result<()>;
+    async fn delete_mcp_client_credential(
+        &self,
+        user_id: Uuid,
+        workspace_id: Uuid,
+        instance_record_id: Uuid,
     ) -> anyhow::Result<()>;
 
     async fn list_mcp_groups(

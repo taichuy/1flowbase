@@ -5,6 +5,7 @@ import {
   FileOutlined,
   FolderOpenOutlined,
   FolderOutlined,
+  LinkOutlined,
   PlusOutlined,
   ReloadOutlined,
   SaveOutlined,
@@ -37,6 +38,7 @@ import {
   useState,
   type SetStateAction
 } from 'react';
+import { McpClientConfigurationModal } from './McpClientConfigurationModal';
 import type { ColumnsType } from 'antd/es/table';
 import type {
   ConsoleMcpCatalog,
@@ -128,6 +130,8 @@ export function McpInstancesTab({
   const [discardDirectoryChangesOpen, setDiscardDirectoryChangesOpen] =
     useState(false);
   const [discoveryPolicyInstance, setDiscoveryPolicyInstance] =
+    useState<ConsoleMcpInstance | null>(null);
+  const [clientConfigurationInstance, setClientConfigurationInstance] =
     useState<ConsoleMcpInstance | null>(null);
   const directorySessionDirtyRef = useRef(false);
   const pendingDirectorySessionChangeRef = useRef<(() => void) | null>(null);
@@ -860,6 +864,14 @@ export function McpInstancesTab({
               onClick={() => setDiscoveryPolicyInstance(record)}
             />
           </Tooltip>
+          <Tooltip title={i18nText('settingsMcpManagement', 'auto.connect_client')}>
+            <Button
+              aria-label={i18nText('settingsMcpManagement', 'auto.connect_client')}
+              icon={<LinkOutlined />}
+              size="small"
+              onClick={() => setClientConfigurationInstance(record)}
+            />
+          </Tooltip>
           <Popconfirm
             title={i18nText('settings', 'auto.mcp_hard_delete_confirm')}
             disabled={!canManage}
@@ -1126,6 +1138,10 @@ export function McpInstancesTab({
           onClose={() => setDiscoveryPolicyInstance(null)}
         />
       ) : null}
+      <McpClientConfigurationModal
+        instance={clientConfigurationInstance}
+        onClose={() => setClientConfigurationInstance(null)}
+      />
       {directoryModalOpen && selectedInstance ? (
         <FixedHeightModal
           open

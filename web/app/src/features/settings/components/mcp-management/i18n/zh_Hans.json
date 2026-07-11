@@ -38,6 +38,20 @@
     "delete_list_return_field": "删除返回字段 {{value1}}",
     "list_return_fields_json_hint": "支持字符串数组 JSON",
     "list_return_fields_array_error": "列表返回字段必须是字符串数组",
-    "list_return_fields_json_error": "列表返回字段 JSON 格式错误"
+    "list_return_fields_json_error": "列表返回字段 JSON 格式错误",
+    "connect_client": "连接客户端",
+    "client_configuration_title": "MCP 客户端配置",
+    "generate_api_key": "生成 API Key",
+    "api_key": "API Key",
+    "complete_json_configuration": "完整 JSON 配置",
+    "copy_complete_json_configuration": "复制完整 JSON 配置",
+    "enlarge_complete_json_configuration": "放大查看完整 JSON 配置",
+    "api_key_encrypted_storage_notice": "启用保存后，API Key 将按当前用户、工作区和 MCP 实例加密存储。",
+    "save_this_api_key": "保存此 API Key",
+    "save_api_key": "保存 API Key",
+    "encrypted_saved": "已加密保存",
+    "delete_saved_api_key": "删除已保存 API Key",
+    "api_key_saved": "API Key 已加密保存",
+    "saved_api_key_deleted": "已保存的 API Key 已删除"
   }
 }

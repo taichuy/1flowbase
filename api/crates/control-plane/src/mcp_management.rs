@@ -10,7 +10,8 @@ use crate::{
     ports::{
         CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
         McpManagementRepository, UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput,
-        UpdateMcpToolBindingInput, UpdateMcpToolInput, UpsertMcpGroupInput,
+        UpdateMcpToolBindingInput, UpdateMcpToolInput, UpsertMcpClientCredentialInput,
+        UpsertMcpGroupInput,
     },
 };
 
@@ -93,6 +94,13 @@ pub struct UpdateMcpInstanceDiscoveryPolicyCommand {
     pub list_return_fields: serde_json::Value,
 }
 
+pub struct SaveMcpClientCredentialCommand {
+    pub actor_user_id: Uuid,
+    pub instance_id: String,
+    pub api_key: String,
+    pub master_key: String,
+}
+
 pub struct McpManagementService<R> {
     repository: R,
 }
@@ -103,6 +111,69 @@ where
 {
     pub fn new(repository: R) -> Self {
         Self { repository }
+    }
+
+    pub async fn get_client_credential(
+        &self,
+        actor_user_id: Uuid,
+        instance_id: &str,
+        master_key: &str,
+    ) -> Result<Option<String>> {
+        let actor = self.authorize_view(actor_user_id).await?;
+        let instance = self
+            .repository
+            .get_mcp_instance(actor.current_workspace_id, instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
+        self.repository
+            .get_mcp_client_credential(
+                actor_user_id,
+                actor.current_workspace_id,
+                instance.id,
+                master_key,
+            )
+            .await
+    }
+
+    pub async fn save_client_credential(
+        &self,
+        command: SaveMcpClientCredentialCommand,
+    ) -> Result<()> {
+        if command.api_key.trim().is_empty() {
+            return Err(ControlPlaneError::InvalidInput("api_key").into());
+        }
+        let actor = self.authorize_manage(command.actor_user_id).await?;
+        let instance = self
+            .repository
+            .get_mcp_instance(actor.current_workspace_id, &command.instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
+        self.repository
+            .upsert_mcp_client_credential(&UpsertMcpClientCredentialInput {
+                id: Uuid::now_v7(),
+                user_id: command.actor_user_id,
+                workspace_id: actor.current_workspace_id,
+                instance_record_id: instance.id,
+                api_key: command.api_key,
+                master_key: command.master_key,
+            })
+            .await
+    }
+
+    pub async fn delete_client_credential(
+        &self,
+        actor_user_id: Uuid,
+        instance_id: &str,
+    ) -> Result<()> {
+        let actor = self.authorize_manage(actor_user_id).await?;
+        let instance = self
+            .repository
+            .get_mcp_instance(actor.current_workspace_id, instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
+        self.repository
+            .delete_mcp_client_credential(actor_user_id, actor.current_workspace_id, instance.id)
+            .await
     }
 
     pub async fn read_workspace_catalog(

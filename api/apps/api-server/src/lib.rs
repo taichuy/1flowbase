@@ -142,6 +142,7 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
         .merge(routes::application_public_api::compatible_router())
         .nest("/api/agent/v1", routes::application_public_api::router())
         .nest("/api/ex", routes::application_public_api::ex::router())
+        .nest("/api", routes::mcp_protocol::router())
         .nest("/api/console", routes::applications::router())
         .nest("/api/console", routes::application_api::router())
         .nest("/api/console", routes::application_orchestration::router())

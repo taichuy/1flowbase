@@ -5,10 +5,14 @@ use control_plane::{
     ports::{
         AuthRepository, CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
         McpManagementRepository, UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput,
-        UpdateMcpToolBindingInput, UpdateMcpToolInput, UpsertMcpGroupInput,
+        UpdateMcpToolBindingInput, UpdateMcpToolInput, UpsertMcpClientCredentialInput,
+        UpsertMcpGroupInput,
     },
 };
+use serde_json::json;
 use sqlx::Row;
+
+use crate::model_provider_repository::secret_crypto::{decrypt_secret_json, encrypt_secret_json};
 use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
@@ -183,6 +187,82 @@ impl McpManagementRepository for PgControlPlaneStore {
         .await?;
 
         row.map(map_instance).transpose()
+    }
+
+    async fn get_mcp_client_credential(
+        &self,
+        user_id: Uuid,
+        workspace_id: Uuid,
+        instance_record_id: Uuid,
+        master_key: &str,
+    ) -> Result<Option<String>> {
+        let encrypted_secret_json: Option<serde_json::Value> = sqlx::query_scalar(
+            r#"
+            select encrypted_secret_json
+            from mcp_client_credentials
+            where user_id = $1 and workspace_id = $2 and instance_record_id = $3
+            "#,
+        )
+        .bind(user_id)
+        .bind(workspace_id)
+        .bind(instance_record_id)
+        .fetch_optional(self.pool())
+        .await?;
+        let Some(encrypted_secret_json) = encrypted_secret_json else {
+            return Ok(None);
+        };
+        let secret = decrypt_secret_json(&encrypted_secret_json, master_key)?;
+        let api_key = secret
+            .get("api_key")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("missing MCP client API key"))?;
+        Ok(Some(api_key.to_string()))
+    }
+
+    async fn upsert_mcp_client_credential(
+        &self,
+        input: &UpsertMcpClientCredentialInput,
+    ) -> Result<()> {
+        let encrypted_secret_json =
+            encrypt_secret_json(&json!({ "api_key": input.api_key }), &input.master_key)?;
+        sqlx::query(
+            r#"
+            insert into mcp_client_credentials (
+                id, user_id, workspace_id, instance_record_id, encrypted_secret_json
+            ) values ($1, $2, $3, $4, $5)
+            on conflict (user_id, workspace_id, instance_record_id) do update
+            set encrypted_secret_json = excluded.encrypted_secret_json,
+                updated_at = now()
+            "#,
+        )
+        .bind(input.id)
+        .bind(input.user_id)
+        .bind(input.workspace_id)
+        .bind(input.instance_record_id)
+        .bind(encrypted_secret_json)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    async fn delete_mcp_client_credential(
+        &self,
+        user_id: Uuid,
+        workspace_id: Uuid,
+        instance_record_id: Uuid,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            delete from mcp_client_credentials
+            where user_id = $1 and workspace_id = $2 and instance_record_id = $3
+            "#,
+        )
+        .bind(user_id)
+        .bind(workspace_id)
+        .bind(instance_record_id)
+        .execute(self.pool())
+        .await?;
+        Ok(())
     }
 
     async fn create_mcp_instance(

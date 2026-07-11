@@ -8,6 +8,7 @@ pub mod frontstage;
 pub(crate) mod helpers;
 #[path = "identity/mod.rs"]
 mod identity_group;
+pub mod mcp_protocol;
 #[path = "plugins_and_models/mod.rs"]
 mod plugins_and_models_group;
 #[path = "settings/mod.rs"]

@@ -14,6 +14,11 @@ export interface ConsoleMcpInstance {
   updated_at: string;
 }
 
+export interface ConsoleMcpClientCredential {
+  saved: boolean;
+  api_key?: string;
+}
+
 export interface ConsoleMcpGroup {
   id: string;
   instance_record_id: string;
@@ -302,6 +307,44 @@ export function deleteConsoleMcpInstance(
 ) {
   return apiFetchVoid({
     path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleMcpClientCredential(
+  instanceId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpClientCredential>({
+    path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/client-credential`,
+    baseUrl
+  });
+}
+
+export function saveConsoleMcpClientCredential(
+  instanceId: string,
+  apiKey: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpClientCredential>({
+    path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/client-credential`,
+    method: 'PUT',
+    body: { api_key: apiKey },
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteConsoleMcpClientCredential(
+  instanceId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/client-credential`,
     method: 'DELETE',
     csrfToken,
     baseUrl

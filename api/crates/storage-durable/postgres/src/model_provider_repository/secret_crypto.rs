@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 const AEAD_ALGORITHM: &str = "aead_xchacha20poly1305_v1";
 const LEGACY_XOR_ALGORITHM: &str = "xor_v1";
 
-pub(super) fn encrypt_secret_json(secret_json: &Value, master_key: &str) -> Result<Value> {
+pub(crate) fn encrypt_secret_json(secret_json: &Value, master_key: &str) -> Result<Value> {
     if master_key.is_empty() {
         bail!(ControlPlaneError::InvalidInput(
             "provider_secret_master_key"
@@ -29,7 +29,7 @@ pub(super) fn encrypt_secret_json(secret_json: &Value, master_key: &str) -> Resu
     }))
 }
 
-pub(super) fn decrypt_secret_json(
+pub(crate) fn decrypt_secret_json(
     encrypted_secret_json: &Value,
     master_key: &str,
 ) -> Result<Value> {

@@ -1,4 +1,4 @@
-mod debug_execute;
+pub(crate) mod debug_execute;
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -14,7 +14,7 @@ use axum::{
 };
 use control_plane::mcp_management::{
     CreateMcpInstanceCommand, CreateMcpToolBindingCommand, CreateMcpToolCommand,
-    McpManagementService, RefreshMcpToolDescriptionCommand,
+    McpManagementService, RefreshMcpToolDescriptionCommand, SaveMcpClientCredentialCommand,
     UpdateMcpInstanceDiscoveryPolicyCommand, UpdateMcpToolBindingCommand, UpdateMcpToolCommand,
     UpsertMcpGroupCommand,
 };
@@ -50,6 +50,18 @@ pub struct McpInstanceResponse {
     pub updated_by: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SaveMcpClientCredentialBody {
+    pub api_key: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpClientCredentialResponse {
+    pub saved: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -324,6 +336,12 @@ pub fn router() -> Router<Arc<ApiState>> {
             put(update_mcp_instance).delete(delete_mcp_instance),
         )
         .route(
+            "/mcp/instances/:instance_id/client-credential",
+            get(get_mcp_client_credential)
+                .put(save_mcp_client_credential)
+                .delete(delete_mcp_client_credential),
+        )
+        .route(
             "/mcp/instances/:instance_id/groups",
             post(upsert_mcp_group).delete(delete_mcp_group),
         )
@@ -355,6 +373,60 @@ pub fn router() -> Router<Arc<ApiState>> {
             "/mcp/instances/:instance_id/discovery-policy",
             get(get_mcp_instance_discovery_policy).put(update_mcp_instance_discovery_policy),
         )
+}
+
+pub async fn get_mcp_client_credential(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(instance_id): Path<String>,
+) -> Result<Json<ApiSuccess<McpClientCredentialResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let api_key = McpManagementService::new(state.store.clone())
+        .get_client_credential(
+            context.user.id,
+            &instance_id,
+            &state.provider_secret_master_key,
+        )
+        .await?;
+    Ok(Json(ApiSuccess::new(McpClientCredentialResponse {
+        saved: api_key.is_some(),
+        api_key,
+    })))
+}
+
+pub async fn save_mcp_client_credential(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(instance_id): Path<String>,
+    Json(body): Json<SaveMcpClientCredentialBody>,
+) -> Result<Json<ApiSuccess<McpClientCredentialResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    McpManagementService::new(state.store.clone())
+        .save_client_credential(SaveMcpClientCredentialCommand {
+            actor_user_id: context.user.id,
+            instance_id,
+            api_key: body.api_key,
+            master_key: state.provider_secret_master_key.clone(),
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(McpClientCredentialResponse {
+        saved: true,
+        api_key: None,
+    })))
+}
+
+pub async fn delete_mcp_client_credential(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(instance_id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    McpManagementService::new(state.store.clone())
+        .delete_client_credential(context.user.id, &instance_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/catalog", responses((status = 200, body = McpCatalogResponse)))]
@@ -916,7 +988,7 @@ fn runtime_data_model_mcp_interface_catalog_entries(
     entries
 }
 
-async fn bindable_mcp_interface(
+pub(crate) async fn bindable_mcp_interface(
     state: &ApiState,
     actor_user_id: Uuid,
     interface_id: &str,
