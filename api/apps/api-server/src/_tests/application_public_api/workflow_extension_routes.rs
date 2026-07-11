@@ -477,7 +477,7 @@ async fn workflow_extension_sync_route_returns_workflow_end_object_without_wrapp
     let app = test_app().await;
     let (token, publication) = setup_workflow_extension_app(
         &app,
-        "open-ticket-sync",
+        "tickets/open-ticket-sync",
         "sync",
         json!([
             {
@@ -491,7 +491,7 @@ async fn workflow_extension_sync_route_returns_workflow_end_object_without_wrapp
 
     assert_eq!(
         publication["data"]["public_url"],
-        json!("/api/ex/open-ticket-sync")
+        json!("/api/ex/tickets/open-ticket-sync")
     );
 
     let response = app
@@ -499,7 +499,7 @@ async fn workflow_extension_sync_route_returns_workflow_end_object_without_wrapp
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/ex/open-ticket-sync?customer_id=C-42")
+                .uri("/api/ex/tickets/open-ticket-sync?customer_id=C-42")
                 .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),

@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use control_plane::errors::ControlPlaneError;
 use control_plane::ports::{
     ApplicationRepository, ApplicationVisibility, AuthRepository, CreateApplicationInput,
-    CreateApplicationTagInput, DeleteApplicationInput, ReplaceApplicationEnvironmentVariablesInput,
-    UpdateApplicationInput,
+    CreateApplicationTagInput, CreateWorkflowTriggerConfig, DeleteApplicationInput,
+    ReplaceApplicationEnvironmentVariablesInput, UpdateApplicationInput,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -125,6 +125,8 @@ impl ApplicationRepository for PgControlPlaneStore {
         &self,
         input: &CreateApplicationInput,
     ) -> Result<domain::ApplicationRecord> {
+        let mut tx = self.pool().begin().await?;
+        let application_id = Uuid::now_v7();
         let row = sqlx::query(
             r#"
             insert into applications (
@@ -161,7 +163,7 @@ impl ApplicationRepository for PgControlPlaneStore {
                 '[]'::jsonb as tags
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(application_id)
         .bind(input.workspace_id)
         .bind(input.application_type.as_str())
         .bind(input.workflow_trigger_type.map(|value| value.as_str()))
@@ -171,9 +173,117 @@ impl ApplicationRepository for PgControlPlaneStore {
         .bind(input.icon.as_deref())
         .bind(input.icon_background.as_deref())
         .bind(input.actor_user_id)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *tx)
         .await?;
 
+        if let Some(trigger_config) = &input.workflow_trigger_config {
+            match trigger_config {
+                CreateWorkflowTriggerConfig::Schedule {
+                    cron,
+                    timezone,
+                    input_payload,
+                } => {
+                    sqlx::query(
+                        r#"
+                        insert into workflow_schedule_triggers (
+                            id,
+                            application_id,
+                            scope_id,
+                            enabled,
+                            cron,
+                            timezone,
+                            input_payload,
+                            created_by,
+                            updated_by
+                        ) values ($1, $2, $3, false, $4, $5, $6, $7, $7)
+                        "#,
+                    )
+                    .bind(Uuid::now_v7())
+                    .bind(application_id)
+                    .bind(input.workspace_id)
+                    .bind(cron)
+                    .bind(timezone)
+                    .bind(input_payload)
+                    .bind(input.actor_user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                CreateWorkflowTriggerConfig::Extension {
+                    subpath,
+                    http_method,
+                    response_mode,
+                } => {
+                    sqlx::query(
+                        r#"
+                        insert into workflow_extension_triggers (
+                            id,
+                            application_id,
+                            scope_id,
+                            subpath,
+                            http_method,
+                            response_mode,
+                            created_by,
+                            updated_by
+                        ) values ($1, $2, $3, $4, $5, $6, $7, $7)
+                        "#,
+                    )
+                    .bind(Uuid::now_v7())
+                    .bind(application_id)
+                    .bind(input.workspace_id)
+                    .bind(subpath)
+                    .bind(http_method)
+                    .bind(response_mode)
+                    .bind(input.actor_user_id)
+                    .execute(&mut *tx)
+                    .await?;
+
+                    let mapping_config = serde_json::json!({
+                        "input": {
+                            "query_target": "node-start.query",
+                            "model_target": "node-start.model",
+                            "inputs_target": "node-start",
+                            "history_target": "node-start.history",
+                            "attachments_target": "node-start.files"
+                        },
+                        "output": {
+                            "answer_selector": null,
+                            "usage_selector": null,
+                            "files_selector": null,
+                            "error_selector": null
+                        },
+                        "extension": {
+                            "slug": subpath,
+                            "method": http_method,
+                            "response_mode": response_mode,
+                            "parameters": []
+                        }
+                    });
+                    sqlx::query(
+                        r#"
+                        insert into application_api_mappings (
+                            id,
+                            application_id,
+                            scope_id,
+                            mapping_config,
+                            extension_slug,
+                            created_by,
+                            updated_by
+                        ) values ($1, $2, $3, $4, $5, $6, $6)
+                        "#,
+                    )
+                    .bind(Uuid::now_v7())
+                    .bind(application_id)
+                    .bind(input.workspace_id)
+                    .bind(mapping_config)
+                    .bind(subpath)
+                    .bind(input.actor_user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+            }
+        }
+
+        tx.commit().await?;
         map_application_record(row)
     }
 

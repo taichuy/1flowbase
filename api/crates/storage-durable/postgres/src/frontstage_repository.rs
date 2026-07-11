@@ -38,6 +38,54 @@ fn map_frontstage_placement_error(error: sqlx::Error) -> anyhow::Error {
     error.into()
 }
 
+async fn grant_new_frontstage_page_to_auto_grant_roles(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workspace_id: Uuid,
+    page_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<()> {
+    sqlx::query(
+        r#"insert into frontstage_page_visibility_rules
+           (id, workspace_id, page_id, tab_id, role_id, visibility, created_by, updated_by)
+           select $1, $2, $3, null, roles.id, 'visible', $4, $4
+           from roles
+           where roles.workspace_id = $1 and roles.auto_grant_new_permissions = true
+           on conflict (workspace_id, page_id, role_id) where page_id is not null
+           do update set visibility = 'visible', updated_by = excluded.updated_by, updated_at = now()"#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(actor_user_id)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+async fn grant_new_frontstage_tab_to_auto_grant_roles(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workspace_id: Uuid,
+    tab_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<()> {
+    sqlx::query(
+        r#"insert into frontstage_page_visibility_rules
+           (id, workspace_id, page_id, tab_id, role_id, visibility, created_by, updated_by)
+           select $1, $2, null, $3, roles.id, 'visible', $4, $4
+           from roles
+           where roles.workspace_id = $1 and roles.auto_grant_new_permissions = true
+           on conflict (workspace_id, tab_id, role_id) where tab_id is not null
+           do update set visibility = 'visible', updated_by = excluded.updated_by, updated_at = now()"#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(tab_id)
+    .bind(actor_user_id)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
 async fn insert_frontstage_page_tab(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     input: &CreateFrontstagePageTabInput,
@@ -273,7 +321,9 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(role_code)
         .fetch_all(self.pool())
         .await?;
-        rows.into_iter().map(|row| map_frontstage_visibility_rule_row(&row)).collect()
+        rows.into_iter()
+            .map(|row| map_frontstage_visibility_rule_row(&row))
+            .collect()
     }
 
     async fn replace_frontstage_page_visibility_rules_for_role(
@@ -285,14 +335,13 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         actor_user_id: Uuid,
     ) -> Result<()> {
         let mut transaction = self.pool().begin().await?;
-        let role_id: Uuid = sqlx::query_scalar(
-            "select id from roles where workspace_id = $1 and code = $2",
-        )
-        .bind(workspace_id)
-        .bind(role_code)
-        .fetch_optional(&mut *transaction)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("role"))?;
+        let role_id: Uuid =
+            sqlx::query_scalar("select id from roles where workspace_id = $1 and code = $2")
+                .bind(workspace_id)
+                .bind(role_code)
+                .fetch_optional(&mut *transaction)
+                .await?
+                .ok_or(ControlPlaneError::NotFound("role"))?;
 
         sqlx::query(
             "delete from frontstage_page_visibility_rules where workspace_id = $1 and role_id = $2 and (page_id is not null or tab_id is not null)",
@@ -309,8 +358,13 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                    select $1, $2, pages.id, null, $3, 'visible', $4, $4
                    from frontstage_pages pages where pages.workspace_id = $2 and pages.id = $5"#,
             )
-            .bind(Uuid::now_v7()).bind(workspace_id).bind(role_id).bind(actor_user_id).bind(page_id)
-            .execute(&mut *transaction).await?;
+            .bind(Uuid::now_v7())
+            .bind(workspace_id)
+            .bind(role_id)
+            .bind(actor_user_id)
+            .bind(page_id)
+            .execute(&mut *transaction)
+            .await?;
         }
         for tab_id in tab_ids {
             sqlx::query(
@@ -319,8 +373,13 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                    select $1, $2, null, tabs.id, $3, 'visible', $4, $4
                    from frontstage_page_tabs tabs where tabs.workspace_id = $2 and tabs.id = $5"#,
             )
-            .bind(Uuid::now_v7()).bind(workspace_id).bind(role_id).bind(actor_user_id).bind(tab_id)
-            .execute(&mut *transaction).await?;
+            .bind(Uuid::now_v7())
+            .bind(workspace_id)
+            .bind(role_id)
+            .bind(actor_user_id)
+            .bind(tab_id)
+            .execute(&mut *transaction)
+            .await?;
         }
         transaction.commit().await?;
         Ok(())
@@ -468,8 +527,22 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .await
         .map_err(map_frontstage_placement_error)?;
         let page = map_frontstage_page_row(&row)?;
+        grant_new_frontstage_page_to_auto_grant_roles(
+            &mut tx,
+            input.workspace_id,
+            page.id,
+            input.actor_user_id,
+        )
+        .await?;
         let default_tab = if let Some(tab) = &input.default_tab {
             let tab = insert_frontstage_page_tab(&mut tx, tab).await?;
+            grant_new_frontstage_tab_to_auto_grant_roles(
+                &mut tx,
+                input.workspace_id,
+                tab.id,
+                input.actor_user_id,
+            )
+            .await?;
             sqlx::query(
                 r#"
                 insert into frontstage_page_schemas (
@@ -517,6 +590,13 @@ impl FrontstagePageRepository for PgControlPlaneStore {
     ) -> Result<domain::frontstage::FrontstagePageTabRecord> {
         let mut tx = self.pool().begin().await?;
         let tab = insert_frontstage_page_tab(&mut tx, input).await?;
+        grant_new_frontstage_tab_to_auto_grant_roles(
+            &mut tx,
+            input.workspace_id,
+            tab.id,
+            input.actor_user_id,
+        )
+        .await?;
         sqlx::query(
             r#"
             insert into frontstage_page_schemas (

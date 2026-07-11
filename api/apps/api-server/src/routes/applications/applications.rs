@@ -16,7 +16,7 @@ use control_plane::{
     js_dependency::{
         ApplicationJsDependencyService, ReplaceApplicationJsDependencySelectionCommand,
     },
-    ports::ApplicationEnvironmentVariableInput,
+    ports::{ApplicationEnvironmentVariableInput, CreateWorkflowTriggerConfig},
 };
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
@@ -34,11 +34,22 @@ use crate::{
 pub struct CreateApplicationBody {
     pub application_type: String,
     pub workflow_trigger_type: Option<String>,
+    pub workflow_trigger_config: Option<CreateWorkflowTriggerConfigBody>,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,
     pub icon_type: Option<String>,
     pub icon_background: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateWorkflowTriggerConfigBody {
+    pub cron: Option<String>,
+    pub timezone: Option<String>,
+    pub input_payload: Option<serde_json::Value>,
+    pub subpath: Option<String>,
+    pub http_method: Option<String>,
+    pub response_mode: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -385,6 +396,47 @@ fn parse_application_type(value: &str) -> Result<domain::ApplicationType, ApiErr
     }
 }
 
+fn parse_create_workflow_trigger_config(
+    trigger_type: Option<domain::WorkflowTriggerType>,
+    config: Option<CreateWorkflowTriggerConfigBody>,
+) -> Result<Option<CreateWorkflowTriggerConfig>, ApiError> {
+    match (trigger_type, config) {
+        (None, None) => Ok(None),
+        (None, Some(_)) => Err(ControlPlaneError::InvalidInput("workflow_trigger_config").into()),
+        (Some(domain::WorkflowTriggerType::Schedule), Some(config)) => {
+            let cron = config
+                .cron
+                .filter(|value| !value.trim().is_empty())
+                .ok_or(ControlPlaneError::InvalidInput("cron"))?;
+            let timezone = config
+                .timezone
+                .filter(|value| !value.trim().is_empty())
+                .ok_or(ControlPlaneError::InvalidInput("timezone"))?;
+            Ok(Some(CreateWorkflowTriggerConfig::Schedule {
+                cron,
+                timezone,
+                input_payload: config
+                    .input_payload
+                    .unwrap_or_else(|| serde_json::json!({})),
+            }))
+        }
+        (Some(domain::WorkflowTriggerType::Extension), Some(config)) => {
+            let subpath = config
+                .subpath
+                .filter(|value| !value.trim().is_empty())
+                .ok_or(ControlPlaneError::InvalidInput("subpath"))?;
+            let http_method = config.http_method.unwrap_or_else(|| "POST".to_string());
+            let response_mode = config.response_mode.unwrap_or_else(|| "sync".to_string());
+            Ok(Some(CreateWorkflowTriggerConfig::Extension {
+                subpath,
+                http_method,
+                response_mode,
+            }))
+        }
+        (Some(_), None) => Ok(None),
+    }
+}
+
 fn parse_workflow_trigger_type(
     application_type: domain::ApplicationType,
     value: Option<&str>,
@@ -480,6 +532,10 @@ pub async fn create_application(
             actor_user_id: context.user.id,
             application_type,
             workflow_trigger_type,
+            workflow_trigger_config: parse_create_workflow_trigger_config(
+                workflow_trigger_type,
+                body.workflow_trigger_config,
+            )?,
             name: body.name,
             description: body.description,
             icon: body.icon,

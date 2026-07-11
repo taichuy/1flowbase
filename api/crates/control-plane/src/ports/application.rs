@@ -7,11 +7,26 @@ pub enum ApplicationVisibility {
 }
 
 #[derive(Debug, Clone)]
+pub enum CreateWorkflowTriggerConfig {
+    Schedule {
+        cron: String,
+        timezone: String,
+        input_payload: serde_json::Value,
+    },
+    Extension {
+        subpath: String,
+        http_method: String,
+        response_mode: String,
+    },
+}
+
+#[derive(Debug, Clone)]
 pub struct CreateApplicationInput {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub application_type: domain::ApplicationType,
     pub workflow_trigger_type: Option<domain::WorkflowTriggerType>,
+    pub workflow_trigger_config: Option<CreateWorkflowTriggerConfig>,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,

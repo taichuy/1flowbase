@@ -1,7 +1,22 @@
+import type {
+  ConsoleWorkflowExtensionHttpMethod,
+  ConsoleWorkflowExtensionResponseMode
+} from '../application-public-api';
 import { apiFetch, apiFetchVoid } from '../transport';
 
 export type ConsoleApplicationType = 'agent_flow' | 'workflow';
 export type ConsoleWorkflowTriggerType = 'extension' | 'schedule';
+export type CreateConsoleWorkflowTriggerConfig =
+  | {
+      cron: string;
+      timezone: string;
+      input_payload: unknown;
+    }
+  | {
+      subpath: string;
+      http_method: ConsoleWorkflowExtensionHttpMethod;
+      response_mode: ConsoleWorkflowExtensionResponseMode;
+    };
 
 export interface ConsoleApplicationTag {
   id: string;
@@ -81,6 +96,7 @@ export interface ConsoleApplicationEnvironmentVariable {
 export interface CreateConsoleApplicationInput {
   application_type: ConsoleApplicationType;
   workflow_trigger_type?: ConsoleWorkflowTriggerType | null;
+  workflow_trigger_config?: CreateConsoleWorkflowTriggerConfig | null;
   name: string;
   description: string;
   icon: string | null;

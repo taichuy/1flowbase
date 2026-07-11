@@ -452,12 +452,23 @@ export function RolePermissionPanel({
           treeData={(roleFrontstageRoutesQuery.data?.tree ?? []).map(function toNode(node) {
             return {
               key: node.id,
-              title: node.slug ? `${node.title ?? '未命名'} /${node.slug}` : node.title ?? '未命名',
+              title: node.title ?? '未命名',
               children: node.children.map(toNode)
             };
           })}
-          onCheck={(value) => {
-            const keys = (Array.isArray(value) ? value : value.checked).map(String);
+          onCheck={(_, info) => {
+            const descendants: string[] = [];
+            const collectDescendants = (node: typeof info.node) => {
+              descendants.push(String(node.key));
+              node.children?.forEach(collectDescendants);
+            };
+            collectDescendants(info.node);
+            const nextKeys = new Set(localCheckedRouteIds);
+            descendants.forEach((key) => {
+              if (info.checked) nextKeys.add(key);
+              else nextKeys.delete(key);
+            });
+            const keys = Array.from(nextKeys);
             setLocalCheckedRouteIds(keys);
             replaceFrontstageRoutesMutation.mutate(keys);
           }}

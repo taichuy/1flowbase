@@ -2,7 +2,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Form, Input, Radio, Select, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 
-import type { ConsoleWorkflowTriggerType } from '@1flowbase/api-client';
+import type {
+  ConsoleWorkflowExtensionHttpMethod,
+  ConsoleWorkflowExtensionResponseMode,
+  ConsoleWorkflowTriggerType
+} from '@1flowbase/api-client';
 import { SchemaModalPanel } from '../../../shared/schema-ui/overlay-shell/SchemaModalPanel';
 import { applicationsQueryKey, createApplication } from '../api/applications';
 
@@ -33,6 +37,14 @@ interface ApplicationCreateFormValues {
   name: string;
   description: string;
   trigger_type: ConsoleWorkflowTriggerType;
+  extension_subpath: string;
+  extension_http_method: Extract<
+    ConsoleWorkflowExtensionHttpMethod,
+    'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  >;
+  extension_response_mode: ConsoleWorkflowExtensionResponseMode;
+  schedule_cron: string;
+  schedule_timezone: string;
 }
 
 const applicationCreateShell = {
@@ -57,6 +69,19 @@ export function ApplicationCreateModal({
         {
           application_type: values.application_type,
           workflow_trigger_type: isWorkflow ? values.trigger_type : null,
+          workflow_trigger_config: isWorkflow
+            ? values.trigger_type === 'schedule'
+              ? {
+                  cron: values.schedule_cron,
+                  timezone: values.schedule_timezone,
+                  input_payload: {}
+                }
+              : {
+                  subpath: values.extension_subpath,
+                  http_method: values.extension_http_method,
+                  response_mode: values.extension_response_mode
+                }
+            : null,
           name: values.name,
           description: values.description,
           icon: 'RobotOutlined',
@@ -80,6 +105,8 @@ export function ApplicationCreateModal({
     form.getFieldValue('application_type') ??
     'agent_flow';
   const isWorkflow = applicationType === 'workflow';
+  const triggerType =
+    Form.useWatch('trigger_type', form) ?? DEFAULT_WORKFLOW_TRIGGER_TYPE;
 
   return (
     <SchemaModalPanel
@@ -94,7 +121,12 @@ export function ApplicationCreateModal({
           application_type: 'agent_flow',
           name: '',
           description: '',
-          trigger_type: DEFAULT_WORKFLOW_TRIGGER_TYPE
+          trigger_type: DEFAULT_WORKFLOW_TRIGGER_TYPE,
+          extension_subpath: '',
+          extension_http_method: 'POST',
+          extension_response_mode: 'sync',
+          schedule_cron: '',
+          schedule_timezone: 'Asia/Shanghai'
         }}
         onFinish={(values) => mutation.mutate(values)}
       >
@@ -131,6 +163,83 @@ export function ApplicationCreateModal({
               }))}
             />
           </Form.Item>
+        ) : null}
+
+        {isWorkflow && triggerType === 'extension' ? (
+          <>
+            <Form.Item
+              label={t('auto.extension_subpath')}
+              name="extension_subpath"
+              rules={[
+                {
+                  required: true,
+                  message: t('auto.extension_subpath_required')
+                }
+              ]}
+            >
+              <Input placeholder="orders/create" />
+            </Form.Item>
+            <Form.Item
+              label={t('auto.http_method')}
+              name="extension_http_method"
+            >
+              <Select<
+                Extract<
+                  ConsoleWorkflowExtensionHttpMethod,
+                  'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+                >
+              >
+                options={['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(
+                  (value) => ({
+                    value,
+                    label: value
+                  })
+                )}
+              />
+            </Form.Item>
+            <Form.Item
+              label={t('auto.response_mode')}
+              name="extension_response_mode"
+            >
+              <Select<ConsoleWorkflowExtensionResponseMode>
+                options={[
+                  { value: 'sync', label: t('auto.response_mode_sync') },
+                  { value: 'async', label: t('auto.response_mode_async') }
+                ]}
+              />
+            </Form.Item>
+          </>
+        ) : null}
+
+        {isWorkflow && triggerType === 'schedule' ? (
+          <>
+            <Form.Item
+              label={t('auto.schedule_cron')}
+              name="schedule_cron"
+              rules={[
+                { required: true, message: t('auto.schedule_cron_required') }
+              ]}
+            >
+              <Input placeholder="0 9 * * 1-5" />
+            </Form.Item>
+            <Form.Item
+              label={t('auto.schedule_timezone')}
+              name="schedule_timezone"
+              rules={[
+                {
+                  required: true,
+                  message: t('auto.schedule_timezone_required')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+            <Alert
+              type="info"
+              showIcon
+              message={t('auto.schedule_disabled_hint')}
+            />
+          </>
         ) : null}
 
         <Form.Item

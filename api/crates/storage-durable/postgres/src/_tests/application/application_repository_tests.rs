@@ -107,6 +107,7 @@ async fn list_applications_scopes_rows_by_workspace_and_owner() {
     <PgControlPlaneStore as ApplicationRepository>::create_application(
         &store,
         &CreateApplicationInput {
+            workflow_trigger_config: None,
             actor_user_id: other_user_id,
             workspace_id,
             application_type: domain::ApplicationType::AgentFlow,

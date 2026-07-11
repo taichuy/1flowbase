@@ -13,10 +13,10 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         ApplicationEnvironmentVariableInput, ApplicationRepository, ApplicationVisibility,
-        CreateApplicationInput, CreateApplicationTagInput, DeleteApplicationInput,
-        JsDependencyRepository, ReplaceApplicationEnvironmentVariablesInput,
-        ReplaceApplicationJsDependencySelectionInput, ReplaceInstallationJsDependenciesInput,
-        UpdateApplicationInput,
+        CreateApplicationInput, CreateApplicationTagInput, CreateWorkflowTriggerConfig,
+        DeleteApplicationInput, JsDependencyRepository,
+        ReplaceApplicationEnvironmentVariablesInput, ReplaceApplicationJsDependencySelectionInput,
+        ReplaceInstallationJsDependenciesInput, UpdateApplicationInput,
     },
 };
 
@@ -24,6 +24,7 @@ pub struct CreateApplicationCommand {
     pub actor_user_id: Uuid,
     pub application_type: domain::ApplicationType,
     pub workflow_trigger_type: Option<domain::WorkflowTriggerType>,
+    pub workflow_trigger_config: Option<CreateWorkflowTriggerConfig>,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,
@@ -103,6 +104,7 @@ where
                     command.application_type,
                     command.workflow_trigger_type,
                 ),
+                workflow_trigger_config: command.workflow_trigger_config,
                 name: command.name,
                 description: command.description,
                 icon: command.icon,
@@ -583,6 +585,7 @@ impl InMemoryApplicationRepository {
         let application = build_application_record(
             Uuid::now_v7(),
             CreateApplicationInput {
+                workflow_trigger_config: None,
                 actor_user_id,
                 workspace_id: inner.workspace_id,
                 application_type: domain::ApplicationType::AgentFlow,

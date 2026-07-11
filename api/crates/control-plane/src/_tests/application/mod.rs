@@ -11,6 +11,7 @@ async fn create_application_requires_application_create_all() {
 
     let error = service
         .create_application(CreateApplicationCommand {
+            workflow_trigger_config: None,
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,
@@ -34,6 +35,7 @@ async fn list_applications_uses_own_scope_when_actor_lacks_all_scope() {
     ]);
     let mine = service
         .create_application(CreateApplicationCommand {
+            workflow_trigger_config: None,
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,
@@ -58,6 +60,7 @@ async fn get_application_detail_returns_public_api_template_before_configuration
     let service = ApplicationService::for_tests();
     let created = service
         .create_application(CreateApplicationCommand {
+            workflow_trigger_config: None,
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,
@@ -97,6 +100,7 @@ async fn update_application_requires_edit_permission() {
     ]);
     let created = service
         .create_application(CreateApplicationCommand {
+            workflow_trigger_config: None,
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,
@@ -132,6 +136,7 @@ async fn update_application_replaces_basic_metadata_and_tags() {
     ]);
     let created = service
         .create_application(CreateApplicationCommand {
+            workflow_trigger_config: None,
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,
@@ -177,6 +182,7 @@ async fn delete_application_requires_delete_permission() {
     ]);
     let created = service
         .create_application(CreateApplicationCommand {
+            workflow_trigger_config: None,
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,
@@ -209,6 +215,7 @@ async fn delete_application_removes_visible_record_and_writes_audit_log() {
     ]);
     let created = service
         .create_application(CreateApplicationCommand {
+            workflow_trigger_config: None,
             actor_user_id: Uuid::nil(),
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,

@@ -15,12 +15,20 @@ const rolesApi = vi.hoisted(() => ({
     roleCode,
     'data-policy'
   ]),
+  settingsRoleFrontstageRoutesQueryKey: vi.fn((roleCode: string) => [
+    'settings',
+    'roles',
+    roleCode,
+    'frontstage-routes'
+  ]),
   fetchSettingsRoles: vi.fn(),
   createSettingsRole: vi.fn(),
   updateSettingsRole: vi.fn(),
   deleteSettingsRole: vi.fn(),
   fetchSettingsRolePermissions: vi.fn(),
   replaceSettingsRolePermissions: vi.fn(),
+  fetchSettingsRoleFrontstageRoutes: vi.fn(),
+  replaceSettingsRoleFrontstageRoutes: vi.fn(),
   fetchSettingsRoleDataPolicy: vi.fn(),
   replaceSettingsRoleDataPolicy: vi.fn()
 }));
@@ -212,6 +220,37 @@ describe('RolePermissionPanel', () => {
       role_code: 'manager',
       permission_codes: []
     });
+    rolesApi.fetchSettingsRoleFrontstageRoutes.mockResolvedValue({
+      role_code: 'manager',
+      tree: [
+        {
+          id: 'root-page',
+          kind: 'group',
+          title: '工作台',
+          slug: 'pgr3083h',
+          children: [
+            {
+              id: 'child-page',
+              kind: 'page',
+              title: '页面一',
+              slug: null,
+              children: [
+                {
+                  id: 'child-tab',
+                  kind: 'tab',
+                  title: '标签一',
+                  slug: null,
+                  children: []
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      checked_page_ids: [],
+      checked_tab_ids: []
+    });
+    rolesApi.replaceSettingsRoleFrontstageRoutes.mockResolvedValue(undefined);
     rolesApi.createSettingsRole.mockResolvedValue({
       code: 'qa',
       name: 'QA',
@@ -230,6 +269,28 @@ describe('RolePermissionPanel', () => {
     dataModelsApi.fetchSettingsAllDataModels.mockResolvedValue(
       defaultDataModels()
     );
+  });
+
+  test('dynamic route tree hides slugs and checking a parent selects descendants', async () => {
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole('tab', { name: '动态路由' }));
+
+    expect(await screen.findByText('工作台')).toBeInTheDocument();
+    expect(screen.queryByText(/pgr3083h/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select 工作台' }));
+
+    await waitFor(() => {
+      expect(rolesApi.replaceSettingsRoleFrontstageRoutes).toHaveBeenCalledWith(
+        'manager',
+        {
+          page_ids: ['root-page', 'child-page'],
+          tab_ids: ['child-tab']
+        },
+        'csrf-123'
+      );
+    });
   });
 
   test(
@@ -311,6 +372,7 @@ describe('RolePermissionPanel', () => {
       screen.getAllByRole('tab').map((tab) => tab.textContent)
     ).toEqual([
       '基础通用',
+      '动态路由',
       '表-通用配置',
       '表-单独配置'
     ]);

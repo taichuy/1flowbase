@@ -35,7 +35,7 @@ struct WorkflowExtensionAcceptedResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/:slug", axum::routing::any(invoke_workflow_extension))
+    Router::new().route("/*slug", axum::routing::any(invoke_workflow_extension))
 }
 
 pub async fn invoke_workflow_extension(

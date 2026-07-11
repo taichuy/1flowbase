@@ -256,11 +256,17 @@ fn validate_extension_api_config(extension: &WorkflowExtensionApiConfig) -> Resu
 
 fn validate_extension_slug(slug: &str) -> Result<()> {
     let valid = !slug.is_empty()
-        && slug.len() <= 63
-        && slug.chars().enumerate().all(|(index, character)| {
-            character.is_ascii_lowercase()
-                || character.is_ascii_digit()
-                || (index > 0 && matches!(character, '-' | '_'))
+        && slug.len() <= 255
+        && slug.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment != "."
+                && segment != ".."
+                && segment.len() <= 63
+                && segment.chars().enumerate().all(|(index, character)| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || (index > 0 && matches!(character, '-' | '_'))
+                })
         });
 
     if valid {
