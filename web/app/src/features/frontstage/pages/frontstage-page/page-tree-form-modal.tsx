@@ -1,5 +1,5 @@
 import * as AntIcons from '@ant-design/icons';
-import { Form, Input, Modal, Popover } from 'antd';
+import { Button, Form, Input, Modal, Popover, Space } from 'antd';
 import type { FormInstance } from 'antd';
 import type { ElementType } from 'react';
 
@@ -9,6 +9,7 @@ type PageTreeFormValues = {
   title?: string;
   icon?: string;
   tooltip?: string;
+  slug?: string;
 };
 
 type PageTreeFormDialog =
@@ -21,6 +22,8 @@ type PageTreeFormDialog =
       initialTitle: string;
       initialIcon: string;
       initialTooltip: string;
+      initialSlug?: string;
+      showSlug?: boolean;
     }
   | {
       kind: 'rename';
@@ -159,6 +162,7 @@ type PageTreeFormModalProps = {
   isOperationPending: boolean;
   onCancel: () => void;
   onIconPickerOpenChange: (open: boolean) => void;
+  onRefreshSlug?: () => void;
   onSubmit: () => void;
 };
 
@@ -169,6 +173,7 @@ function PageTreeFormModal({
   isOperationPending,
   onCancel,
   onIconPickerOpenChange,
+  onRefreshSlug,
   onSubmit
 }: PageTreeFormModalProps) {
   return (
@@ -208,6 +213,28 @@ function PageTreeFormModal({
             >
               <Input autoFocus />
             </Form.Item>
+            {dialog?.kind === 'create' && dialog.showSlug ? (
+              <Form.Item label="访问路径" required>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Form.Item
+                    name="slug"
+                    noStyle
+                    rules={[
+                      {
+                        required: true,
+                        whitespace: true,
+                        message: '访问路径不能为空'
+                      }
+                    ]}
+                  >
+                    <Input aria-label="访问路径" prefix="/" />
+                  </Form.Item>
+                  <Button aria-label="刷新访问路径" onClick={onRefreshSlug}>
+                    刷新
+                  </Button>
+                </Space.Compact>
+              </Form.Item>
+            ) : null}
             <Form.Item label={i18nText("frontstage", "auto.icon")} name="icon">
               <PageTreeIconPickerField
                 iconPickerOpen={iconPickerOpen}

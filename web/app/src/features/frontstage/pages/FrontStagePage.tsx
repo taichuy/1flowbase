@@ -441,7 +441,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     pageTreeForm.setFieldsValue({
       title: pageTreeFormDialog.initialTitle,
       icon: pageTreeFormDialog.initialIcon,
-      tooltip: pageTreeFormDialog.initialTooltip
+      tooltip: pageTreeFormDialog.initialTooltip,
+      slug: pageTreeFormDialog.initialSlug
     });
   }, [pageTreeForm, pageTreeFormDialog]);
 

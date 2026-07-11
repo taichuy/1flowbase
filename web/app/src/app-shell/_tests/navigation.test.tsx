@@ -239,7 +239,7 @@ describe('Navigation', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(
-      within(dialog).getByRole('textbox', { name: '显示名称' })
+      within(dialog).getByRole('textbox', { name: '名称' })
     ).toBeInTheDocument();
     const slugInput = within(dialog).getByRole('textbox', { name: '访问路径' });
     const initialSlug = (slugInput as HTMLInputElement).value;
