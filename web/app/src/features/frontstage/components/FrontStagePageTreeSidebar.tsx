@@ -11,6 +11,7 @@ import {
   type FrontStageTreeNode
 } from '../lib/page-tree';
 import './frontstage-page-tree-sidebar.css';
+import './frontstage-add-action.css';
 import { i18nText } from '../../../shared/i18n/text';
 
 type FrontStagePageTreeSidebarProps = {
@@ -818,7 +819,7 @@ export function FrontStagePageTreeSidebar({
             aria-expanded={isAddMenuOpen}
             aria-haspopup="menu"
             aria-label={i18nText('frontstage', 'auto.add_menu')}
-            className="frontstage-page-tree-sidebar__add-item-btn"
+            className="frontstage-page-tree-sidebar__add-item-btn frontstage-add-action-button frontstage-add-action-button--full"
             disabled={isOperationPending}
             icon={<PlusOutlined />}
             onClick={() => setIsAddMenuOpen(true)}

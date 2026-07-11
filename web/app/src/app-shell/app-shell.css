@@ -29,8 +29,8 @@
   flex-wrap: nowrap;
   align-items: center;
   gap: 24px;
-  min-width: max-content;
-  flex: 1 0 auto;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .app-shell-brand {
@@ -59,16 +59,18 @@
 
 .app-shell-nav {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: nowrap;
   align-items: center;
-  min-width: max-content;
+  min-width: 0;
 }
 
 .app-shell-navigation {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: nowrap;
   align-items: center;
-  min-width: max-content;
+  min-width: 0;
 }
 
 .app-shell-menu.ant-menu-horizontal {
@@ -78,8 +80,9 @@
   gap: 12px;
   border-bottom: none !important;
   background: transparent !important;
+  flex: 1 1 auto;
   line-height: 1;
-  min-width: max-content;
+  min-width: 0;
 }
 
 .app-shell-menu.ant-menu-horizontal::after {
@@ -659,7 +662,7 @@
   flex: none;
   align-items: center;
   height: 56px;
-  padding-inline-start: 4px;
+  padding-inline-start: 8px;
 }
 
 .app-shell-topbar-designer__button.ant-btn {

@@ -14,6 +14,7 @@ import { useState } from 'react';
 
 import type { FrontstagePageTreeNode } from '../features/frontstage/api/page-tree';
 import { useFrontstagePageTreeMutations } from '../features/frontstage/hooks/use-frontstage-page-tree-mutations';
+import '../features/frontstage/components/frontstage-add-action.css';
 
 function appendRank(nodes: FrontstagePageTreeNode[]): string {
   return String((nodes.length + 1) * 1000).padStart(6, '0');
@@ -230,12 +231,14 @@ export function TopbarNavigationDesigner({
         trigger={['click']}
       >
         <Button
-          aria-label="新增顶部导航"
-          className="app-shell-topbar-designer__button"
+          aria-label="添加菜单"
+          className="app-shell-topbar-designer__button frontstage-add-action-button frontstage-add-action-button--compact"
           disabled={pending || mutations.isPending}
           icon={<PlusOutlined />}
-          type="text"
-        />
+          size="small"
+        >
+          添加菜单
+        </Button>
       </Dropdown>
       {topbarNodes.length > 0 ? (
         <Dropdown menu={{ items: manageItems }} trigger={['click']}>

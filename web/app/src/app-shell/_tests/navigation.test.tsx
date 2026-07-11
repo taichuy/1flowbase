@@ -24,6 +24,10 @@ import { AppProviders } from '../../app/AppProviders';
 import { Navigation } from '../Navigation';
 import { appI18n } from '../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../state/auth-store';
+import {
+  resetFrontstageDesignModeStore,
+  useFrontstageDesignModeStore
+} from '../../state/frontstage-design-mode-store';
 
 const primaryRouteRecords = {
   home: {
@@ -77,6 +81,7 @@ function renderNavigation(pathname: string) {
 describe('Navigation', () => {
   beforeEach(async () => {
     await appI18n.changeLanguage('zh_Hans');
+    resetFrontstageDesignModeStore();
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockReset();
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
       consoleNavigationForPrimaryRoutes([
@@ -146,6 +151,34 @@ describe('Navigation', () => {
     expect(within(nav).queryByRole('link', { name: '内部页面' })).not.toBeInTheDocument();
     expect(within(nav).getByRole('link', { name: '工作台' })).toBeInTheDocument();
     expect(within(nav).getByRole('link', { name: '模板' })).toBeInTheDocument();
+  });
+
+  test('AC-001 and AC-002 reuse the sidebar add action and let navigation fill remaining width', async () => {
+    resetAuthStore();
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-123',
+      actor: {
+        id: 'actor-1',
+        account: 'developer',
+        effective_display_role: 'developer',
+        current_workspace_id: 'workspace-123'
+      },
+      me: null
+    });
+    useFrontstageDesignModeStore.getState().setDesignMode(true);
+
+    renderNavigation('/frontstage');
+
+    const nav = await screen.findByRole('navigation', { name: 'Primary' });
+    expect(nav).toHaveClass('app-shell-navigation');
+    expect(within(nav).getByRole('menu')).toHaveClass('app-shell-menu');
+    expect(within(nav).getByRole('button', { name: '添加菜单' })).toHaveClass(
+      'frontstage-add-action-button',
+      'frontstage-add-action-button--compact'
+    );
+    expect(within(nav).getByRole('button', { name: '添加菜单' })).toHaveTextContent(
+      '添加菜单'
+    );
   });
 
   test('links 前台 to base frontstage path when workspace is available', async () => {
