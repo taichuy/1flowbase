@@ -37,6 +37,7 @@ import type { MeSectionKey } from '../features/me/lib/me-sections';
 import { MePage } from '../features/me/pages/MePage';
 import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import { RouteGuard } from '../routes/route-guards';
+import { SessionGuard } from '../routes/session-guard';
 import {
   FRONTSTAGE_SLUG_PAGE_PATH,
   FRONTSTAGE_SLUG_PAGE_TAB_PATH,
@@ -457,14 +458,14 @@ function FrontStageSlugRoute({
   if (pageTreeQuery.isLoading) return <RouteLoadingFallback />;
   if (!rootNode) return <NotFoundPage />;
   return (
-    <RouteGuard routeId="frontstage">
+    <SessionGuard>
       <FrontStageWorkspaceContent
         workspaceId={workspaceId}
         pageId={pageId}
         tabId={tabId}
         rootNode={rootNode}
       />
-    </RouteGuard>
+    </SessionGuard>
   );
 }
 

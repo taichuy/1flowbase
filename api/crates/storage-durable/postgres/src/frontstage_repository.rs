@@ -148,6 +148,7 @@ fn map_frontstage_visibility_rule_row(
         id: row.get("id"),
         workspace_id: row.get("workspace_id"),
         page_id: row.get("page_id"),
+        tab_id: row.get("tab_id"),
         role_id: row.get("role_id"),
         visibility,
         created_at: row.get("created_at"),
@@ -224,6 +225,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 rules.id,
                 rules.workspace_id,
                 rules.page_id,
+                rules.tab_id,
                 rules.role_id,
                 rules.visibility,
                 rules.created_at,
@@ -249,6 +251,79 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         rows.into_iter()
             .map(|row| map_frontstage_visibility_rule_row(&row))
             .collect()
+    }
+
+    async fn list_frontstage_page_visibility_rules_for_role(
+        &self,
+        workspace_id: Uuid,
+        role_code: &str,
+    ) -> Result<Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select rules.id, rules.workspace_id, rules.page_id, rules.tab_id,
+                   rules.role_id, rules.visibility, rules.created_at, rules.updated_at
+            from frontstage_page_visibility_rules rules
+            join roles on roles.id = rules.role_id and roles.workspace_id = rules.workspace_id
+            where rules.workspace_id = $1 and roles.code = $2
+              and (rules.page_id is not null or rules.tab_id is not null)
+            order by rules.page_id nulls last, rules.tab_id nulls last
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(role_code)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(|row| map_frontstage_visibility_rule_row(&row)).collect()
+    }
+
+    async fn replace_frontstage_page_visibility_rules_for_role(
+        &self,
+        workspace_id: Uuid,
+        role_code: &str,
+        page_ids: &[Uuid],
+        tab_ids: &[Uuid],
+        actor_user_id: Uuid,
+    ) -> Result<()> {
+        let mut transaction = self.pool().begin().await?;
+        let role_id: Uuid = sqlx::query_scalar(
+            "select id from roles where workspace_id = $1 and code = $2",
+        )
+        .bind(workspace_id)
+        .bind(role_code)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or(ControlPlaneError::NotFound("role"))?;
+
+        sqlx::query(
+            "delete from frontstage_page_visibility_rules where workspace_id = $1 and role_id = $2 and (page_id is not null or tab_id is not null)",
+        )
+        .bind(workspace_id)
+        .bind(role_id)
+        .execute(&mut *transaction)
+        .await?;
+
+        for page_id in page_ids {
+            sqlx::query(
+                r#"insert into frontstage_page_visibility_rules
+                   (id, workspace_id, page_id, tab_id, role_id, visibility, created_by, updated_by)
+                   select $1, $2, pages.id, null, $3, 'visible', $4, $4
+                   from frontstage_pages pages where pages.workspace_id = $2 and pages.id = $5"#,
+            )
+            .bind(Uuid::now_v7()).bind(workspace_id).bind(role_id).bind(actor_user_id).bind(page_id)
+            .execute(&mut *transaction).await?;
+        }
+        for tab_id in tab_ids {
+            sqlx::query(
+                r#"insert into frontstage_page_visibility_rules
+                   (id, workspace_id, page_id, tab_id, role_id, visibility, created_by, updated_by)
+                   select $1, $2, null, tabs.id, $3, 'visible', $4, $4
+                   from frontstage_page_tabs tabs where tabs.workspace_id = $2 and tabs.id = $5"#,
+            )
+            .bind(Uuid::now_v7()).bind(workspace_id).bind(role_id).bind(actor_user_id).bind(tab_id)
+            .execute(&mut *transaction).await?;
+        }
+        transaction.commit().await?;
+        Ok(())
     }
 
     async fn get_frontstage_page(

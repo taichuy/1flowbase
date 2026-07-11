@@ -331,6 +331,24 @@ where
             command.page_id,
         )
         .await?;
+        if !actor.is_root {
+            let pages = self
+                .repository
+                .list_frontstage_pages(command.workspace_id)
+                .await?;
+            let rules = self
+                .visibility_rules_for_actor(
+                    &actor,
+                    command.actor_user_id,
+                    command.workspace_id,
+                )
+                .await?;
+            if !FrontstagePageVisibilityContext::new(&pages, &rules)
+                .is_tab_visible(command.page_id, command.tab_id)
+            {
+                return Err(ControlPlaneError::NotFound("frontstage_page_tab").into());
+            }
+        }
 
         Ok(detail)
     }
@@ -503,9 +521,22 @@ where
             .await?;
         self.ensure_page_visible(&actor, actor_user_id, workspace_id, page_id)
             .await?;
-        self.repository
+        let tabs = self
+            .repository
             .list_frontstage_page_tabs(workspace_id, page_id)
-            .await
+            .await?;
+        if actor.is_root {
+            return Ok(tabs);
+        }
+        let pages = self.repository.list_frontstage_pages(workspace_id).await?;
+        let rules = self
+            .visibility_rules_for_actor(&actor, actor_user_id, workspace_id)
+            .await?;
+        let visibility = FrontstagePageVisibilityContext::new(&pages, &rules);
+        Ok(tabs
+            .into_iter()
+            .filter(|tab| visibility.is_tab_visible(page_id, tab.id))
+            .collect())
     }
 
     pub async fn create_page_tab(
@@ -716,7 +747,7 @@ where
             return Ok(());
         }
 
-        Err(ControlPlaneError::PermissionDenied("frontstage_page_visibility").into())
+        Err(ControlPlaneError::NotFound("frontstage_page").into())
     }
 
     async fn visibility_rules_for_actor(
@@ -849,6 +880,8 @@ struct FrontstagePageVisibilityContext {
     role_ids: HashSet<Uuid>,
     visibility_by_page_and_role:
         HashMap<(Option<Uuid>, Uuid), domain::frontstage::FrontstagePageVisibility>,
+    visibility_by_tab_and_role:
+        HashMap<(Uuid, Uuid), domain::frontstage::FrontstagePageVisibility>,
 }
 
 impl FrontstagePageVisibilityContext {
@@ -875,13 +908,22 @@ impl FrontstagePageVisibilityContext {
             .collect::<HashSet<_>>();
         let visibility_by_page_and_role = visibility_rules
             .iter()
+            .filter(|rule| rule.tab_id.is_none())
             .map(|rule| ((rule.page_id, rule.role_id), rule.visibility))
+            .collect::<HashMap<_, _>>();
+        let visibility_by_tab_and_role = visibility_rules
+            .iter()
+            .filter_map(|rule| {
+                rule.tab_id
+                    .map(|tab_id| ((tab_id, rule.role_id), rule.visibility))
+            })
             .collect::<HashMap<_, _>>();
 
         Self {
             parent_by_id,
             role_ids,
             visibility_by_page_and_role,
+            visibility_by_tab_and_role,
         }
     }
 
@@ -890,42 +932,40 @@ impl FrontstagePageVisibilityContext {
     }
 
     fn is_visible(&self, page_id: Uuid) -> bool {
-        if self.role_ids.is_empty() {
-            return false;
-        }
+        self.role_ids
+            .iter()
+            .any(|role_id| self.has_visible_ancestor_chain(page_id, *role_id))
+    }
 
+    fn is_tab_visible(&self, page_id: Uuid, tab_id: Uuid) -> bool {
         self.role_ids.iter().any(|role_id| {
-            self.nearest_visibility(page_id, *role_id)
-                == Some(domain::frontstage::FrontstagePageVisibility::Visible)
+            self.has_visible_ancestor_chain(page_id, *role_id)
+                && self.visibility_by_tab_and_role.get(&(tab_id, *role_id))
+                    == Some(&domain::frontstage::FrontstagePageVisibility::Visible)
         })
     }
 
-    fn nearest_visibility(
-        &self,
-        page_id: Uuid,
-        role_id: Uuid,
-    ) -> Option<domain::frontstage::FrontstagePageVisibility> {
+    fn has_visible_ancestor_chain(&self, page_id: Uuid, role_id: Uuid) -> bool {
         let mut current_id = Some(page_id);
         let mut visited = HashSet::new();
 
         while let Some(page_id) = current_id {
             if !visited.insert(page_id) {
-                break;
+                return false;
             }
 
-            if let Some(visibility) = self
+            if self
                 .visibility_by_page_and_role
                 .get(&(Some(page_id), role_id))
+                != Some(&domain::frontstage::FrontstagePageVisibility::Visible)
             {
-                return Some(*visibility);
+                return false;
             }
 
             current_id = self.parent_id(page_id);
         }
 
-        self.visibility_by_page_and_role
-            .get(&(None, role_id))
-            .copied()
+        true
     }
 }
 
@@ -1250,7 +1290,7 @@ mod tests {
     }
 
     #[test]
-    fn build_visible_frontstage_page_tree_applies_root_rule_to_pages() {
+    fn build_visible_frontstage_page_tree_ignores_legacy_root_rule() {
         let role_id = test_uuid(0x200);
         let page_id = test_uuid(0x10);
         let pages = vec![page_record(0x10, FrontstagePageKind::Page, None, "a")];
@@ -1268,12 +1308,12 @@ mod tests {
 
         let tree = build_visible_frontstage_page_tree(pages, &rules, &actor);
 
-        assert_eq!(tree.len(), 1);
-        assert_eq!(tree[0].page.id, page_id);
+        assert!(tree.is_empty());
+        assert!(!format!("{tree:?}").contains(&page_id.to_string()));
     }
 
     #[test]
-    fn build_visible_frontstage_page_tree_uses_nearest_ancestor_rule() {
+    fn build_visible_frontstage_page_tree_requires_visible_ancestor_chain() {
         let role_id = test_uuid(0x200);
         let hidden_group_id = test_uuid(0x10);
         let visible_page_id = test_uuid(0x20);
@@ -1309,16 +1349,8 @@ mod tests {
 
         let tree = build_visible_frontstage_page_tree(pages, &rules, &actor);
 
-        assert_eq!(tree.len(), 1);
-        assert_eq!(tree[0].page.id, hidden_group_id);
-        assert_eq!(
-            tree[0]
-                .children
-                .iter()
-                .map(|node| node.page.id)
-                .collect::<Vec<_>>(),
-            vec![visible_page_id]
-        );
+        assert!(tree.is_empty());
+        assert!(!format!("{tree:?}").contains(&visible_page_id.to_string()));
         assert!(!format!("{tree:?}").contains(&hidden_page_id.to_string()));
     }
 
@@ -1331,6 +1363,7 @@ mod tests {
             id: Uuid::now_v7(),
             workspace_id: test_uuid(0x100),
             page_id,
+            tab_id: None,
             role_id,
             visibility,
             created_at: OffsetDateTime::UNIX_EPOCH,

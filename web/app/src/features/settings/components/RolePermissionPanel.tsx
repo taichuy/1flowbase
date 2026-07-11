@@ -36,8 +36,11 @@ import {
   createSettingsRole,
   deleteSettingsRole,
   fetchSettingsRolePermissions,
+  fetchSettingsRoleFrontstageRoutes,
   fetchSettingsRoles,
   replaceSettingsRolePermissions,
+  replaceSettingsRoleFrontstageRoutes,
+  settingsRoleFrontstageRoutesQueryKey,
   settingsRolePermissionsQueryKey,
   settingsRolesQueryKey,
   updateSettingsRole,
@@ -125,6 +128,12 @@ export function RolePermissionPanel({
     queryFn: fetchSettingsPermissions
   });
 
+  const roleFrontstageRoutesQuery = useQuery({
+    queryKey: settingsRoleFrontstageRoutesQueryKey(selectedRoleCode ?? 'none'),
+    queryFn: () => fetchSettingsRoleFrontstageRoutes(selectedRoleCode ?? ''),
+    enabled: Boolean(selectedRoleCode)
+  });
+
   const rolePermissionsQuery = useQuery({
     queryKey: settingsRolePermissionsQueryKey(selectedRoleCode ?? 'none'),
     queryFn: () => fetchSettingsRolePermissions(selectedRoleCode ?? ''),
@@ -133,10 +142,18 @@ export function RolePermissionPanel({
 
   // Local state for fast UI updates
   const [localCheckedCodes, setLocalCheckedCodes] = useState<string[]>([]);
+  const [localCheckedRouteIds, setLocalCheckedRouteIds] = useState<string[]>([]);
 
   useEffect(() => {
     setLocalCheckedCodes(rolePermissionsQuery.data?.permission_codes ?? []);
   }, [rolePermissionsQuery.data?.permission_codes]);
+
+  useEffect(() => {
+    setLocalCheckedRouteIds([
+      ...(roleFrontstageRoutesQuery.data?.checked_page_ids ?? []),
+      ...(roleFrontstageRoutesQuery.data?.checked_tab_ids ?? [])
+    ]);
+  }, [roleFrontstageRoutesQuery.data]);
 
   useEffect(() => {
     if (!selectedRoleCode && rolesQuery.data?.length) {
@@ -245,6 +262,27 @@ export function RolePermissionPanel({
       // revert local state on error
       setLocalCheckedCodes(rolePermissionsQuery.data?.permission_codes ?? []);
     }
+  });
+
+  const replaceFrontstageRoutesMutation = useMutation({
+    mutationFn: async (routeIds: string[]) => {
+      if (!csrfToken || !selectedRoleCode || !roleFrontstageRoutesQuery.data)
+        throw new Error('missing selection');
+      const tabIds = new Set<string>();
+      const collectTabs = (nodes: typeof roleFrontstageRoutesQuery.data.tree) => {
+        for (const node of nodes) { if (node.kind === 'tab') tabIds.add(node.id); collectTabs(node.children); }
+      };
+      collectTabs(roleFrontstageRoutesQuery.data.tree);
+      return replaceSettingsRoleFrontstageRoutes(selectedRoleCode, {
+        page_ids: routeIds.filter((id) => !tabIds.has(id)),
+        tab_ids: routeIds.filter((id) => tabIds.has(id))
+      }, csrfToken);
+    },
+    onSuccess: () => messageApi.success('动态路由权限已更新'),
+    onError: () => setLocalCheckedRouteIds([
+      ...(roleFrontstageRoutesQuery.data?.checked_page_ids ?? []),
+      ...(roleFrontstageRoutesQuery.data?.checked_tab_ids ?? [])
+    ])
   });
 
   const createMutation = useMutation({
@@ -402,8 +440,34 @@ export function RolePermissionPanel({
       children: <div style={{ paddingBottom: 32 }} />
     };
 
+    const dynamicRouteTab = {
+      key: 'dynamic-routes',
+      label: '动态路由',
+      children: (
+        <Tree
+          checkable
+          checkStrictly
+          disabled={!canManageRoles || !selectedRole?.is_editable}
+          checkedKeys={localCheckedRouteIds}
+          treeData={(roleFrontstageRoutesQuery.data?.tree ?? []).map(function toNode(node) {
+            return {
+              key: node.id,
+              title: node.slug ? `${node.title ?? '未命名'} /${node.slug}` : node.title ?? '未命名',
+              children: node.children.map(toNode)
+            };
+          })}
+          onCheck={(value) => {
+            const keys = (Array.isArray(value) ? value : value.checked).map(String);
+            setLocalCheckedRouteIds(keys);
+            replaceFrontstageRoutesMutation.mutate(keys);
+          }}
+        />
+      )
+    };
+
     return [
       firstTab ?? fallbackGeneralTab,
+      dynamicRouteTab,
       ...(defaultDataPolicyTab ? [defaultDataPolicyTab] : []),
       ...(singleModelPolicyTab ? [singleModelPolicyTab] : []),
       ...restTabs
@@ -412,7 +476,10 @@ export function RolePermissionPanel({
     canManageRoles,
     dataPolicyFormId,
     localCheckedCodes,
+    localCheckedRouteIds,
+    replaceFrontstageRoutesMutation,
     replacePermissionsMutation,
+    roleFrontstageRoutesQuery.data,
     selectedRole,
     tabsData
   ]);

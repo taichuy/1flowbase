@@ -102,6 +102,7 @@ pub struct FrontstagePageVisibilityRuleRecord {
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub page_id: Option<Uuid>,
+    pub tab_id: Option<Uuid>,
     pub role_id: Uuid,
     pub visibility: FrontstagePageVisibility,
     pub created_at: OffsetDateTime,

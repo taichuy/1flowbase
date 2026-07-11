@@ -17,6 +17,26 @@ export interface ConsoleRolePermissions {
   permission_codes: string[];
 }
 
+export interface ConsoleRoleFrontstageRouteNode {
+  id: string;
+  kind: 'group' | 'page' | 'tab';
+  title: string | null;
+  slug: string | null;
+  children: ConsoleRoleFrontstageRouteNode[];
+}
+
+export interface ConsoleRoleFrontstageRoutes {
+  role_code: string;
+  checked_page_ids: string[];
+  checked_tab_ids: string[];
+  tree: ConsoleRoleFrontstageRouteNode[];
+}
+
+export interface ReplaceConsoleRoleFrontstageRoutesInput {
+  page_ids: string[];
+  tab_ids: string[];
+}
+
 export type ConsoleRoleDataPolicyScope = 'own' | 'scope_all' | 'system_all';
 export type ConsoleRoleDataPolicyOverrideScope =
   | ConsoleRoleDataPolicyScope
@@ -137,6 +157,31 @@ export function replaceConsoleRolePermissions(
 ): Promise<void> {
   return apiFetchVoid({
     path: `/api/console/roles/${roleCode}/permissions`,
+    method: 'PUT',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleRoleFrontstageRoutes(
+  roleCode: string,
+  baseUrl?: string
+): Promise<ConsoleRoleFrontstageRoutes> {
+  return apiFetch<ConsoleRoleFrontstageRoutes>({
+    path: `/api/console/roles/${roleCode}/frontstage-routes`,
+    baseUrl
+  });
+}
+
+export function replaceConsoleRoleFrontstageRoutes(
+  roleCode: string,
+  input: ReplaceConsoleRoleFrontstageRoutesInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<void> {
+  return apiFetchVoid({
+    path: `/api/console/roles/${roleCode}/frontstage-routes`,
     method: 'PUT',
     body: input,
     csrfToken,

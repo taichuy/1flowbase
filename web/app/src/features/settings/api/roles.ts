@@ -3,13 +3,17 @@ import {
   deleteConsoleRole,
   fetchConsoleRoleDataPolicy,
   fetchConsoleRolePermissions,
+  fetchConsoleRoleFrontstageRoutes,
   listConsoleRoles,
   replaceConsoleRoleDataPolicy,
   replaceConsoleRolePermissions,
+  replaceConsoleRoleFrontstageRoutes,
   updateConsoleRole,
   type ConsoleRole,
   type ConsoleRoleDataPolicyScope,
   type ConsoleRolePermissions,
+  type ConsoleRoleFrontstageRoutes,
+  type ReplaceConsoleRoleFrontstageRoutesInput,
   type CreateConsoleRoleInput,
   type ReplaceConsoleRolePermissionsInput,
   type UpdateConsoleRoleInput
@@ -17,6 +21,7 @@ import {
 
 export type SettingsRole = ConsoleRole;
 export type SettingsRolePermissions = ConsoleRolePermissions;
+export type SettingsRoleFrontstageRoutes = ConsoleRoleFrontstageRoutes;
 export type SettingsRoleDataPolicyScope = Exclude<
   ConsoleRoleDataPolicyScope,
   'system_all'
@@ -56,6 +61,8 @@ export interface ReplaceSettingsRoleDataPolicyInput {
 export const settingsRolesQueryKey = ['settings', 'roles'] as const;
 export const settingsRolePermissionsQueryKey = (roleCode: string) =>
   ['settings', 'roles', roleCode, 'permissions'] as const;
+export const settingsRoleFrontstageRoutesQueryKey = (roleCode: string) =>
+  ['settings', 'roles', roleCode, 'frontstage-routes'] as const;
 export const settingsRoleDataPolicyQueryKey = (roleCode: string) =>
   ['settings', 'roles', roleCode, 'data-policy'] as const;
 
@@ -108,4 +115,12 @@ export function replaceSettingsRoleDataPolicy(
   csrfToken: string
 ): Promise<void> {
   return replaceConsoleRoleDataPolicy(roleCode, input, csrfToken);
+}
+
+export function fetchSettingsRoleFrontstageRoutes(roleCode: string): Promise<SettingsRoleFrontstageRoutes> {
+  return fetchConsoleRoleFrontstageRoutes(roleCode);
+}
+
+export function replaceSettingsRoleFrontstageRoutes(roleCode: string, input: ReplaceConsoleRoleFrontstageRoutesInput, csrfToken: string): Promise<void> {
+  return replaceConsoleRoleFrontstageRoutes(roleCode, input, csrfToken);
 }

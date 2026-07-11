@@ -58,10 +58,7 @@ export function AppShellFrame({
       actions={
         <Space className="app-shell-action-row" size={20}>
           <span className="app-shell-secondary-actions">
-            <FrontstageDesignModeAction
-              pathname={pathname}
-              useRouterNavigation={useRouterLinks}
-            />
+            <FrontstageDesignModeAction />
             {secondaryActions.map((route) => (
               <span key={route.id}>
                 {route.id === 'settings' ? (
