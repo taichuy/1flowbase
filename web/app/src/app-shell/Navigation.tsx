@@ -76,9 +76,11 @@ function topbarNavigationItems({
         useRouterLinks,
         filterPlacement: false
       });
-      if (children.length > 0) {
-        items.push({ key: node.id, label, children });
-      }
+      items.push({
+        key: node.id,
+        label,
+        ...(children.length > 0 ? { children } : {})
+      });
       return items;
     }
 
