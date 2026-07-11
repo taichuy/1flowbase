@@ -7,17 +7,8 @@ import { i18nText } from '../shared/i18n/text';
 
 const DESIGN_MODE_PERMISSION = 'frontstage.page.design';
 
-function isFrontstageRoute(pathname: string) {
-  return pathname === '/frontstage' || pathname.startsWith('/frontstage/');
-}
 
-interface FrontstageDesignModeActionBaseProps {
-  pathname: string;
-}
-
-function FrontstageDesignModeActionBase({
-  pathname
-}: FrontstageDesignModeActionBaseProps) {
+function FrontstageDesignModeActionBase() {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
@@ -31,7 +22,6 @@ function FrontstageDesignModeActionBase({
     (state) => state.toggleDesignMode
   );
 
-  const isAllowedRoute = isFrontstageRoute(pathname);
   const canUseDesignMode =
     actor?.effective_display_role === 'root' ||
     Boolean(me?.permissions.includes(DESIGN_MODE_PERMISSION));
@@ -52,7 +42,7 @@ function FrontstageDesignModeActionBase({
 
   // Support reading design mode from URL query parameters (for non-SPA transition/initial page load)
   useEffect(() => {
-    if (isAllowedRoute && canUseDesignMode) {
+    if (canUseDesignMode) {
       const params = new URLSearchParams(window.location.search);
       if (params.get('design') === 'true') {
         setDesignMode(true);
@@ -61,7 +51,7 @@ function FrontstageDesignModeActionBase({
         window.history.replaceState({}, '', newUrl);
       }
     }
-  }, [isAllowedRoute, canUseDesignMode, setDesignMode]);
+  }, [canUseDesignMode, setDesignMode]);
 
   if (!canUseDesignMode) {
     return null;
@@ -107,11 +97,6 @@ function FrontstageDesignModeActionBase({
   );
 }
 
-export function FrontstageDesignModeAction({
-  pathname
-}: {
-  pathname: string;
-  useRouterNavigation?: boolean;
-}) {
-  return <FrontstageDesignModeActionBase pathname={pathname} />;
+export function FrontstageDesignModeAction() {
+  return <FrontstageDesignModeActionBase />;
 }
