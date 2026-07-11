@@ -1194,6 +1194,8 @@ pub struct ModelProviderRequestLogRecord {
     pub started_at: OffsetDateTime,
     pub first_token_at: Option<OffsetDateTime>,
     pub finished_at: Option<OffsetDateTime>,
+    pub time_to_first_token_ms: Option<i64>,
+    pub total_duration_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

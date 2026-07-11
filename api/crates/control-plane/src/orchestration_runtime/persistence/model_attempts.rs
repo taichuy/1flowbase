@@ -78,9 +78,13 @@ where
                     .to_string(),
                 request_ref: Some(projection.model_input_ref.clone()),
                 request_hash: Some(projection.model_input_hash.clone()),
-                started_at: OffsetDateTime::now_utc(),
+                started_at: parse_attempt_time(&selected_attempt, "started_at")
+                    .unwrap_or_else(OffsetDateTime::now_utc),
                 first_token_at: parse_attempt_first_token_at(&selected_attempt),
-                finished_at: Some(OffsetDateTime::now_utc()),
+                finished_at: Some(
+                    parse_attempt_time(&selected_attempt, "finished_at")
+                        .unwrap_or_else(OffsetDateTime::now_utc),
+                ),
                 status: status.to_string(),
                 failed_after_first_token: selected_attempt
                     .get("failed_after_first_token")
@@ -269,8 +273,12 @@ pub(super) fn winner_attempt_id(
 }
 
 fn parse_attempt_first_token_at(attempt: &Value) -> Option<OffsetDateTime> {
+    parse_attempt_time(attempt, "first_token_at")
+}
+
+fn parse_attempt_time(attempt: &Value, field: &str) -> Option<OffsetDateTime> {
     attempt
-        .get("first_token_at")
+        .get(field)
         .and_then(Value::as_str)
         .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok())
 }

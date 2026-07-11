@@ -56,7 +56,9 @@ pub(super) struct AttemptMetricInput<'a> {
     pub(super) error_payload: Option<&'a Value>,
     pub(super) usage: &'a ProviderUsage,
     pub(super) event_count: usize,
+    pub(super) started_at: OffsetDateTime,
     pub(super) first_token_at: Option<OffsetDateTime>,
+    pub(super) finished_at: OffsetDateTime,
     pub(super) time_to_first_token_ms: Option<u64>,
 }
 
@@ -72,7 +74,9 @@ pub(super) fn build_attempt_metric(input: AttemptMetricInput<'_>) -> Value {
         "status": input.status,
         "failed_after_first_token": input.failed_after_first_token,
         "event_count": input.event_count,
+        "started_at": offset_datetime_json(Some(input.started_at)),
         "first_token_at": offset_datetime_json(input.first_token_at),
+        "finished_at": offset_datetime_json(Some(input.finished_at)),
         "time_to_first_token_ms": input.time_to_first_token_ms,
         "usage": serde_json::to_value(input.usage).unwrap_or(Value::Null),
         "error_code": input.error_payload

@@ -309,7 +309,7 @@ impl PgControlPlaneStore {
             .get("total_count");
 
         let mut query = QueryBuilder::<Postgres>::new(
-            "select attempt_id, flow_run_id, application_name, attempt_index, provider_instance_id, provider_instance_display_name, provider_code, protocol, upstream_model_id, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, started_at, first_token_at, finished_at from model_provider_request_logs logs",
+            "select attempt_id, flow_run_id, application_name, attempt_index, provider_instance_id, provider_instance_display_name, provider_code, protocol, upstream_model_id, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms from model_provider_request_logs logs",
         );
         push_model_provider_request_log_filters(&mut query, &input);
         query
@@ -340,6 +340,8 @@ impl PgControlPlaneStore {
                 started_at: row.get("started_at"),
                 first_token_at: row.get("first_token_at"),
                 finished_at: row.get("finished_at"),
+                time_to_first_token_ms: row.get("time_to_first_token_ms"),
+                total_duration_ms: row.get("total_duration_ms"),
             })
             .collect();
         Ok(control_plane::ports::ModelProviderRequestLogsPage {

@@ -990,12 +990,8 @@ fn to_request_log_response(
         started_at: format_time(record.started_at),
         first_token_at: format_optional_time(record.first_token_at),
         finished_at: format_optional_time(record.finished_at),
-        time_to_first_token_ms: record
-            .first_token_at
-            .map(|value| (value - record.started_at).whole_milliseconds() as i64),
-        total_duration_ms: record
-            .finished_at
-            .map(|value| (value - record.started_at).whole_milliseconds() as i64),
+        time_to_first_token_ms: record.time_to_first_token_ms,
+        total_duration_ms: record.total_duration_ms,
     }
 }
 
@@ -1349,4 +1345,42 @@ pub async fn list_options(
         locale_meta,
         options,
     ))))
+}
+
+#[cfg(test)]
+mod request_log_response_tests {
+    use super::*;
+    use time::{macros::datetime, Duration};
+
+    #[test]
+    fn request_log_response_uses_persisted_duration_fields() {
+        let started_at = datetime!(2026-07-11 10:55:28 UTC);
+        let response =
+            to_request_log_response(control_plane::ports::ModelProviderRequestLogRecord {
+                attempt_id: Uuid::now_v7(),
+                flow_run_id: Uuid::now_v7(),
+                application_name: "凡人".into(),
+                attempt_index: 1,
+                provider_instance_id: None,
+                provider_instance_display_name: Some("Gemini02".into()),
+                provider_code: "gemini".into(),
+                protocol: "google_genai".into(),
+                upstream_model_id: "gemini-3-flash".into(),
+                reasoning_effort: None,
+                status: "succeeded".into(),
+                error_code: None,
+                failed_after_first_token: false,
+                input_tokens: Some(3),
+                output_tokens: Some(191),
+                total_tokens: Some(194),
+                started_at,
+                first_token_at: Some(started_at - Duration::milliseconds(6076)),
+                finished_at: Some(started_at),
+                time_to_first_token_ms: Some(3350),
+                total_duration_ms: Some(7426),
+            });
+
+        assert_eq!(response.time_to_first_token_ms, Some(3350));
+        assert_eq!(response.total_duration_ms, Some(7426));
+    }
 }

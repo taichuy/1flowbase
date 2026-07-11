@@ -977,6 +977,7 @@ where
             &invocation.input,
         );
         if invocation.input.messages.is_empty() {
+            let attempt_finished_at = OffsetDateTime::now_utc();
             let error_payload = build_empty_prompt_messages_error_payload(attempt_runtime);
             let attempt = build_attempt_metric(AttemptMetricInput {
                 attempt_index,
@@ -986,7 +987,9 @@ where
                 error_payload: Some(&error_payload),
                 usage: &ProviderUsage::default(),
                 event_count: 0,
+                started_at: attempt_finished_at,
                 first_token_at: None,
+                finished_at: attempt_finished_at,
                 time_to_first_token_ms: None,
             });
             attempt_metrics.push(attempt);
@@ -1013,9 +1016,11 @@ where
             );
         }
         let invocation_tools = invocation.input.tools.clone();
+        let attempt_started_at = OffsetDateTime::now_utc();
         let mut output = match invoker.invoke_llm(attempt_runtime, invocation.input).await {
             Ok(output) => output,
             Err(error) => {
+                let attempt_finished_at = OffsetDateTime::now_utc();
                 let provider_error = provider_runtime_error_from_anyhow(&error);
                 let error_payload = build_provider_error_payload(attempt_runtime, &provider_error);
                 let attempt = build_attempt_metric(AttemptMetricInput {
@@ -1026,7 +1031,9 @@ where
                     error_payload: Some(&error_payload),
                     usage: &ProviderUsage::default(),
                     event_count: 0,
+                    started_at: attempt_started_at,
                     first_token_at: None,
+                    finished_at: attempt_finished_at,
                     time_to_first_token_ms: None,
                 });
                 attempt_metrics.push(attempt.clone());
@@ -1057,6 +1064,7 @@ where
                 );
             }
         };
+        let attempt_finished_at = OffsetDateTime::now_utc();
         canonicalize_provider_output_tool_call_names(&mut output, &invocation_tools);
 
         let usage = collect_usage(&output.events, &output.result.usage);
@@ -1099,7 +1107,9 @@ where
             error_payload: error_payload.as_ref(),
             usage: &usage,
             event_count: output.events.len(),
+            started_at: attempt_started_at,
             first_token_at: output.first_token_at,
+            finished_at: attempt_finished_at,
             time_to_first_token_ms: output.time_to_first_token_ms,
         });
         attempt_metrics.push(attempt.clone());
