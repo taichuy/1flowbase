@@ -12,7 +12,15 @@
 }
 
 .model-provider-request-logs-panel__toolbar {
+  display: flex;
   flex: 0 0 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.model-provider-request-logs-panel__filters,
+.model-provider-request-logs-panel__actions {
   min-width: 0;
 }
 

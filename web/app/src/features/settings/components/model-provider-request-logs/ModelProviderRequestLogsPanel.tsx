@@ -174,90 +174,98 @@ export function ModelProviderRequestLogsPanel() {
 
   return (
     <section className="model-provider-request-logs-panel">
-      <Flex
-        className="model-provider-request-logs-panel__toolbar"
-        gap={12}
-        wrap
-      >
-        <Input
-          aria-label={i18nText('settings', 'auto.request_log_application')}
-          placeholder={i18nText('settings', 'auto.request_log_application')}
-          value={applicationName}
-          onChange={(event) => {
-            setPage(1);
-            setApplicationName(event.target.value);
-          }}
-          style={{ width: 240 }}
-        />
-        <Input
-          aria-label={i18nText('settings', 'auto.provider_instance_id')}
-          placeholder={i18nText('settings', 'auto.provider_instance_id')}
-          value={providerInstanceId}
-          onChange={(event) => {
-            setPage(1);
-            setProviderInstanceId(event.target.value);
-          }}
-          style={{ width: 240 }}
-        />
-        <Input
-          aria-label={i18nText('settings', 'auto.request_log_model')}
-          placeholder={i18nText('settings', 'auto.request_log_model')}
-          value={modelId}
-          onChange={(event) => {
-            setPage(1);
-            setModelId(event.target.value);
-          }}
-          style={{ width: 180 }}
-        />
-        <Select
-          aria-label={i18nText('settings', 'auto.status')}
-          allowClear
-          placeholder={i18nText('settings', 'auto.status')}
-          value={status}
-          onChange={(value) => {
-            setPage(1);
-            setStatus(value);
-          }}
-          style={{ width: 160 }}
-          options={[
-            {
-              label: i18nText('settings', 'auto.request_log_succeeded'),
-              value: 'succeeded'
-            },
-            {
-              label: i18nText('settings', 'auto.request_log_empty_response'),
-              value: 'empty_response'
-            },
-            {
-              label: i18nText('settings', 'auto.request_log_failed'),
-              value: 'failed'
-            },
-            {
-              label: i18nText(
-                'settings',
-                'auto.request_log_failed_after_first_token'
-              ),
-              value: 'failed_after_first_token'
-            }
-          ]}
-        />
-        <Checkbox
-          checked={zeroOutputOnly}
-          onChange={(event) => {
-            setPage(1);
-            setZeroOutputOnly(event.target.checked);
-          }}
+      <div className="model-provider-request-logs-panel__toolbar">
+        <Flex
+          className="model-provider-request-logs-panel__filters"
+          gap={12}
+          wrap
         >
-          {i18nText('settings', 'auto.request_log_zero_output_only')}
-        </Checkbox>
-        <Button onClick={() => requestLogsQuery.refetch()}>
-          {i18nText('settings', 'auto.refresh')}
-        </Button>
-        <DataTableColumnSettings
-          columns={columns}
-          configuration={tableConfiguration}
-        />
-      </Flex>
+          <Input
+            aria-label={i18nText('settings', 'auto.request_log_application')}
+            placeholder={i18nText('settings', 'auto.request_log_application')}
+            value={applicationName}
+            onChange={(event) => {
+              setPage(1);
+              setApplicationName(event.target.value);
+            }}
+            style={{ width: 240 }}
+          />
+          <Input
+            aria-label={i18nText('settings', 'auto.provider_instance_id')}
+            placeholder={i18nText('settings', 'auto.provider_instance_id')}
+            value={providerInstanceId}
+            onChange={(event) => {
+              setPage(1);
+              setProviderInstanceId(event.target.value);
+            }}
+            style={{ width: 240 }}
+          />
+          <Input
+            aria-label={i18nText('settings', 'auto.request_log_model')}
+            placeholder={i18nText('settings', 'auto.request_log_model')}
+            value={modelId}
+            onChange={(event) => {
+              setPage(1);
+              setModelId(event.target.value);
+            }}
+            style={{ width: 180 }}
+          />
+          <Select
+            aria-label={i18nText('settings', 'auto.status')}
+            allowClear
+            placeholder={i18nText('settings', 'auto.status')}
+            value={status}
+            onChange={(value) => {
+              setPage(1);
+              setStatus(value);
+            }}
+            style={{ width: 160 }}
+            options={[
+              {
+                label: i18nText('settings', 'auto.request_log_succeeded'),
+                value: 'succeeded'
+              },
+              {
+                label: i18nText('settings', 'auto.request_log_empty_response'),
+                value: 'empty_response'
+              },
+              {
+                label: i18nText('settings', 'auto.request_log_failed'),
+                value: 'failed'
+              },
+              {
+                label: i18nText(
+                  'settings',
+                  'auto.request_log_failed_after_first_token'
+                ),
+                value: 'failed_after_first_token'
+              }
+            ]}
+          />
+        </Flex>
+        <Flex
+          className="model-provider-request-logs-panel__actions"
+          gap={12}
+          wrap
+        >
+          <Checkbox
+            checked={zeroOutputOnly}
+            onChange={(event) => {
+              setPage(1);
+              setZeroOutputOnly(event.target.checked);
+            }}
+          >
+            {i18nText('settings', 'auto.request_log_zero_output_only')}
+          </Checkbox>
+          <Button onClick={() => requestLogsQuery.refetch()}>
+            {i18nText('settings', 'auto.refresh')}
+          </Button>
+          <DataTableColumnSettings
+            columns={columns}
+            configuration={tableConfiguration}
+          />
+        </Flex>
+      </div>
       <div className="model-provider-request-logs-panel__table-region">
         <DataTable<ConsoleModelProviderRequestLog>
           className="model-provider-request-logs-table"

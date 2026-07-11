@@ -53,6 +53,16 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
   expect(
     screen.getByRole('combobox', { name: '字段配置' })
   ).toBeInTheDocument();
+  expect(
+    screen
+      .getByRole('textbox', { name: '应用' })
+      .closest('.model-provider-request-logs-panel__filters')
+  ).not.toBeNull();
+  expect(
+    screen
+      .getByRole('button', { name: /刷\s*新/ })
+      .closest('.model-provider-request-logs-panel__actions')
+  ).not.toBeNull();
   expect(screen.getByText('空响应')).toBeInTheDocument();
   expect(screen.getByText('Gemini A')).toBeInTheDocument();
   expect(screen.getByText('5.00 s')).toBeInTheDocument();
