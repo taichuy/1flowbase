@@ -1,6 +1,7 @@
 mod binding_runtime_tests;
 mod code_executor_capability_tests;
 mod code_runtime_tests;
+mod compiled_plan_compatibility_tests;
 mod compiler_tests;
 mod execution_engine_tests;
 mod llm_prompt_messages_validation_tests;
