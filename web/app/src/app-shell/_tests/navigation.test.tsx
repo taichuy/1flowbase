@@ -173,15 +173,7 @@ describe('Navigation', () => {
         title: '新增菜单',
         kind: 'group',
         placement: 'topbar',
-        children: [
-          {
-            id: 'page-test',
-            title: '测试',
-            kind: 'page',
-            placement: 'sidebar',
-            children: []
-          }
-        ]
+        children: []
       }
     ]);
 
