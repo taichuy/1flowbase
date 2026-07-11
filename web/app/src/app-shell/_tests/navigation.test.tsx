@@ -117,7 +117,7 @@ describe('Navigation', () => {
             id: 'page-sales',
             title: '销售看板',
             kind: 'page',
-            placement: 'topbar',
+            placement: 'sidebar',
             children: []
           }
         ]
@@ -167,7 +167,25 @@ describe('Navigation', () => {
     });
     useFrontstageDesignModeStore.getState().setDesignMode(true);
 
-    renderNavigation('/frontstage');
+    frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([
+      {
+        id: 'group-new',
+        title: '新增菜单',
+        kind: 'group',
+        placement: 'topbar',
+        children: [
+          {
+            id: 'page-test',
+            title: '测试',
+            kind: 'page',
+            placement: 'sidebar',
+            children: []
+          }
+        ]
+      }
+    ]);
+
+    renderNavigation('/templates');
 
     const nav = await screen.findByRole('navigation', { name: 'Primary' });
     expect(nav).toHaveClass('app-shell-navigation');
@@ -179,6 +197,15 @@ describe('Navigation', () => {
     expect(within(nav).getByRole('button', { name: '添加菜单' })).toHaveTextContent(
       '添加菜单'
     );
+    await within(nav).findByRole('menuitem', { name: '新增菜单' });
+    const topLevelItems = within(nav).getAllByRole('menuitem');
+    expect(topLevelItems.map((item) => item.textContent)).toEqual([
+      '工作台',
+      '前台',
+      '子系统',
+      '模板',
+      '新增菜单'
+    ]);
   });
 
   test('links 前台 to base frontstage path when workspace is available', async () => {

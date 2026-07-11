@@ -28,14 +28,15 @@ interface ConsolePrimaryNavigationRoute {
 }
 
 function topbarPageRoutes(
-  nodes: FrontstagePageTreeNode[]
+  nodes: FrontstagePageTreeNode[],
+  filterPlacement = true
 ): ConsolePrimaryNavigationRoute[] {
   return nodes.flatMap((node) => {
-    if (node.placement !== 'topbar') {
+    if (filterPlacement && node.placement !== 'topbar') {
       return [];
     }
 
-    const descendants = topbarPageRoutes(node.children);
+    const descendants = topbarPageRoutes(node.children, false);
     if (node.kind !== 'page') {
       return descendants;
     }
@@ -54,14 +55,16 @@ function topbarPageRoutes(
 function topbarNavigationItems({
   nodes,
   pathname,
-  useRouterLinks
+  useRouterLinks,
+  filterPlacement = true
 }: {
   nodes: FrontstagePageTreeNode[];
   pathname: string;
   useRouterLinks: boolean;
+  filterPlacement?: boolean;
 }): ItemType[] {
   return nodes.reduce<ItemType[]>((items, node) => {
-    if (node.placement !== 'topbar') {
+    if (filterPlacement && node.placement !== 'topbar') {
       return items;
     }
 
@@ -70,7 +73,8 @@ function topbarNavigationItems({
       const children = topbarNavigationItems({
         nodes: node.children,
         pathname,
-        useRouterLinks
+        useRouterLinks,
+        filterPlacement: false
       });
       if (children.length > 0) {
         items.push({ key: node.id, label, children });
@@ -245,9 +249,7 @@ export function Navigation({
         items={items}
         disabledOverflow
       />
-      {isDesignMode &&
-      workspaceId &&
-      (pathname === '/frontstage' || pathname.startsWith('/frontstage/')) ? (
+      {isDesignMode && workspaceId ? (
         <TopbarNavigationDesigner
           workspaceId={workspaceId}
           nodes={frontstageNavigationQuery.data ?? []}
