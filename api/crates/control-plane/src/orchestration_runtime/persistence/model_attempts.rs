@@ -2,7 +2,7 @@ use crate::ports::ProviderRequestLogTask;
 
 use super::*;
 
-pub(super) async fn append_model_attempts_from_metrics<R>(
+pub(in crate::orchestration_runtime) async fn append_model_attempts_from_metrics<R>(
     repository: &R,
     flow_run_id: Uuid,
     node_run_id: Uuid,
@@ -263,7 +263,7 @@ pub(super) fn provider_request_log_task_from_attempt(
     }
 }
 
-pub(super) fn winner_attempt_id(
+pub(in crate::orchestration_runtime) fn winner_attempt_id(
     attempts: &[domain::ModelFailoverAttemptLedgerRecord],
 ) -> Option<Uuid> {
     attempts
