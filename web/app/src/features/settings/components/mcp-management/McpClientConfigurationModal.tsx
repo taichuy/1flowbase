@@ -1,18 +1,6 @@
 import { DeleteOutlined, KeyOutlined, SaveOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Alert,
-  App,
-  Button,
-  Flex,
-  Form,
-  Input,
-  Modal,
-  Space,
-  Switch,
-  Tag,
-  Typography
-} from 'antd';
+import { Alert, App, Button, Form, Input, Modal, Space } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 
 import type { ConsoleMcpInstance } from '@1flowbase/api-client';
@@ -46,7 +34,6 @@ export function McpClientConfigurationModal({
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [apiKey, setApiKey] = useState('');
-  const [saveEnabled, setSaveEnabled] = useState(false);
   const [saved, setSaved] = useState(false);
   const credentialQueryKey = [
     'settings',
@@ -63,7 +50,6 @@ export function McpClientConfigurationModal({
   useEffect(() => {
     if (!instance) {
       setApiKey('');
-      setSaveEnabled(false);
       setSaved(false);
       return;
     }
@@ -82,7 +68,6 @@ export function McpClientConfigurationModal({
         api_key: apiKey
       });
       setSaved(true);
-      setSaveEnabled(false);
       message.success(i18nText('settingsMcpManagement', 'auto.api_key_saved'));
     }
   });
@@ -93,7 +78,6 @@ export function McpClientConfigurationModal({
       queryClient.setQueryData(credentialQueryKey, { saved: false });
       setApiKey('');
       setSaved(false);
-      setSaveEnabled(false);
       message.success(
         i18nText('settingsMcpManagement', 'auto.saved_api_key_deleted')
       );
@@ -109,7 +93,6 @@ export function McpClientConfigurationModal({
   );
   const closeModal = () => {
     setApiKey('');
-    setSaveEnabled(false);
     onClose();
   };
 
@@ -121,9 +104,31 @@ export function McpClientConfigurationModal({
       )}
       open={Boolean(instance)}
       onCancel={closeModal}
-      footer={
-        <Button onClick={closeModal}>{i18nText('settings', 'auto.off')}</Button>
-      }
+      footer={[
+        <Button key="close" onClick={closeModal}>
+          {i18nText('settings', 'auto.off')}
+        </Button>,
+        <Button
+          key="delete"
+          danger
+          icon={<DeleteOutlined />}
+          disabled={!saved}
+          loading={deleteMutation.isPending}
+          onClick={() => deleteMutation.mutate()}
+        >
+          {i18nText('settingsMcpManagement', 'auto.clear_credential')}
+        </Button>,
+        <Button
+          key="save"
+          type="primary"
+          icon={<SaveOutlined />}
+          disabled={!apiKey.trim()}
+          loading={saveMutation.isPending}
+          onClick={() => saveMutation.mutate()}
+        >
+          {i18nText('settingsMcpManagement', 'auto.save_api_key')}
+        </Button>
+      ]}
       width={720}
       destroyOnHidden
     >
@@ -154,46 +159,6 @@ export function McpClientConfigurationModal({
             />
           </Form.Item>
         </Form>
-        <Flex align="center" justify="space-between" gap="middle" wrap>
-          <Space>
-            <Switch
-              aria-label={i18nText(
-                'settingsMcpManagement',
-                'auto.save_this_api_key'
-              )}
-              checked={saveEnabled}
-              onChange={setSaveEnabled}
-            />
-            <Typography.Text>
-              {i18nText('settingsMcpManagement', 'auto.save_this_api_key')}
-            </Typography.Text>
-            {saved ? (
-              <Tag color="green">
-                {i18nText('settingsMcpManagement', 'auto.encrypted_saved')}
-              </Tag>
-            ) : null}
-          </Space>
-          <Space>
-            <Button
-              icon={<SaveOutlined />}
-              disabled={!saveEnabled || !apiKey.trim()}
-              loading={saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}
-            >
-              {i18nText('settingsMcpManagement', 'auto.save_api_key')}
-            </Button>
-            {saved ? (
-              <Button
-                danger
-                icon={<DeleteOutlined />}
-                loading={deleteMutation.isPending}
-                onClick={() => deleteMutation.mutate()}
-              >
-                {i18nText('settingsMcpManagement', 'auto.delete_saved_api_key')}
-              </Button>
-            ) : null}
-          </Space>
-        </Flex>
         <JsonPreviewBlock
           collapsible={false}
           copyAriaLabel={i18nText(

@@ -47,10 +47,8 @@
     "copy_complete_json_configuration": "Copy complete JSON configuration",
     "enlarge_complete_json_configuration": "Enlarge complete JSON configuration",
     "api_key_encrypted_storage_notice": "When saving is enabled, the API key is encrypted for the current user, workspace, and MCP instance.",
-    "save_this_api_key": "Save this API key",
-    "save_api_key": "Save API key",
-    "encrypted_saved": "Encrypted and saved",
-    "delete_saved_api_key": "Delete saved API key",
+    "save_api_key": "Save",
+    "clear_credential": "Clear credential",
     "api_key_saved": "API key encrypted and saved",
     "saved_api_key_deleted": "Saved API key deleted"
   }

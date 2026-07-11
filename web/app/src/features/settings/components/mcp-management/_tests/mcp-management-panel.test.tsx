@@ -1416,7 +1416,7 @@ describe('McpManagementPanel', () => {
     expect(await screen.findByLabelText('API Key')).toHaveValue('');
   });
 
-  test('restores and deletes an encrypted saved MCP client API key', async () => {
+  test('restores and clears a saved MCP client credential without a status badge', async () => {
     mcpManagementApi.fetchSettingsMcpClientCredential.mockResolvedValue({
       saved: true,
       api_key: 'saved-secret-key'
@@ -1428,8 +1428,8 @@ describe('McpManagementPanel', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('API Key')).toHaveValue('saved-secret-key');
     });
-    expect(screen.getByText('已加密保存')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /删除已保存 API Key/ }));
+    expect(screen.queryByText('已加密保存')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /清除认证/ }));
 
     await waitFor(() => {
       expect(
@@ -1439,22 +1439,43 @@ describe('McpManagementPanel', () => {
     expect(screen.getByLabelText('API Key')).toHaveValue('');
   });
 
-  test('saves the MCP client API key only after the save switch is enabled', async () => {
+  test('saves the MCP client API key from the modal footer without a switch', async () => {
     renderPanelWithMountedTool();
     fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
     fireEvent.change(await screen.findByLabelText('API Key'), {
       target: { value: 'new-secret-key' }
     });
 
-    fireEvent.click(screen.getByRole('switch', { name: '保存此 API Key' }));
-    fireEvent.click(screen.getByRole('button', { name: /保存 API Key/ }));
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    const footer = dialog.querySelector('.ant-modal-footer');
+    expect(footer).not.toBeNull();
+    const closeButton = within(footer as HTMLElement).getByRole('button', {
+      name: /关\s*闭/
+    });
+    const clearButton = within(footer as HTMLElement).getByRole('button', {
+      name: /清除认证/
+    });
+    const saveButton = within(footer as HTMLElement).getByRole('button', {
+      name: /保存$/
+    });
+    expect(
+      closeButton.compareDocumentPosition(clearButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      clearButton.compareDocumentPosition(saveButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(saveButton).toHaveClass('ant-btn-primary');
+    fireEvent.click(screen.getByRole('button', { name: /保存$/ }));
 
     await waitFor(() => {
       expect(
         mcpManagementApi.saveSettingsMcpClientCredential
       ).toHaveBeenCalledWith('ops_mcp', 'new-secret-key', expect.any(String));
     });
-    expect(screen.getByText('已加密保存')).toBeInTheDocument();
+    expect(screen.queryByText('已加密保存')).not.toBeInTheDocument();
   });
 
   test('uses Vditor instant rendering mode for full description', async () => {
