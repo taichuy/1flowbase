@@ -1,0 +1,45 @@
+.frontstage-node-action-button.ant-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 14px !important;
+  min-width: 14px !important;
+  height: 14px !important;
+  padding: 0 !important;
+  color: #ffffff !important;
+  line-height: 0 !important;
+  vertical-align: middle !important;
+  background: #3b82f6 !important;
+  border: none !important;
+  border-radius: 3px !important;
+  box-shadow: 0 1px 2px rgba(59, 130, 246, 0.15);
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    transform 100ms ease;
+}
+
+.frontstage-node-action-button.ant-btn:hover {
+  color: #ffffff !important;
+  background: #2563eb !important;
+  transform: scale(1.05);
+}
+
+.frontstage-node-action-button.ant-btn:active {
+  color: #ffffff !important;
+  background: #1d4ed8 !important;
+  transform: scale(0.95);
+}
+
+.frontstage-node-action-button.ant-btn .anticon,
+.frontstage-node-action-button.ant-btn > span {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: #ffffff !important;
+  font-size: 8px !important;
+  line-height: 1 !important;
+  vertical-align: 0 !important;
+}

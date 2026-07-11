@@ -681,18 +681,3 @@
   align-items: center;
   gap: 2px;
 }
-
-.app-shell-dynamic-nav-item__action.ant-btn {
-  width: 22px;
-  min-width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 5px;
-  color: #fff !important;
-  background: var(--color-primary, #1677ff) !important;
-}
-
-.app-shell-dynamic-nav-item__action.ant-btn:hover {
-  color: #fff !important;
-  background: var(--color-primary-hover, #4096ff) !important;
-}

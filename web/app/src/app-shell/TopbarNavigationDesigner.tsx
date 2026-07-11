@@ -2,6 +2,7 @@ import {
   ArrowDownOutlined,
   ArrowUpOutlined,
   DeleteOutlined,
+  DragOutlined,
   EditOutlined,
   FileAddOutlined,
   FolderAddOutlined,
@@ -12,6 +13,7 @@ import { App, Button, Dropdown, Form, Space } from 'antd';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import type { FrontstagePageTreeNode } from '../features/frontstage/api/page-tree';
+import { FrontstageNodeActionButton } from '../features/frontstage/components/FrontstageNodeActionButton';
 import { useFrontstagePageTreeMutations } from '../features/frontstage/hooks/use-frontstage-page-tree-mutations';
 import {
   PageTreeFormModal,
@@ -119,12 +121,9 @@ export function TopbarNavigationItemLabel({
           }}
           trigger={['click']}
         >
-          <Button
+          <FrontstageNodeActionButton
             aria-label={`排序${node.title ?? '顶部栏目'}`}
-            className="app-shell-dynamic-nav-item__action"
-            icon={<PlusOutlined />}
-            size="small"
-            type="text"
+            icon={<DragOutlined />}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -160,12 +159,9 @@ export function TopbarNavigationItemLabel({
           }}
           trigger={['click']}
         >
-          <Button
+          <FrontstageNodeActionButton
             aria-label={`配置${node.title ?? '顶部栏目'}`}
-            className="app-shell-dynamic-nav-item__action"
             icon={<MenuOutlined />}
-            size="small"
-            type="text"
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();

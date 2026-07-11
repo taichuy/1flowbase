@@ -10,6 +10,7 @@ import {
   findNodeById,
   type FrontStageTreeNode
 } from '../lib/page-tree';
+import { FrontstageNodeActionButton } from './FrontstageNodeActionButton';
 import './frontstage-page-tree-sidebar.css';
 import './frontstage-add-action.css';
 import { i18nText } from '../../../shared/i18n/text';
@@ -592,9 +593,8 @@ function renderTreeNode({
               onClick={(e) => e.stopPropagation()}
             >
               <Tooltip title={i18nText('frontstage', 'auto.drag_sort_hint')}>
-                <Button
+                <FrontstageNodeActionButton
                   aria-label={i18nText('frontstage', 'auto.drag_move_node')}
-                  className="frontstage-page-tree-sidebar__drag-handle"
                   disabled={isOperationPending}
                   draggable={!isOperationPending}
                   icon={<DragOutlined />}
@@ -623,9 +623,8 @@ function renderTreeNode({
                 trigger={['click']}
                 placement="bottomRight"
               >
-                <Button
+                <FrontstageNodeActionButton
                   aria-label={i18nText('frontstage', 'auto.page_action_menu')}
-                  className="frontstage-page-tree-sidebar__more-trigger"
                   disabled={isOperationPending}
                   icon={<MenuOutlined />}
                   size="small"
