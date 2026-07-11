@@ -672,12 +672,34 @@
 .app-shell-dynamic-nav-item {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 76px;
   height: 100%;
+  padding-inline: 4px;
+}
+
+.app-shell-dynamic-nav-item > .app-shell-menu-link {
+  flex: 1 1 auto;
+  min-width: 20px;
+  justify-content: flex-start;
 }
 
 .app-shell-dynamic-nav-item__actions {
   display: inline-flex;
+  flex: 0 0 30px;
   align-items: center;
+  justify-content: flex-end;
   gap: 2px;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 150ms ease,
+    visibility 150ms ease;
+}
+
+.app-shell-dynamic-nav-item:hover .app-shell-dynamic-nav-item__actions,
+.app-shell-dynamic-nav-item:focus-within .app-shell-dynamic-nav-item__actions {
+  opacity: 1;
+  visibility: visible;
 }
