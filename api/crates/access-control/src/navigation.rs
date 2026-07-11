@@ -116,17 +116,6 @@ const BUILTIN_CONSOLE_ROUTES: &[ConsoleRouteSpec] = &[
         requirement: ConsolePermissionRequirement::Authenticated,
     },
     ConsoleRouteSpec {
-        route_id: "frontstage",
-        surface_key: "frontstage",
-        path: "/frontstage",
-        label_key: "auto.frontstage",
-        navigation_slot: ConsoleNavigationSlot::Primary,
-        parent_item_id: None,
-        order: 200,
-        permission_codes: &[],
-        requirement: ConsolePermissionRequirement::Authenticated,
-    },
-    ConsoleRouteSpec {
         route_id: "embedded-apps",
         surface_key: "embedded-apps",
         path: "/embedded-apps",

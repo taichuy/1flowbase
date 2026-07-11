@@ -43,3 +43,16 @@
   line-height: 1 !important;
   vertical-align: 0 !important;
 }
+
+.frontstage-node-action-button.ant-btn .anticon,
+.frontstage-node-action-button.ant-btn .anticon svg,
+.frontstage-node-action-button.ant-btn .anticon svg path {
+  color: #ffffff !important;
+  fill: currentColor !important;
+  opacity: 1 !important;
+}
+
+.frontstage-node-action-button.ant-btn .anticon svg {
+  width: 8px !important;
+  height: 8px !important;
+}

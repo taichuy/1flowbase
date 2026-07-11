@@ -2,8 +2,9 @@ import { describe, expect, test } from 'vitest';
 
 import {
   APP_ROUTES,
-  FRONTSTAGE_PAGE_PATH,
-  FRONTSTAGE_PAGE_TAB_PATH,
+  FRONTSTAGE_SLUG_PAGE_PATH,
+  FRONTSTAGE_SLUG_PAGE_TAB_PATH,
+  FRONTSTAGE_SLUG_PATH,
   getSelectedRouteId
 } from '../route-config';
 
@@ -11,7 +12,6 @@ describe('route truth layer', () => {
   test('keeps navigation ids, labels, paths, and selected-state logic in one source', () => {
     expect(APP_ROUTES.map((route) => route.id)).toEqual([
       'home',
-      'frontstage',
       'application-detail',
       'embedded-apps',
       'templates',
@@ -29,14 +29,11 @@ describe('route truth layer', () => {
     expect(getSelectedRouteId('/me')).toBe('me');
     expect(getSelectedRouteId('/me/profile')).toBe('me');
     expect(getSelectedRouteId('/me/security')).toBe('me');
-    expect(getSelectedRouteId('/frontstage')).toBe('frontstage');
-    expect(getSelectedRouteId('/frontstage/pages/page-1')).toBe('frontstage');
-    expect(getSelectedRouteId('/frontstage/pages/page-1/tabs/tab-1')).toBe(
-      'frontstage'
-    );
-    expect(FRONTSTAGE_PAGE_PATH).toBe('/frontstage/pages/$pageId');
-    expect(FRONTSTAGE_PAGE_TAB_PATH).toBe(
-      '/frontstage/pages/$pageId/tabs/$tabId'
+    expect(getSelectedRouteId('/frontstage')).toBe('home');
+    expect(FRONTSTAGE_SLUG_PATH).toBe('/$slug');
+    expect(FRONTSTAGE_SLUG_PAGE_PATH).toBe('/$slug/pages/$pageId');
+    expect(FRONTSTAGE_SLUG_PAGE_TAB_PATH).toBe(
+      '/$slug/pages/$pageId/tabs/$tabId'
     );
     expect(getSelectedRouteId('/frontstage/workspace-1')).toBe('home');
     expect(getSelectedRouteId('/frontstage/workspace-1/page-1')).toBe('home');
@@ -52,8 +49,6 @@ describe('route truth layer', () => {
 
   test('declares guard and permission metadata for formal console routes', () => {
     expect(APP_ROUTES.find((route) => route.id === 'home')?.permissionKey).toBeNull();
-    expect(APP_ROUTES.find((route) => route.id === 'frontstage')?.permissionKey).toBeNull();
-    expect(APP_ROUTES.find((route) => route.id === 'frontstage')?.guard).toBe('session-required');
     expect(
       APP_ROUTES.find((route) => route.id === 'application-detail')?.permissionKey
     ).toBeNull();

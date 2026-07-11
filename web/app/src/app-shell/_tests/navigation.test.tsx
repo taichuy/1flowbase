@@ -43,10 +43,6 @@ const primaryRouteRecords = {
     path: '/',
     label_key: 'auto.workbench'
   },
-  frontstage: {
-    path: '/frontstage',
-    label_key: 'auto.frontstage'
-  },
   'embedded-apps': {
     path: '/embedded-apps',
     label_key: 'auto.subsystem'
@@ -95,7 +91,6 @@ describe('Navigation', () => {
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
       consoleNavigationForPrimaryRoutes([
         'home',
-        'frontstage',
         'embedded-apps',
         'templates'
       ])
@@ -154,9 +149,6 @@ describe('Navigation', () => {
     expect(
       within(nav).queryByRole('link', { name: '销售看板' })
     ).not.toBeInTheDocument();
-    expect(within(nav).getByRole('link', { name: '前台' })).not.toHaveAttribute(
-      'aria-current'
-    );
     expect(
       within(nav).queryByRole('link', { name: '内部页面' })
     ).not.toBeInTheDocument();
@@ -212,7 +204,6 @@ describe('Navigation', () => {
     const topLevelItems = within(nav).getAllByRole('menuitem');
     expect(topLevelItems.map((item) => item.textContent)).toEqual([
       '工作台',
-      '前台',
       '子系统',
       '模板',
       '新增菜单'
@@ -250,49 +241,6 @@ describe('Navigation', () => {
     expect(slugInput).not.toHaveValue(initialSlug);
   });
 
-  test('links 前台 to base frontstage path when workspace is available', async () => {
-    resetAuthStore();
-    useAuthStore.getState().setAuthenticated({
-      csrfToken: 'csrf-123',
-      actor: {
-        id: 'actor-1',
-        account: 'normal-user',
-        effective_display_role: 'developer',
-        current_workspace_id: 'workspace-123'
-      },
-      me: {
-        id: 'user-1',
-        account: 'normal-user',
-        email: 'normal-user@example.com',
-        phone: null,
-        nickname: 'Normal User',
-        name: 'Normal User',
-        avatar_url: null,
-        introduction: '',
-        effective_display_role: 'developer',
-        permissions: []
-      }
-    });
-
-    renderNavigation('/embedded-apps');
-
-    expect(await screen.findByRole('link', { name: '前台' })).toHaveAttribute(
-      'href',
-      '/frontstage'
-    );
-  });
-
-  test('links 前台 to base frontstage path when workspace is not available', async () => {
-    resetAuthStore();
-
-    renderNavigation('/embedded-apps');
-
-    expect(await screen.findByRole('link', { name: '前台' })).toHaveAttribute(
-      'href',
-      '/frontstage'
-    );
-  });
-
   test('renders primary console navigation and keeps settings out of the primary rail', async () => {
     resetAuthStore();
 
@@ -303,7 +251,6 @@ describe('Navigation', () => {
     expect(
       await within(nav).findByRole('link', { name: '工作台' })
     ).toBeInTheDocument();
-    expect(within(nav).getByRole('link', { name: '前台' })).toBeInTheDocument();
     expect(
       within(nav).getByRole('link', { name: '子系统' })
     ).toBeInTheDocument();
@@ -343,7 +290,7 @@ describe('Navigation', () => {
       }
     });
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
-      consoleNavigationForPrimaryRoutes(['frontstage', 'embedded-apps'])
+      consoleNavigationForPrimaryRoutes(['embedded-apps'])
     );
 
     renderNavigation('/embedded-apps');
@@ -354,10 +301,6 @@ describe('Navigation', () => {
         within(nav).queryByRole('link', { name: '工作台' })
       ).not.toBeInTheDocument();
     });
-    expect(within(nav).getByRole('link', { name: '前台' })).toHaveAttribute(
-      'href',
-      '/frontstage'
-    );
     expect(within(nav).getByRole('link', { name: '子系统' })).toHaveAttribute(
       'href',
       '/embedded-apps'
@@ -384,9 +327,6 @@ describe('Navigation', () => {
         within(nav).queryByRole('link', { name: '工作台' })
       ).not.toBeInTheDocument();
     });
-    expect(
-      within(nav).queryByRole('link', { name: '前台' })
-    ).not.toBeInTheDocument();
     expect(
       within(nav).queryByRole('link', { name: '子系统' })
     ).not.toBeInTheDocument();
