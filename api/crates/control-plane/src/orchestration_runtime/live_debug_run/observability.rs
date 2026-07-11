@@ -24,7 +24,10 @@ use crate::{
     },
 };
 
-use super::super::llm_observability_refs::LlmDebugObservabilityRefs;
+use super::super::{
+    llm_observability_refs::LlmDebugObservabilityRefs,
+    persistence::model_attempts::enqueue_provider_request_log_tasks,
+};
 
 pub(super) async fn run_live_event_persister<R>(
     repository: R,
@@ -124,6 +127,9 @@ where
 
 pub(super) async fn persist_llm_context_observability<R>(
     repository: &R,
+    scope_id: Uuid,
+    application_name: &str,
+    task_queue: Option<&std::sync::Arc<dyn crate::ports::TaskQueue>>,
     flow_run_id: Uuid,
     node_run_id: Uuid,
     span_id: Uuid,
@@ -178,6 +184,15 @@ where
         error_payload,
     )
     .await?;
+    enqueue_provider_request_log_tasks(
+        task_queue,
+        scope_id,
+        application_name,
+        flow_run_id,
+        &attempts,
+        metrics_payload,
+    )
+    .await;
     let usage_attempt_id = winner_attempt_id(&attempts);
 
     let usage_ledger = repository

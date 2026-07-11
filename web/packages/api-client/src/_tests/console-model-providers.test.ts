@@ -10,7 +10,7 @@ describe('console model provider request logs', () => {
   test('AC-007 sends request log filters and pagination', async () => {
     await expect(
       listConsoleModelProviderRequestLogs({
-        application_id: 'app-1',
+        application_name: 'Story Agent',
         provider_instance_id: 'provider-1',
         model_id: 'gemini-3-flash',
         status: 'empty_response',
@@ -19,7 +19,7 @@ describe('console model provider request logs', () => {
         page_size: 20
       })
     ).resolves.toMatchObject({
-      path: '/api/console/model-providers/request-logs?application_id=app-1&provider_instance_id=provider-1&model_id=gemini-3-flash&status=empty_response&zero_output_only=true&page=2&page_size=20'
+      path: '/api/console/model-providers/request-logs?application_name=Story+Agent&provider_instance_id=provider-1&model_id=gemini-3-flash&status=empty_response&zero_output_only=true&page=2&page_size=20'
     });
   });
 });

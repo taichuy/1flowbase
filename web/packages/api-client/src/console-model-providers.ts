@@ -101,15 +101,11 @@ export interface ConsoleModelProviderCatalogEntry {
 }
 
 export type ConsoleModelProviderRequestLogStatus =
-  | 'succeeded'
-  | 'failed'
-  | 'empty_response'
-  | 'failed_after_first_token';
+  'succeeded' | 'failed' | 'empty_response' | 'failed_after_first_token';
 
 export interface ConsoleModelProviderRequestLog {
   attempt_id: string;
   flow_run_id: string;
-  application_id: string;
   application_name: string;
   attempt_index: number;
   provider_instance_id: string | null;
@@ -139,7 +135,7 @@ export interface ConsoleModelProviderRequestLogsPage {
 }
 
 export interface ConsoleModelProviderRequestLogsFilter {
-  application_id?: string;
+  application_name?: string;
   provider_instance_id?: string;
   model_id?: string;
   status?: string;

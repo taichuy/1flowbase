@@ -325,6 +325,7 @@ impl ModelProviderRepository for MemoryModelCatalogRepository {
             queue_template_id: input.queue_template_id,
             sort_index: input.sort_index,
             provider_instance_id: input.provider_instance_id,
+            provider_instance_display_name: "Fixture Provider".to_string(),
             provider_code: input.provider_code.clone(),
             upstream_model_id: input.upstream_model_id.clone(),
             protocol: input.protocol.clone(),

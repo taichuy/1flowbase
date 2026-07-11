@@ -45,6 +45,7 @@ where
             instance.id.to_string(),
             orchestration_runtime::compiler::FlowCompileProviderInstance {
                 provider_instance_id: instance.id.to_string(),
+                display_name: instance.display_name.clone(),
                 provider_code: instance.provider_code.clone(),
                 protocol: instance.protocol.clone(),
                 is_ready: instance.status == domain::ModelProviderInstanceStatus::Ready,

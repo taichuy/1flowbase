@@ -5,6 +5,7 @@ use uuid::Uuid;
 pub struct FailoverQueueSnapshotItem {
     pub sort_index: i32,
     pub provider_instance_id: Uuid,
+    pub provider_instance_display_name: String,
     pub provider_code: String,
     pub upstream_model_id: String,
     pub protocol: String,
@@ -16,6 +17,7 @@ impl From<domain::ModelFailoverQueueItemRecord> for FailoverQueueSnapshotItem {
         Self {
             sort_index: item.sort_index,
             provider_instance_id: item.provider_instance_id,
+            provider_instance_display_name: item.provider_instance_display_name,
             provider_code: item.provider_code,
             upstream_model_id: item.upstream_model_id,
             protocol: item.protocol,

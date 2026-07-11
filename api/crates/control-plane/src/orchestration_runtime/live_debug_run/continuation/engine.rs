@@ -290,6 +290,9 @@ where
                 );
                 let refs = persist_llm_context_observability(
                     &service.repository,
+                    application.workspace_id,
+                    &application.name,
+                    service.provider_request_log_queue.as_ref(),
                     flow_run.id,
                     node_run.id,
                     node_span.id,

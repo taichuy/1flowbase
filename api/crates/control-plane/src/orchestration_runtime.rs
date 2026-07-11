@@ -27,7 +27,7 @@ use crate::{
         AppendRunEventInput, ApplicationJsDependencySelectionRepository, ApplicationRepository,
         CacheStore, CompleteCallbackTaskInput, FlowRepository, ModelDefinitionRepository,
         ModelProviderRepository, NodeContributionRepository, OrchestrationRuntimeRepository,
-        PluginRepository, ProviderRuntimePort, RuntimeEventEnvelope, RuntimeEventStream,
+        PluginRepository, ProviderRuntimePort, RuntimeEventEnvelope, RuntimeEventStream, TaskQueue,
         UpdateFlowRunInput, UpdateNodeRunInput,
     },
     state_transition::{ensure_flow_run_transition, ensure_node_run_transition},
@@ -276,6 +276,7 @@ pub struct OrchestrationRuntimeService<R, H> {
         Option<Arc<dyn orchestration_runtime::execution_engine::LlmRoutingCounterStore>>,
     provider_secret_master_key: String,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
+    pub(super) provider_request_log_queue: Option<Arc<dyn TaskQueue>>,
     api_node_id: Option<String>,
     provider_install_root: Option<PathBuf>,
 }
@@ -309,6 +310,7 @@ where
             llm_routing_counter_store: None,
             provider_secret_master_key: provider_secret_master_key.into(),
             runtime_event_stream: None,
+            provider_request_log_queue: None,
             api_node_id: None,
             provider_install_root: None,
         }
@@ -340,6 +342,11 @@ where
 
     pub fn with_runtime_event_stream(mut self, stream: Arc<dyn RuntimeEventStream>) -> Self {
         self.runtime_event_stream = Some(stream);
+        self
+    }
+
+    pub fn with_provider_request_log_queue(mut self, queue: Arc<dyn TaskQueue>) -> Self {
+        self.provider_request_log_queue = Some(queue);
         self
     }
 
@@ -813,6 +820,9 @@ where
         };
 
         self.persist_flow_debug_outcome(PersistFlowDebugOutcomeInput {
+            scope_id: application.workspace_id,
+            application_name: &application.name,
+            task_queue: self.provider_request_log_queue.as_ref(),
             application_id: command.application_id,
             flow_run: &flow_run,
             compiled_plan: Some(&compiled_plan),
@@ -937,6 +947,9 @@ where
         };
 
         self.persist_flow_debug_outcome(PersistFlowDebugOutcomeInput {
+            scope_id: application.workspace_id,
+            application_name: &application.name,
+            task_queue: self.provider_request_log_queue.as_ref(),
             application_id: command.application_id,
             flow_run: &flow_run,
             compiled_plan: Some(&compiled_plan),
@@ -1075,6 +1088,9 @@ where
             .unwrap_or(Value::Null);
 
         self.persist_flow_debug_outcome(PersistFlowDebugOutcomeInput {
+            scope_id: application.workspace_id,
+            application_name: &application.name,
+            task_queue: self.provider_request_log_queue.as_ref(),
             application_id: command.application_id,
             flow_run,
             compiled_plan: Some(compiled_plan),

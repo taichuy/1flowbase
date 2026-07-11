@@ -165,6 +165,7 @@ fn sample_compiled_plan() -> CompiledPlan {
             plugin_runtime: None,
             llm_runtime: Some(CompiledLlmRuntime {
                 provider_instance_id: "provider-ready".to_string(),
+                provider_instance_display_name: String::new(),
                 provider_code: "fixture_provider".to_string(),
                 protocol: "openai_compatible".to_string(),
                 model: "gpt-5.4-mini".to_string(),

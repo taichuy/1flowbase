@@ -14,7 +14,10 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = TcpListener::bind(addr).await?;
     let app = app_from_env().await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(api_server::shutdown_signal())
+        .await?;
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     Ok(())
 }

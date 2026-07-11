@@ -16,6 +16,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct MemoryTaskQueue {
     namespace: String,
+    queue_capacities: HashMap<String, usize>,
     inner: Arc<Mutex<TaskQueueState>>,
 }
 
@@ -40,8 +41,14 @@ impl MemoryTaskQueue {
     pub fn new(namespace: impl Into<String>) -> Self {
         Self {
             namespace: namespace.into(),
+            queue_capacities: HashMap::new(),
             inner: Arc::new(Mutex::new(TaskQueueState::default())),
         }
+    }
+
+    pub fn with_queue_capacity(mut self, queue: impl Into<String>, capacity: usize) -> Self {
+        self.queue_capacities.insert(queue.into(), capacity);
+        self
     }
 
     fn queue_key(&self, queue: &str) -> String {
@@ -135,6 +142,13 @@ impl TaskQueue for MemoryTaskQueue {
                     return Ok(task_id);
                 }
                 state.idempotency_index.remove(&index_key);
+            }
+        }
+
+        if let Some(capacity) = self.queue_capacities.get(queue) {
+            let task_count = state.queues.get(&queue_key).map_or(0, VecDeque::len);
+            if task_count >= *capacity {
+                anyhow::bail!("task queue `{queue}` reached capacity {capacity}");
             }
         }
 

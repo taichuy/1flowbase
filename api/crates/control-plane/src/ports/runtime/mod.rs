@@ -914,6 +914,13 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         flow_run_id: Uuid,
     ) -> anyhow::Result<Vec<domain::ModelFailoverAttemptLedgerRecord>>;
+    async fn insert_model_provider_request_logs_batch(
+        &self,
+        records: &[ProviderRequestLogTask],
+    ) -> anyhow::Result<()> {
+        let _ = records;
+        anyhow::bail!("insert_model_provider_request_logs_batch not implemented")
+    }
     async fn list_model_provider_request_logs_page(
         &self,
         input: ListModelProviderRequestLogsPageInput,
@@ -1122,10 +1129,40 @@ pub struct ApplicationConversationRunsPage {
     pub after_cursor: Option<Uuid>,
 }
 
+pub const PROVIDER_REQUEST_LOG_QUEUE: &str = "provider-request-logs";
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProviderRequestLogTask {
+    pub scope_id: Uuid,
+    pub attempt_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub application_name: String,
+    pub attempt_index: i32,
+    pub provider_instance_id: Option<Uuid>,
+    pub provider_instance_display_name: Option<String>,
+    pub provider_code: String,
+    pub protocol: String,
+    pub upstream_model_id: String,
+    pub reasoning_effort: Option<String>,
+    pub status: String,
+    pub error_code: Option<String>,
+    pub failed_after_first_token: bool,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub total_tokens: Option<i64>,
+    pub started_at: OffsetDateTime,
+    pub first_token_at: Option<OffsetDateTime>,
+    pub finished_at: Option<OffsetDateTime>,
+    pub time_to_first_token_ms: Option<i64>,
+    pub total_duration_ms: Option<i64>,
+}
+
+pub type InsertModelProviderRequestLogInput = ProviderRequestLogTask;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListModelProviderRequestLogsPageInput {
     pub scope_id: Uuid,
-    pub application_id: Option<Uuid>,
+    pub application_name: Option<String>,
     pub provider_instance_id: Option<Uuid>,
     pub model_id: Option<String>,
     pub status: Option<String>,
@@ -1140,7 +1177,6 @@ pub struct ListModelProviderRequestLogsPageInput {
 pub struct ModelProviderRequestLogRecord {
     pub attempt_id: Uuid,
     pub flow_run_id: Uuid,
-    pub application_id: Uuid,
     pub application_name: String,
     pub attempt_index: i32,
     pub provider_instance_id: Option<Uuid>,

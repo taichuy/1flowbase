@@ -545,6 +545,7 @@ pub struct ModelFailoverQueueItemRecord {
     pub queue_template_id: Uuid,
     pub sort_index: i32,
     pub provider_instance_id: Uuid,
+    pub provider_instance_display_name: String,
     pub provider_code: String,
     pub upstream_model_id: String,
     pub protocol: String,

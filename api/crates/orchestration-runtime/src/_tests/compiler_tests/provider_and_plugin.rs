@@ -597,6 +597,7 @@ fn compile_uses_selected_instance_models_instead_of_provider_family_aggregate() 
         "provider-selected".to_string(),
         FlowCompileProviderInstance {
             provider_instance_id: "provider-selected".to_string(),
+            display_name: String::new(),
             provider_code: "fixture_provider".to_string(),
             protocol: "openai_compatible".to_string(),
             is_ready: true,
@@ -624,6 +625,7 @@ fn compile_failover_queue_routes_with_frozen_targets() {
         "provider-backup".to_string(),
         FlowCompileProviderInstance {
             provider_instance_id: "provider-backup".to_string(),
+            display_name: "Backup Provider".to_string(),
             provider_code: "fixture_provider".to_string(),
             protocol: "openai_compatible".to_string(),
             is_ready: true,
@@ -669,6 +671,10 @@ fn compile_failover_queue_routes_with_frozen_targets() {
     assert_eq!(
         routing["queue_targets"][1]["provider_instance_id"],
         json!("provider-backup")
+    );
+    assert_eq!(
+        routing["queue_targets"][1]["provider_instance_display_name"],
+        json!("Backup Provider")
     );
 }
 
@@ -731,6 +737,7 @@ fn compile_routes_duplicate_stable_provider_model_binding_as_ordered_targets() {
         "provider-recreated".to_string(),
         FlowCompileProviderInstance {
             provider_instance_id: "provider-recreated".to_string(),
+            display_name: String::new(),
             provider_code: "fixture_provider".to_string(),
             protocol: "openai_compatible".to_string(),
             is_ready: true,

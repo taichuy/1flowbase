@@ -140,6 +140,7 @@ fn llm_plan(response_format: serde_json::Value) -> CompiledPlan {
             plugin_runtime: None,
             llm_runtime: Some(CompiledLlmRuntime {
                 provider_instance_id: "provider-ready".to_string(),
+                provider_instance_display_name: String::new(),
                 provider_code: "openai_compatible".to_string(),
                 protocol: "openai_compatible".to_string(),
                 model: "qwen3.5-27b".to_string(),

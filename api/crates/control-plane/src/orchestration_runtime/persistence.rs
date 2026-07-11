@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use observability::RuntimeEventBus;
 use plugin_framework::provider_contract::ProviderStreamEvent;
 use serde_json::{json, Value};
+use std::sync::Arc;
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -25,7 +26,7 @@ use crate::{
 
 mod answer_presentation_persistence;
 mod checkpoint_locator;
-mod model_attempts;
+pub(super) mod model_attempts;
 mod node_traces;
 mod provider_observability;
 #[cfg(test)]
@@ -56,6 +57,9 @@ pub(super) struct WaitingNodeResumeUpdate {
 }
 
 pub(super) struct PersistFlowDebugOutcomeInput<'a> {
+    pub(super) scope_id: Uuid,
+    pub(super) application_name: &'a str,
+    pub(super) task_queue: Option<&'a Arc<dyn crate::ports::TaskQueue>>,
     pub(super) application_id: Uuid,
     pub(super) flow_run: &'a domain::FlowRunRecord,
     pub(super) compiled_plan: Option<&'a orchestration_runtime::compiled_plan::CompiledPlan>,
@@ -79,6 +83,9 @@ where
     R: OrchestrationRuntimeRepository,
 {
     let PersistFlowDebugOutcomeInput {
+        scope_id,
+        application_name,
+        task_queue,
         application_id,
         flow_run,
         compiled_plan,
@@ -136,6 +143,9 @@ where
 
     let waiting_node_run = persist_flow_debug_node_traces(
         repository,
+        scope_id,
+        application_name,
+        task_queue,
         flow_run.id,
         Some(flow_span.id),
         outcome,

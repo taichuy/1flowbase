@@ -428,6 +428,7 @@ async fn resume_anthropic_tool_call(
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
+    .with_provider_request_log_queue(state.infrastructure.task_queue())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
     let result =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)

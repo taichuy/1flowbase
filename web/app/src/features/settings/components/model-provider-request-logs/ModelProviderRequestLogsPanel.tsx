@@ -47,7 +47,7 @@ function statusTag(record: ConsoleModelProviderRequestLog) {
 
 export function ModelProviderRequestLogsPanel() {
   const [page, setPage] = useState(1);
-  const [applicationId, setApplicationId] = useState('');
+  const [applicationName, setApplicationName] = useState('');
   const [providerInstanceId, setProviderInstanceId] = useState('');
   const [modelId, setModelId] = useState('');
   const [status, setStatus] = useState<string>();
@@ -56,13 +56,13 @@ export function ModelProviderRequestLogsPanel() {
     () => ({
       page,
       page_size: PAGE_SIZE,
-      application_id: applicationId.trim() || undefined,
+      application_name: applicationName.trim() || undefined,
       provider_instance_id: providerInstanceId.trim() || undefined,
       model_id: modelId.trim() || undefined,
       status,
       zero_output_only: zeroOutputOnly || undefined
     }),
-    [applicationId, modelId, page, providerInstanceId, status, zeroOutputOnly]
+    [applicationName, modelId, page, providerInstanceId, status, zeroOutputOnly]
   );
   const requestLogsQuery = useQuery({
     queryKey: settingsModelProviderRequestLogsQueryKey(filter),
@@ -159,12 +159,8 @@ export function ModelProviderRequestLogsPanel() {
         dataIndex: 'flow_run_id',
         width: 220,
         ellipsis: true,
-        render: (value: string, row) => (
-          <Typography.Link
-            href={`/applications/${row.application_id}/logs?run_id=${value}`}
-          >
-            {value}
-          </Typography.Link>
+        render: (value: string) => (
+          <Typography.Text copyable>{value}</Typography.Text>
         )
       }
     ],
@@ -184,12 +180,12 @@ export function ModelProviderRequestLogsPanel() {
         wrap
       >
         <Input
-          aria-label={i18nText('settings', 'auto.request_log_application_id')}
-          placeholder={i18nText('settings', 'auto.request_log_application_id')}
-          value={applicationId}
+          aria-label={i18nText('settings', 'auto.request_log_application')}
+          placeholder={i18nText('settings', 'auto.request_log_application')}
+          value={applicationName}
           onChange={(event) => {
             setPage(1);
-            setApplicationId(event.target.value);
+            setApplicationName(event.target.value);
           }}
           style={{ width: 240 }}
         />

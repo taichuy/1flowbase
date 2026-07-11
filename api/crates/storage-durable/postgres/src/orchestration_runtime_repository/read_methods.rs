@@ -299,7 +299,7 @@ impl PgControlPlaneStore {
         let page_size = input.page_size.clamp(1, 100);
         let offset = (page - 1) * page_size;
         let mut count_query = QueryBuilder::<Postgres>::new(
-            "select count(*) as total_count from model_failover_attempt_ledger attempts join flow_runs runs on runs.id = attempts.flow_run_id join applications apps on apps.id = runs.application_id left join runtime_usage_ledger usage on usage.id = attempts.usage_ledger_id left join model_provider_instances instances on instances.id = attempts.provider_instance_id",
+            "select count(*) as total_count from model_provider_request_logs logs",
         );
         push_model_provider_request_log_filters(&mut count_query, &input);
         let total_count: i64 = count_query
@@ -309,11 +309,11 @@ impl PgControlPlaneStore {
             .get("total_count");
 
         let mut query = QueryBuilder::<Postgres>::new(
-            "select attempts.id as attempt_id, attempts.flow_run_id, runs.application_id, apps.name as application_name, attempts.attempt_index, attempts.provider_instance_id, instances.display_name as provider_instance_display_name, attempts.provider_code, attempts.protocol, attempts.upstream_model_id, spans.metadata #>> '{model_parameters,reasoning_effort}' as reasoning_effort, case when attempts.failed_after_first_token then 'failed_after_first_token' when coalesce(usage.output_tokens, 0) = 0 and attempts.first_token_at is null and attempts.status = 'succeeded' then 'empty_response' when attempts.error_code = 'provider_invalid_response' then 'empty_response' else attempts.status end as projected_status, attempts.error_code, attempts.failed_after_first_token, usage.input_tokens, usage.output_tokens, usage.total_tokens, coalesce(spans.started_at, nodes.started_at, attempts.started_at) as effective_started_at, attempts.first_token_at, coalesce(spans.finished_at, nodes.finished_at, attempts.finished_at) as effective_finished_at from model_failover_attempt_ledger attempts join flow_runs runs on runs.id = attempts.flow_run_id join applications apps on apps.id = runs.application_id left join runtime_usage_ledger usage on usage.id = attempts.usage_ledger_id left join model_provider_instances instances on instances.id = attempts.provider_instance_id left join runtime_spans spans on spans.id = attempts.llm_turn_span_id left join node_runs nodes on nodes.id = attempts.node_run_id",
+            "select attempt_id, flow_run_id, application_name, attempt_index, provider_instance_id, provider_instance_display_name, provider_code, protocol, upstream_model_id, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, started_at, first_token_at, finished_at from model_provider_request_logs logs",
         );
         push_model_provider_request_log_filters(&mut query, &input);
         query
-            .push(" order by attempts.started_at desc, attempts.id desc limit ")
+            .push(" order by logs.started_at desc, logs.id desc limit ")
             .push_bind(page_size)
             .push(" offset ")
             .push_bind(offset);
@@ -323,7 +323,6 @@ impl PgControlPlaneStore {
             .map(|row| control_plane::ports::ModelProviderRequestLogRecord {
                 attempt_id: row.get("attempt_id"),
                 flow_run_id: row.get("flow_run_id"),
-                application_id: row.get("application_id"),
                 application_name: row.get("application_name"),
                 attempt_index: row.get("attempt_index"),
                 provider_instance_id: row.get("provider_instance_id"),
@@ -332,18 +331,17 @@ impl PgControlPlaneStore {
                 protocol: row.get("protocol"),
                 upstream_model_id: row.get("upstream_model_id"),
                 reasoning_effort: row.get("reasoning_effort"),
-                status: row.get("projected_status"),
+                status: row.get("status"),
                 error_code: row.get("error_code"),
                 failed_after_first_token: row.get("failed_after_first_token"),
                 input_tokens: row.get("input_tokens"),
                 output_tokens: row.get("output_tokens"),
                 total_tokens: row.get("total_tokens"),
-                started_at: row.get("effective_started_at"),
+                started_at: row.get("started_at"),
                 first_token_at: row.get("first_token_at"),
-                finished_at: row.get("effective_finished_at"),
+                finished_at: row.get("finished_at"),
             })
             .collect();
-
         Ok(control_plane::ports::ModelProviderRequestLogsPage {
             items,
             total_count,
@@ -848,31 +846,27 @@ fn push_model_provider_request_log_filters<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
     input: &'a control_plane::ports::ListModelProviderRequestLogsPageInput,
 ) {
-    query.push(" where attempts.scope_id = ").push_bind(input.scope_id);
-    if let Some(application_id) = input.application_id {
-        query.push(" and runs.application_id = ").push_bind(application_id);
+    query.push(" where logs.scope_id = ").push_bind(input.scope_id);
+    if let Some(application_name) = input.application_name.as_deref() {
+        query.push(" and logs.application_name = ").push_bind(application_name);
     }
     if let Some(provider_instance_id) = input.provider_instance_id {
-        query
-            .push(" and attempts.provider_instance_id = ")
-            .push_bind(provider_instance_id);
+        query.push(" and logs.provider_instance_id = ").push_bind(provider_instance_id);
     }
     if let Some(model_id) = input.model_id.as_deref() {
-        query
-            .push(" and attempts.upstream_model_id = ")
-            .push_bind(model_id);
+        query.push(" and logs.upstream_model_id = ").push_bind(model_id);
     }
     if let Some(status) = input.status.as_deref() {
-        query.push(" and (case when attempts.failed_after_first_token then 'failed_after_first_token' when coalesce(usage.output_tokens, 0) = 0 and attempts.first_token_at is null and attempts.status = 'succeeded' then 'empty_response' when attempts.error_code = 'provider_invalid_response' then 'empty_response' else attempts.status end) = ").push_bind(status);
+        query.push(" and logs.status = ").push_bind(status);
     }
     if input.zero_output_only {
-        query.push(" and coalesce(usage.output_tokens, 0) = 0");
+        query.push(" and coalesce(logs.output_tokens, 0) = 0");
     }
     if let Some(started_after) = input.started_after {
-        query.push(" and attempts.started_at >= ").push_bind(started_after);
+        query.push(" and logs.started_at >= ").push_bind(started_after);
     }
     if let Some(started_before) = input.started_before {
-        query.push(" and attempts.started_at <= ").push_bind(started_before);
+        query.push(" and logs.started_at <= ").push_bind(started_before);
     }
 }
 

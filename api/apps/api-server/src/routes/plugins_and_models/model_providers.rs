@@ -371,7 +371,7 @@ pub struct ModelProviderOptionTargetResponse {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct ModelProviderRequestLogsQuery {
-    pub application_id: Option<Uuid>,
+    pub application_name: Option<String>,
     pub provider_instance_id: Option<Uuid>,
     pub model_id: Option<String>,
     pub status: Option<String>,
@@ -387,7 +387,6 @@ pub struct ModelProviderRequestLogsQuery {
 pub struct ModelProviderRequestLogResponse {
     pub attempt_id: String,
     pub flow_run_id: String,
-    pub application_id: String,
     pub application_name: String,
     pub attempt_index: i32,
     pub provider_instance_id: Option<String>,
@@ -935,7 +934,7 @@ pub async fn list_request_logs(
         .store
         .list_model_provider_request_logs_page(ListModelProviderRequestLogsPageInput {
             scope_id: context.actor.current_workspace_id,
-            application_id: query.application_id,
+            application_name: query.application_name,
             provider_instance_id: query.provider_instance_id,
             model_id: query.model_id,
             status: query.status,
@@ -974,7 +973,6 @@ fn to_request_log_response(
     ModelProviderRequestLogResponse {
         attempt_id: record.attempt_id.to_string(),
         flow_run_id: record.flow_run_id.to_string(),
-        application_id: record.application_id.to_string(),
         application_name: record.application_name,
         attempt_index: record.attempt_index,
         provider_instance_id: record.provider_instance_id.map(|id| id.to_string()),

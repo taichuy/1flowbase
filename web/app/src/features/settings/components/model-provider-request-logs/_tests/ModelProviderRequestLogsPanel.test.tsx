@@ -20,7 +20,6 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
       {
         attempt_id: 'attempt-1',
         flow_run_id: 'run-1',
-        application_id: 'app-1',
         application_name: 'Story Agent',
         attempt_index: 0,
         provider_instance_id: 'provider-1',
@@ -51,7 +50,9 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
   );
 
   expect(await screen.findByText('Story Agent')).toBeInTheDocument();
-  expect(screen.getByRole('combobox', { name: '字段配置' })).toBeInTheDocument();
+  expect(
+    screen.getByRole('combobox', { name: '字段配置' })
+  ).toBeInTheDocument();
   expect(screen.getByText('空响应')).toBeInTheDocument();
   expect(screen.getByText('Gemini A')).toBeInTheDocument();
   expect(screen.getByText('5.00 s')).toBeInTheDocument();

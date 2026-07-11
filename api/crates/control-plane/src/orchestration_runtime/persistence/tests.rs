@@ -207,3 +207,44 @@ fn failed_flow_output_uses_terminal_answer_payload_even_when_answer_has_error() 
 
     assert_eq!(final_flow_output_payload(&outcome), answer_output);
 }
+
+#[test]
+fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() {
+    let attempt_id = Uuid::now_v7();
+    let flow_run_id = Uuid::now_v7();
+    let scope_id = Uuid::now_v7();
+    let started_at = OffsetDateTime::UNIX_EPOCH;
+    let attempt = json!({
+        "attempt_index": 0,
+        "provider_instance_id": Uuid::nil(),
+        "provider_instance_display_name": "Gemini 01",
+        "provider_code": "gemini",
+        "protocol": "google_genai",
+        "upstream_model_id": "gemini-3-flash",
+        "status": "succeeded",
+        "event_count": 0,
+        "usage": {"input_tokens": 12, "output_tokens": 0, "total_tokens": 12}
+    });
+
+    let task = super::model_attempts::provider_request_log_task_from_attempt(
+        scope_id,
+        attempt_id,
+        flow_run_id,
+        "应用快照",
+        started_at,
+        started_at,
+        &attempt,
+    );
+
+    assert_eq!(task.application_name, "应用快照");
+    assert_eq!(task.attempt_index, 1);
+    assert_eq!(
+        task.provider_instance_display_name.as_deref(),
+        Some("Gemini 01")
+    );
+    assert_eq!(task.status, "empty_response");
+    assert_eq!(task.input_tokens, Some(12));
+    assert_eq!(task.output_tokens, Some(0));
+    assert_eq!(task.total_tokens, Some(12));
+    serde_json::to_value(task).unwrap();
+}

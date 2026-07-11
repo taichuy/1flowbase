@@ -54,6 +54,7 @@ pub struct FlowCompileProviderFamily {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlowCompileProviderInstance {
     pub provider_instance_id: String,
+    pub display_name: String,
     pub provider_code: String,
     pub protocol: String,
     pub is_ready: bool,

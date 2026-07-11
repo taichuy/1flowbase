@@ -39,6 +39,7 @@ pub(super) async fn llm_attempt_runtimes(
         .map(|target| {
             let mut attempt = runtime.clone();
             attempt.provider_instance_id = target.provider_instance_id.clone();
+            attempt.provider_instance_display_name = target.provider_instance_display_name.clone();
             attempt.provider_code = target.provider_code.clone();
             attempt.protocol = target.protocol.clone();
             attempt.model = target.upstream_model_id.clone();
@@ -63,6 +64,7 @@ pub(super) fn build_attempt_metric(input: AttemptMetricInput<'_>) -> Value {
     json!({
         "attempt_index": input.attempt_index,
         "provider_instance_id": input.runtime.provider_instance_id,
+        "provider_instance_display_name": input.runtime.provider_instance_display_name,
         "provider_code": input.runtime.provider_code,
         "protocol": input.runtime.protocol,
         "upstream_model_id": input.runtime.model,
@@ -97,6 +99,7 @@ pub(super) fn build_llm_metrics_payload(
 ) -> Value {
     json!({
         "provider_instance_id": runtime.provider_instance_id,
+        "provider_instance_display_name": runtime.provider_instance_display_name,
         "provider_code": runtime.provider_code,
         "protocol": runtime.protocol,
         "model": runtime.model,

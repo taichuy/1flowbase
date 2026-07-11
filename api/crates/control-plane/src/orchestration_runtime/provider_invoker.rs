@@ -1029,12 +1029,26 @@ where
             })
             .await?;
         routing.queue_snapshot_id = Some(snapshot.id.to_string());
+        let provider_display_names = routing
+            .queue_targets
+            .iter()
+            .map(|target| {
+                (
+                    target.provider_instance_id.clone(),
+                    target.provider_instance_display_name.clone(),
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
         routing.queue_targets = snapshot_items
             .into_iter()
             .filter(|item| item.enabled)
             .map(
                 |item| orchestration_runtime::compiled_plan::CompiledLlmRouteTarget {
                     provider_instance_id: item.provider_instance_id.to_string(),
+                    provider_instance_display_name: provider_display_names
+                        .get(&item.provider_instance_id.to_string())
+                        .cloned()
+                        .unwrap_or_default(),
                     provider_code: item.provider_code,
                     protocol: item.protocol,
                     upstream_model_id: item.upstream_model_id,

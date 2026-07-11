@@ -1,5 +1,9 @@
-use super::model_attempts::{append_model_attempts_from_metrics, usage_i64, winner_attempt_id};
+use super::model_attempts::{
+    append_model_attempts_from_metrics, enqueue_provider_request_log_tasks, usage_i64,
+    winner_attempt_id,
+};
 use super::*;
+use std::sync::Arc;
 
 pub(super) async fn append_provider_stream_events<R>(
     repository: &R,
@@ -84,6 +88,9 @@ where
 
 pub(super) async fn persist_llm_context_observability<R>(
     repository: &R,
+    scope_id: Uuid,
+    application_name: &str,
+    task_queue: Option<&Arc<dyn crate::ports::TaskQueue>>,
     flow_run_id: Uuid,
     node_run_id: Uuid,
     span_id: Uuid,
@@ -136,6 +143,15 @@ where
         trace.error_payload.as_ref(),
     )
     .await?;
+    enqueue_provider_request_log_tasks(
+        task_queue,
+        scope_id,
+        application_name,
+        flow_run_id,
+        &attempts,
+        &trace.metrics_payload,
+    )
+    .await;
     let usage_attempt_id = winner_attempt_id(&attempts);
 
     let usage_ledger = repository

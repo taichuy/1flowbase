@@ -218,3 +218,81 @@ async fn memory_task_queue_reclaims_after_visibility_timeout() {
     assert!(!queue.ack("preview", &task_id, "worker-a").await.unwrap());
     assert!(queue.ack("preview", &task_id, "worker-b").await.unwrap());
 }
+
+#[tokio::test]
+async fn memory_task_queue_keeps_unconfigured_queues_unbounded() {
+    let queue = MemoryTaskQueue::new("flowbase:task");
+    for index in 0..3 {
+        queue
+            .enqueue("workflow", json!({ "index": index }), None)
+            .await
+            .unwrap();
+    }
+    assert_eq!(queue.list_ephemeral_entries().await.unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn memory_task_queue_applies_capacity_per_queue_name() {
+    let queue =
+        MemoryTaskQueue::new("flowbase:task").with_queue_capacity("provider-request-logs", 1);
+    queue
+        .enqueue("provider-request-logs", json!({ "attempt": 1 }), None)
+        .await
+        .unwrap();
+    let error = queue
+        .enqueue("provider-request-logs", json!({ "attempt": 2 }), None)
+        .await
+        .unwrap_err();
+    queue
+        .enqueue("workflow", json!({ "run": 1 }), None)
+        .await
+        .unwrap();
+    queue
+        .enqueue("workflow", json!({ "run": 2 }), None)
+        .await
+        .unwrap();
+    assert!(error
+        .to_string()
+        .contains("task queue `provider-request-logs` reached capacity 1"));
+    assert_eq!(queue.list_ephemeral_entries().await.unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn memory_task_queue_counts_claimed_tasks_toward_capacity() {
+    let queue = MemoryTaskQueue::new("flowbase:task").with_queue_capacity("logs", 1);
+    queue
+        .enqueue("logs", json!({ "attempt": 1 }), None)
+        .await
+        .unwrap();
+    queue
+        .claim("logs", "worker-a", Duration::seconds(30))
+        .await
+        .unwrap()
+        .unwrap();
+    let error = queue
+        .enqueue("logs", json!({ "attempt": 2 }), None)
+        .await
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("task queue `logs` reached capacity 1"));
+}
+
+#[tokio::test]
+async fn memory_task_queue_ack_releases_queue_capacity() {
+    let queue = MemoryTaskQueue::new("flowbase:task").with_queue_capacity("logs", 1);
+    let task_id = queue
+        .enqueue("logs", json!({ "attempt": 1 }), None)
+        .await
+        .unwrap();
+    queue
+        .claim("logs", "worker-a", Duration::seconds(30))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(queue.ack("logs", &task_id, "worker-a").await.unwrap());
+    queue
+        .enqueue("logs", json!({ "attempt": 2 }), None)
+        .await
+        .unwrap();
+}

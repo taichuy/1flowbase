@@ -107,6 +107,7 @@ fn default_llm_context_policy() -> serde_json::Value {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledLlmRouteTarget {
     pub provider_instance_id: String,
+    pub provider_instance_display_name: String,
     pub provider_code: String,
     pub protocol: String,
     pub upstream_model_id: String,
@@ -115,6 +116,7 @@ pub struct CompiledLlmRouteTarget {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledLlmRuntime {
     pub provider_instance_id: String,
+    pub provider_instance_display_name: String,
     pub provider_code: String,
     pub protocol: String,
     pub model: String,

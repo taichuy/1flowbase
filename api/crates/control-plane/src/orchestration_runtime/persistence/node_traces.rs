@@ -1,7 +1,11 @@
 use super::*;
+use std::sync::Arc;
 
 pub(super) async fn persist_flow_debug_node_traces<R>(
     repository: &R,
+    scope_id: Uuid,
+    application_name: &str,
+    task_queue: Option<&Arc<dyn crate::ports::TaskQueue>>,
     flow_run_id: Uuid,
     flow_span_id: Option<Uuid>,
     outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
@@ -81,6 +85,9 @@ where
         if trace.node_type == "llm" {
             let refs = persist_llm_context_observability(
                 repository,
+                scope_id,
+                application_name,
+                task_queue,
                 flow_run_id,
                 node_run.id,
                 node_span.id,

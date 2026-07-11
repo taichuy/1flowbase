@@ -10,10 +10,10 @@ use control_plane::{
         GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
         LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunsPageInput,
-        OrchestrationRuntimeRepository, RecordFlowRunCallbackResumeAttemptInput,
-        UpdateFlowRunInput, UpdateFlowRunPayloadsInput, UpdateNodeRunInput,
-        UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput, UpsertCompiledPlanInput,
-        UpsertDataModelSideEffectReceiptInput,
+        ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository,
+        ProviderRequestLogTask, RecordFlowRunCallbackResumeAttemptInput, UpdateFlowRunInput,
+        UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
+        UpdateRunEventPayloadInput, UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
     },
 };
 use domain::{
@@ -373,5 +373,6 @@ mod application_trace_projection;
 mod debug_artifacts;
 mod flow_runs;
 mod public_runs;
+mod request_logs;
 mod runtime_events;
 mod runtime_facts;

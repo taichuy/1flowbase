@@ -213,6 +213,7 @@ fn compile_llm_runtime(
 
     Some(CompiledLlmRuntime {
         provider_instance_id: provider_instance.provider_instance_id.clone(),
+        provider_instance_display_name: provider_instance.display_name.clone(),
         provider_code: provider_instance.provider_code.clone(),
         protocol: provider_instance.protocol.clone(),
         model: model.clone(),
@@ -317,6 +318,7 @@ fn fixed_model_routing(
             .iter()
             .map(|provider_instance| CompiledLlmRouteTarget {
                 provider_instance_id: provider_instance.provider_instance_id.clone(),
+                provider_instance_display_name: provider_instance.display_name.clone(),
                 provider_code: provider_instance.provider_code.clone(),
                 protocol: provider_instance.protocol.clone(),
                 upstream_model_id: model.to_string(),
@@ -433,6 +435,7 @@ fn compile_failover_queue_runtime(
     }
     let first_target = targets.first().cloned().unwrap_or(CompiledLlmRouteTarget {
         provider_instance_id: String::new(),
+        provider_instance_display_name: String::new(),
         provider_code: String::new(),
         protocol: String::new(),
         upstream_model_id: String::new(),
@@ -440,6 +443,7 @@ fn compile_failover_queue_runtime(
 
     Some(CompiledLlmRuntime {
         provider_instance_id: first_target.provider_instance_id.clone(),
+        provider_instance_display_name: first_target.provider_instance_display_name.clone(),
         provider_code: first_target.provider_code.clone(),
         protocol: first_target.protocol.clone(),
         model: first_target.upstream_model_id.clone(),
@@ -536,6 +540,7 @@ fn compile_failover_queue_target(
 
     Some(CompiledLlmRouteTarget {
         provider_instance_id: provider_instance.provider_instance_id.clone(),
+        provider_instance_display_name: provider_instance.display_name.clone(),
         provider_code: target
             .get("provider_code")
             .and_then(Value::as_str)

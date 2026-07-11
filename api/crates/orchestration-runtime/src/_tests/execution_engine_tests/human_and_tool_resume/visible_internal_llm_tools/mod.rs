@@ -284,6 +284,7 @@ fn fusion_panel_plan() -> CompiledPlan {
             plugin_runtime: None,
             llm_runtime: Some(CompiledLlmRuntime {
                 provider_instance_id: "provider-ready".to_string(),
+                provider_instance_display_name: String::new(),
                 provider_code: "fixture_provider".to_string(),
                 protocol: "openai_compatible".to_string(),
                 model: "gpt-5.4-mini".to_string(),
@@ -455,6 +456,7 @@ fn fusion_panel_llm_node(node_id: &str, prompt_prefix: &str) -> CompiledNode {
         plugin_runtime: None,
         llm_runtime: Some(CompiledLlmRuntime {
             provider_instance_id: "provider-ready".to_string(),
+            provider_instance_display_name: String::new(),
             provider_code: "fixture_provider".to_string(),
             protocol: "openai_compatible".to_string(),
             model: "gpt-5.4-mini".to_string(),

@@ -66,6 +66,7 @@ include!("flow_run_methods.rs");
 include!("flow_run_callback_resume_attempt_methods.rs");
 include!("ledger_methods.rs");
 include!("read_methods.rs");
+include!("request_log_methods.rs");
 include!("side_effect_receipt_methods.rs");
 
 #[async_trait]
@@ -475,6 +476,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         flow_run_id: Uuid,
     ) -> Result<Vec<domain::ModelFailoverAttemptLedgerRecord>> {
         PgControlPlaneStore::list_model_failover_attempt_ledger(self, flow_run_id).await
+    }
+
+    async fn insert_model_provider_request_logs_batch(
+        &self,
+        records: &[control_plane::ports::ProviderRequestLogTask],
+    ) -> Result<()> {
+        PgControlPlaneStore::insert_model_provider_request_logs_batch(self, records).await
     }
 
     async fn list_model_provider_request_logs_page(

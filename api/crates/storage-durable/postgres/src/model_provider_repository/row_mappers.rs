@@ -173,6 +173,7 @@ pub(super) fn map_failover_queue_item(
         queue_template_id: row.get("queue_template_id"),
         sort_index: row.get("sort_index"),
         provider_instance_id: row.get("provider_instance_id"),
+        provider_instance_display_name: row.get("provider_instance_display_name"),
         provider_code: row.get("provider_code"),
         upstream_model_id: row.get("upstream_model_id"),
         protocol: row.get("protocol"),

@@ -19,6 +19,8 @@ const CACHE_STORE_NAMESPACE: &str = "flowbase:cache";
 const RATE_LIMIT_STORE_NAMESPACE: &str = "flowbase:rate-limit";
 const LOCK_NAMESPACE: &str = "flowbase:lock";
 const TASK_QUEUE_NAMESPACE: &str = "flowbase:task";
+const PROVIDER_REQUEST_LOG_QUEUE: &str = "provider-request-logs";
+const PROVIDER_REQUEST_LOG_QUEUE_CAPACITY: usize = 10_000;
 const LOCAL_CACHE_MAX_CAPACITY: u64 = 10_000;
 const LOCAL_INFRASTRUCTURE_CONTRACTS: &[&str] = &[
     "storage-ephemeral",
@@ -81,8 +83,12 @@ fn install_local_infrastructure_services(registry: &mut HostInfrastructureRegist
         Arc::new(MemoryDistributedLock::new(LOCK_NAMESPACE)) as Arc<dyn DistributedLock>
     );
     registry.set_event_bus(Arc::new(MemoryEventBus::new()) as Arc<dyn EventBus>);
-    registry
-        .set_task_queue(Arc::new(MemoryTaskQueue::new(TASK_QUEUE_NAMESPACE)) as Arc<dyn TaskQueue>);
+    registry.set_task_queue(Arc::new(
+        MemoryTaskQueue::new(TASK_QUEUE_NAMESPACE).with_queue_capacity(
+            PROVIDER_REQUEST_LOG_QUEUE,
+            PROVIDER_REQUEST_LOG_QUEUE_CAPACITY,
+        ),
+    ) as Arc<dyn TaskQueue>);
     registry.set_rate_limit_store(Arc::new(MokaRateLimitStore::new(
         RATE_LIMIT_STORE_NAMESPACE,
         LOCAL_CACHE_MAX_CAPACITY,

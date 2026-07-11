@@ -27,6 +27,7 @@ fn compile_context() -> FlowCompileContext {
             "provider-selected".to_string(),
             FlowCompileProviderInstance {
                 provider_instance_id: "provider-selected".to_string(),
+                display_name: String::new(),
                 provider_code: "fixture_provider".to_string(),
                 protocol: "openai_compatible".to_string(),
                 is_ready: true,

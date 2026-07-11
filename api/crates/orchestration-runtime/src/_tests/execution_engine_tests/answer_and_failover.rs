@@ -448,6 +448,7 @@ async fn failover_queue_retries_next_target_before_first_token() {
         .expect("llm node should exist");
     llm.llm_runtime = Some(CompiledLlmRuntime {
         provider_instance_id: "provider-primary".to_string(),
+        provider_instance_display_name: String::new(),
         provider_code: "fixture_provider".to_string(),
         protocol: "openai_compatible".to_string(),
         model: "primary-model".to_string(),
@@ -459,12 +460,14 @@ async fn failover_queue_retries_next_target_before_first_token() {
             queue_targets: vec![
                 CompiledLlmRouteTarget {
                     provider_instance_id: "provider-primary".to_string(),
+                    provider_instance_display_name: String::new(),
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "primary-model".to_string(),
                 },
                 CompiledLlmRouteTarget {
                     provider_instance_id: "provider-backup".to_string(),
+                    provider_instance_display_name: String::new(),
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "backup-model".to_string(),
@@ -608,6 +611,7 @@ async fn none_distribution_keeps_existing_attempt_order_across_runs() {
 fn round_robin_llm_runtime(distribution_rule: LlmDistributionRule) -> CompiledLlmRuntime {
     CompiledLlmRuntime {
         provider_instance_id: "provider-a".to_string(),
+        provider_instance_display_name: String::new(),
         provider_code: "fixture_provider".to_string(),
         protocol: "openai_compatible".to_string(),
         model: "gpt-5.4-mini".to_string(),
@@ -619,12 +623,14 @@ fn round_robin_llm_runtime(distribution_rule: LlmDistributionRule) -> CompiledLl
             queue_targets: vec![
                 CompiledLlmRouteTarget {
                     provider_instance_id: "provider-a".to_string(),
+                    provider_instance_display_name: String::new(),
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "gpt-5.4-mini".to_string(),
                 },
                 CompiledLlmRouteTarget {
                     provider_instance_id: "provider-b".to_string(),
+                    provider_instance_display_name: String::new(),
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "gpt-5.4-mini".to_string(),
@@ -650,6 +656,7 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
         .expect("llm node should exist");
     llm.llm_runtime = Some(CompiledLlmRuntime {
         provider_instance_id: "provider-primary".to_string(),
+        provider_instance_display_name: String::new(),
         provider_code: "fixture_provider".to_string(),
         protocol: "openai_compatible".to_string(),
         model: "primary-model".to_string(),
@@ -661,12 +668,14 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
             queue_targets: vec![
                 CompiledLlmRouteTarget {
                     provider_instance_id: "provider-primary".to_string(),
+                    provider_instance_display_name: String::new(),
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "primary-model".to_string(),
                 },
                 CompiledLlmRouteTarget {
                     provider_instance_id: "provider-backup".to_string(),
+                    provider_instance_display_name: String::new(),
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "backup-model".to_string(),

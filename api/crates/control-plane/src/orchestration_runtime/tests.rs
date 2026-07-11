@@ -16,6 +16,7 @@ fn compiled_llm_runtime(
 ) -> CompiledLlmRuntime {
     CompiledLlmRuntime {
         provider_instance_id: provider_instance_id.into(),
+        provider_instance_display_name: String::new(),
         provider_code: provider_code.to_string(),
         protocol: "openai_compatible".to_string(),
         model: "gpt-5.4-mini".to_string(),
@@ -98,6 +99,9 @@ async fn orchestration_runtime_persists_visible_internal_llm_tool_route_events()
     persist_flow_debug_outcome(
         &repository,
         PersistFlowDebugOutcomeInput {
+            scope_id: Uuid::nil(),
+            application_name: "fixture application",
+            task_queue: None,
             application_id: flow_run.application_id,
             flow_run: &flow_run,
             compiled_plan: None,
@@ -458,6 +462,7 @@ async fn orchestration_runtime_resolve_llm_instance_uses_selected_child_instance
     let resolved = invoker
         .resolve_llm_instance(&orchestration_runtime::compiled_plan::CompiledLlmRuntime {
             provider_instance_id: backup_instance_id.to_string(),
+            provider_instance_display_name: String::new(),
             provider_code: "fixture_provider".to_string(),
             protocol: "openai_compatible".to_string(),
             model: "gpt-5.4-mini".to_string(),
@@ -506,6 +511,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_model_only_present_i
     let error = invoker
         .resolve_llm_instance(&orchestration_runtime::compiled_plan::CompiledLlmRuntime {
             provider_instance_id: selected_instance_id.to_string(),
+            provider_instance_display_name: String::new(),
             provider_code: "fixture_provider".to_string(),
             protocol: "openai_compatible".to_string(),
             model: "gpt-5.4-mini".to_string(),
@@ -541,6 +547,7 @@ async fn orchestration_runtime_textualizes_user_media_when_selected_model_is_not
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: provider_instance_id.to_string(),
+        provider_instance_display_name: String::new(),
         provider_code: "fixture_provider".to_string(),
         protocol: "openai_compatible".to_string(),
         model: "gpt-5.4-mini".to_string(),
@@ -605,6 +612,7 @@ async fn orchestration_runtime_keeps_user_media_when_configured_model_supports_m
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: provider_instance_id.to_string(),
+        provider_instance_display_name: String::new(),
         provider_code: "fixture_provider".to_string(),
         protocol: "openai_compatible".to_string(),
         model: "gpt-5.4-mini".to_string(),
@@ -710,6 +718,7 @@ async fn orchestration_runtime_canonicalizes_live_provider_tool_call_names() {
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: provider_instance_id.to_string(),
+        provider_instance_display_name: String::new(),
         provider_code: "fixture_provider".to_string(),
         protocol: "openai_compatible".to_string(),
         model: "gpt-5.4-mini".to_string(),

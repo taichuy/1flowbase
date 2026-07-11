@@ -20,6 +20,7 @@ mod member_routes;
 mod model_provider_icon_routes;
 mod model_provider_routes;
 mod plugin_routes;
+mod provider_request_log_worker;
 mod provider_runtime;
 mod role_routes;
 mod route_docs;

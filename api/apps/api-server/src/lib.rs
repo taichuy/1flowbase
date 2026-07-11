@@ -375,6 +375,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     .await?;
     load_host_extensions_at_startup(&state).await?;
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());
+    crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
 
     Ok(app_with_state_and_config(state, config))
 }
@@ -396,6 +397,30 @@ fn api_workspace_root() -> Result<PathBuf> {
     Err(anyhow!(
         "api workspace root with plugins/host-extensions was not found"
     ))
+}
+
+pub async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl-C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 pub fn init_tracing() {
