@@ -243,6 +243,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::files::read_file_content,
         crate::routes::model_providers::list_catalog,
         crate::routes::model_providers::list_instances,
+        crate::routes::model_providers::list_request_logs,
         crate::routes::model_providers::create_instance,
         crate::routes::model_providers::get_main_instance,
         crate::routes::model_providers::update_main_instance,

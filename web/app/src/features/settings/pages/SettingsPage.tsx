@@ -24,9 +24,11 @@ function hasAnyPermission(permissions: string[], candidates: string[]) {
 }
 
 export function SettingsPage({
-  requestedSectionKey
+  requestedSectionKey,
+  modelProviderTab
 }: {
   requestedSectionKey?: string;
+  modelProviderTab?: 'providers' | 'request-logs';
 }) {
   const { t } = useTranslation('settings');
   const actor = useAuthStore((state) => state.actor);
@@ -150,6 +152,7 @@ export function SettingsPage({
         <SettingsSectionBody
           sectionKey={activeSection.key}
           access={sectionAccess}
+          modelProviderTab={modelProviderTab}
         />
       ) : null}
     </SettingsRouteShell>

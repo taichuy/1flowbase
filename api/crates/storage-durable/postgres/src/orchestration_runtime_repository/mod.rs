@@ -31,6 +31,7 @@ use control_plane::{
         ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
+        ListModelProviderRequestLogsPageInput, ModelProviderRequestLogsPage,
         OrchestrationRuntimeRepository, RecordFlowRunCallbackResumeAttemptInput,
         RecordFlowRunCallbackResumeAttemptOutput, ReplaceApplicationRunTraceProjectionInput,
         UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput, UpdateFlowRunInput,
@@ -474,6 +475,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         flow_run_id: Uuid,
     ) -> Result<Vec<domain::ModelFailoverAttemptLedgerRecord>> {
         PgControlPlaneStore::list_model_failover_attempt_ledger(self, flow_run_id).await
+    }
+
+    async fn list_model_provider_request_logs_page(
+        &self,
+        input: ListModelProviderRequestLogsPageInput,
+    ) -> Result<ModelProviderRequestLogsPage> {
+        PgControlPlaneStore::list_model_provider_request_logs_page(self, input).await
     }
 
     async fn list_capability_invocations(

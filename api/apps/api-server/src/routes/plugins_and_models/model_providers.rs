@@ -14,6 +14,7 @@ use control_plane::model_provider::{
     ModelProviderService, PreviewModelProviderModelsCommand, UpdateModelProviderInstanceCommand,
     UpdateModelProviderMainInstanceCommand, ValidateModelProviderResult,
 };
+use control_plane::ports::{ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository};
 use plugin_framework::{
     provider_contract::{
         PluginFormCondition, PluginFormFieldSchema, PluginFormOption, PluginFormSchema,
@@ -368,9 +369,58 @@ pub struct ModelProviderOptionTargetResponse {
     pub model: ProviderModelDescriptorResponse,
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct ModelProviderRequestLogsQuery {
+    pub application_id: Option<Uuid>,
+    pub provider_instance_id: Option<Uuid>,
+    pub model_id: Option<String>,
+    pub status: Option<String>,
+    #[serde(default)]
+    pub zero_output_only: bool,
+    pub started_after: Option<String>,
+    pub started_before: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderRequestLogResponse {
+    pub attempt_id: String,
+    pub flow_run_id: String,
+    pub application_id: String,
+    pub application_name: String,
+    pub attempt_index: i32,
+    pub provider_instance_id: Option<String>,
+    pub provider_instance_display_name: Option<String>,
+    pub provider_code: String,
+    pub protocol: String,
+    pub upstream_model_id: String,
+    pub reasoning_effort: Option<String>,
+    pub status: String,
+    pub error_code: Option<String>,
+    pub failed_after_first_token: bool,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub total_tokens: Option<i64>,
+    pub started_at: String,
+    pub first_token_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub time_to_first_token_ms: Option<i64>,
+    pub total_duration_ms: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderRequestLogsPageResponse {
+    pub items: Vec<ModelProviderRequestLogResponse>,
+    pub total_count: i64,
+    pub page: i64,
+    pub page_size: i64,
+}
+
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/model-providers/catalog", get(list_catalog))
+        .route("/model-providers/request-logs", get(list_request_logs))
         .route(
             "/model-providers",
             get(list_instances).post(create_instance),
@@ -414,6 +464,12 @@ fn format_time(value: time::OffsetDateTime) -> String {
 
 fn format_optional_time(value: Option<time::OffsetDateTime>) -> Option<String> {
     value.map(format_time)
+}
+
+fn parse_rfc3339_time(raw: &str) -> Result<time::OffsetDateTime, ApiError> {
+    time::OffsetDateTime::parse(raw, &Rfc3339).map_err(|_| {
+        control_plane::errors::ControlPlaneError::InvalidInput("request_log_time").into()
+    })
 }
 
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
@@ -861,6 +917,88 @@ pub async fn list_catalog(
         locale_meta,
         catalog,
     ))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/model-providers/request-logs",
+    params(ModelProviderRequestLogsQuery),
+    responses((status = 200, body = ModelProviderRequestLogsPageResponse), (status = 401, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_request_logs(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(query): Query<ModelProviderRequestLogsQuery>,
+) -> Result<Json<ApiSuccess<ModelProviderRequestLogsPageResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let page = state
+        .store
+        .list_model_provider_request_logs_page(ListModelProviderRequestLogsPageInput {
+            scope_id: context.actor.current_workspace_id,
+            application_id: query.application_id,
+            provider_instance_id: query.provider_instance_id,
+            model_id: query.model_id,
+            status: query.status,
+            zero_output_only: query.zero_output_only,
+            started_after: query
+                .started_after
+                .as_deref()
+                .map(parse_rfc3339_time)
+                .transpose()?,
+            started_before: query
+                .started_before
+                .as_deref()
+                .map(parse_rfc3339_time)
+                .transpose()?,
+            page: query.page.unwrap_or(1),
+            page_size: query.page_size.unwrap_or(20),
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        ModelProviderRequestLogsPageResponse {
+            items: page
+                .items
+                .into_iter()
+                .map(to_request_log_response)
+                .collect(),
+            total_count: page.total_count,
+            page: page.page,
+            page_size: page.page_size,
+        },
+    )))
+}
+
+fn to_request_log_response(
+    record: control_plane::ports::ModelProviderRequestLogRecord,
+) -> ModelProviderRequestLogResponse {
+    ModelProviderRequestLogResponse {
+        attempt_id: record.attempt_id.to_string(),
+        flow_run_id: record.flow_run_id.to_string(),
+        application_id: record.application_id.to_string(),
+        application_name: record.application_name,
+        attempt_index: record.attempt_index,
+        provider_instance_id: record.provider_instance_id.map(|id| id.to_string()),
+        provider_instance_display_name: record.provider_instance_display_name,
+        provider_code: record.provider_code,
+        protocol: record.protocol,
+        upstream_model_id: record.upstream_model_id,
+        reasoning_effort: record.reasoning_effort,
+        status: record.status,
+        error_code: record.error_code,
+        failed_after_first_token: record.failed_after_first_token,
+        input_tokens: record.input_tokens,
+        output_tokens: record.output_tokens,
+        total_tokens: record.total_tokens,
+        started_at: format_time(record.started_at),
+        first_token_at: format_optional_time(record.first_token_at),
+        finished_at: format_optional_time(record.finished_at),
+        time_to_first_token_ms: record
+            .first_token_at
+            .map(|value| (value - record.started_at).whole_milliseconds() as i64),
+        total_duration_ms: record
+            .finished_at
+            .map(|value| (value - record.started_at).whole_milliseconds() as i64),
+    }
 }
 
 #[utoipa::path(

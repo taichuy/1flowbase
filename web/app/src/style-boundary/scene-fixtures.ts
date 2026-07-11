@@ -461,7 +461,7 @@ function getStyleBoundaryCommonResponse(
           {
             route_id: 'settings.model-providers',
             surface_key: 'model-providers',
-            path: '/settings/model-providers',
+            path: '/settings/model-providers/providers',
             surface_kind: 'system'
           }
         ],

@@ -79,6 +79,8 @@ const modelProvidersApi = vi.hoisted(() => ({
   fetchSettingsModelProviderOptions: vi.fn(),
   fetchSettingsModelProviderMainInstance: vi.fn(),
   fetchSettingsModelProviderModels: vi.fn(),
+  settingsModelProviderRequestLogsQueryKey: vi.fn(() => ['request-logs']),
+  fetchSettingsModelProviderRequestLogs: vi.fn(),
   previewSettingsModelProviderModels: vi.fn(),
   createSettingsModelProviderInstance: vi.fn(),
   updateSettingsModelProviderInstance: vi.fn(),
@@ -164,6 +166,10 @@ const settingsRouteRecords = {
   files: {
     label_key: 'auto.file_management',
     path: '/settings/files'
+  },
+  'model-providers': {
+    label_key: 'auto.model_providers',
+    path: '/settings/model-providers'
   }
 } as const;
 
@@ -258,6 +264,12 @@ describe('section shell routing', () => {
     });
     modelProvidersApi.fetchSettingsModelProviderCatalog.mockResolvedValue([]);
     modelProvidersApi.fetchSettingsModelProviderInstances.mockResolvedValue([]);
+    modelProvidersApi.fetchSettingsModelProviderRequestLogs.mockResolvedValue({
+      items: [],
+      total_count: 0,
+      page: 1,
+      page_size: 20
+    });
     modelProvidersApi.fetchSettingsModelProviderOptions.mockResolvedValue({
       locale_meta: {
         requested_locale: 'zh_Hans',
@@ -336,9 +348,7 @@ describe('section shell routing', () => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['api-key-authentication', 'roles'])
       );
-      authenticateWithPermissions([
-        'settings_route.visible.settings.roles'
-      ]);
+      authenticateWithPermissions(['settings_route.visible.settings.roles']);
 
       renderApp('/settings/docs');
 
@@ -380,9 +390,7 @@ describe('section shell routing', () => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['api-key-authentication', 'files'])
       );
-      authenticateWithPermissions([
-        'settings_route.visible.settings.files'
-      ]);
+      authenticateWithPermissions(['settings_route.visible.settings.files']);
 
       renderApp('/settings/docs');
 
@@ -410,6 +418,45 @@ describe('section shell routing', () => {
 
       expect(await screen.findByText('无权限访问')).toBeInTheDocument();
       expect(docsApi.fetchSettingsApiDocsCatalog).not.toHaveBeenCalled();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-001 redirects the legacy model provider URL to providers',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['model-providers'])
+      );
+      authenticateWithPermissions(['state_model.manage.all']);
+      renderApp('/settings/model-providers');
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/model-providers/providers'
+        );
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+      expect(
+        await screen.findByRole('tab', { name: '模型供应商', selected: true })
+      ).toBeInTheDocument();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-002 keeps the request logs tab on its independent URL',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['model-providers'])
+      );
+      authenticateWithPermissions(['state_model.manage.all']);
+      renderApp('/settings/model-providers/request-logs');
+      expect(await screen.findByText('请求日志')).toBeInTheDocument();
+      expect(window.location.pathname).toBe(
+        '/settings/model-providers/request-logs'
+      );
+      expect(
+        modelProvidersApi.fetchSettingsModelProviderRequestLogs
+      ).toHaveBeenCalled();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );

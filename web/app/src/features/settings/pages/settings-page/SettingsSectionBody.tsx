@@ -21,9 +21,9 @@ const PersonalAccessTokensPanel = lazy(() =>
     default: module.PersonalAccessTokensPanel
   }))
 );
-const SettingsModelProvidersSection = lazy(() =>
-  import('./SettingsModelProvidersSection').then((module) => ({
-    default: module.SettingsModelProvidersSection
+const ModelProviderSettingsTabs = lazy(() =>
+  import('./ModelProviderSettingsTabs').then((module) => ({
+    default: module.ModelProviderSettingsTabs
   }))
 );
 const SettingsMcpManagementSection = lazy(() =>
@@ -67,10 +67,12 @@ interface SettingsSectionAccess {
 
 export function SettingsSectionBody({
   sectionKey,
-  access
+  access,
+  modelProviderTab = 'providers'
 }: {
   sectionKey: SettingsSectionKey;
   access: SettingsSectionAccess;
+  modelProviderTab?: 'providers' | 'request-logs';
 }) {
   switch (sectionKey) {
     case 'members':
@@ -92,7 +94,8 @@ export function SettingsSectionBody({
     case 'model-providers':
       return (
         <SettingsSectionBoundary>
-          <SettingsModelProvidersSection
+          <ModelProviderSettingsTabs
+            activeTab={modelProviderTab}
             canManage={access.canManageModelProviders}
           />
         </SettingsSectionBoundary>

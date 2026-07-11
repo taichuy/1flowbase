@@ -553,3 +553,43 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .unwrap();
     assert_eq!(legacy_routing.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn model_provider_request_logs_require_authentication() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/model-providers/request-logs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn model_provider_request_logs_return_attempt_page_shape() {
+    let app = test_app().await;
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/model-providers/request-logs?page=1&page_size=20&zero_output_only=true")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(payload["data"]["page"], json!(1));
+    assert_eq!(payload["data"]["page_size"], json!(20));
+    assert!(payload["data"]["items"].is_array());
+    assert!(payload["data"]["total_count"].is_number());
+}

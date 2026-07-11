@@ -6,23 +6,25 @@ import {
   listConsoleModelProviderCatalog,
   listConsoleModelProviderInstances,
   listConsoleModelProviderOptions,
+  listConsoleModelProviderRequestLogs,
   previewConsoleModelProviderModels,
   revealConsoleModelProviderSecret,
   refreshConsoleModelProviderModels,
   updateConsoleModelProviderInstance,
   updateConsoleModelProviderMainInstance,
   validateConsoleModelProviderInstance,
-  type ConsoleModelProviderCatalogResponse,
   type ConsoleModelProviderCatalogEntry,
+  type ConsoleModelProviderCatalogResponse,
   type ConsoleModelProviderInstance,
   type ConsoleModelProviderMainInstance,
-  type RevealConsoleModelProviderSecretResult,
-  type ConsoleModelProviderOptions,
   type ConsoleModelProviderModelCatalog,
+  type ConsoleModelProviderOptions,
+  type ConsoleModelProviderRequestLogsFilter,
   type ConsoleValidateModelProviderResult,
   type CreateConsoleModelProviderInput,
   type PreviewConsoleModelProviderModelsInput,
   type PreviewConsoleModelProviderModelsResponse,
+  type RevealConsoleModelProviderSecretResult,
   type UpdateConsoleModelProviderInput,
   type UpdateConsoleModelProviderMainInstanceInput
 } from '@1flowbase/api-client';
@@ -319,4 +321,16 @@ export function deleteSettingsModelProviderInstance(
   csrfToken: string
 ) {
   return deleteConsoleModelProviderInstance(instanceId, csrfToken);
+}
+
+export function settingsModelProviderRequestLogsQueryKey(
+  filter: ConsoleModelProviderRequestLogsFilter
+) {
+  return ['settings', 'model-providers', 'request-logs', filter] as const;
+}
+
+export function fetchSettingsModelProviderRequestLogs(
+  filter: ConsoleModelProviderRequestLogsFilter
+) {
+  return listConsoleModelProviderRequestLogs(filter);
 }

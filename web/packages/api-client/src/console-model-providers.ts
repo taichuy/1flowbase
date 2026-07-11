@@ -100,6 +100,56 @@ export interface ConsoleModelProviderCatalogEntry {
   predefined_models: ConsoleProviderModelDescriptor[];
 }
 
+export type ConsoleModelProviderRequestLogStatus =
+  | 'succeeded'
+  | 'failed'
+  | 'empty_response'
+  | 'failed_after_first_token';
+
+export interface ConsoleModelProviderRequestLog {
+  attempt_id: string;
+  flow_run_id: string;
+  application_id: string;
+  application_name: string;
+  attempt_index: number;
+  provider_instance_id: string | null;
+  provider_instance_display_name: string | null;
+  provider_code: string;
+  protocol: string;
+  upstream_model_id: string;
+  reasoning_effort: string | null;
+  status: ConsoleModelProviderRequestLogStatus | string;
+  error_code: string | null;
+  failed_after_first_token: boolean;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  started_at: string;
+  first_token_at: string | null;
+  finished_at: string | null;
+  time_to_first_token_ms: number | null;
+  total_duration_ms: number | null;
+}
+
+export interface ConsoleModelProviderRequestLogsPage {
+  items: ConsoleModelProviderRequestLog[];
+  total_count: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ConsoleModelProviderRequestLogsFilter {
+  application_id?: string;
+  provider_instance_id?: string;
+  model_id?: string;
+  status?: string;
+  zero_output_only?: boolean;
+  started_after?: string;
+  started_before?: string;
+  page?: number;
+  page_size?: number;
+}
+
 export interface ConsoleModelProviderCatalogResponse {
   locale_meta: Record<string, unknown>;
   i18n_catalog: Record<string, unknown>;
@@ -403,6 +453,23 @@ export function deleteConsoleModelProviderInstance(
 export function listConsoleModelProviderOptions(baseUrl?: string) {
   return apiFetch<ConsoleModelProviderOptions>({
     path: '/api/console/model-providers/options',
+    baseUrl
+  });
+}
+
+export function listConsoleModelProviderRequestLogs(
+  filter: ConsoleModelProviderRequestLogsFilter = {},
+  baseUrl?: string
+) {
+  const params = new URLSearchParams();
+  Object.entries(filter).forEach(([key, value]) => {
+    if (value !== undefined && value !== '' && value !== false) {
+      params.set(key, String(value));
+    }
+  });
+  const query = params.toString();
+  return apiFetch<ConsoleModelProviderRequestLogsPage>({
+    path: `/api/console/model-providers/request-logs${query ? `?${query}` : ''}`,
     baseUrl
   });
 }

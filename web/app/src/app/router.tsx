@@ -235,11 +235,17 @@ const templatesRoute = createRoute({
   )
 });
 
-function renderSettingsRoute(requestedSectionKey?: string) {
+function renderSettingsRoute(
+  requestedSectionKey?: string,
+  modelProviderTab?: 'providers' | 'request-logs'
+) {
   return (
     <RouteGuard routeId="settings">
       <LazyRouteBoundary>
-        <SettingsPage requestedSectionKey={requestedSectionKey} />
+        <SettingsPage
+          requestedSectionKey={requestedSectionKey}
+          modelProviderTab={modelProviderTab}
+        />
       </LazyRouteBoundary>
     </RouteGuard>
   );
@@ -292,9 +298,10 @@ function FrontStageWorkspaceContent({
     retry: false
   });
   const pageContentQuery = useQuery({
-    queryKey: selectedPageId && tabId
-      ? frontstagePageContentQueryKey(workspaceId, selectedPageId, tabId)
-      : ['frontstage', workspaceId, 'pages', 'unselected', 'content'],
+    queryKey:
+      selectedPageId && tabId
+        ? frontstagePageContentQueryKey(workspaceId, selectedPageId, tabId)
+        : ['frontstage', workspaceId, 'pages', 'unselected', 'content'],
     queryFn: () => {
       if (!selectedPageId) {
         throw new Error('FrontStage page content query requires selected page');
@@ -325,10 +332,7 @@ function FrontStageWorkspaceContent({
     return (
       <Result
         status="error"
-        title={i18nText(
-          'frontstage',
-          'auto.page_tabs_invalid_default_title'
-        )}
+        title={i18nText('frontstage', 'auto.page_tabs_invalid_default_title')}
         subTitle={i18nText(
           'frontstage',
           'auto.page_tabs_invalid_default_detail'
@@ -390,7 +394,13 @@ function FrontStageWorkspaceContent({
   );
 }
 
-function FrontStageRoute({ pageId, tabId }: { pageId?: string; tabId?: string }) {
+function FrontStageRoute({
+  pageId,
+  tabId
+}: {
+  pageId?: string;
+  tabId?: string;
+}) {
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
   );
@@ -477,7 +487,21 @@ const settingsModelProvidersRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/model-providers',
   notFoundComponent: NotFoundPage,
-  component: () => renderSettingsRoute('model-providers')
+  component: () => <Navigate to="/settings/model-providers/providers" replace />
+});
+
+const settingsModelProviderInstancesRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/model-providers/providers',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('model-providers', 'providers')
+});
+
+const settingsModelProviderRequestLogsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/model-providers/request-logs',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('model-providers', 'request-logs')
 });
 
 const settingsMcpManagementRoute = createRoute({
@@ -592,6 +616,8 @@ const routeTree = rootRoute.addChildren([
     settingsFilesRoute,
     settingsDataModelsRoute,
     settingsModelProvidersRoute,
+    settingsModelProviderInstancesRoute,
+    settingsModelProviderRequestLogsRoute,
     settingsMcpManagementRoute,
     settingsMembersRoute,
     settingsRolesRoute,
