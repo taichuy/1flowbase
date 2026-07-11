@@ -18,6 +18,8 @@ import {
   type FrontstagePageTreeNode
 } from '../features/frontstage/api/page-tree';
 import { useAuthStore } from '../state/auth-store';
+import { useFrontstageDesignModeStore } from '../state/frontstage-design-mode-store';
+import { TopbarNavigationDesigner } from './TopbarNavigationDesigner';
 
 interface ConsolePrimaryNavigationRoute {
   id: string;
@@ -25,7 +27,9 @@ interface ConsolePrimaryNavigationRoute {
   label_key: string;
 }
 
-function topbarPageRoutes(nodes: FrontstagePageTreeNode[]): ConsolePrimaryNavigationRoute[] {
+function topbarPageRoutes(
+  nodes: FrontstagePageTreeNode[]
+): ConsolePrimaryNavigationRoute[] {
   return nodes.flatMap((node) => {
     if (node.placement !== 'topbar') {
       return [];
@@ -151,7 +155,12 @@ export function Navigation({
   useRouterLinks: boolean;
 }) {
   const { t } = useTranslation('appShell');
-  const workspaceId = useAuthStore((state) => state.actor?.current_workspace_id);
+  const workspaceId = useAuthStore(
+    (state) => state.actor?.current_workspace_id
+  );
+  const isDesignMode = useFrontstageDesignModeStore(
+    (state) => state.isDesignMode
+  );
   const selectedKey = getSelectedRouteId(pathname);
   const consoleNavigationQuery = useQuery({
     queryKey: settingsConsoleNavigationQueryKey,
@@ -192,17 +201,17 @@ export function Navigation({
           }
         ]
       : [
-          ...primaryRoutesFromConsoleNavigation(consoleNavigationQuery.data).map(
-            (route) => ({
-              key: route.id,
-              label: renderNavigationLink(
-                route.path,
-                t(route.label_key),
-                useRouterLinks,
-                route.id === selectedKey && !hasSelectedDynamicPage
-              )
-            })
-          ),
+          ...primaryRoutesFromConsoleNavigation(
+            consoleNavigationQuery.data
+          ).map((route) => ({
+            key: route.id,
+            label: renderNavigationLink(
+              route.path,
+              t(route.label_key),
+              useRouterLinks,
+              route.id === selectedKey && !hasSelectedDynamicPage
+            )
+          })),
           ...topbarNavigationItems({
             nodes: frontstageNavigationQuery.data ?? [],
             pathname,
@@ -220,13 +229,15 @@ export function Navigation({
             (route) =>
               route.id === selectedKey ||
               (route.path.startsWith('/frontstage/pages/') &&
-                (pathname === route.path || pathname.startsWith(`${route.path}/`)))
+                (pathname === route.path ||
+                  pathname.startsWith(`${route.path}/`)))
           )
             ? [
                 routes.find(
                   (route) =>
                     route.path.startsWith('/frontstage/pages/') &&
-                    (pathname === route.path || pathname.startsWith(`${route.path}/`))
+                    (pathname === route.path ||
+                      pathname.startsWith(`${route.path}/`))
                 )?.id ?? selectedKey
               ]
             : []
@@ -234,6 +245,14 @@ export function Navigation({
         items={items}
         disabledOverflow
       />
+      {isDesignMode &&
+      workspaceId &&
+      (pathname === '/frontstage' || pathname.startsWith('/frontstage/')) ? (
+        <TopbarNavigationDesigner
+          workspaceId={workspaceId}
+          nodes={frontstageNavigationQuery.data ?? []}
+        />
+      ) : null}
     </nav>
   );
 }

@@ -101,7 +101,9 @@
 }
 
 .app-shell-menu.ant-menu-horizontal > .ant-menu-item .ant-menu-title-content,
-.app-shell-menu.ant-menu-horizontal > .ant-menu-overflow-item .ant-menu-title-content {
+.app-shell-menu.ant-menu-horizontal
+  > .ant-menu-overflow-item
+  .ant-menu-title-content {
   display: flex;
   align-items: center;
   height: 100%;
@@ -200,7 +202,9 @@
   border-bottom-width: 2px !important;
 }
 
-.app-shell-settings-menu.ant-menu-horizontal > .ant-menu-submenu .ant-menu-submenu-title {
+.app-shell-settings-menu.ant-menu-horizontal
+  > .ant-menu-submenu
+  .ant-menu-submenu-title {
   display: inline-flex;
   align-items: center;
   height: 100%;
@@ -208,14 +212,20 @@
   color: var(--text-secondary);
 }
 
-.app-shell-settings-menu.ant-menu-horizontal > .ant-menu-submenu .ant-menu-title-content {
+.app-shell-settings-menu.ant-menu-horizontal
+  > .ant-menu-submenu
+  .ant-menu-title-content {
   display: flex;
   align-items: center;
   height: 100%;
 }
 
-.app-shell-settings-menu.ant-menu-horizontal > .ant-menu-submenu:hover .ant-menu-submenu-title,
-.app-shell-settings-menu.ant-menu-horizontal > .ant-menu-submenu-open .ant-menu-submenu-title,
+.app-shell-settings-menu.ant-menu-horizontal
+  > .ant-menu-submenu:hover
+  .ant-menu-submenu-title,
+.app-shell-settings-menu.ant-menu-horizontal
+  > .ant-menu-submenu-open
+  .ant-menu-submenu-title,
 .app-shell-settings-menu.ant-menu-horizontal
   > .ant-menu-submenu-selected
   .ant-menu-submenu-title {
@@ -268,8 +278,12 @@
   border-bottom: none !important;
 }
 
-.app-shell-help-menu.ant-menu-horizontal > .ant-menu-submenu .ant-menu-submenu-title,
-.app-shell-language-menu.ant-menu-horizontal > .ant-menu-submenu .ant-menu-submenu-title {
+.app-shell-help-menu.ant-menu-horizontal
+  > .ant-menu-submenu
+  .ant-menu-submenu-title,
+.app-shell-language-menu.ant-menu-horizontal
+  > .ant-menu-submenu
+  .ant-menu-submenu-title {
   display: inline-flex;
   align-items: center;
   height: 100%;
@@ -277,20 +291,32 @@
   color: var(--text-secondary);
 }
 
-.app-shell-help-menu.ant-menu-horizontal > .ant-menu-submenu .ant-menu-title-content,
-.app-shell-language-menu.ant-menu-horizontal > .ant-menu-submenu .ant-menu-title-content {
+.app-shell-help-menu.ant-menu-horizontal
+  > .ant-menu-submenu
+  .ant-menu-title-content,
+.app-shell-language-menu.ant-menu-horizontal
+  > .ant-menu-submenu
+  .ant-menu-title-content {
   display: flex;
   align-items: center;
   height: 100%;
 }
 
-.app-shell-help-menu.ant-menu-horizontal > .ant-menu-submenu:hover .ant-menu-submenu-title,
-.app-shell-help-menu.ant-menu-horizontal > .ant-menu-submenu-open .ant-menu-submenu-title,
+.app-shell-help-menu.ant-menu-horizontal
+  > .ant-menu-submenu:hover
+  .ant-menu-submenu-title,
+.app-shell-help-menu.ant-menu-horizontal
+  > .ant-menu-submenu-open
+  .ant-menu-submenu-title,
 .app-shell-help-menu.ant-menu-horizontal
   > .ant-menu-submenu-selected
   .ant-menu-submenu-title,
-.app-shell-language-menu.ant-menu-horizontal > .ant-menu-submenu:hover .ant-menu-submenu-title,
-.app-shell-language-menu.ant-menu-horizontal > .ant-menu-submenu-open .ant-menu-submenu-title,
+.app-shell-language-menu.ant-menu-horizontal
+  > .ant-menu-submenu:hover
+  .ant-menu-submenu-title,
+.app-shell-language-menu.ant-menu-horizontal
+  > .ant-menu-submenu-open
+  .ant-menu-submenu-title,
 .app-shell-language-menu.ant-menu-horizontal
   > .ant-menu-submenu-selected
   .ant-menu-submenu-title {
@@ -347,8 +373,10 @@
   border-bottom-width: 2px !important;
 }
 
-.app-shell-design-menu.ant-menu-horizontal > .ant-menu-item:not(.ant-menu-item-selected):hover,
-.app-shell-design-menu.ant-menu-horizontal > .ant-menu-item-active:not(.ant-menu-item-selected) {
+.app-shell-design-menu.ant-menu-horizontal
+  > .ant-menu-item:not(.ant-menu-item-selected):hover,
+.app-shell-design-menu.ant-menu-horizontal
+  > .ant-menu-item-active:not(.ant-menu-item-selected) {
   color: var(--text-primary) !important;
   background: transparent !important;
 }
@@ -506,7 +534,9 @@
   border-bottom-width: 2px !important;
 }
 
-.app-shell-account-menu.ant-menu-horizontal > .ant-menu-submenu .ant-menu-submenu-title {
+.app-shell-account-menu.ant-menu-horizontal
+  > .ant-menu-submenu
+  .ant-menu-submenu-title {
   display: inline-flex;
   align-items: center;
   height: 100%;
@@ -522,8 +552,12 @@
   height: 100%;
 }
 
-.app-shell-account-menu.ant-menu-horizontal > .ant-menu-submenu:hover .ant-menu-submenu-title,
-.app-shell-account-menu.ant-menu-horizontal > .ant-menu-submenu-open .ant-menu-submenu-title {
+.app-shell-account-menu.ant-menu-horizontal
+  > .ant-menu-submenu:hover
+  .ant-menu-submenu-title,
+.app-shell-account-menu.ant-menu-horizontal
+  > .ant-menu-submenu-open
+  .ant-menu-submenu-title {
   color: var(--text-primary);
 }
 
@@ -618,4 +652,16 @@
     padding: 0;
     box-sizing: border-box;
   }
+}
+
+.app-shell-topbar-designer.ant-space {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 56px;
+  padding-inline-start: 4px;
+}
+
+.app-shell-topbar-designer__button.ant-btn {
+  color: var(--color-primary, #1677ff);
 }

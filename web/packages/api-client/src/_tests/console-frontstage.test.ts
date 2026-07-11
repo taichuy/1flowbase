@@ -15,7 +15,9 @@ import {
 } from '../console/frontstage';
 
 describe('console-frontstage client', () => {
-  vi.spyOn(transport, 'apiFetch').mockImplementation(async (input) => input as never);
+  vi.spyOn(transport, 'apiFetch').mockImplementation(
+    async (input) => input as never
+  );
 
   test.each([
     {
@@ -36,15 +38,19 @@ describe('console-frontstage client', () => {
     },
     {
       name: 'encoded JS block code ref',
-      request: () => getFrontstageBlockCode('workspace-1', 'page-1', 'hero/main'),
+      request: () =>
+        getFrontstageBlockCode('workspace-1', 'page-1', 'hero/main'),
       expected: {
         path: '/api/console/frontstage/workspace-1/pages/page-1/block-codes/hero%2Fmain',
         method: 'GET'
       }
     }
-  ])('reads $name through the console frontstage route', async ({ request, expected }) => {
-    await expect(request()).resolves.toMatchObject(expected);
-  });
+  ])(
+    'reads $name through the console frontstage route',
+    async ({ request, expected }) => {
+      await expect(request()).resolves.toMatchObject(expected);
+    }
+  );
 
   test.each([
     {
@@ -57,7 +63,8 @@ describe('console-frontstage client', () => {
             icon: 'FolderOutlined',
             tooltip: '分组描述',
             parent_id: null,
-            rank: '001000'
+            rank: '001000',
+            placement: 'topbar'
           },
           'csrf-123'
         ),
@@ -69,7 +76,8 @@ describe('console-frontstage client', () => {
           icon: 'FolderOutlined',
           tooltip: '分组描述',
           parent_id: null,
-          rank: '001000'
+          rank: '001000',
+          placement: 'topbar'
         },
         csrfToken: 'csrf-123'
       }
@@ -84,7 +92,8 @@ describe('console-frontstage client', () => {
             icon: 'FileTextOutlined',
             tooltip: '页面描述',
             parent_id: 'group-1',
-            rank: '002000'
+            rank: '002000',
+            placement: 'topbar'
           },
           'csrf-123'
         ),
@@ -96,7 +105,8 @@ describe('console-frontstage client', () => {
           icon: 'FileTextOutlined',
           tooltip: '页面描述',
           parent_id: 'group-1',
-          rank: '002000'
+          rank: '002000',
+          placement: 'topbar'
         },
         csrfToken: 'csrf-123'
       }
@@ -151,7 +161,8 @@ describe('console-frontstage client', () => {
     },
     {
       name: 'node deletion',
-      request: () => deleteFrontstagePageNode('workspace-1', 'page-1', 'csrf-123'),
+      request: () =>
+        deleteFrontstagePageNode('workspace-1', 'page-1', 'csrf-123'),
       expected: {
         path: '/api/console/frontstage/workspace-1/pages/page-1',
         method: 'DELETE',
@@ -205,7 +216,10 @@ describe('console-frontstage client', () => {
         csrfToken: 'csrf-123'
       }
     }
-  ])('writes $name through the console frontstage route', async ({ request, expected }) => {
-    await expect(request()).resolves.toMatchObject(expected);
-  });
+  ])(
+    'writes $name through the console frontstage route',
+    async ({ request, expected }) => {
+      await expect(request()).resolves.toMatchObject(expected);
+    }
+  );
 });

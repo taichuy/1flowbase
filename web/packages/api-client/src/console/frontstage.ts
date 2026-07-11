@@ -1,11 +1,14 @@
 import { apiFetch } from '../transport';
 
+export type ConsoleFrontstageNavigationPlacement = 'topbar' | 'sidebar';
+
 export interface ConsoleFrontstagePageTreeNode {
   id: string;
   title: string | null;
   icon?: string | null;
   tooltip?: string | null;
   is_hidden?: boolean;
+  placement: ConsoleFrontstageNavigationPlacement;
   kind: 'group' | 'page';
   children: ConsoleFrontstagePageTreeNode[];
 }
@@ -16,6 +19,7 @@ export interface ConsoleFrontstagePageNode {
   icon?: string | null;
   tooltip?: string | null;
   is_hidden?: boolean;
+  placement?: ConsoleFrontstageNavigationPlacement;
   kind: 'group' | 'page';
   parent_id: string | null;
   rank: string;
@@ -50,6 +54,7 @@ export interface CreateFrontstagePageNodeInput {
   tooltip?: string | null;
   parent_id?: string | null;
   rank?: string | null;
+  placement?: ConsoleFrontstageNavigationPlacement;
 }
 
 export interface UpdateFrontstagePageNodeTitleInput {
@@ -57,6 +62,7 @@ export interface UpdateFrontstagePageNodeTitleInput {
   icon?: string | null;
   tooltip?: string | null;
   is_hidden?: boolean;
+  placement?: ConsoleFrontstageNavigationPlacement;
 }
 
 export interface MoveFrontstagePageNodeInput {

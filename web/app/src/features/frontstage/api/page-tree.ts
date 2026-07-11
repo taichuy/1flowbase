@@ -24,6 +24,7 @@ export interface CreateFrontstageNodeInput {
   tooltip?: string | null;
   parentId: string | null;
   rank: string;
+  placement?: FrontstageNavigationPlacement;
 }
 
 export interface RenameFrontstageNodeInput {
@@ -60,10 +61,9 @@ export function getFrontstageApiBaseUrl(
 export function fetchFrontstagePageTree(
   workspaceId: string
 ): Promise<FrontstagePageTreeNode[]> {
-  return listFrontstagePages(
-    workspaceId,
-    getFrontstageApiBaseUrl()
-  ) as Promise<FrontstagePageTreeNode[]>;
+  return listFrontstagePages(workspaceId, getFrontstageApiBaseUrl()) as Promise<
+    FrontstagePageTreeNode[]
+  >;
 }
 
 export function createFrontstagePageGroupNode(
@@ -78,7 +78,8 @@ export function createFrontstagePageGroupNode(
       icon: input.icon,
       tooltip: input.tooltip,
       parent_id: input.parentId,
-      rank: input.rank
+      rank: input.rank,
+      placement: input.placement
     },
     csrfToken,
     getFrontstageApiBaseUrl()
@@ -97,7 +98,8 @@ export function createFrontstagePageNode(
       icon: input.icon,
       tooltip: input.tooltip,
       parent_id: input.parentId,
-      rank: input.rank
+      rank: input.rank,
+      placement: input.placement
     },
     csrfToken,
     getFrontstageApiBaseUrl()
