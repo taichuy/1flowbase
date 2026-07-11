@@ -668,3 +668,31 @@
 .app-shell-topbar-designer__button.ant-btn {
   color: var(--color-primary, #1677ff);
 }
+
+.app-shell-dynamic-nav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+}
+
+.app-shell-dynamic-nav-item__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.app-shell-dynamic-nav-item__action.ant-btn {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 5px;
+  color: #fff;
+  background: var(--ant-color-primary);
+}
+
+.app-shell-dynamic-nav-item__action.ant-btn:hover {
+  color: #fff !important;
+  background: var(--ant-color-primary-hover) !important;
+}

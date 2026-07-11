@@ -1,10 +1,15 @@
 import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
+  DeleteOutlined,
+  EditOutlined,
   FileAddOutlined,
   FolderAddOutlined,
+  MenuOutlined,
   PlusOutlined
 } from '@ant-design/icons';
-import { Button, Dropdown, Form, Space } from 'antd';
-import { useEffect, useState } from 'react';
+import { App, Button, Dropdown, Form, Space } from 'antd';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import type { FrontstagePageTreeNode } from '../features/frontstage/api/page-tree';
 import { useFrontstagePageTreeMutations } from '../features/frontstage/hooks/use-frontstage-page-tree-mutations';
@@ -24,6 +29,164 @@ function randomSlug(): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
   const bytes = crypto.getRandomValues(new Uint8Array(7));
   return `p${Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('')}`;
+}
+
+export function TopbarNavigationItemLabel({
+  workspaceId,
+  node,
+  siblings,
+  children
+}: {
+  workspaceId: string;
+  node: FrontstagePageTreeNode;
+  siblings: FrontstagePageTreeNode[];
+  children: ReactNode;
+}) {
+  const { modal } = App.useApp();
+  const [form] = Form.useForm<PageTreeFormValues>();
+  const [dialog, setDialog] = useState<PageTreeFormDialog | null>(null);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const mutations = useFrontstagePageTreeMutations(workspaceId);
+  const index = siblings.findIndex((candidate) => candidate.id === node.id);
+
+  useEffect(() => {
+    if (dialog?.kind !== 'rename') return;
+    form.setFieldsValue({
+      title: dialog.initialTitle,
+      slug: node.slug ?? '',
+      icon: dialog.initialIcon,
+      tooltip: dialog.initialTooltip
+    });
+  }, [dialog, form, node.slug]);
+
+  const openEdit = () => {
+    setDialog({
+      kind: 'rename',
+      nodeId: node.id,
+      title: '编辑顶部栏目',
+      initialTitle: node.title ?? '',
+      initialIcon: node.icon ?? '',
+      initialTooltip: node.tooltip ?? '',
+      initialSlug: node.slug ?? '',
+      showSlug: true
+    });
+  };
+
+  const submitEdit = async () => {
+    if (dialog?.kind !== 'rename') return;
+    const values = await form.validateFields();
+    await mutations.renameNode(node.id, {
+      title: values.title?.trim() ?? '',
+      slug: values.slug?.trim() ?? '',
+      icon: values.icon ?? null,
+      tooltip: values.tooltip ?? null
+    });
+    setDialog(null);
+  };
+
+  const move = (direction: -1 | 1) => {
+    const rank =
+      direction < 0
+        ? index === 0
+          ? '000000'
+          : String(index * 1000 + 500).padStart(6, '0')
+        : String((index + 1) * 1000 + 500).padStart(6, '0');
+    void mutations.moveNode(node.id, { parentId: null, rank });
+  };
+
+  return (
+    <span className="app-shell-dynamic-nav-item">
+      {children}
+      <span className="app-shell-dynamic-nav-item__actions">
+        <Dropdown
+          menu={{
+            items: [
+              {
+                key: 'up',
+                label: '上移',
+                icon: <ArrowUpOutlined />,
+                disabled: index <= 0,
+                onClick: () => move(-1)
+              },
+              {
+                key: 'down',
+                label: '下移',
+                icon: <ArrowDownOutlined />,
+                disabled: index >= siblings.length - 1,
+                onClick: () => move(1)
+              }
+            ]
+          }}
+          trigger={['click']}
+        >
+          <Button
+            aria-label={`排序${node.title ?? '顶部栏目'}`}
+            className="app-shell-dynamic-nav-item__action"
+            icon={<PlusOutlined />}
+            size="small"
+            type="text"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          />
+        </Dropdown>
+        <Dropdown
+          menu={{
+            items: [
+              {
+                key: 'edit',
+                label: '编辑',
+                icon: <EditOutlined />,
+                onClick: openEdit
+              },
+              { type: 'divider' },
+              {
+                key: 'delete',
+                label: '删除',
+                danger: true,
+                icon: <DeleteOutlined />,
+                onClick: () =>
+                  modal.confirm({
+                    title: `删除“${node.title?.trim() || '未命名栏目'}”`,
+                    content: '删除后无法撤销。',
+                    okText: '删除',
+                    okButtonProps: { danger: true },
+                    cancelText: '取消',
+                    onOk: () => mutations.deleteNode(node.id)
+                  })
+              }
+            ]
+          }}
+          trigger={['click']}
+        >
+          <Button
+            aria-label={`配置${node.title ?? '顶部栏目'}`}
+            className="app-shell-dynamic-nav-item__action"
+            icon={<MenuOutlined />}
+            size="small"
+            type="text"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          />
+        </Dropdown>
+      </span>
+      <PageTreeFormModal
+        dialog={dialog}
+        form={form}
+        iconPickerOpen={iconPickerOpen}
+        isOperationPending={mutations.isPending}
+        onCancel={() => setDialog(null)}
+        onIconPickerOpenChange={setIconPickerOpen}
+        onRefreshSlug={() => form.setFieldValue('slug', randomSlug())}
+        onSubmit={() => {
+          void submitEdit();
+        }}
+      />
+    </span>
+  );
 }
 
 export function TopbarNavigationDesigner({

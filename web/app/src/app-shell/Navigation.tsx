@@ -19,7 +19,10 @@ import {
 } from '../features/frontstage/api/page-tree';
 import { useAuthStore } from '../state/auth-store';
 import { useFrontstageDesignModeStore } from '../state/frontstage-design-mode-store';
-import { TopbarNavigationDesigner } from './TopbarNavigationDesigner';
+import {
+  TopbarNavigationDesigner,
+  TopbarNavigationItemLabel
+} from './TopbarNavigationDesigner';
 
 interface ConsolePrimaryNavigationRoute {
   id: string;
@@ -47,11 +50,15 @@ function topbarPageRoutes(
 function topbarNavigationItems({
   nodes,
   pathname,
-  useRouterLinks
+  useRouterLinks,
+  workspaceId,
+  isDesignMode
 }: {
   nodes: FrontstagePageTreeNode[];
   pathname: string;
   useRouterLinks: boolean;
+  workspaceId?: string;
+  isDesignMode: boolean;
 }): ItemType[] {
   return nodes.reduce<ItemType[]>((items, node) => {
     if (node.placement !== 'topbar' || !node.slug) {
@@ -60,12 +67,30 @@ function topbarNavigationItems({
     const path = `/${node.slug}`;
     items.push({
       key: node.id,
-      label: renderNavigationLink(
-        path,
-        node.title?.trim() || '未命名页面',
-        useRouterLinks,
-        pathname === path || pathname.startsWith(`${path}/`)
-      )
+      label:
+        isDesignMode && workspaceId ? (
+          <TopbarNavigationItemLabel
+            workspaceId={workspaceId}
+            node={node}
+            siblings={nodes.filter(
+              (candidate) => candidate.placement === 'topbar'
+            )}
+          >
+            {renderNavigationLink(
+              path,
+              node.title?.trim() || '未命名页面',
+              useRouterLinks,
+              pathname === path || pathname.startsWith(`${path}/`)
+            )}
+          </TopbarNavigationItemLabel>
+        ) : (
+          renderNavigationLink(
+            path,
+            node.title?.trim() || '未命名页面',
+            useRouterLinks,
+            pathname === path || pathname.startsWith(`${path}/`)
+          )
+        )
     });
     return items;
   }, []);
@@ -195,7 +220,9 @@ export function Navigation({
           ...topbarNavigationItems({
             nodes: frontstageNavigationQuery.data ?? [],
             pathname,
-            useRouterLinks
+            useRouterLinks,
+            workspaceId,
+            isDesignMode
           })
         ];
 
