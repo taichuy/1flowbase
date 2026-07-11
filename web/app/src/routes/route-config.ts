@@ -1,8 +1,5 @@
 import type { AppRouteId } from '@1flowbase/shared-types';
 
-export const FRONTSTAGE_PAGE_PATH = '/frontstage/pages/$pageId';
-export const FRONTSTAGE_PAGE_TAB_PATH =
-  '/frontstage/pages/$pageId/tabs/$tabId';
 export const FRONTSTAGE_SLUG_PATH = '/$slug';
 export const FRONTSTAGE_SLUG_PAGE_PATH = '/$slug/pages/$pageId';
 export const FRONTSTAGE_SLUG_PAGE_TAB_PATH =
@@ -25,19 +22,6 @@ export const APP_ROUTES: AppRouteDefinition[] = [
     navLabelKey: "auto.workbench",
     chromeSlot: 'primary',
     selectedMatchers: [(pathname) => pathname === '/'],
-    permissionKey: null,
-    guard: 'session-required'
-  },
-  {
-    id: 'frontstage',
-    path: '/frontstage',
-    navLabelKey: "auto.frontstage",
-    chromeSlot: 'primary',
-    selectedMatchers: [
-      (pathname) =>
-        pathname === '/frontstage' ||
-        /^\/frontstage\/pages\/[^/]+(?:\/tabs\/[^/]+)?$/.test(pathname)
-    ],
     permissionKey: null,
     guard: 'session-required'
   },

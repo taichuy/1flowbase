@@ -16,12 +16,6 @@ vi.mock('@1flowbase/api-client', () => ({
         surface_kind: 'system'
       },
       {
-        route_id: 'frontstage',
-        surface_key: 'frontstage',
-        path: '/frontstage',
-        surface_kind: 'system'
-      },
-      {
         route_id: 'embedded-apps',
         surface_key: 'embedded-apps',
         path: '/embedded-apps',
@@ -48,14 +42,6 @@ vi.mock('@1flowbase/api-client', () => ({
         label_key: 'auto.workbench',
         navigation_slot: 'primary',
         order: 1
-      },
-      {
-        item_id: 'frontstage',
-        route_id: 'frontstage',
-        parent_item_id: null,
-        label_key: 'auto.frontstage',
-        navigation_slot: 'primary',
-        order: 2
       },
       {
         item_id: 'embedded-apps',

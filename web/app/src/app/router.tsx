@@ -38,8 +38,6 @@ import { MePage } from '../features/me/pages/MePage';
 import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import { RouteGuard } from '../routes/route-guards';
 import {
-  FRONTSTAGE_PAGE_PATH,
-  FRONTSTAGE_PAGE_TAB_PATH,
   FRONTSTAGE_SLUG_PAGE_PATH,
   FRONTSTAGE_SLUG_PAGE_TAB_PATH,
   FRONTSTAGE_SLUG_PATH
@@ -336,20 +334,12 @@ function FrontStageWorkspaceContent({
     if (defaultTabs.length === 1) {
       return (
         <Navigate
-          to={
-            rootNode?.slug
-              ? FRONTSTAGE_SLUG_PAGE_TAB_PATH
-              : FRONTSTAGE_PAGE_TAB_PATH
-          }
-          params={
-            rootNode?.slug
-              ? {
-                  slug: rootNode.slug,
-                  pageId: selectedPageId,
-                  tabId: defaultTabs[0].id
-                }
-              : { pageId: selectedPageId, tabId: defaultTabs[0].id }
-          }
+          to={FRONTSTAGE_SLUG_PAGE_TAB_PATH}
+          params={{
+            slug: rootNode?.slug ?? '',
+            pageId: selectedPageId,
+            tabId: defaultTabs[0].id
+          }}
           replace
         />
       );
@@ -415,69 +405,30 @@ function FrontStageWorkspaceContent({
           void pageContentQuery.refetch();
         }}
         onNavigatePage={(nextPageId) => {
-          if (rootNode?.slug) {
-            void navigate(
-              nextPageId
-                ? {
-                    to: FRONTSTAGE_SLUG_PAGE_PATH,
-                    params: { slug: rootNode.slug, pageId: nextPageId }
-                  }
-                : { to: FRONTSTAGE_SLUG_PATH, params: { slug: rootNode.slug } }
-            );
-            return;
-          }
+          if (!rootNode?.slug) return;
           void navigate(
             nextPageId
-              ? { to: FRONTSTAGE_PAGE_PATH, params: { pageId: nextPageId } }
-              : { to: '/frontstage' }
+              ? {
+                  to: FRONTSTAGE_SLUG_PAGE_PATH,
+                  params: { slug: rootNode.slug, pageId: nextPageId }
+                }
+              : { to: FRONTSTAGE_SLUG_PATH, params: { slug: rootNode.slug } }
           );
         }}
         onNavigateTab={(nextTabId) => {
           if (!selectedPageId) return;
-          void navigate(
-            rootNode?.slug
-              ? {
-                  to: FRONTSTAGE_SLUG_PAGE_TAB_PATH,
-                  params: {
-                    slug: rootNode.slug,
-                    pageId: selectedPageId,
-                    tabId: nextTabId
-                  }
-                }
-              : {
-                  to: FRONTSTAGE_PAGE_TAB_PATH,
-                  params: { pageId: selectedPageId, tabId: nextTabId }
-                }
-          );
+          if (!rootNode?.slug) return;
+          void navigate({
+            to: FRONTSTAGE_SLUG_PAGE_TAB_PATH,
+            params: {
+              slug: rootNode.slug,
+              pageId: selectedPageId,
+              tabId: nextTabId
+            }
+          });
         }}
       />
     </LazyRouteBoundary>
-  );
-}
-
-function FrontStageRoute({
-  pageId,
-  tabId
-}: {
-  pageId?: string;
-  tabId?: string;
-}) {
-  const workspaceId = useAuthStore(
-    (state) => state.actor?.current_workspace_id
-  );
-
-  return (
-    <RouteGuard routeId="frontstage">
-      {workspaceId ? (
-        <FrontStageWorkspaceContent
-          workspaceId={workspaceId}
-          pageId={pageId}
-          tabId={tabId}
-        />
-      ) : (
-        <Navigate to="/" replace />
-      )}
-    </RouteGuard>
   );
 }
 
@@ -654,35 +605,6 @@ const meSecurityRoute = createRoute({
   component: () => renderMeRoute('security')
 });
 
-const frontstageRootRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: '/frontstage',
-  component: () => <FrontStageRoute />,
-  notFoundComponent: NotFoundPage
-});
-
-const frontstagePageRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: FRONTSTAGE_PAGE_PATH,
-  notFoundComponent: NotFoundPage,
-  component: () => {
-    const { pageId } = frontstagePageRoute.useParams();
-
-    return <FrontStageRoute pageId={pageId} />;
-  }
-});
-
-const frontstagePageTabRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: FRONTSTAGE_PAGE_TAB_PATH,
-  notFoundComponent: NotFoundPage,
-  component: () => {
-    const { pageId, tabId } = frontstagePageTabRoute.useParams();
-
-    return <FrontStageRoute pageId={pageId} tabId={tabId} />;
-  }
-});
-
 const frontstageSlugRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: FRONTSTAGE_SLUG_PATH,
@@ -752,9 +674,6 @@ const routeTree = rootRoute.addChildren([
     meIndexRoute,
     meProfileRoute,
     meSecurityRoute,
-    frontstageRootRoute,
-    frontstagePageRoute,
-    frontstagePageTabRoute,
     frontstageSlugRoute,
     frontstageSlugPageRoute,
     frontstageSlugPageTabRoute

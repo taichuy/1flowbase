@@ -70,9 +70,12 @@
 .frontstage-page-tree-sidebar__node:focus-visible
   > .frontstage-page-tree-sidebar__node-row--design
   .frontstage-page-tree-sidebar__node-title,
-.frontstage-page-tree-sidebar__node-row--design:hover .anticon,
+.frontstage-page-tree-sidebar__node-row--design:hover
+  .frontstage-page-tree-sidebar__node-main
+  .anticon,
 .frontstage-page-tree-sidebar__node:focus-visible
   > .frontstage-page-tree-sidebar__node-row--design
+  .frontstage-page-tree-sidebar__node-main
   .anticon {
   color: #2563eb;
 }

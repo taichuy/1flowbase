@@ -128,7 +128,6 @@ async fn console_navigation_route_trims_limited_member_registry() {
 
     assert_eq!(status, StatusCode::OK);
     let item_ids = string_values(&payload, &["data", "navigation_items"], "item_id");
-    assert!(item_ids.contains(&"frontstage".to_string()));
     assert!(!item_ids.contains(&"settings".to_string()));
     assert!(!item_ids.contains(&"settings.api-key-authentication".to_string()));
     assert!(!item_ids.contains(&"settings.auth-center".to_string()));
