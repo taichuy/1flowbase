@@ -53,6 +53,7 @@ pub struct FrontstagePageTreeNodeResponse {
     pub is_hidden: bool,
     pub kind: FrontstagePageTreeNodeKind,
     pub placement: FrontstageNavigationPlacementResponse,
+    pub slug: Option<String>,
     #[serde(default)]
     #[schema(no_recursion)]
     pub children: Vec<FrontstagePageTreeNodeResponse>,
@@ -69,6 +70,7 @@ pub struct FrontstagePageResponse {
     pub parent_id: Option<String>,
     pub rank: String,
     pub placement: FrontstageNavigationPlacementResponse,
+    pub slug: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -124,6 +126,7 @@ pub struct CreateFrontstageGroupBody {
     pub rank: Option<String>,
     #[serde(default = "default_navigation_placement")]
     pub placement: FrontstageNavigationPlacementResponse,
+    pub slug: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -135,6 +138,7 @@ pub struct CreateFrontstagePageBody {
     pub rank: Option<String>,
     #[serde(default = "default_navigation_placement")]
     pub placement: FrontstageNavigationPlacementResponse,
+    pub slug: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -147,6 +151,8 @@ pub struct UpdateFrontstagePageMetadataBody {
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
     pub placement: Option<FrontstageNavigationPlacementResponse>,
+    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    pub slug: Option<Option<String>>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -466,6 +472,7 @@ pub async fn create_frontstage_group(
             parent_id,
             rank: body.rank,
             placement: to_domain_placement(body.placement),
+            slug: body.slug,
         })
         .await?;
 
@@ -508,6 +515,7 @@ pub async fn create_frontstage_page(
             parent_id,
             rank: body.rank,
             placement: to_domain_placement(body.placement),
+            slug: body.slug,
         })
         .await?;
     let default_tab =
@@ -601,6 +609,7 @@ pub async fn update_frontstage_page_title(
             tooltip: body.tooltip,
             is_hidden: body.is_hidden,
             placement: body.placement.map(to_domain_placement),
+            slug: body.slug,
         })
         .await?;
 
@@ -926,6 +935,7 @@ fn to_page_response(page: domain::FrontstagePageRecord) -> FrontstagePageRespons
         parent_id: page.parent_id.map(|id| id.to_string()),
         rank: page.rank,
         placement: to_placement_response(page.placement),
+        slug: page.slug,
     }
 }
 
@@ -976,6 +986,7 @@ fn to_tree_node_response(node: domain::FrontstagePageTreeNode) -> FrontstagePage
         is_hidden: node.page.is_hidden,
         kind: to_kind_response(node.page.kind),
         placement: to_placement_response(node.page.placement),
+        slug: node.page.slug,
         children: node
             .children
             .into_iter()

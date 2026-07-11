@@ -85,6 +85,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   workspaceId,
   pageId,
   tabId,
+  showSidebar = true,
+  autoSelectFirstPage = true,
   onNavigatePage,
   onNavigateTab,
   initialPageTree,
@@ -140,12 +142,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const [pageTree, setPageTree] = useState<FrontStageTreeNode[]>(() =>
     normalizePageTree(initialPageTree ?? [])
   );
-  const [selectedPageId, setSelectedPageId] = useState<string | null>(
-    () =>
-      resolveSelectedPageId({
-        pageId,
-        pageTree: normalizePageTree(initialPageTree ?? [])
-      }).selectedPageId
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(() =>
+    !pageId && !autoSelectFirstPage
+      ? null
+      : resolveSelectedPageId({
+          pageId,
+          pageTree: normalizePageTree(initialPageTree ?? [])
+        }).selectedPageId
   );
   const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
   const pageContentSave = useFrontstagePageContentSave({
@@ -318,11 +321,18 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     [jsBlockTrialLimits, matchingJsBlockCatalogEntry, selectedBlock]
   );
   useEffect(() => {
-    const resolution = resolveSelectedPageId({
-      currentSelectedPageId: selectedPageId,
-      pageId,
-      pageTree
-    });
+    const resolution =
+      !pageId && !autoSelectFirstPage
+        ? {
+            selectedPageId: null,
+            navigationTarget: undefined,
+            shouldNavigate: false
+          }
+        : resolveSelectedPageId({
+            currentSelectedPageId: selectedPageId,
+            pageId,
+            pageTree
+          });
 
     if (selectedPageId !== resolution.selectedPageId) {
       setSelectedPageId(resolution.selectedPageId);
@@ -331,7 +341,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     if (resolution.shouldNavigate) {
       onNavigatePage?.(resolution.navigationTarget);
     }
-  }, [onNavigatePage, pageId, pageTree, selectedPageId]);
+  }, [autoSelectFirstPage, onNavigatePage, pageId, pageTree, selectedPageId]);
 
   useEffect(() => {
     if (!initialPageTree) {
@@ -1058,7 +1068,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       activeKey=""
       contentWidth="wide"
       heightMode="viewport"
-      sidebarContent={frontstageSidebar}
+      sidebarContent={showSidebar ? frontstageSidebar : undefined}
     >
       <>
         <section className="frontstage-page-workspace">

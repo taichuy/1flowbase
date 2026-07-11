@@ -1,15 +1,9 @@
 import {
-  DeleteOutlined,
-  DownOutlined,
-  EditOutlined,
   FileAddOutlined,
   FolderAddOutlined,
-  MoreOutlined,
-  PlusOutlined,
-  UpOutlined
+  PlusOutlined
 } from '@ant-design/icons';
 import { App, Button, Dropdown, Input, Space } from 'antd';
-import type { MenuProps } from 'antd';
 import { useState } from 'react';
 
 import type { FrontstagePageTreeNode } from '../features/frontstage/api/page-tree';
@@ -20,12 +14,51 @@ function appendRank(nodes: FrontstagePageTreeNode[]): string {
   return String((nodes.length + 1) * 1000).padStart(6, '0');
 }
 
-function moveRank(index: number, direction: -1 | 1): string {
-  return direction < 0
-    ? index === 1
-      ? '000000'
-      : String((index - 1) * 1000 + 500).padStart(6, '0')
-    : String((index + 2) * 1000 + 500).padStart(6, '0');
+function randomSlug(): string {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(7));
+  return `p${Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('')}`;
+}
+
+function TopbarNodeCreateFields({
+  initialSlug,
+  onTitleChange,
+  onSlugChange
+}: {
+  initialSlug: string;
+  onTitleChange: (value: string) => void;
+  onSlugChange: (value: string) => void;
+}) {
+  const [slug, setSlug] = useState(initialSlug);
+
+  const updateSlug = (value: string) => {
+    setSlug(value);
+    onSlugChange(value);
+  };
+
+  return (
+    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+      <Input
+        aria-label="显示名称"
+        placeholder="请输入显示名称"
+        onChange={(event) => onTitleChange(event.target.value)}
+      />
+      <Space.Compact style={{ width: '100%' }}>
+        <Input
+          aria-label="访问路径"
+          prefix="/"
+          value={slug}
+          onChange={(event) => updateSlug(event.target.value)}
+        />
+        <Button
+          aria-label="刷新访问路径"
+          onClick={() => updateSlug(randomSlug())}
+        >
+          刷新
+        </Button>
+      </Space.Compact>
+    </Space>
+  );
 }
 
 export function TopbarNavigationDesigner({
@@ -51,163 +84,51 @@ export function TopbarNavigationDesigner({
     }
   };
 
-  const promptTitle = (
-    title: string,
-    initialValue: string,
-    onConfirm: (value: string) => Promise<unknown>
-  ) => {
-    let value = initialValue;
+  const promptCreate = (kind: 'group' | 'page') => {
+    let title = '';
+    let slug = randomSlug();
+    const content = (
+      <TopbarNodeCreateFields
+        initialSlug={slug}
+        onTitleChange={(value) => {
+          title = value;
+        }}
+        onSlugChange={(value) => {
+          slug = value;
+        }}
+      />
+    );
     modal.confirm({
-      title,
-      content: (
-        <Input
-          autoFocus
-          defaultValue={initialValue}
-          placeholder="请输入名称"
-          onChange={(event) => {
-            value = event.target.value;
-          }}
-        />
-      ),
-      okText: '确认',
+      title: kind === 'group' ? '新增顶部空间' : '新增顶部页面',
+      content,
+      okText: '创建',
       cancelText: '取消',
       onOk: async () => {
-        const normalized = value.trim();
-        if (!normalized) {
-          void message.warning('名称不能为空');
+        const normalizedTitle = title.trim();
+        if (!normalizedTitle) {
+          void message.warning('显示名称不能为空');
           throw new Error('empty title');
         }
-        await run(() => onConfirm(normalized));
+        await run(() =>
+          kind === 'group'
+            ? mutations.createGroup({
+                title: normalizedTitle,
+                slug,
+                parentId: null,
+                rank: appendRank(topbarNodes),
+                placement: 'topbar'
+              })
+            : mutations.createPage({
+                title: normalizedTitle,
+                slug,
+                parentId: null,
+                rank: appendRank(topbarNodes),
+                placement: 'topbar'
+              })
+        );
       }
     });
   };
-
-  const createNode = (kind: 'group' | 'page', parentId: string | null) => {
-    const siblings = parentId
-      ? (topbarNodes.find((node) => node.id === parentId)?.children ?? [])
-      : topbarNodes;
-    promptTitle(
-      kind === 'group' ? '新增顶部菜单' : '新增顶部页面',
-      '',
-      (title) =>
-        kind === 'group'
-          ? mutations.createGroup({
-              title,
-              parentId: null,
-              rank: appendRank(siblings),
-              placement: 'topbar'
-            })
-          : mutations.createPage({
-              title,
-              parentId,
-              rank: appendRank(siblings),
-              placement: 'topbar'
-            })
-    );
-  };
-
-  const renameNode = (node: FrontstagePageTreeNode) => {
-    promptTitle('重命名顶部导航', node.title ?? '', (title) =>
-      mutations.renameNode(node.id, {
-        title,
-        icon: node.icon,
-        tooltip: node.tooltip
-      })
-    );
-  };
-
-  const deleteNode = (node: FrontstagePageTreeNode) => {
-    modal.confirm({
-      title: `删除“${node.title?.trim() || '未命名导航'}”`,
-      content:
-        node.kind === 'group' && node.children.length > 0
-          ? '该菜单及其子页面将一并删除，且无法撤销。'
-          : '删除后无法撤销。',
-      okText: '删除',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: () => run(() => mutations.deleteNode(node.id))
-    });
-  };
-
-  const nodeActions = (
-    node: FrontstagePageTreeNode,
-    siblings: FrontstagePageTreeNode[],
-    parentId: string | null
-  ): MenuProps['items'] => {
-    const index = siblings.findIndex((sibling) => sibling.id === node.id);
-
-    return [
-      ...(node.kind === 'group'
-        ? [
-            {
-              key: `${node.id}-add-page`,
-              icon: <FileAddOutlined />,
-              label: '新增子页面',
-              onClick: () => createNode('page', node.id)
-            }
-          ]
-        : []),
-      {
-        key: `${node.id}-rename`,
-        icon: <EditOutlined />,
-        label: '重命名',
-        onClick: () => renameNode(node)
-      },
-      {
-        key: `${node.id}-up`,
-        icon: <UpOutlined />,
-        label: '上移',
-        disabled: index <= 0,
-        onClick: () =>
-          void run(() =>
-            mutations.moveNode(node.id, {
-              parentId,
-              rank: moveRank(index, -1)
-            })
-          )
-      },
-      {
-        key: `${node.id}-down`,
-        icon: <DownOutlined />,
-        label: '下移',
-        disabled: index === siblings.length - 1,
-        onClick: () =>
-          void run(() =>
-            mutations.moveNode(node.id, {
-              parentId,
-              rank: moveRank(index, 1)
-            })
-          )
-      },
-      { type: 'divider' },
-      {
-        key: `${node.id}-delete`,
-        danger: true,
-        icon: <DeleteOutlined />,
-        label: '删除',
-        onClick: () => deleteNode(node)
-      }
-    ];
-  };
-
-  const manageItems: MenuProps['items'] = topbarNodes.map((node) => ({
-    key: node.id,
-    label: node.title?.trim() || '未命名导航',
-    children: [
-      ...(node.kind === 'group'
-        ? node.children.map((child) => ({
-            key: child.id,
-            label: child.title?.trim() || '未命名页面',
-            children: nodeActions(child, node.children, node.id)
-          }))
-        : []),
-      ...(node.kind === 'group' && node.children.length > 0
-        ? [{ type: 'divider' as const }]
-        : []),
-      ...(nodeActions(node, topbarNodes, null) ?? [])
-    ]
-  }));
 
   return (
     <Space className="app-shell-topbar-designer" size={2}>
@@ -218,13 +139,13 @@ export function TopbarNavigationDesigner({
               key: 'add-group',
               icon: <FolderAddOutlined />,
               label: '新增菜单',
-              onClick: () => createNode('group', null)
+              onClick: () => promptCreate('group')
             },
             {
               key: 'add-page',
               icon: <FileAddOutlined />,
               label: '新增页面',
-              onClick: () => createNode('page', null)
+              onClick: () => promptCreate('page')
             }
           ]
         }}
@@ -240,17 +161,6 @@ export function TopbarNavigationDesigner({
           添加菜单
         </Button>
       </Dropdown>
-      {topbarNodes.length > 0 ? (
-        <Dropdown menu={{ items: manageItems }} trigger={['click']}>
-          <Button
-            aria-label="管理顶部导航"
-            className="app-shell-topbar-designer__button"
-            disabled={pending || mutations.isPending}
-            icon={<MoreOutlined />}
-            type="text"
-          />
-        </Dropdown>
-      ) : null}
     </Space>
   );
 }

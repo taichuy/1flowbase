@@ -26,6 +26,7 @@ pub struct CreateFrontstageGroupCommand {
     pub parent_id: Option<Uuid>,
     pub rank: Option<String>,
     pub placement: domain::frontstage::FrontstageNavigationPlacement,
+    pub slug: Option<String>,
 }
 
 pub struct CreateFrontstagePageCommand {
@@ -37,6 +38,7 @@ pub struct CreateFrontstagePageCommand {
     pub parent_id: Option<Uuid>,
     pub rank: Option<String>,
     pub placement: domain::frontstage::FrontstageNavigationPlacement,
+    pub slug: Option<String>,
 }
 
 pub struct UpdateFrontstagePageMetadataCommand {
@@ -48,6 +50,7 @@ pub struct UpdateFrontstagePageMetadataCommand {
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
     pub placement: Option<domain::frontstage::FrontstageNavigationPlacement>,
+    pub slug: Option<Option<String>>,
 }
 
 pub struct MoveFrontstagePageCommand {
@@ -119,6 +122,63 @@ pub struct SaveFrontstageBlockCodeCommand {
     pub code: String,
 }
 
+const RESERVED_FRONTSTAGE_SLUGS: &[&str] = &[
+    "api",
+    "applications",
+    "assets",
+    "auth",
+    "embedded-apps",
+    "frontstage",
+    "health",
+    "login",
+    "me",
+    "settings",
+    "sign-in",
+    "templates",
+];
+
+fn normalize_frontstage_slug(value: Option<String>) -> Result<Option<String>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.len() < 4
+        || normalized.len() > 48
+        || normalized.starts_with('-')
+        || normalized.ends_with('-')
+        || normalized.contains("--")
+        || !normalized
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err(ControlPlaneError::InvalidInput("frontstage_page_slug").into());
+    }
+    if RESERVED_FRONTSTAGE_SLUGS.contains(&normalized.as_str()) {
+        return Err(ControlPlaneError::InvalidInput("frontstage_page_slug_reserved").into());
+    }
+    Ok(Some(normalized))
+}
+
+fn root_slug_for(
+    parent_id: Option<Uuid>,
+    placement: domain::frontstage::FrontstageNavigationPlacement,
+    slug: Option<String>,
+) -> Result<Option<String>> {
+    if parent_id.is_none() && placement == domain::frontstage::FrontstageNavigationPlacement::Topbar
+    {
+        return normalize_frontstage_slug(slug).and_then(|slug| {
+            slug.ok_or_else(|| {
+                ControlPlaneError::InvalidInput("frontstage_page_slug_required").into()
+            })
+            .map(Some)
+        });
+    }
+    if slug.is_some() {
+        return Err(ControlPlaneError::InvalidInput("frontstage_page_slug_not_allowed").into());
+    }
+    Ok(None)
+}
+
 pub struct FrontstagePageService<R> {
     repository: R,
 }
@@ -162,22 +222,32 @@ where
             .await?;
         ensure_design_permission(&actor)?;
 
-        if command.parent_id.is_some() {
-            return Err(ControlPlaneError::InvalidInput("parent_id").into());
+        if let Some(parent_id) = command.parent_id {
+            if command.placement != domain::frontstage::FrontstageNavigationPlacement::Sidebar {
+                return Err(ControlPlaneError::InvalidInput("parent_id").into());
+            }
+            self.ensure_page_parent_placement(
+                command.workspace_id,
+                Some(parent_id),
+                command.placement,
+            )
+            .await?;
         }
 
+        let slug = root_slug_for(command.parent_id, command.placement, command.slug)?;
         let created = self
             .repository
             .create_frontstage_page(&CreateFrontstagePageInput {
                 id: Uuid::now_v7(),
                 workspace_id: command.workspace_id,
                 actor_user_id: command.actor_user_id,
-                parent_id: None,
+                parent_id: command.parent_id,
                 kind: domain::FrontstagePageKind::Group,
                 title: command.title,
                 icon: command.icon,
                 tooltip: command.tooltip,
                 placement: command.placement,
+                slug,
                 rank: normalize_rank(command.rank),
                 default_tab: None,
             })
@@ -204,6 +274,7 @@ where
         )
         .await?;
 
+        let slug = root_slug_for(command.parent_id, command.placement, command.slug)?;
         let page_id = Uuid::now_v7();
         let tab_id = Uuid::now_v7();
         let created = self
@@ -218,6 +289,7 @@ where
                 icon: command.icon,
                 tooltip: command.tooltip,
                 placement: command.placement,
+                slug,
                 rank: normalize_rank(command.rank),
                 default_tab: Some(CreateFrontstagePageTabInput {
                     id: tab_id,
@@ -273,12 +345,21 @@ where
             .await?;
         ensure_design_permission(&actor)?;
 
+        let existing = if command.placement.is_some() || command.slug.is_some() {
+            Some(
+                self.repository
+                    .get_frontstage_page(command.workspace_id, command.page_id)
+                    .await?
+                    .ok_or(ControlPlaneError::NotFound("frontstage_page"))?,
+            )
+        } else {
+            None
+        };
+
         if let Some(placement) = command.placement {
-            let existing = self
-                .repository
-                .get_frontstage_page(command.workspace_id, command.page_id)
-                .await?
-                .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
+            let existing = existing
+                .as_ref()
+                .expect("existing page loaded for placement update");
             if placement != existing.placement {
                 match existing.kind {
                     domain::FrontstagePageKind::Group => {
@@ -318,6 +399,19 @@ where
                 tooltip: command.tooltip,
                 is_hidden: command.is_hidden,
                 placement: command.placement,
+                slug: match command.slug {
+                    Some(value) => {
+                        let existing = existing
+                            .as_ref()
+                            .expect("existing page loaded for slug update");
+                        Some(root_slug_for(
+                            existing.parent_id,
+                            command.placement.unwrap_or(existing.placement),
+                            value,
+                        )?)
+                    }
+                    None => None,
+                },
             })
             .await?;
         self.audit(&actor, &updated, "frontstage.page_metadata_updated")
@@ -343,7 +437,12 @@ where
             .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
         match existing.kind {
             domain::FrontstagePageKind::Group if command.parent_id.is_some() => {
-                return Err(ControlPlaneError::InvalidInput("parent_id").into());
+                self.ensure_page_parent_placement(
+                    command.workspace_id,
+                    command.parent_id,
+                    existing.placement,
+                )
+                .await?;
             }
             domain::FrontstagePageKind::Page => {
                 self.ensure_page_parent_placement(
@@ -569,7 +668,11 @@ where
         if parent.kind != domain::FrontstagePageKind::Group {
             return Err(ControlPlaneError::InvalidInput("parent_id").into());
         }
-        if parent.placement != placement {
+        let placement_matches = parent.placement == placement
+            || (parent.placement == domain::frontstage::FrontstageNavigationPlacement::Topbar
+                && parent.parent_id.is_none()
+                && placement == domain::frontstage::FrontstageNavigationPlacement::Sidebar);
+        if !placement_matches {
             return Err(
                 ControlPlaneError::InvalidInput("frontstage_page_placement_mismatch").into(),
             );
@@ -925,10 +1028,29 @@ fn build_frontstage_page_tree(
         .unwrap_or_default()
         .into_iter()
         .map(|record| {
-            let children = if record.kind == domain::FrontstagePageKind::Group {
-                flatten_group_children(record.id, &nodes_by_parent, &mut HashSet::new())
-            } else {
+            let children = if record.kind != domain::FrontstagePageKind::Group {
                 vec![]
+            } else if record.placement == domain::frontstage::FrontstageNavigationPlacement::Topbar
+            {
+                nodes_by_parent
+                    .get(&Some(record.id))
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|child| {
+                        let children = if child.kind == domain::FrontstagePageKind::Group {
+                            flatten_group_children(child.id, &nodes_by_parent, &mut HashSet::new())
+                        } else {
+                            vec![]
+                        };
+                        domain::FrontstagePageTreeNode {
+                            page: child,
+                            children,
+                        }
+                    })
+                    .collect()
+            } else {
+                flatten_group_children(record.id, &nodes_by_parent, &mut HashSet::new())
             };
 
             domain::FrontstagePageTreeNode {
@@ -990,6 +1112,45 @@ mod tests {
     }
 
     #[test]
+    fn ac_003_normalizes_and_rejects_invalid_frontstage_slugs() {
+        assert_eq!(
+            normalize_frontstage_slug(Some("  Marketing-01  ".to_owned())).unwrap(),
+            Some("marketing-01".to_owned())
+        );
+        assert!(normalize_frontstage_slug(Some("api".to_owned())).is_err());
+        assert!(normalize_frontstage_slug(Some("bad--slug".to_owned())).is_err());
+        assert!(normalize_frontstage_slug(Some("abc".to_owned())).is_err());
+    }
+
+    #[test]
+    fn ac_003_requires_slug_only_for_topbar_roots() {
+        assert!(root_slug_for(
+            None,
+            domain::frontstage::FrontstageNavigationPlacement::Topbar,
+            None
+        )
+        .is_err());
+        assert_eq!(
+            root_slug_for(
+                None,
+                domain::frontstage::FrontstageNavigationPlacement::Topbar,
+                Some("space-01".to_owned())
+            )
+            .unwrap(),
+            Some("space-01".to_owned())
+        );
+        assert_eq!(
+            root_slug_for(
+                Some(Uuid::from_u128(1)),
+                domain::frontstage::FrontstageNavigationPlacement::Sidebar,
+                None
+            )
+            .unwrap(),
+            None
+        );
+    }
+
+    #[test]
     fn build_frontstage_page_tree_promotes_missing_parent_records_to_root() {
         let orphan_group_id = test_uuid(0x10);
         let orphan_page_id = test_uuid(0x20);
@@ -1026,6 +1187,26 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![child_page_id]
         );
+    }
+
+    #[test]
+    fn ac_007_topbar_space_preserves_direct_sidebar_groups() {
+        let space_id = test_uuid(0x10);
+        let group_id = test_uuid(0x20);
+        let page_id = test_uuid(0x30);
+        let mut space = page_record(0x10, FrontstagePageKind::Group, None, "a");
+        space.placement = domain::frontstage::FrontstageNavigationPlacement::Topbar;
+        space.slug = Some("space-01".to_owned());
+        let group = page_record(0x20, FrontstagePageKind::Group, Some(space_id), "a");
+        let page = page_record(0x30, FrontstagePageKind::Page, Some(group_id), "a");
+
+        let tree = build_frontstage_page_tree(vec![space, group, page]);
+
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].page.id, space_id);
+        assert_eq!(tree[0].children.len(), 1);
+        assert_eq!(tree[0].children[0].page.id, group_id);
+        assert_eq!(tree[0].children[0].children[0].page.id, page_id);
     }
 
     #[test]

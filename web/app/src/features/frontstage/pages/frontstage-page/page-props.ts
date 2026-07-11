@@ -12,6 +12,8 @@ export type FrontStagePageProps = {
   workspaceId: string;
   pageId?: string;
   tabId?: string;
+  showSidebar?: boolean;
+  autoSelectFirstPage?: boolean;
   onNavigatePage?: (pageId?: string) => void;
   onNavigateTab?: (tabId: string) => void;
   initialPageTree?: FrontStageTreeNode[];

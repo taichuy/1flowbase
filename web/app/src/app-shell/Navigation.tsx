@@ -28,26 +28,18 @@ interface ConsolePrimaryNavigationRoute {
 }
 
 function topbarPageRoutes(
-  nodes: FrontstagePageTreeNode[],
-  filterPlacement = true
+  nodes: FrontstagePageTreeNode[]
 ): ConsolePrimaryNavigationRoute[] {
   return nodes.flatMap((node) => {
-    if (filterPlacement && node.placement !== 'topbar') {
+    if (node.placement !== 'topbar' || !node.slug) {
       return [];
     }
-
-    const descendants = topbarPageRoutes(node.children, false);
-    if (node.kind !== 'page') {
-      return descendants;
-    }
-
     return [
       {
         id: node.id,
-        path: `/frontstage/pages/${node.id}`,
+        path: `/${node.slug}`,
         label_key: node.title?.trim() || '未命名页面'
-      },
-      ...descendants
+      }
     ];
   });
 }
@@ -55,41 +47,22 @@ function topbarPageRoutes(
 function topbarNavigationItems({
   nodes,
   pathname,
-  useRouterLinks,
-  filterPlacement = true
+  useRouterLinks
 }: {
   nodes: FrontstagePageTreeNode[];
   pathname: string;
   useRouterLinks: boolean;
-  filterPlacement?: boolean;
 }): ItemType[] {
   return nodes.reduce<ItemType[]>((items, node) => {
-    if (filterPlacement && node.placement !== 'topbar') {
+    if (node.placement !== 'topbar' || !node.slug) {
       return items;
     }
-
-    const label = node.title?.trim() || '未命名页面';
-    if (node.kind === 'group') {
-      const children = topbarNavigationItems({
-        nodes: node.children,
-        pathname,
-        useRouterLinks,
-        filterPlacement: false
-      });
-      items.push({
-        key: node.id,
-        label,
-        ...(children.length > 0 ? { children } : {})
-      });
-      return items;
-    }
-
-    const path = `/frontstage/pages/${node.id}`;
+    const path = `/${node.slug}`;
     items.push({
       key: node.id,
       label: renderNavigationLink(
         path,
-        label,
+        node.title?.trim() || '未命名页面',
         useRouterLinks,
         pathname === path || pathname.startsWith(`${path}/`)
       )
@@ -178,21 +151,22 @@ export function Navigation({
     enabled: Boolean(workspaceId),
     retry: false
   });
-  const routes = useMemo<ConsolePrimaryNavigationRoute[]>(() => {
-    if (consoleNavigationQuery.data) {
-      return [
-        ...primaryRoutesFromConsoleNavigation(consoleNavigationQuery.data),
-        ...topbarPageRoutes(frontstageNavigationQuery.data ?? [])
-      ];
-    }
-
-    return [];
-  }, [consoleNavigationQuery.data, frontstageNavigationQuery.data]);
-  const hasSelectedDynamicPage = routes.some(
-    (candidate) =>
-      candidate.path.startsWith('/frontstage/pages/') &&
-      (pathname === candidate.path || pathname.startsWith(`${candidate.path}/`))
+  const dynamicRoutes = useMemo(
+    () => topbarPageRoutes(frontstageNavigationQuery.data ?? []),
+    [frontstageNavigationQuery.data]
   );
+  const routes = useMemo<ConsolePrimaryNavigationRoute[]>(() => {
+    if (!consoleNavigationQuery.data) return [];
+    return [
+      ...primaryRoutesFromConsoleNavigation(consoleNavigationQuery.data),
+      ...dynamicRoutes
+    ];
+  }, [consoleNavigationQuery.data, dynamicRoutes]);
+  const selectedDynamicRoute = dynamicRoutes.find(
+    (candidate) =>
+      pathname === candidate.path || pathname.startsWith(`${candidate.path}/`)
+  );
+  const hasSelectedDynamicPage = Boolean(selectedDynamicRoute);
   const items: MenuProps['items'] =
     consoleNavigationQuery.data === undefined
       ? [
@@ -231,22 +205,11 @@ export function Navigation({
         className="app-shell-menu"
         mode="horizontal"
         selectedKeys={
-          routes.some(
-            (route) =>
-              route.id === selectedKey ||
-              (route.path.startsWith('/frontstage/pages/') &&
-                (pathname === route.path ||
-                  pathname.startsWith(`${route.path}/`)))
-          )
-            ? [
-                routes.find(
-                  (route) =>
-                    route.path.startsWith('/frontstage/pages/') &&
-                    (pathname === route.path ||
-                      pathname.startsWith(`${route.path}/`))
-                )?.id ?? selectedKey
-              ]
-            : []
+          selectedDynamicRoute
+            ? [selectedDynamicRoute.id]
+            : routes.some((route) => route.id === selectedKey)
+              ? [selectedKey]
+              : []
         }
         items={items}
         disabledOverflow

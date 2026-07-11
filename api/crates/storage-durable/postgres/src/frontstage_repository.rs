@@ -17,6 +17,11 @@ use crate::repositories::PgControlPlaneStore;
 
 fn map_frontstage_placement_error(error: sqlx::Error) -> anyhow::Error {
     if let sqlx::Error::Database(database_error) = &error {
+        if database_error.constraint() == Some("frontstage_pages_workspace_slug_uidx") {
+            return ControlPlaneError::Conflict("frontstage_page_slug_conflict").into();
+        }
+    }
+    if let sqlx::Error::Database(database_error) = &error {
         if database_error.constraint() == Some("frontstage_pages_parent_child_placement") {
             if database_error
                 .message()
@@ -352,10 +357,11 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 icon,
                 tooltip,
                 placement,
+                slug,
                 rank,
                 created_by,
                 updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
             returning
                 id,
                 workspace_id,
@@ -380,6 +386,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(&input.icon)
         .bind(&input.tooltip)
         .bind(input.placement.as_str())
+        .bind(&input.slug)
         .bind(&input.rank)
         .bind(input.actor_user_id)
         .fetch_one(&mut *tx)
@@ -508,6 +515,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         let hidden_present = input.is_hidden.is_some();
         let placement_present = input.placement.is_some();
         let placement_value = input.placement.map(|placement| placement.as_str());
+        let slug_present = input.slug.is_some();
+        let slug_value = input.slug.clone().flatten();
         let row = sqlx::query(
             r#"
             update frontstage_pages
@@ -516,6 +525,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 tooltip = case when $7 then $8 else tooltip end,
                 is_hidden = case when $9 then $10 else is_hidden end,
                 placement = case when $11 then $12 else placement end,
+                slug = case when $13 then $14 else slug end,
                 updated_at = now()
             where workspace_id = $1 and id = $2
             returning
@@ -546,6 +556,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(input.is_hidden)
         .bind(placement_present)
         .bind(placement_value)
+        .bind(slug_present)
+        .bind(&slug_value)
         .fetch_optional(&mut *tx)
         .await
         .map_err(map_frontstage_placement_error)?;

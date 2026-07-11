@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const consoleNavigationApi = vi.hoisted(() => ({
@@ -18,7 +24,10 @@ vi.mock(
   '../../features/settings/api/console-navigation',
   () => consoleNavigationApi
 );
-vi.mock('../../features/frontstage/api/page-tree', () => frontstageNavigationApi);
+vi.mock(
+  '../../features/frontstage/api/page-tree',
+  () => frontstageNavigationApi
+);
 
 import { AppProviders } from '../../app/AppProviders';
 import { Navigation } from '../Navigation';
@@ -112,6 +121,7 @@ describe('Navigation', () => {
         title: '销售',
         kind: 'group',
         placement: 'topbar',
+        slug: 'sales',
         children: [
           {
             id: 'page-sales',
@@ -131,25 +141,28 @@ describe('Navigation', () => {
       }
     ]);
 
-    renderNavigation('/frontstage/pages/page-sales/tabs/tab-1');
+    renderNavigation('/sales/pages/page-sales/tabs/tab-1');
 
     const nav = await screen.findByRole('navigation', { name: 'Primary' });
-    fireEvent.mouseEnter(
-      await within(nav).findByRole('menuitem', { name: '销售' })
-    );
-    expect(await screen.findByRole('link', { name: '销售看板' })).toHaveAttribute(
-      'href',
-      '/frontstage/pages/page-sales'
-    );
-    expect(screen.getByRole('link', { name: '销售看板' })).toHaveAttribute(
+    expect(
+      await within(nav).findByRole('link', { name: '销售' })
+    ).toHaveAttribute('href', '/sales');
+    expect(within(nav).getByRole('link', { name: '销售' })).toHaveAttribute(
       'aria-current',
       'page'
     );
+    expect(
+      within(nav).queryByRole('link', { name: '销售看板' })
+    ).not.toBeInTheDocument();
     expect(within(nav).getByRole('link', { name: '前台' })).not.toHaveAttribute(
       'aria-current'
     );
-    expect(within(nav).queryByRole('link', { name: '内部页面' })).not.toBeInTheDocument();
-    expect(within(nav).getByRole('link', { name: '工作台' })).toBeInTheDocument();
+    expect(
+      within(nav).queryByRole('link', { name: '内部页面' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(nav).getByRole('link', { name: '工作台' })
+    ).toBeInTheDocument();
     expect(within(nav).getByRole('link', { name: '模板' })).toBeInTheDocument();
   });
 
@@ -173,6 +186,7 @@ describe('Navigation', () => {
         title: '新增菜单',
         kind: 'group',
         placement: 'topbar',
+        slug: 'new-space',
         children: []
       }
     ]);
@@ -186,10 +200,15 @@ describe('Navigation', () => {
       'frontstage-add-action-button',
       'frontstage-add-action-button--compact'
     );
-    expect(within(nav).getByRole('button', { name: '添加菜单' })).toHaveTextContent(
-      '添加菜单'
-    );
-    await within(nav).findByRole('menuitem', { name: '新增菜单' });
+    expect(
+      within(nav).getByRole('button', { name: '添加菜单' })
+    ).toHaveTextContent('添加菜单');
+    expect(
+      await within(nav).findByRole('link', { name: '新增菜单' })
+    ).toHaveAttribute('href', '/new-space');
+    expect(
+      within(nav).queryByRole('button', { name: '管理顶部导航' })
+    ).not.toBeInTheDocument();
     const topLevelItems = within(nav).getAllByRole('menuitem');
     expect(topLevelItems.map((item) => item.textContent)).toEqual([
       '工作台',
@@ -198,6 +217,37 @@ describe('Navigation', () => {
       '模板',
       '新增菜单'
     ]);
+  });
+
+  test('AC-006 creates topbar nodes with title and refreshable slug fields', async () => {
+    resetAuthStore();
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-123',
+      actor: {
+        id: 'actor-1',
+        account: 'developer',
+        effective_display_role: 'developer',
+        current_workspace_id: 'workspace-123'
+      },
+      me: null
+    });
+    useFrontstageDesignModeStore.getState().setDesignMode(true);
+    renderNavigation('/templates');
+
+    fireEvent.click(await screen.findByRole('button', { name: '添加菜单' }));
+    fireEvent.click(await screen.findByText('新增菜单'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByRole('textbox', { name: '显示名称' })
+    ).toBeInTheDocument();
+    const slugInput = within(dialog).getByRole('textbox', { name: '访问路径' });
+    const initialSlug = (slugInput as HTMLInputElement).value;
+    expect(initialSlug).toMatch(/^p[a-z0-9]{7}$/);
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '刷新访问路径' })
+    );
+    expect(slugInput).not.toHaveValue(initialSlug);
   });
 
   test('links 前台 to base frontstage path when workspace is available', async () => {
@@ -289,10 +339,7 @@ describe('Navigation', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'developer',
-        permissions: [
-          'embedded_app.view.all',
-          'template.view.all'
-        ]
+        permissions: ['embedded_app.view.all', 'template.view.all']
       }
     });
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(

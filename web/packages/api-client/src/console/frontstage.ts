@@ -9,6 +9,7 @@ export interface ConsoleFrontstagePageTreeNode {
   tooltip?: string | null;
   is_hidden?: boolean;
   placement: ConsoleFrontstageNavigationPlacement;
+  slug?: string | null;
   kind: 'group' | 'page';
   children: ConsoleFrontstagePageTreeNode[];
 }
@@ -20,6 +21,7 @@ export interface ConsoleFrontstagePageNode {
   tooltip?: string | null;
   is_hidden?: boolean;
   placement?: ConsoleFrontstageNavigationPlacement;
+  slug?: string | null;
   kind: 'group' | 'page';
   parent_id: string | null;
   rank: string;
@@ -55,6 +57,7 @@ export interface CreateFrontstagePageNodeInput {
   parent_id?: string | null;
   rank?: string | null;
   placement?: ConsoleFrontstageNavigationPlacement;
+  slug?: string | null;
 }
 
 export interface UpdateFrontstagePageNodeTitleInput {
@@ -63,6 +66,7 @@ export interface UpdateFrontstagePageNodeTitleInput {
   tooltip?: string | null;
   is_hidden?: boolean;
   placement?: ConsoleFrontstageNavigationPlacement;
+  slug?: string | null;
 }
 
 export interface MoveFrontstagePageNodeInput {

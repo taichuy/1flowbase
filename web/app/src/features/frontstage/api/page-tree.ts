@@ -25,12 +25,14 @@ export interface CreateFrontstageNodeInput {
   parentId: string | null;
   rank: string;
   placement?: FrontstageNavigationPlacement;
+  slug?: string | null;
 }
 
 export interface RenameFrontstageNodeInput {
   title: string | null;
   icon?: string | null;
   tooltip?: string | null;
+  slug?: string | null;
 }
 
 export interface UpdateFrontstageNodeMetadataInput {
@@ -79,7 +81,8 @@ export function createFrontstagePageGroupNode(
       tooltip: input.tooltip,
       parent_id: input.parentId,
       rank: input.rank,
-      placement: input.placement
+      placement: input.placement,
+      slug: input.slug
     },
     csrfToken,
     getFrontstageApiBaseUrl()
@@ -99,7 +102,8 @@ export function createFrontstagePageNode(
       tooltip: input.tooltip,
       parent_id: input.parentId,
       rank: input.rank,
-      placement: input.placement
+      placement: input.placement,
+      slug: input.slug
     },
     csrfToken,
     getFrontstageApiBaseUrl()
@@ -116,12 +120,16 @@ export function renameFrontstagePageNode(
     title?: string | null;
     icon?: string | null;
     tooltip?: string | null;
+    slug?: string | null;
   } = { title: input.title };
   if (Object.prototype.hasOwnProperty.call(input, 'icon')) {
     body.icon = input.icon;
   }
   if (Object.prototype.hasOwnProperty.call(input, 'tooltip')) {
     body.tooltip = input.tooltip;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'slug')) {
+    body.slug = input.slug;
   }
 
   return updateFrontstagePageNodeTitle(

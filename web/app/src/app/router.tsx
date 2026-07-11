@@ -39,7 +39,10 @@ import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import { RouteGuard } from '../routes/route-guards';
 import {
   FRONTSTAGE_PAGE_PATH,
-  FRONTSTAGE_PAGE_TAB_PATH
+  FRONTSTAGE_PAGE_TAB_PATH,
+  FRONTSTAGE_SLUG_PAGE_PATH,
+  FRONTSTAGE_SLUG_PAGE_TAB_PATH,
+  FRONTSTAGE_SLUG_PATH
 } from '../routes/route-config';
 import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../state/auth-store';
@@ -262,11 +265,13 @@ function renderMeRoute(requestedSectionKey?: MeSectionKey) {
 function FrontStageWorkspaceContent({
   workspaceId,
   pageId,
-  tabId
+  tabId,
+  rootNode
 }: {
   workspaceId: string;
   pageId?: string;
   tabId?: string;
+  rootNode?: import('../features/frontstage/api/page-tree').FrontstagePageTreeNode;
 }) {
   const navigate = useNavigate();
   const pageTreeQuery = useQuery({
@@ -275,14 +280,23 @@ function FrontStageWorkspaceContent({
     retry: false
   });
   const pageTreeMutations = useFrontstagePageTreeMutations(workspaceId);
-  const pageTreeFromApi = pageTreeQuery.data;
-  const selectedPageId = pageTreeFromApi
-    ? resolveSelectedPageId({
-        pageId,
-        pageTree: pageTreeFromApi
-      }).selectedPageId
-    : null;
-  const shouldLoadPageContent = Boolean(pageId && selectedPageId);
+  const pageTreeFromApi =
+    rootNode?.kind === 'group'
+      ? rootNode.children
+      : rootNode?.kind === 'page'
+        ? [rootNode]
+        : pageTreeQuery.data;
+  const effectivePageId = rootNode?.kind === 'page' ? rootNode.id : pageId;
+  const selectedPageId =
+    rootNode?.kind === 'page'
+      ? rootNode.id
+      : pageTreeFromApi
+        ? resolveSelectedPageId({
+            pageId: effectivePageId,
+            pageTree: pageTreeFromApi
+          }).selectedPageId
+        : null;
+  const shouldLoadPageContent = Boolean(effectivePageId && selectedPageId);
   const pageTabsQuery = useQuery({
     queryKey: selectedPageId
       ? frontstagePageTabsQueryKey(workspaceId, selectedPageId)
@@ -322,8 +336,20 @@ function FrontStageWorkspaceContent({
     if (defaultTabs.length === 1) {
       return (
         <Navigate
-          to={FRONTSTAGE_PAGE_TAB_PATH}
-          params={{ pageId: selectedPageId, tabId: defaultTabs[0].id }}
+          to={
+            rootNode?.slug
+              ? FRONTSTAGE_SLUG_PAGE_TAB_PATH
+              : FRONTSTAGE_PAGE_TAB_PATH
+          }
+          params={
+            rootNode?.slug
+              ? {
+                  slug: rootNode.slug,
+                  pageId: selectedPageId,
+                  tabId: defaultTabs[0].id
+                }
+              : { pageId: selectedPageId, tabId: defaultTabs[0].id }
+          }
           replace
         />
       );
@@ -345,8 +371,10 @@ function FrontStageWorkspaceContent({
     <LazyRouteBoundary>
       <FrontStagePage
         workspaceId={workspaceId}
-        pageId={pageId}
+        pageId={effectivePageId}
         tabId={tabId}
+        showSidebar={rootNode?.kind !== 'page'}
+        autoSelectFirstPage={rootNode?.kind !== 'group' || Boolean(pageId)}
         initialPageTree={pageTreeFromApi}
         isPageTreeLoading={pageTreeQuery.isLoading}
         hasPageTreeLoadError={pageTreeQuery.isError}
@@ -358,8 +386,24 @@ function FrontStageWorkspaceContent({
         )}
         isPageTreeMutating={pageTreeMutations.isPending}
         pageTreeMutationError={pageTreeMutations.error}
-        onCreateGroupNode={pageTreeMutations.createGroup}
-        onCreatePageNode={pageTreeMutations.createPage}
+        onCreateGroupNode={(input) =>
+          pageTreeMutations.createGroup({
+            ...input,
+            parentId:
+              rootNode?.kind === 'group' && input.parentId === null
+                ? rootNode.id
+                : input.parentId
+          })
+        }
+        onCreatePageNode={(input) =>
+          pageTreeMutations.createPage({
+            ...input,
+            parentId:
+              rootNode?.kind === 'group' && input.parentId === null
+                ? rootNode.id
+                : input.parentId
+          })
+        }
         onRenamePageNode={pageTreeMutations.renameNode}
         onUpdatePageNodeMetadata={pageTreeMutations.updateNodeMetadata}
         onMovePageNode={pageTreeMutations.moveNode}
@@ -371,23 +415,40 @@ function FrontStageWorkspaceContent({
           void pageContentQuery.refetch();
         }}
         onNavigatePage={(nextPageId) => {
-          if (nextPageId) {
-            void navigate({
-              to: FRONTSTAGE_PAGE_PATH,
-              params: { pageId: nextPageId }
-            });
-          } else {
-            void navigate({
-              to: '/frontstage'
-            });
+          if (rootNode?.slug) {
+            void navigate(
+              nextPageId
+                ? {
+                    to: FRONTSTAGE_SLUG_PAGE_PATH,
+                    params: { slug: rootNode.slug, pageId: nextPageId }
+                  }
+                : { to: FRONTSTAGE_SLUG_PATH, params: { slug: rootNode.slug } }
+            );
+            return;
           }
+          void navigate(
+            nextPageId
+              ? { to: FRONTSTAGE_PAGE_PATH, params: { pageId: nextPageId } }
+              : { to: '/frontstage' }
+          );
         }}
         onNavigateTab={(nextTabId) => {
           if (!selectedPageId) return;
-          void navigate({
-            to: FRONTSTAGE_PAGE_TAB_PATH,
-            params: { pageId: selectedPageId, tabId: nextTabId }
-          });
+          void navigate(
+            rootNode?.slug
+              ? {
+                  to: FRONTSTAGE_SLUG_PAGE_TAB_PATH,
+                  params: {
+                    slug: rootNode.slug,
+                    pageId: selectedPageId,
+                    tabId: nextTabId
+                  }
+                }
+              : {
+                  to: FRONTSTAGE_PAGE_TAB_PATH,
+                  params: { pageId: selectedPageId, tabId: nextTabId }
+                }
+          );
         }}
       />
     </LazyRouteBoundary>
@@ -416,6 +477,42 @@ function FrontStageRoute({
       ) : (
         <Navigate to="/" replace />
       )}
+    </RouteGuard>
+  );
+}
+
+function FrontStageSlugRoute({
+  slug,
+  pageId,
+  tabId
+}: {
+  slug: string;
+  pageId?: string;
+  tabId?: string;
+}) {
+  const workspaceId = useAuthStore(
+    (state) => state.actor?.current_workspace_id
+  );
+  const pageTreeQuery = useQuery({
+    queryKey: frontstagePageTreeQueryKey(workspaceId ?? ''),
+    queryFn: () => fetchFrontstagePageTree(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+    retry: false
+  });
+  const rootNode = pageTreeQuery.data?.find(
+    (node) => node.placement === 'topbar' && node.slug === slug
+  );
+  if (!workspaceId) return <Navigate to="/" replace />;
+  if (pageTreeQuery.isLoading) return <RouteLoadingFallback />;
+  if (!rootNode) return <NotFoundPage />;
+  return (
+    <RouteGuard routeId="frontstage">
+      <FrontStageWorkspaceContent
+        workspaceId={workspaceId}
+        pageId={pageId}
+        tabId={tabId}
+        rootNode={rootNode}
+      />
     </RouteGuard>
   );
 }
@@ -586,6 +683,36 @@ const frontstagePageTabRoute = createRoute({
   }
 });
 
+const frontstageSlugRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: FRONTSTAGE_SLUG_PATH,
+  notFoundComponent: NotFoundPage,
+  component: () => {
+    const { slug } = frontstageSlugRoute.useParams();
+    return <FrontStageSlugRoute slug={slug} />;
+  }
+});
+
+const frontstageSlugPageRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: FRONTSTAGE_SLUG_PAGE_PATH,
+  notFoundComponent: NotFoundPage,
+  component: () => {
+    const { slug, pageId } = frontstageSlugPageRoute.useParams();
+    return <FrontStageSlugRoute slug={slug} pageId={pageId} />;
+  }
+});
+
+const frontstageSlugPageTabRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: FRONTSTAGE_SLUG_PAGE_TAB_PATH,
+  notFoundComponent: NotFoundPage,
+  component: () => {
+    const { slug, pageId, tabId } = frontstageSlugPageTabRoute.useParams();
+    return <FrontStageSlugRoute slug={slug} pageId={pageId} tabId={tabId} />;
+  }
+});
+
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sign-in',
@@ -627,7 +754,10 @@ const routeTree = rootRoute.addChildren([
     meSecurityRoute,
     frontstageRootRoute,
     frontstagePageRoute,
-    frontstagePageTabRoute
+    frontstagePageTabRoute,
+    frontstageSlugRoute,
+    frontstageSlugPageRoute,
+    frontstageSlugPageTabRoute
   ]),
   signInRoute
 ]);

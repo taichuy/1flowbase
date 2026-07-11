@@ -11,6 +11,7 @@ pub struct CreateFrontstagePageInput {
     pub icon: Option<String>,
     pub tooltip: Option<String>,
     pub placement: domain::frontstage::FrontstageNavigationPlacement,
+    pub slug: Option<String>,
     pub rank: String,
     pub default_tab: Option<CreateFrontstagePageTabInput>,
 }
@@ -37,6 +38,7 @@ pub struct UpdateFrontstagePageMetadataInput {
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
     pub placement: Option<domain::frontstage::FrontstageNavigationPlacement>,
+    pub slug: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone)]

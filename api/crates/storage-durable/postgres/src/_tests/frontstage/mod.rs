@@ -51,6 +51,7 @@ async fn page_creation_keeps_one_default_tab_and_last_tab_is_guarded() {
             icon: None,
             tooltip: None,
             placement: domain::frontstage::FrontstageNavigationPlacement::Topbar,
+            slug: Some("page-root".into()),
             rank: "a".into(),
             default_tab: Some(CreateFrontstagePageTabInput {
                 id: tab_id,
@@ -1691,4 +1692,14 @@ async fn migration_creates_frontstage_page_visibility_rules() {
     .await
     .unwrap();
     assert_eq!(unique_indexes.len(), 2);
+}
+
+#[test]
+fn migration_enforces_frontstage_root_slug_contract() {
+    let migration =
+        include_str!("../../../migrations/20260711113000_enforce_frontstage_root_slug.sql");
+    assert!(migration.contains("frontstage_pages_workspace_slug_uidx"));
+    assert!(migration.contains("frontstage_pages_root_slug_check"));
+    assert!(migration.contains("parent_placement = 'topbar'"));
+    assert!(migration.contains("new.placement = 'sidebar'"));
 }

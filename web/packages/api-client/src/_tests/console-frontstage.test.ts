@@ -64,7 +64,8 @@ describe('console-frontstage client', () => {
             tooltip: '分组描述',
             parent_id: null,
             rank: '001000',
-            placement: 'topbar'
+            placement: 'topbar',
+            slug: 'sales-space'
           },
           'csrf-123'
         ),
@@ -77,7 +78,8 @@ describe('console-frontstage client', () => {
           tooltip: '分组描述',
           parent_id: null,
           rank: '001000',
-          placement: 'topbar'
+          placement: 'topbar',
+          slug: 'sales-space'
         },
         csrfToken: 'csrf-123'
       }
