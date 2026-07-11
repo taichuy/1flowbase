@@ -844,6 +844,41 @@ describe('McpManagementPanel', () => {
     ).toBeInTheDocument();
   });
 
+  test('closes the directory editor after an empty Tool mount validation failure', async () => {
+    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
+    const visibleSwitch = within(dialog).getByRole('switch', { name: '可见' });
+    fireEvent.click(visibleSwitch);
+    fireEvent.click(visibleSwitch);
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '保存 Tool 挂载' })
+    );
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('tool_id')).toHaveAttribute(
+        'aria-invalid',
+        'true'
+      );
+    });
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '关闭目录编辑' })
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: '目录编辑' })
+      ).not.toBeInTheDocument();
+    });
+  });
+
   test('confirms before closing an editor with unsaved changes', async () => {
     renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
 

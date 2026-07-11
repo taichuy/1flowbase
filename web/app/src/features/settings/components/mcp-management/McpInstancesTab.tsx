@@ -133,7 +133,6 @@ export function McpInstancesTab({
     useState<ConsoleMcpInstance | null>(null);
   const [clientConfigurationInstance, setClientConfigurationInstance] =
     useState<ConsoleMcpInstance | null>(null);
-  const directorySessionDirtyRef = useRef(false);
   const pendingDirectorySessionChangeRef = useRef<(() => void) | null>(null);
 
   const [instancesState, dispatchInstancesState] = useReducer(
@@ -958,7 +957,6 @@ export function McpInstancesTab({
   };
 
   const discardDirectorySession = () => {
-    directorySessionDirtyRef.current = false;
     setDirectoryModalOpen(false);
     setEditingBinding(null);
     setSelectedDirectoryKey('');
@@ -1008,7 +1006,7 @@ export function McpInstancesTab({
   };
 
   const requestDirectorySessionChange = (changeSession: () => void) => {
-    if (!directorySessionDirtyRef.current && !directorySessionHasChanges()) {
+    if (!directorySessionHasChanges()) {
       changeSession();
       return;
     }
@@ -1037,7 +1035,6 @@ export function McpInstancesTab({
   };
 
   const startChildGroupCreation = (path?: string) => {
-    directorySessionDirtyRef.current = false;
     const currentPath = normalizeMcpDirectoryPath(
       path ?? selectedDirectoryPath()
     );
@@ -1060,7 +1057,6 @@ export function McpInstancesTab({
   };
 
   const startToolMount = (path?: string) => {
-    directorySessionDirtyRef.current = false;
     const targetPath = normalizeMcpDirectoryPath(
       path ?? selectedDirectoryPath()
     );
@@ -1596,7 +1592,6 @@ export function McpInstancesTab({
                   >
                     <Input
                       onChange={(e) => {
-                        directorySessionDirtyRef.current = true;
                         const value = e.target.value || '';
                         const isEditingGroup =
                           selectedDirectoryKey &&
@@ -1623,9 +1618,6 @@ export function McpInstancesTab({
                     )}
                   >
                     <Input
-                      onChange={() => {
-                        directorySessionDirtyRef.current = true;
-                      }}
                     />
                   </Form.Item>
                   <Form.Item
@@ -1634,9 +1626,6 @@ export function McpInstancesTab({
                     valuePropName="checked"
                   >
                     <Switch
-                      onChange={() => {
-                        directorySessionDirtyRef.current = true;
-                      }}
                     />
                   </Form.Item>
                   <Form.Item name="sort_order" hidden>
@@ -1738,9 +1727,6 @@ export function McpInstancesTab({
                   >
                     <Select
                       disabled={Boolean(editingBinding)}
-                      onChange={() => {
-                        directorySessionDirtyRef.current = true;
-                      }}
                       options={catalog.tools.map((tool) => ({
                         label: tool.name,
                         value: tool.tool_id
@@ -1753,9 +1739,6 @@ export function McpInstancesTab({
                     valuePropName="checked"
                   >
                     <Switch
-                      onChange={() => {
-                        directorySessionDirtyRef.current = true;
-                      }}
                     />
                   </Form.Item>
                   <Form.Item name="sort_order" hidden>

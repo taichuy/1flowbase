@@ -1,24 +1,20 @@
 import { useMemo, useState } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
-import {
-  Button,
-  Checkbox,
-  Flex,
-  Input,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography
-} from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import { Button, Checkbox, Flex, Input, Select, Tag, Typography } from 'antd';
 import type {
   ConsoleModelProviderRequestLog,
   ConsoleModelProviderRequestLogsFilter
 } from '@1flowbase/api-client';
 
 import { i18nText } from '../../../../shared/i18n/text';
+import {
+  DataTable,
+  DataTableColumnSettings,
+  type DataTableColumn
+} from '../../../../shared/ui/data-table/DataTable';
+import { useUserPreferenceDataTableConfiguration } from '../../../../shared/ui/data-table/user-preference-data-table';
+import './model-provider-request-logs-panel.css';
 import {
   fetchSettingsModelProviderRequestLogs,
   settingsModelProviderRequestLogsQueryKey
@@ -72,15 +68,19 @@ export function ModelProviderRequestLogsPanel() {
     queryKey: settingsModelProviderRequestLogsQueryKey(filter),
     queryFn: () => fetchSettingsModelProviderRequestLogs(filter)
   });
-  const columns = useMemo<ColumnsType<ConsoleModelProviderRequestLog>>(
+  const columns = useMemo<
+    Array<DataTableColumn<ConsoleModelProviderRequestLog>>
+  >(
     () => [
       {
+        key: 'started_at',
         title: i18nText('settings', 'auto.request_log_start_time'),
         dataIndex: 'started_at',
         width: 180,
         render: (value: string) => new Date(value).toLocaleString()
       },
       {
+        key: 'application_name',
         title: i18nText('settings', 'auto.request_log_application'),
         dataIndex: 'application_name',
         width: 160
@@ -99,22 +99,26 @@ export function ModelProviderRequestLogsPanel() {
           row.provider_instance_display_name ?? row.provider_code
       },
       {
+        key: 'upstream_model_id',
         title: i18nText('settings', 'auto.request_log_model'),
         dataIndex: 'upstream_model_id',
         width: 160
       },
       {
+        key: 'reasoning_effort',
         title: i18nText('settings', 'auto.request_log_reasoning_effort'),
         dataIndex: 'reasoning_effort',
         width: 110,
         render: (value: string | null) => value ?? '—'
       },
       {
+        key: 'input_tokens',
         title: i18nText('settings', 'auto.request_log_input_tokens'),
         dataIndex: 'input_tokens',
         width: 120
       },
       {
+        key: 'output_tokens',
         title: i18nText('settings', 'auto.request_log_output_tokens'),
         dataIndex: 'output_tokens',
         width: 120,
@@ -129,24 +133,28 @@ export function ModelProviderRequestLogsPanel() {
         )
       },
       {
+        key: 'time_to_first_token_ms',
         title: i18nText('settings', 'auto.request_log_first_token'),
         dataIndex: 'time_to_first_token_ms',
         width: 110,
         render: formatDuration
       },
       {
+        key: 'total_duration_ms',
         title: i18nText('settings', 'auto.request_log_total_duration'),
         dataIndex: 'total_duration_ms',
         width: 110,
         render: formatDuration
       },
       {
+        key: 'attempt_index',
         title: i18nText('settings', 'auto.request_log_attempt'),
         dataIndex: 'attempt_index',
         width: 90,
         render: (value: number) => value + 1
       },
       {
+        key: 'flow_run_id',
         title: i18nText('settings', 'auto.request_log_run_id'),
         dataIndex: 'flow_run_id',
         width: 220,
@@ -162,10 +170,19 @@ export function ModelProviderRequestLogsPanel() {
     ],
     []
   );
+  const tableConfiguration =
+    useUserPreferenceDataTableConfiguration<ConsoleModelProviderRequestLog>({
+      columns,
+      preferenceKey: 'settings.model_provider_request_logs'
+    });
 
   return (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Flex gap={12} wrap>
+    <section className="model-provider-request-logs-panel">
+      <Flex
+        className="model-provider-request-logs-panel__toolbar"
+        gap={12}
+        wrap
+      >
         <Input
           aria-label={i18nText('settings', 'auto.request_log_application_id')}
           placeholder={i18nText('settings', 'auto.request_log_application_id')}
@@ -240,21 +257,25 @@ export function ModelProviderRequestLogsPanel() {
         <Button onClick={() => requestLogsQuery.refetch()}>
           {i18nText('settings', 'auto.refresh')}
         </Button>
+        <DataTableColumnSettings
+          columns={columns}
+          configuration={tableConfiguration}
+        />
       </Flex>
-      <Table
-        rowKey="attempt_id"
-        columns={columns}
-        dataSource={requestLogsQuery.data?.items ?? []}
-        loading={requestLogsQuery.isLoading || requestLogsQuery.isFetching}
-        scroll={{ x: 1680 }}
-        pagination={{
-          current: page,
-          pageSize: PAGE_SIZE,
-          total: requestLogsQuery.data?.total_count ?? 0,
-          showSizeChanger: false,
-          onChange: setPage
-        }}
-      />
-    </Space>
+      <div className="model-provider-request-logs-panel__table-region">
+        <DataTable<ConsoleModelProviderRequestLog>
+          className="model-provider-request-logs-table"
+          columns={columns}
+          configuration={tableConfiguration}
+          dataSource={requestLogsQuery.data?.items ?? []}
+          loading={requestLogsQuery.isLoading || requestLogsQuery.isFetching}
+          page={page}
+          pageSize={PAGE_SIZE}
+          rowKey="attempt_id"
+          total={requestLogsQuery.data?.total_count ?? 0}
+          onPageChange={setPage}
+        />
+      </div>
+    </section>
   );
 }
