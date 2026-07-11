@@ -211,6 +211,14 @@ pub(super) fn provider_request_log_task_from_attempt(
             .and_then(Value::as_i64)
             .unwrap_or(0) as i32
             + 1,
+        is_retry: attempt
+            .get("is_retry")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        retry_reason: attempt
+            .get("retry_reason")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         provider_instance_id: attempt
             .get("provider_instance_id")
             .and_then(Value::as_str)

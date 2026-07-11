@@ -926,13 +926,20 @@ where
             node.node_id
         )
     })?;
-    let attempt_runtimes = llm_attempt_runtimes(runtime, runtime_context).await?;
-    let failover_enabled = runtime
-        .routing
-        .as_ref()
-        .is_some_and(|routing| routing.routing_mode == LlmRoutingMode::FailoverQueue);
+    let attempt_runtimes = llm_request_runtimes(node, runtime, runtime_context).await?;
+    let retry_enabled = node
+        .config
+        .get("retry_enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let retry_interval_ms = node
+        .config
+        .get("retry_interval_ms")
+        .and_then(Value::as_u64)
+        .unwrap_or(500);
     let mut attempt_metrics = Vec::new();
     let mut failed_attempts = Vec::new();
+    let mut retry_reason: Option<String> = None;
 
     for (attempt_index, attempt_runtime) in attempt_runtimes.iter().enumerate() {
         let mut invocation = match build_provider_invocation(
@@ -981,6 +988,7 @@ where
             let error_payload = build_empty_prompt_messages_error_payload(attempt_runtime);
             let attempt = build_attempt_metric(AttemptMetricInput {
                 attempt_index,
+                retry_reason: retry_reason.as_deref(),
                 runtime: attempt_runtime,
                 status: "failed",
                 failed_after_first_token: false,
@@ -1025,6 +1033,7 @@ where
                 let error_payload = build_provider_error_payload(attempt_runtime, &provider_error);
                 let attempt = build_attempt_metric(AttemptMetricInput {
                     attempt_index,
+                    retry_reason: retry_reason.as_deref(),
                     runtime: attempt_runtime,
                     status: "failed",
                     failed_after_first_token: false,
@@ -1038,7 +1047,15 @@ where
                 });
                 attempt_metrics.push(attempt.clone());
                 failed_attempts.push(attempt);
-                if failover_enabled && attempt_index + 1 < attempt_runtimes.len() {
+                if retry_enabled && attempt_index + 1 < attempt_runtimes.len() {
+                    retry_reason = error_payload
+                        .get("error_code")
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                    if retry_interval_ms > 0 {
+                        tokio::time::sleep(std::time::Duration::from_millis(retry_interval_ms))
+                            .await;
+                    }
                     continue;
                 }
 
@@ -1101,6 +1118,7 @@ where
         };
         let attempt = build_attempt_metric(AttemptMetricInput {
             attempt_index,
+            retry_reason: retry_reason.as_deref(),
             runtime: attempt_runtime,
             status: attempt_status,
             failed_after_first_token,
@@ -1116,10 +1134,17 @@ where
 
         if let Some(error_payload) = &error_payload {
             failed_attempts.push(attempt);
-            if failover_enabled
+            if retry_enabled
                 && !failed_after_first_token
                 && attempt_index + 1 < attempt_runtimes.len()
             {
+                retry_reason = error_payload
+                    .get("error_code")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                if retry_interval_ms > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(retry_interval_ms)).await;
+                }
                 continue;
             }
             return build_failed_llm_execution(
@@ -1168,7 +1193,7 @@ where
 
     let error_payload = json!({
         "error_code": "provider_unavailable",
-        "message": "all failover queue attempts failed",
+        "message": "all llm node requests failed",
         "attempts": failed_attempts,
     });
     build_failed_llm_execution(

@@ -109,7 +109,7 @@ export function ModelProviderRequestLogsPanel() {
         title: i18nText('settings', 'auto.request_log_reasoning_effort'),
         dataIndex: 'reasoning_effort',
         width: 110,
-        render: (value: string | null) => value ?? '—'
+        render: (value: unknown) => (typeof value === 'string' ? value : '—')
       },
       {
         key: 'input_tokens',
@@ -148,9 +148,27 @@ export function ModelProviderRequestLogsPanel() {
       },
       {
         key: 'attempt_index',
-        title: i18nText('settings', 'auto.request_log_attempt'),
+        title: i18nText('settings', 'auto.request_log_request_sequence'),
         dataIndex: 'attempt_index',
-        width: 90
+        width: 100
+      },
+      {
+        key: 'is_retry',
+        title: i18nText('settings', 'auto.request_log_is_retry'),
+        dataIndex: 'is_retry',
+        width: 90,
+        render: (value: unknown) =>
+          value === true
+            ? i18nText('settings', 'auto.yes')
+            : i18nText('settings', 'auto.no')
+      },
+      {
+        key: 'retry_reason',
+        title: i18nText('settings', 'auto.request_log_retry_reason'),
+        dataIndex: 'retry_reason',
+        width: 160,
+        ellipsis: true,
+        render: (value: string | null) => value ?? '—'
       },
       {
         key: 'flow_run_id',

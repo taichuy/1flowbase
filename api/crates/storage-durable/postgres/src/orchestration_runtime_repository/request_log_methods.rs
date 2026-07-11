@@ -8,7 +8,7 @@ impl PgControlPlaneStore {
         }
 
         let mut query = QueryBuilder::<Postgres>::new(
-            "insert into model_provider_request_logs (id, scope_id, attempt_id, flow_run_id, application_name, attempt_index, provider_instance_id, provider_instance_display_name, provider_code, protocol, upstream_model_id, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms, created_at) ",
+            "insert into model_provider_request_logs (id, scope_id, attempt_id, flow_run_id, application_name, attempt_index, is_retry, retry_reason, provider_instance_id, provider_instance_display_name, provider_code, protocol, upstream_model_id, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms, created_at) ",
         );
         query.push_values(records, |mut row, record| {
             row.push_bind(Uuid::now_v7())
@@ -17,6 +17,8 @@ impl PgControlPlaneStore {
                 .push_bind(record.flow_run_id)
                 .push_bind(&record.application_name)
                 .push_bind(record.attempt_index)
+                .push_bind(record.is_retry)
+                .push_bind(&record.retry_reason)
                 .push_bind(record.provider_instance_id)
                 .push_bind(&record.provider_instance_display_name)
                 .push_bind(&record.provider_code)

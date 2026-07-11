@@ -126,6 +126,8 @@ async fn provider_request_logs_do_not_project_existing_attempt_ledgers() {
             llm_turn_span_id: None,
             queue_snapshot_id: None,
             attempt_index: 1,
+            is_retry: false,
+            retry_reason: None,
             provider_instance_id: None,
             provider_code: "legacy".into(),
             upstream_model_id: "legacy-model".into(),

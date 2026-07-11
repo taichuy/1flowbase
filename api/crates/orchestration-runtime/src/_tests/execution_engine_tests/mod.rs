@@ -498,7 +498,10 @@ impl ProviderInvoker for FailFirstFailoverInvoker {
             .lock()
             .expect("calls mutex poisoned")
             .push(runtime.provider_instance_id.clone());
-        if runtime.provider_instance_id == "provider-primary" {
+        if matches!(
+            runtime.provider_instance_id.as_str(),
+            "provider-primary" | "provider-a"
+        ) {
             anyhow::bail!("primary provider unavailable");
         }
 

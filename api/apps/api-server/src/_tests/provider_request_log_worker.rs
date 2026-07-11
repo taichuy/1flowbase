@@ -21,6 +21,8 @@ fn request_log_task(scope_id: Uuid, attempt_id: Uuid) -> ProviderRequestLogTask 
         flow_run_id: Uuid::now_v7(),
         application_name: "Worker App Snapshot".into(),
         attempt_index: 0,
+        is_retry: false,
+        retry_reason: None,
         provider_instance_id: Some(Uuid::now_v7()),
         provider_instance_display_name: Some("Worker Provider Snapshot".into()),
         provider_code: "worker_fixture".into(),

@@ -732,6 +732,9 @@
     "enter_new_password": "请输入新密码",
     "confirm_new_password": "确认新密码",
     "enter_new_password_again": "请再次输入新密码",
-    "passwords_do_not_match": "两次输入的新密码不一致"
+    "passwords_do_not_match": "两次输入的新密码不一致",
+    "request_log_request_sequence": "请求序号",
+    "request_log_is_retry": "是否重试",
+    "request_log_retry_reason": "重试原因"
   }
 }

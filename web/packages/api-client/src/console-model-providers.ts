@@ -108,6 +108,8 @@ export interface ConsoleModelProviderRequestLog {
   flow_run_id: string;
   application_name: string;
   attempt_index: number;
+  is_retry: boolean;
+  retry_reason: string | null;
   provider_instance_id: string | null;
   provider_instance_display_name: string | null;
   provider_code: string;

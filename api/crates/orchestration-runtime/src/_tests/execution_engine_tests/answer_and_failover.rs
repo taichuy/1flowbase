@@ -440,12 +440,15 @@ async fn answer_node_keeps_partial_output_when_template_selector_is_unresolved()
 }
 
 #[tokio::test]
-async fn failover_queue_retries_next_target_before_first_token() {
+async fn llm_node_retry_routes_next_target_before_first_token() {
     let mut plan = base_plan();
     let llm = plan
         .nodes
         .get_mut("node-llm")
         .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(true);
+    llm.config["max_retries"] = json!(1);
+    llm.config["retry_interval_ms"] = json!(0);
     llm.llm_runtime = Some(CompiledLlmRuntime {
         provider_instance_id: "provider-primary".to_string(),
         provider_instance_display_name: String::new(),
@@ -473,8 +476,8 @@ async fn failover_queue_retries_next_target_before_first_token() {
                     upstream_model_id: "backup-model".to_string(),
                 },
             ],
-            distribution_rule: LlmDistributionRule::None,
-            distribution_key: None,
+            distribution_rule: LlmDistributionRule::RoundRobin,
+            distribution_key: Some("retry-routing".to_string()),
             context_policy: json!({}),
             stream_policy: json!({}),
         }),
@@ -484,9 +487,15 @@ async fn failover_queue_retries_next_target_before_first_token() {
         calls: calls.clone(),
     };
 
-    let outcome = start_flow_debug_run(
+    let runtime_context = ExecutionRuntimeContext::from_plan_input(
+        &plan,
+        &serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]),
+    )
+    .with_llm_routing_counter_store(Arc::new(RecordingRoutingCounterStore::default()));
+    let outcome = start_flow_debug_run_with_runtime_context(
         &plan,
         &json!({ "node-start": { "query": "hello" } }),
+        runtime_context,
         &invoker,
     )
     .await
@@ -516,6 +525,38 @@ async fn failover_queue_retries_next_target_before_first_token() {
     assert_eq!(
         llm_trace.metrics_payload["queue_snapshot_id"],
         json!("queue-snapshot-1")
+    );
+}
+
+#[tokio::test]
+async fn provider_routing_does_not_retry_when_llm_node_retry_is_disabled() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(false);
+    llm.llm_runtime = Some(round_robin_llm_runtime(LlmDistributionRule::None));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let invoker = FailFirstFailoverInvoker {
+        calls: calls.clone(),
+    };
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": "hello" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Failed(_)
+    ));
+    assert_eq!(
+        calls.lock().expect("calls mutex poisoned").as_slice(),
+        ["provider-a"]
     );
 }
 

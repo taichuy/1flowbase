@@ -700,6 +700,8 @@
     "unresolved_node": "Unresolved node",
     "unresolved_node_definition_summary": "This workspace cannot identify the node yet. It can be resolved again after dependencies are available.",
     "unresolved_node_reason": "Reason: {{value1}}",
-    "original_node_type": "Original type: {{value1}}"
+    "original_node_type": "Original type: {{value1}}",
+    "max_retries": "Maximum retries",
+    "retry_interval_ms": "Retry interval"
   }
 }

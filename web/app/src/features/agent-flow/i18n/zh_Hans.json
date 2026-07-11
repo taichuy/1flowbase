@@ -700,6 +700,8 @@
     "unresolved_node": "未知节点",
     "unresolved_node_definition_summary": "当前工作区尚不能识别该节点，依赖满足后会重新解析。",
     "unresolved_node_reason": "原因：{{value1}}",
-    "original_node_type": "原节点类型：{{value1}}"
+    "original_node_type": "原节点类型：{{value1}}",
+    "max_retries": "最大重试次数",
+    "retry_interval_ms": "重试间隔"
   }
 }

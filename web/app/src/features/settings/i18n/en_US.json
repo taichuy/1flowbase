@@ -732,6 +732,9 @@
     "enter_new_password": "Please enter a new password",
     "confirm_new_password": "Confirm new password",
     "enter_new_password_again": "Please enter the new password again",
-    "passwords_do_not_match": "The new passwords do not match"
+    "passwords_do_not_match": "The new passwords do not match",
+    "request_log_request_sequence": "Request sequence",
+    "request_log_is_retry": "Retry",
+    "request_log_retry_reason": "Retry reason"
   }
 }

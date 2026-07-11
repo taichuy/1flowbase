@@ -14,6 +14,7 @@ import {
   Card,
   Empty,
   Input,
+  InputNumber,
   Modal,
   Select,
   Space,
@@ -241,6 +242,10 @@ function OutputContractView({ adapter, block }: SchemaViewRendererProps) {
 function PolicyGroupView({ adapter }: SchemaViewRendererProps) {
   const node = getNode(adapter);
   const retryEnabled = Boolean(adapter.getValue('config.retry_enabled'));
+  const maxRetries =
+    (adapter.getValue('config.max_retries') as number | undefined) ?? 1;
+  const retryIntervalMs =
+    (adapter.getValue('config.retry_interval_ms') as number | undefined) ?? 500;
   const errorPolicy =
     (adapter.getValue('config.error_policy') as string | undefined) ?? 'none';
   const [defaultOutputOpen, setDefaultOutputOpen] = useState(false);
@@ -345,11 +350,62 @@ function PolicyGroupView({ adapter }: SchemaViewRendererProps) {
           aria-label={i18nText('agentFlow', 'auto.retry_on_failure')}
           checked={retryEnabled}
           className="agent-flow-node-detail__policy-control"
-          onChange={(checked) =>
-            adapter.setValue('config.retry_enabled', checked)
-          }
+          onChange={(checked) => {
+            adapter.setValue('config.retry_enabled', checked);
+            if (
+              checked &&
+              adapter.getValue('config.max_retries') === undefined
+            ) {
+              adapter.setValue('config.max_retries', 1);
+            }
+            if (
+              checked &&
+              adapter.getValue('config.retry_interval_ms') === undefined
+            ) {
+              adapter.setValue('config.retry_interval_ms', 500);
+            }
+          }}
         />
       </div>
+      {node?.type === 'llm' && retryEnabled ? (
+        <>
+          <div
+            className="agent-flow-node-detail__policy-row"
+            data-testid="node-policy-row"
+          >
+            <Typography.Text className="agent-flow-node-detail__policy-label">
+              {i18nText('agentFlow', 'auto.max_retries')}
+            </Typography.Text>
+            <InputNumber
+              aria-label={i18nText('agentFlow', 'auto.max_retries')}
+              min={0}
+              precision={0}
+              value={maxRetries}
+              onChange={(value) =>
+                adapter.setValue('config.max_retries', value ?? 0)
+              }
+            />
+          </div>
+          <div
+            className="agent-flow-node-detail__policy-row"
+            data-testid="node-policy-row"
+          >
+            <Typography.Text className="agent-flow-node-detail__policy-label">
+              {i18nText('agentFlow', 'auto.retry_interval_ms')}
+            </Typography.Text>
+            <InputNumber
+              aria-label={i18nText('agentFlow', 'auto.retry_interval_ms')}
+              min={0}
+              precision={0}
+              suffix="ms"
+              value={retryIntervalMs}
+              onChange={(value) =>
+                adapter.setValue('config.retry_interval_ms', value ?? 0)
+              }
+            />
+          </div>
+        </>
+      ) : null}
       <div
         className="agent-flow-node-detail__policy-row agent-flow-node-detail__policy-row--select"
         data-testid="node-policy-row"
