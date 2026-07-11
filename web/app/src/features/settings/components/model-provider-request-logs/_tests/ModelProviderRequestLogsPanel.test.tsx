@@ -21,7 +21,7 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
         attempt_id: 'attempt-1',
         flow_run_id: 'run-1',
         application_name: 'Story Agent',
-        attempt_index: 0,
+        attempt_index: 1,
         provider_instance_id: 'provider-1',
         provider_instance_display_name: 'Gemini A',
         provider_code: 'gemini',
@@ -66,4 +66,5 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
   expect(screen.getByText('空响应')).toBeInTheDocument();
   expect(screen.getByText('Gemini A')).toBeInTheDocument();
   expect(screen.getByText('5.00 s')).toBeInTheDocument();
+  expect(screen.getAllByText('1').some((element) => element.tagName === 'TD')).toBe(true);
 });

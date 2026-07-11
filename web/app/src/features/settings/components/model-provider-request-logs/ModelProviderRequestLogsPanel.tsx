@@ -150,8 +150,7 @@ export function ModelProviderRequestLogsPanel() {
         key: 'attempt_index',
         title: i18nText('settings', 'auto.request_log_attempt'),
         dataIndex: 'attempt_index',
-        width: 90,
-        render: (value: number) => value + 1
+        width: 90
       },
       {
         key: 'flow_run_id',
