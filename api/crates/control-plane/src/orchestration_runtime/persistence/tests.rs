@@ -222,9 +222,9 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
         "provider_code": "gemini",
         "protocol": "google_genai",
         "upstream_model_id": "gemini-3-flash",
-        "status": "succeeded",
-        "event_count": 0,
-        "time_to_first_token_ms": 3350,
+        "status": "empty_response",
+        "event_count": 2,
+        "time_to_first_token_ms": null,
         "usage": {"input_tokens": 12, "output_tokens": 0, "total_tokens": 12}
     });
 
@@ -248,7 +248,7 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     assert_eq!(task.input_tokens, Some(12));
     assert_eq!(task.output_tokens, Some(0));
     assert_eq!(task.total_tokens, Some(12));
-    assert_eq!(task.time_to_first_token_ms, Some(3350));
+    assert_eq!(task.time_to_first_token_ms, None);
     assert_eq!(task.total_duration_ms, Some(7426));
     serde_json::to_value(task).unwrap();
 }

@@ -529,6 +529,75 @@ async fn llm_node_retry_routes_next_target_before_first_token() {
 }
 
 #[tokio::test]
+async fn llm_node_retries_protocol_only_empty_response() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(true);
+    llm.config["max_retries"] = json!(1);
+    llm.config["retry_interval_ms"] = json!(0);
+    let (invoker, captured_inputs) = sequential_tool_output_invoker(vec![
+        ProviderInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::UsageSnapshot {
+                    usage: ProviderUsage {
+                        input_tokens: Some(19),
+                        output_tokens: Some(0),
+                        total_tokens: Some(19),
+                        ..ProviderUsage::default()
+                    },
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Stop,
+                },
+            ],
+            result: ProviderInvocationResult {
+                usage: ProviderUsage {
+                    input_tokens: Some(19),
+                    output_tokens: Some(0),
+                    total_tokens: Some(19),
+                    ..ProviderUsage::default()
+                },
+                finish_reason: Some(ProviderFinishReason::Stop),
+                ..ProviderInvocationResult::default()
+            },
+            first_token_at: None,
+            time_to_first_token_ms: None,
+        },
+        provider_output(final_llm_response("retry succeeded")),
+    ]);
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": "hello" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist");
+
+    assert_eq!(
+        captured_inputs.lock().expect("inputs mutex poisoned").len(),
+        2
+    );
+    assert_eq!(llm_trace.output_payload["text"], json!("retry succeeded"));
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][0]["status"],
+        json!("empty_response")
+    );
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][1]["retry_reason"],
+        json!("empty_response")
+    );
+}
+
+#[tokio::test]
 async fn provider_routing_does_not_retry_when_llm_node_retry_is_disabled() {
     let mut plan = base_plan();
     let llm = plan

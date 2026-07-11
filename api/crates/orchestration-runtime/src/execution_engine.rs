@@ -1110,11 +1110,19 @@ where
             && content_delta_seen_before_terminal_failure(&output.events, finish_reason.as_ref());
         let error_payload = provider_error
             .as_ref()
-            .map(|error| build_provider_error_payload(attempt_runtime, error));
-        let attempt_status = if error_payload.is_some() {
-            "failed"
-        } else {
-            "succeeded"
+            .map(|error| build_provider_error_payload(attempt_runtime, error))
+            .or_else(|| {
+                (!has_valid_provider_output(final_content.as_deref(), &output.result))
+                    .then(|| build_empty_provider_response_error_payload(attempt_runtime))
+            });
+        let attempt_status = match error_payload
+            .as_ref()
+            .and_then(|payload| payload.get("error_code"))
+            .and_then(Value::as_str)
+        {
+            Some("empty_response") => "empty_response",
+            Some(_) => "failed",
+            None => "succeeded",
         };
         let attempt = build_attempt_metric(AttemptMetricInput {
             attempt_index,

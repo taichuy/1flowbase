@@ -130,6 +130,25 @@ pub(super) fn finish_reason_from_events(
     })
 }
 
+pub(super) fn has_valid_provider_output(
+    final_content: Option<&str>,
+    result: &ProviderInvocationResult,
+) -> bool {
+    final_content.is_some_and(|content| !content.trim().is_empty())
+        || !result.tool_calls.is_empty()
+        || !result.mcp_calls.is_empty()
+}
+
+pub(super) fn build_empty_provider_response_error_payload(runtime: &CompiledLlmRuntime) -> Value {
+    json!({
+        "provider_instance_id": runtime.provider_instance_id,
+        "provider_code": runtime.provider_code,
+        "protocol": runtime.protocol,
+        "error_code": "empty_response",
+        "message": "provider returned no valid text, tool call, or MCP call",
+    })
+}
+
 pub(super) fn invalid_tool_call_finish_error(
     finish_reason: Option<&ProviderFinishReason>,
     result: &ProviderInvocationResult,

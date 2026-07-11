@@ -183,10 +183,6 @@ pub(super) fn provider_request_log_task_from_attempt(
         .get("failed_after_first_token")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let event_count = attempt
-        .get("event_count")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
     let usage = attempt.get("usage").cloned().unwrap_or_else(|| json!({}));
     let output_tokens = usage_i64(&usage, "output_tokens");
     let raw_status = attempt
@@ -195,8 +191,6 @@ pub(super) fn provider_request_log_task_from_attempt(
         .unwrap_or("failed");
     let status = if failed_after_first_token {
         "failed_after_first_token"
-    } else if raw_status == "succeeded" && event_count == 0 && output_tokens.unwrap_or(0) == 0 {
-        "empty_response"
     } else {
         raw_status
     };
