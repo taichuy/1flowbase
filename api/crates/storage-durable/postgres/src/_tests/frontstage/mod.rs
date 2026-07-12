@@ -1692,6 +1692,21 @@ async fn migration_creates_frontstage_page_visibility_rules() {
     .await
     .unwrap();
     assert_eq!(unique_indexes.len(), 2);
+
+    let root_index_definition: String = sqlx::query_scalar(
+        r#"
+        select indexdef
+        from pg_indexes
+        where schemaname = $1
+          and indexname = 'frontstage_page_visibility_rules_root_uidx'
+        "#,
+    )
+    .bind(&schema)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(root_index_definition.contains("page_id IS NULL"));
+    assert!(root_index_definition.contains("tab_id IS NULL"));
 }
 
 #[test]
