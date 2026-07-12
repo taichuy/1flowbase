@@ -294,6 +294,8 @@ where
                     &application.name,
                     service.provider_request_log_queue.as_ref(),
                     flow_run.id,
+                    flow_run.application_id,
+                    flow_run.external_conversation_id.as_deref(),
                     node_run.id,
                     node_span.id,
                     Value::Object(resolved_inputs.clone()),

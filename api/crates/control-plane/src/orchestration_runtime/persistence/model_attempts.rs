@@ -130,6 +130,8 @@ pub(crate) async fn enqueue_provider_request_log_tasks(
     scope_id: Uuid,
     application_name: &str,
     flow_run_id: Uuid,
+    application_id: Option<Uuid>,
+    conversation_id: Option<&str>,
     attempts: &[domain::ModelFailoverAttemptLedgerRecord],
     metrics_payload: &Value,
 ) {
@@ -145,6 +147,8 @@ pub(crate) async fn enqueue_provider_request_log_tasks(
             scope_id,
             attempt.id,
             flow_run_id,
+            application_id,
+            conversation_id,
             application_name,
             attempt.started_at,
             attempt.finished_at.unwrap_or(attempt.started_at),
@@ -174,6 +178,8 @@ pub(super) fn provider_request_log_task_from_attempt(
     scope_id: Uuid,
     attempt_id: Uuid,
     flow_run_id: Uuid,
+    application_id: Option<Uuid>,
+    conversation_id: Option<&str>,
     application_name: &str,
     started_at: OffsetDateTime,
     finished_at: OffsetDateTime,
@@ -199,6 +205,8 @@ pub(super) fn provider_request_log_task_from_attempt(
         scope_id,
         attempt_id,
         flow_run_id,
+        application_id,
+        conversation_id: conversation_id.map(str::to_string),
         application_name: application_name.to_string(),
         attempt_index: attempt
             .get("attempt_index")

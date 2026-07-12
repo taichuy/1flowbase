@@ -309,7 +309,7 @@ impl PgControlPlaneStore {
             .get("total_count");
 
         let mut query = QueryBuilder::<Postgres>::new(
-            "select attempt_id, flow_run_id, application_name, attempt_index, is_retry, retry_reason, provider_instance_id, provider_instance_display_name, provider_code, protocol, upstream_model_id, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms from model_provider_request_logs logs",
+            "select attempt_id, flow_run_id, application_id, conversation_id, application_name, attempt_index, is_retry, retry_reason, provider_instance_id, provider_instance_display_name, provider_code, protocol, upstream_model_id, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms from model_provider_request_logs logs",
         );
         push_model_provider_request_log_filters(&mut query, &input);
         query
@@ -323,6 +323,8 @@ impl PgControlPlaneStore {
             .map(|row| control_plane::ports::ModelProviderRequestLogRecord {
                 attempt_id: row.get("attempt_id"),
                 flow_run_id: row.get("flow_run_id"),
+                application_id: row.get("application_id"),
+                conversation_id: row.get("conversation_id"),
                 application_name: row.get("application_name"),
                 attempt_index: row.get("attempt_index"),
                 is_retry: row.get("is_retry"),

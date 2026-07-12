@@ -372,6 +372,8 @@
     "request_log_total_duration": "Total duration",
     "request_log_attempt": "Attempt",
     "request_log_run_id": "Run ID",
+    "request_log_conversation": "Conversation",
+    "request_log_view_conversation": "View conversation",
     "request_log_application_id": "Application ID",
     "request_log_zero_output_only": "Zero output only",
     "request_log_succeeded": "Succeeded",
