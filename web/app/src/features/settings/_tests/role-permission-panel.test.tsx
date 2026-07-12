@@ -271,7 +271,7 @@ describe('RolePermissionPanel', () => {
     );
   });
 
-  test('dynamic route tree hides slugs and checking a parent selects descendants', async () => {
+  test('dynamic route group selects descendants without persisting the group id', async () => {
     renderPanel();
 
     fireEvent.click(await screen.findByRole('tab', { name: '动态路由' }));
@@ -285,7 +285,7 @@ describe('RolePermissionPanel', () => {
       expect(rolesApi.replaceSettingsRoleFrontstageRoutes).toHaveBeenCalledWith(
         'manager',
         {
-          page_ids: ['root-page', 'child-page'],
+          page_ids: ['child-page'],
           tab_ids: ['child-tab']
         },
         'csrf-123'
