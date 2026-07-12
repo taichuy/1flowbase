@@ -171,14 +171,19 @@ export function ModelProviderRequestLogsPanel() {
         render: (value: string | null) => value ?? '—'
       },
       {
-        key: 'flow_run_id',
-        title: i18nText('settings', 'auto.request_log_run_id'),
-        dataIndex: 'flow_run_id',
-        width: 220,
-        ellipsis: true,
-        render: (value: string) => (
-          <Typography.Text copyable>{value}</Typography.Text>
-        )
+        key: 'conversation_link',
+        title: i18nText('settings', 'auto.request_log_conversation'),
+        width: 120,
+        render: (_, row) =>
+          row.application_id && row.flow_run_id ? (
+            <Typography.Link
+              href={`/applications/${encodeURIComponent(row.application_id)}/logs?run_id=${encodeURIComponent(row.flow_run_id)}`}
+            >
+              {i18nText('settings', 'auto.request_log_view_conversation')}
+            </Typography.Link>
+          ) : (
+            '—'
+          )
       }
     ],
     []

@@ -11,6 +11,8 @@ fn request_log(
         scope_id,
         attempt_id,
         flow_run_id: Uuid::now_v7(),
+        application_id: Some(Uuid::now_v7()),
+        conversation_id: Some("conversation-1".into()),
         application_name: "Runtime App Snapshot".into(),
         attempt_index: 1,
         provider_instance_id: Some(Uuid::now_v7()),
@@ -73,6 +75,8 @@ async fn provider_request_logs_batch_insert_is_idempotent_and_queryable() {
     let page=<PgControlPlaneStore as OrchestrationRuntimeRepository>::list_model_provider_request_logs_page(&store,input).await.unwrap();
     assert_eq!(page.total_count, 1);
     assert_eq!(page.items[0].attempt_id, attempt_id);
+    assert_eq!(page.items[0].application_id, row.application_id);
+    assert_eq!(page.items[0].conversation_id, row.conversation_id);
     assert_eq!(page.items[0].application_name, "Runtime App Snapshot");
 }
 

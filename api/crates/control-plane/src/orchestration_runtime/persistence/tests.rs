@@ -232,6 +232,8 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
         scope_id,
         attempt_id,
         flow_run_id,
+        Some(Uuid::nil()),
+        Some("conversation-1"),
         "应用快照",
         started_at,
         finished_at,
@@ -239,6 +241,8 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     );
 
     assert_eq!(task.application_name, "应用快照");
+    assert_eq!(task.application_id, Some(Uuid::nil()));
+    assert_eq!(task.conversation_id.as_deref(), Some("conversation-1"));
     assert_eq!(task.attempt_index, 1);
     assert_eq!(
         task.provider_instance_display_name.as_deref(),

@@ -1136,6 +1136,10 @@ pub struct ProviderRequestLogTask {
     pub scope_id: Uuid,
     pub attempt_id: Uuid,
     pub flow_run_id: Uuid,
+    #[serde(default)]
+    pub application_id: Option<Uuid>,
+    #[serde(default)]
+    pub conversation_id: Option<String>,
     pub application_name: String,
     pub attempt_index: i32,
     pub is_retry: bool,
@@ -1179,6 +1183,8 @@ pub struct ListModelProviderRequestLogsPageInput {
 pub struct ModelProviderRequestLogRecord {
     pub attempt_id: Uuid,
     pub flow_run_id: Uuid,
+    pub application_id: Option<Uuid>,
+    pub conversation_id: Option<String>,
     pub application_name: String,
     pub attempt_index: i32,
     pub is_retry: bool,

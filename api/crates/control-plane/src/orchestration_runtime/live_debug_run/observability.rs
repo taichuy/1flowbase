@@ -131,6 +131,8 @@ pub(super) async fn persist_llm_context_observability<R>(
     application_name: &str,
     task_queue: Option<&std::sync::Arc<dyn crate::ports::TaskQueue>>,
     flow_run_id: Uuid,
+    application_id: Uuid,
+    conversation_id: Option<&str>,
     node_run_id: Uuid,
     span_id: Uuid,
     node_input: Value,
@@ -189,6 +191,8 @@ where
         scope_id,
         application_name,
         flow_run_id,
+        Some(application_id),
+        conversation_id,
         &attempts,
         metrics_payload,
     )

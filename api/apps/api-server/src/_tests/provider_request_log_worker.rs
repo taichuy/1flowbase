@@ -19,6 +19,8 @@ fn request_log_task(scope_id: Uuid, attempt_id: Uuid) -> ProviderRequestLogTask 
         scope_id,
         attempt_id,
         flow_run_id: Uuid::now_v7(),
+        application_id: Some(Uuid::now_v7()),
+        conversation_id: Some("conversation-1".into()),
         application_name: "Worker App Snapshot".into(),
         attempt_index: 0,
         is_retry: false,

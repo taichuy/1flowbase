@@ -145,6 +145,8 @@ where
         repository,
         scope_id,
         application_name,
+        flow_run.application_id,
+        flow_run.external_conversation_id.as_deref(),
         task_queue,
         flow_run.id,
         Some(flow_span.id),

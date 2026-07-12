@@ -372,6 +372,8 @@
     "request_log_total_duration": "总耗时",
     "request_log_attempt": "Attempt",
     "request_log_run_id": "Run ID",
+    "request_log_conversation": "对话",
+    "request_log_view_conversation": "查看对话",
     "request_log_application_id": "应用 ID",
     "request_log_zero_output_only": "仅看零输出",
     "request_log_succeeded": "成功",

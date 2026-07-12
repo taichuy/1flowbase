@@ -387,6 +387,8 @@ pub struct ModelProviderRequestLogsQuery {
 pub struct ModelProviderRequestLogResponse {
     pub attempt_id: String,
     pub flow_run_id: String,
+    pub application_id: Option<String>,
+    pub conversation_id: Option<String>,
     pub application_name: String,
     pub attempt_index: i32,
     pub is_retry: bool,
@@ -975,6 +977,8 @@ fn to_request_log_response(
     ModelProviderRequestLogResponse {
         attempt_id: record.attempt_id.to_string(),
         flow_run_id: record.flow_run_id.to_string(),
+        application_id: record.application_id.map(|id| id.to_string()),
+        conversation_id: record.conversation_id,
         application_name: record.application_name,
         attempt_index: record.attempt_index,
         is_retry: record.is_retry,
@@ -1363,6 +1367,8 @@ mod request_log_response_tests {
             to_request_log_response(control_plane::ports::ModelProviderRequestLogRecord {
                 attempt_id: Uuid::now_v7(),
                 flow_run_id: Uuid::now_v7(),
+                application_id: Some(Uuid::now_v7()),
+                conversation_id: Some("conversation-1".into()),
                 application_name: "凡人".into(),
                 attempt_index: 1,
                 is_retry: false,

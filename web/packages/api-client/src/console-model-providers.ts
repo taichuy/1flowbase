@@ -106,6 +106,8 @@ export type ConsoleModelProviderRequestLogStatus =
 export interface ConsoleModelProviderRequestLog {
   attempt_id: string;
   flow_run_id: string;
+  application_id: string | null;
+  conversation_id: string | null;
   application_name: string;
   attempt_index: number;
   is_retry: boolean;
