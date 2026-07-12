@@ -1404,7 +1404,7 @@ describe('McpManagementPanel', () => {
     });
   });
 
-  test('fills a temporary API key into a copy-ready MCP server JSON object', async () => {
+  test('AC-001 AC-002 fills a temporary API key into the common MCP JSON tab', async () => {
     renderPanelWithMountedTool();
 
     fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
@@ -1443,12 +1443,83 @@ describe('McpManagementPanel', () => {
       '/settings/api-key-authentication'
     );
     expect(
-      within(screen.getByRole('dialog')).queryByRole('tab')
-    ).not.toBeInTheDocument();
+      within(screen.getByRole('dialog'))
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent)
+    ).toEqual(['通用', 'Codex', 'Claude Code', 'OpenCode']);
 
     fireEvent.click(screen.getByRole('button', { name: '关 闭' }));
     fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
     expect(await screen.findByLabelText('API Key')).toHaveValue('');
+  });
+
+  test('AC-003 AC-004 renders user-level Agent CLI commands with the current endpoint and API key', async () => {
+    renderPanelWithMountedTool();
+    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
+    fireEvent.change(await screen.findByLabelText('API Key'), {
+      target: { value: 'test-secret-key' }
+    });
+
+    const dialog = screen.getByRole('dialog');
+    const endpoint = `${window.location.origin}/api/mcp/ops_mcp`;
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Codex' }));
+    const codexCommands = within(dialog)
+      .getAllByRole('region', { name: '命令' })
+      .map((commandBlock) => commandBlock.textContent ?? '');
+    expect(codexCommands).toHaveLength(3);
+    expect(codexCommands.every((command) => command.includes(endpoint))).toBe(
+      true
+    );
+    expect(
+      codexCommands.every((command) => command.includes('test-secret-key'))
+    ).toBe(true);
+
+    fireEvent.click(
+      within(dialog).getByRole('tab', { name: 'Claude Code' })
+    );
+    const claudeCodePanel = within(dialog).getByRole('tabpanel', {
+      name: 'Claude Code'
+    });
+    expect(within(claudeCodePanel).getByRole('region', { name: '命令' })).toHaveTextContent(
+      'claude mcp add --scope user'
+    );
+    expect(within(claudeCodePanel).getByRole('region', { name: '命令' })).toHaveTextContent(
+      'Authorization: Bearer test-secret-key'
+    );
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'OpenCode' }));
+    const openCodePanel = within(dialog).getByRole('tabpanel', {
+      name: 'OpenCode'
+    });
+    expect(within(openCodePanel).getByRole('region', { name: '命令' })).toHaveTextContent(
+      'opencode mcp add'
+    );
+    expect(within(openCodePanel).getByRole('region', { name: '命令' })).toHaveTextContent(
+      'Authorization=Bearer test-secret-key'
+    );
+  });
+
+  test('AC-005 AC-008 keeps Agent commands copyable but incomplete until an API key is entered', async () => {
+    renderPanelWithMountedTool();
+    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Codex' }));
+
+    expect(
+      within(dialog).getByText('输入 API Key 后生成可直接执行的命令。')
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: '复制命令' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText('API Key'), {
+      target: { value: 'test-secret-key' }
+    });
+    expect(
+      within(dialog).getAllByRole('button', { name: '复制命令' })
+    ).toHaveLength(3);
   });
 
   test('restores and clears a saved MCP client credential without a status badge', async () => {

@@ -50,6 +50,10 @@
     "save_api_key": "Save",
     "clear_credential": "Clear credential",
     "api_key_saved": "API key encrypted and saved",
-    "saved_api_key_deleted": "Saved API key deleted"
+    "saved_api_key_deleted": "Saved API key deleted",
+    "common": "Common",
+    "copy_command": "Copy command",
+    "enter_api_key_to_generate_commands": "Enter an API key to generate ready-to-run commands.",
+    "command_block": "Command"
   }
 }
