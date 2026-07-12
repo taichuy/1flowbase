@@ -1,4 +1,4 @@
 interface:
   display_name: "Problem Framing"
-  short_description: "先析现状与因果，再用三方向快速收敛需求"
-  default_prompt: "使用 $problem-framing 按现状、需求分析、保守/平衡/激进、最终建议的短格式完成需求对齐；涉及 UI/UX 时补简短 ASCII 图，确认后再进入 issue 或实现。"
+  short_description: "先分析现状与隐藏因果，再用三个方向完成需求对齐和决策收敛"
+  default_prompt: "使用 $problem-framing 先分析现状与真正需求，再给出保守、平衡、激进三个方向和最终建议。"
