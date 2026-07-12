@@ -2,10 +2,35 @@ import { describe, expect, test } from 'vitest';
 
 import {
   buildMcpDirectoryTreeData,
-  buildReadableToolId
+  buildReadableToolId,
+  nextMcpDirectoryExpandedKeys
 } from '../mcp-management-view-model';
 
 describe('mcp management view model', () => {
+  test('keeps descendants collapsed when reopening a parent directory', () => {
+    expect(
+      nextMcpDirectoryExpandedKeys(
+        ['instance:ops:/', 'group:/ops', 'group:/ops/customer'],
+        'group:/ops',
+        true
+      )
+    ).toEqual(['instance:ops:/', 'group:/ops']);
+    expect(
+      nextMcpDirectoryExpandedKeys(
+        ['instance:ops:/', 'group:/ops', 'group:/ops/customer'],
+        'group:/ops',
+        false
+      )
+    ).toEqual(['instance:ops:/']);
+    expect(
+      nextMcpDirectoryExpandedKeys(
+        ['instance:ops:/', 'group:/ops'],
+        'instance:ops:/',
+        true
+      )
+    ).toEqual(['instance:ops:/']);
+  });
+
   test('builds a readable tool id from name', () => {
     expect(buildReadableToolId('Create Customer')).toBe('create_customer');
     expect(buildReadableToolId('', 'A_b9Zx10')).toBe('A_b9Zx10');

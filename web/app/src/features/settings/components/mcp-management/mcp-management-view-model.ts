@@ -61,7 +61,9 @@ function parentDirectoryPath(path: string) {
 }
 
 function directoryName(path: string) {
-  return normalizeMcpDirectoryPath(path).split('/').filter(Boolean).at(-1) ?? '/';
+  return (
+    normalizeMcpDirectoryPath(path).split('/').filter(Boolean).at(-1) ?? '/'
+  );
 }
 
 function slugSegment(value: string) {
@@ -114,7 +116,10 @@ export function buildMcpDirectoryTreeData({
     instanceBindings.map((binding) => [binding.id, binding])
   );
   const groupByPath = new Map(
-    instanceGroups.map((group) => [normalizeMcpDirectoryPath(group.path), group])
+    instanceGroups.map((group) => [
+      normalizeMcpDirectoryPath(group.path),
+      group
+    ])
   );
   const directoryPaths = new Set<string>();
 
@@ -163,8 +168,10 @@ export function buildMcpDirectoryTreeData({
 
   for (const [path, node] of groupNodeByPath) {
     const parentPath = parentDirectoryPath(path);
-    (parentPath === rootPath ? rootNode : groupNodeByPath.get(parentPath))
-      ?.children?.push(node);
+    (parentPath === rootPath
+      ? rootNode
+      : groupNodeByPath.get(parentPath)
+    )?.children?.push(node);
   }
 
   for (const binding of instanceBindings) {
@@ -179,8 +186,9 @@ export function buildMcpDirectoryTreeData({
       binding_id: binding.id
     };
 
-    (path === rootPath ? rootNode : groupNodeByPath.get(path))
-      ?.children?.push(bindingNode);
+    (path === rootPath ? rootNode : groupNodeByPath.get(path))?.children?.push(
+      bindingNode
+    );
   }
 
   const sortChildren = (node: McpDirectoryTreeNode) => {
@@ -213,4 +221,36 @@ export function buildMcpDirectoryTreeData({
 
   sortChildren(rootNode);
   return [rootNode];
+}
+
+export function nextMcpDirectoryExpandedKeys(
+  currentKeys: string[],
+  changedKey: string,
+  expanded: boolean
+) {
+  if (expanded) {
+    if (changedKey.startsWith('instance:')) return [changedKey];
+    if (changedKey.startsWith('group:')) {
+      const expandedPath = changedKey.slice('group:'.length);
+      return [
+        ...currentKeys.filter(
+          (key) =>
+            key !== changedKey && !key.startsWith(`group:${expandedPath}/`)
+        ),
+        changedKey
+      ];
+    }
+    return currentKeys.includes(changedKey)
+      ? currentKeys
+      : [...currentKeys, changedKey];
+  }
+
+  if (changedKey.startsWith('instance:')) return [];
+  if (changedKey.startsWith('group:')) {
+    const collapsedPath = changedKey.slice('group:'.length);
+    return currentKeys.filter(
+      (key) => key !== changedKey && !key.startsWith(`group:${collapsedPath}/`)
+    );
+  }
+  return currentKeys.filter((key) => key !== changedKey);
 }

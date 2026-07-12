@@ -650,6 +650,7 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    expandTreeRootIfCollapsed(within(dialog).getByRole('tree'));
     const rootLabel = within(dialog).getByText('Ops MCP /');
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
@@ -734,6 +735,25 @@ describe('McpManagementPanel', () => {
     expect(
       within(dialog).getByRole('heading', { name: '新建分组' })
     ).toBeInTheDocument();
+  });
+
+  test('starts the directory tree fully collapsed', () => {
+    renderPanelWithMountedTool({ includeGroup: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const tree = within(
+      screen.getByRole('dialog', { name: '目录编辑' })
+    ).getByRole('tree');
+    expect(within(tree).getAllByRole('treeitem')[0]).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    expect(within(tree).queryByText('ops')).not.toBeInTheDocument();
   });
 
   test('starts a child path from the selected group', () => {
@@ -853,9 +873,7 @@ describe('McpManagementPanel', () => {
     });
     expect(status).toHaveTextContent('未保存');
 
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '保存分组' })
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存分组' }));
     await waitFor(() => expect(status).toHaveTextContent('已保存'));
 
     fireEvent.click(
@@ -866,9 +884,7 @@ describe('McpManagementPanel', () => {
         screen.queryByRole('dialog', { name: '目录编辑' })
       ).not.toBeInTheDocument();
     });
-    expect(
-      screen.queryByText('放弃未保存的更改？')
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('放弃未保存的更改？')).not.toBeInTheDocument();
   });
 
   test('selects a group node and opens that group for editing', () => {
@@ -1102,6 +1118,7 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    expandTreeRootIfCollapsed(within(dialog).getByRole('tree'));
     const rootLabel = within(dialog).getByText('Ops MCP /');
     const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
     expect(rootNode).toBeInstanceOf(HTMLElement);
