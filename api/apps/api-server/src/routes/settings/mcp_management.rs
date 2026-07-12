@@ -313,6 +313,8 @@ pub struct McpInterfaceCatalogQuery {
 pub struct McpListQuery {
     pub instance_id: Option<String>,
     pub path: Option<String>,
+    pub keywords: Option<Vec<String>>,
+    pub depth: Option<i32>,
     pub path_regex: Option<String>,
     pub limit: Option<usize>,
 }
@@ -477,6 +479,8 @@ pub async fn list_mcp_items(
             query.instance_id.as_deref(),
             query.path.as_deref(),
             query.path_regex.as_deref(),
+            query.keywords.as_deref(),
+            query.depth,
             query.limit,
         )
         .await?;

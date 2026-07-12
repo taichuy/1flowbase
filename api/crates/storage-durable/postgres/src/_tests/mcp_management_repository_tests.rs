@@ -548,7 +548,15 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
         .unwrap();
 
     let root_items = service
-        .list_items(actor.id, Some("workspace_ops"), Some("/"), None, None)
+        .list_items(
+            actor.id,
+            Some("workspace_ops"),
+            Some("/"),
+            None,
+            None,
+            None,
+            None,
+        )
         .await
         .unwrap();
     assert!(root_items
@@ -567,7 +575,15 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
         .any(|item| item.id == disabled_tool.tool_id || item.name == "Invisible Runtime"));
 
     let ops_items = service
-        .list_items(actor.id, Some("workspace_ops"), Some("/ops"), None, None)
+        .list_items(
+            actor.id,
+            Some("workspace_ops"),
+            Some("/ops"),
+            None,
+            None,
+            None,
+            None,
+        )
         .await
         .unwrap();
     assert!(ops_items
@@ -580,6 +596,8 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
         .list_items(
             actor.id,
             Some(&disabled_instance.instance_id),
+            None,
+            None,
             None,
             None,
             None,
@@ -633,7 +651,7 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
         .await
         .unwrap();
     assert!(service
-        .list_items(actor.id, None, None, None, None)
+        .list_items(actor.id, None, None, None, None, None, None)
         .await
         .is_err());
 }

@@ -530,6 +530,8 @@ where
         instance_id: Option<&str>,
         path: Option<&str>,
         path_regex: Option<&str>,
+        keywords: Option<&[String]>,
+        depth: Option<i32>,
         limit: Option<usize>,
     ) -> Result<Vec<domain::McpListItemSummary>> {
         let actor = self.authorize_view(actor_user_id).await?;
@@ -564,6 +566,9 @@ where
             .await?;
         let tools = self.repository.list_mcp_tools(workspace_id).await?;
         let base_path = path.unwrap_or(instance.default_entry_path.as_str());
+        let max_depth = depth
+            .unwrap_or(discovery_policy.list_max_depth)
+            .clamp(0, discovery_policy.list_max_depth);
         let mut items = Vec::new();
 
         for group in groups.into_iter().filter(|group| {
@@ -571,19 +576,26 @@ where
                 && path_matches_list_query(
                     base_path,
                     &group.path,
-                    discovery_policy.list_max_depth,
+                    max_depth,
                     path_regex_filter.as_ref(),
                 )
         }) {
-            items.push(domain::McpListItemSummary {
-                id: group.id.to_string(),
-                item_kind: domain::McpListItemKind::Group,
-                path: group.path,
-                name: group.display_name,
-                description_short: group.description_short,
-                children_count: 0,
-                risk_level: None,
-            });
+            if list_item_matches_keywords(
+                keywords,
+                &group.path,
+                &group.display_name,
+                group.description_short.as_deref(),
+            ) {
+                items.push(domain::McpListItemSummary {
+                    id: group.id.to_string(),
+                    item_kind: domain::McpListItemKind::Group,
+                    path: group.path,
+                    name: group.display_name,
+                    description_short: group.description_short,
+                    children_count: 0,
+                    risk_level: None,
+                });
+            }
         }
 
         for binding in bindings.into_iter().filter(|binding| {
@@ -591,7 +603,7 @@ where
                 && path_matches_list_query(
                     base_path,
                     &binding.group_path,
-                    discovery_policy.list_max_depth,
+                    max_depth,
                     path_regex_filter.as_ref(),
                 )
         }) {
@@ -600,18 +612,29 @@ where
                 .find(|tool| tool.id == binding.tool_record_id)
                 .filter(|tool| tool.status == domain::McpToolStatus::Enabled)
             {
-                items.push(domain::McpListItemSummary {
-                    id: tool.tool_id.clone(),
-                    item_kind: domain::McpListItemKind::Tool,
-                    path: binding.group_path,
-                    name: binding
-                        .display_alias
-                        .clone()
-                        .unwrap_or_else(|| tool.name.clone()),
-                    description_short: Some(tool.short_description.clone()),
-                    children_count: 0,
-                    risk_level: Some(tool.risk_level),
-                });
+                let display_name = binding
+                    .display_alias
+                    .as_deref()
+                    .unwrap_or(tool.name.as_str());
+                if list_item_matches_keywords(
+                    keywords,
+                    &binding.group_path,
+                    display_name,
+                    Some(&tool.short_description),
+                ) {
+                    items.push(domain::McpListItemSummary {
+                        id: tool.tool_id.clone(),
+                        item_kind: domain::McpListItemKind::Tool,
+                        path: binding.group_path,
+                        name: binding
+                            .display_alias
+                            .clone()
+                            .unwrap_or_else(|| tool.name.clone()),
+                        description_short: Some(tool.short_description.clone()),
+                        children_count: 0,
+                        risk_level: Some(tool.risk_level),
+                    });
+                }
             }
         }
 
@@ -805,6 +828,26 @@ fn input_mapping_requires_des_id(input_mapping: &serde_json::Value) -> bool {
 
 fn path_matches(base_path: &str, candidate: &str) -> bool {
     base_path == "/" || candidate == base_path || candidate.starts_with(&format!("{base_path}/"))
+}
+
+fn list_item_matches_keywords(
+    keywords: Option<&[String]>,
+    path: &str,
+    name: &str,
+    description_short: Option<&str>,
+) -> bool {
+    let searchable = format!(
+        "{} {} {}",
+        path,
+        name,
+        description_short.unwrap_or_default()
+    )
+    .to_lowercase();
+    keywords
+        .unwrap_or_default()
+        .iter()
+        .filter(|keyword| !keyword.trim().is_empty())
+        .all(|keyword| searchable.contains(&keyword.to_lowercase()))
 }
 
 fn path_matches_list_query(
