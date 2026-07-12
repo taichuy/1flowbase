@@ -61,6 +61,7 @@ describe('ApplicationCreateModal', () => {
     );
 
     fireEvent.click(screen.getByRole('radio', { name: /Workflow/i }));
+    expect(screen.getByText('/api/ex/')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: '接口子路径' }), {
       target: { value: 'orders/create' }
     });

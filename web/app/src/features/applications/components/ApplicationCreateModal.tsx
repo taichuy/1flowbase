@@ -177,7 +177,7 @@ export function ApplicationCreateModal({
                 }
               ]}
             >
-              <Input placeholder="orders/create" />
+              <Input addonBefore="/api/ex/" placeholder="orders/create" />
             </Form.Item>
             <Form.Item
               label={t('auto.http_method')}
