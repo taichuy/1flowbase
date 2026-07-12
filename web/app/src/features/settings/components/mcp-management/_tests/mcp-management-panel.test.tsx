@@ -822,9 +822,52 @@ describe('McpManagementPanel', () => {
       '.mcp-management__directory-editor-status'
     );
     expect(status).toBeInstanceOf(HTMLElement);
-    expect(status).toHaveTextContent('编辑');
+    expect(status).toHaveTextContent('已保存');
     expect(status).toHaveTextContent('分组');
     expect(within(dialog).getByLabelText('显示名称')).toHaveValue('ops');
+  });
+
+  test('shows unsaved after editing and returns to saved after saving', async () => {
+    mcpManagementApi.upsertSettingsMcpGroup.mockResolvedValue(undefined);
+    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const tree = within(dialog).getByRole('tree');
+    expandTreeRootIfCollapsed(tree);
+    fireEvent.click(within(dialog).getByText('ops'));
+
+    const status = dialog.querySelector(
+      '.mcp-management__directory-editor-status'
+    );
+    expect(status).toHaveTextContent('已保存');
+
+    fireEvent.change(within(dialog).getByLabelText('显示名称'), {
+      target: { value: 'Updated ops' }
+    });
+    expect(status).toHaveTextContent('未保存');
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '保存分组' })
+    );
+    await waitFor(() => expect(status).toHaveTextContent('已保存'));
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '关闭目录编辑' })
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: '目录编辑' })
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText('放弃未保存的更改？')
+    ).not.toBeInTheDocument();
   });
 
   test('selects a group node and opens that group for editing', () => {
@@ -927,6 +970,11 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
+    expect(
+      dialog.querySelector('.mcp-management__directory-editor-status')
+    ).toHaveTextContent('未保存');
 
     expect(
       within(dialog).getByRole('button', { name: '新建分组' })

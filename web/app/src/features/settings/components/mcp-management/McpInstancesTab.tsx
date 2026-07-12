@@ -127,6 +127,8 @@ export function McpInstancesTab({
   >('create');
   const [directoryDraftActive, setDirectoryDraftActive] = useState(false);
   const [directoryDraftVersion, setDirectoryDraftVersion] = useState(0);
+  const groupSavedValuesRef = useRef<GroupFormValues | null>(null);
+  const bindingSavedValuesRef = useRef<BindingFormValues | null>(null);
   const [discardDirectoryChangesOpen, setDiscardDirectoryChangesOpen] =
     useState(false);
   const [discoveryPolicyInstance, setDiscoveryPolicyInstance] =
@@ -704,6 +706,7 @@ export function McpInstancesTab({
       enabled: group?.enabled ?? true,
       sort_order: group?.sort_order ?? 0
     });
+    groupSavedValuesRef.current = groupForm.getFieldsValue(true);
     bindingForm.setFieldsValue({
       instance_id: selectedInstance?.instance_id ?? '',
       group_path: normalizedPath
@@ -729,6 +732,7 @@ export function McpInstancesTab({
       visible: true,
       sort_order: 0
     });
+    bindingSavedValuesRef.current = bindingForm.getFieldsValue(true);
   }
 
   function applyBindingSelection(bindingId?: string) {
@@ -753,6 +757,7 @@ export function McpInstancesTab({
       visible: binding.visible,
       sort_order: binding.sort_order
     });
+    bindingSavedValuesRef.current = bindingForm.getFieldsValue(true);
   }
 
   const instanceColumns: ColumnsType<ConsoleMcpInstance> = [
@@ -831,6 +836,7 @@ export function McpInstancesTab({
                   enabled: true,
                   sort_order: 0
                 });
+                groupSavedValuesRef.current = groupForm.getFieldsValue(true);
                 bindingForm.setFieldsValue({
                   instance_id: record.instance_id,
                   group_path: normalizeMcpDirectoryPath(
@@ -839,6 +845,7 @@ export function McpInstancesTab({
                   visible: true,
                   sort_order: 0
                 });
+                bindingSavedValuesRef.current = bindingForm.getFieldsValue(true);
                 setDirectoryEditorMode('group');
                 setDirectoryEditorIntent('create');
                 setDirectoryDraftActive(false);
@@ -968,41 +975,26 @@ export function McpInstancesTab({
 
   const directorySessionHasChanges = () => {
     if (directoryEditorMode === 'group') {
-      if (
-        directoryEditorIntent === 'edit' &&
-        selectedDirectoryKey.startsWith('group:')
-      ) {
-        const group = groupByPath.get(
-          normalizeMcpDirectoryPath(selectedDirectoryKey.slice('group:'.length))
-        );
-        return (
-          (watchedDisplayName ?? '') !== (group?.display_name ?? '') ||
-          (watchedGroupDescriptionShort ?? null) !==
-            (group?.description_short ?? null) ||
-          watchedGroupEnabled !== (group?.enabled ?? true)
-        );
-      }
-      const initialPath =
-        parentGroupPath && parentGroupPath !== '/'
-          ? `${parentGroupPath}/`
-          : '/';
+      const savedValues = groupSavedValuesRef.current;
+      if (!savedValues) return false;
       return (
-        (watchedPath ?? '/') !== initialPath ||
-        Boolean(watchedDisplayName) ||
-        Boolean(watchedGroupDescriptionShort) ||
-        watchedGroupEnabled === false
+        normalizeMcpDirectoryPath(watchedPath) !==
+          normalizeMcpDirectoryPath(savedValues.path) ||
+        (watchedDisplayName ?? '') !== (savedValues.display_name ?? '') ||
+        (watchedGroupDescriptionShort ?? null) !==
+          (savedValues.description_short ?? null) ||
+        watchedGroupEnabled !== savedValues.enabled
       );
     }
 
-    if (directoryEditorIntent === 'edit' && editingBinding) {
-      return (
-        normalizeMcpDirectoryPath(watchedGroupPath) !==
-          normalizeMcpDirectoryPath(editingBinding.group_path) ||
-        watchedToolId !== editingBinding.tool_id ||
-        watchedBindingVisible !== editingBinding.visible
-      );
-    }
-    return Boolean(watchedToolId) || watchedBindingVisible === false;
+    const savedValues = bindingSavedValuesRef.current;
+    if (!savedValues) return false;
+    return (
+      normalizeMcpDirectoryPath(watchedGroupPath) !==
+        normalizeMcpDirectoryPath(savedValues.group_path) ||
+      watchedToolId !== savedValues.tool_id ||
+      watchedBindingVisible !== savedValues.visible
+    );
   };
 
   const requestDirectorySessionChange = (changeSession: () => void) => {
@@ -1054,6 +1046,7 @@ export function McpInstancesTab({
       enabled: true,
       sort_order: 0
     });
+    groupSavedValuesRef.current = groupForm.getFieldsValue(true);
   };
 
   const startToolMount = (path?: string) => {
@@ -1241,14 +1234,18 @@ export function McpInstancesTab({
 
               <div className="mcp-management__directory-editor-status">
                 <Typography.Text type="secondary">
-                  {i18nText('settingsMcpManagement', 'auto.current_action')}
+                  {i18nText('settingsMcpManagement', 'auto.save_status')}
                 </Typography.Text>
                 <Tag
-                  color={directoryEditorIntent === 'edit' ? 'blue' : 'green'}
+                  color={
+                    directoryDraftActive || directorySessionHasChanges()
+                      ? 'orange'
+                      : 'green'
+                  }
                 >
-                  {directoryEditorIntent === 'edit'
-                    ? i18nText('settingsMcpManagement', 'auto.editing')
-                    : i18nText('settingsMcpManagement', 'auto.creating')}
+                  {directoryDraftActive || directorySessionHasChanges()
+                    ? i18nText('settingsMcpManagement', 'auto.unsaved')
+                    : i18nText('settingsMcpManagement', 'auto.saved')}
                 </Tag>
                 <Typography.Text strong>
                   {directoryEditorMode === 'group'
@@ -1503,7 +1500,9 @@ export function McpInstancesTab({
                         setParentGroupPath(null);
                         setDirectoryDraftActive(false);
                         setSelectedDirectoryKey(`group:${savedPath}`);
-                        applyDirectoryPathToForms(savedPath);
+                        setDirectoryEditorIntent('edit');
+                        groupSavedValuesRef.current = values;
+                        groupForm.setFieldsValue(values);
                       }
                     })
                   }
@@ -1650,7 +1649,9 @@ export function McpInstancesTab({
                     saveBindingMutation.mutate(values, {
                       onSuccess: () => {
                         setDirectoryDraftActive(false);
-                        setDirectoryEditorIntent('create');
+                        setDirectoryEditorIntent('edit');
+                        bindingSavedValuesRef.current = values;
+                        bindingForm.setFieldsValue(values);
                       }
                     })
                   }
