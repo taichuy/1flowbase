@@ -44,7 +44,8 @@ import {
   settingsRolePermissionsQueryKey,
   settingsRolesQueryKey,
   updateSettingsRole,
-  type SettingsRole
+  type SettingsRole,
+  type SettingsRoleFrontstageRoutes
 } from '../api/roles';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
 import { i18nText } from '../../../shared/i18n/text';
@@ -143,6 +144,40 @@ export function RolePermissionPanel({
   // Local state for fast UI updates
   const [localCheckedCodes, setLocalCheckedCodes] = useState<string[]>([]);
   const [localCheckedRouteIds, setLocalCheckedRouteIds] = useState<string[]>([]);
+
+  const routeKindById = useMemo(() => {
+    const kinds = new Map<string, 'group' | 'page' | 'tab'>();
+    const collectKinds = (
+      nodes: SettingsRoleFrontstageRoutes['tree']
+    ) => {
+      nodes.forEach((node) => {
+        kinds.set(node.id, node.kind);
+        collectKinds(node.children);
+      });
+    };
+    collectKinds(roleFrontstageRoutesQuery.data?.tree ?? []);
+    return kinds;
+  }, [roleFrontstageRoutesQuery.data?.tree]);
+
+  const displayedCheckedRouteIds = useMemo(() => {
+    const checkedIds = new Set(localCheckedRouteIds);
+    const deriveGroupChecks = (
+      nodes: SettingsRoleFrontstageRoutes['tree']
+    ) => {
+      nodes.forEach((node) => {
+        deriveGroupChecks(node.children);
+        if (
+          node.kind === 'group' &&
+          node.children.length > 0 &&
+          node.children.every((child) => checkedIds.has(child.id))
+        ) {
+          checkedIds.add(node.id);
+        }
+      });
+    };
+    deriveGroupChecks(roleFrontstageRoutesQuery.data?.tree ?? []);
+    return Array.from(checkedIds);
+  }, [localCheckedRouteIds, roleFrontstageRoutesQuery.data?.tree]);
 
   useEffect(() => {
     setLocalCheckedCodes(rolePermissionsQuery.data?.permission_codes ?? []);
@@ -265,6 +300,9 @@ export function RolePermissionPanel({
   });
 
   const replaceFrontstageRoutesMutation = useMutation({
+    scope: {
+      id: `settings-role-frontstage-routes:${selectedRoleCode ?? 'none'}`
+    },
     mutationFn: async (routeIds: string[]) => {
       if (!csrfToken || !selectedRoleCode || !roleFrontstageRoutesQuery.data)
         throw new Error('missing selection');
@@ -274,7 +312,7 @@ export function RolePermissionPanel({
       };
       collectTabs(roleFrontstageRoutesQuery.data.tree);
       return replaceSettingsRoleFrontstageRoutes(selectedRoleCode, {
-        page_ids: routeIds.filter((id) => !tabIds.has(id)),
+        page_ids: routeIds.filter((id) => routeKindById.get(id) === 'page'),
         tab_ids: routeIds.filter((id) => tabIds.has(id))
       }, csrfToken);
     },
@@ -448,8 +486,8 @@ export function RolePermissionPanel({
           checkable
           checkStrictly
           disabled={!canManageRoles || !selectedRole?.is_editable}
-          checkedKeys={localCheckedRouteIds}
-          treeData={(roleFrontstageRoutesQuery.data?.tree ?? []).map(function toNode(node) {
+          checkedKeys={displayedCheckedRouteIds}
+          treeData={(roleFrontstageRoutesQuery.data?.tree ?? []).map(function toNode(node): TreeDataNode {
             return {
               key: node.id,
               title: node.title ?? '未命名',
@@ -458,13 +496,16 @@ export function RolePermissionPanel({
           })}
           onCheck={(_, info) => {
             const descendants: string[] = [];
-            const collectDescendants = (node: typeof info.node) => {
+            const collectDescendants = (node: TreeDataNode) => {
               descendants.push(String(node.key));
               node.children?.forEach(collectDescendants);
             };
-            collectDescendants(info.node);
-            const nextKeys = new Set(localCheckedRouteIds);
+            collectDescendants(info.node as TreeDataNode);
+            const nextKeys = new Set(
+              localCheckedRouteIds.filter((id) => routeKindById.get(id) !== 'group')
+            );
             descendants.forEach((key) => {
+              if (routeKindById.get(key) === 'group') return;
               if (info.checked) nextKeys.add(key);
               else nextKeys.delete(key);
             });
@@ -486,11 +527,13 @@ export function RolePermissionPanel({
   }, [
     canManageRoles,
     dataPolicyFormId,
+    displayedCheckedRouteIds,
     localCheckedCodes,
     localCheckedRouteIds,
     replaceFrontstageRoutesMutation,
     replacePermissionsMutation,
     roleFrontstageRoutesQuery.data,
+    routeKindById,
     selectedRole,
     tabsData
   ]);
