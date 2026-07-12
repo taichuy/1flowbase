@@ -54,6 +54,7 @@ import {
   deleteSettingsMcpInstance,
   deleteSettingsMcpToolBinding,
   exportSettingsMcpInstanceDirectory,
+  moveSettingsMcpGroup,
   settingsMcpCatalogQueryKey,
   updateSettingsMcpInstance,
   updateSettingsMcpToolBinding,
@@ -246,6 +247,32 @@ export function McpInstancesTab({
     onSuccess: async () => {
       message.success(i18nText('settings', 'auto.mcp_saved'));
       groupForm.resetFields();
+      await queryClient.invalidateQueries({
+        queryKey: settingsMcpCatalogQueryKey
+      });
+    }
+  });
+  const moveGroupMutation = useMutation({
+    mutationFn: ({
+      instanceId,
+      sourcePath,
+      targetParentPath,
+      sortOrder
+    }: {
+      instanceId: string;
+      sourcePath: string;
+      targetParentPath: string;
+      sortOrder: number;
+    }) =>
+      moveSettingsMcpGroup(
+        instanceId,
+        sourcePath,
+        targetParentPath,
+        sortOrder,
+        csrfToken
+      ),
+    onSuccess: async () => {
+      message.success(i18nText('settings', 'auto.mcp_saved'));
       await queryClient.invalidateQueries({
         queryKey: settingsMcpCatalogQueryKey
       });
@@ -637,59 +664,90 @@ export function McpInstancesTab({
       const draggedGroup = groupByPath.get(groupPath);
       if (!draggedGroup) return;
 
-      // Case 2A: Dropped in the gap of another group (dropToGap is true)
+      const parentPathOf = (path: string) => {
+        const segments = normalizeMcpDirectoryPath(path)
+          .split('/')
+          .filter(Boolean);
+        return segments.length <= 1
+          ? '/'
+          : `/${segments.slice(0, -1).join('/')}`;
+      };
+      const moveGroup = (targetParentPath: string, sortOrder: number) => {
+        if (
+          targetParentPath === groupPath ||
+          targetParentPath.startsWith(`${groupPath}/`)
+        ) {
+          return;
+        }
+        moveGroupMutation.mutate(
+          {
+            instanceId: selectedInstance.instance_id,
+            sourcePath: groupPath,
+            targetParentPath,
+            sortOrder
+          },
+          {
+            onSuccess: (group) => {
+              setSelectedDirectoryKey(`group:${group.path}`);
+            }
+          }
+        );
+      };
+
+      if (!dropToGap && (dropType === 'group' || dropType === 'instance')) {
+        const targetParentPath =
+          dropType === 'group' ? dropParts.join(':') : '/';
+        const siblings = selectedInstanceGroups
+          .filter(
+            (group) =>
+              group.path !== groupPath &&
+              parentPathOf(group.path) === targetParentPath
+          )
+          .sort((left, right) => left.sort_order - right.sort_order);
+        const sortOrder =
+          siblings.length > 0
+            ? siblings[siblings.length - 1].sort_order + 10
+            : 0;
+        moveGroup(targetParentPath, sortOrder);
+        return;
+      }
+
       if (dropType === 'group' && dropToGap) {
         const targetGroupPath = dropParts.join(':');
         const targetGroup = groupByPath.get(targetGroupPath);
         if (!targetGroup) return;
-
+        const targetParentPath = parentPathOf(targetGroupPath);
         const siblings = selectedInstanceGroups
-          .filter((g) => g.path !== groupPath)
-          .sort((a, b) => a.sort_order - b.sort_order);
-
+          .filter(
+            (group) =>
+              group.path !== groupPath &&
+              parentPathOf(group.path) === targetParentPath
+          )
+          .sort((left, right) => left.sort_order - right.sort_order);
         const dropPos = info.node.pos.split('-');
         const relativeDropPos =
           dropPosition - Number(dropPos[dropPos.length - 1]);
         const targetIndex = siblings.findIndex(
-          (g) => g.path === targetGroupPath
+          (group) => group.path === targetGroupPath
         );
-
-        let insertIndex = targetIndex;
-        if (relativeDropPos === 1) {
-          insertIndex = targetIndex + 1;
-        }
-
-        let newSortOrder = 0;
+        if (targetIndex < 0) return;
+        const insertIndex =
+          relativeDropPos === 1 ? targetIndex + 1 : targetIndex;
+        let sortOrder = 0;
         if (siblings.length === 0) {
-          newSortOrder = 0;
+          sortOrder = 0;
         } else if (insertIndex <= 0) {
-          newSortOrder = siblings[0].sort_order - 10;
+          sortOrder = siblings[0].sort_order - 10;
         } else if (insertIndex >= siblings.length) {
-          newSortOrder = siblings[siblings.length - 1].sort_order + 10;
+          sortOrder = siblings[siblings.length - 1].sort_order + 10;
         } else {
-          newSortOrder = Math.round(
+          sortOrder = Math.round(
             (siblings[insertIndex - 1].sort_order +
               siblings[insertIndex].sort_order) /
               2
           );
         }
-
-        saveGroupMutation.mutate(
-          {
-            instance_id: selectedInstance.instance_id,
-            path: groupPath,
-            display_name: draggedGroup.display_name,
-            description_short: draggedGroup.description_short,
-            enabled: draggedGroup.enabled,
-            sort_order: newSortOrder
-          },
-          {
-            onSuccess: () => {
-              setSelectedDirectoryKey(`group:${groupPath}`);
-            }
-          }
-        );
-        return;
+        moveGroup(targetParentPath, sortOrder);
       }
     }
   };
@@ -845,7 +903,8 @@ export function McpInstancesTab({
                   visible: true,
                   sort_order: 0
                 });
-                bindingSavedValuesRef.current = bindingForm.getFieldsValue(true);
+                bindingSavedValuesRef.current =
+                  bindingForm.getFieldsValue(true);
                 setDirectoryEditorMode('group');
                 setDirectoryEditorIntent('create');
                 setDirectoryDraftActive(false);
@@ -870,9 +929,14 @@ export function McpInstancesTab({
               onClick={() => setDiscoveryPolicyInstance(record)}
             />
           </Tooltip>
-          <Tooltip title={i18nText('settingsMcpManagement', 'auto.connect_client')}>
+          <Tooltip
+            title={i18nText('settingsMcpManagement', 'auto.connect_client')}
+          >
             <Button
-              aria-label={i18nText('settingsMcpManagement', 'auto.connect_client')}
+              aria-label={i18nText(
+                'settingsMcpManagement',
+                'auto.connect_client'
+              )}
               icon={<LinkOutlined />}
               size="small"
               onClick={() => setClientConfigurationInstance(record)}
@@ -1616,16 +1680,14 @@ export function McpInstancesTab({
                       'auto.group_description_short'
                     )}
                   >
-                    <Input
-                    />
+                    <Input />
                   </Form.Item>
                   <Form.Item
                     name="enabled"
                     label={i18nText('settingsMcpManagement', 'auto.enabled')}
                     valuePropName="checked"
                   >
-                    <Switch
-                    />
+                    <Switch />
                   </Form.Item>
                   <Form.Item name="sort_order" hidden>
                     <Input />
@@ -1739,8 +1801,7 @@ export function McpInstancesTab({
                     label={i18nText('settingsMcpManagement', 'auto.visible')}
                     valuePropName="checked"
                   >
-                    <Switch
-                    />
+                    <Switch />
                   </Form.Item>
                   <Form.Item name="sort_order" hidden>
                     <Input />

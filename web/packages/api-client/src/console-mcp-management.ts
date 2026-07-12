@@ -149,6 +149,12 @@ export interface SaveConsoleMcpGroupBody {
   sort_order: number;
 }
 
+export interface MoveConsoleMcpGroupBody {
+  source_path: string;
+  target_parent_path: string;
+  sort_order: number;
+}
+
 export interface SaveConsoleMcpToolBody {
   tool_id: string;
   des_id: string;
@@ -359,6 +365,21 @@ export function upsertConsoleMcpGroup(
 ) {
   return apiFetch<ConsoleMcpGroup>({
     path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/groups`,
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function moveConsoleMcpGroup(
+  instanceId: string,
+  body: MoveConsoleMcpGroupBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpGroup>({
+    path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/groups/move`,
     method: 'POST',
     body,
     csrfToken,

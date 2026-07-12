@@ -459,6 +459,59 @@ impl McpManagementRepository for PgControlPlaneStore {
         map_group(row)
     }
 
+    async fn move_mcp_group(
+        &self,
+        actor_user_id: Uuid,
+        instance_record_id: Uuid,
+        source_path: &str,
+        target_path: &str,
+        sort_order: i32,
+    ) -> Result<domain::McpGroupRecord> {
+        let mut transaction = self.pool().begin().await?;
+        sqlx::query(
+            r#"
+            update mcp_tool_bindings
+            set group_path = $2 || substring(group_path from char_length($1) + 1),
+                updated_by = $4,
+                updated_at = now()
+            where instance_record_id = $3
+              and (group_path = $1 or group_path like $1 || '/%')
+            "#,
+        )
+        .bind(source_path)
+        .bind(target_path)
+        .bind(instance_record_id)
+        .bind(actor_user_id)
+        .execute(&mut *transaction)
+        .await?;
+
+        let rows = sqlx::query(
+            r#"
+            update mcp_groups
+            set path = $2 || substring(path from char_length($1) + 1),
+                sort_order = case when path = $1 then $4 else sort_order end,
+                updated_by = $5,
+                updated_at = now()
+            where instance_record_id = $3
+              and (path = $1 or path like $1 || '/%')
+            returning *
+            "#,
+        )
+        .bind(source_path)
+        .bind(target_path)
+        .bind(instance_record_id)
+        .bind(sort_order)
+        .bind(actor_user_id)
+        .fetch_all(&mut *transaction)
+        .await?;
+        let row = rows
+            .into_iter()
+            .find(|row| row.get::<String, _>("path") == target_path)
+            .ok_or(ControlPlaneError::NotFound("mcp_group"))?;
+        transaction.commit().await?;
+        map_group(row)
+    }
+
     async fn delete_mcp_group(&self, group_id: Uuid) -> Result<()> {
         sqlx::query("delete from mcp_groups where id = $1")
             .bind(group_id)

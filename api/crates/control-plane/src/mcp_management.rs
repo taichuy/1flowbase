@@ -34,6 +34,14 @@ pub struct UpsertMcpGroupCommand {
     pub sort_order: i32,
 }
 
+pub struct MoveMcpGroupCommand {
+    pub actor_user_id: Uuid,
+    pub instance_id: String,
+    pub source_path: String,
+    pub target_parent_path: String,
+    pub sort_order: i32,
+}
+
 pub struct CreateMcpToolCommand {
     pub actor_user_id: Uuid,
     pub tool_id: String,
@@ -304,6 +312,60 @@ where
             .find(|group| group.path == path)
             .ok_or(ControlPlaneError::NotFound("mcp_group"))?;
         self.repository.delete_mcp_group(group.id).await
+    }
+
+    pub async fn move_group(&self, command: MoveMcpGroupCommand) -> Result<domain::McpGroupRecord> {
+        let actor = self.authorize_manage(command.actor_user_id).await?;
+        validate_path(&command.source_path)?;
+        validate_path(&command.target_parent_path)?;
+        let instance = self
+            .repository
+            .get_mcp_instance(actor.current_workspace_id, &command.instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
+        let groups = self.repository.list_mcp_groups(&[instance.id]).await?;
+        if !groups.iter().any(|group| group.path == command.source_path) {
+            return Err(ControlPlaneError::NotFound("mcp_group").into());
+        }
+        if command.target_parent_path != "/"
+            && !groups
+                .iter()
+                .any(|group| group.path == command.target_parent_path)
+        {
+            return Err(ControlPlaneError::NotFound("mcp_group_parent").into());
+        }
+        if command.target_parent_path == command.source_path
+            || command
+                .target_parent_path
+                .starts_with(&format!("{}/", command.source_path))
+        {
+            return Err(ControlPlaneError::InvalidInput("target_parent_path").into());
+        }
+        let leaf = command
+            .source_path
+            .rsplit('/')
+            .next()
+            .filter(|value| !value.is_empty())
+            .ok_or(ControlPlaneError::InvalidInput("source_path"))?;
+        let target_path = if command.target_parent_path == "/" {
+            format!("/{leaf}")
+        } else {
+            format!("{}/{leaf}", command.target_parent_path)
+        };
+        if target_path != command.source_path
+            && groups.iter().any(|group| group.path == target_path)
+        {
+            return Err(ControlPlaneError::Conflict("mcp_group_path").into());
+        }
+        self.repository
+            .move_mcp_group(
+                command.actor_user_id,
+                instance.id,
+                &command.source_path,
+                &target_path,
+                command.sort_order,
+            )
+            .await
     }
 
     pub async fn create_tool(

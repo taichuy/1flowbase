@@ -17,6 +17,7 @@ import {
   fetchConsoleMcpInterfaceCapabilities,
   fetchConsoleMcpListItems,
   fetchConsoleMcpTool,
+  moveConsoleMcpGroup,
   refreshConsoleMcpToolDescription,
   updateConsoleMcpInstance,
   updateConsoleMcpInstanceDiscoveryPolicy,
@@ -143,6 +144,29 @@ describe('console-mcp-management client', () => {
       expected: {
         path: '/api/console/mcp/instances/workspace_ops/groups',
         method: 'POST',
+        csrfToken: 'csrf-123'
+      }
+    },
+    {
+      name: 'group move',
+      request: () =>
+        moveConsoleMcpGroup(
+          'workspace_ops',
+          {
+            source_path: '/system_data',
+            target_parent_path: '/system_mcp',
+            sort_order: 30
+          },
+          'csrf-123'
+        ),
+      expected: {
+        path: '/api/console/mcp/instances/workspace_ops/groups/move',
+        method: 'POST',
+        body: {
+          source_path: '/system_data',
+          target_parent_path: '/system_mcp',
+          sort_order: 30
+        },
         csrfToken: 'csrf-123'
       }
     },

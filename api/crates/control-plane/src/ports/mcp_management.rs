@@ -181,6 +181,14 @@ pub trait McpManagementRepository: Send + Sync {
         &self,
         input: &UpsertMcpGroupInput,
     ) -> anyhow::Result<domain::McpGroupRecord>;
+    async fn move_mcp_group(
+        &self,
+        actor_user_id: Uuid,
+        instance_record_id: Uuid,
+        source_path: &str,
+        target_path: &str,
+        sort_order: i32,
+    ) -> anyhow::Result<domain::McpGroupRecord>;
     async fn delete_mcp_group(&self, group_id: Uuid) -> anyhow::Result<()>;
 
     async fn list_mcp_tools(

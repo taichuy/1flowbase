@@ -14,6 +14,7 @@ import {
   fetchConsoleMcpClientCredential,
   fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
+  moveConsoleMcpGroup,
   refreshConsoleMcpToolDescription,
   saveConsoleMcpClientCredential,
   updateConsoleMcpInstance,
@@ -118,6 +119,24 @@ export function upsertSettingsMcpGroup(
   csrfToken: string
 ) {
   return upsertConsoleMcpGroup(instanceId, body, csrfToken);
+}
+
+export function moveSettingsMcpGroup(
+  instanceId: string,
+  sourcePath: string,
+  targetParentPath: string,
+  sortOrder: number,
+  csrfToken: string
+) {
+  return moveConsoleMcpGroup(
+    instanceId,
+    {
+      source_path: sourcePath,
+      target_parent_path: targetParentPath,
+      sort_order: sortOrder
+    },
+    csrfToken
+  );
 }
 
 export function deleteSettingsMcpGroup(

@@ -14,9 +14,9 @@ use axum::{
 };
 use control_plane::mcp_management::{
     CreateMcpInstanceCommand, CreateMcpToolBindingCommand, CreateMcpToolCommand,
-    McpManagementService, RefreshMcpToolDescriptionCommand, SaveMcpClientCredentialCommand,
-    UpdateMcpInstanceDiscoveryPolicyCommand, UpdateMcpToolBindingCommand, UpdateMcpToolCommand,
-    UpsertMcpGroupCommand,
+    McpManagementService, MoveMcpGroupCommand, RefreshMcpToolDescriptionCommand,
+    SaveMcpClientCredentialCommand, UpdateMcpInstanceDiscoveryPolicyCommand,
+    UpdateMcpToolBindingCommand, UpdateMcpToolCommand, UpsertMcpGroupCommand,
 };
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};
@@ -226,6 +226,13 @@ pub struct UpsertMcpGroupBody {
     pub sort_order: i32,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct MoveMcpGroupBody {
+    pub source_path: String,
+    pub target_parent_path: String,
+    pub sort_order: i32,
+}
+
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct DeleteMcpGroupQuery {
     pub path: String,
@@ -346,6 +353,10 @@ pub fn router() -> Router<Arc<ApiState>> {
         .route(
             "/mcp/instances/:instance_id/groups",
             post(upsert_mcp_group).delete(delete_mcp_group),
+        )
+        .route(
+            "/mcp/instances/:instance_id/groups/move",
+            post(move_mcp_group),
         )
         .route(
             "/mcp/instances/:instance_id/tool-bindings",
@@ -611,6 +622,27 @@ pub async fn upsert_mcp_group(
             display_name: body.display_name,
             description_short: body.description_short,
             enabled: body.enabled,
+            sort_order: body.sort_order,
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(to_group_response(record))))
+}
+
+#[utoipa::path(post, path = "/api/console/mcp/instances/{instance_id}/groups/move", request_body = MoveMcpGroupBody, responses((status = 200, body = McpGroupResponse)))]
+pub async fn move_mcp_group(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(instance_id): Path<String>,
+    Json(body): Json<MoveMcpGroupBody>,
+) -> Result<Json<ApiSuccess<McpGroupResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let record = McpManagementService::new(state.store.clone())
+        .move_group(MoveMcpGroupCommand {
+            actor_user_id: context.user.id,
+            instance_id,
+            source_path: body.source_path,
+            target_parent_path: body.target_parent_path,
             sort_order: body.sort_order,
         })
         .await?;

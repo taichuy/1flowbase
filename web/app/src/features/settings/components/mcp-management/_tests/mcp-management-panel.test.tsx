@@ -20,6 +20,7 @@ const mcpManagementApi = vi.hoisted(() => ({
   deleteSettingsMcpTool: vi.fn(),
   deleteSettingsMcpToolBinding: vi.fn(),
   executeSettingsMcpToolDebug: vi.fn(),
+  moveSettingsMcpGroup: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
   exportSettingsMcpInstanceDirectory: vi.fn(),
   fetchSettingsMcpClientCredential: vi.fn(async () => ({
