@@ -1,27 +1,18 @@
 # Domain Matrix
 
-当任务涉及 defaults、contracts、schema、state、permissions、migration、historical data、runtime behavior 或 user-owned content 时，使用本参考。
+涉及 defaults、contract、schema、state、permissions、migration、historical data、runtime behavior 或 user-owned content 时使用。矩阵用于暴露概念边界，不代替方案判断。
 
-## Required Columns
+## Matrix
 
-| Object / field / behavior | Owner | Source of truth | Persisted? | User editable? | Runtime contract? | Historical data impact | Required evidence | Unacceptable failure mode |
+| Object / field / behavior | Owner | Source of truth | Persisted? | User editable? | Runtime contract? | Historical impact | Required evidence | Unacceptable failure |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 |  |  |  |  |  |  |  |  |  |
 
 ## Rules
 
-- 在设计 API、service、enum、目录结构、migration 或 upgrade command 前，先填写矩阵。
-- 未知项标为 `unknown`；不要把未知项改写成设计结论。
-- 如果某一行涉及用户内容或历史数据影响，进入实现前必须让用户显式批准。
-- 如果 source of truth 不清楚，停止并请求决策，不要自行添加兼容代码。
-
-## Common Rows
-
-- 前端展示 fallback
-- 后端默认值
-- 已落库的用户设置
-- 运行时 contract
-- 数据库 migration
-- audit / preview / rollback 行为
-- 权限或策略决策
-- 生成或导入的系统内容
+- 命名 API、service、enum、目录、migration 或 upgrade command 前，先拆开被同一名称混用的概念。
+- 未知项写 `unknown`；未知不是设计结论，也不是增加 fallback 的理由。
+- source of truth、owner 或状态归属不清时，停止并请求决策。
+- 涉及用户内容、历史数据或不可逆变化时，进入实现前必须得到用户明确批准。
+- 前端展示 fallback、后端默认值、已落库设置和 runtime contract 默认视为不同对象，除非证据证明可以统一。
+- 先定义预期行为与证据，再讨论 migration、preview、rollback 或兼容策略。

@@ -1,6 +1,6 @@
 ---
 name: problem-framing
-description: 1flowbase 需求对齐与动工前决策 Skill。用于功能、缺陷、交互、重构、规则、文档、架构、算法、状态、权限、数据、API contract 或跨前后端需求；先理解现状与真正问题，再以保守 / 平衡 / 激进三个方向帮助用户拍板。确认前不实现。纯查询、机械精确改动，或用户明确要求直接实现时可跳过。
+description: 1flowbase 需求对齐与动工前决策 Skill。用于功能、缺陷、交互、重构、规则、文档、架构、数学或算法表达、状态、权限、数据、API contract 或跨前后端需求；先理解现状与真正问题，再以保守 / 平衡 / 激进三个方向帮助用户拍板。确认前不实现。纯查询、机械精确改动，或用户明确要求直接实现时可跳过。
 ---
 
 # Problem Framing
@@ -16,6 +16,10 @@ description: 1flowbase 需求对齐与动工前决策 Skill。用于功能、缺
 以始为终。先分析，后方案；先推理，后结论。使用第一性原理、奥卡姆剃刀和隐藏因果，表达通俗易懂。
 
 把用户描述视为问题线索，而不是搜索边界。解释关键判断即可，不展示内部思维链，不用方法论、术语或固定步骤替代实际分析。
+
+生成方案时优先复用成熟的数学关系、算法、数据结构、状态机、图、队列、约束、概率或调度机制。只在它们能降低复杂度、提高一致性、改善体验或减少资源成本时采用，不为技术展示增加抽象。
+
+软件设计不是消灭复杂度，而是把必要复杂度收敛到最理解业务语义、最靠近变化源的模块。避免把复杂度扩散为调用方分支、隐式约定、兼容层或无领域语义的抽象。
 
 ## Workflow
 
@@ -70,10 +74,11 @@ description: 1flowbase 需求对齐与动工前决策 Skill。用于功能、缺
 
 只在命中场景时读取对应 reference：
 
-- 需要 issue、ADR 或 implementation handoff：读取 `references/artifacts.md`。
-- 判断 Standalone Complete Issue 或 issue 树：读取 `references/issue-lifecycle.md`；默认使用单体完整 issue。
-- 涉及 defaults、contract、schema、state、permissions、migration、history 或 user content：读取 `references/domain-matrix.md`。
-- 需要正式三方案矩阵或 red-team：读取 `references/options-and-red-team.md`。
+- 需要 discussion brief、issue、ADR 或 implementation handoff：读取 `references/artifacts.md`。
+- 判断 Standalone Complete Issue 或 issue 树，以及 grade、level、labels 和生命周期：读取 `references/issue-lifecycle.md`；默认使用单体完整 issue。
+- 涉及 defaults、contract、schema、state、permissions、migration、history、runtime behavior 或 user content：读取 `references/domain-matrix.md`。
+- 高风险决策需要正式比较或反方评审：读取 `references/options-and-red-team.md`。
 - 方案新增公共抽象、接口、flag、通用 helper、重复校验或 pass-through：读取 `../_shared/design-rules.md`。
+- 需要查看输出尺度而非复制答案：读取 `references/examples.md`。
 
 方向确认后，按用户要求进入 issue 或实现。实现使用 `frontend-development`、`backend-development` 和 `test-driven-development`；验收与交付使用 `qa-evaluation`。新问题若扩大已确认边界，返回本 Skill。

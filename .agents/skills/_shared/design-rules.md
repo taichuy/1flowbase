@@ -2,41 +2,30 @@
 
 ## Goal
 
-在需求进入 issue 或实现前，先拦住 AI 常见的过度设计：模糊命名、重复防御、无意义包装、bool 分支、pass-through 层和提前抽象。
+把必要复杂度放到最理解业务语义、最靠近变化源的模块；避免用命名、分支、包装层或重复防御掩盖设计问题。
 
 ## Gate
 
-改产品代码前先检查本文件。若请求或方案会违反任一规则，停止并先说明更小的 redesign；用户确认后再创建 / 更新 issue 或进入实现。
+方案新增公共抽象、接口、flag、通用 helper、重复校验或 pass-through 时检查本文件。命中停止信号后，先给更小 redesign，再进入 issue 或实现。
 
 ## Rules
 
-1. **Names must disambiguate.**
-   禁止默认使用 `data`、`info`、`result`、`handler`、`manager`、`process`、`utils`、`helper`、`do_*`、`*_impl` 作为类型、函数、文件、模块、接口字段或跨 10 行以上变量名。需要使用时，改成描述具体对象或动作的名字。
-
-2. **Validate once at system edges; trust explicit invariants inside.**
-   在 API、表单、外部协议、存储读取、插件边界等系统边缘校验一次；内部边界依赖明确 invariant。不要在可信内部路径散落重复 defensive check。相同 `None/null/empty/status` 校验出现 3 次以上时，先重设边界，不要默认新增 wrapper type。
-
-3. **Comments say WHY, not WHAT.**
-   注释只说明意图、约束、舍弃方案、外部要求或非显然原因。不要复述代码正在做什么。
-
-4. **No flag/bool parameter for special-case behavior.**
-   新增 public/shared function、service、hook、adapter 或组件 API 时，不用 bool/flag 参数承载特殊分支。若 variation 是真实概念，优先拆成独立概念、方法或入口。UI 状态字段如 `disabled`、`open`、`loading` 不属于本规则目标。
-
-5. **Narrow interfaces, thick implementations.**
-   新增 public function/method/parameter 前，先说明为什么现有抽象不能吸收复杂度。不要创建只转发参数的 pass-through 层；只有在隐藏复杂度、执行 invariant 或适配外部依赖时才新增层。
+1. **Use domain names.** 名称描述具体对象或动作；避免让 `data`、`result`、`handler`、`manager`、`process`、`utils`、`helper`、`*_impl` 承担领域语义。
+2. **Validate at system edges.** 在 API、表单、外部协议、存储或插件边界校验；内部依赖明确 invariant，不散落重复防御。
+3. **Keep interfaces narrow and implementations deep.** 公共入口保持简单，把状态判断和协议细节收敛在实现内部；不新增只转发参数的层。
+4. **Model real variation explicitly.** 不用 bool / flag 为公共 API 增加特殊行为；真实差异使用独立概念、方法、状态或入口表达。UI 的 `open`、`disabled`、`loading` 等自然状态不受此限制。
+5. **Abstract after evidence.** 只有重复语义、稳定 invariant 或外部依赖边界已经出现时才抽象；不为“以后可能复用”提前创建 wrapper、adapter 或 manager。
+6. **Comment decisions, not syntax.** 注释记录原因、约束、外部要求或舍弃方案，不复述代码。
+7. **Prefer mature mechanisms.** 成熟算法、数据结构、状态机或约束能更直接表达问题时优先复用；不能降低复杂度或被验证时不采用。
 
 ## Stop Signals
 
-- 方案需要新增 `manager/helper/utils` 但说不清具体职责。
-- 为单个特殊 case 增加 bool 参数。
-- 为了“以后可能复用”新增抽象、wrapper、adapter 或 pass-through。
-- 同一校验在多个内部函数重复出现。
-- 注释能被代码本身直接读出来。
+- 新增抽象却说不清 owner、invariant 或隐藏了什么复杂度。
+- 单个特殊 case 迫使多个调用方增加分支或兼容约定。
+- 同一校验、fallback 或状态判断开始在内部路径重复。
+- 新层只改名或转发参数，没有承担领域责任。
+- 自定义规则正在替代已有成熟算法、数据结构或约束表达。
 
-## Output When Blocked
+## Blocked Output
 
-用三句以内说明：
-
-- 哪条 rule 被触发。
-- 当前方案为什么会扩大复杂度。
-- 更小 redesign 是什么。
+三句以内说明触发的规则、复杂度如何扩散，以及更小 redesign。证据不足时回到需求对齐，不用抽象原则压过代码事实。
