@@ -64,3 +64,4 @@ web/app/.env.*.local
 .claude/*
 .agents/skills/fuck-my-shit-mountain/*
 docker/1flowbase.code-workspace
+docs/private/*

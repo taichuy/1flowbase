@@ -543,3 +543,40 @@
     overflow: visible;
   }
 }
+
+.mcp-client-command-preview {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-height: min(440px, 52vh);
+  overflow: auto;
+  padding: 4px 12px 12px;
+}
+
+.mcp-client-command-preview.vditor-reset {
+  max-width: 100%;
+}
+
+.mcp-client-command-preview pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.mcp-client-command-preview code {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.mcp-management__client-configuration-scroll-body {
+  padding-right: 8px;
+}
+
+.mcp-management__client-configuration-scroll-body > .ant-space {
+  width: 100%;
+}
+
+.mcp-management__client-configuration-modal .mcp-client-command-preview {
+  max-height: none;
+  overflow-y: visible;
+}

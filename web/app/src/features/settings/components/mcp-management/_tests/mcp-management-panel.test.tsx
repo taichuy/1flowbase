@@ -34,6 +34,9 @@ const mcpManagementApi = vi.hoisted(() => ({
   upsertSettingsMcpGroup: vi.fn()
 }));
 const vditorMock = vi.hoisted(() => ({
+  preview: vi.fn(async (target: HTMLDivElement, markdown: string) => {
+    target.textContent = markdown;
+  }),
   instances: [] as Array<{
     options: {
       mode?: string;
@@ -98,10 +101,13 @@ vi.mock('@tanstack/react-router', async () => {
     }
   };
 });
-vi.mock('vditor', () => ({
-  __esModule: true,
-  default: vditorMock.constructor
-}));
+vi.mock('vditor', () => {
+  Object.assign(vditorMock.constructor, { preview: vditorMock.preview });
+  return {
+    __esModule: true,
+    default: vditorMock.constructor
+  };
+});
 vi.mock('vditor/dist/index.css', () => ({}));
 vi.mock('@monaco-editor/react', () => ({
   __esModule: true,
@@ -1453,7 +1459,7 @@ describe('McpManagementPanel', () => {
     expect(await screen.findByLabelText('API Key')).toHaveValue('');
   });
 
-  test('AC-003 AC-004 renders user-level Agent CLI commands with the current endpoint and API key', async () => {
+  test('AC-003 AC-004 renders persistent Agent CLI configuration commands with the current endpoint and API key', async () => {
     renderPanelWithMountedTool();
     fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
     fireEvent.change(await screen.findByLabelText('API Key'), {
@@ -1461,43 +1467,62 @@ describe('McpManagementPanel', () => {
     });
 
     const dialog = screen.getByRole('dialog');
+    expect(dialog.closest('.fixed-height-modal')).not.toBeNull();
+    expect(
+      within(dialog).getByTestId('fixed-height-modal-scroll-body')
+    ).toHaveClass(
+      'fixed-height-modal__scroll-body',
+      'mcp-management__client-configuration-scroll-body'
+    );
     const endpoint = `${window.location.origin}/api/mcp/ops_mcp`;
 
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Codex' }));
-    const codexCommands = within(dialog)
-      .getAllByRole('region', { name: '命令' })
-      .map((commandBlock) => commandBlock.textContent ?? '');
-    expect(codexCommands).toHaveLength(3);
-    expect(codexCommands.every((command) => command.includes(endpoint))).toBe(
-      true
+    const codexPreview = within(dialog).getByRole('region', {
+      name: '命令预览'
+    });
+    expect(codexPreview).toHaveClass('mcp-client-command-preview');
+    expect(codexPreview).toHaveTextContent(endpoint);
+    expect(codexPreview).toHaveTextContent('test-secret-key');
+    expect(codexPreview).toHaveTextContent('~/.codex/config.toml');
+    expect(codexPreview).toHaveTextContent('http_headers');
+    expect(codexPreview).toHaveTextContent(
+      'Authorization = "Bearer test-secret-key"'
     );
-    expect(
-      codexCommands.every((command) => command.includes('test-secret-key'))
-    ).toBe(true);
+    expect(codexPreview).not.toHaveTextContent('FLOWBASE_MCP_API_KEY');
+    expect(codexPreview).not.toHaveTextContent('bearer-token-env-var');
+    expect(vditorMock.preview).toHaveBeenCalledWith(
+      codexPreview,
+      expect.stringContaining('### macOS / Linux Shell'),
+      expect.objectContaining({ mode: 'light' })
+    );
 
-    fireEvent.click(
-      within(dialog).getByRole('tab', { name: 'Claude Code' })
-    );
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Claude Code' }));
     const claudeCodePanel = within(dialog).getByRole('tabpanel', {
       name: 'Claude Code'
     });
-    expect(within(claudeCodePanel).getByRole('region', { name: '命令' })).toHaveTextContent(
-      'claude mcp add --scope user'
-    );
-    expect(within(claudeCodePanel).getByRole('region', { name: '命令' })).toHaveTextContent(
-      'Authorization: Bearer test-secret-key'
-    );
+    expect(
+      within(claudeCodePanel).getByRole('region', { name: '命令预览' })
+    ).toHaveTextContent('claude mcp add --scope user');
+    expect(
+      within(claudeCodePanel).getByRole('region', { name: '命令预览' })
+    ).toHaveTextContent('Authorization: Bearer test-secret-key');
+    expect(
+      within(claudeCodePanel).getByRole('region', { name: '命令预览' })
+    ).not.toHaveTextContent('--env');
 
     fireEvent.click(within(dialog).getByRole('tab', { name: 'OpenCode' }));
     const openCodePanel = within(dialog).getByRole('tabpanel', {
       name: 'OpenCode'
     });
-    expect(within(openCodePanel).getByRole('region', { name: '命令' })).toHaveTextContent(
-      'opencode mcp add'
-    );
-    expect(within(openCodePanel).getByRole('region', { name: '命令' })).toHaveTextContent(
-      'Authorization=Bearer test-secret-key'
-    );
+    expect(
+      within(openCodePanel).getByRole('region', { name: '命令预览' })
+    ).toHaveTextContent('opencode mcp add');
+    expect(
+      within(openCodePanel).getByRole('region', { name: '命令预览' })
+    ).toHaveTextContent('Authorization=Bearer test-secret-key');
+    expect(
+      within(openCodePanel).getByRole('region', { name: '命令预览' })
+    ).not.toHaveTextContent('FLOWBASE_MCP_API_KEY');
   });
 
   test('AC-005 AC-008 keeps Agent commands copyable but incomplete until an API key is entered', async () => {
@@ -1510,16 +1535,18 @@ describe('McpManagementPanel', () => {
     expect(
       within(dialog).getByText('输入 API Key 后生成可直接执行的命令。')
     ).toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole('button', { name: '复制命令' })
-    ).not.toBeInTheDocument();
+    expect(vditorMock.preview).not.toHaveBeenCalled();
 
     fireEvent.change(within(dialog).getByLabelText('API Key'), {
       target: { value: 'test-secret-key' }
     });
-    expect(
-      within(dialog).getAllByRole('button', { name: '复制命令' })
-    ).toHaveLength(3);
+    await waitFor(() => {
+      expect(vditorMock.preview).toHaveBeenCalledWith(
+        expect.any(HTMLDivElement),
+        expect.stringContaining('```bash'),
+        expect.objectContaining({ mode: 'light' })
+      );
+    });
   });
 
   test('restores and clears a saved MCP client credential without a status badge', async () => {

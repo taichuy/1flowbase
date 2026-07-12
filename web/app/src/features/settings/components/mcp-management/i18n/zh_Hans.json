@@ -52,8 +52,8 @@
     "api_key_saved": "API Key 已加密保存",
     "saved_api_key_deleted": "已保存的 API Key 已删除",
     "common": "通用",
-    "copy_command": "复制命令",
     "enter_api_key_to_generate_commands": "输入 API Key 后生成可直接执行的命令。",
-    "command_block": "命令"
+    "command_preview": "命令预览",
+    "client_config_plaintext_notice": "以下命令会将 API Key 明文写入客户端的用户级配置，并替换同名 MCP 配置。"
   }
 }

@@ -1,30 +1,13 @@
-import {
-  CheckOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  KeyOutlined,
-  SaveOutlined
-} from '@ant-design/icons';
+import { DeleteOutlined, KeyOutlined, SaveOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Alert,
-  App,
-  Button,
-  Form,
-  Input,
-  Modal,
-  Space,
-  Tabs,
-  Typography
-} from 'antd';
-import { Children, isValidElement, useEffect, useMemo, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Alert, App, Button, Form, Input, Space, Tabs, Typography } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { ConsoleMcpInstance } from '@1flowbase/api-client';
 import { i18nText } from '../../../../shared/i18n/text';
-import { copyTextToClipboard } from '../../../../shared/ui/clipboard/copy-text';
+import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
+import { McpCommandMarkdownPreview } from './McpCommandMarkdownPreview';
 import { useAuthStore } from '../../../../state/auth-store';
 import {
   deleteSettingsMcpClientCredential,
@@ -54,23 +37,41 @@ function quoteWindowsCommand(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
-function buildCodexCommands(instanceName: string, endpoint: string, apiKey: string) {
-  const variableName = 'FLOWBASE_MCP_API_KEY';
+function quoteTomlString(value: string) {
+  return JSON.stringify(value);
+}
+
+function buildCodexTomlHeaders(instanceName: string, apiKey: string) {
+  return (
+    '[mcp_servers.' +
+    quoteTomlString(instanceName) +
+    '.http_headers]\nAuthorization = ' +
+    quoteTomlString(`Bearer ${apiKey}`) +
+    '\n'
+  );
+}
+
+function buildCodexCommands(
+  instanceName: string,
+  endpoint: string,
+  apiKey: string
+) {
+  const headers = buildCodexTomlHeaders(instanceName, apiKey);
   return [
     {
       title: 'macOS / Linux Shell',
       language: 'bash',
-      command: `printf ${quotePosix(`\nexport ${variableName}=${quotePosix(apiKey)}\n`)} >> ~/.profile && export ${variableName}=${quotePosix(apiKey)} && codex mcp add ${quotePosix(instanceName)} --url ${quotePosix(endpoint)} --bearer-token-env-var ${variableName}`
+      command: `codex mcp remove ${quotePosix(instanceName)} >/dev/null 2>&1 || true; codex mcp add ${quotePosix(instanceName)} --url ${quotePosix(endpoint)} && printf %s ${quotePosix(`\n${headers}`)} >> ~/.codex/config.toml`
     },
     {
       title: 'Windows PowerShell',
       language: 'powershell',
-      command: `[Environment]::SetEnvironmentVariable(${quotePowerShell(variableName)}, ${quotePowerShell(apiKey)}, 'User'); $env:${variableName}=${quotePowerShell(apiKey)}; codex mcp add ${quotePowerShell(instanceName)} --url ${quotePowerShell(endpoint)} --bearer-token-env-var ${variableName}`
+      command: `codex mcp remove ${quotePowerShell(instanceName)} 2>$null; codex mcp add ${quotePowerShell(instanceName)} --url ${quotePowerShell(endpoint)}; Add-Content -Path (Join-Path $HOME '.codex\\config.toml') -Value ${quotePowerShell(`\n${headers}`)}`
     },
     {
       title: 'Windows CMD',
       language: 'bat',
-      command: `setx ${variableName} ${quoteWindowsCommand(apiKey)} >nul && set "${variableName}=${apiKey}" && codex mcp add ${quoteWindowsCommand(instanceName)} --url ${quoteWindowsCommand(endpoint)} --bearer-token-env-var ${variableName}`
+      command: `codex mcp remove ${quoteWindowsCommand(instanceName)} >nul 2>&1 & codex mcp add ${quoteWindowsCommand(instanceName)} --url ${quoteWindowsCommand(endpoint)} && powershell -NoProfile -Command "Add-Content -Path (Join-Path $HOME '.codex\\config.toml') -Value ${quotePowerShell(`\n${headers}`)}"`
     }
   ];
 }
@@ -80,11 +81,17 @@ function buildClaudeCodeCommands(
   endpoint: string,
   apiKey: string
 ) {
+  const addCommand = `claude mcp add --scope user --transport http ${quoteWindowsCommand(instanceName)} ${quoteWindowsCommand(endpoint)} --header ${quoteWindowsCommand(`Authorization: Bearer ${apiKey}`)}`;
   return [
     {
-      title: 'macOS / Linux / Windows',
-      language: 'shell',
-      command: `claude mcp add --scope user --transport http ${quoteWindowsCommand(instanceName)} ${quoteWindowsCommand(endpoint)} --header ${quoteWindowsCommand(`Authorization: Bearer ${apiKey}`)}`
+      title: 'macOS / Linux Shell',
+      language: 'bash',
+      command: `claude mcp remove --scope user ${quotePosix(instanceName)} >/dev/null 2>&1 || true; ${addCommand}`
+    },
+    {
+      title: 'Windows PowerShell',
+      language: 'powershell',
+      command: `claude mcp remove --scope user ${quotePowerShell(instanceName)} 2>$null; ${addCommand}`
     }
   ];
 }
@@ -94,11 +101,17 @@ function buildOpenCodeCommands(
   endpoint: string,
   apiKey: string
 ) {
+  const addCommand = `opencode mcp add ${quoteWindowsCommand(instanceName)} --url ${quoteWindowsCommand(endpoint)} --header ${quoteWindowsCommand(`Authorization=Bearer ${apiKey}`)}`;
   return [
     {
-      title: 'macOS / Linux / Windows',
-      language: 'shell',
-      command: `opencode mcp add ${quoteWindowsCommand(instanceName)} --url ${quoteWindowsCommand(endpoint)} --header ${quoteWindowsCommand(`Authorization=Bearer ${apiKey}`)}`
+      title: 'macOS / Linux Shell',
+      language: 'bash',
+      command: `opencode mcp remove ${quotePosix(instanceName)} >/dev/null 2>&1 || true; ${addCommand}`
+    },
+    {
+      title: 'Windows PowerShell',
+      language: 'powershell',
+      command: `opencode mcp remove ${quotePowerShell(instanceName)} 2>$null; ${addCommand}`
     }
   ];
 }
@@ -112,52 +125,6 @@ function buildCommandMarkdown(
         `### ${title}\n\n\`\`\`${language}\n${command}\n\`\`\``
     )
     .join('\n\n');
-}
-
-function CopyableMarkdown({ content }: { content: string }) {
-  const [copiedCommand, setCopiedCommand] = useState('');
-
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        pre: ({ children }) => {
-          const codeElement = Children.only(children);
-          const command =
-            isValidElement<{ children?: unknown }>(codeElement) &&
-            typeof codeElement.props.children === 'string'
-              ? codeElement.props.children.replace(/\n$/, '')
-              : '';
-
-          return (
-            <div aria-label={i18nText(
-                'settingsMcpManagement',
-                'auto.command_block'
-              )} role="region" style={{ position: 'relative' }}>
-              <pre style={{ paddingRight: 48 }}>{children}</pre>
-              <Button
-                type="text"
-                size="small"
-                aria-label={i18nText(
-                  'settingsMcpManagement',
-                  'auto.copy_command'
-                )}
-                icon={
-                  copiedCommand === command ? <CheckOutlined /> : <CopyOutlined />
-                }
-                style={{ position: 'absolute', right: 8, top: 8 }}
-                onClick={() => {
-                  void copyTextToClipboard(command).then(() => setCopiedCommand(command));
-                }}
-              />
-            </div>
-          );
-        }
-      }}
-    >
-      {content}
-    </ReactMarkdown>
-  );
 }
 
 export function McpClientConfigurationModal({
@@ -251,7 +218,7 @@ export function McpClientConfigurationModal({
   };
   const renderAgentCommands = (content: string | undefined) =>
     content ? (
-      <CopyableMarkdown content={content} />
+      <McpCommandMarkdownPreview content={content} />
     ) : (
       <Typography.Text type="secondary">
         {i18nText(
@@ -262,7 +229,7 @@ export function McpClientConfigurationModal({
     );
 
   return (
-    <Modal
+    <FixedHeightModal
       title={i18nText(
         'settingsMcpManagement',
         'auto.client_configuration_title'
@@ -294,6 +261,8 @@ export function McpClientConfigurationModal({
           {i18nText('settingsMcpManagement', 'auto.save_api_key')}
         </Button>
       ]}
+      className="mcp-management__client-configuration-modal"
+      scrollBodyClassName="mcp-management__client-configuration-scroll-body"
       width={720}
       destroyOnHidden
     >
@@ -324,6 +293,14 @@ export function McpClientConfigurationModal({
             />
           </Form.Item>
         </Form>
+        <Alert
+          type="warning"
+          showIcon
+          message={i18nText(
+            'settingsMcpManagement',
+            'auto.client_config_plaintext_notice'
+          )}
+        />
         <Tabs
           items={[
             {
@@ -366,6 +343,6 @@ export function McpClientConfigurationModal({
           ]}
         />
       </Space>
-    </Modal>
+    </FixedHeightModal>
   );
 }
