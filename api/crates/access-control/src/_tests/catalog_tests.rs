@@ -42,6 +42,7 @@ fn permission_catalog_seeds_migrated_settings_feature_codes() {
         "applications",
         "files",
         "data-models",
+        "model-providers",
     ] {
         assert!(codes.contains(&format!("settings_feature.access.system.{feature}")));
         assert!(!codes.contains(&format!("settings_route.visible.settings.{feature}")));
@@ -50,6 +51,7 @@ fn permission_catalog_seeds_migrated_settings_feature_codes() {
     assert!(!codes.contains(&"settings_route.visible.settings.members".to_string()));
     assert!(!codes.contains(&"settings_route.visible.settings.files".to_string()));
     assert!(!codes.contains(&"settings_route.visible.settings.data-models".to_string()));
+    assert!(!codes.contains(&"settings_route.visible.settings.model-providers".to_string()));
 }
 
 #[test]

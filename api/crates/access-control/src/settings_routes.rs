@@ -62,25 +62,6 @@ pub struct SettingsRouteSpec {
 
 const SYSTEM_RUNTIME_PERMISSIONS: &[&str] = &["system_runtime.view.all"];
 const API_REFERENCE_PERMISSIONS: &[&str] = &["api_reference.view.all"];
-const STATE_MODEL_VISIBILITY_PERMISSIONS: &[&str] = &[
-    "state_model.view.all",
-    "state_model.view.own",
-    "state_model.manage.all",
-    "state_model.manage.own",
-];
-const MODEL_PROVIDER_ALL_PERMISSIONS: &[&str] = &[
-    "state_model.view.all",
-    "state_model.view.own",
-    "state_model.create.all",
-    "state_model.edit.all",
-    "state_model.edit.own",
-    "state_model.delete.all",
-    "state_model.delete.own",
-    "state_model.manage.all",
-    "state_model.manage.own",
-    "plugin_config.view.all",
-    "plugin_config.configure.all",
-];
 const MCP_VISIBILITY_PERMISSIONS: &[&str] =
     &["mcp_management.view.all", "mcp_management.manage.all"];
 const MCP_ALL_PERMISSIONS: &[&str] = &["mcp_management.view.all", "mcp_management.manage.all"];
@@ -105,21 +86,6 @@ const SYSTEM_RUNTIME_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiSc
     path_match: SettingsRouteApiPathMatch::Prefix,
     methods: SettingsRouteApiMethods::ReadOnly,
 }];
-
-const MODEL_PROVIDERS_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.model_providers",
-        path: "/api/console/model-providers",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.plugins",
-        path: "/api/console/plugins",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-];
 
 const MCP_MANAGEMENT_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
     scope_id: "console.mcp",
@@ -161,19 +127,6 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(SYSTEM_RUNTIME_PERMISSIONS),
         implied_permissions: SYSTEM_RUNTIME_PERMISSIONS,
         api_scopes: SYSTEM_RUNTIME_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.model-providers",
-        surface_key: "model-providers",
-        path: "/settings/model-providers",
-        label_key: "auto.model_providers",
-        order: 1000,
-        visibility_permission_code: "settings_route.visible.settings.model-providers",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
-            STATE_MODEL_VISIBILITY_PERMISSIONS,
-        ),
-        implied_permissions: MODEL_PROVIDER_ALL_PERMISSIONS,
-        api_scopes: MODEL_PROVIDERS_API_SCOPES,
     },
     SettingsRouteSpec {
         route_id: "settings.mcp-management",

@@ -182,7 +182,7 @@ pub(super) fn official_upload_public_key() -> plugin_framework::TrustedPublicKey
     }
 }
 
-pub(super) fn build_official_provider_package(version: &str) -> Vec<u8> {
+pub(crate) fn build_official_provider_package(version: &str) -> Vec<u8> {
     let package_root =
         std::env::temp_dir().join(format!("official-plugin-route-package-{}", Uuid::now_v7()));
     create_official_provider_fixture(&package_root);

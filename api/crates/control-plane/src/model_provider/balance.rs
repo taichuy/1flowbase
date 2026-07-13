@@ -4,14 +4,14 @@ use uuid::Uuid;
 use crate::{
     data_source::{collect_secret_strings, redact_value},
     errors::ControlPlaneError,
-    model_provider::ModelProviderBalanceResult,
+    model_provider::{ModelProviderBalanceResult, ModelProviderUseCase},
     ports::{AuthRepository, ModelProviderRepository, PluginRepository, ProviderRuntimePort},
 };
 
 use super::{
     instances::build_provider_runtime_config,
     shared::{
-        empty_object, ensure_state_model_permission, load_actor_context_for_user,
+        empty_object, ensure_model_provider_permission, load_actor_context_for_user,
         load_provider_package, ready_model_provider_installation, ModelProviderNodeArtifactContext,
     },
 };
@@ -23,13 +23,14 @@ pub(super) async fn get_balance<R, H>(
     actor_user_id: Uuid,
     instance_id: Uuid,
     node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
+    use_case: ModelProviderUseCase,
 ) -> Result<ModelProviderBalanceResult>
 where
     R: AuthRepository + PluginRepository + ModelProviderRepository,
     H: ProviderRuntimePort,
 {
     let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_state_model_permission(&actor, "manage")?;
+    ensure_model_provider_permission(&actor, "manage", use_case)?;
     let instance = repository
         .get_instance(actor.current_workspace_id, instance_id)
         .await?

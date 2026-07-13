@@ -28,6 +28,9 @@ pub const SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION: &str =
 pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_ID: &str = "system.members";
 pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.members";
+pub const SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_ID: &str = "system.model-providers";
+pub const SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.model-providers";
 pub const SYSTEM_ROLES_SETTINGS_FEATURE_ID: &str = "system.roles";
 pub const SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.access.system.roles";
 
@@ -405,6 +408,116 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("POST", "/api/console/settings/members/{id}/enable"),
                 ("POST", "/api/console/settings/members/{id}/reset-password"),
                 ("PUT", "/api/console/settings/members/{id}/roles"),
+            ]),
+        },
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.model-providers".to_string(),
+                surface_key: "model-providers".to_string(),
+                path: "/settings/model-providers".to_string(),
+                label_key: "auto.model_providers".to_string(),
+                order: 1000,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/model-providers/catalog"),
+                ("GET", "/api/console/settings/model-providers/instances"),
+                ("POST", "/api/console/settings/model-providers/instances"),
+                (
+                    "PATCH",
+                    "/api/console/settings/model-providers/instances/{id}",
+                ),
+                (
+                    "DELETE",
+                    "/api/console/settings/model-providers/instances/{id}",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/instances/{id}/validate",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/model-providers/instances/{id}/models",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/instances/{id}/models/refresh",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/instances/{id}/secrets/reveal",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/model-providers/providers/{provider_code}/main-instance",
+                ),
+                (
+                    "PUT",
+                    "/api/console/settings/model-providers/providers/{provider_code}/main-instance",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/preview-models",
+                ),
+                ("GET", "/api/console/settings/model-providers/options"),
+                (
+                    "GET",
+                    "/api/console/settings/model-providers/request-logs",
+                ),
+                (
+                    "DELETE",
+                    "/api/console/settings/model-providers/request-logs",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/request-logs/clear",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/model-providers/plugins/families",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/model-providers/plugins/official-catalog",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/plugins/install-official",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/plugins/install-upload",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/plugins/{installation_id}/artifact/refresh",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/plugins/{installation_id}/artifact/install-current-node",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/plugins/families/{provider_code}/upgrade-latest",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/model-providers/plugins/families/{provider_code}/switch-version",
+                ),
+                (
+                    "DELETE",
+                    "/api/console/settings/model-providers/plugins/families/{provider_code}",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/model-providers/plugins/tasks/{task_id}",
+                ),
             ]),
         },
         SettingsFeatureRegistration {

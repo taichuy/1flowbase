@@ -9,14 +9,13 @@ use axum::{
 use control_plane::model_provider::{
     ClearModelProviderRequestLogsBatchCommand, ClearModelProviderRequestLogsContinuation,
     CreateModelProviderInstanceCommand, DeleteModelProviderInstanceCommand,
-    DeleteSelectedModelProviderRequestLogsCommand, LocalizedProviderModelDescriptor,
-    ModelProviderBalanceResult, ModelProviderCatalogEntry, ModelProviderCatalogView,
-    ModelProviderInstanceView, ModelProviderMainInstanceView, ModelProviderModelCatalog,
-    ModelProviderOptionEntry, ModelProviderOptionsView, ModelProviderService,
-    PreviewModelProviderModelsCommand, UpdateModelProviderInstanceCommand,
+    DeleteSelectedModelProviderRequestLogsCommand, ListModelProviderRequestLogsCommand,
+    LocalizedProviderModelDescriptor, ModelProviderBalanceResult, ModelProviderCatalogEntry,
+    ModelProviderCatalogView, ModelProviderInstanceView, ModelProviderMainInstanceView,
+    ModelProviderModelCatalog, ModelProviderOptionEntry, ModelProviderOptionsView,
+    ModelProviderService, PreviewModelProviderModelsCommand, UpdateModelProviderInstanceCommand,
     UpdateModelProviderMainInstanceCommand, ValidateModelProviderResult,
 };
-use control_plane::ports::{ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository};
 use plugin_framework::{
     provider_contract::{
         PluginFormCondition, PluginFormFieldSchema, PluginFormOption, PluginFormSchema,
@@ -41,6 +40,9 @@ use crate::{
 
 mod clear_request_log_continuation;
 mod icons;
+pub(crate) mod settings_routes;
+
+use settings_routes::settings_service;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ConfiguredModelBody {
@@ -448,38 +450,13 @@ pub struct ClearModelProviderRequestLogsResponse {
 
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
-        .route("/model-providers/catalog", get(list_catalog))
-        .route(
-            "/model-providers/request-logs",
-            get(list_request_logs).delete(delete_selected_request_logs),
-        )
-        .route(
-            "/model-providers/request-logs/clear",
-            post(clear_request_logs_batch),
-        )
-        .route(
-            "/model-providers",
-            get(list_instances).post(create_instance),
-        )
-        .route(
-            "/model-providers/providers/:provider_code/main-instance",
-            get(get_main_instance).put(update_main_instance),
-        )
         .route(
             "/model-providers/providers/:provider_code/icon",
             get(icons::read_provider_icon),
         )
-        .route("/model-providers/preview-models", post(preview_models))
         .route("/model-providers/options", get(list_options))
-        .route(
-            "/model-providers/:id",
-            patch(update_instance).delete(delete_instance),
-        )
-        .route("/model-providers/:id/validate", post(validate_instance))
         .route("/model-providers/:id/balance", get(get_balance))
-        .route("/model-providers/:id/secrets/reveal", post(reveal_secret))
-        .route("/model-providers/:id/models", get(list_models))
-        .route("/model-providers/:id/models/refresh", post(refresh_models))
+        .merge(settings_routes::router())
 }
 
 fn service(state: &ApiState) -> ModelProviderService<MainDurableStore, ApiProviderRuntime> {
@@ -935,7 +912,7 @@ fn requested_locales(locale_meta: &LocaleMetaResponse) -> control_plane::i18n::R
 
 #[utoipa::path(
     get,
-    path = "/api/console/model-providers/catalog",
+    path = "/api/console/settings/model-providers/catalog",
     operation_id = "model_provider_list_catalog",
     params(ModelProviderCatalogQuery),
     responses((status = 200, body = ModelProviderCatalogResponse), (status = 401, body = crate::error_response::ErrorBody))
@@ -947,7 +924,7 @@ pub async fn list_catalog(
 ) -> Result<Json<ApiSuccess<ModelProviderCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let locale_meta = resolve_locale_meta(&headers, query.locale, context.user.preferred_locale);
-    let catalog = service(&state)
+    let catalog = settings_service(&state)
         .list_catalog(context.user.id, requested_locales(&locale_meta))
         .await?;
     Ok(Json(ApiSuccess::new(to_catalog_view_response(
@@ -958,7 +935,7 @@ pub async fn list_catalog(
 
 #[utoipa::path(
     get,
-    path = "/api/console/model-providers/request-logs",
+    path = "/api/console/settings/model-providers/request-logs",
     params(ModelProviderRequestLogsQuery),
     responses((status = 200, body = ModelProviderRequestLogsPageResponse), (status = 401, body = crate::error_response::ErrorBody))
 )]
@@ -968,10 +945,9 @@ pub async fn list_request_logs(
     Query(query): Query<ModelProviderRequestLogsQuery>,
 ) -> Result<Json<ApiSuccess<ModelProviderRequestLogsPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let page = state
-        .store
-        .list_model_provider_request_logs_page(ListModelProviderRequestLogsPageInput {
-            scope_id: context.actor.current_workspace_id,
+    let page = settings_service(&state)
+        .list_request_logs(ListModelProviderRequestLogsCommand {
+            actor: context.actor,
             application_name: query.application_name,
             provider_instance_id: query.provider_instance_id,
             model_id: query.model_id,
@@ -1007,7 +983,7 @@ pub async fn list_request_logs(
 
 #[utoipa::path(
     delete,
-    path = "/api/console/model-providers/request-logs",
+    path = "/api/console/settings/model-providers/request-logs",
     operation_id = "model_provider_delete_selected_request_logs",
     request_body = DeleteModelProviderRequestLogsBody,
     responses(
@@ -1029,7 +1005,7 @@ pub async fn delete_selected_request_logs(
         .iter()
         .map(|attempt_id| parse_uuid(attempt_id, "attempt_ids"))
         .collect::<Result<Vec<_>, _>>()?;
-    let deleted_count = service(&state)
+    let deleted_count = settings_service(&state)
         .delete_selected_request_logs(DeleteSelectedModelProviderRequestLogsCommand {
             actor: context.actor,
             attempt_ids,
@@ -1042,7 +1018,7 @@ pub async fn delete_selected_request_logs(
 
 #[utoipa::path(
     post,
-    path = "/api/console/model-providers/request-logs/clear",
+    path = "/api/console/settings/model-providers/request-logs/clear",
     operation_id = "model_provider_clear_request_logs_batch",
     request_body = ClearModelProviderRequestLogsBody,
     responses(
@@ -1073,7 +1049,7 @@ pub async fn clear_request_logs_batch(
         },
         None => ClearModelProviderRequestLogsContinuation::Start,
     };
-    let result = service(&state)
+    let result = settings_service(&state)
         .clear_request_logs_batch(ClearModelProviderRequestLogsBatchCommand {
             actor: context.actor,
             continuation,
@@ -1127,7 +1103,7 @@ fn to_request_log_response(
 
 #[utoipa::path(
     get,
-    path = "/api/console/model-providers",
+    path = "/api/console/settings/model-providers/instances",
     operation_id = "model_provider_list_instances",
     responses((status = 200, body = [ModelProviderInstanceResponse]), (status = 401, body = crate::error_response::ErrorBody))
 )]
@@ -1136,7 +1112,9 @@ pub async fn list_instances(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<ModelProviderInstanceResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let instances = service(&state).list_instances(context.user.id).await?;
+    let instances = settings_service(&state)
+        .list_instances(context.user.id)
+        .await?;
     Ok(Json(ApiSuccess::new(
         instances.into_iter().map(to_instance_response).collect(),
     )))
@@ -1144,7 +1122,7 @@ pub async fn list_instances(
 
 #[utoipa::path(
     post,
-    path = "/api/console/model-providers",
+    path = "/api/console/settings/model-providers/instances",
     operation_id = "model_provider_create_instance",
     request_body = CreateModelProviderBody,
     responses((status = 201, body = ModelProviderInstanceResponse), (status = 403, body = crate::error_response::ErrorBody))
@@ -1156,7 +1134,7 @@ pub async fn create_instance(
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelProviderInstanceResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let created = service(&state)
+    let created = settings_service(&state)
         .create_instance(CreateModelProviderInstanceCommand {
             actor_user_id: context.user.id,
             installation_id: parse_uuid(&body.installation_id, "installation_id")?,
@@ -1189,7 +1167,7 @@ pub async fn create_instance(
 
 #[utoipa::path(
     patch,
-    path = "/api/console/model-providers/{id}",
+    path = "/api/console/settings/model-providers/instances/{id}",
     operation_id = "model_provider_update_instance",
     request_body = UpdateModelProviderBody,
     responses((status = 200, body = ModelProviderInstanceResponse), (status = 403, body = crate::error_response::ErrorBody))
@@ -1202,7 +1180,7 @@ pub async fn update_instance(
 ) -> Result<Json<ApiSuccess<ModelProviderInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let updated = service(&state)
+    let updated = settings_service(&state)
         .update_instance(UpdateModelProviderInstanceCommand {
             actor_user_id: context.user.id,
             instance_id: parse_uuid(&id, "id")?,
@@ -1232,7 +1210,7 @@ pub async fn update_instance(
 
 #[utoipa::path(
     post,
-    path = "/api/console/model-providers/{id}/validate",
+    path = "/api/console/settings/model-providers/instances/{id}/validate",
     operation_id = "model_provider_validate_instance",
     responses((status = 200, body = ValidateModelProviderResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -1243,7 +1221,7 @@ pub async fn validate_instance(
 ) -> Result<Json<ApiSuccess<ValidateModelProviderResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let result = service(&state)
+    let result = settings_service(&state)
         .validate_instance(context.user.id, parse_uuid(&id, "id")?)
         .await?;
     Ok(Json(ApiSuccess::new(to_validate_response(result))))
@@ -1269,7 +1247,7 @@ pub async fn get_balance(
 
 #[utoipa::path(
     get,
-    path = "/api/console/model-providers/providers/{provider_code}/main-instance",
+    path = "/api/console/settings/model-providers/providers/{provider_code}/main-instance",
     operation_id = "model_provider_get_main_instance",
     responses(
         (status = 200, body = ModelProviderMainInstanceResponse),
@@ -1284,7 +1262,7 @@ pub async fn get_main_instance(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderMainInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let view = service(&state)
+    let view = settings_service(&state)
         .get_main_instance(context.user.id, &provider_code)
         .await?;
     Ok(Json(ApiSuccess::new(to_main_instance_response(view))))
@@ -1292,7 +1270,7 @@ pub async fn get_main_instance(
 
 #[utoipa::path(
     put,
-    path = "/api/console/model-providers/providers/{provider_code}/main-instance",
+    path = "/api/console/settings/model-providers/providers/{provider_code}/main-instance",
     operation_id = "model_provider_update_main_instance",
     request_body = UpdateModelProviderMainInstanceBody,
     responses(
@@ -1318,7 +1296,7 @@ pub async fn update_main_instance(
                 .collect::<Result<Vec<_>, ApiError>>()
         })
         .transpose()?;
-    let view = service(&state)
+    let view = settings_service(&state)
         .update_main_instance(UpdateModelProviderMainInstanceCommand {
             actor_user_id: context.user.id,
             provider_code,
@@ -1332,7 +1310,7 @@ pub async fn update_main_instance(
 
 #[utoipa::path(
     post,
-    path = "/api/console/model-providers/preview-models",
+    path = "/api/console/settings/model-providers/preview-models",
     operation_id = "model_provider_preview_models",
     request_body = PreviewModelProviderModelsBody,
     responses((status = 200, body = PreviewModelProviderModelsResponse), (status = 403, body = crate::error_response::ErrorBody))
@@ -1344,7 +1322,7 @@ pub async fn preview_models(
 ) -> Result<Json<ApiSuccess<PreviewModelProviderModelsResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let preview = service(&state)
+    let preview = settings_service(&state)
         .preview_models(PreviewModelProviderModelsCommand {
             actor_user_id: context.user.id,
             installation_id: body
@@ -1373,7 +1351,7 @@ pub async fn preview_models(
 
 #[utoipa::path(
     post,
-    path = "/api/console/model-providers/{id}/secrets/reveal",
+    path = "/api/console/settings/model-providers/instances/{id}/secrets/reveal",
     operation_id = "model_provider_reveal_secret",
     request_body = RevealModelProviderSecretBody,
     responses((status = 200, body = RevealModelProviderSecretResponse), (status = 403, body = crate::error_response::ErrorBody))
@@ -1386,7 +1364,7 @@ pub async fn reveal_secret(
 ) -> Result<Json<ApiSuccess<RevealModelProviderSecretResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let value = service(&state)
+    let value = settings_service(&state)
         .reveal_secret(context.user.id, parse_uuid(&id, "id")?, &body.key)
         .await?;
     Ok(Json(ApiSuccess::new(RevealModelProviderSecretResponse {
@@ -1397,7 +1375,7 @@ pub async fn reveal_secret(
 
 #[utoipa::path(
     get,
-    path = "/api/console/model-providers/{id}/models",
+    path = "/api/console/settings/model-providers/instances/{id}/models",
     operation_id = "model_provider_list_models",
     responses((status = 200, body = ModelProviderModelCatalogResponse), (status = 401, body = crate::error_response::ErrorBody))
 )]
@@ -1407,7 +1385,7 @@ pub async fn list_models(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderModelCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let catalog = service(&state)
+    let catalog = settings_service(&state)
         .list_models(context.user.id, parse_uuid(&id, "id")?)
         .await?;
     Ok(Json(ApiSuccess::new(to_model_catalog_response(catalog))))
@@ -1415,7 +1393,7 @@ pub async fn list_models(
 
 #[utoipa::path(
     post,
-    path = "/api/console/model-providers/{id}/models/refresh",
+    path = "/api/console/settings/model-providers/instances/{id}/models/refresh",
     operation_id = "model_provider_refresh_models",
     responses((status = 200, body = ModelProviderModelCatalogResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -1426,7 +1404,7 @@ pub async fn refresh_models(
 ) -> Result<Json<ApiSuccess<ModelProviderModelCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let catalog = service(&state)
+    let catalog = settings_service(&state)
         .refresh_models(context.user.id, parse_uuid(&id, "id")?)
         .await?;
     Ok(Json(ApiSuccess::new(to_model_catalog_response(catalog))))
@@ -1434,7 +1412,7 @@ pub async fn refresh_models(
 
 #[utoipa::path(
     delete,
-    path = "/api/console/model-providers/{id}",
+    path = "/api/console/settings/model-providers/instances/{id}",
     operation_id = "model_provider_delete_instance",
     responses((status = 200, body = DeletedResponse), (status = 409, body = crate::error_response::ErrorBody))
 )]
@@ -1445,7 +1423,7 @@ pub async fn delete_instance(
 ) -> Result<Json<ApiSuccess<DeletedResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    service(&state)
+    settings_service(&state)
         .delete_instance(DeleteModelProviderInstanceCommand {
             actor_user_id: context.user.id,
             instance_id: parse_uuid(&id, "id")?,

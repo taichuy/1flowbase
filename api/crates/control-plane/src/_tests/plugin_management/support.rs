@@ -60,7 +60,8 @@ mod repository;
 mod source;
 
 pub(crate) use fixtures::{
-    actor_with_permissions, create_capability_plugin_fixture, create_frontend_block_fixture,
+    actor_with_permissions, build_capability_plugin_package_bytes,
+    create_capability_plugin_fixture, create_frontend_block_fixture,
     create_js_dependency_pack_fixture, create_provider_fixture,
 };
 pub(super) use fixtures::{

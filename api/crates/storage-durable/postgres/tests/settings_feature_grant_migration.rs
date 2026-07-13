@@ -26,6 +26,22 @@ const FILES_FEATURE: &str = "settings_feature.access.system.files";
 const DATA_MODELS_SETTINGS_MIGRATION_VERSION: i64 = 20260714180000;
 const DATA_MODELS_VISIBILITY: &str = "settings_route.visible.settings.data-models";
 const DATA_MODELS_FEATURE: &str = "settings_feature.access.system.data-models";
+const MODEL_PROVIDERS_SETTINGS_MIGRATION_VERSION: i64 = 20260714190000;
+const MODEL_PROVIDERS_VISIBILITY: &str = "settings_route.visible.settings.model-providers";
+const MODEL_PROVIDERS_FEATURE: &str = "settings_feature.access.system.model-providers";
+const MODEL_PROVIDER_ALL_PERMISSIONS: &[&str] = &[
+    "state_model.view.all",
+    "state_model.view.own",
+    "state_model.create.all",
+    "state_model.edit.all",
+    "state_model.edit.own",
+    "state_model.delete.all",
+    "state_model.delete.own",
+    "state_model.manage.all",
+    "state_model.manage.own",
+    "plugin_config.view.all",
+    "plugin_config.configure.all",
+];
 const DATA_MODEL_ALL_PERMISSIONS: &[&str] = &[
     "api_reference.view.all",
     "state_model.view.all",
@@ -71,6 +87,12 @@ const REMAINING_VISIBILITIES_AFTER_DATA_MODELS: &[&str] = &[
     "settings_route.visible.settings.api-key-authentication",
     "settings_route.visible.settings.system-runtime",
     "settings_route.visible.settings.model-providers",
+    "settings_route.visible.settings.mcp-management",
+];
+const REMAINING_VISIBILITIES_AFTER_MODEL_PROVIDERS: &[&str] = &[
+    "settings_route.visible.settings.docs",
+    "settings_route.visible.settings.api-key-authentication",
+    "settings_route.visible.settings.system-runtime",
     "settings_route.visible.settings.mcp-management",
 ];
 
@@ -167,6 +189,27 @@ fn before_data_models_settings_feature_migrator() -> Migrator {
 async fn data_models_settings_historical_pool() -> PgPool {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     before_data_models_settings_feature_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    pool
+}
+
+fn before_model_providers_settings_feature_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < MODEL_PROVIDERS_SETTINGS_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+async fn model_providers_settings_historical_pool() -> PgPool {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    before_model_providers_settings_feature_migrator()
         .run(&pool)
         .await
         .unwrap();
@@ -388,6 +431,34 @@ async fn seed_data_models_settings_historical_permissions(pool: &PgPool) {
         insert_permission(pool, code, resource, action, scope).await;
     }
     for code in REMAINING_VISIBILITIES_AFTER_DATA_MODELS {
+        insert_permission(
+            pool,
+            code,
+            "settings_route",
+            "visible",
+            code.trim_start_matches("settings_route.visible."),
+        )
+        .await;
+    }
+}
+
+async fn seed_model_providers_settings_historical_permissions(pool: &PgPool) {
+    insert_permission(
+        pool,
+        MODEL_PROVIDERS_VISIBILITY,
+        "settings_route",
+        "visible",
+        "settings.model-providers",
+    )
+    .await;
+    for code in MODEL_PROVIDER_ALL_PERMISSIONS {
+        let mut parts = code.rsplitn(3, '.');
+        let scope = parts.next().unwrap();
+        let action = parts.next().unwrap();
+        let resource = parts.next().unwrap();
+        insert_permission(pool, code, resource, action, scope).await;
+    }
+    for code in REMAINING_VISIBILITIES_AFTER_MODEL_PROVIDERS {
         insert_permission(
             pool,
             code,
@@ -843,7 +914,10 @@ async fn migration_reconciles_data_models_grants_and_preserves_remaining_five_vi
         grant(&pool, untouched_role, workspace.id, code).await;
     }
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    before_model_providers_settings_feature_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
 
     let mut expected = DATA_MODEL_ALL_PERMISSIONS
         .iter()
@@ -917,6 +991,105 @@ async fn data_models_settings_migration_rolls_back_when_legacy_cleanup_fails() {
     let new_definition_count: i64 =
         sqlx::query_scalar("select count(*) from permission_definitions where code = $1")
             .bind(DATA_MODELS_FEATURE)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(new_definition_count, 0);
+}
+
+#[tokio::test]
+async fn migration_reconciles_model_providers_grants_and_preserves_remaining_four_visibilities() {
+    let pool = model_providers_settings_historical_pool().await;
+    let store = PgControlPlaneStore::new(pool.clone());
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "Model providers settings migration")
+        .await
+        .unwrap();
+    seed_model_providers_settings_historical_permissions(&pool).await;
+
+    let legacy_role = insert_role(&pool, workspace.id, "legacy_model_providers").await;
+    let untouched_role = insert_role(&pool, workspace.id, "legacy_remaining_four").await;
+    grant(&pool, legacy_role, workspace.id, MODEL_PROVIDERS_VISIBILITY).await;
+    grant(&pool, legacy_role, workspace.id, "state_model.view.all").await;
+    for code in REMAINING_VISIBILITIES_AFTER_MODEL_PROVIDERS {
+        grant(&pool, untouched_role, workspace.id, code).await;
+    }
+
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+    let mut expected = MODEL_PROVIDER_ALL_PERMISSIONS
+        .iter()
+        .map(|code| (*code).to_string())
+        .collect::<BTreeSet<_>>();
+    expected.insert(MODEL_PROVIDERS_FEATURE.to_string());
+    assert_eq!(permission_codes(&pool, legacy_role).await, expected);
+    assert_eq!(
+        permission_codes(&pool, untouched_role).await,
+        REMAINING_VISIBILITIES_AFTER_MODEL_PROVIDERS
+            .iter()
+            .map(|code| (*code).to_string())
+            .collect()
+    );
+    let removed_legacy_definition: i64 =
+        sqlx::query_scalar("select count(*) from permission_definitions where code = $1")
+            .bind(MODEL_PROVIDERS_VISIBILITY)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(removed_legacy_definition, 0);
+
+    let feature_only = insert_role(&pool, workspace.id, "new_model_providers_feature_only").await;
+    grant(&pool, feature_only, workspace.id, MODEL_PROVIDERS_FEATURE).await;
+    assert_eq!(
+        permission_codes(&pool, feature_only).await,
+        BTreeSet::from([MODEL_PROVIDERS_FEATURE.to_string()])
+    );
+}
+
+#[tokio::test]
+async fn model_providers_settings_migration_rolls_back_when_legacy_cleanup_fails() {
+    let pool = model_providers_settings_historical_pool().await;
+    let store = PgControlPlaneStore::new(pool.clone());
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "Model providers settings rollback")
+        .await
+        .unwrap();
+    seed_model_providers_settings_historical_permissions(&pool).await;
+    let role_id = insert_role(&pool, workspace.id, "legacy_model_providers").await;
+    grant(&pool, role_id, workspace.id, MODEL_PROVIDERS_VISIBILITY).await;
+
+    sqlx::raw_sql(
+        r#"
+        create function reject_model_providers_settings_visibility_delete() returns trigger language plpgsql as $$
+        begin
+            if old.code = 'settings_route.visible.settings.model-providers' then
+                raise exception 'forced model providers settings cleanup failure';
+            end if;
+            return old;
+        end;
+        $$;
+        create trigger reject_model_providers_settings_visibility_delete
+        before delete on permission_definitions
+        for each row execute function reject_model_providers_settings_visibility_delete();
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let error = sqlx::migrate!("./migrations").run(&pool).await.unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("forced model providers settings cleanup failure"));
+    assert_eq!(
+        permission_codes(&pool, role_id).await,
+        BTreeSet::from([MODEL_PROVIDERS_VISIBILITY.to_string()])
+    );
+    let new_definition_count: i64 =
+        sqlx::query_scalar("select count(*) from permission_definitions where code = $1")
+            .bind(MODEL_PROVIDERS_FEATURE)
             .fetch_one(&pool)
             .await
             .unwrap();

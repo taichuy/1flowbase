@@ -53,6 +53,105 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
             .collect::<Vec<_>>()
     };
 
+    assert_eq!(routes("system.model-providers").len(), 26);
+    assert_eq!(
+        routes("system.model-providers"),
+        vec![
+            (
+                "DELETE",
+                "/api/console/settings/model-providers/instances/{id}",
+            ),
+            (
+                "DELETE",
+                "/api/console/settings/model-providers/plugins/families/{provider_code}",
+            ),
+            (
+                "DELETE",
+                "/api/console/settings/model-providers/request-logs",
+            ),
+            ("GET", "/api/console/settings/model-providers/catalog"),
+            ("GET", "/api/console/settings/model-providers/instances"),
+            (
+                "GET",
+                "/api/console/settings/model-providers/instances/{id}/models",
+            ),
+            ("GET", "/api/console/settings/model-providers/options"),
+            (
+                "GET",
+                "/api/console/settings/model-providers/plugins/families",
+            ),
+            (
+                "GET",
+                "/api/console/settings/model-providers/plugins/official-catalog",
+            ),
+            (
+                "GET",
+                "/api/console/settings/model-providers/plugins/tasks/{task_id}",
+            ),
+            (
+                "GET",
+                "/api/console/settings/model-providers/providers/{provider_code}/main-instance",
+            ),
+            (
+                "GET",
+                "/api/console/settings/model-providers/request-logs",
+            ),
+            (
+                "PATCH",
+                "/api/console/settings/model-providers/instances/{id}",
+            ),
+            ("POST", "/api/console/settings/model-providers/instances"),
+            (
+                "POST",
+                "/api/console/settings/model-providers/instances/{id}/models/refresh",
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/instances/{id}/secrets/reveal",
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/instances/{id}/validate",
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/plugins/families/{provider_code}/switch-version",
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/plugins/families/{provider_code}/upgrade-latest",
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/plugins/install-official",
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/plugins/install-upload",
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/plugins/{installation_id}/artifact/install-current-node",
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/plugins/{installation_id}/artifact/refresh",
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/preview-models",
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/request-logs/clear",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/model-providers/providers/{provider_code}/main-instance",
+            ),
+        ]
+    );
+
     assert_eq!(
         routes("system.auth-center"),
         vec![

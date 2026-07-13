@@ -82,6 +82,7 @@ fn explicit_settings_feature_actors_see_their_registered_navigation_item() {
         "applications",
         "files",
         "data-models",
+        "model-providers",
     ] {
         let actor = scoped_actor(&[&format!("settings_feature.access.system.{feature}")]);
         let navigation = accessible_console_navigation(&actor);

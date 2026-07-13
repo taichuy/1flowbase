@@ -320,7 +320,10 @@ pub fn router() -> Router<Arc<ApiState>> {
         .route("/plugins/:installation_id/assign", post(assign_plugin))
         .route("/plugins/tasks", get(list_tasks))
         .route("/plugins/tasks/:task_id", get(get_task))
+        .merge(settings_routes::router())
 }
+
+pub(crate) mod settings_routes;
 
 fn service(state: &ApiState) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
     PluginManagementService::new(

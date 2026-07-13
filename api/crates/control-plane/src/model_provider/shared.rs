@@ -108,18 +108,29 @@ where
     }
 }
 
-pub(super) fn ensure_state_model_permission(
+pub(super) fn ensure_model_provider_permission(
     actor: &domain::ActorContext,
     action: &str,
+    use_case: super::ModelProviderUseCase,
 ) -> Result<(), ControlPlaneError> {
-    if actor.is_root
-        || actor.has_permission(&format!("state_model.{action}.all"))
-        || actor.has_permission(&format!("state_model.{action}.own"))
-    {
-        return Ok(());
+    match use_case {
+        super::ModelProviderUseCase::BusinessActions
+            if actor.is_root
+                || actor.has_permission(&format!("state_model.{action}.all"))
+                || actor.has_permission(&format!("state_model.{action}.own")) =>
+        {
+            Ok(())
+        }
+        super::ModelProviderUseCase::ModelProviderSettings
+            if actor.is_root
+                || actor.has_permission(
+                    access_control::SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION,
+                ) =>
+        {
+            Ok(())
+        }
+        _ => Err(ControlPlaneError::PermissionDenied("permission_denied")),
     }
-
-    Err(ControlPlaneError::PermissionDenied("permission_denied"))
 }
 
 pub(super) fn normalize_required_text(

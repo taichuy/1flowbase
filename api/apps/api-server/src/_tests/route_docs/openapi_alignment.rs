@@ -75,7 +75,7 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
         "/api/console/settings/data-models/model-definitions/{id}/scope-grants",
         "/api/console/settings/data-models/model-definitions/{id}/scope-grants/{grant_id}",
         "/api/console/settings/data-models/model-definitions/{model_id}/openapi.json",
-        "/api/console/model-providers/catalog",
+        "/api/console/settings/model-providers/catalog",
         "/api/console/model-providers/options",
         "/api/console/system/runtime-profile",
         "/api/console/user-api-keys",

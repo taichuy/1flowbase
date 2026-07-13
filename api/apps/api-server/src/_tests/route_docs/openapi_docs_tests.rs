@@ -54,7 +54,7 @@ fn operation_spec_builder_exposes_model_provider_catalog_route() {
         .operation_spec("model_provider_list_catalog")
         .unwrap();
 
-    assert!(spec["paths"]["/api/console/model-providers/catalog"]["get"].is_object());
+    assert!(spec["paths"]["/api/console/settings/model-providers/catalog"]["get"].is_object());
 }
 
 #[test]

@@ -173,7 +173,7 @@ async fn create_ready_provider_instance(app: &axum::Router, cookie: &str, csrf: 
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -206,7 +206,7 @@ async fn create_ready_provider_instance(app: &axum::Router, cookie: &str, csrf: 
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/model-providers/{instance_id}/validate"
+                    "/api/console/settings/model-providers/instances/{instance_id}/validate"
                 ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)

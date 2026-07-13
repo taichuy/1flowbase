@@ -14,13 +14,13 @@ use crate::{
     model_provider::{
         ModelProviderCatalogEntry, ModelProviderCatalogView, ModelProviderMainInstanceSummary,
         ModelProviderOptionEntry, ModelProviderOptionGroup, ModelProviderOptionTarget,
-        ModelProviderOptionsView,
+        ModelProviderOptionsView, ModelProviderUseCase,
     },
     ports::{AuthRepository, ModelProviderRepository, PluginRepository},
 };
 
 use super::shared::{
-    ensure_state_model_permission, load_actor_context_for_user, load_provider_package,
+    ensure_model_provider_permission, load_actor_context_for_user, load_provider_package,
     localized_model_descriptor, model_provider_installation_from_current_snapshot,
     ModelProviderNodeArtifactContext,
 };
@@ -44,12 +44,13 @@ pub(super) async fn list_catalog<R>(
     repository: &R,
     actor_user_id: Uuid,
     locales: RequestedLocales,
+    use_case: ModelProviderUseCase,
 ) -> Result<ModelProviderCatalogView>
 where
     R: AuthRepository + PluginRepository,
 {
     let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_state_model_permission(&actor, "view")?;
+    ensure_model_provider_permission(&actor, "view", use_case)?;
 
     let assignments = repository
         .list_assignments(actor.current_workspace_id)
@@ -123,12 +124,13 @@ pub(super) async fn options<R>(
     actor_user_id: Uuid,
     locales: RequestedLocales,
     node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
+    use_case: ModelProviderUseCase,
 ) -> Result<ModelProviderOptionsView>
 where
     R: AuthRepository + PluginRepository + ModelProviderRepository,
 {
     let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_state_model_permission(&actor, "view")?;
+    ensure_model_provider_permission(&actor, "view", use_case)?;
     let mut installation_map = HashMap::new();
     for installation in repository.list_installations().await? {
         let Some(installation) = model_provider_installation_from_current_snapshot(
