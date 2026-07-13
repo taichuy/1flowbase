@@ -1,6 +1,6 @@
 ---
 name: backend-development
-description: "Use for 1flowbase backend implementation in api/: building, fixing, refactoring, or code-reviewing Rust/Axum APIs, routes, services, repositories, storage adapters, migrations, domain models, state transitions, write paths, module boundaries, permissions, HostExtension/RuntimeExtension boundaries, or core business logic. Use after non-trivial requirements have been aligned by problem-framing, or when the user explicitly asks for direct implementation; do not use for standalone requirement alignment, test design, or QA reports."
+description: "Use for 1flowbase backend implementation in api/: building, fixing, refactoring, or code-reviewing Rust/Axum APIs, routes, services, repositories, storage adapters, migrations, domain models, state transitions, write paths, module boundaries, permissions, backend-registered console settings and their API scopes, HostExtension/RuntimeExtension boundaries, or core business logic. Use after non-trivial requirements have been aligned by problem-framing, or when the user explicitly asks for direct implementation; do not use for standalone requirement alignment, test design, or QA reports."
 ---
 
 # Backend Development
@@ -40,6 +40,9 @@ description: "Use for 1flowbase backend implementation in api/: building, fixing
 - 状态集合、流转规则、动作约束、幂等语义和错误边界必须显式。
 - Rust 实现要用类型表达核心不变量、显式传播错误、封装状态转换，并把阻塞 IO、锁、事务和外部副作用放在清晰边界内。
 - 系统内置数据模型、运行时读模型或 `model_definitions / model_fields / scope_data_model_grants` 改动必须区分 system-owned contract 与 user-owned metadata；不可用 migration / reconcile 覆盖用户或管理员 metadata。
+- 后台注册设置项是后端拥有的安全对象，不是前端页面权限；稳定 `feature_id` 同时拥有 console surface 与 Settings API scope，角色只授权 `feature_id`，不再展开一组可编辑 action grant。
+- Settings API 在 Core 启动或 HostExtension 加载时绑定到唯一注册项；请求只校验绑定后的 `feature_id` 与领域数据约束，不按页面 URL 推断权限，也不在请求期扫描或动态拼装 action 集合。
+- 未注册、重复归属或引用 inactive feature 的 Settings API 必须 fail closed；不得保留 allow-by-default、前端兜底或管理员可编辑的 route-to-permission 表。
 - 新抽象、公共接口、bool/flag 参数、helper/manager/utils、pass-through service 或重复 defensive check，先读 `../_shared/design-rules.md`；命中则回到 `problem-framing` 做更小 redesign。
 
 ## Implementation Routing
@@ -50,6 +53,7 @@ description: "Use for 1flowbase backend implementation in api/: building, fixing
 - Local implementation rules: `references/implementation-rules.md`。
 - Rust backend practice rules: `references/rust-backend-practices.md`。
 - Builtin data model contract / metadata overlay rules: `references/builtin-data-model-contract.md`，命中系统内置表、runtime read models、数据建模定义 metadata、字段描述、scope grant 或 API exposure 时读取。
+- Console settings registration: `references/console-settings-registration.md`，命中后台设置注册、Settings API、角色设置授权、HostExtension console surface 或对应 CLI / inventory 时读取。
 - Anti-decay patterns: `references/anti-patterns.md`。
 - Pressure scenarios: `references/examples.md`。
 - Agent Flow runtime node payload contract: `references/agentflow-runtime-node-payload.md`，仅在调整运行日志、debug artifact、节点输入/数据处理/输出接口时读取。

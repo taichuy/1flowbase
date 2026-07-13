@@ -1,6 +1,6 @@
 ---
 name: qa-evaluation
-description: Evidence-driven QA evaluation for 1flowbase dev acceptance, PR merge gates, project health gates, regression, stale or incompatible test expectation triage, delivery, full-project audits, quality gate routing, i18n/multilingual key-value hygiene, frontend/backend contract, status, boundary and runtime checks, scope/error-handling acceptance, hotspot/churn prevention reviews, and maintainability/dead-abstraction warnings. Use when Codex must report verifiable findings and risks instead of directly implementing or fixing.
+description: Evidence-driven QA evaluation for 1flowbase dev acceptance, PR merge gates, project health gates, regression, stale or incompatible test expectation triage, delivery, full-project audits, quality gate routing, i18n/multilingual key-value hygiene, frontend/backend contract, console settings registry and API-scope authorization, status, boundary and runtime checks, scope/error-handling acceptance, hotspot/churn prevention reviews, and maintainability/dead-abstraction warnings. Use when Codex must report verifiable findings and risks instead of directly implementing or fixing.
 ---
 
 # QA Evaluation
@@ -85,6 +85,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - 只要评估范围涉及后端 API、状态入口、插件边界、runtime、`Resource Action Kernel`、HostExtension registry 或 `route / service / repository / domain / mapper` 分层，就必须加载后端专项检查
 - 后端任务必查：已确认验收预期、三平面、接口包装、认证 / CSRF / ACL、状态写入口、接口返回结构和值正确性、过期 / 禁用 / 缺失状态、`HostExtension / RuntimeExtension / CapabilityPlugin` 边界、HostExtension manifest contribution、pre-state infra provider、route/worker/migration registry、`storage-durable/postgres` 内 `storage-postgres` 的 repository/mapper 拆分、`storage-durable / storage-object` 边界、`workspace/system` 命名面、`SYSTEM_SCOPE_ID`、runtime `scope_id`、无 legacy alias、验证命令、API evidence 与 blast radius
 - 后端范围命中系统内置数据模型、runtime read models、数据建模定义 metadata、字段描述、API exposure 或 scope grant 时，必须加载 `references/backend/builtin-data-model-contract-gate.md`；重点检查 system-owned contract 与 user-owned metadata overlay 是否被实现和 migration/reconcile 同时守住。
+- 后端范围命中后台设置注册、Settings API、角色设置授权、HostExtension console surface、注册 CLI 或 route inventory 时，必须加载 `references/backend/console-settings-registration-gate.md`；不能用前端隐藏、源码 regex 或中间件已挂载替代 compiled route ownership 与授权正反例证据。
 - Provider / 上游 runtime 错误属于透传 contract：QA 不得把 provider stdout / stderr / upstream error 原样进入 `RuntimeContract` / API response 误判为泄漏或要求脱敏；应检查宿主是否改写、截断、翻译、吞掉或泛化上游信息，导致 provider / 协议排障信息损失
 - 后端范围命中 Rust 代码时，必须额外检查类型不变量、错误边界、状态方法、事务、幂等、async 阻塞、锁跨 await、数据库约束和 Rust 质量门禁
 - Rust 后端验收必须核对 completion self-check；缺少证据时对应项只能写 `未验证`，不能下通过结论
@@ -110,6 +111,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - Route-scoped runtime evidence: `node scripts/node/page-debug.js snapshot|open ...`
 - Backend regression and API evidence steps: `references/backend/backend-regression-steps.md`
 - Builtin data model contract QA gate: `references/backend/builtin-data-model-contract-gate.md`
+- Console settings registration QA gate: `references/backend/console-settings-registration-gate.md`
 - Scope_id routing semantics: `references/backend/scope-id-routing.md`
 - Authenticated backend API evidence: `node scripts/node/tooling.js api-debug [METHOD] <api-path-or-url> ...`
 - Rust backend quality checks: `references/backend/rust-backend-quality-gates.md`

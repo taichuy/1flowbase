@@ -34,6 +34,11 @@
 - `apps/api-server/src/routes` 是协议层：参数解析、上下文提取、调用 service / action、响应与错误映射、OpenAPI 暴露。
 - API DTO 字段名优先跟领域模型 / 持久化语义一致；不要为了前端展示创建新的语义别名字段。
 - `apps/api-server/src/middleware` 是请求链路约束层。
+- 后台注册设置项是后端安全对象：稳定 `feature_id` 同时拥有 console surface 与 Settings API scope；前端只消费注册结果，不定义权限真值。
+- 角色只授权后台设置 `feature_id`；Settings API 在 Core 启动或 HostExtension 加载时绑定到唯一 feature，不把 API action 展开成第二份角色授权。
+- Settings API 未注册、重复归属或 owner inactive 时 fail closed；不得按前端 URL 推断、allow-by-default，或建立管理员可编辑的 route-to-permission 映射。
+- 新增或调整后台设置注册必须使用统一 CLI 与 compiled inventory。统一入口尚未落地时，只能在已批准的 registry foundation Issue 内建立它，不新增平行手写注册表。
+- 后台设置授权只解决入口与操作资格；workspace / system、owner、row、field、secret 和状态约束继续由 `control-plane` 与 repository 执行。
 - `crates/control-plane` 是业务边界；关键写动作从命名明确的 service command 或 `Resource Action Kernel` action 进入。
 - `crates/control-plane/src/ports` 定义 repository trait 与外部端口。
 - `crates/storage-durable/postgres/src/**/*_repository.rs` 和 `crates/storage-ephemeral/src/*` 是存储或短期协同端口实现。
