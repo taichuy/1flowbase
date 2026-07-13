@@ -62,9 +62,9 @@ fn operation_spec_builder_exposes_dynamic_data_model_docs_route() {
     let registry = api_server::openapi_docs::build_default_api_docs_registry().unwrap();
     let spec = registry.operation_spec("get_data_model_openapi").unwrap();
 
-    assert!(
-        spec["paths"]["/api/console/docs/data-models/{model_id}/openapi.json"]["get"].is_object()
-    );
+    assert!(spec["paths"]
+        ["/api/console/settings/data-models/model-definitions/{model_id}/openapi.json"]["get"]
+        .is_object());
     assert!(spec["components"]["schemas"]["DataModelOpenApiDocumentResponse"].is_object());
 }
 

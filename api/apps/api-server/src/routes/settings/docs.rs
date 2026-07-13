@@ -83,10 +83,6 @@ pub fn router() -> Router<Arc<ApiState>> {
             "/docs/operations/:operation_id/openapi.json",
             get(get_operation_openapi),
         )
-        .route(
-            "/docs/data-models/:model_id/openapi.json",
-            get(get_data_model_openapi),
-        )
 }
 
 fn parse_data_model_docs_operation_id(
@@ -215,7 +211,7 @@ pub async fn get_operation_openapi(
 
 #[utoipa::path(
     get,
-    path = "/api/console/docs/data-models/{model_id}/openapi.json",
+    path = "/api/console/settings/data-models/model-definitions/{model_id}/openapi.json",
     params(("model_id" = String, Path, description = "Data Model id")),
     responses((status = 200, body = DataModelOpenApiDocumentResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]

@@ -149,6 +149,7 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
         .nest("/api/console", routes::application_api::router())
         .nest("/api/console", routes::application_orchestration::router())
         .nest("/api/console", routes::application_runtime::router())
+        .nest("/api/console", routes::data_models::router())
         .nest("/api/console", routes::docs::router())
         .nest("/api/console", routes::data_sources::router())
         .nest("/api/console", routes::files::router())

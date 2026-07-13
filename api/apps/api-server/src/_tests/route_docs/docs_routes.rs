@@ -148,7 +148,7 @@ async fn create_model(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -184,7 +184,9 @@ async fn create_model_field(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -224,7 +226,9 @@ async fn create_scope_grant(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/scope-grants"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -254,7 +258,7 @@ async fn find_model_id_by_code(app: &axum::Router, cookie: &str, code: &str) -> 
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/models?filter=%7B%22code%22%3A%7B%22%24eq%22%3A%22{code}%22%7D%7D"
+                    "/api/console/settings/data-models/model-definitions?filter=%7B%22code%22%3A%7B%22%24eq%22%3A%22{code}%22%7D%7D"
                 ))
                 .header("cookie", cookie)
                 .body(Body::empty())
@@ -690,7 +694,7 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/docs/data-models/{hidden_model_id}/openapi.json"
+                    "/api/console/settings/data-models/model-definitions/{hidden_model_id}/openapi.json"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
@@ -890,7 +894,7 @@ async fn docs_routes_data_model_write_schema_omits_readonly_system_fields() {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/docs/data-models/{roles_model_id}/openapi.json"
+                    "/api/console/settings/data-models/model-definitions/{roles_model_id}/openapi.json"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())

@@ -26,6 +26,13 @@ where
         }
     }
 
+    pub fn for_data_model_settings(repository: R, sync: S) -> Self {
+        Self {
+            model_definitions: ModelDefinitionService::for_data_model_settings(repository),
+            sync,
+        }
+    }
+
     pub async fn create_model(
         &self,
         command: CreateModelDefinitionCommand,

@@ -168,7 +168,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

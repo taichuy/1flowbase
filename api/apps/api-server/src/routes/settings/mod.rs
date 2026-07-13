@@ -1,5 +1,6 @@
 pub mod application_management;
 pub mod auth_center;
+pub mod data_models;
 pub mod docs;
 pub mod file_storages;
 pub mod file_tables;

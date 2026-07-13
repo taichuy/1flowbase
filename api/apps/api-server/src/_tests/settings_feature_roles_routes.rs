@@ -81,6 +81,25 @@ async fn roles_feature_only_completes_role_crud_and_permission_configuration() {
         .iter()
         .any(|permission| permission["code"] == "application.view.own"));
 
+    let data_model_options_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/roles/data-model-options")
+                .header("cookie", &actor_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(data_model_options_response.status(), StatusCode::OK);
+    let data_model_options = response_json(data_model_options_response).await;
+    assert!(data_model_options["data"].as_array().is_some_and(|models| {
+        models.iter().all(|model| {
+            model.get("id").is_some() && model.get("code").is_some() && model.get("title").is_some()
+        })
+    }));
+
     let create_response = app
         .clone()
         .oneshot(

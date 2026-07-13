@@ -68,13 +68,13 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
     let paths = openapi_paths().await;
 
     for route in [
-        "/api/console/models/{id}",
+        "/api/console/settings/data-models/model-definitions/{id}",
         "/api/console/models/agent-flow-options",
-        "/api/console/models/{id}/fields",
-        "/api/console/models/{id}/advisor-findings",
-        "/api/console/models/{id}/scope-grants",
-        "/api/console/models/{id}/scope-grants/{grant_id}",
-        "/api/console/docs/data-models/{model_id}/openapi.json",
+        "/api/console/settings/data-models/model-definitions/{id}/fields",
+        "/api/console/settings/data-models/model-definitions/{id}/advisor-findings",
+        "/api/console/settings/data-models/model-definitions/{id}/scope-grants",
+        "/api/console/settings/data-models/model-definitions/{id}/scope-grants/{grant_id}",
+        "/api/console/settings/data-models/model-definitions/{model_id}/openapi.json",
         "/api/console/model-providers/catalog",
         "/api/console/model-providers/options",
         "/api/console/system/runtime-profile",
@@ -94,7 +94,7 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
         "/api/console/session/actions/revoke-all",
         "/api/console/me/actions/change-password",
         "/api/console/data-sources/instances/{instance_id}/secret/rotate",
-        "/api/console/data-sources/instances/{instance_id}/resources/map-to-model",
+        "/api/console/settings/data-models/data-sources/instances/{instance_id}/resources/map-to-model",
         "/api/console/applications/{id}/orchestration/debug-artifacts/{artifact_id}",
         "/v1/messages/count_tokens",
     ] {
@@ -167,17 +167,17 @@ async fn openapi_contains_advisor_and_dynamic_data_model_doc_schemas() {
     }
 
     assert_eq!(
-        payload["paths"]["/api/console/models/{id}/advisor-findings"]["get"]["responses"]["200"]
-            ["content"]["application/json"]["schema"]["items"]["$ref"]
+        payload["paths"]
+            ["/api/console/settings/data-models/model-definitions/{id}/advisor-findings"]["get"]
+            ["responses"]["200"]["content"]["application/json"]["schema"]["items"]["$ref"]
             .as_str(),
         Some("#/components/schemas/DataModelAdvisorFindingResponse")
     );
-    assert!(
-        payload["paths"]["/api/console/docs/data-models/{model_id}/openapi.json"]["get"]
-            ["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
-            .as_str()
-            .is_some()
-    );
+    assert!(payload["paths"]
+        ["/api/console/settings/data-models/model-definitions/{model_id}/openapi.json"]["get"]
+        ["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+        .as_str()
+        .is_some());
 }
 
 #[tokio::test]
@@ -185,9 +185,18 @@ async fn openapi_documents_model_mutation_bad_request_responses() {
     let paths = openapi_paths().await;
 
     for (route, method) in [
-        ("/api/console/models", "post"),
-        ("/api/console/models/{id}/fields", "post"),
-        ("/api/console/models/{id}/fields/{field_id}", "patch"),
+        (
+            "/api/console/settings/data-models/model-definitions",
+            "post",
+        ),
+        (
+            "/api/console/settings/data-models/model-definitions/{id}/fields",
+            "post",
+        ),
+        (
+            "/api/console/settings/data-models/model-definitions/{id}/fields/{field_id}",
+            "patch",
+        ),
     ] {
         assert_eq!(
             paths[route][method]["responses"]["400"]["content"]["application/json"]["schema"]

@@ -110,7 +110,7 @@ async fn seed_existing_external_model(
         ) values (
             $1, 'system', $2, $3, 'external_source', $4, $5, '{}',
             $6, 'External Contacts', $7, $8, $9,
-            'available', 'published', 'user', false, $10, $10
+            'available', 'published', 'core', false, $10, $10
         )
         "#,
     )
@@ -158,7 +158,7 @@ async fn create_external_model_and_field_mapping_keys() {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/models?data_source_instance_id={data_source_instance_id}"
+                    "/api/console/settings/data-models/model-definitions?data_source_instance_id={data_source_instance_id}"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
@@ -187,7 +187,9 @@ async fn create_external_model_and_field_mapping_keys() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/console/models/{model_id}"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -217,7 +219,9 @@ async fn create_external_model_and_field_mapping_keys() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -260,7 +264,9 @@ async fn unsafe_external_system_all_scope_grant_route_requires_confirmation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/scope-grants"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -284,7 +290,9 @@ async fn unsafe_external_system_all_scope_grant_route_requires_confirmation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/scope-grants"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -317,7 +325,7 @@ async fn unsafe_external_system_all_scope_grant_route_requires_confirmation() {
             Request::builder()
                 .method("PATCH")
                 .uri(format!(
-                    "/api/console/models/{model_id}/scope-grants/{grant_id}"
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants/{grant_id}"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -337,7 +345,7 @@ async fn unsafe_external_system_all_scope_grant_route_requires_confirmation() {
             Request::builder()
                 .method("PATCH")
                 .uri(format!(
-                    "/api/console/models/{model_id}/scope-grants/{grant_id}"
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants/{grant_id}"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)

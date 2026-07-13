@@ -14,6 +14,9 @@ pub const SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION: &str =
 pub const SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID: &str = "system.auth-center";
 pub const SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.auth-center";
+pub const SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID: &str = "system.data-models";
+pub const SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.data-models";
 pub const SYSTEM_FILES_SETTINGS_FEATURE_ID: &str = "system.files";
 pub const SYSTEM_FILES_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.access.system.files";
 pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_ID: &str = "system.host-infrastructure";
@@ -145,6 +148,120 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 (
                     "DELETE",
                     "/api/console/settings/auth-center/authenticators/{id}",
+                ),
+            ]),
+        },
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.data-models".to_string(),
+                surface_key: "data-models".to_string(),
+                path: "/settings/data-models".to_string(),
+                label_key: "auto.data_source".to_string(),
+                order: 900,
+            },
+            api_routes: settings_api_routes(&[
+                (
+                    "GET",
+                    "/api/console/settings/data-models/data-sources/catalog",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/data-models/data-sources/main-source",
+                ),
+                (
+                    "PATCH",
+                    "/api/console/settings/data-models/data-sources/main-source/defaults",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/data-models/data-sources/instances",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/data-models/data-sources/instances",
+                ),
+                (
+                    "PATCH",
+                    "/api/console/settings/data-models/data-sources/instances/{instance_id}/defaults",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/data-models/data-sources/instances/{instance_id}/validate",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/data-models/data-sources/instances/{instance_id}/resources",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/data-models/data-sources/instances/{instance_id}/resources/discover",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/data-models/data-sources/instances/{instance_id}/preview-read",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/data-models/data-sources/instances/{instance_id}/resources/map-to-model",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/data-models/model-definitions",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/data-models/model-definitions",
+                ),
+                (
+                    "PATCH",
+                    "/api/console/settings/data-models/model-definitions/{id}",
+                ),
+                (
+                    "DELETE",
+                    "/api/console/settings/data-models/model-definitions/{id}",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/data-models/model-definitions:batchDelete",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/data-models/model-definitions/{id}/advisor-findings",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/data-models/model-definitions/{id}/fields",
+                ),
+                (
+                    "PATCH",
+                    "/api/console/settings/data-models/model-definitions/{id}/fields/{field_id}",
+                ),
+                (
+                    "DELETE",
+                    "/api/console/settings/data-models/model-definitions/{id}/fields/{field_id}",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/data-models/model-definitions/{id}/scope-grants",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/data-models/model-definitions/{id}/scope-grants",
+                ),
+                (
+                    "PATCH",
+                    "/api/console/settings/data-models/model-definitions/{id}/scope-grants/{grant_id}",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/data-models/model-definitions/{model_id}/openapi.json",
                 ),
             ]),
         },
@@ -309,6 +426,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("GET", "/api/console/settings/roles"),
                 ("POST", "/api/console/settings/roles"),
                 ("GET", "/api/console/settings/roles/permission-options"),
+                ("GET", "/api/console/settings/roles/data-model-options"),
                 ("PATCH", "/api/console/settings/roles/{id}"),
                 ("DELETE", "/api/console/settings/roles/{id}"),
                 ("GET", "/api/console/settings/roles/{id}/permissions"),

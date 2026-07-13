@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, patch, post},
+    routing::post,
     Json, Router,
 };
 use control_plane::data_source::{
@@ -188,48 +188,24 @@ pub struct PreviewDataSourceReadResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/data-sources/catalog", get(list_catalog))
-        .route("/data-sources/main-source", get(get_main_source))
-        .route(
-            "/data-sources/main-source/defaults",
-            patch(update_main_source_defaults),
-        )
-        .route(
-            "/data-sources/instances",
-            get(list_instances).post(create_instance),
-        )
-        .route(
-            "/data-sources/instances/:instance_id/defaults",
-            patch(update_defaults),
-        )
-        .route(
-            "/data-sources/instances/:instance_id/validate",
-            post(validate_instance),
-        )
-        .route(
-            "/data-sources/instances/:instance_id/secret/rotate",
-            post(rotate_secret),
-        )
-        .route(
-            "/data-sources/instances/:instance_id/preview-read",
-            post(preview_read),
-        )
-        .route(
-            "/data-sources/instances/:instance_id/resources",
-            get(list_resources),
-        )
-        .route(
-            "/data-sources/instances/:instance_id/resources/discover",
-            post(discover_resources),
-        )
-        .route(
-            "/data-sources/instances/:instance_id/resources/map-to-model",
-            post(map_resource_to_model),
-        )
+    Router::new().route(
+        "/data-sources/instances/:instance_id/secret/rotate",
+        post(rotate_secret),
+    )
 }
 
 fn service(state: &ApiState) -> DataSourceService<MainDurableStore, ApiProviderRuntime> {
+    DataSourceService::for_data_model_settings(
+        state.store.clone(),
+        ApiProviderRuntime::new(state.provider_runtime.clone()),
+    )
+    .with_node_artifact_context(
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+    )
+}
+
+fn business_service(state: &ApiState) -> DataSourceService<MainDurableStore, ApiProviderRuntime> {
     DataSourceService::new(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
@@ -400,7 +376,7 @@ fn to_preview_response(result: PreviewDataSourceReadResult) -> PreviewDataSource
 
 #[utoipa::path(
     get,
-    path = "/api/console/data-sources/catalog",
+    path = "/api/console/settings/data-models/data-sources/catalog",
     operation_id = "data_source_list_catalog",
     responses((status = 200, body = DataSourceCatalogResponse), (status = 401, body = crate::error_response::ErrorBody))
 )]
@@ -419,7 +395,7 @@ pub async fn list_catalog(
 
 #[utoipa::path(
     get,
-    path = "/api/console/data-sources/main-source",
+    path = "/api/console/settings/data-models/data-sources/main-source",
     operation_id = "data_source_get_main_source",
     responses((status = 200, body = MainDataSourceResponse), (status = 401, body = crate::error_response::ErrorBody))
 )]
@@ -436,7 +412,7 @@ pub async fn get_main_source(
 
 #[utoipa::path(
     get,
-    path = "/api/console/data-sources/instances",
+    path = "/api/console/settings/data-models/data-sources/instances",
     operation_id = "data_source_list_instances",
     responses((status = 200, body = [DataSourceInstanceResponse]), (status = 401, body = crate::error_response::ErrorBody))
 )]
@@ -456,7 +432,7 @@ pub async fn list_instances(
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances",
+    path = "/api/console/settings/data-models/data-sources/instances",
     operation_id = "data_source_create_instance",
     request_body = CreateDataSourceInstanceBody,
     responses((status = 201, body = DataSourceInstanceResponse), (status = 403, body = crate::error_response::ErrorBody))
@@ -487,7 +463,7 @@ pub async fn create_instance(
 
 #[utoipa::path(
     patch,
-    path = "/api/console/data-sources/instances/{instance_id}/defaults",
+    path = "/api/console/settings/data-models/data-sources/instances/{instance_id}/defaults",
     operation_id = "data_source_update_defaults",
     request_body = UpdateDataSourceDefaultsBody,
     responses((status = 200, body = DataSourceInstanceResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
@@ -521,7 +497,7 @@ pub async fn update_defaults(
 
 #[utoipa::path(
     patch,
-    path = "/api/console/data-sources/main-source/defaults",
+    path = "/api/console/settings/data-models/data-sources/main-source/defaults",
     operation_id = "data_source_update_main_source_defaults",
     request_body = UpdateDataSourceDefaultsBody,
     responses((status = 200, body = MainDataSourceResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
@@ -548,7 +524,7 @@ pub async fn update_main_source_defaults(
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances/{instance_id}/validate",
+    path = "/api/console/settings/data-models/data-sources/instances/{instance_id}/validate",
     operation_id = "data_source_validate_instance",
     responses((status = 200, body = ValidateDataSourceResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -584,7 +560,7 @@ pub async fn rotate_secret(
 ) -> Result<Json<ApiSuccess<DataSourceInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let result = service(&state)
+    let result = business_service(&state)
         .rotate_secret(RotateDataSourceSecretCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
@@ -597,7 +573,7 @@ pub async fn rotate_secret(
 
 #[utoipa::path(
     get,
-    path = "/api/console/data-sources/instances/{instance_id}/resources",
+    path = "/api/console/settings/data-models/data-sources/instances/{instance_id}/resources",
     operation_id = "data_source_list_resources",
     responses((status = 200, body = DataSourceResourcesResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
@@ -619,7 +595,7 @@ pub async fn list_resources(
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances/{instance_id}/resources/discover",
+    path = "/api/console/settings/data-models/data-sources/instances/{instance_id}/resources/discover",
     operation_id = "data_source_discover_resources",
     responses((status = 200, body = DataSourceResourcesResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
@@ -642,7 +618,7 @@ pub async fn discover_resources(
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances/{instance_id}/preview-read",
+    path = "/api/console/settings/data-models/data-sources/instances/{instance_id}/preview-read",
     operation_id = "data_source_preview_read",
     request_body = PreviewDataSourceReadBody,
     responses((status = 200, body = PreviewDataSourceReadResponse), (status = 403, body = crate::error_response::ErrorBody))
@@ -671,7 +647,7 @@ pub async fn preview_read(
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances/{instance_id}/resources/map-to-model",
+    path = "/api/console/settings/data-models/data-sources/instances/{instance_id}/resources/map-to-model",
     operation_id = "data_source_map_resource_to_model",
     request_body = MapDataSourceResourceToModelBody,
     responses((status = 201, body = ModelDefinitionResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))

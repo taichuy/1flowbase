@@ -10,7 +10,7 @@ async fn model_definition_scope_grant_routes_do_not_return_model_level_api_expos
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -45,7 +45,9 @@ async fn model_definition_scope_grant_routes_do_not_return_model_level_api_expos
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/scope-grants"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -76,7 +78,9 @@ async fn model_definition_scope_grant_routes_do_not_return_model_level_api_expos
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/models/{model_id}/scope-grants"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
+                ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -101,27 +105,33 @@ async fn model_definition_scope_grant_routes_do_not_return_model_level_api_expos
                 && grant["permission_profile"].as_str() == Some("scope_all")
         }));
 
-    let get_response = app
+    let list_models_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/models/{model_id}"))
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(get_response.status(), StatusCode::OK);
-    let model_payload: serde_json::Value = serde_json::from_slice(
-        &to_bytes(get_response.into_body(), usize::MAX)
+    assert_eq!(list_models_response.status(), StatusCode::OK);
+    let list_models_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(list_models_response.into_body(), usize::MAX)
             .await
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(model_payload["data"]["status"], json!("published"));
-    assert!(!model_payload["data"]
+    let model_payload = list_models_payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|model| model["id"].as_str() == Some(&model_id))
+        .unwrap();
+    assert_eq!(model_payload["status"], json!("published"));
+    assert!(!model_payload
         .as_object()
         .unwrap()
         .contains_key("api_exposure_status"));

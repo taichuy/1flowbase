@@ -68,29 +68,6 @@ const STATE_MODEL_VISIBILITY_PERMISSIONS: &[&str] = &[
     "state_model.manage.all",
     "state_model.manage.own",
 ];
-const DATA_MODEL_ALL_PERMISSIONS: &[&str] = &[
-    "api_reference.view.all",
-    "state_model.view.all",
-    "state_model.view.own",
-    "state_model.create.all",
-    "state_model.edit.all",
-    "state_model.edit.own",
-    "state_model.delete.all",
-    "state_model.delete.own",
-    "state_model.manage.all",
-    "state_model.manage.own",
-    "external_data_source.view.all",
-    "external_data_source.view.own",
-    "external_data_source.create.all",
-    "external_data_source.edit.all",
-    "external_data_source.edit.own",
-    "external_data_source.delete.all",
-    "external_data_source.delete.own",
-    "external_data_source.configure.all",
-    "external_data_source.configure.own",
-    "external_data_source.use.all",
-    "external_data_source.use.own",
-];
 const MODEL_PROVIDER_ALL_PERMISSIONS: &[&str] = &[
     "state_model.view.all",
     "state_model.view.own",
@@ -128,27 +105,6 @@ const SYSTEM_RUNTIME_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiSc
     path_match: SettingsRouteApiPathMatch::Prefix,
     methods: SettingsRouteApiMethods::ReadOnly,
 }];
-
-const DATA_MODELS_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.docs.data_models.openapi",
-        path: "/api/console/docs/data-models/",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::ReadOnly,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.data_sources.instances",
-        path: "/api/console/data-sources/instances",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.models",
-        path: "/api/console/models",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-];
 
 const MODEL_PROVIDERS_API_SCOPES: &[SettingsRouteApiScope] = &[
     SettingsRouteApiScope {
@@ -205,19 +161,6 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(SYSTEM_RUNTIME_PERMISSIONS),
         implied_permissions: SYSTEM_RUNTIME_PERMISSIONS,
         api_scopes: SYSTEM_RUNTIME_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.data-models",
-        surface_key: "data-models",
-        path: "/settings/data-models",
-        label_key: "auto.data_source",
-        order: 900,
-        visibility_permission_code: "settings_route.visible.settings.data-models",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
-            STATE_MODEL_VISIBILITY_PERMISSIONS,
-        ),
-        implied_permissions: DATA_MODEL_ALL_PERMISSIONS,
-        api_scopes: DATA_MODELS_API_SCOPES,
     },
     SettingsRouteSpec {
         route_id: "settings.model-providers",

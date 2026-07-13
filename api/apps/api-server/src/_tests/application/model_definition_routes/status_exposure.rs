@@ -18,7 +18,7 @@ async fn create_model_route_persists_draft_status_atomically_without_manage_perm
         &root_cookie,
         &root_csrf,
         "model_creator",
-        &["state_model.create.all", "state_model.view.all"],
+        &["settings_feature.access.system.data-models"],
     )
     .await;
     let creator_member_id =
@@ -39,7 +39,7 @@ async fn create_model_route_persists_draft_status_atomically_without_manage_perm
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &creator_cookie)
                 .header("x-csrf-token", &creator_csrf)
                 .header("content-type", "application/json")
@@ -106,7 +106,7 @@ async fn create_model_route_rejects_invalid_status_without_creating_model() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -137,7 +137,7 @@ async fn create_model_route_rejects_invalid_status_without_creating_model() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -167,7 +167,7 @@ async fn model_definition_routes_return_status_without_model_level_api_exposure(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -194,27 +194,36 @@ async fn model_definition_routes_return_status_without_model_level_api_exposure(
     assert_eq!(created["data"]["status"], json!("published"));
     assert_no_model_level_api_exposure(&created);
 
-    let get_response = app
+    let list_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/models/{model_id}"))
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(get_response.status(), StatusCode::OK);
-    let ready: serde_json::Value = serde_json::from_slice(
-        &to_bytes(get_response.into_body(), usize::MAX)
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let listed: serde_json::Value = serde_json::from_slice(
+        &to_bytes(list_response.into_body(), usize::MAX)
             .await
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(ready["data"]["status"], json!("published"));
-    assert_no_model_level_api_exposure(&ready);
+    let ready = listed["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|model| model["id"].as_str() == Some(&model_id))
+        .unwrap();
+    assert_eq!(ready["status"], json!("published"));
+    assert!(!ready
+        .as_object()
+        .unwrap()
+        .contains_key("api_exposure_status"));
 }
 
 #[tokio::test]
@@ -227,7 +236,7 @@ async fn status_patch_opens_and_closes_runtime_api() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -258,7 +267,9 @@ async fn status_patch_opens_and_closes_runtime_api() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/console/models/{model_id}"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -301,7 +312,9 @@ async fn status_patch_opens_and_closes_runtime_api() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/console/models/{model_id}"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")

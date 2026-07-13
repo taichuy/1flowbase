@@ -6,6 +6,7 @@ use axum::{
     routing::{get, patch},
     Json, Router,
 };
+use control_plane::model_definition::ModelDefinitionService;
 use control_plane::ports::{RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput};
 use control_plane::role::{
     CreateRoleCommand, DeleteRoleCommand, ReplaceRoleDataPolicyCommand,
@@ -120,6 +121,13 @@ pub struct RoleDataPolicyResponse {
     pub model_policies: Vec<RoleDataModelPolicyBody>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RoleDataModelOptionResponse {
+    pub id: Uuid,
+    pub code: String,
+    pub title: String,
+}
+
 fn to_role_response(role: domain::RoleTemplate) -> RoleResponse {
     RoleResponse {
         code: role.code,
@@ -141,6 +149,10 @@ pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/settings/roles", get(list_roles).post(create_role))
         .route(
+            "/settings/roles/data-model-options",
+            get(list_data_model_options),
+        )
+        .route(
             "/settings/roles/:id",
             patch(update_role).delete(delete_role),
         )
@@ -156,6 +168,31 @@ pub fn router() -> Router<Arc<ApiState>> {
             "/settings/roles/:id/data-policy",
             get(get_role_data_policy).put(replace_role_data_policy),
         )
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/roles/data-model-options",
+    responses((status = 200, body = [RoleDataModelOptionResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_data_model_options(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Vec<RoleDataModelOptionResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let models = ModelDefinitionService::new(state.store.clone())
+        .list_role_settings_data_model_options(context.user.id)
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        models
+            .into_iter()
+            .map(|model| RoleDataModelOptionResponse {
+                id: model.id,
+                code: model.code,
+                title: model.title,
+            })
+            .collect(),
+    )))
 }
 
 fn parse_data_policy_scope(value: &str) -> Result<domain::RoleDataPolicyScope, ApiError> {
