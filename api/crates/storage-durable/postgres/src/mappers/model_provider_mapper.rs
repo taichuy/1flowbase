@@ -195,6 +195,7 @@ pub fn parse_distribution_rule(value: &str) -> Result<ModelProviderDistributionR
     match value {
         "none" => Ok(ModelProviderDistributionRule::None),
         "round_robin" => Ok(ModelProviderDistributionRule::RoundRobin),
+        "retry_round_robin" => Ok(ModelProviderDistributionRule::RetryRoundRobin),
         _ => Err(anyhow!("unknown model provider distribution rule: {value}")),
     }
 }

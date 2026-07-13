@@ -190,7 +190,7 @@ describe('useModelProviderMutations', () => {
       model_distribution_rules: [
         {
           model_id: 'gpt-4o-mini',
-          distribution_rule: 'round_robin'
+          distribution_rule: 'retry_round_robin'
         }
       ]
     });
@@ -202,7 +202,7 @@ describe('useModelProviderMutations', () => {
         model_distribution_rules: [
           {
             model_id: 'gpt-4o-mini',
-            distribution_rule: 'round_robin'
+            distribution_rule: 'retry_round_robin'
           }
         ]
       });
@@ -217,7 +217,7 @@ describe('useModelProviderMutations', () => {
         model_distribution_rules: [
           {
             model_id: 'gpt-4o-mini',
-            distribution_rule: 'round_robin'
+            distribution_rule: 'retry_round_robin'
           }
         ]
       },

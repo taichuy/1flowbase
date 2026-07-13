@@ -149,6 +149,9 @@ fn map_llm_distribution_rule(
         domain::ModelProviderDistributionRule::RoundRobin => {
             orchestration_runtime::compiled_plan::LlmDistributionRule::RoundRobin
         }
+        domain::ModelProviderDistributionRule::RetryRoundRobin => {
+            orchestration_runtime::compiled_plan::LlmDistributionRule::RetryRoundRobin
+        }
     }
 }
 

@@ -77,7 +77,10 @@ export interface ConsoleModelProviderConfiguredModel {
   supports_multimodal?: boolean | null;
 }
 
-export type ConsoleModelProviderDistributionRule = 'none' | 'round_robin';
+export type ConsoleModelProviderDistributionRule =
+  | 'none'
+  | 'round_robin'
+  | 'retry_round_robin';
 
 export interface ConsoleModelProviderCatalogEntry {
   installation_id: string;

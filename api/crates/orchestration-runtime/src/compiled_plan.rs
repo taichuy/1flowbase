@@ -80,6 +80,7 @@ pub enum LlmDistributionRule {
     #[default]
     None,
     RoundRobin,
+    RetryRoundRobin,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

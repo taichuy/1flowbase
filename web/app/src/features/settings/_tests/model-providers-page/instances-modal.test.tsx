@@ -679,7 +679,10 @@ describe('ModelProvidersPage - instances modal', () => {
       authenticateAsModelProviderManager();
       let mainInstanceState = buildMainInstanceSettings(true, 'none');
       const distributionRuleChangeSpy = vi.fn(
-        (modelId: string, distributionRule: 'none' | 'round_robin') => {
+        (
+          modelId: string,
+          distributionRule: 'none' | 'round_robin' | 'retry_round_robin'
+        ) => {
           mainInstanceState = {
             ...mainInstanceState,
             model_distribution_rules:
@@ -746,13 +749,14 @@ describe('ModelProvidersPage - instances modal', () => {
       expect(distributionRuleSelect).not.toBeDisabled();
       expect((await screen.findAllByText('无')).length).toBeGreaterThan(0);
       expect((await screen.findAllByText('轮询')).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText('重试轮询')).length).toBeGreaterThan(0);
       fireEvent.change(distributionRuleSelect, {
-        target: { value: 'round_robin' }
+        target: { value: 'retry_round_robin' }
       });
 
       expect(distributionRuleChangeSpy).toHaveBeenCalledWith(
         primaryContractProviderModels[0].model_id,
-        'round_robin'
+        'retry_round_robin'
       );
     }
   );

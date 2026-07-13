@@ -324,12 +324,7 @@ fn fixed_model_routing(
                 upstream_model_id: model.to_string(),
             })
             .collect::<Vec<_>>();
-        let effective_distribution_rule = if distribution_rule == LlmDistributionRule::RoundRobin {
-            LlmDistributionRule::RoundRobin
-        } else {
-            LlmDistributionRule::None
-        };
-        let distribution_key = (effective_distribution_rule == LlmDistributionRule::RoundRobin)
+        let distribution_key = (distribution_rule == LlmDistributionRule::RoundRobin)
             .then(|| llm_distribution_key(workspace_id, provider_code, model, &queue_targets));
 
         return CompiledLlmRouting {
@@ -338,7 +333,7 @@ fn fixed_model_routing(
             queue_template_id: None,
             queue_snapshot_id: None,
             queue_targets,
-            distribution_rule: effective_distribution_rule,
+            distribution_rule,
             distribution_key,
             context_policy,
             stream_policy: serde_json::json!({}),

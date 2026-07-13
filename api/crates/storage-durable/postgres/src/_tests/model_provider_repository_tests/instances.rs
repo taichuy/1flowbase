@@ -347,7 +347,7 @@ async fn model_provider_repository_persists_main_instance_defaults_and_instance_
 #[tokio::test]
 async fn model_provider_repository_persists_main_model_distribution_rules_without_touching_instances(
 ) {
-    // AC-003: distribution rules are scoped by workspace + provider_code + model_id.
+    // #1250 AC-007: retry_round_robin persists without rewriting provider instances.
     let (store, workspace, actor, installation_id) = seed_store().await;
     let instance = ModelProviderRepository::create_instance(
         &store,
@@ -377,7 +377,7 @@ async fn model_provider_repository_persists_main_model_distribution_rules_withou
             auto_include_new_instances: true,
             model_distribution_rules: Some(vec![domain::ModelProviderMainModelDistributionRule {
                 model_id: "fixture_chat".into(),
-                distribution_rule: domain::ModelProviderDistributionRule::RoundRobin,
+                distribution_rule: domain::ModelProviderDistributionRule::RetryRoundRobin,
             }]),
             updated_by: actor.id,
         },
@@ -388,7 +388,7 @@ async fn model_provider_repository_persists_main_model_distribution_rules_withou
     assert_eq!(record.model_distribution_rules[0].model_id, "fixture_chat");
     assert_eq!(
         record.model_distribution_rules[0].distribution_rule,
-        domain::ModelProviderDistributionRule::RoundRobin
+        domain::ModelProviderDistributionRule::RetryRoundRobin
     );
 
     let fetched =
