@@ -66,6 +66,7 @@ import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/Fixed
 import {
   buildMcpDirectoryTreeData,
   buildRandomToolIdSeed,
+  nextMcpDirectoryExpandedKeys,
   normalizeMcpDirectoryPath
 } from './mcp-management-view-model';
 import { McpInstanceDiscoveryPolicyModal } from './McpInstanceDiscoveryPolicyModal';
@@ -128,6 +129,9 @@ export function McpInstancesTab({
   >('create');
   const [directoryDraftActive, setDirectoryDraftActive] = useState(false);
   const [directoryDraftVersion, setDirectoryDraftVersion] = useState(0);
+  const [expandedDirectoryKeys, setExpandedDirectoryKeys] = useState<string[]>(
+    []
+  );
   const groupSavedValuesRef = useRef<GroupFormValues | null>(null);
   const bindingSavedValuesRef = useRef<BindingFormValues | null>(null);
   const [discardDirectoryChangesOpen, setDiscardDirectoryChangesOpen] =
@@ -911,6 +915,7 @@ export function McpInstancesTab({
                 setSelectedDirectoryKey(
                   `instance:${record.instance_id}:${normalizeMcpDirectoryPath(record.default_entry_path)}`
                 );
+                setExpandedDirectoryKeys([]);
                 setDirectoryModalOpen(true);
               }}
             />
@@ -1033,6 +1038,7 @@ export function McpInstancesTab({
     setSelectedDirectoryKey('');
     setParentGroupPath(null);
     setDirectoryDraftActive(false);
+    setExpandedDirectoryKeys([]);
     groupForm.resetFields();
     bindingForm.resetFields();
   };
@@ -1090,11 +1096,29 @@ export function McpInstancesTab({
     return normalizeMcpDirectoryPath(selectedInstance?.default_entry_path);
   };
 
+  const expandDirectoryPath = (path: string) => {
+    if (!selectedInstance) return;
+    const rootKey = `instance:${selectedInstance.instance_id}:${normalizeMcpDirectoryPath(
+      selectedInstance.default_entry_path
+    )}`;
+    const keys = [rootKey];
+    const segments = normalizeMcpDirectoryPath(path).split('/').filter(Boolean);
+    let currentPath = '';
+    for (const segment of segments) {
+      currentPath += `/${segment}`;
+      keys.push(`group:${currentPath}`);
+    }
+    setExpandedDirectoryKeys((currentKeys) =>
+      Array.from(new Set([...currentKeys, ...keys]))
+    );
+  };
+
   const startChildGroupCreation = (path?: string) => {
     const currentPath = normalizeMcpDirectoryPath(
       path ?? selectedDirectoryPath()
     );
 
+    expandDirectoryPath(currentPath);
     setDirectoryEditorMode('group');
     setDirectoryEditorIntent('create');
     setDirectoryDraftActive(true);
@@ -1117,6 +1141,7 @@ export function McpInstancesTab({
     const targetPath = normalizeMcpDirectoryPath(
       path ?? selectedDirectoryPath()
     );
+    expandDirectoryPath(targetPath);
     setParentGroupPath(null);
     setDirectoryEditorMode('binding');
     resetBindingFormForCreate(targetPath);
@@ -1288,6 +1313,7 @@ export function McpInstancesTab({
                       }
                       setEditingBinding(null);
                       setSelectedDirectoryKey('');
+                      setExpandedDirectoryKeys([]);
                       setParentGroupPath(null);
                       groupForm.setFieldValue('instance_id', value);
                       bindingForm.setFieldValue('instance_id', value);
@@ -1358,12 +1384,22 @@ export function McpInstancesTab({
                 className="mcp-management__directory-tree"
                 draggable={canManage ? { icon: false } : false}
                 blockNode
-                defaultExpandAll
+                expandedKeys={expandedDirectoryKeys}
                 showIcon
                 selectedKeys={
                   selectedDirectoryKey ? [selectedDirectoryKey] : []
                 }
                 treeData={treeData}
+                onExpand={(_nextExpandedKeys, info) => {
+                  const changedKey = String(info.node.key);
+                  setExpandedDirectoryKeys((currentKeys) =>
+                    nextMcpDirectoryExpandedKeys(
+                      currentKeys,
+                      changedKey,
+                      info.expanded
+                    )
+                  );
+                }}
                 onSelect={(selectedKeys) => {
                   if (selectedKeys.length === 0) return;
                   const key = String(selectedKeys[0]);

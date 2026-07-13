@@ -386,6 +386,7 @@ pub enum ModelProviderDistributionRule {
     #[default]
     None,
     RoundRobin,
+    RetryRoundRobin,
 }
 
 impl ModelProviderDistributionRule {
@@ -393,6 +394,7 @@ impl ModelProviderDistributionRule {
         match self {
             Self::None => "none",
             Self::RoundRobin => "round_robin",
+            Self::RetryRoundRobin => "retry_round_robin",
         }
     }
 }

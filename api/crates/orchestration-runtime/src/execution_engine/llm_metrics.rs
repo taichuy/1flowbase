@@ -30,22 +30,29 @@ pub(super) async fn llm_request_runtimes(
     }
 
     let mut request_runtimes = Vec::with_capacity(request_count);
-    for _ in 0..request_count {
-        let target_index = if routing.distribution_rule
-            == crate::compiled_plan::LlmDistributionRule::RoundRobin
-            && routing.queue_targets.len() > 1
-        {
-            let distribution_key = routing
-                .distribution_key
-                .as_deref()
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| anyhow!("round_robin llm routing is missing distribution_key"))?;
-            let counter = runtime_context
-                .next_llm_routing_counter(distribution_key, Some(LLM_ROUTING_COUNTER_TTL))
-                .await?;
-            (counter - 1).rem_euclid(routing.queue_targets.len() as i64) as usize
-        } else {
-            0
+    for attempt_index in 0..request_count {
+        let target_index = match routing.distribution_rule {
+            crate::compiled_plan::LlmDistributionRule::RoundRobin
+                if routing.queue_targets.len() > 1 =>
+            {
+                let distribution_key = routing
+                    .distribution_key
+                    .as_deref()
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| {
+                        anyhow!("round_robin llm routing is missing distribution_key")
+                    })?;
+                let counter = runtime_context
+                    .next_llm_routing_counter(distribution_key, Some(LLM_ROUTING_COUNTER_TTL))
+                    .await?;
+                (counter - 1).rem_euclid(routing.queue_targets.len() as i64) as usize
+            }
+            crate::compiled_plan::LlmDistributionRule::RetryRoundRobin
+                if routing.queue_targets.len() > 1 =>
+            {
+                attempt_index % routing.queue_targets.len()
+            }
+            _ => 0,
         };
         let target = &routing.queue_targets[target_index];
         let mut request_runtime = runtime.clone();

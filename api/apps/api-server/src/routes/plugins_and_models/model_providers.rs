@@ -484,6 +484,7 @@ fn parse_distribution_rule(raw: &str) -> Result<domain::ModelProviderDistributio
     match raw {
         "none" => Ok(domain::ModelProviderDistributionRule::None),
         "round_robin" => Ok(domain::ModelProviderDistributionRule::RoundRobin),
+        "retry_round_robin" => Ok(domain::ModelProviderDistributionRule::RetryRoundRobin),
         _ => {
             Err(control_plane::errors::ControlPlaneError::InvalidInput("distribution_rule").into())
         }

@@ -207,6 +207,7 @@ impl_noop_code_invoker!(
     FailAfterTokenFinishErrorFailoverInvoker,
     SequentialLlmToolCallInvoker,
     RecordingSuccessInvoker,
+    FailFirstAttemptsInvoker,
 );
 
 struct RuntimeContractErrorInvoker;
@@ -607,6 +608,54 @@ impl CapabilityInvoker for RecordingSuccessInvoker {
         _input_payload: serde_json::Value,
     ) -> Result<CapabilityInvocationOutput> {
         unreachable!("round-robin plan does not execute capability nodes")
+    }
+}
+
+struct FailFirstAttemptsInvoker {
+    calls: Arc<Mutex<Vec<String>>>,
+    remaining_failures: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait]
+impl ProviderInvoker for FailFirstAttemptsInvoker {
+    async fn invoke_llm(
+        &self,
+        runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        self.calls
+            .lock()
+            .expect("calls mutex poisoned")
+            .push(runtime.provider_instance_id.clone());
+
+        if self
+            .remaining_failures
+            .fetch_update(
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+                |remaining| remaining.checked_sub(1),
+            )
+            .is_ok()
+        {
+            anyhow::bail!("provider unavailable before first token");
+        }
+
+        Ok(final_provider_output(format!(
+            "winner:{}",
+            runtime.provider_instance_id
+        )))
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for FailFirstAttemptsInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: serde_json::Value,
+        _input_payload: serde_json::Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("retry round-robin plan does not execute capability nodes")
     }
 }
 

@@ -407,7 +407,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
                         "model_distribution_rules": [
                             {
                                 "model_id": "fixture_chat",
-                                "distribution_rule": "round_robin"
+                                "distribution_rule": "retry_round_robin"
                             }
                         ]
                     })
@@ -433,7 +433,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         update_distribution_rule_payload["data"]["model_distribution_rules"][0]
             ["distribution_rule"]
             .as_str(),
-        Some("round_robin")
+        Some("retry_round_robin")
     );
 
     let options = app
@@ -495,7 +495,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .expect("fixture_chat group");
     assert_eq!(
         alpha_group["distribution_rule"].as_str(),
-        Some("round_robin")
+        Some("retry_round_robin")
     );
     let alpha_target = alpha_group["targets"]
         .as_array()

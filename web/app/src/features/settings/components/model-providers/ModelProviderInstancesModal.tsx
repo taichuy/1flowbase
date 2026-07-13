@@ -55,6 +55,13 @@ function distributionRuleOptions() {
     {
       value: 'round_robin',
       label: i18nText('settings', 'auto.distribution_rule_round_robin')
+    },
+    {
+      value: 'retry_round_robin',
+      label: i18nText(
+        'settings',
+        'auto.distribution_rule_retry_round_robin'
+      )
     }
   ] satisfies Array<{ value: DistributionRule; label: string }>;
 }
