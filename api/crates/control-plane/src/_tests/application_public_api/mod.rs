@@ -1188,6 +1188,10 @@ async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
         })
     );
     assert_eq!(
+        stored.input_payload["trigger"],
+        serde_json::json!({ "type": "extension" })
+    );
+    assert_eq!(
         stored.external_trace_id.as_deref(),
         Some("workflow-extension:open-ticket")
     );
@@ -1281,7 +1285,9 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
             cron: "0 9 * * *".into(),
             timezone: "UTC".into(),
             input_payload: serde_json::json!({
-                "node-workflow-start": { "customer_id": "C-42" }
+                "node-workflow-start": { "customer_id": "C-42" },
+                "sys": { "user_id": "spoofed" },
+                "trigger": { "type": "spoofed" }
             }),
         })
         .await
@@ -1328,6 +1334,15 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
         stored.input_payload["node-workflow-start"]["customer_id"],
         serde_json::json!("C-42")
     );
+    assert_eq!(
+        stored.input_payload["trigger"],
+        serde_json::json!({
+            "type": "schedule",
+            "scheduled_at": "1970-01-01T09:00:00Z",
+            "timezone": "UTC"
+        })
+    );
+    assert!(stored.input_payload.get("sys").is_none());
     assert_eq!(enqueued.len(), 1);
     assert_eq!(enqueued[0].0, WORKFLOW_SCHEDULE_RUN_QUEUE);
     assert_eq!(

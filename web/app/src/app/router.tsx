@@ -525,6 +525,13 @@ const settingsFilesRoute = createRoute({
   component: () => renderSettingsRoute('files')
 });
 
+const settingsApplicationsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/applications',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('applications')
+});
+
 const settingsDataModelsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/data-models',
@@ -663,6 +670,7 @@ const routeTree = rootRoute.addChildren([
     settingsSystemRuntimeRoute,
     settingsHostInfrastructureRoute,
     settingsMemoryObservationRoute,
+    settingsApplicationsRoute,
     settingsFilesRoute,
     settingsDataModelsRoute,
     settingsModelProvidersRoute,

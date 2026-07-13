@@ -347,6 +347,7 @@ impl InMemoryOrchestrationRuntimeRepository {
                         Some(domain::WorkflowTriggerType::Extension)
                     }
                 },
+                workflow_trigger_config: None,
                 name: name.to_string(),
                 description: String::new(),
                 icon: None,

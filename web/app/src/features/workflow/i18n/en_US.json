@@ -9,6 +9,7 @@
     "workflow_schedule_disabled": "Disabled",
     "workflow_trigger_type_extension": "Extension API trigger",
     "workflow_trigger_type_schedule": "Schedule trigger",
+    "trigger_variables": "Trigger Variables",
     "workflow_schedule_input_payload": "Input payload",
     "workflow_schedule_input_payload_invalid": "Input payload must be valid JSON",
     "workflow_test_run": "Test Run",

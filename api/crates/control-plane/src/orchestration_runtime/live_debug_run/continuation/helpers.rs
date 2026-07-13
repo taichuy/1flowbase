@@ -7,8 +7,19 @@ use std::collections::BTreeSet;
 pub(super) fn inject_system_variables(
     variable_pool: &mut serde_json::Map<String, Value>,
     flow_run: &domain::FlowRunRecord,
+    application_type: domain::ApplicationType,
     start_node_id: Option<&str>,
 ) {
+    let mut sys = json!({
+        "application_id": flow_run.application_id.to_string(),
+        "workflow_id": flow_run.flow_id.to_string(),
+        "workflow_run_id": flow_run.id.to_string(),
+    });
+    if application_type == domain::ApplicationType::Workflow {
+        variable_pool.insert("sys".to_string(), sys);
+        return;
+    }
+
     let conversation_id = flow_run
         .external_conversation_id
         .as_deref()
@@ -49,14 +60,9 @@ pub(super) fn inject_system_variables(
                 .and_then(external_reasoning_effort)
         });
 
-    let mut sys = json!({
-            "conversation_id": conversation_id,
-            "dialog_count": 0,
-            "user_id": flow_run.created_by.to_string(),
-            "application_id": flow_run.application_id.to_string(),
-            "workflow_id": flow_run.flow_id.to_string(),
-            "workflow_run_id": flow_run.id.to_string(),
-    });
+    sys["conversation_id"] = json!(conversation_id);
+    sys["dialog_count"] = json!(0);
+    sys["user_id"] = json!(flow_run.created_by.to_string());
     if let Some(model_parameters) = model_parameters {
         sys["model_parameters"] = model_parameters;
     }
@@ -130,6 +136,9 @@ pub(super) fn start_node_input_payload(
     }
     if let Some(env) = variable_pool.get("env") {
         payload.insert("env".to_string(), env.clone());
+    }
+    if let Some(trigger) = variable_pool.get("trigger") {
+        payload.insert("trigger".to_string(), trigger.clone());
     }
 
     Value::Object(payload)

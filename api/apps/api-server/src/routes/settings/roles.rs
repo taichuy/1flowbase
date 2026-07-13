@@ -6,7 +6,9 @@ use axum::{
     routing::{get, patch},
     Json, Router,
 };
-use control_plane::ports::{FrontstagePageRepository, RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput};
+use control_plane::ports::{
+    FrontstagePageRepository, RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput,
+};
 use control_plane::role::{
     CreateRoleCommand, DeleteRoleCommand, ReplaceRoleDataPolicyCommand,
     ReplaceRolePermissionsCommand, RoleService, UpdateRoleCommand,
@@ -90,13 +92,27 @@ pub struct RolePermissionsResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct ReplaceRoleFrontstageRoutesBody { pub page_ids: Vec<Uuid>, pub tab_ids: Vec<Uuid> }
+pub struct ReplaceRoleFrontstageRoutesBody {
+    pub page_ids: Vec<Uuid>,
+    pub tab_ids: Vec<Uuid>,
+}
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct RoleFrontstageRouteNodeResponse { pub id: Uuid, pub kind: String, pub title: Option<String>, pub slug: Option<String>, pub children: Vec<RoleFrontstageRouteNodeResponse> }
+pub struct RoleFrontstageRouteNodeResponse {
+    pub id: Uuid,
+    pub kind: String,
+    pub title: Option<String>,
+    pub slug: Option<String>,
+    pub children: Vec<RoleFrontstageRouteNodeResponse>,
+}
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct RoleFrontstageRoutesResponse { pub role_code: String, pub checked_page_ids: Vec<Uuid>, pub checked_tab_ids: Vec<Uuid>, pub tree: Vec<RoleFrontstageRouteNodeResponse> }
+pub struct RoleFrontstageRoutesResponse {
+    pub role_code: String,
+    pub checked_page_ids: Vec<Uuid>,
+    pub checked_tab_ids: Vec<Uuid>,
+    pub tree: Vec<RoleFrontstageRouteNodeResponse>,
+}
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RoleDataPolicyResponse {
@@ -130,7 +146,10 @@ pub fn router() -> Router<Arc<ApiState>> {
             "/roles/:id/permissions",
             get(get_role_permissions).put(replace_role_permissions),
         )
-        .route("/roles/:id/frontstage-routes", get(get_role_frontstage_routes).put(replace_role_frontstage_routes))
+        .route(
+            "/roles/:id/frontstage-routes",
+            get(get_role_frontstage_routes).put(replace_role_frontstage_routes),
+        )
         .route(
             "/roles/:id/data-policy",
             get(get_role_data_policy).put(replace_role_data_policy),
@@ -384,45 +403,118 @@ pub async fn replace_role_permissions(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn build_frontstage_route_tree(pages: Vec<domain::FrontstagePageRecord>, tabs: Vec<domain::frontstage::FrontstagePageTabRecord>) -> Vec<RoleFrontstageRouteNodeResponse> {
+fn build_frontstage_route_tree(
+    pages: Vec<domain::FrontstagePageRecord>,
+    tabs: Vec<domain::frontstage::FrontstagePageTabRecord>,
+) -> Vec<RoleFrontstageRouteNodeResponse> {
     use std::collections::HashMap;
-    fn build(parent: Option<Uuid>, pages: &HashMap<Option<Uuid>, Vec<domain::FrontstagePageRecord>>, tabs: &HashMap<Uuid, Vec<domain::frontstage::FrontstagePageTabRecord>>) -> Vec<RoleFrontstageRouteNodeResponse> {
+    fn build(
+        parent: Option<Uuid>,
+        pages: &HashMap<Option<Uuid>, Vec<domain::FrontstagePageRecord>>,
+        tabs: &HashMap<Uuid, Vec<domain::frontstage::FrontstagePageTabRecord>>,
+    ) -> Vec<RoleFrontstageRouteNodeResponse> {
         pages
             .get(&parent)
             .into_iter()
             .flatten()
             .filter(|page| {
                 parent.is_some()
-                    || page.placement
-                        == domain::frontstage::FrontstageNavigationPlacement::Topbar
+                    || page.placement == domain::frontstage::FrontstageNavigationPlacement::Topbar
             })
             .map(|page| {
-            let mut children = build(Some(page.id), pages, tabs);
-            if page.kind == domain::FrontstagePageKind::Page { children.extend(tabs.get(&page.id).into_iter().flatten().map(|tab| RoleFrontstageRouteNodeResponse { id: tab.id, kind: "tab".into(), title: tab.title.clone(), slug: None, children: vec![] })); }
-            RoleFrontstageRouteNodeResponse { id: page.id, kind: page.kind.as_str().into(), title: page.title.clone(), slug: page.slug.clone(), children }
-        }).collect()
+                let mut children = build(Some(page.id), pages, tabs);
+                if page.kind == domain::FrontstagePageKind::Page {
+                    children.extend(tabs.get(&page.id).into_iter().flatten().map(|tab| {
+                        RoleFrontstageRouteNodeResponse {
+                            id: tab.id,
+                            kind: "tab".into(),
+                            title: tab.title.clone(),
+                            slug: None,
+                            children: vec![],
+                        }
+                    }));
+                }
+                RoleFrontstageRouteNodeResponse {
+                    id: page.id,
+                    kind: page.kind.as_str().into(),
+                    title: page.title.clone(),
+                    slug: page.slug.clone(),
+                    children,
+                }
+            })
+            .collect()
     }
-    let mut by_parent: HashMap<Option<Uuid>, Vec<_>> = HashMap::new(); for page in pages { by_parent.entry(page.parent_id).or_default().push(page); }
-    for nodes in by_parent.values_mut() { nodes.sort_by(|a,b| a.rank.cmp(&b.rank).then(a.id.cmp(&b.id))); }
-    let mut by_page: HashMap<Uuid, Vec<_>> = HashMap::new(); for tab in tabs { by_page.entry(tab.page_id).or_default().push(tab); }
-    for nodes in by_page.values_mut() { nodes.sort_by(|a,b| a.rank.cmp(&b.rank).then(a.id.cmp(&b.id))); }
+    let mut by_parent: HashMap<Option<Uuid>, Vec<_>> = HashMap::new();
+    for page in pages {
+        by_parent.entry(page.parent_id).or_default().push(page);
+    }
+    for nodes in by_parent.values_mut() {
+        nodes.sort_by(|a, b| a.rank.cmp(&b.rank).then(a.id.cmp(&b.id)));
+    }
+    let mut by_page: HashMap<Uuid, Vec<_>> = HashMap::new();
+    for tab in tabs {
+        by_page.entry(tab.page_id).or_default().push(tab);
+    }
+    for nodes in by_page.values_mut() {
+        nodes.sort_by(|a, b| a.rank.cmp(&b.rank).then(a.id.cmp(&b.id)));
+    }
     build(None, &by_parent, &by_page)
 }
 
-pub async fn get_role_frontstage_routes(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(role_code): Path<String>) -> Result<Json<ApiSuccess<RoleFrontstageRoutesResponse>>, ApiError> {
+pub async fn get_role_frontstage_routes(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(role_code): Path<String>,
+) -> Result<Json<ApiSuccess<RoleFrontstageRoutesResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    access_control::ensure_permission(&context.actor, "role_permission.view.all").map_err(control_plane::errors::ControlPlaneError::PermissionDenied)?;
+    access_control::ensure_permission(&context.actor, "role_permission.view.all")
+        .map_err(control_plane::errors::ControlPlaneError::PermissionDenied)?;
     let workspace_id = context.actor.current_workspace_id;
     let pages = state.store.list_frontstage_pages(workspace_id).await?;
-    let mut tabs = Vec::new(); for page in pages.iter().filter(|page| page.kind == domain::FrontstagePageKind::Page) { tabs.extend(state.store.list_frontstage_page_tabs(workspace_id, page.id).await?); }
-    let rules = state.store.list_frontstage_page_visibility_rules_for_role(workspace_id, &role_code).await?;
-    Ok(Json(ApiSuccess::new(RoleFrontstageRoutesResponse { role_code, checked_page_ids: rules.iter().filter_map(|rule| rule.page_id).collect(), checked_tab_ids: rules.iter().filter_map(|rule| rule.tab_id).collect(), tree: build_frontstage_route_tree(pages, tabs) })))
+    let mut tabs = Vec::new();
+    for page in pages
+        .iter()
+        .filter(|page| page.kind == domain::FrontstagePageKind::Page)
+    {
+        tabs.extend(
+            state
+                .store
+                .list_frontstage_page_tabs(workspace_id, page.id)
+                .await?,
+        );
+    }
+    let rules = state
+        .store
+        .list_frontstage_page_visibility_rules_for_role(workspace_id, &role_code)
+        .await?;
+    Ok(Json(ApiSuccess::new(RoleFrontstageRoutesResponse {
+        role_code,
+        checked_page_ids: rules.iter().filter_map(|rule| rule.page_id).collect(),
+        checked_tab_ids: rules.iter().filter_map(|rule| rule.tab_id).collect(),
+        tree: build_frontstage_route_tree(pages, tabs),
+    })))
 }
 
-pub async fn replace_role_frontstage_routes(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(role_code): Path<String>, Json(body): Json<ReplaceRoleFrontstageRoutesBody>) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?; require_csrf(&headers, &context)?;
-    access_control::ensure_permission(&context.actor, "role_permission.manage.all").map_err(control_plane::errors::ControlPlaneError::PermissionDenied)?;
-    state.store.replace_frontstage_page_visibility_rules_for_role(context.actor.current_workspace_id, &role_code, &body.page_ids, &body.tab_ids, context.user.id).await?;
+pub async fn replace_role_frontstage_routes(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(role_code): Path<String>,
+    Json(body): Json<ReplaceRoleFrontstageRoutesBody>,
+) -> Result<StatusCode, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    access_control::ensure_permission(&context.actor, "role_permission.manage.all")
+        .map_err(control_plane::errors::ControlPlaneError::PermissionDenied)?;
+    state
+        .store
+        .replace_frontstage_page_visibility_rules_for_role(
+            context.actor.current_workspace_id,
+            &role_code,
+            &body.page_ids,
+            &body.tab_ids,
+            context.user.id,
+        )
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

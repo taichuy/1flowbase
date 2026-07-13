@@ -7,6 +7,12 @@ export interface AgentFlowSystemVariable extends FlowNodeOutputDocument {
 
 export const systemVariableNodeId = 'sys';
 
+const workflowSystemVariableKeys = new Set([
+  'application_id',
+  'workflow_id',
+  'workflow_run_id'
+]);
+
 export const agentFlowSystemVariables: AgentFlowSystemVariable[] = [
   {
     key: 'conversation_id',
@@ -51,3 +57,7 @@ export const agentFlowSystemVariables: AgentFlowSystemVariable[] = [
     description: i18nText('agentFlow', 'auto.system_variable_model_parameters')
   }
 ];
+
+export const workflowSystemVariables = agentFlowSystemVariables.filter(
+  (variable) => workflowSystemVariableKeys.has(variable.key)
+);

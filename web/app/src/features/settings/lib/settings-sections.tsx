@@ -7,6 +7,7 @@ export type SettingsSectionKey =
   | 'system-runtime'
   | 'host-infrastructure'
   | 'memory-observation'
+  | 'applications'
   | 'files'
   | 'data-models'
   | 'mcp-management'
@@ -54,6 +55,7 @@ const settingsSectionKeys = new Set<SettingsSectionKey>([
   'system-runtime',
   'host-infrastructure',
   'memory-observation',
+  'applications',
   'files',
   'data-models',
   'mcp-management',
@@ -137,6 +139,11 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
     key: 'memory-observation',
     label_key: 'auto.memory_observation',
     to: '/settings/memory-observation'
+  },
+  {
+    key: 'applications',
+    label_key: 'auto.application_management',
+    to: '/settings/applications'
   },
   {
     key: 'files',

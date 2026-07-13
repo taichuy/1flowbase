@@ -98,7 +98,8 @@ export function validateCodeNamedBindings(
   issues: AgentFlowIssue[],
   node: FlowNodeDocument,
   document: FlowAuthoringDocument,
-  environmentVariables: AgentFlowEnvironmentVariable[]
+  environmentVariables: AgentFlowEnvironmentVariable[],
+  workflowTriggerContext: unknown = null
 ) {
   const binding = node.bindings.named_bindings;
 
@@ -110,7 +111,8 @@ export function validateCodeNamedBindings(
   const selectorOptions = listVisibleSelectorOptions(
     document,
     node.id,
-    environmentVariables
+    environmentVariables,
+    workflowTriggerContext
   );
 
   for (const entry of binding.value) {

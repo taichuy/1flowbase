@@ -45,6 +45,13 @@ const HostInfrastructureMemoryObservationPanel = lazy(() =>
     })
   )
 );
+const ApplicationManagementPanel = lazy(() =>
+  import('../../components/application-management/ApplicationManagementPanel').then(
+    (module) => ({
+      default: module.ApplicationManagementPanel
+    })
+  )
+);
 
 function SettingsSectionFallback() {
   return <LoadingState compact />;
@@ -75,6 +82,12 @@ export function SettingsSectionBody({
   modelProviderTab?: 'providers' | 'request-logs';
 }) {
   switch (sectionKey) {
+    case 'applications':
+      return (
+        <SettingsSectionBoundary>
+          <ApplicationManagementPanel />
+        </SettingsSectionBoundary>
+      );
     case 'members':
       return (
         <MemberManagementPanel

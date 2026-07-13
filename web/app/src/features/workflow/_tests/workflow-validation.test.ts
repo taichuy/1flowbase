@@ -55,4 +55,50 @@ describe('validateWorkflowDocument', () => {
       ])
     );
   });
+
+  test('AC-1252 validates selectors against the active workflow trigger catalog', () => {
+    const document = createDefaultWorkflowDocument({ flowId: 'flow-1' });
+    const endNode = document.graph.nodes.find(
+      (node) => node.type === 'workflow_end'
+    );
+
+    if (!endNode) {
+      throw new Error('expected workflow end node');
+    }
+
+    endNode.bindings.scheduled_at = {
+      kind: 'selector',
+      value: ['trigger', 'scheduled_at']
+    };
+    endNode.outputs = [
+      {
+        key: 'scheduled_at',
+        title: 'Scheduled At',
+        valueType: 'string'
+      }
+    ];
+
+    expect(
+      validateWorkflowDocument(document, { triggerType: 'schedule' }).some(
+        (issue) => issue.fieldKey === 'bindings.scheduled_at'
+      )
+    ).toBe(false);
+
+    endNode.bindings.scheduled_at = {
+      kind: 'selector',
+      value: ['sys', 'conversation_id']
+    };
+
+    expect(
+      validateWorkflowDocument(document, { triggerType: 'schedule' })
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          nodeId: endNode.id,
+          fieldKey: 'bindings.scheduled_at',
+          level: 'error'
+        })
+      ])
+    );
+  });
 });

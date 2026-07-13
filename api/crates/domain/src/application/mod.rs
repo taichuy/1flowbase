@@ -40,6 +40,21 @@ impl WorkflowTriggerType {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ApplicationPublicationStatus {
+    Published,
+    Unpublished,
+}
+
+impl ApplicationPublicationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Published => "published",
+            Self::Unpublished => "unpublished",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApplicationOrchestrationSection {
     pub status: String,

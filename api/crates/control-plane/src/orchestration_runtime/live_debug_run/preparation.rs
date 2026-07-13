@@ -105,6 +105,7 @@ fn user_input_payload(input_payload: &Value) -> Value {
     let mut user_input = object.clone();
     user_input.remove("sys");
     user_input.remove("env");
+    user_input.remove("trigger");
     Value::Object(user_input)
 }
 
@@ -165,6 +166,7 @@ where
             input_payload: freeze_run_input_environment(
                 command.input_payload,
                 &environment_variables,
+                &application,
             ),
             started_at: OffsetDateTime::now_utc(),
             api_key_id: None,
@@ -181,12 +183,21 @@ where
 fn freeze_run_input_environment(
     input_payload: Value,
     variables: &[domain::ApplicationEnvironmentVariable],
+    application: &domain::ApplicationRecord,
 ) -> Value {
     let mut payload = input_payload.as_object().cloned().unwrap_or_default();
     payload.insert(
         "env".to_string(),
         Value::Object(application_environment_variable_payload(variables)),
     );
+    if application.application_type == domain::ApplicationType::Workflow {
+        if let Some(trigger_type) = application.workflow_trigger_type {
+            payload.insert(
+                "trigger".to_string(),
+                json!({ "type": trigger_type.as_str() }),
+            );
+        }
+    }
     Value::Object(payload)
 }
 

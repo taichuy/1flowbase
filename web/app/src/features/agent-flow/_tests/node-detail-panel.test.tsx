@@ -460,8 +460,19 @@ describe('NodeDetailPanel', () => {
       expect(
         screen.getByTestId('inspector-field-config.input_fields')
       ).toBeInTheDocument();
+      expect(screen.getByText('input.customer_id')).toBeInTheDocument();
+      expect(
+        screen.queryByText('userinput.customer_id')
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('userinput.history')).not.toBeInTheDocument();
+      expect(screen.queryByText('系统变量')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('接口 slug')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('定时表达式')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: '新增输入字段' }));
+      expect(
+        screen.getByRole('combobox', { name: '输入字段参数来源' })
+      ).toBeInTheDocument();
     },
     NODE_DETAIL_PANEL_TEST_TIMEOUT
   );
@@ -526,6 +537,11 @@ describe('NodeDetailPanel', () => {
       expect(screen.queryByLabelText('时区')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('输入 payload')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('接口 slug')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: '新增输入字段' }));
+      expect(
+        screen.queryByRole('combobox', { name: '输入字段参数来源' })
+      ).not.toBeInTheDocument();
     },
     NODE_DETAIL_PANEL_TEST_TIMEOUT
   );

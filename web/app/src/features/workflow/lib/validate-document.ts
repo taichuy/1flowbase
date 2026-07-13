@@ -6,9 +6,15 @@ import {
 } from '../../agent-flow/lib/validate-document';
 
 export function validateWorkflowDocument(
-  document: FlowAuthoringDocument
+  document: FlowAuthoringDocument,
+  workflowTriggerContext: unknown = null
 ): AgentFlowIssue[] {
-  const issues: AgentFlowIssue[] = validateDocument(document).filter(
+  const issues: AgentFlowIssue[] = validateDocument(
+    document,
+    undefined,
+    [],
+    workflowTriggerContext
+  ).filter(
     (issue) =>
       issue.id !== 'global-start-count' && issue.id !== 'global-answer-missing'
   );

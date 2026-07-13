@@ -66,6 +66,7 @@ async fn console_navigation_route_returns_root_registry_with_separated_arrays() 
     let item_ids = string_values(&payload, &["data", "navigation_items"], "item_id");
     assert!(item_ids.contains(&"settings".to_string()));
     assert!(item_ids.contains(&"settings.api-key-authentication".to_string()));
+    assert!(item_ids.contains(&"settings.applications".to_string()));
 }
 
 #[tokio::test]

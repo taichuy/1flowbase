@@ -12,7 +12,8 @@ use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
     ports::{
-        ApplicationEnvironmentVariableInput, ApplicationRepository, ApplicationVisibility,
+        ApplicationEnvironmentVariableInput, ApplicationManagementPage, ApplicationManagementQuery,
+        ApplicationManagementRepository, ApplicationRepository, ApplicationVisibility,
         CreateApplicationInput, CreateApplicationTagInput, CreateWorkflowTriggerConfig,
         DeleteApplicationInput, JsDependencyRepository,
         ReplaceApplicationEnvironmentVariablesInput, ReplaceApplicationJsDependencySelectionInput,
@@ -80,6 +81,27 @@ where
 
         self.repository
             .list_applications(actor.current_workspace_id, actor_user_id, visibility)
+            .await
+    }
+
+    pub async fn list_application_management(
+        &self,
+        actor_user_id: Uuid,
+        query: ApplicationManagementQuery,
+    ) -> Result<ApplicationManagementPage>
+    where
+        R: ApplicationManagementRepository,
+    {
+        let actor = self
+            .repository
+            .load_actor_context_for_user(actor_user_id)
+            .await?;
+        ensure_permission(&actor, "application.view.all")
+            .map_err(ControlPlaneError::PermissionDenied)?;
+        validate_application_management_filter(&query.filter)?;
+
+        self.repository
+            .list_application_management(actor.current_workspace_id, &query)
             .await
     }
 
@@ -371,6 +393,53 @@ where
         }
 
         Ok(application)
+    }
+}
+
+fn validate_application_management_filter(
+    filter: &domain::ResourceFilterExpr,
+) -> Result<(), ControlPlaneError> {
+    match filter {
+        domain::ResourceFilterExpr::All(items) | domain::ResourceFilterExpr::Any(items) => {
+            for item in items {
+                validate_application_management_filter(item)?;
+            }
+            Ok(())
+        }
+        domain::ResourceFilterExpr::Field {
+            field, operator, ..
+        } => {
+            let operator_allowed = match field.as_str() {
+                "id" | "name" => matches!(
+                    operator,
+                    domain::ResourceFilterOperator::Eq
+                        | domain::ResourceFilterOperator::Ne
+                        | domain::ResourceFilterOperator::Includes
+                        | domain::ResourceFilterOperator::NotIncludes
+                        | domain::ResourceFilterOperator::In
+                ),
+                "application_type"
+                | "workflow_trigger_type"
+                | "publication_status"
+                | "created_by" => matches!(
+                    operator,
+                    domain::ResourceFilterOperator::Eq
+                        | domain::ResourceFilterOperator::Ne
+                        | domain::ResourceFilterOperator::In
+                ),
+                "tags.id" => matches!(
+                    operator,
+                    domain::ResourceFilterOperator::Eq | domain::ResourceFilterOperator::In
+                ),
+                _ => false,
+            };
+
+            if operator_allowed {
+                Ok(())
+            } else {
+                Err(ControlPlaneError::InvalidInput("filter"))
+            }
+        }
     }
 }
 

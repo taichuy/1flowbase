@@ -1,0 +1,8 @@
+.application-management-panel__table-region {
+  min-width: 0;
+  min-height: 0;
+}
+
+.application-management-panel__table-region .data-table {
+  height: 100%;
+}

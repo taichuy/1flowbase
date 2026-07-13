@@ -85,6 +85,7 @@ where
     inject_system_variables(
         &mut variable_pool,
         &flow_run,
+        application.application_type,
         compiled_plan_start_node_id(&compiled_plan),
     );
     let runtime_context = service.execution_runtime_context(&compiled_plan, &variable_pool);
