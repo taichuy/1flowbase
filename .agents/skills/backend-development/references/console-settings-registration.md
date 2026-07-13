@@ -23,4 +23,4 @@
 - authorization integration test：未授权角色直接调用 API 得到 403；授权对应 feature 后可调用；插件停用后再次拒绝。
 - domain test：授权 feature 不会扩大 workspace、row、field 或 secret 可见范围。
 - compiled inventory / CI：`Settings API - Registered API Ownership = ∅`，且 role grant、surface、feature、route 引用均无悬空项。
-- contract 替换：已有受支持环境或用户授权数据时，逐角色比较替换前后有效访问；若已确认只是开发草案，则直接删除旧 code/data path，并证明没有双读、legacy alias 或 fallback。不要在两种场景之间擅自增加兼容。
+- contract 替换：功能进入过已发布开源版本时，即使当前团队无人使用，也必须假设外部部署可能已有授权数据；从每个受支持旧 schema/fixture 演练迁移并逐角色比较有效访问。运行时可以直接切到新 contract，但不能因此丢弃历史数据；迁移后证明没有双读、legacy alias 或 fallback。

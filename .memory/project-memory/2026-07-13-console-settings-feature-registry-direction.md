@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 后台注册设置项统一 SettingsFeature 授权与 API Scope
-summary: 用户确认后台注册设置项作为唯一产品授权单位；Core/HostExtension 在注册时聚合 Settings API scope，角色只授权 feature，CLI 与 compiled inventory 作为后续开发和 QA 强制入口。现有权限实现仍是开发草案，可直接替换且不做历史兼容。完整实现 Issue #1256 已创建，当前等待 Issue 确认后进入 ADR/TDD。
+summary: 用户确认后台注册设置项作为唯一产品授权单位；Core/HostExtension 在注册时聚合 Settings API scope，角色只授权 feature，CLI 与 compiled inventory 作为后续开发和 QA 强制入口。运行时代码直接切到新 contract，但已发布开源实例可能存在历史授权，必须一次性迁移并逐角色验证零差异。完整实现 Issue #1256 已创建，当前等待 Issue 确认后进入 ADR/TDD。
 keywords:
   - settings-feature
   - console-settings
@@ -29,7 +29,7 @@ scope:
 ## 谁在做什么
 
 - 用户已确认架构方向，并要求同步后端开发 Skill、QA Skill、`api/AGENTS.md`，以及把统一注册 CLI 纳入完整线上 Issue。
-- 用户确认现有 Settings 权限实现只是开发草案，没有需要保护的线上历史授权；直接删除旧 permission code/data path，不做 backfill、双读、legacy alias 或 fallback。
+- 用户确认当前团队尚未正式使用该功能，但已发布开源项目的外部部署可能存在历史授权；必须迁移旧 permission/grant rows，运行时切换后不保留双读、legacy alias 或 fallback。
 - AI 已创建 Issue #1256；当前阶段是 `phase:discussion`，等待用户确认 Issue 正文后进入 ADR/TDD 实现。
 
 ## 为什么这样做

@@ -14,7 +14,7 @@
 | Data boundary | feature grant 不绕过 workspace / system、owner、row、field、secret 和状态约束 | API 返回 2xx，但没有验证数据内容和越权反例 |
 | Extension lifecycle | HostExtension 启停、升级、缺失版本时 surface、API 和历史 grant 行为符合 contract | 只测试 Core 内置注册项 |
 | CLI determinism | CLI scaffold / update 可重复执行，输出稳定，并能检测缺失、重复和权限扩张 | 手工样例通过，未验证 CLI fixture 与错误输入 |
-| Contract replacement | 已有受支持历史 grant 时提供逐角色 preview/delta；已确认是开发草案时证明旧 code/data path、双读、legacy alias 和 fallback 均不存在 | 无历史数据仍制造兼容，或有历史数据却只比较 permission row 数量 |
+| Contract replacement | 功能进入过已发布开源版本时，按外部部署可能已有 grant 处理；每个受支持旧 schema/fixture 都提供逐角色 preview/delta，迁移后没有运行时双读、legacy alias 或 fallback | 以内部无人使用推断无历史数据，或只比较 permission row 数量 |
 
 ## Gate Rules
 
