@@ -50,6 +50,39 @@ export interface ConsoleApplicationSummary {
   tags: ConsoleApplicationTag[];
 }
 
+export type ConsoleApplicationPublicationStatus = 'published' | 'unpublished';
+
+export interface ConsoleApplicationManagementItem {
+  id: string;
+  application_type: ConsoleApplicationType;
+  workflow_trigger_type: ConsoleWorkflowTriggerType | null;
+  name: string;
+  description: string;
+  icon: string | null;
+  icon_type: string | null;
+  icon_background: string | null;
+  created_by: string;
+  created_by_display_name: string;
+  created_at: string;
+  updated_at: string;
+  tags: ConsoleApplicationTag[];
+  publication_status: ConsoleApplicationPublicationStatus;
+}
+
+export interface ConsoleApplicationManagementPage {
+  items: ConsoleApplicationManagementItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ConsoleApplicationManagementQuery {
+  page?: number;
+  page_size?: number;
+  filter?: Record<string, unknown>;
+  sort?: string;
+}
+
 export interface ConsoleApplicationSections {
   orchestration: {
     status: string;
@@ -128,6 +161,31 @@ export function listConsoleApplications(
 ): Promise<ConsoleApplicationSummary[]> {
   return apiFetch<ConsoleApplicationSummary[]>({
     path: '/api/console/applications',
+    baseUrl
+  });
+}
+
+export function listConsoleApplicationManagement(
+  query: ConsoleApplicationManagementQuery = {},
+  baseUrl?: string
+): Promise<ConsoleApplicationManagementPage> {
+  const searchParams = new URLSearchParams();
+  if (query.page !== undefined) {
+    searchParams.set('page', String(query.page));
+  }
+  if (query.page_size !== undefined) {
+    searchParams.set('page_size', String(query.page_size));
+  }
+  if (query.filter !== undefined) {
+    searchParams.set('filter', JSON.stringify(query.filter));
+  }
+  if (query.sort !== undefined) {
+    searchParams.set('sort', query.sort);
+  }
+  const queryString = searchParams.toString();
+
+  return apiFetch<ConsoleApplicationManagementPage>({
+    path: `/api/console/settings/applications${queryString ? `?${queryString}` : ''}`,
     baseUrl
   });
 }

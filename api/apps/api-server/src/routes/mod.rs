@@ -23,6 +23,6 @@ pub use plugins_and_models_group::{
     node_contributions, plugins, runtime_models,
 };
 pub use settings_group::{
-    auth_center, docs, file_storages, file_tables, host_infrastructure, mcp_management, members,
-    navigation, permissions, roles, system, workspace, workspaces,
+    application_management, auth_center, docs, file_storages, file_tables, host_infrastructure,
+    mcp_management, members, navigation, permissions, roles, system, workspace, workspaces,
 };

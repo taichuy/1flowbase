@@ -2,6 +2,7 @@ mod application_api_docs_routes;
 mod application_api_routes;
 mod application_delete_routes;
 mod application_js_dependency_routes;
+mod application_management_routes;
 mod application_orchestration_routes;
 mod application_routes;
 mod application_runtime_routes;

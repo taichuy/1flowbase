@@ -68,6 +68,7 @@ const SYSTEM_RUNTIME_PERMISSIONS: &[&str] = &["system_runtime.view.all"];
 const PLUGIN_VIEW_PERMISSIONS: &[&str] = &["plugin_config.view.all"];
 const PLUGIN_ALL_PERMISSIONS: &[&str] = &["plugin_config.view.all", "plugin_config.configure.all"];
 const API_REFERENCE_PERMISSIONS: &[&str] = &["api_reference.view.all"];
+const APPLICATION_VIEW_PERMISSIONS: &[&str] = &["application.view.all"];
 const FILES_VISIBILITY_PERMISSIONS: &[&str] = &[
     "file_table.view.all",
     "file_table.view.own",
@@ -177,6 +178,13 @@ const MEMORY_OBSERVATION_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteA
     path: "/api/console/settings/host-infrastructure/memory",
     path_match: SettingsRouteApiPathMatch::Prefix,
     methods: SettingsRouteApiMethods::Any,
+}];
+
+const APPLICATIONS_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
+    scope_id: "console.settings.applications",
+    path: "/api/console/settings/applications",
+    path_match: SettingsRouteApiPathMatch::Exact,
+    methods: SettingsRouteApiMethods::ReadOnly,
 }];
 
 const FILES_API_SCOPES: &[SettingsRouteApiScope] = &[
@@ -335,11 +343,24 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         api_scopes: MEMORY_OBSERVATION_API_SCOPES,
     },
     SettingsRouteSpec {
+        route_id: "settings.applications",
+        surface_key: "applications",
+        path: "/settings/applications",
+        label_key: "auto.application_management",
+        order: 700,
+        visibility_permission_code: "settings_route.visible.settings.applications",
+        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
+            APPLICATION_VIEW_PERMISSIONS,
+        ),
+        implied_permissions: APPLICATION_VIEW_PERMISSIONS,
+        api_scopes: APPLICATIONS_API_SCOPES,
+    },
+    SettingsRouteSpec {
         route_id: "settings.files",
         surface_key: "files",
         path: "/settings/files",
         label_key: "auto.file_management",
-        order: 700,
+        order: 800,
         visibility_permission_code: "settings_route.visible.settings.files",
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
             FILES_VISIBILITY_PERMISSIONS,
@@ -352,7 +373,7 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         surface_key: "data-models",
         path: "/settings/data-models",
         label_key: "auto.data_source",
-        order: 800,
+        order: 900,
         visibility_permission_code: "settings_route.visible.settings.data-models",
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
             STATE_MODEL_VISIBILITY_PERMISSIONS,
@@ -365,7 +386,7 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         surface_key: "model-providers",
         path: "/settings/model-providers",
         label_key: "auto.model_providers",
-        order: 900,
+        order: 1000,
         visibility_permission_code: "settings_route.visible.settings.model-providers",
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
             STATE_MODEL_VISIBILITY_PERMISSIONS,
@@ -378,7 +399,7 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         surface_key: "mcp-management",
         path: "/settings/mcp-management",
         label_key: "auto.mcp_management",
-        order: 1000,
+        order: 1100,
         visibility_permission_code: "settings_route.visible.settings.mcp-management",
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(MCP_VISIBILITY_PERMISSIONS),
         implied_permissions: MCP_ALL_PERMISSIONS,
@@ -389,7 +410,7 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         surface_key: "members",
         path: "/settings/members",
         label_key: "auto.user_management",
-        order: 1100,
+        order: 1200,
         visibility_permission_code: "settings_route.visible.settings.members",
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(USER_VIEW_PERMISSIONS),
         implied_permissions: &[
@@ -405,7 +426,7 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         surface_key: "roles",
         path: "/settings/roles",
         label_key: "auto.permission_management",
-        order: 1200,
+        order: 1300,
         visibility_permission_code: "settings_route.visible.settings.roles",
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(ROLE_VIEW_PERMISSIONS),
         implied_permissions: ROLE_ALL_PERMISSIONS,

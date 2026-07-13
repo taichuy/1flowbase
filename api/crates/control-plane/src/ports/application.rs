@@ -6,6 +6,55 @@ pub enum ApplicationVisibility {
     All,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApplicationManagementSortField {
+    UpdatedAt,
+    CreatedAt,
+    Name,
+    ApplicationType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApplicationManagementSortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApplicationManagementQuery {
+    pub filter: domain::ResourceFilterExpr,
+    pub sort_field: ApplicationManagementSortField,
+    pub sort_direction: ApplicationManagementSortDirection,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApplicationManagementRecord {
+    pub id: Uuid,
+    pub application_type: domain::ApplicationType,
+    pub workflow_trigger_type: Option<domain::WorkflowTriggerType>,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+    pub icon_type: Option<String>,
+    pub icon_background: Option<String>,
+    pub created_by: Uuid,
+    pub created_by_display_name: String,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+    pub tags: Vec<domain::ApplicationTag>,
+    pub publication_status: domain::ApplicationPublicationStatus,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApplicationManagementPage {
+    pub items: Vec<ApplicationManagementRecord>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+}
+
 #[derive(Debug, Clone)]
 pub enum CreateWorkflowTriggerConfig {
     Schedule {
@@ -172,6 +221,15 @@ pub trait ApplicationRepository: Send + Sync {
         anyhow::bail!("replace_application_environment_variables not implemented")
     }
     async fn append_audit_log(&self, event: &domain::AuditLogRecord) -> anyhow::Result<()>;
+}
+
+#[async_trait]
+pub trait ApplicationManagementRepository: Send + Sync {
+    async fn list_application_management(
+        &self,
+        workspace_id: Uuid,
+        query: &ApplicationManagementQuery,
+    ) -> anyhow::Result<ApplicationManagementPage>;
 }
 
 #[async_trait]
