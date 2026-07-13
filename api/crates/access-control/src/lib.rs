@@ -3,6 +3,7 @@ extern crate self as access_control;
 mod catalog;
 mod evaluator;
 mod navigation;
+mod settings_features;
 mod settings_routes;
 
 pub use catalog::{builtin_role_templates, permission_catalog};
@@ -12,6 +13,22 @@ pub use navigation::{
     builtin_console_navigation, ConsoleNavigation, ConsoleNavigationItem, ConsoleNavigationSlot,
     ConsolePermissionBinding, ConsolePermissionRequirement, ConsoleRouteDefinition,
     ConsoleSurfaceKind,
+};
+pub use settings_features::{
+    core_settings_feature_registrations, settings_feature_permission_definitions, AccessRule,
+    SettingsApiRoute, SettingsFeatureCompiledInventory, SettingsFeatureConsoleSurface,
+    SettingsFeatureInventoryEntry, SettingsFeatureLifecycle, SettingsFeatureOwner,
+    SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
+    SettingsFeatureRegistryError, SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID,
+    SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION, SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID,
+    SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_PERMISSION, SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID,
+    SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION, SYSTEM_FILES_SETTINGS_FEATURE_ID,
+    SYSTEM_FILES_SETTINGS_FEATURE_PERMISSION, SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_ID,
+    SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION, SYSTEM_MEMBERS_SETTINGS_FEATURE_ID,
+    SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION, SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_ID,
+    SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION,
+    SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_ID, SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION,
+    SYSTEM_ROLES_SETTINGS_FEATURE_ID, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION,
 };
 pub use settings_routes::{
     expand_permissions_with_settings_routes, settings_route_permission_definitions,

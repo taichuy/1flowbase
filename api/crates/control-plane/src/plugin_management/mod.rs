@@ -67,6 +67,13 @@ pub struct PluginManagementService<R, H> {
     node_id: String,
     host_version: String,
     allow_uploaded_host_extensions: bool,
+    use_case: PluginManagementUseCase,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PluginManagementUseCase {
+    BusinessActions,
+    ModelProviderSettings,
 }
 
 pub const PLUGIN_HOST_COMPATIBILITY_BELOW_MINIMUM: &str = "below_minimum_host_version";
@@ -89,16 +96,7 @@ pub(super) struct OfficialPluginHostCompatibility {
     pub warning_reason: Option<String>,
 }
 
-impl<R, H> PluginManagementService<R, H>
-where
-    R: AuthRepository
-        + PluginRepository
-        + ModelProviderRepository
-        + NodeContributionRepository
-        + JsDependencyRepository
-        + FrontendBlockCatalogRepository,
-    H: ProviderRuntimePort,
-{
+impl<R, H> PluginManagementService<R, H> {
     pub fn new(
         repository: R,
         runtime: H,
@@ -113,6 +111,7 @@ where
             node_id: String::new(),
             host_version: default_current_host_version(),
             allow_uploaded_host_extensions: true,
+            use_case: PluginManagementUseCase::BusinessActions,
         }
         .with_default_node_id()
     }
@@ -136,6 +135,61 @@ where
             self.node_id = node_id.to_string();
         }
         self
+    }
+
+    pub fn for_model_provider_settings(mut self) -> Self {
+        self.use_case = PluginManagementUseCase::ModelProviderSettings;
+        self
+    }
+
+    fn ensure_use_case_permission(
+        &self,
+        actor: &domain::ActorContext,
+        business_permission: &str,
+    ) -> Result<()> {
+        match self.use_case {
+            PluginManagementUseCase::BusinessActions => {
+                ensure_permission(actor, business_permission)
+                    .map_err(ControlPlaneError::PermissionDenied)?;
+                Ok(())
+            }
+            PluginManagementUseCase::ModelProviderSettings
+                if actor.is_root
+                    || actor.has_permission(
+                        access_control::SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION,
+                    ) =>
+            {
+                Ok(())
+            }
+            PluginManagementUseCase::ModelProviderSettings => {
+                Err(ControlPlaneError::PermissionDenied("permission_denied").into())
+            }
+        }
+    }
+
+    fn ensure_model_provider_target(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+    ) -> Result<()> {
+        if self.use_case == PluginManagementUseCase::ModelProviderSettings
+            && !is_model_provider_installation(installation)
+        {
+            return Err(
+                ControlPlaneError::PermissionDenied("model_provider_plugin_required").into(),
+            );
+        }
+        Ok(())
+    }
+
+    fn ensure_model_provider_package_kind(&self, kind: RoutedPluginPackageKind) -> Result<()> {
+        if self.use_case == PluginManagementUseCase::ModelProviderSettings
+            && kind != RoutedPluginPackageKind::ModelProviderRuntime
+        {
+            return Err(
+                ControlPlaneError::PermissionDenied("model_provider_plugin_required").into(),
+            );
+        }
+        Ok(())
     }
 }
 

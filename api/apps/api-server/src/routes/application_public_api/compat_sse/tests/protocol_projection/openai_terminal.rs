@@ -104,6 +104,7 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_by_durable_drain() {
     );
     let state = Arc::new(ApiState {
         store: base_state.store.clone(),
+        settings_feature_registry: base_state.settings_feature_registry.clone(),
         infrastructure: base_state.infrastructure.clone(),
         console_surface_registry: base_state.console_surface_registry.clone(),
         file_storage_registry: base_state.file_storage_registry.clone(),

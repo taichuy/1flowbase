@@ -273,7 +273,7 @@ async fn data_source_create_rejects_missing_required_package_config_field() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/data-sources")
+                .uri("/api/console/settings/data-models/data-sources")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -309,7 +309,7 @@ async fn data_source_create_rejects_fields_not_declared_by_package_config_schema
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/data-sources")
+                .uri("/api/console/settings/data-models/data-sources")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -338,7 +338,7 @@ async fn data_source_create_rejects_fields_not_declared_by_package_config_schema
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/data-sources")
+                .uri("/api/console/settings/data-models/data-sources")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -377,7 +377,7 @@ async fn data_source_create_classifies_fields_by_schema_and_encrypts_secrets_at_
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/data-sources")
+                .uri("/api/console/settings/data-models/data-sources")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -418,7 +418,7 @@ async fn data_source_create_classifies_fields_by_schema_and_encrypts_secrets_at_
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/data-sources")
+                .uri("/api/console/settings/data-models/data-sources")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -485,7 +485,9 @@ async fn data_source_create_classifies_fields_by_schema_and_encrypts_secrets_at_
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/data-sources/{instance_id}/validate"))
+                .uri(format!(
+                    "/api/console/settings/data-models/data-sources/{instance_id}/validate"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())
@@ -507,7 +509,9 @@ async fn data_source_create_classifies_fields_by_schema_and_encrypts_secrets_at_
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/data-sources/{instance_id}/validate"))
+                .uri(format!(
+                    "/api/console/settings/data-models/data-sources/{instance_id}/validate"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .body(Body::empty())
@@ -531,7 +535,7 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/data-sources/catalog")
+                .uri("/api/console/settings/data-models/data-sources/catalog")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -551,7 +555,7 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/data-sources")
+                .uri("/api/console/settings/data-models/data-sources")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -607,7 +611,7 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/data-sources")
+                .uri("/api/console/settings/data-models/data-sources")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -656,7 +660,7 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/api/console/data-sources/main/defaults")
+                .uri("/api/console/settings/data-models/data-sources/main/defaults")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -692,7 +696,9 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/console/data-sources/{instance_id}/defaults"))
+                .uri(format!(
+                    "/api/console/settings/data-models/data-sources/{instance_id}/defaults"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -724,7 +730,9 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/data-sources/{instance_id}/validate"))
+                .uri(format!(
+                    "/api/console/settings/data-models/data-sources/{instance_id}/validate"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())
@@ -758,7 +766,7 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/data-sources/{instance_id}/resources/discover"
+                    "/api/console/settings/data-models/data-sources/{instance_id}/resources/discover"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -785,7 +793,9 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/api/console/data-sources/{instance_id}/resources"))
+                .uri(format!(
+                    "/api/console/settings/data-models/data-sources/{instance_id}/resources"
+                ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -810,7 +820,7 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/data-sources/{instance_id}/preview-read"
+                    "/api/console/settings/data-models/data-sources/{instance_id}/preview-read"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -913,7 +923,7 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/data-sources")
+                .uri("/api/console/settings/data-models/data-sources")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -941,7 +951,9 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/data-sources/{instance_id}/validate"))
+                .uri(format!(
+                    "/api/console/settings/data-models/data-sources/{instance_id}/validate"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())
@@ -957,7 +969,7 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/data-sources/{instance_id}/resources/map-to-model"
+                    "/api/console/settings/data-models/data-sources/{instance_id}/resources/map-to-model"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -1013,7 +1025,9 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/api/console/models?data_source_id={instance_id}"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions?data_source_id={instance_id}"
+                ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

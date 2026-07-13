@@ -311,3 +311,4 @@ fn schema_ref_name(schema: &Value) -> Option<String> {
 mod lifecycle;
 mod refresh_and_settings;
 mod request_log_maintenance;
+mod settings_feature;

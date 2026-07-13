@@ -6,12 +6,12 @@ use axum::{
     routing::{get, patch},
     Json, Router,
 };
-use control_plane::ports::{
-    FrontstagePageRepository, RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput,
-};
+use control_plane::model_definition::ModelDefinitionService;
+use control_plane::ports::{RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput};
 use control_plane::role::{
     CreateRoleCommand, DeleteRoleCommand, ReplaceRoleDataPolicyCommand,
-    ReplaceRolePermissionsCommand, RoleService, UpdateRoleCommand,
+    ReplaceRoleFrontstageRoutesCommand, ReplaceRolePermissionsCommand, RoleService,
+    UpdateRoleCommand,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -121,6 +121,13 @@ pub struct RoleDataPolicyResponse {
     pub model_policies: Vec<RoleDataModelPolicyBody>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RoleDataModelOptionResponse {
+    pub id: Uuid,
+    pub code: String,
+    pub title: String,
+}
+
 fn to_role_response(role: domain::RoleTemplate) -> RoleResponse {
     RoleResponse {
         code: role.code,
@@ -140,20 +147,52 @@ fn to_role_response(role: domain::RoleTemplate) -> RoleResponse {
 
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
-        .route("/roles", get(list_roles).post(create_role))
-        .route("/roles/:id", patch(update_role).delete(delete_role))
+        .route("/settings/roles", get(list_roles).post(create_role))
         .route(
-            "/roles/:id/permissions",
+            "/settings/roles/data-model-options",
+            get(list_data_model_options),
+        )
+        .route(
+            "/settings/roles/:id",
+            patch(update_role).delete(delete_role),
+        )
+        .route(
+            "/settings/roles/:id/permissions",
             get(get_role_permissions).put(replace_role_permissions),
         )
         .route(
-            "/roles/:id/frontstage-routes",
+            "/settings/roles/:id/frontstage-routes",
             get(get_role_frontstage_routes).put(replace_role_frontstage_routes),
         )
         .route(
-            "/roles/:id/data-policy",
+            "/settings/roles/:id/data-policy",
             get(get_role_data_policy).put(replace_role_data_policy),
         )
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/roles/data-model-options",
+    responses((status = 200, body = [RoleDataModelOptionResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_data_model_options(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Vec<RoleDataModelOptionResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let models = ModelDefinitionService::new(state.store.clone())
+        .list_role_settings_data_model_options(context.user.id)
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        models
+            .into_iter()
+            .map(|model| RoleDataModelOptionResponse {
+                id: model.id,
+                code: model.code,
+                title: model.title,
+            })
+            .collect(),
+    )))
 }
 
 fn parse_data_policy_scope(value: &str) -> Result<domain::RoleDataPolicyScope, ApiError> {
@@ -242,7 +281,7 @@ fn to_role_data_policy_response(
 
 #[utoipa::path(
     get,
-    path = "/api/console/roles",
+    path = "/api/console/settings/roles",
     responses((status = 200, body = [RoleResponse]), (status = 401, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_roles(
@@ -261,7 +300,7 @@ pub async fn list_roles(
 
 #[utoipa::path(
     post,
-    path = "/api/console/roles",
+    path = "/api/console/settings/roles",
     request_body = CreateRoleBody,
     responses((status = 201, body = RoleResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -302,7 +341,7 @@ pub async fn create_role(
 
 #[utoipa::path(
     patch,
-    path = "/api/console/roles/{id}",
+    path = "/api/console/settings/roles/{id}",
     request_body = UpdateRoleBody,
     params(("id" = String, Path, description = "Role code")),
     responses((status = 204), (status = 403, body = crate::error_response::ErrorBody))
@@ -332,7 +371,7 @@ pub async fn update_role(
 
 #[utoipa::path(
     delete,
-    path = "/api/console/roles/{id}",
+    path = "/api/console/settings/roles/{id}",
     params(("id" = String, Path, description = "Role code")),
     responses((status = 204), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -356,7 +395,7 @@ pub async fn delete_role(
 
 #[utoipa::path(
     get,
-    path = "/api/console/roles/{id}/permissions",
+    path = "/api/console/settings/roles/{id}/permissions",
     params(("id" = String, Path, description = "Role code")),
     responses((status = 200, body = RolePermissionsResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -378,7 +417,7 @@ pub async fn get_role_permissions(
 
 #[utoipa::path(
     put,
-    path = "/api/console/roles/{id}/permissions",
+    path = "/api/console/settings/roles/{id}/permissions",
     request_body = ReplaceRolePermissionsBody,
     params(("id" = String, Path, description = "Role code")),
     responses((status = 204), (status = 403, body = crate::error_response::ErrorBody))
@@ -467,31 +506,14 @@ pub async fn get_role_frontstage_routes(
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RoleFrontstageRoutesResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    access_control::ensure_permission(&context.actor, "role_permission.view.all")
-        .map_err(control_plane::errors::ControlPlaneError::PermissionDenied)?;
-    let workspace_id = context.actor.current_workspace_id;
-    let pages = state.store.list_frontstage_pages(workspace_id).await?;
-    let mut tabs = Vec::new();
-    for page in pages
-        .iter()
-        .filter(|page| page.kind == domain::FrontstagePageKind::Page)
-    {
-        tabs.extend(
-            state
-                .store
-                .list_frontstage_page_tabs(workspace_id, page.id)
-                .await?,
-        );
-    }
-    let rules = state
-        .store
-        .list_frontstage_page_visibility_rules_for_role(workspace_id, &role_code)
+    let view = RoleService::new(state.store.clone())
+        .get_frontstage_routes(context.user.id, &role_code)
         .await?;
     Ok(Json(ApiSuccess::new(RoleFrontstageRoutesResponse {
         role_code,
-        checked_page_ids: rules.iter().filter_map(|rule| rule.page_id).collect(),
-        checked_tab_ids: rules.iter().filter_map(|rule| rule.tab_id).collect(),
-        tree: build_frontstage_route_tree(pages, tabs),
+        checked_page_ids: view.rules.iter().filter_map(|rule| rule.page_id).collect(),
+        checked_tab_ids: view.rules.iter().filter_map(|rule| rule.tab_id).collect(),
+        tree: build_frontstage_route_tree(view.pages, view.tabs),
     })))
 }
 
@@ -503,24 +525,20 @@ pub async fn replace_role_frontstage_routes(
 ) -> Result<StatusCode, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    access_control::ensure_permission(&context.actor, "role_permission.manage.all")
-        .map_err(control_plane::errors::ControlPlaneError::PermissionDenied)?;
-    state
-        .store
-        .replace_frontstage_page_visibility_rules_for_role(
-            context.actor.current_workspace_id,
-            &role_code,
-            &body.page_ids,
-            &body.tab_ids,
-            context.user.id,
-        )
+    RoleService::new(state.store.clone())
+        .replace_frontstage_routes(ReplaceRoleFrontstageRoutesCommand {
+            actor_user_id: context.user.id,
+            role_code,
+            page_ids: body.page_ids,
+            tab_ids: body.tab_ids,
+        })
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(
     get,
-    path = "/api/console/roles/{id}/data-policy",
+    path = "/api/console/settings/roles/{id}/data-policy",
     params(("id" = String, Path, description = "Role code")),
     responses((status = 200, body = RoleDataPolicyResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -539,7 +557,7 @@ pub async fn get_role_data_policy(
 
 #[utoipa::path(
     put,
-    path = "/api/console/roles/{id}/data-policy",
+    path = "/api/console/settings/roles/{id}/data-policy",
     request_body = ReplaceRoleDataPolicyBody,
     params(("id" = String, Path, description = "Role code")),
     responses((status = 200, body = RoleDataPolicyResponse), (status = 403, body = crate::error_response::ErrorBody))

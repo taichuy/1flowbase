@@ -287,6 +287,17 @@ impl MemberRepository for PgControlPlaneStore {
         target_user_id: Uuid,
         role_codes: &[String],
     ) -> Result<()> {
+        let target_is_in_workspace: bool = sqlx::query_scalar(
+            "select exists(select 1 from workspace_memberships where workspace_id = $1 and user_id = $2)",
+        )
+        .bind(workspace_id)
+        .bind(target_user_id)
+        .fetch_one(self.pool())
+        .await?;
+        if !target_is_in_workspace {
+            return Err(ControlPlaneError::InvalidInput("member_scope").into());
+        }
+
         let is_root_target = is_root_user(self.pool(), target_user_id).await?;
         let mut normalized_codes = role_codes
             .iter()

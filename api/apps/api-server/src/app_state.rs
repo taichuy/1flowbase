@@ -16,9 +16,20 @@ use crate::{
     runtime_profile_client::{ApiRuntimeProfilePort, PluginRunnerSystemPort},
 };
 
+pub fn compile_core_settings_feature_registry() -> Result<
+    Arc<access_control::SettingsFeatureRegistry>,
+    access_control::SettingsFeatureRegistryError,
+> {
+    access_control::SettingsFeatureRegistry::compile(
+        access_control::core_settings_feature_registrations(),
+    )
+    .map(Arc::new)
+}
+
 #[derive(Clone)]
 pub struct ApiState {
     pub store: MainDurableStore,
+    pub settings_feature_registry: Arc<access_control::SettingsFeatureRegistry>,
     pub infrastructure: Arc<HostInfrastructureRegistry>,
     pub console_surface_registry: Arc<ConsoleSurfaceRegistry>,
     pub file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,

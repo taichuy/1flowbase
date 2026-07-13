@@ -16,7 +16,7 @@ async fn request_log_maintenance_routes_enforce_csrf_permission_and_openapi_cont
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/api/console/model-providers/request-logs")
+                .uri("/api/console/settings/model-providers/request-logs")
                 .header("cookie", &root_cookie)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -60,7 +60,7 @@ async fn request_log_maintenance_routes_enforce_csrf_permission_and_openapi_cont
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers/request-logs/clear")
+                .uri("/api/console/settings/model-providers/request-logs/clear")
                 .header("cookie", member_cookie)
                 .header("x-csrf-token", member_csrf)
                 .header("content-type", "application/json")
@@ -76,7 +76,7 @@ async fn request_log_maintenance_routes_enforce_csrf_permission_and_openapi_cont
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/api/console/model-providers/request-logs")
+                .uri("/api/console/settings/model-providers/request-logs")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -101,7 +101,7 @@ async fn request_log_maintenance_routes_enforce_csrf_permission_and_openapi_cont
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers/request-logs/clear")
+                .uri("/api/console/settings/model-providers/request-logs/clear")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -121,9 +121,13 @@ async fn request_log_maintenance_routes_enforce_csrf_permission_and_openapi_cont
         .is_none());
 
     let openapi = openapi_payload().await;
-    assert!(openapi["paths"]["/api/console/model-providers/request-logs"]["delete"].is_object());
     assert!(
-        openapi["paths"]["/api/console/model-providers/request-logs/clear"]["post"].is_object()
+        openapi["paths"]["/api/console/settings/model-providers/request-logs"]["delete"]
+            .is_object()
+    );
+    assert!(
+        openapi["paths"]["/api/console/settings/model-providers/request-logs/clear"]["post"]
+            .is_object()
     );
 }
 
@@ -139,7 +143,7 @@ async fn clear_request_log_continuation_is_opaque_tamper_proof_and_workspace_bou
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers/request-logs/clear")
+                .uri("/api/console/settings/model-providers/request-logs/clear")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -157,7 +161,7 @@ async fn clear_request_log_continuation_is_opaque_tamper_proof_and_workspace_bou
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers/request-logs/clear")
+                .uri("/api/console/settings/model-providers/request-logs/clear")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -365,7 +369,7 @@ async fn post_clear(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers/request-logs/clear")
+                .uri("/api/console/settings/model-providers/request-logs/clear")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")

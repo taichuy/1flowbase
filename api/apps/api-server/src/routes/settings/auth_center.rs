@@ -1,16 +1,17 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
-use access_control::ensure_permission;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     routing::{delete, get, post, put},
     Json, Router,
 };
-use control_plane::auth::AuthenticatorRegistry;
-use control_plane::errors::ControlPlaneError;
+use control_plane::auth::settings::{
+    AuthCenterSettingsOverview, AuthCenterSettingsService, CopyAuthCenterAuthenticatorCommand,
+    CreateAuthCenterAuthenticatorCommand, UpdateAuthCenterAuthenticatorCommand,
+};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -18,9 +19,6 @@ use crate::{
     app_state::ApiState, error_response::ApiError, middleware::require_csrf::require_csrf,
     middleware::require_session::require_session, response::ApiSuccess,
 };
-
-const AUTH_CENTER_OVERVIEW_PERMISSION: &str = "user.view.all";
-const AUTH_CENTER_MANAGE_PERMISSION: &str = "user.manage.all";
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct AuthCenterConfigFieldResponse {
@@ -168,61 +166,6 @@ fn auth_center_description(options: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-fn auth_center_default_config_form_schema() -> Value {
-    json!([
-        {
-            "key": "title",
-            "label": "Authenticator title",
-            "type": "string",
-            "required": true
-        },
-        {
-            "key": "description",
-            "label": "Description",
-            "type": "string",
-            "control": "textarea",
-            "read_only": false,
-            "required": false
-        },
-        {
-            "key": "enabled",
-            "label": "Enabled",
-            "type": "boolean",
-            "control": "switch"
-        }
-    ])
-}
-
-fn auth_center_new_authenticator_options(description: Option<String>) -> Value {
-    let mut options = Map::new();
-    if let Some(description) = description {
-        options.insert("description".to_string(), Value::String(description));
-    }
-    options.insert(
-        "config_form_schema".to_string(),
-        auth_center_default_config_form_schema(),
-    );
-    options.insert("extension_config".to_string(), Value::Object(Map::new()));
-    Value::Object(options)
-}
-
-fn upsert_auth_center_description(options: &mut Value, description: Option<String>) {
-    if !options.is_object() {
-        *options = Value::Object(Map::new());
-    }
-    let Some(values) = options.as_object_mut() else {
-        return;
-    };
-    match description {
-        Some(description) => {
-            values.insert("description".to_string(), Value::String(description));
-        }
-        None => {
-            values.remove("description");
-        }
-    }
-}
-
 fn auth_center_config_response_values(
     authenticator: &domain::AuthenticatorRecord,
     description: Option<String>,
@@ -266,99 +209,20 @@ fn to_auth_center_authenticator_response(
     }
 }
 
-fn supported_auth_types() -> Vec<String> {
-    AuthenticatorRegistry::new().supported_auth_types()
-}
-
-fn validate_supported_auth_type(auth_type: &str) -> Result<(), ControlPlaneError> {
-    if supported_auth_types()
-        .iter()
-        .any(|supported| supported == auth_type)
-    {
-        Ok(())
-    } else {
-        Err(ControlPlaneError::InvalidInput("auth_type"))
-    }
-}
-
-fn validate_authenticator_title(title: &str) -> Result<(), ControlPlaneError> {
-    if title.trim().is_empty() {
-        return Err(ControlPlaneError::InvalidInput("title"));
-    }
-    Ok(())
-}
-
-fn validate_reorder_ids(
-    requested_ids: &[Uuid],
-    existing_authenticators: &[domain::AuthenticatorRecord],
-) -> Result<(), ControlPlaneError> {
-    let mut seen = HashSet::new();
-    for id in requested_ids {
-        if !seen.insert(*id) {
-            return Err(ControlPlaneError::InvalidInput(
-                "authenticator_order_duplicate",
-            ));
-        }
-    }
-
-    let existing_ids = existing_authenticators
-        .iter()
-        .map(|authenticator| authenticator.id)
-        .collect::<HashSet<_>>();
-    if requested_ids.iter().any(|id| !existing_ids.contains(id)) {
-        return Err(ControlPlaneError::InvalidInput(
-            "authenticator_order_unknown",
-        ));
-    }
-    if requested_ids.len() != existing_authenticators.len() {
-        return Err(ControlPlaneError::InvalidInput(
-            "authenticator_order_missing",
-        ));
-    }
-
-    Ok(())
-}
-
-async fn next_authenticator_sort_order(state: &Arc<ApiState>) -> Result<i32, ApiError> {
-    let next = state
-        .store
-        .list_authenticators()
-        .await?
-        .into_iter()
-        .map(|authenticator| authenticator.sort_order)
-        .max()
-        .unwrap_or(0)
-        + 10;
-    Ok(next)
-}
-
-async fn auth_center_overview_response(
-    state: &Arc<ApiState>,
-) -> Result<AuthCenterOverviewResponse, ApiError> {
-    let authenticators = state
-        .store
-        .list_authenticators()
-        .await?
+fn auth_center_overview_response(
+    overview: AuthCenterSettingsOverview,
+) -> AuthCenterOverviewResponse {
+    let authenticators = overview
+        .authenticators
         .into_iter()
         .map(to_auth_center_authenticator_response)
         .collect();
 
-    Ok(AuthCenterOverviewResponse {
-        default_authenticator_id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
-        supported_auth_types: supported_auth_types(),
+    AuthCenterOverviewResponse {
+        default_authenticator_id: overview.default_authenticator_id,
+        supported_auth_types: overview.supported_auth_types,
         authenticators,
-    })
-}
-
-async fn require_auth_center_manage(
-    state: &Arc<ApiState>,
-    headers: &HeaderMap,
-) -> Result<(), ApiError> {
-    let context = require_session(state, headers).await?;
-    require_csrf(headers, &context)?;
-    ensure_permission(&context.actor, AUTH_CENTER_MANAGE_PERMISSION)
-        .map_err(ControlPlaneError::PermissionDenied)?;
-    Ok(())
+    }
 }
 
 #[utoipa::path(
@@ -375,12 +239,12 @@ pub async fn get_auth_center_overview(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<AuthCenterOverviewResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_permission(&context.actor, AUTH_CENTER_OVERVIEW_PERMISSION)
-        .map_err(ControlPlaneError::PermissionDenied)?;
-
-    Ok(Json(ApiSuccess::new(
-        auth_center_overview_response(&state).await?,
-    )))
+    let overview = AuthCenterSettingsService::new(state.store.clone())
+        .overview(&context.actor)
+        .await?;
+    Ok(Json(ApiSuccess::new(auth_center_overview_response(
+        overview,
+    ))))
 }
 
 #[utoipa::path(
@@ -406,23 +270,20 @@ pub async fn create_auth_center_authenticator(
     ),
     ApiError,
 > {
-    require_auth_center_manage(&state, &headers).await?;
-    validate_supported_auth_type(&body.auth_type)?;
-    validate_authenticator_title(&body.title)?;
-
-    let authenticator = domain::AuthenticatorRecord {
-        id: Uuid::now_v7(),
-        auth_type: body.auth_type,
-        title: body.title,
-        enabled: body.enabled,
-        is_builtin: false,
-        sort_order: match body.sort_order {
-            Some(sort_order) => sort_order,
-            None => next_authenticator_sort_order(&state).await?,
-        },
-        options: auth_center_new_authenticator_options(body.description),
-    };
-    state.store.create_authenticator(&authenticator).await?;
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let authenticator = AuthCenterSettingsService::new(state.store.clone())
+        .create_authenticator(
+            &context.actor,
+            CreateAuthCenterAuthenticatorCommand {
+                auth_type: body.auth_type,
+                title: body.title,
+                description: body.description,
+                enabled: body.enabled,
+                sort_order: body.sort_order,
+            },
+        )
+        .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -457,28 +318,18 @@ pub async fn copy_auth_center_authenticator(
     ),
     ApiError,
 > {
-    require_auth_center_manage(&state, &headers).await?;
-    validate_authenticator_title(&body.title)?;
-
-    let source = state
-        .store
-        .find_authenticator(id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("authenticator"))?;
-    validate_supported_auth_type(&source.auth_type)?;
-    let authenticator = domain::AuthenticatorRecord {
-        id: Uuid::now_v7(),
-        auth_type: source.auth_type,
-        title: body.title,
-        enabled: false,
-        is_builtin: false,
-        sort_order: match body.sort_order {
-            Some(sort_order) => sort_order,
-            None => next_authenticator_sort_order(&state).await?,
-        },
-        options: source.options,
-    };
-    state.store.create_authenticator(&authenticator).await?;
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let authenticator = AuthCenterSettingsService::new(state.store.clone())
+        .copy_authenticator(
+            &context.actor,
+            CopyAuthCenterAuthenticatorCommand {
+                source_id: id,
+                title: body.title,
+                sort_order: body.sort_order,
+            },
+        )
+        .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -505,8 +356,11 @@ pub async fn delete_auth_center_authenticator(
     Path(id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    require_auth_center_manage(&state, &headers).await?;
-    state.store.delete_authenticator_if_unbound(id).await?;
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    AuthCenterSettingsService::new(state.store.clone())
+        .delete_authenticator(&context.actor, id)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -526,13 +380,14 @@ pub async fn reorder_auth_center_authenticators(
     headers: HeaderMap,
     Json(body): Json<ReorderAuthCenterAuthenticatorsBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterOverviewResponse>>, ApiError> {
-    require_auth_center_manage(&state, &headers).await?;
-    let existing_authenticators = state.store.list_authenticators().await?;
-    validate_reorder_ids(&body.ids, &existing_authenticators)?;
-    state.store.update_authenticator_order(&body.ids).await?;
-    Ok(Json(ApiSuccess::new(
-        auth_center_overview_response(&state).await?,
-    )))
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let overview = AuthCenterSettingsService::new(state.store.clone())
+        .reorder_authenticators(&context.actor, &body.ids)
+        .await?;
+    Ok(Json(ApiSuccess::new(auth_center_overview_response(
+        overview,
+    ))))
 }
 
 #[utoipa::path(
@@ -552,18 +407,8 @@ pub async fn enable_auth_center_authenticator(
 ) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    ensure_permission(&context.actor, AUTH_CENTER_MANAGE_PERMISSION)
-        .map_err(ControlPlaneError::PermissionDenied)?;
-
-    let mut authenticator = state
-        .store
-        .find_authenticator(id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("authenticator"))?;
-    authenticator.enabled = true;
-    state
-        .store
-        .update_authenticator_config(&authenticator)
+    let authenticator = AuthCenterSettingsService::new(state.store.clone())
+        .enable_authenticator(&context.actor, id)
         .await?;
 
     Ok(Json(ApiSuccess::new(
@@ -591,26 +436,16 @@ pub async fn update_auth_center_authenticator_config(
 ) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    ensure_permission(&context.actor, AUTH_CENTER_MANAGE_PERMISSION)
-        .map_err(ControlPlaneError::PermissionDenied)?;
-
-    if body.title.trim().is_empty() {
-        return Err(ControlPlaneError::InvalidInput("title").into());
-    }
-
-    let mut authenticator = state
-        .store
-        .find_authenticator(id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("authenticator"))?;
-    authenticator.title = body.title;
-    authenticator.enabled = body.enabled;
-    if let Some(description) = body.description {
-        upsert_auth_center_description(&mut authenticator.options, description);
-    }
-    state
-        .store
-        .update_authenticator_config(&authenticator)
+    let authenticator = AuthCenterSettingsService::new(state.store.clone())
+        .update_authenticator(
+            &context.actor,
+            UpdateAuthCenterAuthenticatorCommand {
+                authenticator_id: id,
+                title: body.title,
+                enabled: body.enabled,
+                description: body.description,
+            },
+        )
         .await?;
 
     Ok(Json(ApiSuccess::new(

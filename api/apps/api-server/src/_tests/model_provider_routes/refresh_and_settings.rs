@@ -11,7 +11,7 @@ async fn model_provider_routes_refresh_models_keeps_enabled_model_ids_unchanged(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -45,7 +45,7 @@ async fn model_provider_routes_refresh_models_keeps_enabled_model_ids_unchanged(
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/model-providers/{instance_id}/models/refresh"
+                    "/api/console/settings/model-providers/instances/{instance_id}/models/refresh"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -70,7 +70,7 @@ async fn model_provider_routes_refresh_models_keeps_enabled_model_ids_unchanged(
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -103,18 +103,18 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
 
     let openapi = openapi_payload().await;
     let paths = openapi["paths"].as_object().unwrap();
-    assert!(
-        paths.contains_key("/api/console/model-providers/providers/{provider_code}/main-instance")
-    );
+    assert!(paths.contains_key(
+        "/api/console/settings/model-providers/providers/{provider_code}/main-instance"
+    ));
     assert!(!paths.contains_key("/api/console/model-providers/providers/{provider_code}/routing"));
     assert!(
-        paths["/api/console/model-providers/providers/{provider_code}/main-instance"]
+        paths["/api/console/settings/model-providers/providers/{provider_code}/main-instance"]
             .get("get")
             .is_some()
     );
     assert!(
-        paths["/api/console/model-providers/providers/{provider_code}/main-instance"]["get"]
-            ["responses"]
+        paths["/api/console/settings/model-providers/providers/{provider_code}/main-instance"]
+            ["get"]["responses"]
             .get("404")
             .is_some()
     );
@@ -122,8 +122,8 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .get("/api/console/model-providers/{id}/balance")
         .and_then(|path| path.get("get"))
         .is_some());
-    let main_instance_operation =
-        &paths["/api/console/model-providers/providers/{provider_code}/main-instance"]["put"];
+    let main_instance_operation = &paths
+        ["/api/console/settings/model-providers/providers/{provider_code}/main-instance"]["put"];
     assert!(main_instance_operation["responses"].get("404").is_some());
     let request_schema_name = main_instance_operation["requestBody"]["content"]["application/json"]
         ["schema"]["$ref"]
@@ -216,7 +216,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/model-providers/providers/fixture_provider/main-instance")
+                .uri("/api/console/settings/model-providers/providers/fixture_provider/main-instance")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -244,7 +244,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/model-providers/providers/fixture_provider/main-instance")
+                .uri("/api/console/settings/model-providers/providers/fixture_provider/main-instance")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -286,7 +286,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -320,7 +320,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -362,7 +362,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -397,7 +397,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/model-providers/providers/fixture_provider/main-instance")
+                .uri("/api/console/settings/model-providers/providers/fixture_provider/main-instance")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -560,7 +560,7 @@ async fn model_provider_request_logs_require_authentication() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/console/model-providers/request-logs")
+                .uri("/api/console/settings/model-providers/request-logs")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -577,7 +577,7 @@ async fn model_provider_request_logs_return_attempt_page_shape() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/console/model-providers/request-logs?page=1&page_size=20&zero_output_only=true")
+                .uri("/api/console/settings/model-providers/request-logs?page=1&page_size=20&zero_output_only=true")
                 .header("cookie", cookie)
                 .body(Body::empty())
                 .unwrap(),

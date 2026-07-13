@@ -481,7 +481,7 @@ async fn create_member(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -524,7 +524,7 @@ async fn replace_member_roles(
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/members/{member_id}/roles"))
+                .uri(format!("/api/console/settings/members/{member_id}/roles"))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -567,7 +567,7 @@ async fn create_model_with_status(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -599,7 +599,9 @@ async fn update_model_status(
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/console/models/{model_id}"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -710,7 +712,9 @@ async fn create_text_field(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -745,7 +749,9 @@ async fn create_text_field_with_external_key(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -780,7 +786,9 @@ async fn create_enum_field(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")

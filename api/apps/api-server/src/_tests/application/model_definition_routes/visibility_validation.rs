@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn model_definition_routes_require_state_model_visibility() {
+async fn model_definition_routes_require_data_models_feature() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -10,7 +10,7 @@ async fn model_definition_routes_require_state_model_visibility() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -40,7 +40,7 @@ async fn model_definition_routes_require_state_model_visibility() {
         &root_cookie,
         &root_csrf,
         "model_reader",
-        &["state_model.view.own"],
+        &["settings_feature.access.system.data-models"],
     )
     .await;
 
@@ -74,7 +74,7 @@ async fn model_definition_routes_require_state_model_visibility() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/models/{model_id}"))
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &reader_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -83,13 +83,24 @@ async fn model_definition_routes_require_state_model_visibility() {
         .unwrap();
 
     assert_eq!(allowed_response.status(), StatusCode::OK);
+    let allowed_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(allowed_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(allowed_payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|model| model["id"].as_str() == Some(&model_id)));
 
     let (blocked_cookie, _) = login_and_capture_cookie(&app, "blocked-1", "temp-pass").await;
     let blocked_response = app
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/models/{model_id}"))
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &blocked_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -111,7 +122,7 @@ async fn create_model_route_accepts_workspace_and_system_scope_kinds_only() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -135,7 +146,7 @@ async fn create_model_route_accepts_workspace_and_system_scope_kinds_only() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -166,7 +177,7 @@ async fn create_model_route_accepts_workspace_and_system_scope_kinds_only() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -196,7 +207,7 @@ async fn create_model_route_rejects_field_code_that_sanitizes_to_platform_column
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -225,7 +236,9 @@ async fn create_model_route_rejects_field_code_that_sanitizes_to_platform_column
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")

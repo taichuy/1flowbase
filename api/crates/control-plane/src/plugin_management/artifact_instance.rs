@@ -46,13 +46,13 @@ where
         command: RefreshCurrentNodePluginArtifactCommand,
     ) -> Result<domain::PluginArtifactInstanceRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
         let installation = self
             .repository
             .get_installation(command.installation_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        self.ensure_model_provider_target(&installation)?;
 
         self.refresh_current_node_artifact_snapshot(&installation)
             .await
@@ -63,13 +63,13 @@ where
         command: InstallCurrentNodePluginArtifactCommand,
     ) -> Result<domain::PluginArtifactInstanceRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
         let installation = self
             .repository
             .get_installation(command.installation_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        self.ensure_model_provider_target(&installation)?;
 
         let package_bytes = self
             .package_bytes_for_current_node_install(&installation)

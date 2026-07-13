@@ -12,7 +12,7 @@ async fn runtime_model_routes_reject_role_data_policy_disabled_actions() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")

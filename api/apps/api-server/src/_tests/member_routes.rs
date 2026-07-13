@@ -18,7 +18,7 @@ async fn create_member(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -61,7 +61,7 @@ async fn member_routes_create_disable_and_reset_password() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -82,7 +82,7 @@ async fn member_routes_create_disable_and_reset_password() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/members/{member_id}/roles"))
+                .uri(format!("/api/console/settings/members/{member_id}/roles"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -105,7 +105,7 @@ async fn member_routes_create_disable_and_reset_password() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{member_id}/actions/reset-password"
+                    "/api/console/settings/members/{member_id}/reset-password"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -128,7 +128,7 @@ async fn member_routes_create_disable_and_reset_password() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/members/{member_id}/actions/disable"))
+                .uri(format!("/api/console/settings/members/{member_id}/disable"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())
@@ -170,7 +170,7 @@ async fn root_member_profile_and_roles_can_be_updated_without_removing_root_role
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -196,7 +196,7 @@ async fn root_member_profile_and_roles_can_be_updated_without_removing_root_role
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/console/members/{root_user_id}"))
+                .uri(format!("/api/console/settings/members/{root_user_id}"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -237,7 +237,9 @@ async fn root_member_profile_and_roles_can_be_updated_without_removing_root_role
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/members/{root_user_id}/roles"))
+                .uri(format!(
+                    "/api/console/settings/members/{root_user_id}/roles"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -259,7 +261,9 @@ async fn root_member_profile_and_roles_can_be_updated_without_removing_root_role
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/members/{root_user_id}/roles"))
+                .uri(format!(
+                    "/api/console/settings/members/{root_user_id}/roles"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -288,7 +292,7 @@ async fn root_member_profile_and_roles_can_be_updated_without_removing_root_role
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -317,7 +321,7 @@ async fn root_member_profile_and_roles_can_be_updated_without_removing_root_role
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{root_user_id}/actions/reset-password"
+                    "/api/console/settings/members/{root_user_id}/reset-password"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -346,7 +350,7 @@ async fn member_creation_uses_workspace_default_member_role() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -372,7 +376,7 @@ async fn member_creation_uses_workspace_default_member_role() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -423,7 +427,7 @@ async fn reset_password_invalidates_member_session() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{member_id}/actions/reset-password"
+                    "/api/console/settings/members/{member_id}/reset-password"
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
@@ -489,7 +493,7 @@ async fn delete_member_physically_removes_identity_records() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/console/members/{member_id}"))
+                .uri(format!("/api/console/settings/members/{member_id}"))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .body(Body::empty())
@@ -505,7 +509,7 @@ async fn delete_member_physically_removes_identity_records() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", &root_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -571,7 +575,7 @@ async fn enable_member_restores_disabled_member_login() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/members/{member_id}/actions/disable"))
+                .uri(format!("/api/console/settings/members/{member_id}/disable"))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .body(Body::empty())
@@ -606,7 +610,7 @@ async fn enable_member_restores_disabled_member_login() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/members/{member_id}/actions/enable"))
+                .uri(format!("/api/console/settings/members/{member_id}/enable"))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .body(Body::empty())
@@ -666,7 +670,7 @@ async fn disable_root_member_is_forbidden() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{root_user_id}/actions/disable"
+                    "/api/console/settings/members/{root_user_id}/disable"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -713,7 +717,7 @@ async fn delete_root_member_is_forbidden() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/console/members/{root_user_id}"))
+                .uri(format!("/api/console/settings/members/{root_user_id}"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())
@@ -741,7 +745,7 @@ async fn delete_current_member_is_forbidden() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/members/{member_id}/roles"))
+                .uri(format!("/api/console/settings/members/{member_id}/roles"))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -764,7 +768,7 @@ async fn delete_current_member_is_forbidden() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/console/members/{member_id}"))
+                .uri(format!("/api/console/settings/members/{member_id}"))
                 .header("cookie", &member_cookie)
                 .header("x-csrf-token", &member_csrf)
                 .body(Body::empty())

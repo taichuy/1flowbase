@@ -233,7 +233,7 @@ async fn plugin_routes_delete_family_removes_instances_and_installed_artifacts()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -314,7 +314,7 @@ async fn plugin_routes_delete_family_removes_instances_and_installed_artifacts()
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

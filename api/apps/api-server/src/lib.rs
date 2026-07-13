@@ -48,7 +48,7 @@ use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 
 use crate::{
-    app_state::ApiState,
+    app_state::{compile_core_settings_feature_registry, ApiState},
     config::{ApiConfig, ApiEnvironment},
     console_surface_registry::ConsoleSurfaceRegistry,
     host_extension_loader::load_host_extensions_at_startup,
@@ -149,6 +149,7 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
         .nest("/api/console", routes::application_api::router())
         .nest("/api/console", routes::application_orchestration::router())
         .nest("/api/console", routes::application_runtime::router())
+        .nest("/api/console", routes::data_models::router())
         .nest("/api/console", routes::docs::router())
         .nest("/api/console", routes::data_sources::router())
         .nest("/api/console", routes::files::router())
@@ -329,9 +330,11 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let trusted_public_keys = config.official_plugin_trusted_public_keys()?;
     let process_started_at = OffsetDateTime::now_utc();
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
+    let settings_feature_registry = compile_core_settings_feature_registry()?;
 
     let state = Arc::new(ApiState {
         store,
+        settings_feature_registry,
         infrastructure,
         console_surface_registry,
         file_storage_registry,

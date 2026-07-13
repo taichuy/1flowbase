@@ -9,7 +9,6 @@ use axum::{
     http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
     response::Response,
 };
-use control_plane::ports::PluginRepository;
 
 use crate::{
     app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
@@ -106,30 +105,15 @@ pub async fn read_provider_icon(
     Path(provider_code): Path<String>,
 ) -> Result<Response, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let assignment = state
-        .store
-        .list_assignments(context.actor.current_workspace_id)
-        .await?
-        .into_iter()
-        .find(|assignment| assignment.provider_code == provider_code)
+    let source = super::service(&state)
+        .provider_icon_source(context.user.id, &provider_code)
+        .await?;
+    let icon_path = installation_icon_path(&source.installed_path, &source.metadata_json)
+        .await
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "plugin_assignment",
+            "plugin_icon",
         ))?;
-    let installation = state
-        .store
-        .get_installation(assignment.installation_id)
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "plugin_installation",
-        ))?;
-    let icon_path =
-        installation_icon_path(&installation.installed_path, &installation.metadata_json)
-            .await
-            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                "plugin_icon",
-            ))?;
-    let resolved_path =
-        resolve_provider_icon_path(&installation.installed_path, &icon_path).await?;
+    let resolved_path = resolve_provider_icon_path(&source.installed_path, &icon_path).await?;
     let content = tokio::fs::read(&resolved_path)
         .await
         .map_err(|error| match error.kind() {

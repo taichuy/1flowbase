@@ -210,6 +210,18 @@ pub trait AuthRepository: Send + Sync {
     async fn append_audit_log(&self, event: &AuditLogRecord) -> anyhow::Result<()>;
 }
 
+#[async_trait]
+pub trait AuthenticatorSettingsRepository: Send + Sync {
+    async fn create_authenticator(&self, authenticator: &AuthenticatorRecord)
+        -> anyhow::Result<()>;
+    async fn update_authenticator_config(
+        &self,
+        authenticator: &AuthenticatorRecord,
+    ) -> anyhow::Result<()>;
+    async fn delete_authenticator_if_unbound(&self, id: Uuid) -> anyhow::Result<()>;
+    async fn update_authenticator_order(&self, ids: &[Uuid]) -> anyhow::Result<()>;
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateApiKeyInput {
     pub id: Uuid,

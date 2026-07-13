@@ -35,6 +35,13 @@ use super::{
 
 pub struct ModelDefinitionService<R> {
     repository: R,
+    use_case: ModelDefinitionUseCase,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ModelDefinitionUseCase {
+    BusinessActions,
+    DataModelSettings,
 }
 
 pub fn runtime_scope_grant_from_record(
@@ -241,7 +248,53 @@ where
     R: ModelDefinitionRepository,
 {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            use_case: ModelDefinitionUseCase::BusinessActions,
+        }
+    }
+
+    pub fn for_data_model_settings(repository: R) -> Self {
+        Self {
+            repository,
+            use_case: ModelDefinitionUseCase::DataModelSettings,
+        }
+    }
+
+    fn ensure_state_model_action(
+        &self,
+        actor: &domain::ActorContext,
+        action: &str,
+    ) -> Result<(), ControlPlaneError> {
+        match self.use_case {
+            ModelDefinitionUseCase::BusinessActions => ensure_state_model_permission(actor, action),
+            ModelDefinitionUseCase::DataModelSettings
+                if actor.is_root
+                    || actor.has_permission(
+                        access_control::SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION,
+                    ) =>
+            {
+                Ok(())
+            }
+            ModelDefinitionUseCase::DataModelSettings => {
+                Err(ControlPlaneError::PermissionDenied("permission_denied"))
+            }
+        }
+    }
+
+    fn ensure_create_model_permission(
+        &self,
+        actor: &domain::ActorContext,
+    ) -> Result<(), ControlPlaneError> {
+        match self.use_case {
+            ModelDefinitionUseCase::BusinessActions => {
+                ensure_permission(actor, "state_model.create.all")
+                    .map_err(ControlPlaneError::PermissionDenied)
+            }
+            ModelDefinitionUseCase::DataModelSettings => {
+                self.ensure_state_model_action(actor, "create")
+            }
+        }
     }
 
     pub async fn load_runtime_scope_grant(
@@ -349,12 +402,30 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "view")?;
+        self.ensure_state_model_action(&actor, "view")?;
         let models = self
             .repository
             .list_model_definitions(actor.current_workspace_id)
             .await?;
         Ok(models)
+    }
+
+    pub async fn list_role_settings_data_model_options(
+        &self,
+        actor_user_id: Uuid,
+    ) -> Result<Vec<domain::ModelDefinitionRecord>> {
+        let actor = self
+            .repository
+            .load_actor_context_for_user(actor_user_id)
+            .await?;
+        if !actor.is_root
+            && !actor.has_permission(access_control::SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
+        {
+            return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+        }
+        self.repository
+            .list_model_definitions(actor.current_workspace_id)
+            .await
     }
 
     pub async fn create_model(
@@ -365,8 +436,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "state_model.create.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_create_model_permission(&actor)?;
         let grant_scope_id = match command.scope_kind {
             DataModelScopeKind::Workspace => actor.current_workspace_id,
             DataModelScopeKind::System => domain::SYSTEM_SCOPE_ID,
@@ -460,7 +530,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "manage")?;
+        self.ensure_state_model_action(&actor, "manage")?;
         let previous_model = self
             .repository
             .get_model_definition(actor.current_workspace_id, command.model_id)
@@ -515,7 +585,7 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "view")?;
+        self.ensure_state_model_action(&actor, "view")?;
 
         let model = self
             .repository
@@ -534,7 +604,7 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "view")?;
+        self.ensure_state_model_action(&actor, "view")?;
         self.repository
             .get_model_definition(actor.current_workspace_id, model_id)
             .await?
@@ -578,7 +648,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "manage")?;
+        self.ensure_state_model_action(&actor, "manage")?;
         let previous_model = self
             .repository
             .get_model_definition(actor.current_workspace_id, command.model_id)
@@ -620,7 +690,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "manage")?;
+        self.ensure_state_model_action(&actor, "manage")?;
         let model = self
             .repository
             .get_model_definition(actor.current_workspace_id, command.model_id)
@@ -678,7 +748,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "manage")?;
+        self.ensure_state_model_action(&actor, "manage")?;
         let model = self
             .repository
             .get_model_definition(actor.current_workspace_id, command.model_id)
@@ -741,7 +811,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "manage")?;
+        self.ensure_state_model_action(&actor, "manage")?;
         let model = self
             .repository
             .get_model_definition(actor.current_workspace_id, command.model_id)
@@ -782,7 +852,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "manage")?;
+        self.ensure_state_model_action(&actor, "manage")?;
 
         let mut seen_model_ids = HashSet::new();
         let mut model_ids = Vec::with_capacity(command.model_ids.len());
@@ -832,7 +902,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "manage")?;
+        self.ensure_state_model_action(&actor, "manage")?;
         let model = self
             .repository
             .get_model_definition(actor.current_workspace_id, command.model_id)
@@ -906,7 +976,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "manage")?;
+        self.ensure_state_model_action(&actor, "manage")?;
         let permission_profile =
             domain::ScopeDataModelPermissionProfile::parse(&command.permission_profile)
                 .ok_or(ControlPlaneError::InvalidInput("permission_profile"))?;
@@ -962,7 +1032,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "manage")?;
+        self.ensure_state_model_action(&actor, "manage")?;
         let model = self
             .repository
             .get_model_definition(actor.current_workspace_id, command.data_model_id)
@@ -1026,7 +1096,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "manage")?;
+        self.ensure_state_model_action(&actor, "manage")?;
         self.repository
             .get_model_definition(actor.current_workspace_id, command.data_model_id)
             .await?
@@ -1071,7 +1141,7 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_state_model_permission(&actor, "view")?;
+        self.ensure_state_model_action(&actor, "view")?;
         let model = self
             .repository
             .get_model_definition(actor.current_workspace_id, model_id)

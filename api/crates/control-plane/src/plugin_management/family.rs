@@ -61,13 +61,13 @@ where
         command: EnablePluginCommand,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
         let installation = self
             .repository
             .get_installation(command.installation_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        self.ensure_model_provider_target(&installation)?;
         if is_host_extension_installation(&installation) {
             return Err(ControlPlaneError::Conflict("plugin_installation_requires_restart").into());
         }
@@ -212,13 +212,13 @@ where
         command: AssignPluginCommand,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
         let installation = self
             .repository
             .get_installation(command.installation_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        self.ensure_model_provider_target(&installation)?;
         if !supports_workspace_assignment(&installation) {
             return Err(ControlPlaneError::Conflict("plugin_assignment_not_supported").into());
         }
@@ -313,17 +313,18 @@ where
         command: SwitchPluginVersionCommand,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
 
         let current = self
             .load_current_family_installation(actor.current_workspace_id, &command.provider_code)
             .await?;
+        self.ensure_model_provider_target(&current)?;
         let target = self
             .repository
             .get_installation(command.target_installation_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        self.ensure_model_provider_target(&target)?;
         if target.provider_code != command.provider_code {
             return Err(ControlPlaneError::InvalidInput("plugin_family_target_mismatch").into());
         }
@@ -347,8 +348,7 @@ where
         command: DeletePluginFamilyCommand,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
 
         let installations = self
             .repository
@@ -359,6 +359,9 @@ where
             .collect::<Vec<_>>();
         if installations.is_empty() {
             return Err(ControlPlaneError::NotFound("plugin_family").into());
+        }
+        for installation in &installations {
+            self.ensure_model_provider_target(installation)?;
         }
 
         let current_installation_id = self
@@ -490,8 +493,7 @@ where
 
     pub async fn list_tasks(&self, actor_user_id: Uuid) -> Result<Vec<domain::PluginTaskRecord>> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.view.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")?;
         self.repository.list_tasks().await
     }
 
@@ -501,12 +503,33 @@ where
         task_id: Uuid,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.view.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
-        self.repository
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")?;
+        let task = self
+            .repository
             .get_task(task_id)
             .await?
-            .ok_or(ControlPlaneError::NotFound("plugin_task").into())
+            .ok_or(ControlPlaneError::NotFound("plugin_task"))?;
+        if self.use_case == PluginManagementUseCase::ModelProviderSettings {
+            let owns_task_scope = match task.workspace_id {
+                Some(workspace_id) => workspace_id == actor.current_workspace_id,
+                None => task.created_by == Some(actor.user_id),
+            };
+            if !actor.is_root && !owns_task_scope {
+                return Err(ControlPlaneError::PermissionDenied("plugin_task_scope").into());
+            }
+            let installation = match task.installation_id {
+                Some(installation_id) => self.repository.get_installation(installation_id).await?,
+                None => self
+                    .repository
+                    .list_installations()
+                    .await?
+                    .into_iter()
+                    .find(|installation| installation.provider_code == task.provider_code),
+            }
+            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+            self.ensure_model_provider_target(&installation)?;
+        }
+        Ok(task)
     }
 
     pub(super) async fn load_current_family_installation(

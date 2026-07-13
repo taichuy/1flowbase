@@ -21,7 +21,7 @@ async fn create_exposed_published_model(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -47,7 +47,9 @@ async fn create_exposed_published_model(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -71,7 +73,9 @@ async fn create_exposed_published_model(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/scope-grants"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -95,7 +99,9 @@ async fn create_exposed_published_model(
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/console/models/{model_id}"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -120,7 +126,7 @@ async fn mcp_interface_capabilities_include_bindable_runtime_data_model_crud_ope
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")

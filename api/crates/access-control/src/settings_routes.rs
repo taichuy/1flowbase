@@ -60,72 +60,8 @@ pub struct SettingsRouteSpec {
     pub api_scopes: &'static [SettingsRouteApiScope],
 }
 
-const USER_VIEW_PERMISSIONS: &[&str] = &["user.view.all"];
-const USER_ALL_PERMISSIONS: &[&str] = &["user.view.all", "user.manage.all"];
-const ROLE_VIEW_PERMISSIONS: &[&str] = &["role_permission.view.all"];
-const ROLE_ALL_PERMISSIONS: &[&str] = &["role_permission.view.all", "role_permission.manage.all"];
 const SYSTEM_RUNTIME_PERMISSIONS: &[&str] = &["system_runtime.view.all"];
-const PLUGIN_VIEW_PERMISSIONS: &[&str] = &["plugin_config.view.all"];
-const PLUGIN_ALL_PERMISSIONS: &[&str] = &["plugin_config.view.all", "plugin_config.configure.all"];
 const API_REFERENCE_PERMISSIONS: &[&str] = &["api_reference.view.all"];
-const APPLICATION_VIEW_PERMISSIONS: &[&str] = &["application.view.all"];
-const FILES_VISIBILITY_PERMISSIONS: &[&str] = &[
-    "file_table.view.all",
-    "file_table.view.own",
-    "file_table.create.all",
-];
-const FILES_ALL_PERMISSIONS: &[&str] = &[
-    "file_storage.view.all",
-    "file_storage.manage.all",
-    "file_table.view.all",
-    "file_table.view.own",
-    "file_table.create.all",
-    "file_table.delete.all",
-    "file_table.delete.own",
-    "file_table.bind.all",
-];
-const STATE_MODEL_VISIBILITY_PERMISSIONS: &[&str] = &[
-    "state_model.view.all",
-    "state_model.view.own",
-    "state_model.manage.all",
-    "state_model.manage.own",
-];
-const DATA_MODEL_ALL_PERMISSIONS: &[&str] = &[
-    "api_reference.view.all",
-    "state_model.view.all",
-    "state_model.view.own",
-    "state_model.create.all",
-    "state_model.edit.all",
-    "state_model.edit.own",
-    "state_model.delete.all",
-    "state_model.delete.own",
-    "state_model.manage.all",
-    "state_model.manage.own",
-    "external_data_source.view.all",
-    "external_data_source.view.own",
-    "external_data_source.create.all",
-    "external_data_source.edit.all",
-    "external_data_source.edit.own",
-    "external_data_source.delete.all",
-    "external_data_source.delete.own",
-    "external_data_source.configure.all",
-    "external_data_source.configure.own",
-    "external_data_source.use.all",
-    "external_data_source.use.own",
-];
-const MODEL_PROVIDER_ALL_PERMISSIONS: &[&str] = &[
-    "state_model.view.all",
-    "state_model.view.own",
-    "state_model.create.all",
-    "state_model.edit.all",
-    "state_model.edit.own",
-    "state_model.delete.all",
-    "state_model.delete.own",
-    "state_model.manage.all",
-    "state_model.manage.own",
-    "plugin_config.view.all",
-    "plugin_config.configure.all",
-];
 const MCP_VISIBILITY_PERMISSIONS: &[&str] =
     &["mcp_management.view.all", "mcp_management.manage.all"];
 const MCP_ALL_PERMISSIONS: &[&str] = &["mcp_management.view.all", "mcp_management.manage.all"];
@@ -144,13 +80,6 @@ const API_KEY_AUTHENTICATION_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRo
     methods: SettingsRouteApiMethods::Any,
 }];
 
-const AUTH_CENTER_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
-    scope_id: "console.settings.auth_center",
-    path: "/api/console/settings/auth-center",
-    path_match: SettingsRouteApiPathMatch::Prefix,
-    methods: SettingsRouteApiMethods::Any,
-}];
-
 const SYSTEM_RUNTIME_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
     scope_id: "console.system",
     path: "/api/console/system/",
@@ -158,122 +87,12 @@ const SYSTEM_RUNTIME_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiSc
     methods: SettingsRouteApiMethods::ReadOnly,
 }];
 
-const HOST_INFRASTRUCTURE_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.settings.host_infrastructure.cache",
-        path: "/api/console/settings/host-infrastructure/cache",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.settings.host_infrastructure.providers",
-        path: "/api/console/settings/host-infrastructure/providers",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-];
-
-const MEMORY_OBSERVATION_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
-    scope_id: "console.settings.host_infrastructure.memory",
-    path: "/api/console/settings/host-infrastructure/memory",
-    path_match: SettingsRouteApiPathMatch::Prefix,
-    methods: SettingsRouteApiMethods::Any,
-}];
-
-const APPLICATIONS_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
-    scope_id: "console.settings.applications",
-    path: "/api/console/settings/applications",
-    path_match: SettingsRouteApiPathMatch::Exact,
-    methods: SettingsRouteApiMethods::ReadOnly,
-}];
-
-const FILES_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.file_storages",
-        path: "/api/console/file-storages",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.file_tables",
-        path: "/api/console/file-tables",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-];
-
-const DATA_MODELS_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.docs.data_models.openapi",
-        path: "/api/console/docs/data-models/",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::ReadOnly,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.data_sources",
-        path: "/api/console/data-sources",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.models",
-        path: "/api/console/models",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-];
-
-const MODEL_PROVIDERS_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.model_providers",
-        path: "/api/console/model-providers",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.plugins",
-        path: "/api/console/plugins",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-];
-
 const MCP_MANAGEMENT_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
     scope_id: "console.mcp",
     path: "/api/console/mcp/",
     path_match: SettingsRouteApiPathMatch::Prefix,
     methods: SettingsRouteApiMethods::Any,
 }];
-
-const MEMBERS_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.members",
-        path: "/api/console/members",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.roles.readonly",
-        path: "/api/console/roles",
-        path_match: SettingsRouteApiPathMatch::Exact,
-        methods: SettingsRouteApiMethods::ReadOnly,
-    },
-];
-
-const ROLES_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.permissions",
-        path: "/api/console/permissions",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.roles",
-        path: "/api/console/roles",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-];
 
 const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
     SettingsRouteSpec {
@@ -299,17 +118,6 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         api_scopes: API_KEY_AUTHENTICATION_API_SCOPES,
     },
     SettingsRouteSpec {
-        route_id: "settings.auth-center",
-        surface_key: "auth-center",
-        path: "/settings/auth-center",
-        label_key: "auto.auth_center",
-        order: 300,
-        visibility_permission_code: "settings_route.visible.settings.auth-center",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(USER_VIEW_PERMISSIONS),
-        implied_permissions: USER_ALL_PERMISSIONS,
-        api_scopes: AUTH_CENTER_API_SCOPES,
-    },
-    SettingsRouteSpec {
         route_id: "settings.system-runtime",
         surface_key: "system-runtime",
         path: "/settings/system-runtime",
@@ -321,80 +129,6 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         api_scopes: SYSTEM_RUNTIME_API_SCOPES,
     },
     SettingsRouteSpec {
-        route_id: "settings.host-infrastructure",
-        surface_key: "host-infrastructure",
-        path: "/settings/host-infrastructure",
-        label_key: "auto.infrastructure",
-        order: 500,
-        visibility_permission_code: "settings_route.visible.settings.host-infrastructure",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(PLUGIN_VIEW_PERMISSIONS),
-        implied_permissions: PLUGIN_ALL_PERMISSIONS,
-        api_scopes: HOST_INFRASTRUCTURE_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.memory-observation",
-        surface_key: "memory-observation",
-        path: "/settings/memory-observation",
-        label_key: "auto.memory_observation",
-        order: 600,
-        visibility_permission_code: "settings_route.visible.settings.memory-observation",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(PLUGIN_VIEW_PERMISSIONS),
-        implied_permissions: PLUGIN_ALL_PERMISSIONS,
-        api_scopes: MEMORY_OBSERVATION_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.applications",
-        surface_key: "applications",
-        path: "/settings/applications",
-        label_key: "auto.application_management",
-        order: 700,
-        visibility_permission_code: "settings_route.visible.settings.applications",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
-            APPLICATION_VIEW_PERMISSIONS,
-        ),
-        implied_permissions: APPLICATION_VIEW_PERMISSIONS,
-        api_scopes: APPLICATIONS_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.files",
-        surface_key: "files",
-        path: "/settings/files",
-        label_key: "auto.file_management",
-        order: 800,
-        visibility_permission_code: "settings_route.visible.settings.files",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
-            FILES_VISIBILITY_PERMISSIONS,
-        ),
-        implied_permissions: FILES_ALL_PERMISSIONS,
-        api_scopes: FILES_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.data-models",
-        surface_key: "data-models",
-        path: "/settings/data-models",
-        label_key: "auto.data_source",
-        order: 900,
-        visibility_permission_code: "settings_route.visible.settings.data-models",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
-            STATE_MODEL_VISIBILITY_PERMISSIONS,
-        ),
-        implied_permissions: DATA_MODEL_ALL_PERMISSIONS,
-        api_scopes: DATA_MODELS_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.model-providers",
-        surface_key: "model-providers",
-        path: "/settings/model-providers",
-        label_key: "auto.model_providers",
-        order: 1000,
-        visibility_permission_code: "settings_route.visible.settings.model-providers",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
-            STATE_MODEL_VISIBILITY_PERMISSIONS,
-        ),
-        implied_permissions: MODEL_PROVIDER_ALL_PERMISSIONS,
-        api_scopes: MODEL_PROVIDERS_API_SCOPES,
-    },
-    SettingsRouteSpec {
         route_id: "settings.mcp-management",
         surface_key: "mcp-management",
         path: "/settings/mcp-management",
@@ -404,33 +138,6 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(MCP_VISIBILITY_PERMISSIONS),
         implied_permissions: MCP_ALL_PERMISSIONS,
         api_scopes: MCP_MANAGEMENT_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.members",
-        surface_key: "members",
-        path: "/settings/members",
-        label_key: "auto.user_management",
-        order: 1200,
-        visibility_permission_code: "settings_route.visible.settings.members",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(USER_VIEW_PERMISSIONS),
-        implied_permissions: &[
-            "user.view.all",
-            "user.manage.all",
-            "role_permission.view.all",
-            "role_permission.manage.all",
-        ],
-        api_scopes: MEMBERS_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.roles",
-        surface_key: "roles",
-        path: "/settings/roles",
-        label_key: "auto.permission_management",
-        order: 1300,
-        visibility_permission_code: "settings_route.visible.settings.roles",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(ROLE_VIEW_PERMISSIONS),
-        implied_permissions: ROLE_ALL_PERMISSIONS,
-        api_scopes: ROLES_API_SCOPES,
     },
 ];
 

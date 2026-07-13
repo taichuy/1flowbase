@@ -365,8 +365,7 @@ where
         locales: RequestedLocales,
     ) -> Result<PluginCatalogView> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.view.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")?;
 
         let assigned_installation_ids = self
             .repository
@@ -440,8 +439,7 @@ where
         locales: RequestedLocales,
     ) -> Result<OfficialPluginCatalogView> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.view.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")?;
 
         let assigned_installation_ids = self
             .repository
@@ -535,8 +533,7 @@ where
         locales: RequestedLocales,
     ) -> Result<PluginFamilyCatalogView> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.view.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")?;
 
         let assignments = self
             .repository

@@ -198,8 +198,15 @@ pub struct DataSourceService<R, H> {
     repository: R,
     runtime: H,
     secret_master_key: String,
+    use_case: DataSourceUseCase,
     node_id: Option<String>,
     install_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DataSourceUseCase {
+    BusinessActions,
+    DataModelSettings,
 }
 
 impl<R, H> DataSourceService<R, H>
@@ -212,8 +219,47 @@ where
             repository,
             runtime,
             secret_master_key: secret_master_key.into(),
+            use_case: DataSourceUseCase::BusinessActions,
             node_id: None,
             install_root: None,
+        }
+    }
+
+    pub fn for_data_model_settings(
+        repository: R,
+        runtime: H,
+        secret_master_key: impl Into<String>,
+    ) -> Self {
+        Self {
+            repository,
+            runtime,
+            secret_master_key: secret_master_key.into(),
+            use_case: DataSourceUseCase::DataModelSettings,
+            node_id: None,
+            install_root: None,
+        }
+    }
+
+    fn ensure_use_case_permission(
+        &self,
+        actor: &domain::ActorContext,
+        action: &str,
+    ) -> Result<(), ControlPlaneError> {
+        match self.use_case {
+            DataSourceUseCase::BusinessActions => {
+                ensure_external_data_source_permission(actor, action)
+            }
+            DataSourceUseCase::DataModelSettings
+                if actor.is_root
+                    || actor.has_permission(
+                        access_control::SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION,
+                    ) =>
+            {
+                Ok(())
+            }
+            DataSourceUseCase::DataModelSettings => {
+                Err(ControlPlaneError::PermissionDenied("permission_denied"))
+            }
         }
     }
 
@@ -256,7 +302,7 @@ where
     ) -> Result<Vec<DataSourceCatalogEntryView>> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
         ensure_workspace_matches(&actor, workspace_id)?;
-        ensure_external_data_source_permission(&actor, "view")?;
+        self.ensure_use_case_permission(&actor, "view")?;
 
         let assigned_installation_ids = self
             .repository
@@ -306,7 +352,7 @@ where
     ) -> Result<Vec<DataSourceInstanceView>> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
         ensure_workspace_matches(&actor, workspace_id)?;
-        ensure_external_data_source_permission(&actor, "view")?;
+        self.ensure_use_case_permission(&actor, "view")?;
 
         Ok(self
             .repository
@@ -327,7 +373,7 @@ where
     ) -> Result<Vec<DataSourceView>> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
         ensure_workspace_matches(&actor, workspace_id)?;
-        ensure_external_data_source_permission(&actor, "view")?;
+        self.ensure_use_case_permission(&actor, "view")?;
 
         let defaults =
             DataSourceRepository::get_main_source_defaults(&self.repository, workspace_id).await?;
@@ -351,7 +397,7 @@ where
     ) -> Result<DataSourceInstanceView> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        ensure_external_data_source_permission(&actor, "configure")?;
+        self.ensure_use_case_permission(&actor, "configure")?;
 
         let installation = self.ready_installation(command.installation_id).await?;
         ensure_installation_assigned(
@@ -441,7 +487,7 @@ where
     ) -> Result<ValidateDataSourceInstanceResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        ensure_external_data_source_permission(&actor, "configure")?;
+        self.ensure_use_case_permission(&actor, "configure")?;
 
         let existing = self
             .repository
@@ -516,7 +562,7 @@ where
     ) -> Result<domain::DataSourceInstanceRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        ensure_external_data_source_permission(&actor, "configure")?;
+        self.ensure_use_case_permission(&actor, "configure")?;
         ensure_data_source_defaults_compatible(command.defaults)?;
 
         let instance = self
@@ -554,7 +600,7 @@ where
     ) -> Result<domain::DataSourceDefaults> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
         ensure_workspace_matches(&actor, workspace_id)?;
-        ensure_external_data_source_permission(&actor, "view")?;
+        self.ensure_use_case_permission(&actor, "view")?;
         DataSourceRepository::get_main_source_defaults(&self.repository, workspace_id).await
     }
 
@@ -564,7 +610,7 @@ where
     ) -> Result<domain::DataSourceDefaults> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        ensure_external_data_source_permission(&actor, "configure")?;
+        self.ensure_use_case_permission(&actor, "configure")?;
         ensure_data_source_defaults_compatible(command.defaults)?;
 
         let defaults = self
@@ -602,7 +648,7 @@ where
     ) -> Result<DataSourceResourcesView> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
         ensure_workspace_matches(&actor, workspace_id)?;
-        ensure_external_data_source_permission(&actor, "view")?;
+        self.ensure_use_case_permission(&actor, "view")?;
 
         let instance = self
             .repository
@@ -638,7 +684,7 @@ where
     ) -> Result<DataSourceResourcesView> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        ensure_external_data_source_permission(&actor, "configure")?;
+        self.ensure_use_case_permission(&actor, "configure")?;
 
         let instance = self
             .repository
@@ -705,7 +751,7 @@ where
     ) -> Result<DataSourceInstanceView> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        ensure_external_data_source_permission(&actor, "configure")?;
+        self.ensure_use_case_permission(&actor, "configure")?;
 
         let existing = self
             .repository
@@ -762,7 +808,7 @@ where
     ) -> Result<MapDataSourceResourceToModelResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        ensure_external_data_source_permission(&actor, "configure")?;
+        self.ensure_use_case_permission(&actor, "configure")?;
 
         let instance = self
             .repository
@@ -907,7 +953,7 @@ where
     ) -> Result<PreviewDataSourceReadResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        ensure_external_data_source_permission(&actor, "configure")?;
+        self.ensure_use_case_permission(&actor, "configure")?;
 
         let instance = self
             .repository

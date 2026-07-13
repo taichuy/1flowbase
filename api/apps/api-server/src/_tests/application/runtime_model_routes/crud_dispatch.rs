@@ -338,7 +338,7 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -622,7 +622,7 @@ async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unava
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/console/models")
+                    .uri("/api/console/settings/data-models/model-definitions")
                     .header("cookie", &cookie)
                     .header("x-csrf-token", &csrf)
                     .header("content-type", "application/json")

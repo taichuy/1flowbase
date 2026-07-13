@@ -32,7 +32,7 @@ async fn create_member(app: &axum::Router, cookie: &str, csrf: &str, account: &s
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -68,14 +68,14 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
     let paths = openapi_paths().await;
 
     for route in [
-        "/api/console/models/{id}",
+        "/api/console/settings/data-models/model-definitions/{id}",
         "/api/console/models/agent-flow-options",
-        "/api/console/models/{id}/fields",
-        "/api/console/models/{id}/advisor-findings",
-        "/api/console/models/{id}/scope-grants",
-        "/api/console/models/{id}/scope-grants/{grant_id}",
-        "/api/console/docs/data-models/{model_id}/openapi.json",
-        "/api/console/model-providers/catalog",
+        "/api/console/settings/data-models/model-definitions/{id}/fields",
+        "/api/console/settings/data-models/model-definitions/{id}/advisor-findings",
+        "/api/console/settings/data-models/model-definitions/{id}/scope-grants",
+        "/api/console/settings/data-models/model-definitions/{id}/scope-grants/{grant_id}",
+        "/api/console/settings/data-models/model-definitions/{model_id}/openapi.json",
+        "/api/console/settings/model-providers/catalog",
         "/api/console/model-providers/options",
         "/api/console/system/runtime-profile",
         "/api/console/user-api-keys",
@@ -94,7 +94,7 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
         "/api/console/session/actions/revoke-all",
         "/api/console/me/actions/change-password",
         "/api/console/data-sources/{data_source_id}/secret/rotate",
-        "/api/console/data-sources/{data_source_id}/resources/map-to-model",
+        "/api/console/settings/data-models/data-sources/{data_source_id}/resources/map-to-model",
         "/api/console/applications/{id}/orchestration/debug-artifacts/{artifact_id}",
         "/v1/messages/count_tokens",
     ] {
@@ -167,17 +167,17 @@ async fn openapi_contains_advisor_and_dynamic_data_model_doc_schemas() {
     }
 
     assert_eq!(
-        payload["paths"]["/api/console/models/{id}/advisor-findings"]["get"]["responses"]["200"]
-            ["content"]["application/json"]["schema"]["items"]["$ref"]
+        payload["paths"]
+            ["/api/console/settings/data-models/model-definitions/{id}/advisor-findings"]["get"]
+            ["responses"]["200"]["content"]["application/json"]["schema"]["items"]["$ref"]
             .as_str(),
         Some("#/components/schemas/DataModelAdvisorFindingResponse")
     );
-    assert!(
-        payload["paths"]["/api/console/docs/data-models/{model_id}/openapi.json"]["get"]
-            ["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
-            .as_str()
-            .is_some()
-    );
+    assert!(payload["paths"]
+        ["/api/console/settings/data-models/model-definitions/{model_id}/openapi.json"]["get"]
+        ["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+        .as_str()
+        .is_some());
 }
 
 #[tokio::test]
@@ -185,9 +185,18 @@ async fn openapi_documents_model_mutation_bad_request_responses() {
     let paths = openapi_paths().await;
 
     for (route, method) in [
-        ("/api/console/models", "post"),
-        ("/api/console/models/{id}/fields", "post"),
-        ("/api/console/models/{id}/fields/{field_id}", "patch"),
+        (
+            "/api/console/settings/data-models/model-definitions",
+            "post",
+        ),
+        (
+            "/api/console/settings/data-models/model-definitions/{id}/fields",
+            "post",
+        ),
+        (
+            "/api/console/settings/data-models/model-definitions/{id}/fields/{field_id}",
+            "patch",
+        ),
     ] {
         assert_eq!(
             paths[route][method]["responses"]["400"]["content"]["application/json"]["schema"]
@@ -238,9 +247,9 @@ async fn openapi_contains_file_management_routes() {
     let paths = openapi_paths().await;
 
     for route in [
-        "/api/console/file-storages",
-        "/api/console/file-tables",
-        "/api/console/file-tables/{id}/binding",
+        "/api/console/settings/files/storages",
+        "/api/console/settings/files/tables",
+        "/api/console/settings/files/tables/{id}/binding",
         "/api/console/files/upload",
         "/api/console/files/{file_table_id}/records/{record_id}/content",
     ] {
@@ -461,8 +470,8 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
     let legacy_member_id = create_member(&app, &cookie, &csrf, "legacy-member").await;
 
     for route in [
-        "/api/console/members/{id}/disable",
-        "/api/console/members/{id}/reset-password",
+        "/api/console/settings/members/{id}/disable",
+        "/api/console/settings/members/{id}/reset-password",
     ] {
         assert!(
             !paths.contains_key(route),
@@ -473,7 +482,7 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
     let member_mutation_paths = paths
         .keys()
         .filter(|route| {
-            route.starts_with("/api/console/members/{id}/")
+            route.starts_with("/api/console/settings/members/{id}/")
                 && (route.contains("disable") || route.contains("reset-password"))
         })
         .cloned()
@@ -481,8 +490,8 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
     assert_eq!(
         member_mutation_paths,
         vec![
-            "/api/console/members/{id}/actions/disable".to_string(),
-            "/api/console/members/{id}/actions/reset-password".to_string(),
+            "/api/console/settings/members/{id}/disable".to_string(),
+            "/api/console/settings/members/{id}/reset-password".to_string(),
         ]
     );
 
@@ -492,7 +501,7 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{action_member_id}/actions/reset-password"
+                    "/api/console/settings/members/{action_member_id}/reset-password"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -515,7 +524,7 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{action_member_id}/actions/disable"
+                    "/api/console/settings/members/{action_member_id}/disable"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -532,7 +541,7 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{legacy_member_id}/reset-password"
+                    "/api/console/settings/members/{legacy_member_id}/reset-password"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -553,7 +562,9 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/members/{legacy_member_id}/disable"))
+                .uri(format!(
+                    "/api/console/settings/members/{legacy_member_id}/disable"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())

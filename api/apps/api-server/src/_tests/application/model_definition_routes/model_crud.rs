@@ -12,7 +12,7 @@ async fn create_model(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -45,7 +45,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -91,7 +91,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/models?data_source_id=main")
+                .uri("/api/console/settings/data-models/model-definitions?data_source_id=main")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -173,7 +173,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
             Request::builder()
                 .method("DELETE")
                 .uri(format!(
-                    "/api/console/models/{runtime_logs_model_id}?confirmed=true"
+                    "/api/console/settings/data-models/model-definitions/{runtime_logs_model_id}?confirmed=true"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -199,7 +199,9 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -331,7 +333,9 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/console/models/{model_id}"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -370,7 +374,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/console/models/{model_id}/fields/{field_id}"))
+                .uri(format!("/api/console/settings/data-models/model-definitions/{model_id}/fields/{field_id}"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -428,7 +432,9 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -462,7 +468,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
             Request::builder()
                 .method("DELETE")
                 .uri(format!(
-                    "/api/console/models/{model_id}/fields/{second_field_id}?confirmed=true"
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields/{second_field_id}?confirmed=true"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -532,7 +538,7 @@ async fn model_definition_routes_filter_models_by_title_code_or_table_id() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/models?data_source_id=main&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer%22%7D%7D")
+                .uri("/api/console/settings/data-models/model-definitions?data_source_id=main&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer%22%7D%7D")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -569,7 +575,7 @@ async fn model_definition_routes_batch_delete_models_from_action_endpoint() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models:batchDelete")
+                .uri("/api/console/settings/data-models/model-definitions:batchDelete")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -592,7 +598,7 @@ async fn model_definition_routes_batch_delete_models_from_action_endpoint() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models:batchDelete")
+                .uri("/api/console/settings/data-models/model-definitions:batchDelete")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -620,7 +626,7 @@ async fn model_definition_routes_batch_delete_models_from_action_endpoint() {
     let list_response = app
         .oneshot(
             Request::builder()
-                .uri("/api/console/models?data_source_id=main&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22orders%22%7D%7D")
+                .uri("/api/console/settings/data-models/model-definitions?data_source_id=main&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22orders%22%7D%7D")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -646,7 +652,7 @@ async fn ac_005_generic_model_route_rejects_external_mapping_fields() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -673,7 +679,7 @@ async fn ac_005_generic_model_route_rejects_external_mapping_fields() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -703,7 +709,9 @@ async fn ac_005_generic_model_route_rejects_external_mapping_fields() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")

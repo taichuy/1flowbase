@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use domain::ActorContext;
 use serde::Serialize;
 
-use crate::settings_route_specs;
+use crate::{core_settings_feature_registrations, settings_route_specs};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -183,6 +183,31 @@ pub fn builtin_console_navigation() -> ConsoleNavigation {
             binding_id: format!("{}.access", spec.route_id),
             route_id: spec.route_id.to_string(),
             permission_codes: vec![spec.visibility_permission_code.to_string()],
+            requirement: ConsolePermissionRequirement::AnyPermission,
+        });
+    }
+
+    for registration in core_settings_feature_registrations() {
+        let permission_code = registration.permission_code();
+        let surface = registration.console_surface;
+        route_definitions.push(ConsoleRouteDefinition {
+            route_id: surface.route_id.clone(),
+            surface_key: surface.surface_key,
+            path: surface.path,
+            surface_kind: ConsoleSurfaceKind::System,
+        });
+        navigation_items.push(ConsoleNavigationItem {
+            item_id: surface.route_id.clone(),
+            route_id: surface.route_id.clone(),
+            parent_item_id: Some("settings".to_string()),
+            label_key: surface.label_key,
+            navigation_slot: ConsoleNavigationSlot::Settings,
+            order: surface.order,
+        });
+        permission_bindings.push(ConsolePermissionBinding {
+            binding_id: format!("{}.access", surface.route_id),
+            route_id: surface.route_id,
+            permission_codes: vec![permission_code],
             requirement: ConsolePermissionRequirement::AnyPermission,
         });
     }

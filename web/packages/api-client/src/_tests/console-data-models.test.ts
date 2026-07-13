@@ -48,7 +48,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/source-1/defaults',
+      path: '/api/console/settings/data-models/data-sources/source-1/defaults',
       method: 'PATCH',
       csrfToken: 'csrf-123'
     });
@@ -60,7 +60,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/main/defaults',
+      path: '/api/console/settings/data-models/data-sources/main/defaults',
       method: 'PATCH',
       csrfToken: 'csrf-123'
     });
@@ -68,10 +68,10 @@ describe('console-data-models client', () => {
 
   test('AC-001/002 reads one data source list and the assigned extension catalog', async () => {
     await expect(fetchConsoleDataSources()).resolves.toMatchObject({
-      path: '/api/console/data-sources'
+      path: '/api/console/settings/data-models/data-sources'
     });
     await expect(fetchConsoleDataSourceCatalog()).resolves.toMatchObject({
-      path: '/api/console/data-sources/catalog'
+      path: '/api/console/settings/data-models/data-sources/catalog'
     });
   });
 
@@ -88,23 +88,23 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources',
+      path: '/api/console/settings/data-models/data-sources',
       method: 'POST',
       csrfToken: 'csrf-123'
     });
     await expect(
       validateConsoleDataSource('source-1', 'csrf-123')
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/source-1/validate',
+      path: '/api/console/settings/data-models/data-sources/source-1/validate',
       method: 'POST'
     });
     await expect(fetchConsoleDataSourceResources('source-1')).resolves.toMatchObject({
-      path: '/api/console/data-sources/source-1/resources'
+      path: '/api/console/settings/data-models/data-sources/source-1/resources'
     });
     await expect(
       discoverConsoleDataSourceResources('source-1', 'csrf-123')
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/source-1/resources/discover',
+      path: '/api/console/settings/data-models/data-sources/source-1/resources/discover',
       method: 'POST'
     });
     await expect(
@@ -114,7 +114,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/source-1/preview-read',
+      path: '/api/console/settings/data-models/data-sources/source-1/preview-read',
       method: 'POST'
     });
     await expect(
@@ -124,7 +124,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/source-1/resources/map-to-model',
+      path: '/api/console/settings/data-models/data-sources/source-1/resources/map-to-model',
       method: 'POST',
       body: { resource_key: 'contacts' }
     });
@@ -139,7 +139,7 @@ describe('console-data-models client', () => {
           filter: { code: { $includes: 'customer profile' } }
         }),
       expected: {
-        path: '/api/console/models?data_source_id=main&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer+profile%22%7D%7D'
+        path: '/api/console/settings/data-models/model-definitions?data_source_id=main&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer+profile%22%7D%7D'
       }
     },
     {
@@ -165,7 +165,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/models',
+      path: '/api/console/settings/data-models/model-definitions',
       method: 'POST',
       body: {
         scope_kind: 'workspace',
@@ -185,7 +185,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/models/model-1',
+      path: '/api/console/settings/data-models/model-definitions/model-1',
       method: 'PATCH',
       body: {
         status: 'published'
@@ -198,7 +198,7 @@ describe('console-data-models client', () => {
     await expect(
       deleteConsoleDataModel('model-1', 'csrf-123')
     ).resolves.toMatchObject({
-      path: '/api/console/models/model-1?confirmed=true',
+      path: '/api/console/settings/data-models/model-definitions/model-1?confirmed=true',
       method: 'DELETE',
       csrfToken: 'csrf-123'
     });
@@ -214,7 +214,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/models:batchDelete',
+      path: '/api/console/settings/data-models/model-definitions:batchDelete',
       method: 'POST',
       body: {
         filterByTk: ['model-1', 'model-2'],
@@ -244,7 +244,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/models/model-1/fields',
+      path: '/api/console/settings/data-models/model-definitions/model-1/fields',
       method: 'POST',
       body: expect.objectContaining({
         description: 'Primary email address'
@@ -269,7 +269,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/models/model-1/fields/field-1',
+      path: '/api/console/settings/data-models/model-definitions/model-1/fields/field-1',
       method: 'PATCH',
       body: expect.objectContaining({
         description: null
@@ -280,7 +280,7 @@ describe('console-data-models client', () => {
     await expect(
       deleteConsoleDataModelField('model-1', 'field-1', 'csrf-123')
     ).resolves.toMatchObject({
-      path: '/api/console/models/model-1/fields/field-1?confirmed=true',
+      path: '/api/console/settings/data-models/model-definitions/model-1/fields/field-1?confirmed=true',
       method: 'DELETE',
       csrfToken: 'csrf-123'
     });
@@ -290,7 +290,7 @@ describe('console-data-models client', () => {
     await expect(
       fetchConsoleDataModelScopeGrants('model-1')
     ).resolves.toMatchObject({
-      path: '/api/console/models/model-1/scope-grants'
+      path: '/api/console/settings/data-models/model-definitions/model-1/scope-grants'
     });
 
     await expect(
@@ -306,7 +306,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/models/model-1/scope-grants',
+      path: '/api/console/settings/data-models/model-definitions/model-1/scope-grants',
       method: 'POST',
       csrfToken: 'csrf-123'
     });
@@ -323,7 +323,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/models/model-1/scope-grants/grant-1',
+      path: '/api/console/settings/data-models/model-definitions/model-1/scope-grants/grant-1',
       method: 'PATCH',
       csrfToken: 'csrf-123'
     });
@@ -333,7 +333,7 @@ describe('console-data-models client', () => {
     await expect(
       fetchConsoleDataModelAdvisorFindings('model-1')
     ).resolves.toMatchObject({
-      path: '/api/console/models/model-1/advisor-findings'
+      path: '/api/console/settings/data-models/model-definitions/model-1/advisor-findings'
     });
 
     await expect(
@@ -345,7 +345,7 @@ describe('console-data-models client', () => {
     await expect(
       fetchConsoleDataModelOpenApiDocument('model-1')
     ).resolves.toMatchObject({
-      path: '/api/console/docs/data-models/model-1/openapi.json',
+      path: '/api/console/settings/data-models/model-definitions/model-1/openapi.json',
       unwrapSuccess: false
     });
   });

@@ -3,14 +3,14 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, patch, post},
+    routing::get,
     Json, Router,
 };
 use control_plane::model_definition::{
     AddModelFieldCommand, BatchDeleteModelDefinitionsCommand, CreateModelDefinitionCommand,
     CreateScopeDataModelGrantCommand, DeleteModelDefinitionCommand, DeleteModelFieldCommand,
-    DeleteScopeDataModelGrantCommand, ModelDefinitionService, UpdateModelDefinitionCommand,
-    UpdateModelDefinitionStatusCommand, UpdateModelFieldCommand, UpdateScopeDataModelGrantCommand,
+    ModelDefinitionService, UpdateModelDefinitionCommand, UpdateModelDefinitionStatusCommand,
+    UpdateModelFieldCommand, UpdateScopeDataModelGrantCommand,
 };
 use control_plane::resource_crud::{
     parse_resource_filter, ResourceBatchSelection, ResourceCrudDescriptor,
@@ -257,28 +257,7 @@ pub struct DataModelAdvisorFindingResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/models", get(list_models).post(create_model))
-        .route("/models:batchDelete", post(batch_delete_models))
-        .route("/models/agent-flow-options", get(list_agent_flow_options))
-        .route(
-            "/models/:id",
-            get(get_model).patch(update_model).delete(delete_model),
-        )
-        .route("/models/:id/advisor-findings", get(get_advisor_findings))
-        .route("/models/:id/fields", post(create_field))
-        .route(
-            "/models/:id/fields/:field_id",
-            patch(update_field).delete(delete_field),
-        )
-        .route(
-            "/models/:id/scope-grants",
-            get(list_scope_grants).post(create_scope_grant),
-        )
-        .route(
-            "/models/:id/scope-grants/:grant_id",
-            patch(update_scope_grant).delete(delete_scope_grant),
-        )
+    Router::new().route("/models/agent-flow-options", get(list_agent_flow_options))
 }
 
 fn empty_json_object() -> serde_json::Value {
@@ -522,7 +501,7 @@ fn parse_field_kind(raw: &str) -> Result<domain::ModelFieldKind, ApiError> {
 fn mutation_service(
     state: &ApiState,
 ) -> ModelDefinitionMutationService<MainDurableStore, ApiRuntimeRegistrySync> {
-    ModelDefinitionMutationService::new(
+    ModelDefinitionMutationService::for_data_model_settings(
         state.store.clone(),
         ApiRuntimeRegistrySync::new(state.store.clone(), state.runtime_engine.registry().clone()),
     )
@@ -530,7 +509,7 @@ fn mutation_service(
 
 #[utoipa::path(
     get,
-    path = "/api/console/models",
+    path = "/api/console/settings/data-models/model-definitions",
     responses((status = 200, body = [ModelDefinitionResponse]), (status = 401, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_models(
@@ -539,7 +518,7 @@ pub async fn list_models(
     Query(query): Query<ListModelsQuery>,
 ) -> Result<helpers::ApiJson<Vec<ModelDefinitionResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let mut models = ModelDefinitionService::new(state.store.clone())
+    let mut models = ModelDefinitionService::for_data_model_settings(state.store.clone())
         .list_models(context.user.id)
         .await?;
     if let Some(data_source_id) = query.data_source_id.as_deref() {
@@ -591,7 +570,7 @@ pub async fn list_agent_flow_options(
 
 #[utoipa::path(
     post,
-    path = "/api/console/models",
+    path = "/api/console/settings/data-models/model-definitions",
     request_body = CreateModelDefinitionBody,
     responses((status = 201, body = ModelDefinitionResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -627,26 +606,7 @@ pub async fn create_model(
 
 #[utoipa::path(
     get,
-    path = "/api/console/models/{id}",
-    params(("id" = String, Path, description = "Model definition id")),
-    responses((status = 200, body = ModelDefinitionResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
-)]
-pub async fn get_model(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path(model_id): Path<String>,
-) -> Result<Json<ApiSuccess<ModelDefinitionResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let model = ModelDefinitionService::new(state.store.clone())
-        .get_model(context.user.id, helpers::parse_uuid(&model_id, "model_id")?)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_model_definition_response(model))))
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/console/models/{id}/advisor-findings",
+    path = "/api/console/settings/data-models/model-definitions/{id}/advisor-findings",
     params(("id" = String, Path, description = "Model definition id")),
     responses((status = 200, body = [DataModelAdvisorFindingResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
@@ -656,7 +616,7 @@ pub async fn get_advisor_findings(
     Path(model_id): Path<String>,
 ) -> Result<Json<ApiSuccess<Vec<DataModelAdvisorFindingResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let findings = ModelDefinitionService::new(state.store.clone())
+    let findings = ModelDefinitionService::for_data_model_settings(state.store.clone())
         .advisor_findings(context.user.id, helpers::parse_uuid(&model_id, "model_id")?)
         .await?;
 
@@ -670,7 +630,7 @@ pub async fn get_advisor_findings(
 
 #[utoipa::path(
     get,
-    path = "/api/console/models/{id}/scope-grants",
+    path = "/api/console/settings/data-models/model-definitions/{id}/scope-grants",
     params(("id" = String, Path, description = "Model definition id")),
     responses((status = 200, body = [ScopeGrantResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
@@ -680,7 +640,7 @@ pub async fn list_scope_grants(
     Path(model_id): Path<String>,
 ) -> Result<Json<ApiSuccess<Vec<ScopeGrantResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let grants = ModelDefinitionService::new(state.store.clone())
+    let grants = ModelDefinitionService::for_data_model_settings(state.store.clone())
         .list_scope_grants(context.user.id, helpers::parse_uuid(&model_id, "model_id")?)
         .await?;
 
@@ -691,7 +651,7 @@ pub async fn list_scope_grants(
 
 #[utoipa::path(
     patch,
-    path = "/api/console/models/{id}",
+    path = "/api/console/settings/data-models/model-definitions/{id}",
     request_body = UpdateModelDefinitionBody,
     params(("id" = String, Path, description = "Model definition id")),
     responses((status = 200, body = ModelDefinitionResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
@@ -710,7 +670,7 @@ pub async fn update_model(
     let mutation_service = mutation_service(&state);
     let mut model = None;
     if body.title.is_some() || body.external_table_id.is_some() {
-        let current_model = ModelDefinitionService::new(state.store.clone())
+        let current_model = ModelDefinitionService::for_data_model_settings(state.store.clone())
             .get_model(context.user.id, model_id)
             .await?;
         let title = match body.title {
@@ -748,7 +708,7 @@ pub async fn update_model(
 
 #[utoipa::path(
     delete,
-    path = "/api/console/models/{id}",
+    path = "/api/console/settings/data-models/model-definitions/{id}",
     params(
         ("id" = String, Path, description = "Model definition id"),
         ("confirmed" = Option<bool>, Query, description = "Must be true to confirm deletion")
@@ -779,7 +739,7 @@ pub async fn delete_model(
 
 #[utoipa::path(
     post,
-    path = "/api/console/models:batchDelete",
+    path = "/api/console/settings/data-models/model-definitions:batchDelete",
     request_body = BatchDeleteModelDefinitionsBody,
     responses((status = 200, body = BatchDeletedResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
@@ -791,7 +751,7 @@ pub async fn batch_delete_models(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    let models = ModelDefinitionService::new(state.store.clone())
+    let models = ModelDefinitionService::for_data_model_settings(state.store.clone())
         .list_models(context.user.id)
         .await?;
     let model_ids = STATE_MODEL_RESOURCE.select_batch_ids(
@@ -824,7 +784,7 @@ pub async fn batch_delete_models(
 
 #[utoipa::path(
     post,
-    path = "/api/console/models/{id}/fields",
+    path = "/api/console/settings/data-models/model-definitions/{id}/fields",
     request_body = CreateModelFieldBody,
     params(("id" = String, Path, description = "Model definition id")),
     responses((status = 201, body = ModelFieldResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
@@ -862,7 +822,7 @@ pub async fn create_field(
             relation_options: body.relation_options,
         })
         .await?;
-    let model = ModelDefinitionService::new(state.store.clone())
+    let model = ModelDefinitionService::for_data_model_settings(state.store.clone())
         .get_model(context.user.id, model_id)
         .await?;
 
@@ -874,7 +834,7 @@ pub async fn create_field(
 
 #[utoipa::path(
     patch,
-    path = "/api/console/models/{id}/fields/{field_id}",
+    path = "/api/console/settings/data-models/model-definitions/{id}/fields/{field_id}",
     request_body = UpdateModelFieldBody,
     params(
         ("id" = String, Path, description = "Model definition id"),
@@ -909,7 +869,7 @@ pub async fn update_field(
             relation_options: body.relation_options,
         })
         .await?;
-    let model = ModelDefinitionService::new(state.store.clone())
+    let model = ModelDefinitionService::for_data_model_settings(state.store.clone())
         .get_model(context.user.id, model_id)
         .await?;
 
@@ -920,7 +880,7 @@ pub async fn update_field(
 
 #[utoipa::path(
     delete,
-    path = "/api/console/models/{id}/fields/{field_id}",
+    path = "/api/console/settings/data-models/model-definitions/{id}/fields/{field_id}",
     params(
         ("id" = String, Path, description = "Model definition id"),
         ("field_id" = String, Path, description = "Model field id"),
@@ -953,7 +913,7 @@ pub async fn delete_field(
 
 #[utoipa::path(
     post,
-    path = "/api/console/models/{id}/scope-grants",
+    path = "/api/console/settings/data-models/model-definitions/{id}/scope-grants",
     request_body = CreateScopeGrantBody,
     params(("id" = String, Path, description = "Model definition id")),
     responses((status = 201, body = ScopeGrantResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
@@ -967,7 +927,7 @@ pub async fn create_scope_grant(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    let grant = ModelDefinitionService::new(state.store.clone())
+    let grant = ModelDefinitionService::for_data_model_settings(state.store.clone())
         .create_scope_grant(CreateScopeDataModelGrantCommand {
             actor_user_id: context.user.id,
             scope_kind: parse_scope_kind(&body.scope_kind)?,
@@ -988,7 +948,7 @@ pub async fn create_scope_grant(
 
 #[utoipa::path(
     patch,
-    path = "/api/console/models/{id}/scope-grants/{grant_id}",
+    path = "/api/console/settings/data-models/model-definitions/{id}/scope-grants/{grant_id}",
     request_body = UpdateScopeGrantBody,
     params(
         ("id" = String, Path, description = "Model definition id"),
@@ -1010,7 +970,7 @@ pub async fn update_scope_grant(
         );
     }
 
-    let grant = ModelDefinitionService::new(state.store.clone())
+    let grant = ModelDefinitionService::for_data_model_settings(state.store.clone())
         .update_scope_grant(UpdateScopeDataModelGrantCommand {
             actor_user_id: context.user.id,
             data_model_id: helpers::parse_uuid(&model_id, "model_id")?,
@@ -1023,34 +983,4 @@ pub async fn update_scope_grant(
         .await?;
 
     Ok(Json(ApiSuccess::new(to_scope_grant_response(grant))))
-}
-
-#[utoipa::path(
-    delete,
-    path = "/api/console/models/{id}/scope-grants/{grant_id}",
-    params(
-        ("id" = String, Path, description = "Model definition id"),
-        ("grant_id" = String, Path, description = "Scope grant id")
-    ),
-    responses((status = 200, body = DeletedResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
-)]
-pub async fn delete_scope_grant(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path((model_id, grant_id)): Path<(String, String)>,
-) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    ModelDefinitionService::new(state.store.clone())
-        .delete_scope_grant(DeleteScopeDataModelGrantCommand {
-            actor_user_id: context.user.id,
-            data_model_id: helpers::parse_uuid(&model_id, "model_id")?,
-            grant_id: helpers::parse_uuid(&grant_id, "grant_id")?,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        serde_json::json!({ "deleted": true }),
-    )))
 }

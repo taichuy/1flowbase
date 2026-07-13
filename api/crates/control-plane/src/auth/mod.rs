@@ -12,6 +12,8 @@ use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+pub mod settings;
+
 use crate::{
     errors::ControlPlaneError,
     ports::{ApiKeyRepository, AuthRepository, CreateApiKeyInput, SessionStore},

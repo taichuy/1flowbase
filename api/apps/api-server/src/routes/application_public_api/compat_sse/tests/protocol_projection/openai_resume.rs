@@ -61,6 +61,7 @@ async fn openai_chat_durable_waiting_callback_fallback_drains_text_delta_first()
     let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let state = Arc::new(ApiState {
         store: base_state.store.clone(),
+        settings_feature_registry: base_state.settings_feature_registry.clone(),
         infrastructure: base_state.infrastructure.clone(),
         console_surface_registry: base_state.console_surface_registry.clone(),
         file_storage_registry: base_state.file_storage_registry.clone(),
@@ -340,6 +341,7 @@ async fn openai_chat_resume_replay_terminal_drains_durable_text_before_tool_call
     );
     let state = Arc::new(ApiState {
         store: base_state.store.clone(),
+        settings_feature_registry: base_state.settings_feature_registry.clone(),
         infrastructure: base_state.infrastructure.clone(),
         console_surface_registry: base_state.console_surface_registry.clone(),
         file_storage_registry: base_state.file_storage_registry.clone(),

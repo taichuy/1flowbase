@@ -427,6 +427,7 @@ where
             },
         )
         .await?;
+        self.ensure_model_provider_package_kind(route_plugin_package(&intake.manifest)?)?;
         self.install_intake_result(
             command.actor_user_id,
             intake,
@@ -444,8 +445,7 @@ where
         command: InstallOfficialPluginCommand,
     ) -> Result<InstallPluginResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
 
         let snapshot = self.official_source.list_official_catalog().await?;
         let entry = snapshot
@@ -453,6 +453,13 @@ where
             .into_iter()
             .find(|item| item.plugin_id == command.plugin_id)
             .ok_or(ControlPlaneError::NotFound("official_plugin"))?;
+        if self.use_case == PluginManagementUseCase::ModelProviderSettings
+            && entry.plugin_type != "model_provider"
+        {
+            return Err(
+                ControlPlaneError::PermissionDenied("model_provider_plugin_required").into(),
+            );
+        }
         let compatibility_override = validate_official_plugin_compatibility_override(
             &entry,
             &self.host_version,
@@ -470,6 +477,7 @@ where
             },
         )
         .await?;
+        self.ensure_model_provider_package_kind(route_plugin_package(&intake.manifest)?)?;
         let result = async {
             let mut detail_json = json!({
                 "install_kind": "official_source",
@@ -517,17 +525,24 @@ where
         command: UpgradeLatestPluginFamilyCommand,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
 
         let current = self
             .load_current_family_installation(actor.current_workspace_id, &command.provider_code)
             .await?;
+        self.ensure_model_provider_target(&current)?;
         let official_entry = self.official_source.list_official_catalog().await?.entries;
         let official_entry = normalize_official_entries(official_entry)
             .into_iter()
             .find(|entry| entry.provider_code == command.provider_code)
             .ok_or(ControlPlaneError::NotFound("official_plugin"))?;
+        if self.use_case == PluginManagementUseCase::ModelProviderSettings
+            && official_entry.plugin_type != "model_provider"
+        {
+            return Err(
+                ControlPlaneError::PermissionDenied("model_provider_plugin_required").into(),
+            );
+        }
         let compatibility_override = validate_official_plugin_compatibility_override(
             &official_entry,
             &self.host_version,
@@ -586,6 +601,7 @@ where
                 .installation
             }
         };
+        self.ensure_model_provider_target(&target)?;
         if current.id == target.id {
             return Err(ControlPlaneError::Conflict("plugin_version_already_current").into());
         }
@@ -638,8 +654,7 @@ where
         detail_json: serde_json::Value,
     ) -> Result<InstallPluginResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
 
         let task_id = Uuid::now_v7();
         let task = self

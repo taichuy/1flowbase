@@ -453,14 +453,14 @@ function appendRuntimeRecordsQuery(
 
 export function fetchConsoleDataSourceCatalog(baseUrl?: string) {
   return apiFetch<ConsoleDataSourceCatalog>({
-    path: '/api/console/data-sources/catalog',
+    path: '/api/console/settings/data-models/data-sources/catalog',
     baseUrl
   });
 }
 
 export function fetchConsoleDataSources(baseUrl?: string) {
   return apiFetch<ConsoleDataSource[]>({
-    path: '/api/console/data-sources',
+    path: '/api/console/settings/data-models/data-sources',
     baseUrl
   });
 }
@@ -471,7 +471,7 @@ export function createConsoleDataSource(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleRuntimeExtensionDataSource>({
-    path: '/api/console/data-sources',
+    path: '/api/console/settings/data-models/data-sources',
     method: 'POST',
     body: input,
     csrfToken,
@@ -488,7 +488,7 @@ export function validateConsoleDataSource(
     data_source: ConsoleRuntimeExtensionDataSource;
     output: Record<string, unknown>;
   }>({
-    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/validate`,
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/validate`,
     method: 'POST',
     csrfToken,
     baseUrl
@@ -502,7 +502,7 @@ export function updateConsoleDataSourceDefaults(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataSource>({
-    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/defaults`,
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/defaults`,
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -515,7 +515,7 @@ export function fetchConsoleDataSourceResources(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataSourceResources>({
-    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/resources`,
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/resources`,
     baseUrl
   });
 }
@@ -526,7 +526,7 @@ export function discoverConsoleDataSourceResources(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataSourceResources>({
-    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/resources/discover`,
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/resources/discover`,
     method: 'POST',
     csrfToken,
     baseUrl
@@ -540,7 +540,7 @@ export function previewConsoleDataSourceResource(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataSourcePreview>({
-    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/preview-read`,
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/preview-read`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -555,7 +555,7 @@ export function mapConsoleDataSourceResourceToModel(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModel>({
-    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/resources/map-to-model`,
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/resources/map-to-model`,
     method: 'POST',
     body: { resource_key: resourceKey },
     csrfToken,
@@ -568,7 +568,7 @@ export function fetchConsoleDataModels(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModel[]>({
-    path: appendQuery('/api/console/models', {
+    path: appendQuery('/api/console/settings/data-models/model-definitions', {
       data_source_id: input.data_source_id,
       filter: input.filter ? JSON.stringify(input.filter) : undefined
     }),
@@ -589,7 +589,7 @@ export function createConsoleDataModel(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModel>({
-    path: '/api/console/models',
+    path: '/api/console/settings/data-models/model-definitions',
     method: 'POST',
     body: input,
     csrfToken,
@@ -604,7 +604,7 @@ export function updateConsoleDataModel(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModel>({
-    path: `/api/console/models/${modelId}`,
+    path: `/api/console/settings/data-models/model-definitions/${modelId}`,
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -618,7 +618,7 @@ export function deleteConsoleDataModel(
   baseUrl?: string
 ) {
   return apiFetch<{ deleted: boolean }>({
-    path: `/api/console/models/${modelId}?confirmed=true`,
+    path: `/api/console/settings/data-models/model-definitions/${modelId}?confirmed=true`,
     method: 'DELETE',
     csrfToken,
     baseUrl
@@ -631,7 +631,7 @@ export function batchDeleteConsoleDataModels(
   baseUrl?: string
 ) {
   return apiFetch<BatchDeleteConsoleDataModelsResult>({
-    path: '/api/console/models:batchDelete',
+    path: '/api/console/settings/data-models/model-definitions:batchDelete',
     method: 'POST',
     body: input,
     csrfToken,
@@ -646,7 +646,7 @@ export function createConsoleDataModelField(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModelField>({
-    path: `/api/console/models/${modelId}/fields`,
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/fields`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -662,7 +662,7 @@ export function updateConsoleDataModelField(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModelField>({
-    path: `/api/console/models/${modelId}/fields/${fieldId}`,
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/fields/${fieldId}`,
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -677,7 +677,7 @@ export function deleteConsoleDataModelField(
   baseUrl?: string
 ) {
   return apiFetch<{ deleted: boolean }>({
-    path: `/api/console/models/${modelId}/fields/${fieldId}?confirmed=true`,
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/fields/${fieldId}?confirmed=true`,
     method: 'DELETE',
     csrfToken,
     baseUrl
@@ -689,7 +689,7 @@ export function fetchConsoleDataModelScopeGrants(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModelScopeGrant[]>({
-    path: `/api/console/models/${modelId}/scope-grants`,
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/scope-grants`,
     baseUrl
   });
 }
@@ -701,7 +701,7 @@ export function createConsoleDataModelScopeGrant(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModelScopeGrant>({
-    path: `/api/console/models/${modelId}/scope-grants`,
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/scope-grants`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -717,7 +717,7 @@ export function updateConsoleDataModelScopeGrant(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModelScopeGrant>({
-    path: `/api/console/models/${modelId}/scope-grants/${grantId}`,
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/scope-grants/${grantId}`,
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -730,7 +730,7 @@ export function fetchConsoleDataModelAdvisorFindings(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModelAdvisorFinding[]>({
-    path: `/api/console/models/${modelId}/advisor-findings`,
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/advisor-findings`,
     baseUrl
   });
 }
@@ -823,7 +823,7 @@ export function fetchConsoleDataModelOpenApiDocument(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModelOpenApiDocument>({
-    path: `/api/console/docs/data-models/${modelId}/openapi.json`,
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/openapi.json`,
     unwrapSuccess: false,
     baseUrl
   });

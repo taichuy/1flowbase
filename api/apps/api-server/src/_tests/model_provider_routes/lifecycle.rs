@@ -11,7 +11,7 @@ async fn model_provider_routes_mask_secret_until_reveal_and_keep_ready_options()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -47,7 +47,7 @@ async fn model_provider_routes_mask_secret_until_reveal_and_keep_ready_options()
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -79,7 +79,7 @@ async fn model_provider_routes_mask_secret_until_reveal_and_keep_ready_options()
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/model-providers/{instance_id}/secrets/reveal"
+                    "/api/console/settings/model-providers/instances/{instance_id}/secrets/reveal"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -109,7 +109,7 @@ async fn model_provider_routes_mask_secret_until_reveal_and_keep_ready_options()
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/model-providers/{instance_id}/validate"
+                    "/api/console/settings/model-providers/instances/{instance_id}/validate"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -175,7 +175,7 @@ async fn model_provider_routes_mask_secret_until_reveal_and_keep_ready_options()
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/model-providers/catalog?locale=zh_Hans")
+                .uri("/api/console/settings/model-providers/catalog?locale=zh_Hans")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -266,7 +266,7 @@ async fn model_provider_routes_preview_models_from_draft_config_and_existing_sec
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers/preview-models")
+                .uri("/api/console/settings/model-providers/preview-models")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -301,7 +301,7 @@ async fn model_provider_routes_preview_models_from_draft_config_and_existing_sec
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -331,7 +331,7 @@ async fn model_provider_routes_preview_models_from_draft_config_and_existing_sec
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers/preview-models")
+                .uri("/api/console/settings/model-providers/preview-models")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -372,7 +372,7 @@ async fn model_provider_routes_create_instance_accepts_configured_models_with_pr
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers/preview-models")
+                .uri("/api/console/settings/model-providers/preview-models")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -402,7 +402,7 @@ async fn model_provider_routes_create_instance_accepts_configured_models_with_pr
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -456,7 +456,7 @@ async fn model_provider_routes_update_instance_accepts_configured_models() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -486,7 +486,7 @@ async fn model_provider_routes_update_instance_accepts_configured_models() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/console/model-providers/{instance_id}"))
+                .uri(format!("/api/console/settings/model-providers/instances/{instance_id}"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -534,7 +534,7 @@ async fn model_provider_routes_update_instance_accepts_configured_models() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -574,7 +574,7 @@ async fn model_provider_routes_create_instance_allows_preview_token_with_empty_c
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers/preview-models")
+                .uri("/api/console/settings/model-providers/preview-models")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -604,7 +604,7 @@ async fn model_provider_routes_create_instance_allows_preview_token_with_empty_c
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")

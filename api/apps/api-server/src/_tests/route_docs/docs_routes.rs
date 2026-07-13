@@ -18,7 +18,7 @@ async fn create_member(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -54,7 +54,7 @@ async fn create_role(app: &axum::Router, cookie: &str, csrf: &str, code: &str) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -86,7 +86,9 @@ async fn replace_role_permissions(
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/roles/{role_code}/permissions"))
+                .uri(format!(
+                    "/api/console/settings/roles/{role_code}/permissions"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -116,7 +118,7 @@ async fn replace_member_roles(
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/members/{member_id}/roles"))
+                .uri(format!("/api/console/settings/members/{member_id}/roles"))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -146,7 +148,7 @@ async fn create_model(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -182,7 +184,9 @@ async fn create_model_field(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -222,7 +226,9 @@ async fn create_scope_grant(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/scope-grants"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -252,7 +258,7 @@ async fn find_model_id_by_code(app: &axum::Router, cookie: &str, code: &str) -> 
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/models?filter=%7B%22code%22%3A%7B%22%24eq%22%3A%22{code}%22%7D%7D"
+                    "/api/console/settings/data-models/model-definitions?filter=%7B%22code%22%3A%7B%22%24eq%22%3A%22{code}%22%7D%7D"
                 ))
                 .header("cookie", cookie)
                 .body(Body::empty())
@@ -353,7 +359,7 @@ async fn docs_routes_allow_root_and_granted_members() {
     let category_payload: Value = serde_json::from_slice(&category_body).unwrap();
     assert_eq!(category_payload["info"]["title"], "1flowbase API");
     assert!(category_payload["paths"]["/api/console/me"]["patch"].is_object());
-    assert!(category_payload["paths"]["/api/console/members"]["get"].is_object());
+    assert!(category_payload["paths"]["/api/console/settings/members"]["get"].is_object());
 
     let operation_response = app
         .clone()
@@ -688,7 +694,7 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/docs/data-models/{hidden_model_id}/openapi.json"
+                    "/api/console/settings/data-models/model-definitions/{hidden_model_id}/openapi.json"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
@@ -888,7 +894,7 @@ async fn docs_routes_data_model_write_schema_omits_readonly_system_fields() {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/docs/data-models/{roles_model_id}/openapi.json"
+                    "/api/console/settings/data-models/model-definitions/{roles_model_id}/openapi.json"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())

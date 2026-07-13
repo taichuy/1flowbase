@@ -1,5 +1,46 @@
 use plugin_framework::parse_host_extension_contribution_manifest;
 
+fn assert_shared_settings_feature_contract(
+    registrations: &[access_control::SettingsFeatureRegistration],
+) {
+    assert!(!registrations.is_empty());
+}
+
+#[test]
+fn ac_001_host_extension_uses_shared_settings_feature_registration_contract() {
+    let raw = host_extension_manifest_with(
+        r#"
+settings_features:
+  - feature_id: file-security.settings
+    owner:
+      kind: host_extension
+      owner_id: file-security
+      version: 0.1.0
+    lifecycle: active
+    console_surface:
+      route_id: file-security.settings
+      surface_key: file-security.settings
+      path: /settings/file-security
+      label_key: file-security.settings.label
+      order: 100
+    api_routes:
+      - method: PUT
+        path: /api/console/settings/file-security
+routes: []
+workers: []
+migrations: []
+"#,
+    );
+
+    let manifest = parse_host_extension_contribution_manifest(&raw).unwrap();
+
+    assert_shared_settings_feature_contract(&manifest.settings_features);
+    assert_eq!(
+        manifest.settings_features[0].feature_id,
+        "file-security.settings"
+    );
+}
+
 #[test]
 fn parses_pre_state_infrastructure_provider_manifest() {
     let raw = r#"

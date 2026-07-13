@@ -15,6 +15,7 @@ async fn protected_model_routes_reject_non_root_admin_mutations() {
             "state_model.view.all",
             "state_model.manage.all",
             "api_reference.view.all",
+            "settings_feature.access.system.data-models",
         ],
     )
     .await;
@@ -35,7 +36,7 @@ async fn protected_model_routes_reject_non_root_admin_mutations() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -65,7 +66,9 @@ async fn protected_model_routes_reject_non_root_admin_mutations() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -94,7 +97,7 @@ async fn protected_model_routes_reject_non_root_admin_mutations() {
     for request in [
         Request::builder()
             .method("PATCH")
-            .uri(format!("/api/console/models/{model_id}"))
+            .uri(format!("/api/console/settings/data-models/model-definitions/{model_id}"))
             .header("cookie", &admin_cookie)
             .header("x-csrf-token", &admin_csrf)
             .header("content-type", "application/json")
@@ -102,7 +105,7 @@ async fn protected_model_routes_reject_non_root_admin_mutations() {
             .unwrap(),
         Request::builder()
             .method("PATCH")
-            .uri(format!("/api/console/models/{model_id}/fields/{field_id}"))
+            .uri(format!("/api/console/settings/data-models/model-definitions/{model_id}/fields/{field_id}"))
             .header("cookie", &admin_cookie)
             .header("x-csrf-token", &admin_csrf)
             .header("content-type", "application/json")
@@ -119,7 +122,7 @@ async fn protected_model_routes_reject_non_root_admin_mutations() {
         Request::builder()
             .method("DELETE")
             .uri(format!(
-                "/api/console/models/{model_id}/fields/{field_id}?confirmed=true"
+                "/api/console/settings/data-models/model-definitions/{model_id}/fields/{field_id}?confirmed=true"
             ))
             .header("cookie", &admin_cookie)
             .header("x-csrf-token", &admin_csrf)
@@ -127,7 +130,7 @@ async fn protected_model_routes_reject_non_root_admin_mutations() {
             .unwrap(),
         Request::builder()
             .method("DELETE")
-            .uri(format!("/api/console/models/{model_id}?confirmed=true"))
+            .uri(format!("/api/console/settings/data-models/model-definitions/{model_id}?confirmed=true"))
             .header("cookie", &admin_cookie)
             .header("x-csrf-token", &admin_csrf)
             .body(Body::empty())
@@ -145,7 +148,9 @@ async fn protected_model_routes_reject_non_root_admin_mutations() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/console/models/{model_id}?confirmed=true"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}?confirmed=true"
+                ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .body(Body::empty())
@@ -166,7 +171,7 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -196,7 +201,9 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/fields"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -222,7 +229,7 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/models/{model_id}/advisor-findings"))
+                .uri(format!("/api/console/settings/data-models/model-definitions/{model_id}/advisor-findings"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -249,7 +256,7 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
             Request::builder()
                 .method("GET")
                 .uri(format!(
-                    "/api/console/docs/data-models/{model_id}/openapi.json"
+                    "/api/console/settings/data-models/model-definitions/{model_id}/openapi.json"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())

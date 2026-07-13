@@ -96,8 +96,11 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(&actor, "application.view.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        ensure_permission(
+            &actor,
+            access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
+        )
+        .map_err(ControlPlaneError::PermissionDenied)?;
         validate_application_management_filter(&query.filter)?;
 
         self.repository

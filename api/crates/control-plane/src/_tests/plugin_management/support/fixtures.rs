@@ -545,6 +545,15 @@ pub(crate) fn build_openai_compatible_package_bytes(
     bytes
 }
 
+pub(crate) fn build_capability_plugin_package_bytes() -> Vec<u8> {
+    let package_root =
+        std::env::temp_dir().join(format!("capability-plugin-source-{}", Uuid::now_v7()));
+    create_capability_plugin_fixture(&package_root);
+    let bytes = pack_tar_gz(&package_root);
+    let _ = fs::remove_dir_all(&package_root);
+    bytes
+}
+
 pub(crate) fn build_signed_openai_upload_package(version: &str) -> SignedUploadPackageFixture {
     let package_root =
         std::env::temp_dir().join(format!("uploaded-plugin-source-{}", Uuid::now_v7()));

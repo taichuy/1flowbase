@@ -222,6 +222,8 @@ async fn test_state_with_runtime_profile_state(
     (
         Arc::new(ApiState {
             store,
+            settings_feature_registry: crate::app_state::compile_core_settings_feature_registry()
+                .expect("core settings feature registry should compile"),
             infrastructure,
             console_surface_registry: Arc::new(
                 crate::console_surface_registry::ConsoleSurfaceRegistry::default(),

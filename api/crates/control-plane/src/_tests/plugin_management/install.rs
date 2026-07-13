@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf, sync::Arc};
 
 use crate::{
+    errors::ControlPlaneError,
     plugin_management::{
         AssignPluginCommand, EnablePluginCommand, InstallOfficialPluginCommand,
         InstallPluginCommand, InstallUploadedPluginCommand, OfficialPluginCatalogFilter,
@@ -8,8 +9,8 @@ use crate::{
         RefreshCurrentNodePluginArtifactCommand,
     },
     ports::{
-        FrontendBlockCatalogRepository, JsDependencyRepository, NodeContributionRepository,
-        PluginRepository, UpdatePluginArtifactSnapshotInput,
+        CreatePluginTaskInput, FrontendBlockCatalogRepository, JsDependencyRepository,
+        NodeContributionRepository, PluginRepository, UpdatePluginArtifactSnapshotInput,
     },
 };
 use domain::{NodeContributionDependencyStatus, PluginTaskStatus};
@@ -17,12 +18,87 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::support::{
-    actor_with_permissions, build_openai_compatible_package_bytes,
-    build_signed_openai_upload_package, create_capability_plugin_fixture,
-    create_frontend_block_fixture, create_js_dependency_pack_fixture, create_provider_fixture,
+    actor_with_permissions, build_capability_plugin_package_bytes,
+    build_openai_compatible_package_bytes, build_signed_openai_upload_package,
+    create_capability_plugin_fixture, create_frontend_block_fixture,
+    create_js_dependency_pack_fixture, create_provider_fixture,
     create_provider_fixture_with_node_contribution, requested_locales, seed_test_installation,
     MemoryOfficialPluginSource, MemoryPluginManagementRepository, MemoryProviderRuntime,
 };
+
+#[tokio::test]
+async fn model_provider_settings_reject_capability_upload_before_install_side_effects() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &[access_control::SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION],
+    ));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        std::env::temp_dir().join(format!("model-provider-settings-{}", Uuid::now_v7())),
+    )
+    .for_model_provider_settings();
+
+    let error = service
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: repository.actor.user_id,
+            file_name: "fixture-capability.1flowbasepkg".into(),
+            package_bytes: build_capability_plugin_package_bytes(),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::PermissionDenied(
+            "model_provider_plugin_required"
+        ))
+    ));
+    assert!(repository.list_installations().await.unwrap().is_empty());
+    assert!(repository.list_tasks().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn model_provider_settings_reject_plugin_task_from_another_workspace() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &[access_control::SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION],
+    ));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        std::env::temp_dir().join(format!("model-provider-task-scope-{}", Uuid::now_v7())),
+    )
+    .for_model_provider_settings();
+    let task_id = Uuid::now_v7();
+    repository
+        .create_task(&CreatePluginTaskInput {
+            task_id,
+            installation_id: None,
+            workspace_id: Some(Uuid::now_v7()),
+            provider_code: "fixture_provider".into(),
+            task_kind: domain::PluginTaskKind::Install,
+            status: domain::PluginTaskStatus::Succeeded,
+            status_message: Some("installed".into()),
+            detail_json: serde_json::json!({}),
+            actor_user_id: Some(Uuid::now_v7()),
+        })
+        .await
+        .unwrap();
+
+    let error = service
+        .get_task(repository.actor.user_id, task_id)
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::PermissionDenied("plugin_task_scope"))
+    ));
+}
 
 #[tokio::test]
 async fn plugin_management_service_blocks_manage_actions_without_configure_permission() {

@@ -1,4 +1,4 @@
-use access_control::ensure_permission;
+use access_control::{ensure_permission, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION};
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -6,8 +6,9 @@ use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
     ports::{
-        CreateWorkspaceRoleInput, ReplaceRoleDataPolicyInput, RoleDataModelPolicyInput,
-        RoleDataPolicyDefaultsInput, RoleDataPolicyView, RoleRepository, UpdateWorkspaceRoleInput,
+        AuthRepository, CreateWorkspaceRoleInput, FrontstagePageRepository,
+        ReplaceRoleDataPolicyInput, RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput,
+        RoleDataPolicyView, RoleRepository, UpdateWorkspaceRoleInput,
     },
 };
 
@@ -45,6 +46,19 @@ pub struct ReplaceRoleDataPolicyCommand {
     pub role_code: String,
     pub default_policy: RoleDataPolicyDefaultsInput,
     pub model_policies: Vec<RoleDataModelPolicyInput>,
+}
+
+pub struct ReplaceRoleFrontstageRoutesCommand {
+    pub actor_user_id: Uuid,
+    pub role_code: String,
+    pub page_ids: Vec<Uuid>,
+    pub tab_ids: Vec<Uuid>,
+}
+
+pub struct RoleFrontstageRoutesView {
+    pub pages: Vec<domain::FrontstagePageRecord>,
+    pub tabs: Vec<domain::frontstage::FrontstagePageTabRecord>,
+    pub rules: Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>,
 }
 
 pub struct RoleService<R> {
@@ -100,7 +114,7 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(&actor, "role_permission.view.all")
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository.list_roles(actor.current_workspace_id).await
     }
@@ -114,7 +128,7 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(&actor, "role_permission.view.all")
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .list_role_permissions(actor.current_workspace_id, role_code)
@@ -130,7 +144,7 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(&actor, "role_permission.view.all")
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .get_role_data_policy(actor.current_workspace_id, role_code)
@@ -142,7 +156,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "role_permission.manage.all")
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .create_team_role(&CreateWorkspaceRoleInput {
@@ -176,7 +190,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "role_permission.manage.all")
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .update_team_role(&UpdateWorkspaceRoleInput {
@@ -210,7 +224,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "role_permission.manage.all")
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .delete_team_role(
@@ -240,7 +254,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "role_permission.manage.all")
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
 
         self.repository
@@ -278,7 +292,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "role_permission.manage.all")
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         ensure_workspace_role_data_policy_allowed(
             &command.default_policy,
@@ -308,5 +322,118 @@ where
             ))
             .await?;
         Ok(policy)
+    }
+}
+
+impl<R> RoleService<R>
+where
+    R: RoleRepository + AuthRepository,
+{
+    pub async fn list_permission_options(
+        &self,
+        actor_user_id: Uuid,
+    ) -> Result<Vec<domain::PermissionDefinition>> {
+        let actor =
+            RoleRepository::load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
+            .map_err(ControlPlaneError::PermissionDenied)?;
+        AuthRepository::list_permissions(&self.repository).await
+    }
+}
+
+impl<R> RoleService<R>
+where
+    R: RoleRepository + FrontstagePageRepository,
+{
+    pub async fn get_frontstage_routes(
+        &self,
+        actor_user_id: Uuid,
+        role_code: &str,
+    ) -> Result<RoleFrontstageRoutesView> {
+        let actor =
+            RoleRepository::load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
+            .map_err(ControlPlaneError::PermissionDenied)?;
+        RoleRepository::list_role_permissions(
+            &self.repository,
+            actor.current_workspace_id,
+            role_code,
+        )
+        .await?;
+
+        let pages = FrontstagePageRepository::list_frontstage_pages(
+            &self.repository,
+            actor.current_workspace_id,
+        )
+        .await?;
+        let mut tabs = Vec::new();
+        for page in pages
+            .iter()
+            .filter(|page| page.kind == domain::FrontstagePageKind::Page)
+        {
+            tabs.extend(
+                FrontstagePageRepository::list_frontstage_page_tabs(
+                    &self.repository,
+                    actor.current_workspace_id,
+                    page.id,
+                )
+                .await?,
+            );
+        }
+        let rules = FrontstagePageRepository::list_frontstage_page_visibility_rules_for_role(
+            &self.repository,
+            actor.current_workspace_id,
+            role_code,
+        )
+        .await?;
+
+        Ok(RoleFrontstageRoutesView { pages, tabs, rules })
+    }
+
+    pub async fn replace_frontstage_routes(
+        &self,
+        command: ReplaceRoleFrontstageRoutesCommand,
+    ) -> Result<()> {
+        if command.role_code == "root" {
+            return Err(ControlPlaneError::PermissionDenied("root_role_immutable").into());
+        }
+        let actor =
+            RoleRepository::load_actor_context_for_user(&self.repository, command.actor_user_id)
+                .await?;
+        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
+            .map_err(ControlPlaneError::PermissionDenied)?;
+        RoleRepository::list_role_permissions(
+            &self.repository,
+            actor.current_workspace_id,
+            &command.role_code,
+        )
+        .await?;
+
+        FrontstagePageRepository::replace_frontstage_page_visibility_rules_for_role(
+            &self.repository,
+            actor.current_workspace_id,
+            &command.role_code,
+            &command.page_ids,
+            &command.tab_ids,
+            command.actor_user_id,
+        )
+        .await?;
+        RoleRepository::append_audit_log(
+            &self.repository,
+            &audit_log(
+                Some(actor.current_workspace_id),
+                Some(command.actor_user_id),
+                "role",
+                None,
+                "role.frontstage_routes_replaced",
+                serde_json::json!({
+                    "code": command.role_code,
+                    "page_ids": command.page_ids,
+                    "tab_ids": command.tab_ids,
+                }),
+            ),
+        )
+        .await?;
+        Ok(())
     }
 }

@@ -11,8 +11,9 @@ use axum::{
     Json, Router,
 };
 use control_plane::member::{
-    CreateMemberCommand, DeleteMemberCommand, DisableMemberCommand, EnableMemberCommand,
-    MemberService, ReplaceMemberRolesCommand, ResetMemberPasswordCommand, UpdateMemberCommand,
+    AssignableRoleOption, CreateMemberCommand, DeleteMemberCommand, DisableMemberCommand,
+    EnableMemberCommand, MemberService, ReplaceMemberRolesCommand, ResetMemberPasswordCommand,
+    UpdateMemberCommand,
 };
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
@@ -56,6 +57,21 @@ pub struct ResetMemberPasswordBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ReplaceMemberRolesBody {
     pub role_codes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MemberRoleOptionResponse {
+    pub code: String,
+    pub name: String,
+}
+
+impl From<AssignableRoleOption> for MemberRoleOptionResponse {
+    fn from(option: AssignableRoleOption) -> Self {
+        Self {
+            code: option.code,
+            name: option.name,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -128,17 +144,43 @@ fn to_member_response(user: domain::UserRecord) -> MemberResponse {
 
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
-        .route("/members", get(list_members).post(create_member))
-        .route("/members/:id", patch(update_member).delete(delete_member))
-        .route("/members/:id/actions/disable", post(disable_member))
-        .route("/members/:id/actions/enable", post(enable_member))
-        .route("/members/:id/actions/reset-password", post(reset_member))
-        .route("/members/:id/roles", put(replace_member_roles))
+        .route("/settings/members", get(list_members).post(create_member))
+        .route(
+            "/settings/members/role-options",
+            get(list_member_role_options),
+        )
+        .route(
+            "/settings/members/:id",
+            patch(update_member).delete(delete_member),
+        )
+        .route("/settings/members/:id/disable", post(disable_member))
+        .route("/settings/members/:id/enable", post(enable_member))
+        .route("/settings/members/:id/reset-password", post(reset_member))
+        .route("/settings/members/:id/roles", put(replace_member_roles))
 }
 
 #[utoipa::path(
     get,
-    path = "/api/console/members",
+    path = "/api/console/settings/members/role-options",
+    responses((status = 200, body = [MemberRoleOptionResponse]), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_member_role_options(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Vec<MemberRoleOptionResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let roles = MemberService::new(state.store.clone())
+        .list_assignable_role_options(context.user.id)
+        .await?;
+
+    Ok(Json(ApiSuccess::new(
+        roles.into_iter().map(Into::into).collect(),
+    )))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/members",
     responses((status = 200, body = [MemberResponse]), (status = 401, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_members(
@@ -160,7 +202,7 @@ pub async fn list_members(
 
 #[utoipa::path(
     post,
-    path = "/api/console/members",
+    path = "/api/console/settings/members",
     request_body = CreateMemberBody,
     responses((status = 201, body = MemberResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -195,7 +237,7 @@ pub async fn create_member(
 
 #[utoipa::path(
     patch,
-    path = "/api/console/members/{id}",
+    path = "/api/console/settings/members/{id}",
     request_body = UpdateMemberBody,
     params(("id" = String, Path, description = "Member user id")),
     responses((status = 200, body = MemberResponse), (status = 403, body = crate::error_response::ErrorBody))
@@ -226,7 +268,7 @@ pub async fn update_member(
 
 #[utoipa::path(
     post,
-    path = "/api/console/members/{id}/actions/disable",
+    path = "/api/console/settings/members/{id}/disable",
     params(("id" = String, Path, description = "Member user id")),
     responses((status = 204), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -250,7 +292,7 @@ pub async fn disable_member(
 
 #[utoipa::path(
     post,
-    path = "/api/console/members/{id}/actions/enable",
+    path = "/api/console/settings/members/{id}/enable",
     params(("id" = String, Path, description = "Member user id")),
     responses((status = 204), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -274,7 +316,7 @@ pub async fn enable_member(
 
 #[utoipa::path(
     delete,
-    path = "/api/console/members/{id}",
+    path = "/api/console/settings/members/{id}",
     params(("id" = String, Path, description = "Member user id")),
     responses((status = 204), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
 )]
@@ -298,7 +340,7 @@ pub async fn delete_member(
 
 #[utoipa::path(
     post,
-    path = "/api/console/members/{id}/actions/reset-password",
+    path = "/api/console/settings/members/{id}/reset-password",
     request_body = ResetMemberPasswordBody,
     params(("id" = String, Path, description = "Member user id")),
     responses((status = 204), (status = 403, body = crate::error_response::ErrorBody))
@@ -325,7 +367,7 @@ pub async fn reset_member(
 
 #[utoipa::path(
     put,
-    path = "/api/console/members/{id}/roles",
+    path = "/api/console/settings/members/{id}/roles",
     request_body = ReplaceMemberRolesBody,
     params(("id" = String, Path, description = "Member user id")),
     responses((status = 204), (status = 403, body = crate::error_response::ErrorBody))

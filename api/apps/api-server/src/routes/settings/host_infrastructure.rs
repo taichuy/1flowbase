@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use access_control::ensure_permission;
+use access_control::{
+    ensure_permission, SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
+    SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION,
+};
 use axum::{
     extract::{Path, Query, State},
     http::HeaderMap,
@@ -948,19 +951,19 @@ fn to_provider_response(
 }
 
 fn ensure_memory_view(actor: &domain::ActorContext) -> Result<(), ApiError> {
-    ensure_permission(actor, "plugin_config.view.all")
+    ensure_permission(actor, SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION)
         .map_err(ControlPlaneError::PermissionDenied)?;
     Ok(())
 }
 
 fn ensure_memory_manage(actor: &domain::ActorContext) -> Result<(), ApiError> {
-    ensure_permission(actor, "plugin_config.configure.all")
+    ensure_permission(actor, SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION)
         .map_err(ControlPlaneError::PermissionDenied)?;
     Ok(())
 }
 
 fn can_manage_memory(actor: &domain::ActorContext) -> bool {
-    actor.has_permission("plugin_config.configure.all")
+    actor.has_permission(SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION)
 }
 
 async fn append_memory_audit(
@@ -990,19 +993,25 @@ async fn append_memory_audit(
 }
 
 fn ensure_cache_view(actor: &domain::ActorContext) -> Result<(), ApiError> {
-    ensure_permission(actor, "plugin_config.view.all")
-        .map_err(ControlPlaneError::PermissionDenied)?;
+    ensure_permission(
+        actor,
+        SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
+    )
+    .map_err(ControlPlaneError::PermissionDenied)?;
     Ok(())
 }
 
 fn ensure_cache_manage(actor: &domain::ActorContext) -> Result<(), ApiError> {
-    ensure_permission(actor, "plugin_config.configure.all")
-        .map_err(ControlPlaneError::PermissionDenied)?;
+    ensure_permission(
+        actor,
+        SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
+    )
+    .map_err(ControlPlaneError::PermissionDenied)?;
     Ok(())
 }
 
 fn can_manage_cache(actor: &domain::ActorContext) -> bool {
-    actor.has_permission("plugin_config.configure.all")
+    actor.has_permission(SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION)
 }
 
 async fn append_cache_audit(

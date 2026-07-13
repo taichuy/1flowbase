@@ -217,7 +217,7 @@ async fn model_provider_icon_routes_serve_installed_provider_icon_and_normalize_
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -301,7 +301,7 @@ async fn model_provider_icon_routes_read_assets_directory_icon_when_manifest_use
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/model-providers")
+                .uri("/api/console/settings/model-providers/instances")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")

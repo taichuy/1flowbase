@@ -220,6 +220,9 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
             store,
+            settings_feature_registry:
+                api_server::app_state::compile_core_settings_feature_registry()
+                    .expect("core settings feature registry should compile"),
             infrastructure,
             console_surface_registry: std::sync::Arc::new(
                 api_server::console_surface_registry::ConsoleSurfaceRegistry::default(),
@@ -302,7 +305,7 @@ async fn create_member(app: &Router, cookie: &str, csrf: &str, account: &str) ->
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -415,7 +418,7 @@ async fn member_action_routes_remove_legacy_aliases() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{action_member_id}/actions/reset-password"
+                    "/api/console/settings/members/{action_member_id}/reset-password"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -438,7 +441,7 @@ async fn member_action_routes_remove_legacy_aliases() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{action_member_id}/actions/disable"
+                    "/api/console/settings/members/{action_member_id}/disable"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -455,7 +458,7 @@ async fn member_action_routes_remove_legacy_aliases() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{legacy_member_id}/reset-password"
+                    "/api/console/settings/members/{legacy_member_id}/reset-password"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -476,7 +479,9 @@ async fn member_action_routes_remove_legacy_aliases() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/members/{legacy_member_id}/disable"))
+                .uri(format!(
+                    "/api/console/settings/members/{legacy_member_id}/disable"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())

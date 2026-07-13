@@ -29,7 +29,7 @@ async fn create_model(app: &axum::Router, cookie: &str, csrf: &str, code: &str) 
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/models")
+                .uri("/api/console/settings/data-models/model-definitions")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -64,7 +64,9 @@ async fn create_scope_grant(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/scope-grants"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -117,7 +119,9 @@ async fn request_scope_grant_create(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/models/{model_id}/scope-grants"))
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -141,7 +145,7 @@ async fn request_scope_grant_update(
             Request::builder()
                 .method("PATCH")
                 .uri(format!(
-                    "/api/console/models/{model_id}/scope-grants/{grant_id}"
+                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants/{grant_id}"
                 ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
@@ -149,30 +153,6 @@ async fn request_scope_grant_update(
                 .body(Body::from(
                     json!({ "enabled": true, "permission_profile": "owner" }).to_string(),
                 ))
-                .unwrap(),
-        )
-        .await
-        .unwrap()
-        .status()
-}
-
-async fn request_scope_grant_delete(
-    app: &axum::Router,
-    cookie: &str,
-    csrf: &str,
-    model_id: &str,
-    grant_id: &str,
-) -> StatusCode {
-    app.clone()
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri(format!(
-                    "/api/console/models/{model_id}/scope-grants/{grant_id}"
-                ))
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .body(Body::empty())
                 .unwrap(),
         )
         .await
@@ -228,7 +208,7 @@ async fn model_definition_scope_grant_routes_restrict_non_root_to_current_worksp
         &root_cookie,
         &root_csrf,
         "scope_grant_manager",
-        &["state_model.view.all", "state_model.manage.all"],
+        &["settings_feature.access.system.data-models"],
     )
     .await;
     let manager_member_id = create_member(
@@ -283,26 +263,10 @@ async fn model_definition_scope_grant_routes_restrict_non_root_to_current_worksp
                 .await,
             StatusCode::FORBIDDEN
         );
-        assert_eq!(
-            request_scope_grant_delete(&app, &manager_cookie, &manager_csrf, &model_id, grant_id)
-                .await,
-            StatusCode::FORBIDDEN
-        );
     }
 
     assert_eq!(
         request_scope_grant_update(
-            &app,
-            &manager_cookie,
-            &manager_csrf,
-            &model_id,
-            &current_grant_id,
-        )
-        .await,
-        StatusCode::OK
-    );
-    assert_eq!(
-        request_scope_grant_delete(
             &app,
             &manager_cookie,
             &manager_csrf,

@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
-    model_provider::ModelProviderModelCatalog,
+    model_provider::{ModelProviderModelCatalog, ModelProviderUseCase},
     ports::{
         AuthRepository, ModelProviderRepository, PluginRepository, ProviderRuntimePort,
         UpsertModelProviderCatalogCacheInput,
@@ -16,9 +16,10 @@ use crate::{
 use super::{
     instances::build_provider_runtime_config,
     shared::{
-        empty_object, ensure_state_model_permission, is_secret_field, load_actor_context_for_user,
-        load_provider_package, map_catalog_source, map_model_discovery_mode,
-        ready_model_provider_installation, ModelProviderNodeArtifactContext,
+        empty_object, ensure_model_provider_permission, is_secret_field,
+        load_actor_context_for_user, load_provider_package, map_catalog_source,
+        map_model_discovery_mode, ready_model_provider_installation,
+        ModelProviderNodeArtifactContext,
     },
 };
 
@@ -27,12 +28,13 @@ pub(super) async fn list_models<R>(
     actor_user_id: Uuid,
     instance_id: Uuid,
     node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
+    use_case: ModelProviderUseCase,
 ) -> Result<ModelProviderModelCatalog>
 where
     R: AuthRepository + PluginRepository + ModelProviderRepository,
 {
     let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_state_model_permission(&actor, "view")?;
+    ensure_model_provider_permission(&actor, "view", use_case)?;
     let instance = repository
         .get_instance(actor.current_workspace_id, instance_id)
         .await?
@@ -73,13 +75,14 @@ pub(super) async fn refresh_models<R, H>(
     actor_user_id: Uuid,
     instance_id: Uuid,
     node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
+    use_case: ModelProviderUseCase,
 ) -> Result<ModelProviderModelCatalog>
 where
     R: AuthRepository + PluginRepository + ModelProviderRepository,
     H: ProviderRuntimePort,
 {
     let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_state_model_permission(&actor, "manage")?;
+    ensure_model_provider_permission(&actor, "manage", use_case)?;
     let instance = repository
         .get_instance(actor.current_workspace_id, instance_id)
         .await?
@@ -183,12 +186,13 @@ pub(super) async fn reveal_secret<R>(
     instance_id: Uuid,
     key: &str,
     node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
+    use_case: ModelProviderUseCase,
 ) -> Result<String>
 where
     R: AuthRepository + PluginRepository + ModelProviderRepository,
 {
     let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_state_model_permission(&actor, "manage")?;
+    ensure_model_provider_permission(&actor, "manage", use_case)?;
     let instance = repository
         .get_instance(actor.current_workspace_id, instance_id)
         .await?
