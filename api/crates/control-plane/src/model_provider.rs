@@ -33,6 +33,7 @@ pub mod failover_queue;
 mod instances;
 mod main_instance;
 mod options;
+mod request_log_maintenance;
 pub(crate) mod routing;
 mod shared;
 
@@ -45,6 +46,11 @@ use self::{
         ready_model_provider_installation, split_provider_config, validate_required_fields,
         ModelProviderNodeArtifactContext,
     },
+};
+
+pub use request_log_maintenance::{
+    ClearModelProviderRequestLogsBatchCommand, ClearModelProviderRequestLogsBatchView,
+    ClearModelProviderRequestLogsContinuation, DeleteSelectedModelProviderRequestLogsCommand,
 };
 
 pub struct CreateModelProviderInstanceCommand {

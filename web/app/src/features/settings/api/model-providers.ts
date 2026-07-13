@@ -1,6 +1,8 @@
 import {
+  clearConsoleModelProviderRequestLogsBatch,
   createConsoleModelProviderInstance,
   deleteConsoleModelProviderInstance,
+  deleteConsoleModelProviderRequestLogs,
   getConsoleModelProviderMainInstance,
   getConsoleModelProviderModels,
   listConsoleModelProviderCatalog,
@@ -20,6 +22,8 @@ import {
   type ConsoleModelProviderModelCatalog,
   type ConsoleModelProviderOptions,
   type ConsoleModelProviderRequestLogsFilter,
+  type ClearConsoleModelProviderRequestLogsBatchInput,
+  type DeleteConsoleModelProviderRequestLogsInput,
   type ConsoleValidateModelProviderResult,
   type CreateConsoleModelProviderInput,
   type PreviewConsoleModelProviderModelsInput,
@@ -333,4 +337,18 @@ export function fetchSettingsModelProviderRequestLogs(
   filter: ConsoleModelProviderRequestLogsFilter
 ) {
   return listConsoleModelProviderRequestLogs(filter);
+}
+
+export function deleteSettingsModelProviderRequestLogs(
+  input: DeleteConsoleModelProviderRequestLogsInput,
+  csrfToken: string
+) {
+  return deleteConsoleModelProviderRequestLogs(input, csrfToken);
+}
+
+export function clearSettingsModelProviderRequestLogsBatch(
+  input: ClearConsoleModelProviderRequestLogsBatchInput,
+  csrfToken: string
+) {
+  return clearConsoleModelProviderRequestLogsBatch(input, csrfToken);
 }

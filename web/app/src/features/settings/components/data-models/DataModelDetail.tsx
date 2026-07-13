@@ -254,24 +254,30 @@ export function DataModelDetail({
         value: apiAccessLabel(model)
       }
     ],
-    [
-      {
-        key: 'table',
-        label: i18nText("settings", "auto.physical_table"),
-        value: model.physical_table_name
-      }
-    ],
-    ...(model.source_kind === 'external_source'
+    ...(model.source_kind === 'main_source'
       ? [
           [
             {
-              key: 'external_table_id',
-              label: i18nText("settings", "auto.table_id_alt"),
-              value: model.external_table_id ?? '-'
+              key: 'table',
+              label: i18nText("settings", "auto.physical_table"),
+              value: model.physical_table_name
             }
           ]
         ]
-      : [])
+      : [
+          [
+            {
+              key: 'data_source_instance_id',
+              label: i18nText('settings', 'auto.external_connections'),
+              value: model.data_source_instance_id ?? '-'
+            },
+            {
+              key: 'external_resource_key',
+              label: i18nText('settings', 'auto.external_resource_key'),
+              value: model.external_resource_key ?? '-'
+            }
+          ]
+        ])
   ];
 
   return (

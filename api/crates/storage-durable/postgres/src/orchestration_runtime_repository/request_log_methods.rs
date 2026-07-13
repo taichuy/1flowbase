@@ -44,4 +44,77 @@ impl PgControlPlaneStore {
         query.build().execute(self.pool()).await?;
         Ok(())
     }
+
+    pub async fn delete_model_provider_request_logs(
+        &self,
+        input: control_plane::ports::DeleteModelProviderRequestLogsInput,
+    ) -> Result<u64> {
+        if input.attempt_ids.is_empty() {
+            return Ok(0);
+        }
+        if input.attempt_ids.len()
+            > control_plane::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT
+        {
+            return Err(
+                control_plane::errors::ControlPlaneError::InvalidInput("attempt_ids").into(),
+            );
+        }
+
+        let result = sqlx::query(
+            "delete from model_provider_request_logs where scope_id = $1 and attempt_id = any($2)",
+        )
+        .bind(input.scope_id)
+        .bind(input.attempt_ids)
+        .execute(self.pool())
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    pub async fn clear_model_provider_request_logs_batch(
+        &self,
+        input: control_plane::ports::ClearModelProviderRequestLogsBatchInput,
+    ) -> Result<control_plane::ports::ClearModelProviderRequestLogsBatchResult> {
+        let candidate_limit =
+            (control_plane::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT + 1) as i64;
+        let delete_limit =
+            control_plane::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT as i64;
+        let row = sqlx::query(
+            r#"
+            with snapshot as (
+                select coalesce($2, statement_timestamp()) as created_before
+            ), candidates as (
+                select id
+                from model_provider_request_logs, snapshot
+                where scope_id = $1 and created_at <= snapshot.created_before
+                order by created_at asc, id asc
+                limit $3
+            ), to_delete as (
+                select id from candidates limit $4
+            ), deleted as (
+                delete from model_provider_request_logs logs
+                using to_delete
+                where logs.id = to_delete.id
+                returning logs.id
+            )
+            select
+                (select count(*) from deleted) as deleted_count,
+                (select count(*) from candidates) > $4 as has_more,
+                (select created_before from snapshot) as snapshot_created_before
+            "#,
+        )
+        .bind(input.scope_id)
+        .bind(input.snapshot_created_before)
+        .bind(candidate_limit)
+        .bind(delete_limit)
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(
+            control_plane::ports::ClearModelProviderRequestLogsBatchResult {
+                deleted_count: row.try_get::<i64, _>("deleted_count")? as u64,
+                has_more: row.try_get("has_more")?,
+                snapshot_created_before: row.try_get("snapshot_created_before")?,
+            },
+        )
+    }
 }

@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn validate_instance_updates_status_and_catalog_cache() {
+async fn ac_003_validate_instance_marks_ready_without_discovering_resources() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
     let service = DataSourceService::new(repository.clone(), runtime);
@@ -29,14 +29,70 @@ async fn validate_instance_updates_status_and_catalog_cache() {
         .unwrap();
 
     assert_eq!(validated.instance.status, DataSourceInstanceStatus::Ready);
-    assert_eq!(
-        validated.catalog.refresh_status,
-        DataSourceCatalogRefreshStatus::Ready
-    );
+    assert!(repository
+        .cached_catalog(created.instance.id)
+        .await
+        .is_none());
     assert_eq!(
         repository.stored_secret_json(created.instance.id).await,
         json!({ "client_secret": "secret" })
     );
+}
+
+#[tokio::test]
+async fn ac_004_only_ready_connections_discover_and_read_cached_resources() {
+    let repository = InMemoryDataSourceRepository::default();
+    let service = DataSourceService::new(repository.clone(), StubDataSourceRuntime::ready());
+    let created = service
+        .create_instance(CreateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            installation_id: installation_id(),
+            source_code: "acme_hubspot_source".into(),
+            display_name: "HubSpot".into(),
+            config_json: json!({ "client_id": "abc" }),
+            secret_json: json!({ "client_secret": "secret" }),
+        })
+        .await
+        .unwrap();
+
+    let draft_error = service
+        .discover_resources(DiscoverDataSourceResourcesCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+        })
+        .await
+        .unwrap_err();
+    assert!(draft_error.to_string().contains("invalid state transition"));
+
+    service
+        .validate_instance(ValidateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+        })
+        .await
+        .unwrap();
+    let discovered = service
+        .discover_resources(DiscoverDataSourceResourcesCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        discovered.refresh_status,
+        DataSourceCatalogRefreshStatus::Ready
+    );
+    assert_eq!(discovered.entries[0].resource_key, "contacts");
+
+    let cached = service
+        .list_resources(user_id(), workspace_id(), created.instance.id)
+        .await
+        .unwrap();
+    assert_eq!(cached.entries, discovered.entries);
 }
 
 #[tokio::test]

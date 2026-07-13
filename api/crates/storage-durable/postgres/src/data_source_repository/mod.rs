@@ -821,6 +821,35 @@ impl DataSourceRepository for PgControlPlaneStore {
         map_catalog_cache(row)
     }
 
+    async fn get_catalog_cache(
+        &self,
+        workspace_id: Uuid,
+        instance_id: Uuid,
+    ) -> Result<Option<domain::DataSourceCatalogCacheRecord>> {
+        let row = sqlx::query(
+            r#"
+            select
+                cache.data_source_instance_id,
+                cache.refresh_status,
+                cache.catalog_json,
+                cache.last_error_message,
+                cache.refreshed_at,
+                cache.updated_at
+            from data_source_catalog_caches cache
+            inner join data_source_instances instance
+                on instance.id = cache.data_source_instance_id
+            where cache.data_source_instance_id = $1
+              and instance.scope_id = $2
+            "#,
+        )
+        .bind(instance_id)
+        .bind(workspace_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(map_catalog_cache).transpose()
+    }
+
     async fn create_preview_session(
         &self,
         input: &CreateDataSourcePreviewSessionInput,

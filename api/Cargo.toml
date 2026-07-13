@@ -35,6 +35,7 @@ base64 = "0.22"
 chacha20poly1305 = "0.10"
 flate2 = "1"
 futures-util = "0.3"
+hmac = "0.12"
 http = "1"
 jsonschema = "0.46.5"
 moka = { version = "0.12.15", features = ["future"] }

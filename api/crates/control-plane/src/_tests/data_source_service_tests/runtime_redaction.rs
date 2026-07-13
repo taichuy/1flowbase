@@ -89,6 +89,14 @@ async fn validate_preview_and_catalog_redact_embedded_secret_substrings() {
         })
         .await
         .unwrap();
+    let discovered = service
+        .discover_resources(DiscoverDataSourceResourcesCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+        })
+        .await
+        .unwrap();
     let preview = service
         .preview_read(PreviewDataSourceReadCommand {
             actor_user_id: user_id(),
@@ -103,7 +111,7 @@ async fn validate_preview_and_catalog_redact_embedded_secret_substrings() {
         .unwrap();
 
     let validate_text = validated.output.to_string();
-    let catalog_text = serde_json::to_string(&validated.catalog.catalog_json).unwrap();
+    let catalog_text = serde_json::to_string(&discovered.entries).unwrap();
     let stored_catalog = repository
         .caches
         .read()

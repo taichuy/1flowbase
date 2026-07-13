@@ -153,6 +153,24 @@ export interface ConsoleModelProviderRequestLogsFilter {
   page_size?: number;
 }
 
+export interface DeleteConsoleModelProviderRequestLogsInput {
+  attempt_ids: string[];
+}
+
+export interface DeleteConsoleModelProviderRequestLogsResult {
+  deleted_count: number;
+}
+
+export interface ClearConsoleModelProviderRequestLogsBatchInput {
+  continuation_token?: string;
+}
+
+export interface ClearConsoleModelProviderRequestLogsBatchResult {
+  deleted_count: number;
+  has_more: boolean;
+  continuation_token: string;
+}
+
 export interface ConsoleModelProviderCatalogResponse {
   locale_meta: Record<string, unknown>;
   i18n_catalog: Record<string, unknown>;
@@ -473,6 +491,34 @@ export function listConsoleModelProviderRequestLogs(
   const query = params.toString();
   return apiFetch<ConsoleModelProviderRequestLogsPage>({
     path: `/api/console/model-providers/request-logs${query ? `?${query}` : ''}`,
+    baseUrl
+  });
+}
+
+export function deleteConsoleModelProviderRequestLogs(
+  input: DeleteConsoleModelProviderRequestLogsInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<DeleteConsoleModelProviderRequestLogsResult>({
+    path: '/api/console/model-providers/request-logs',
+    method: 'DELETE',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function clearConsoleModelProviderRequestLogsBatch(
+  input: ClearConsoleModelProviderRequestLogsBatchInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ClearConsoleModelProviderRequestLogsBatchResult>({
+    path: '/api/console/model-providers/request-logs/clear',
+    method: 'POST',
+    body: input,
+    csrfToken,
     baseUrl
   });
 }

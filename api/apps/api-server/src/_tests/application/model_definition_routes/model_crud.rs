@@ -91,7 +91,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/models?data_source_instance_id=main_source")
+                .uri("/api/console/models?source_kind=main_source")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -532,7 +532,7 @@ async fn model_definition_routes_filter_models_by_title_code_or_table_id() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/models?data_source_instance_id=main_source&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer%22%7D%7D")
+                .uri("/api/console/models?source_kind=main_source&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer%22%7D%7D")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -620,7 +620,7 @@ async fn model_definition_routes_batch_delete_models_from_action_endpoint() {
     let list_response = app
         .oneshot(
             Request::builder()
-                .uri("/api/console/models?data_source_instance_id=main_source&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22orders%22%7D%7D")
+                .uri("/api/console/models?source_kind=main_source&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22orders%22%7D%7D")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -637,7 +637,7 @@ async fn model_definition_routes_batch_delete_models_from_action_endpoint() {
 }
 
 #[tokio::test]
-async fn model_definition_routes_reject_main_source_external_mapping_keys() {
+async fn ac_005_generic_model_route_rejects_external_mapping_fields() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -665,18 +665,7 @@ async fn model_definition_routes_reject_main_source_external_mapping_keys() {
         .unwrap();
     assert_eq!(
         create_with_external_resource_key.status(),
-        StatusCode::BAD_REQUEST
-    );
-    let error: serde_json::Value = serde_json::from_slice(
-        &to_bytes(create_with_external_resource_key.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(error["code"], json!("external_resource_key"));
-    assert_eq!(
-        error["message"],
-        json!("invalid input: external_resource_key")
+        StatusCode::UNPROCESSABLE_ENTITY
     );
 
     let create_response = app

@@ -26,12 +26,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import {
-  updateSettingsDataSourceDefaults,
-  settingsDataSourcesQueryKey,
+  updateSettingsDataSourceConnectionDefaults,
+  updateSettingsMainDataSourceDefaults,
+  settingsDataSourceConnectionsQueryKey,
+  settingsMainDataSourceQueryKey,
   type UpdateSettingsDataSourceDefaultsInput,
   type CreateSettingsDataModelInput,
   type SettingsDataModel,
-  type SettingsDataSourceInstance,
+  type SettingsDataSource,
   type UpdateSettingsDataModelInput
 } from '../../api/data-models';
 import { DataModelFormDrawer } from './DataModelFormDrawer';
@@ -115,7 +117,7 @@ export function DataModelTable({
   onUpdateModel
 }: {
   models: SettingsDataModel[];
-  selectedSource: SettingsDataSourceInstance | null;
+  selectedSource: SettingsDataSource | null;
   selectedModelId: string | null;
   loading: boolean;
   saving: boolean;
@@ -140,18 +142,27 @@ export function DataModelTable({
       source,
       patch
     }: {
-      source: SettingsDataSourceInstance;
+      source: SettingsDataSource;
       patch: UpdateSettingsDataSourceDefaultsInput;
-    }) => {
+    }): Promise<SettingsDataSource> => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
-      return updateSettingsDataSourceDefaults(source.id, patch, csrfToken);
+      return source.source_kind === 'main_source'
+        ? updateSettingsMainDataSourceDefaults(patch, csrfToken)
+        : updateSettingsDataSourceConnectionDefaults(
+            source.id,
+            patch,
+            csrfToken
+          );
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, variables) => {
       message.success(i18nText('settings', 'auto.default_state_saved'));
       await queryClient.invalidateQueries({
-        queryKey: settingsDataSourcesQueryKey
+        queryKey:
+          variables.source.source_kind === 'main_source'
+            ? settingsMainDataSourceQueryKey
+            : settingsDataSourceConnectionsQueryKey
       });
     }
   });
@@ -189,14 +200,14 @@ export function DataModelTable({
       render: (value: string) => getStatusTag(value)
     },
     {
-      title: i18nText('settings', 'auto.table_id_alt'),
-      dataIndex: 'external_table_id',
-      key: 'external_table_id',
+      title: i18nText('settings', 'auto.external_resource_key'),
+      dataIndex: 'external_resource_key',
+      key: 'external_resource_key',
       width: 180,
       render: (_, model) =>
         model.source_kind === 'external_source' ? (
           <Typography.Text type="secondary">
-            {model.external_table_id ?? '-'}
+            {model.external_resource_key ?? '-'}
           </Typography.Text>
         ) : (
           <Typography.Text type="secondary">-</Typography.Text>
@@ -269,16 +280,18 @@ export function DataModelTable({
         <span className="data-model-panel__sr-only">
           {i18nText('settings', 'auto.data_sheet')}
         </span>
-        <Button
-          type="primary"
-          icon={<PlusOutlined aria-hidden="true" />}
-          disabled={!canManage || !selectedSource}
-          onClick={() =>
-            setDrawerState({ open: true, mode: 'create', model: null })
-          }
-        >
-          {i18nText('settings', 'auto.create_new_data_table')}
-        </Button>
+        {selectedSource?.source_kind === 'main_source' ? (
+          <Button
+            type="primary"
+            icon={<PlusOutlined aria-hidden="true" />}
+            disabled={!canManage}
+            onClick={() =>
+              setDrawerState({ open: true, mode: 'create', model: null })
+            }
+          >
+            {i18nText('settings', 'auto.create_new_data_table')}
+          </Button>
+        ) : null}
 
         {selectedSource && (
           <Form
@@ -376,10 +389,10 @@ export function DataModelTable({
                     {model.code}
                   </Typography.Text>
                   {model.source_kind === 'external_source' &&
-                  model.external_table_id ? (
+                  model.external_resource_key ? (
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                      {i18nText('settings', 'auto.table_id')}
-                      {model.external_table_id}
+                      {i18nText('settings', 'auto.external_resource_key')}：
+                      {model.external_resource_key}
                     </Typography.Text>
                   ) : null}
                 </Space>
@@ -444,7 +457,11 @@ export function DataModelTable({
         open={drawerState.open}
         mode={drawerState.mode}
         model={drawerState.model}
-        source={selectedSource}
+        source={
+          selectedSource?.source_kind === 'main_source'
+            ? selectedSource
+            : null
+        }
         saving={saving}
         onClose={() =>
           setDrawerState({ open: false, mode: 'create', model: null })

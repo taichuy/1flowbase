@@ -1,64 +1,71 @@
-import {
-  Button,
-  Grid,
-  Table,
-  Tag,
-  Typography,
-  Space,
-  Flex,
-  Checkbox
-} from 'antd';
+import { useState } from 'react';
+
+import { Button, Flex, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  DatabaseOutlined,
   CloudServerOutlined,
+  DatabaseOutlined,
+  PlusOutlined,
   RightOutlined
 } from '@ant-design/icons';
 
-import type { SettingsDataSourceInstance } from '../../api/data-models';
+import type {
+  CreateSettingsDataSourceConnectionInput,
+  SettingsDataSourceCatalogEntry,
+  SettingsDataSourceConnection,
+  SettingsMainDataSource
+} from '../../api/data-models';
 import { i18nText } from '../../../../shared/i18n/text';
+import { DataSourceConnectionDrawer } from './DataSourceConnectionDrawer';
 
-function defaultApiPolicyLabel(source: SettingsDataSourceInstance) {
+function defaultApiPolicyLabel(
+  source: SettingsMainDataSource | SettingsDataSourceConnection
+) {
   return source.default_data_model_status === 'published'
     ? i18nText('settings', 'auto.default_api_open')
     : i18nText('settings', 'auto.default_api_closed');
 }
 
 export function DataSourcePanel({
-  sources,
+  mainSource,
+  connections,
+  catalog,
   loading,
-  onOpenSource
+  creating,
+  creationErrorMessage,
+  canManage,
+  onOpenMainSource,
+  onOpenConnection,
+  onCreateConnection
 }: {
-  sources: SettingsDataSourceInstance[];
+  mainSource: SettingsMainDataSource | null;
+  connections: SettingsDataSourceConnection[];
+  catalog: SettingsDataSourceCatalogEntry[];
   loading: boolean;
-  onOpenSource: (sourceId: string) => void;
+  creating: boolean;
+  creationErrorMessage: string | null;
+  canManage: boolean;
+  onOpenMainSource: () => void;
+  onOpenConnection: (connectionId: string) => void;
+  onCreateConnection: (
+    input: CreateSettingsDataSourceConnectionInput
+  ) => Promise<void>;
 }) {
-  const screens = Grid.useBreakpoint();
-  const useMobileList = Boolean(screens.xs && !screens.md);
-
-  const columns: ColumnsType<SettingsDataSourceInstance> = [
+  const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
+  const columns: ColumnsType<SettingsDataSourceConnection> = [
     {
-      title: i18nText('settings', 'auto.data_source_name'),
+      title: i18nText('settings', 'auto.connection_name'),
       key: 'display_name',
-      render: (_, source) => (
+      render: (_, connection) => (
         <Space size={12}>
-          <div
-            className={`data-model-panel__source-icon-wrapper ${source.source_kind}`}
-          >
-            {source.source_kind === 'main_source' ? (
-              <DatabaseOutlined className="data-model-panel__source-icon" />
-            ) : (
-              <CloudServerOutlined className="data-model-panel__source-icon" />
-            )}
+          <div className="data-model-panel__source-icon-wrapper external_source">
+            <CloudServerOutlined className="data-model-panel__source-icon" />
           </div>
           <Space direction="vertical" size={2}>
-            <Typography.Text strong className="data-model-panel__source-title">
-              {source.display_name}
-            </Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {i18nText('settings', 'auto.logo')}{' '}
+            <Typography.Text strong>{connection.display_name}</Typography.Text>
+            <Typography.Text type="secondary">
               <code className="data-model-panel__code-badge">
-                {source.source_code}
+                {connection.source_code}
               </code>
             </Typography.Text>
           </Space>
@@ -66,78 +73,33 @@ export function DataSourcePanel({
       )
     },
     {
-      title: i18nText('settings', 'auto.kind'),
-      dataIndex: 'source_kind',
-      key: 'source_kind',
-      width: 140,
-      render: (value: string) => (
-        <Tag
-          color={value === 'main_source' ? 'blue' : 'purple'}
-          style={{ borderRadius: 6, margin: 0 }}
-        >
-          {value === 'main_source'
-            ? i18nText('settings', 'auto.built_master_data_source')
-            : i18nText('settings', 'auto.external_data_source')}
-        </Tag>
-      )
-    },
-    {
       title: i18nText('settings', 'auto.status'),
       dataIndex: 'status',
       key: 'status',
-      width: 100,
-      render: (value: string) => (
-        <Tag
-          color={value === 'ready' ? 'success' : 'default'}
-          style={{ borderRadius: 12, paddingInline: 8, margin: 0 }}
-        >
-          {value === 'ready' ? i18nText('settings', 'auto.ready') : value}
-        </Tag>
-      )
-    },
-    {
-      title: i18nText('settings', 'auto.enabled'),
-      key: 'enabled',
-      width: 100,
-      render: (_, source) => (
-        <Checkbox
-          aria-label={i18nText('settings', 'auto.enable', {
-            value1: source.display_name
-          })}
-          checked={source.status === 'ready'}
-          className="data-model-panel__enabled-check"
-          disabled
-        />
+      width: 120,
+      render: (status: string) => (
+        <Tag color={status === 'ready' ? 'success' : 'default'}>{status}</Tag>
       )
     },
     {
       title: i18nText('settings', 'auto.default_policy'),
-      key: 'default_policies',
-      width: 260,
-      render: (_, source) => (
-        <Space size={8}>
-          <Tag style={{ borderRadius: 6, margin: 0 }} color="default">
-            {defaultApiPolicyLabel(source)}
-          </Tag>
-        </Space>
-      )
+      key: 'default_policy',
+      width: 180,
+      render: (_, connection) => <Tag>{defaultApiPolicyLabel(connection)}</Tag>
     },
     {
       title: '',
       key: 'actions',
-      width: 80,
+      width: 72,
       align: 'right',
-      render: (_, source) => (
+      render: (_, connection) => (
         <Button
-          type="primary"
-          ghost
-          size="small"
+          type="text"
           aria-label={i18nText('settings', 'auto.configuration_alt')}
-          className="data-model-panel__enter-btn"
-          icon={<RightOutlined aria-hidden="true" />}
+          icon={<RightOutlined />}
           onClick={(event) => {
             event.stopPropagation();
-            onOpenSource(source.id);
+            onOpenConnection(connection.id);
           }}
         />
       )
@@ -145,86 +107,74 @@ export function DataSourcePanel({
   ];
 
   return (
-    <div className="data-model-panel__sources">
-      {!useMobileList ? (
+    <Flex vertical gap={24} className="data-model-panel__sources">
+      <section aria-labelledby="data-source-main-title">
+        <Typography.Title id="data-source-main-title" level={5}>
+          {i18nText('settings', 'auto.main_data_source')}
+        </Typography.Title>
+        {mainSource ? (
+          <button
+            type="button"
+            className="data-model-panel__main-source"
+            onClick={onOpenMainSource}
+          >
+            <Space size={12}>
+              <div className="data-model-panel__source-icon-wrapper main_source">
+                <DatabaseOutlined className="data-model-panel__source-icon" />
+              </div>
+              <Space direction="vertical" size={2}>
+                <Typography.Text strong>{mainSource.display_name}</Typography.Text>
+                <Typography.Text type="secondary">
+                  {defaultApiPolicyLabel(mainSource)}
+                </Typography.Text>
+              </Space>
+            </Space>
+            <RightOutlined />
+          </button>
+        ) : null}
+      </section>
+
+      <section aria-labelledby="data-source-connections-title">
+        <Flex align="center" justify="space-between" gap={12} wrap="wrap">
+          <Typography.Title id="data-source-connections-title" level={5}>
+            {i18nText('settings', 'auto.external_connections')}
+          </Typography.Title>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            aria-label={i18nText('settings', 'auto.new_connection')}
+            disabled={!canManage || catalog.length === 0}
+            onClick={() => setConnectionDrawerOpen(true)}
+          >
+            {i18nText('settings', 'auto.new_connection')}
+          </Button>
+        </Flex>
         <Table
           rowKey="id"
           size="middle"
           loading={loading}
           columns={columns}
-          dataSource={sources}
+          dataSource={connections}
           pagination={false}
-          scroll={{ x: 760 }}
-          className="data-model-panel__sources-table"
-          onRow={(record) => ({
-            onClick: () => onOpenSource(record.id),
+          scroll={{ x: 680 }}
+          onRow={(connection) => ({
+            onClick: () => onOpenConnection(connection.id),
             style: { cursor: 'pointer' }
           })}
         />
-      ) : null}
-      {useMobileList ? (
-        <div className="data-model-panel__mobile-list">
-          {sources.map((source) => (
-            <div
-              key={source.id}
-              className="data-model-panel__mobile-item data-model-panel__mobile-item--clickable"
-              onClick={() => onOpenSource(source.id)}
-            >
-              <Flex
-                align="center"
-                justify="space-between"
-                style={{ width: '100%' }}
-              >
-                <Space size={12}>
-                  <div
-                    className={`data-model-panel__source-icon-wrapper ${source.source_kind}`}
-                  >
-                    {source.source_kind === 'main_source' ? (
-                      <DatabaseOutlined className="data-model-panel__source-icon" />
-                    ) : (
-                      <CloudServerOutlined className="data-model-panel__source-icon" />
-                    )}
-                  </div>
-                  <Space direction="vertical" size={2}>
-                    <Typography.Text strong>
-                      {source.display_name}
-                    </Typography.Text>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {source.source_code}
-                    </Typography.Text>
-                  </Space>
-                </Space>
-                <RightOutlined
-                  style={{ color: 'var(--ant-color-text-tertiary)' }}
-                />
-              </Flex>
-              <Flex gap={8} style={{ marginTop: 12 }} wrap="wrap">
-                <Tag
-                  color={
-                    source.source_kind === 'main_source' ? 'blue' : 'purple'
-                  }
-                  style={{ borderRadius: 6, margin: 0 }}
-                >
-                  {source.source_kind === 'main_source'
-                    ? i18nText('settings', 'auto.built_in_source')
-                    : i18nText('settings', 'auto.external')}
-                </Tag>
-                <Tag
-                  color={source.status === 'ready' ? 'success' : 'default'}
-                  style={{ borderRadius: 12, margin: 0 }}
-                >
-                  {source.status === 'ready'
-                    ? i18nText('settings', 'auto.ready')
-                    : source.status}
-                </Tag>
-                <Tag style={{ borderRadius: 6, margin: 0 }} color="default">
-                  {defaultApiPolicyLabel(source)}
-                </Tag>
-              </Flex>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
+      </section>
+
+      <DataSourceConnectionDrawer
+        open={connectionDrawerOpen}
+        catalog={catalog}
+        saving={creating}
+        errorMessage={creationErrorMessage}
+        onClose={() => setConnectionDrawerOpen(false)}
+        onCreate={async (input) => {
+          await onCreateConnection(input);
+          setConnectionDrawerOpen(false);
+        }}
+      />
+    </Flex>
   );
 }

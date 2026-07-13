@@ -22,14 +22,25 @@ vi.mock('@1flowbase/api-client', () => ({
   }),
   fetchConsoleDataModelScopeGrants: vi.fn().mockResolvedValue([]),
   fetchConsoleDataModels: vi.fn().mockResolvedValue([]),
-  fetchConsoleDataSourceInstances: vi.fn().mockResolvedValue([]),
+  fetchConsoleMainDataSource: vi.fn().mockResolvedValue({ id: 'main_source' }),
+  fetchConsoleDataSourceConnections: vi.fn().mockResolvedValue([]),
+  fetchConsoleDataSourceCatalog: vi.fn().mockResolvedValue({ entries: [] }),
+  fetchConsoleDataSourceResources: vi.fn().mockResolvedValue({ entries: [] }),
+  createConsoleDataSourceConnection: vi.fn(),
+  validateConsoleDataSourceConnection: vi.fn(),
+  discoverConsoleDataSourceResources: vi.fn(),
+  previewConsoleDataSourceResource: vi.fn(),
+  mapConsoleDataSourceResourceToModel: vi.fn(),
   updateConsoleDataModel: vi.fn().mockResolvedValue({ id: 'model-1' }),
   updateConsoleDataModelField: vi.fn().mockResolvedValue({ id: 'field-1' }),
   updateConsoleDataModelScopeGrant: vi.fn().mockResolvedValue({
     id: 'grant-1'
   }),
-  updateConsoleDataSourceDefaults: vi.fn().mockResolvedValue({
+  updateConsoleDataSourceConnectionDefaults: vi.fn().mockResolvedValue({
     id: 'source-1'
+  }),
+  updateConsoleMainDataSourceDefaults: vi.fn().mockResolvedValue({
+    id: 'main_source'
   })
 }));
 
@@ -41,10 +52,11 @@ import {
   deleteConsoleDataModel,
   deleteConsoleDataModelField,
   fetchConsoleDataModels,
-  fetchConsoleDataSourceInstances,
+  fetchConsoleDataSourceConnections,
+  fetchConsoleMainDataSource,
   updateConsoleDataModel,
   updateConsoleDataModelField,
-  updateConsoleDataSourceDefaults
+  updateConsoleDataSourceConnectionDefaults
 } from '@1flowbase/api-client';
 import {
   batchDeleteSettingsDataModels,
@@ -54,24 +66,32 @@ import {
   deleteSettingsDataModel,
   deleteSettingsDataModelField,
   fetchSettingsDataModels,
-  fetchSettingsDataSourceInstances,
+  fetchSettingsDataSourceConnections,
+  fetchSettingsMainDataSource,
   settingsDataModelAdvisorFindingsQueryKey,
   settingsDataModelRecordPreviewQueryKey,
   settingsDataModelOpenApiQueryKey,
   settingsDataModelsQueryKey,
   settingsDataModelScopeGrantsQueryKey,
-  settingsDataSourcesQueryKey,
+  settingsDataSourceConnectionsQueryKey,
+  settingsMainDataSourceQueryKey,
+  type SettingsDataSourceConnection,
   updateSettingsDataModel,
   updateSettingsDataModelField,
-  updateSettingsDataSourceDefaults
+  updateSettingsDataSourceConnectionDefaults
 } from '../data-models';
 
 describe('settings data models API wrappers', () => {
   test('exports stable query keys for data sources, models, grants, preview, and Advisor', () => {
-    expect(settingsDataSourcesQueryKey).toEqual([
+    expect(settingsMainDataSourceQueryKey).toEqual([
       'settings',
       'data-models',
-      'sources'
+      'main-source'
+    ]);
+    expect(settingsDataSourceConnectionsQueryKey).toEqual([
+      'settings',
+      'data-models',
+      'connections'
     ]);
     expect(settingsDataModelsQueryKey('main_source')).toEqual([
       'settings',
@@ -107,15 +127,21 @@ describe('settings data models API wrappers', () => {
   });
 
   test('delegates source and model reads to the API client', async () => {
-    await fetchSettingsDataSourceInstances();
-    expect(fetchConsoleDataSourceInstances).toHaveBeenCalled();
+    await fetchSettingsMainDataSource();
+    expect(fetchConsoleMainDataSource).toHaveBeenCalled();
+    await fetchSettingsDataSourceConnections();
+    expect(fetchConsoleDataSourceConnections).toHaveBeenCalled();
 
-    await fetchSettingsDataModels('source-1');
+    const connection = {
+      id: 'source-1',
+      source_kind: 'external_source'
+    } as SettingsDataSourceConnection;
+    await fetchSettingsDataModels(connection);
     expect(fetchConsoleDataModels).toHaveBeenCalledWith({
       data_source_instance_id: 'source-1'
     });
 
-    await fetchSettingsDataModels('source-1', {
+    await fetchSettingsDataModels(connection, {
       code: { $includes: 'orders' }
     });
     expect(fetchConsoleDataModels).toHaveBeenCalledWith({
@@ -125,14 +151,14 @@ describe('settings data models API wrappers', () => {
   });
 
   test('delegates mutations with CSRF tokens', async () => {
-    await updateSettingsDataSourceDefaults(
+    await updateSettingsDataSourceConnectionDefaults(
       'source-1',
       {
         default_data_model_status: 'draft'
       },
       'csrf-123'
     );
-    expect(updateConsoleDataSourceDefaults).toHaveBeenCalledWith(
+    expect(updateConsoleDataSourceConnectionDefaults).toHaveBeenCalledWith(
       'source-1',
       {
         default_data_model_status: 'draft'

@@ -1,6 +1,57 @@
 use super::*;
 
 #[tokio::test]
+async fn ac_004_preview_and_mapping_require_a_ready_connection_instance() {
+    let repository = InMemoryDataSourceRepository::default();
+    let runtime = StubDataSourceRuntime::ready();
+    let service = DataSourceService::new(repository.clone(), runtime);
+
+    let created = service
+        .create_instance(CreateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            installation_id: installation_id(),
+            source_code: "acme_hubspot_source".into(),
+            display_name: "HubSpot".into(),
+            config_json: json!({ "client_id": "abc" }),
+            secret_json: json!({ "client_secret": "secret" }),
+        })
+        .await
+        .unwrap();
+    assert_eq!(created.instance.status, DataSourceInstanceStatus::Draft);
+
+    let preview_error = service
+        .preview_read(PreviewDataSourceReadCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+            resource_key: "contacts".into(),
+            limit: Some(20),
+            cursor: None,
+            options_json: json!({}),
+        })
+        .await
+        .unwrap_err();
+    assert!(preview_error
+        .to_string()
+        .contains("invalid state transition"));
+
+    let mapping_error = service
+        .map_resource_to_model(MapDataSourceResourceToModelCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+            resource_key: "contacts".into(),
+        })
+        .await
+        .unwrap_err();
+    assert!(mapping_error
+        .to_string()
+        .contains("invalid state transition"));
+    assert!(repository.mapped_models().await.is_empty());
+}
+
+#[tokio::test]
 async fn update_defaults_persists_valid_data_model_defaults() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
@@ -56,6 +107,15 @@ async fn preview_read_uses_stored_secret_and_creates_preview_session() {
         .await
         .unwrap();
 
+    service
+        .validate_instance(ValidateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+        })
+        .await
+        .unwrap();
+
     let preview = service
         .preview_read(PreviewDataSourceReadCommand {
             actor_user_id: user_id(),
@@ -102,6 +162,15 @@ async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_se
         .await
         .unwrap();
 
+    service
+        .validate_instance(ValidateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+        })
+        .await
+        .unwrap();
+
     let mapped = service
         .map_resource_to_model(MapDataSourceResourceToModelCommand {
             actor_user_id: user_id(),
@@ -124,6 +193,7 @@ async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_se
         mapped.model.external_resource_key.as_deref(),
         Some("contacts")
     );
+    assert_eq!(mapped.model.external_table_id, None);
     assert_eq!(
         mapped.model.external_capability_snapshot,
         Some(json!({
@@ -187,6 +257,15 @@ async fn map_resource_to_model_redacts_descriptor_secret_echoes_before_mapping()
             display_name: "HubSpot".into(),
             config_json: json!({ "client_id": "abc" }),
             secret_json: json!({ "client_secret": plaintext }),
+        })
+        .await
+        .unwrap();
+
+    service
+        .validate_instance(ValidateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
         })
         .await
         .unwrap();

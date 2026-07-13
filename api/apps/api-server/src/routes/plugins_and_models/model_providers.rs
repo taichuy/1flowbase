@@ -7,11 +7,13 @@ use axum::{
     Json, Router,
 };
 use control_plane::model_provider::{
+    ClearModelProviderRequestLogsBatchCommand, ClearModelProviderRequestLogsContinuation,
     CreateModelProviderInstanceCommand, DeleteModelProviderInstanceCommand,
-    LocalizedProviderModelDescriptor, ModelProviderBalanceResult, ModelProviderCatalogEntry,
-    ModelProviderCatalogView, ModelProviderInstanceView, ModelProviderMainInstanceView,
-    ModelProviderModelCatalog, ModelProviderOptionEntry, ModelProviderOptionsView,
-    ModelProviderService, PreviewModelProviderModelsCommand, UpdateModelProviderInstanceCommand,
+    DeleteSelectedModelProviderRequestLogsCommand, LocalizedProviderModelDescriptor,
+    ModelProviderBalanceResult, ModelProviderCatalogEntry, ModelProviderCatalogView,
+    ModelProviderInstanceView, ModelProviderMainInstanceView, ModelProviderModelCatalog,
+    ModelProviderOptionEntry, ModelProviderOptionsView, ModelProviderService,
+    PreviewModelProviderModelsCommand, UpdateModelProviderInstanceCommand,
     UpdateModelProviderMainInstanceCommand, ValidateModelProviderResult,
 };
 use control_plane::ports::{ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository};
@@ -37,6 +39,7 @@ use crate::{
     routes::system::LocaleMetaResponse,
 };
 
+mod clear_request_log_continuation;
 mod icons;
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -420,10 +423,40 @@ pub struct ModelProviderRequestLogsPageResponse {
     pub page_size: i64,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DeleteModelProviderRequestLogsBody {
+    pub attempt_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DeleteModelProviderRequestLogsResponse {
+    pub deleted_count: u64,
+}
+
+#[derive(Debug, Default, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ClearModelProviderRequestLogsBody {
+    pub continuation_token: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ClearModelProviderRequestLogsResponse {
+    pub deleted_count: u64,
+    pub has_more: bool,
+    pub continuation_token: String,
+}
+
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/model-providers/catalog", get(list_catalog))
-        .route("/model-providers/request-logs", get(list_request_logs))
+        .route(
+            "/model-providers/request-logs",
+            get(list_request_logs).delete(delete_selected_request_logs),
+        )
+        .route(
+            "/model-providers/request-logs/clear",
+            post(clear_request_logs_batch),
+        )
         .route(
             "/model-providers",
             get(list_instances).post(create_instance),
@@ -968,6 +1001,94 @@ pub async fn list_request_logs(
             total_count: page.total_count,
             page: page.page,
             page_size: page.page_size,
+        },
+    )))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/console/model-providers/request-logs",
+    operation_id = "model_provider_delete_selected_request_logs",
+    request_body = DeleteModelProviderRequestLogsBody,
+    responses(
+        (status = 200, body = DeleteModelProviderRequestLogsResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn delete_selected_request_logs(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<DeleteModelProviderRequestLogsBody>,
+) -> Result<Json<ApiSuccess<DeleteModelProviderRequestLogsResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let attempt_ids = body
+        .attempt_ids
+        .iter()
+        .map(|attempt_id| parse_uuid(attempt_id, "attempt_ids"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let deleted_count = service(&state)
+        .delete_selected_request_logs(DeleteSelectedModelProviderRequestLogsCommand {
+            actor: context.actor,
+            attempt_ids,
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        DeleteModelProviderRequestLogsResponse { deleted_count },
+    )))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/model-providers/request-logs/clear",
+    operation_id = "model_provider_clear_request_logs_batch",
+    request_body = ClearModelProviderRequestLogsBody,
+    responses(
+        (status = 200, body = ClearModelProviderRequestLogsResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn clear_request_logs_batch(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<ApiSuccess<ClearModelProviderRequestLogsResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let body: ClearModelProviderRequestLogsBody = serde_json::from_value(body).map_err(|_| {
+        control_plane::errors::ControlPlaneError::InvalidInput("clear_request_logs")
+    })?;
+    let workspace_id = context.actor.current_workspace_id;
+    let continuation = match body.continuation_token.as_deref() {
+        Some(token) => ClearModelProviderRequestLogsContinuation::Continue {
+            snapshot_created_before: clear_request_log_continuation::verify(
+                &state.provider_secret_master_key,
+                workspace_id,
+                token,
+            )?,
+        },
+        None => ClearModelProviderRequestLogsContinuation::Start,
+    };
+    let result = service(&state)
+        .clear_request_logs_batch(ClearModelProviderRequestLogsBatchCommand {
+            actor: context.actor,
+            continuation,
+        })
+        .await?;
+    let continuation_token = clear_request_log_continuation::issue(
+        &state.provider_secret_master_key,
+        workspace_id,
+        result.snapshot_created_before,
+    )?;
+    Ok(Json(ApiSuccess::new(
+        ClearModelProviderRequestLogsResponse {
+            deleted_count: result.deleted_count,
+            has_more: result.has_more,
+            continuation_token,
         },
     )))
 }

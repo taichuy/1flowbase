@@ -81,6 +81,8 @@ fn builtin_data_model_contract_covers_core_and_runtime_read_models() {
         "flow_run_events",
         "flow_run_checkpoints",
         "flow_run_callback_tasks",
+        // AC-009/AC-010: provider request logs are a builtin runtime read model.
+        "model_provider_request_logs",
     ];
 
     for code in expected_codes {
@@ -97,6 +99,26 @@ fn builtin_data_model_contract_covers_core_and_runtime_read_models() {
     assert!(!runtime_contract.capabilities.record.can_create);
     assert!(!runtime_contract.capabilities.record.can_update);
     assert!(!runtime_contract.capabilities.record.can_delete);
+
+    let request_logs_contract = crate::builtin_data_model_contract("model_provider_request_logs")
+        .expect("model provider request logs runtime read contract");
+    assert_eq!(
+        request_logs_contract.kind,
+        crate::BuiltinDataModelKind::RuntimeRead
+    );
+    assert_eq!(
+        request_logs_contract.physical_table_name,
+        "model_provider_request_logs"
+    );
+    assert!(request_logs_contract.owns_field_code("attempt_id"));
+    assert!(request_logs_contract.owns_field_code("created_at"));
+    assert_eq!(
+        request_logs_contract
+            .field_contract("attempt_id")
+            .expect("attempt_id field contract")
+            .is_unique,
+        true
+    );
 
     let user_account = crate::builtin_data_model_contract("users")
         .expect("users contract")
@@ -126,4 +148,81 @@ fn builtin_data_model_contract_covers_core_and_runtime_read_models() {
     assert_eq!(run_tokens.field_kind, crate::ModelFieldKind::Number);
     assert!(!run_tokens.is_required);
     assert!(!run_tokens.is_unique);
+}
+
+#[test]
+fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
+    // AC-009: this runtime read contract must not inherit type guesses from other models.
+    use crate::ModelFieldKind::{Boolean, Datetime, ManyToOne, Number, String};
+
+    let expected = [
+        ("id", String, true, true),
+        ("scope_id", ManyToOne, true, false),
+        ("attempt_id", String, true, true),
+        ("flow_run_id", ManyToOne, true, false),
+        ("application_id", ManyToOne, false, false),
+        ("conversation_id", String, false, false),
+        ("application_name", String, true, false),
+        ("attempt_index", Number, true, false),
+        ("is_retry", Boolean, true, false),
+        ("retry_reason", String, false, false),
+        ("provider_instance_id", ManyToOne, false, false),
+        ("provider_instance_display_name", String, false, false),
+        ("provider_code", String, true, false),
+        ("protocol", String, true, false),
+        ("upstream_model_id", String, true, false),
+        ("reasoning_effort", String, false, false),
+        ("status", String, true, false),
+        ("error_code", String, false, false),
+        ("failed_after_first_token", Boolean, true, false),
+        ("input_tokens", Number, false, false),
+        ("output_tokens", Number, false, false),
+        ("total_tokens", Number, false, false),
+        ("started_at", Datetime, true, false),
+        ("first_token_at", Datetime, false, false),
+        ("finished_at", Datetime, false, false),
+        ("time_to_first_token_ms", Number, false, false),
+        ("total_duration_ms", Number, false, false),
+        ("created_at", Datetime, true, false),
+    ];
+    let contract = crate::builtin_data_model_contract("model_provider_request_logs")
+        .expect("model provider request logs contract");
+    assert_eq!(contract.system_field_codes.len(), expected.len());
+
+    let migration = include_str!(
+        "../../../storage-durable/postgres/migrations/20260713130000_register_model_provider_request_logs_runtime_read.sql"
+    );
+    for (code, field_kind, is_required, is_unique) in expected {
+        let field = contract
+            .field_contract(code)
+            .unwrap_or_else(|| panic!("missing field contract for {code}"));
+        assert_eq!(field.code, code);
+        assert_eq!(field.physical_column_name, code);
+        assert_eq!(
+            field.field_kind, field_kind,
+            "field kind mismatch for {code}"
+        );
+        assert_eq!(
+            field.is_required, is_required,
+            "required mismatch for {code}"
+        );
+        assert_eq!(field.is_unique, is_unique, "unique mismatch for {code}");
+
+        let seeded_row = migration
+            .lines()
+            .find(|line| {
+                line.trim_start().starts_with("('") && line.contains(&format!(", '{code}', "))
+            })
+            .unwrap_or_else(|| panic!("missing migration seed row for {code}"));
+        let expected_seed_contract = format!(
+            ", '{}', {}, {},",
+            field_kind.as_str(),
+            is_required,
+            is_unique
+        );
+        assert!(
+            seeded_row.contains(&expected_seed_contract),
+            "migration seed mismatch for {code}: expected {expected_seed_contract} in {seeded_row}"
+        );
+    }
 }

@@ -34,11 +34,9 @@ const STATE_MODEL_RESOURCE: ResourceCrudDescriptor =
     ResourceCrudDescriptor::new("state_model", "id");
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateModelDefinitionBody {
     pub scope_kind: String,
-    pub data_source_instance_id: Option<String>,
-    pub external_resource_key: Option<String>,
-    pub external_table_id: Option<String>,
     pub code: String,
     pub title: String,
     pub status: Option<String>,
@@ -115,6 +113,7 @@ pub struct ConfirmationQuery {
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ListModelsQuery {
+    pub source_kind: Option<String>,
     pub data_source_instance_id: Option<String>,
     pub filter: Option<String>,
 }
@@ -538,20 +537,36 @@ pub async fn list_models(
     let mut models = ModelDefinitionService::new(state.store.clone())
         .list_models(context.user.id)
         .await?;
-    if let Some(data_source_instance_id) = query.data_source_instance_id.as_deref() {
-        if data_source_instance_id == "main_source" {
-            models.retain(|model| {
+    if query.source_kind.is_some() && query.data_source_instance_id.is_some() {
+        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+            "data_model_source_filter",
+        )
+        .into());
+    }
+    if let Some(source_kind) = query.source_kind.as_deref() {
+        match source_kind {
+            "main_source" => models.retain(|model| {
                 model.source_kind == domain::DataModelSourceKind::MainSource
                     && model.data_source_instance_id.is_none()
-            });
-        } else {
-            let data_source_instance_id =
-                helpers::parse_uuid(data_source_instance_id, "data_source_instance_id")?;
-            models.retain(|model| {
+            }),
+            "external_source" => models.retain(|model| {
                 model.source_kind == domain::DataModelSourceKind::ExternalSource
-                    && model.data_source_instance_id == Some(data_source_instance_id)
-            });
+                    && model.data_source_instance_id.is_some()
+            }),
+            _ => {
+                return Err(
+                    control_plane::errors::ControlPlaneError::InvalidInput("source_kind").into(),
+                )
+            }
         }
+    }
+    if let Some(data_source_instance_id) = query.data_source_instance_id.as_deref() {
+        let data_source_instance_id =
+            helpers::parse_uuid(data_source_instance_id, "data_source_instance_id")?;
+        models.retain(|model| {
+            model.source_kind == domain::DataModelSourceKind::ExternalSource
+                && model.data_source_instance_id == Some(data_source_instance_id)
+        });
     }
     let filter = parse_resource_filter(query.filter.as_deref())?;
     models = STATE_MODEL_RESOURCE.filter_records(models, filter.as_ref())?;
@@ -607,13 +622,9 @@ pub async fn create_model(
         .create_model(CreateModelDefinitionCommand {
             actor_user_id: context.user.id,
             scope_kind,
-            data_source_instance_id: body
-                .data_source_instance_id
-                .as_deref()
-                .map(|value| helpers::parse_uuid(value, "data_source_instance_id"))
-                .transpose()?,
-            external_resource_key: body.external_resource_key,
-            external_table_id: body.external_table_id,
+            data_source_instance_id: None,
+            external_resource_key: None,
+            external_table_id: None,
             code: body.code,
             title: body.title,
             status: requested_status,

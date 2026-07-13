@@ -18,9 +18,10 @@ use uuid::Uuid;
 
 use crate::{
     data_source::{
-        CreateDataSourceInstanceCommand, DataSourceService, MapDataSourceResourceToModelCommand,
-        PreviewDataSourceReadCommand, RotateDataSourceSecretCommand,
-        UpdateDataSourceDefaultsCommand, ValidateDataSourceInstanceCommand,
+        CreateDataSourceInstanceCommand, DataSourceService, DiscoverDataSourceResourcesCommand,
+        MapDataSourceResourceToModelCommand, PreviewDataSourceReadCommand,
+        RotateDataSourceSecretCommand, UpdateDataSourceDefaultsCommand,
+        ValidateDataSourceInstanceCommand,
     },
     ports::{
         AddModelFieldInput, AuthRepository, CreateDataSourceInstanceInput,
@@ -177,6 +178,10 @@ impl InMemoryDataSourceRepository {
 
     async fn mapped_models(&self) -> Vec<ModelDefinitionRecord> {
         self.models.read().await.values().cloned().collect()
+    }
+
+    async fn cached_catalog(&self, instance_id: Uuid) -> Option<DataSourceCatalogCacheRecord> {
+        self.caches.read().await.get(&instance_id).cloned()
     }
 }
 
@@ -631,6 +636,23 @@ impl DataSourceRepository for InMemoryDataSourceRepository {
             .await
             .insert(record.data_source_instance_id, record.clone());
         Ok(record)
+    }
+
+    async fn get_catalog_cache(
+        &self,
+        workspace_id: Uuid,
+        instance_id: Uuid,
+    ) -> Result<Option<DataSourceCatalogCacheRecord>> {
+        let belongs_to_workspace = self
+            .instances
+            .read()
+            .await
+            .get(&instance_id)
+            .is_some_and(|instance| instance.workspace_id == workspace_id);
+        if !belongs_to_workspace {
+            return Ok(None);
+        }
+        Ok(self.caches.read().await.get(&instance_id).cloned())
     }
 
     async fn create_preview_session(

@@ -375,6 +375,24 @@
   border-color: color-mix(in srgb, var(--brand-primary) 20%, transparent);
 }
 
+.data-model-panel__main-source {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  color: inherit;
+  text-align: left;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius-lg);
+  cursor: pointer;
+}
+
+.data-model-panel__main-source:hover {
+  border-color: var(--ant-color-primary-border);
+}
+
 .data-model-panel__source-icon-wrapper.external_source {
   background: rgba(147, 51, 234, 0.08);
   color: #9333ea;

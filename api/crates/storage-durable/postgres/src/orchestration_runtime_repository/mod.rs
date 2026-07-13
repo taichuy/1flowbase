@@ -21,14 +21,15 @@ use control_plane::{
         AppendRunEventInput, AppendRuntimeEventInput, AppendRuntimeItemInput,
         AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, AttachCompiledPlanToFlowRunInput,
+        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
         CompleteCallbackTaskInput, CompleteFlowRunInput, CompleteNodeRunInput,
         CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
         CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
         DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
-        DeleteDebugVariableCacheEntriesInput, FailQueuedFlowRunShellInput,
-        FinishFlowRunCallbackResumeAttemptInput, GetApplicationRunMonitoringReportInput,
-        GetRuntimeDebugArtifactInput, LinkUsageLedgerToModelFailoverAttemptInput,
-        ListApplicationConversationRunsPageInput,
+        DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
+        FailQueuedFlowRunShellInput, FinishFlowRunCallbackResumeAttemptInput,
+        GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
+        LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, ModelProviderRequestLogsPage,
@@ -490,6 +491,20 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: ListModelProviderRequestLogsPageInput,
     ) -> Result<ModelProviderRequestLogsPage> {
         PgControlPlaneStore::list_model_provider_request_logs_page(self, input).await
+    }
+
+    async fn delete_model_provider_request_logs(
+        &self,
+        input: DeleteModelProviderRequestLogsInput,
+    ) -> Result<u64> {
+        PgControlPlaneStore::delete_model_provider_request_logs(self, input).await
+    }
+
+    async fn clear_model_provider_request_logs_batch(
+        &self,
+        input: ClearModelProviderRequestLogsBatchInput,
+    ) -> Result<ClearModelProviderRequestLogsBatchResult> {
+        PgControlPlaneStore::clear_model_provider_request_logs_batch(self, input).await
     }
 
     async fn list_capability_invocations(

@@ -5,7 +5,7 @@ import { Button, Drawer, Form, Input, Switch } from 'antd';
 import type {
   CreateSettingsDataModelInput,
   SettingsDataModel,
-  SettingsDataSourceInstance,
+  SettingsMainDataSource,
   UpdateSettingsDataModelInput
 } from '../../api/data-models';
 import { DataModelFieldLabel } from './DataModelHelpTooltip';
@@ -19,7 +19,6 @@ import { i18nText } from '../../../../shared/i18n/text';
 interface DataModelFormValues {
   code: string;
   title: string;
-  external_table_id: string;
 }
 
 function isApiOpen(status: SettingsDataModel['status'] | undefined) {
@@ -43,7 +42,7 @@ export function DataModelFormDrawer({
   open: boolean;
   mode: 'create' | 'edit';
   model: SettingsDataModel | null;
-  source: SettingsDataSourceInstance | null;
+  source: SettingsMainDataSource | null;
   saving: boolean;
   onClose: () => void;
   onCreate: (input: CreateSettingsDataModelInput) => void;
@@ -54,11 +53,6 @@ export function DataModelFormDrawer({
 }) {
   const [form] = Form.useForm<DataModelFormValues>();
   const [apiOpen, setApiOpen] = useState(true);
-  const isExternalModel =
-    mode === 'edit'
-      ? model?.source_kind === 'external_source'
-      : source?.source_kind === 'external_source';
-
   useEffect(() => {
     if (!open) {
       return;
@@ -68,8 +62,7 @@ export function DataModelFormDrawer({
       setApiOpen(isApiOpen(model.status));
       form.setFieldsValue({
         code: model.code,
-        title: model.title,
-        external_table_id: model.external_table_id ?? ''
+        title: model.title
       });
       return;
     }
@@ -77,8 +70,7 @@ export function DataModelFormDrawer({
     setApiOpen(isApiOpen(source?.default_data_model_status ?? 'published'));
     form.setFieldsValue({
       code: '',
-      title: '',
-      external_table_id: ''
+      title: ''
     });
   }, [form, mode, model, open, source]);
 
@@ -95,11 +87,7 @@ export function DataModelFormDrawer({
       scope_kind: 'workspace',
       code: values.code,
       title: values.title,
-      status: apiOpenStatus(apiOpen),
-      data_source_instance_id:
-        source?.source_kind === 'external_source' ? source.id : null,
-      external_resource_key: isExternalModel ? values.external_table_id : null,
-      external_table_id: isExternalModel ? values.external_table_id : null
+      status: apiOpenStatus(apiOpen)
     });
     onClose();
   };
@@ -184,20 +172,6 @@ export function DataModelFormDrawer({
             onChange={setApiOpen}
           />
         </Form.Item>
-        {isExternalModel ? (
-          <Form.Item
-            name="external_table_id"
-            label={i18nText('settings', 'auto.table_id_alt')}
-            rules={[
-              {
-                required: true,
-                message: i18nText('settings', 'auto.enter_table_id')
-              }
-            ]}
-          >
-            <Input disabled={mode === 'edit'} />
-          </Form.Item>
-        ) : null}
       </Form>
     </Drawer>
   );

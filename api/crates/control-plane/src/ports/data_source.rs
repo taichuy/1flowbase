@@ -154,6 +154,13 @@ pub trait DataSourceRepository: Send + Sync {
         &self,
         input: &UpsertDataSourceCatalogCacheInput,
     ) -> anyhow::Result<domain::DataSourceCatalogCacheRecord>;
+    async fn get_catalog_cache(
+        &self,
+        _workspace_id: Uuid,
+        _instance_id: Uuid,
+    ) -> anyhow::Result<Option<domain::DataSourceCatalogCacheRecord>> {
+        Ok(None)
+    }
     async fn create_preview_session(
         &self,
         input: &CreateDataSourcePreviewSessionInput,

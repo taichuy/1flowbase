@@ -251,7 +251,7 @@ async fn seed_data_source_installation(
 }
 
 #[tokio::test]
-async fn data_source_routes_create_validate_preview_and_catalog() {
+async fn ac_001_003_data_source_routes_separate_main_source_and_external_connections() {
     let package = create_fixture_package();
     let (state, _database_url) = test_api_state_with_database_url().await;
     let config = test_config();
@@ -331,6 +331,42 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
         Some("not-secret")
     );
 
+    let main_source = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/data-sources/main-source")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(main_source.status(), StatusCode::OK);
+    let main_source_payload: Value =
+        serde_json::from_slice(&to_bytes(main_source.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+    assert_eq!(main_source_payload["data"]["id"], json!("main_source"));
+    assert_eq!(
+        main_source_payload["data"]["source_kind"],
+        json!("main_source")
+    );
+    for forbidden_field in [
+        "installation_id",
+        "source_code",
+        "config_json",
+        "secret_ref",
+        "secret_version",
+        "catalog_refresh_status",
+        "catalog_last_error_message",
+        "catalog_refreshed_at",
+    ] {
+        assert!(!main_source_payload["data"]
+            .as_object()
+            .unwrap()
+            .contains_key(forbidden_field));
+    }
+
     let list_instances = app
         .clone()
         .oneshot(
@@ -350,16 +386,9 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
     )
     .unwrap();
     let listed_sources = list_payload["data"].as_array().unwrap();
-    assert!(listed_sources.iter().any(|source| {
-        source["id"].as_str() == Some("main_source")
-            && source["source_kind"].as_str() == Some("main_source")
-            && source["display_name"].as_str() == Some("主数据源")
-            && source["default_data_model_status"].as_str() == Some("published")
-            && !source
-                .as_object()
-                .unwrap()
-                .contains_key("default_api_exposure_status")
-    }));
+    assert!(listed_sources
+        .iter()
+        .all(|source| source["source_kind"].as_str() == Some("external_source")));
     assert!(listed_sources.iter().any(|source| {
         source["id"].as_str() == Some(&instance_id)
             && source["source_kind"].as_str() == Some("external_source")
@@ -375,7 +404,7 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/api/console/data-sources/instances/main_source/defaults")
+                .uri("/api/console/data-sources/main-source/defaults")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -462,10 +491,6 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
         validate_payload["data"]["instance"]["status"].as_str(),
         Some("ready")
     );
-    assert_eq!(
-        validate_payload["data"]["catalog"]["refresh_status"].as_str(),
-        Some("ready")
-    );
     assert!(!validate_payload.to_string().contains("route-secret-echo"));
     assert_eq!(
         validate_payload["data"]["output"]["echoed"].as_str(),
@@ -475,10 +500,62 @@ async fn data_source_routes_create_validate_preview_and_catalog() {
         validate_payload["data"]["output"]["authorization"].as_str(),
         Some("Bearer ***")
     );
+    assert!(validate_payload["data"]
+        .as_object()
+        .is_some_and(|data| !data.contains_key("catalog")));
+
+    let discover = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/data-sources/instances/{instance_id}/resources/discover"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(discover.status(), StatusCode::OK);
+    let discover_payload: Value =
+        serde_json::from_slice(&to_bytes(discover.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(discover_payload["data"]["refresh_status"], json!("ready"));
     assert_eq!(
-        validate_payload["data"]["catalog"]["catalog_json"][0]["metadata"]["authorization"]
-            .as_str(),
-        Some("Bearer ***")
+        discover_payload["data"]["entries"][0]["resource_key"],
+        json!("contacts")
+    );
+    assert_eq!(
+        discover_payload["data"]["entries"][0]["metadata"]["authorization"],
+        json!("Bearer ***")
+    );
+    assert!(!discover_payload.to_string().contains("route-secret-echo"));
+
+    let list_resources = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/data-sources/instances/{instance_id}/resources"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_resources.status(), StatusCode::OK);
+    let list_resources_payload: Value = serde_json::from_slice(
+        &to_bytes(list_resources.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        list_resources_payload["data"]["entries"],
+        discover_payload["data"]["entries"]
     );
 
     let preview = app
@@ -594,6 +671,23 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
         serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
     let instance_id = create_payload["data"]["id"].as_str().unwrap();
 
+    let validate = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/data-sources/instances/{instance_id}/validate"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(validate.status(), StatusCode::OK);
+
     let map = app
         .clone()
         .oneshot(
@@ -634,6 +728,7 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
         payload["data"]["external_resource_key"].as_str(),
         Some("contacts")
     );
+    assert!(payload["data"]["external_table_id"].is_null());
     assert_eq!(payload["data"]["fields"].as_array().unwrap().len(), 2);
     assert_eq!(
         payload["data"]["fields"][1]["code"].as_str(),

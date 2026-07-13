@@ -6,6 +6,7 @@ import {
   within
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { Grid } from 'antd';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { DataModelFormDrawer } from '../../components/data-models/DataModelFormDrawer';
@@ -25,6 +26,341 @@ beforeEach(setupDataModelsPageTest);
 afterEach(cleanupDataModelsPageTest);
 
 describe('Settings data models page', () => {
+  test('AC-002 separates the main source and external connections on the first screen', async () => {
+    renderApp('/settings/data-models');
+
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: '主数据源' },
+        { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: '外部连接' })
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: '新建连接' })
+      ).toBeEnabled()
+    );
+  });
+
+  test('AC-004/005 external connections map discovered resources without generic table-id input', async () => {
+    renderApp('/settings/data-models?source=source-1');
+
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: '远端资源' },
+        { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '新建数据表' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('表 ID')).not.toBeInTheDocument();
+  });
+
+  test('AC-004 shows preview row fields and values in a closable resource drawer', async () => {
+    dataModelsApi.previewSettingsDataSourceResource.mockResolvedValueOnce({
+      preview_session_id: 'preview-1',
+      expires_at: '2026-07-13T09:30:00Z',
+      output: {
+        rows: [
+          {
+            contact_id: 'contact-1',
+            full_name: 'Ada Lovelace',
+            active: true,
+            profile: { tier: 'gold' }
+          }
+        ],
+        next_cursor: null
+      }
+    });
+
+    renderApp('/settings/data-models?source=source-1');
+
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: /预览/ },
+        { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+      )
+    );
+
+    const previewDrawer = await screen.findByRole('dialog');
+    expect(within(previewDrawer).getByText('Contacts 预览')).toBeInTheDocument();
+    expect(
+      within(previewDrawer).getAllByText('contact_id').length
+    ).toBeGreaterThan(0);
+    expect(within(previewDrawer).getByText('contact-1')).toBeInTheDocument();
+    expect(
+      within(previewDrawer).getAllByText('full_name').length
+    ).toBeGreaterThan(0);
+    expect(within(previewDrawer).getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(within(previewDrawer).getByText('tier')).toBeInTheDocument();
+    expect(within(previewDrawer).getByText('gold')).toBeInTheDocument();
+
+    fireEvent.click(within(previewDrawer).getByRole('button', { name: '关闭' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+  });
+
+  test('AC-004 shows an explicit empty state for a resource preview without rows', async () => {
+    dataModelsApi.previewSettingsDataSourceResource.mockResolvedValueOnce({
+      preview_session_id: 'preview-empty',
+      expires_at: '2026-07-13T09:30:00Z',
+      output: { rows: [], next_cursor: null }
+    });
+
+    renderApp('/settings/data-models?source=source-1');
+
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: /预览/ },
+        { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+      )
+    );
+
+    const previewDrawer = await screen.findByRole('dialog');
+    expect(
+      within(previewDrawer).getByText('此资源没有可预览的数据')
+    ).toBeInTheDocument();
+    expect(within(previewDrawer).getByText('预览已返回 0 条记录')).toBeInTheDocument();
+  });
+
+  test('AC-004 keeps preview request errors visible without opening stale rows', async () => {
+    dataModelsApi.previewSettingsDataSourceResource.mockRejectedValueOnce(
+      new Error('preview request failed')
+    );
+
+    renderApp('/settings/data-models?source=source-1');
+
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: /预览/ },
+        { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+      )
+    );
+
+    expect(await screen.findByText('preview request failed')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  test('AC-004 presents preview rows as a vertical record list on mobile', async () => {
+    const breakpointSpy = vi
+      .spyOn(Grid, 'useBreakpoint')
+      .mockReturnValue({ md: false });
+    dataModelsApi.previewSettingsDataSourceResource.mockResolvedValueOnce({
+      preview_session_id: 'preview-mobile',
+      expires_at: '2026-07-13T09:30:00Z',
+      output: {
+        rows: [{ contact_id: 'mobile-contact-1', full_name: 'Grace Hopper' }],
+        next_cursor: null
+      }
+    });
+
+    try {
+      renderApp('/settings/data-models?source=source-1');
+      fireEvent.click(
+        await screen.findByRole(
+          'button',
+          { name: /预览/ },
+          { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+        )
+      );
+
+      const previewDrawer = await screen.findByRole('dialog');
+      expect(
+        within(previewDrawer).getByLabelText('移动端预览记录')
+      ).toBeInTheDocument();
+      expect(within(previewDrawer).getByText('第 1 条记录')).toBeInTheDocument();
+      expect(within(previewDrawer).getByText('Grace Hopper')).toBeInTheDocument();
+    } finally {
+      breakpointSpy.mockRestore();
+    }
+  });
+
+  test.each([
+    { layout: 'desktop', breakpoint: { md: true } },
+    { layout: 'mobile', breakpoint: { md: false } }
+  ])(
+    'AC-004 caps rows, fields, keys, and scalar values on $layout',
+    async ({ breakpoint }) => {
+      const breakpointSpy = vi
+        .spyOn(Grid, 'useBreakpoint')
+        .mockReturnValue(breakpoint);
+      const longFieldKey = `long_field_${'k'.repeat(90)}_FIELD_KEY_TAIL`;
+      const nestedLongFieldKey = `nested_field_${'n'.repeat(90)}_NESTED_KEY_TAIL`;
+      const longValue = `long-value-${'v'.repeat(260)}-VALUE_TAIL`;
+      const nestedLongValue = `nested-value-${'z'.repeat(260)}-NESTED_VALUE_TAIL`;
+      const rows = Array.from({ length: 22 }, (_, rowIndex) =>
+        Object.fromEntries([
+          [longFieldKey, rowIndex === 0 ? longValue : `value-${rowIndex}`],
+          [
+            'nested',
+            rowIndex === 0
+              ? { [nestedLongFieldKey]: nestedLongValue }
+              : { tier: 'gold' }
+          ],
+          ...Array.from({ length: 20 }, (_value, fieldIndex) => [
+            `field_${fieldIndex}`,
+            fieldIndex === 0 ? `row-${rowIndex}` : fieldIndex
+          ])
+        ])
+      );
+      dataModelsApi.previewSettingsDataSourceResource.mockResolvedValueOnce({
+        preview_session_id: `preview-${breakpoint.md ? 'desktop' : 'mobile'}`,
+        expires_at: '2026-07-13T09:30:00Z',
+        output: { rows, next_cursor: null }
+      });
+
+      try {
+        renderApp('/settings/data-models?source=source-1');
+        fireEvent.click(
+          await screen.findByRole(
+            'button',
+            { name: /预览/ },
+            { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+          )
+        );
+
+        const previewDrawer = await screen.findByRole('dialog');
+        expect(
+          within(previewDrawer).getByText('另有 2 个字段未显示')
+        ).toBeInTheDocument();
+        expect(
+          within(previewDrawer).getByText('另有 2 条记录未显示')
+        ).toBeInTheDocument();
+        expect(within(previewDrawer).getByText('row-19')).toBeInTheDocument();
+        expect(within(previewDrawer).queryByText('row-20')).not.toBeInTheDocument();
+        expect(
+          within(previewDrawer).queryByText(/FIELD_KEY_TAIL/)
+        ).not.toBeInTheDocument();
+        expect(
+          within(previewDrawer).queryByText(/NESTED_KEY_TAIL/)
+        ).not.toBeInTheDocument();
+        expect(
+          within(previewDrawer).queryByText(/VALUE_TAIL/)
+        ).not.toBeInTheDocument();
+        expect(
+          within(previewDrawer).queryByText(/NESTED_VALUE_TAIL/)
+        ).not.toBeInTheDocument();
+        expect(
+          within(previewDrawer).getAllByRole('button', {
+            name: '复制完整值'
+          }).length
+        ).toBeGreaterThanOrEqual(2);
+        expect(
+          within(previewDrawer).getAllByText(
+            `已省略 ${longValue.length - 240} 个字符`
+          ).length
+        ).toBeGreaterThan(0);
+        expect(
+          within(previewDrawer).getAllByText(
+            `已省略 ${nestedLongValue.length - 240} 个字符`
+          ).length
+        ).toBeGreaterThan(0);
+        expect(
+          within(previewDrawer).getAllByText(
+            `已省略 ${longFieldKey.length - 80} 个字符`
+          ).length
+        ).toBeGreaterThan(0);
+        expect(
+          within(previewDrawer).getAllByText(
+            `已省略 ${nestedLongFieldKey.length - 80} 个字符`
+          ).length
+        ).toBeGreaterThan(0);
+      } finally {
+        breakpointSpy.mockRestore();
+      }
+    }
+  );
+
+  test('AC-003 keeps connection config and secret after rejection, then closes after retry succeeds', async () => {
+    dataModelsApi.fetchSettingsDataSourceCatalog.mockResolvedValueOnce({
+      entries: [
+        {
+          installation_id: 'installation-1',
+          source_code: 'hubspot',
+          plugin_id: 'hubspot@1.0.0',
+          plugin_version: '1.0.0',
+          display_name: 'HubSpot',
+          protocol: 'stdio_json',
+          config_schema: [
+            {
+              key: 'endpoint',
+              label: 'Endpoint',
+              description: null,
+              field_type: 'string',
+              control: 'input',
+              send_mode: 'value',
+              required: true,
+              placeholder: null,
+              default_value: null,
+              options: []
+            },
+            {
+              key: 'api_key',
+              label: 'API key',
+              description: null,
+              field_type: 'string',
+              control: 'password',
+              send_mode: 'secret_ref',
+              required: true,
+              placeholder: null,
+              default_value: null,
+              options: []
+            }
+          ]
+        }
+      ]
+    });
+    dataModelsApi.createSettingsDataSourceConnection
+      .mockRejectedValueOnce(new Error('connection rejected'))
+      .mockResolvedValueOnce({ id: 'source-new' });
+
+    renderApp('/settings/data-models');
+
+    const newConnectionButton = await screen.findByRole(
+      'button',
+      { name: '新建连接' },
+      { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+    );
+    await waitFor(() => expect(newConnectionButton).toBeEnabled());
+    fireEvent.click(newConnectionButton);
+    const createDrawer = await screen.findByRole('dialog');
+    expect(within(createDrawer).getByText('新建外部连接')).toBeInTheDocument();
+    fireEvent.change(within(createDrawer).getByLabelText('连接名称'), {
+      target: { value: 'CRM primary' }
+    });
+    fireEvent.change(within(createDrawer).getByLabelText('Endpoint'), {
+      target: { value: 'https://crm.example.com' }
+    });
+    fireEvent.change(within(createDrawer).getByLabelText('API key'), {
+      target: { value: 'secret-value' }
+    });
+
+    fireEvent.click(screen.getByLabelText('创建'));
+
+    expect(await screen.findByText('connection rejected')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText('连接名称')).toHaveValue('CRM primary');
+    expect(screen.getByLabelText('Endpoint')).toHaveValue(
+      'https://crm.example.com'
+    );
+    expect(screen.getByLabelText('API key')).toHaveValue('secret-value');
+
+    fireEvent.click(screen.getByLabelText('创建'));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+  });
+
   test(
     'shows data source navigation, defaults, and the Data Model table',
     async () => {

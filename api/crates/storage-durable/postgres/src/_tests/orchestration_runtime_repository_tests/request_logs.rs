@@ -156,3 +156,136 @@ async fn provider_request_logs_do_not_project_existing_attempt_ledgers() {
     let page=<PgControlPlaneStore as OrchestrationRuntimeRepository>::list_model_provider_request_logs_page(&store,query(seeded.workspace_id,1,20)).await.unwrap();
     assert!(page.items.is_empty());
 }
+
+#[tokio::test]
+async fn delete_selected_provider_request_logs_is_workspace_scoped() {
+    // AC-003: selected deletion only affects matching attempt IDs in the requested workspace.
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let scope = Uuid::now_v7();
+    let other_scope = Uuid::now_v7();
+    let selected_attempt_id = Uuid::now_v7();
+    let kept_attempt_id = Uuid::now_v7();
+    let other_attempt_id = Uuid::now_v7();
+    let at = datetime!(2026-07-13 01:00:00 UTC);
+    store
+        .insert_model_provider_request_logs_batch(&[
+            request_log(scope, selected_attempt_id, at, "succeeded", Some(1)),
+            request_log(scope, kept_attempt_id, at, "succeeded", Some(1)),
+            request_log(other_scope, other_attempt_id, at, "succeeded", Some(1)),
+        ])
+        .await
+        .unwrap();
+
+    let deleted = store
+        .delete_model_provider_request_logs(DeleteModelProviderRequestLogsInput {
+            scope_id: scope,
+            attempt_ids: vec![selected_attempt_id, other_attempt_id],
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(deleted, 1);
+    assert_eq!(query(scope, 1, 20).scope_id, scope);
+    assert_eq!(
+        store
+            .list_model_provider_request_logs_page(query(scope, 1, 20))
+            .await
+            .unwrap()
+            .items[0]
+            .attempt_id,
+        kept_attempt_id
+    );
+    assert_eq!(
+        store
+            .list_model_provider_request_logs_page(query(other_scope, 1, 20))
+            .await
+            .unwrap()
+            .total_count,
+        1
+    );
+}
+
+#[tokio::test]
+async fn clear_provider_request_logs_is_bounded_and_reuses_created_at_snapshot() {
+    // AC-005/AC-006: no batch exceeds 500 and late-created rows stay outside the snapshot.
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let scope = Uuid::now_v7();
+    let other_scope = Uuid::now_v7();
+    let started_at = datetime!(2026-07-01 01:00:00 UTC);
+    let snapshot_created_before = datetime!(2026-07-13 02:00:00 UTC);
+    let mut rows = (0..501)
+        .map(|_| request_log(scope, Uuid::now_v7(), started_at, "succeeded", Some(1)))
+        .collect::<Vec<_>>();
+    let late_attempt_id = Uuid::now_v7();
+    rows.push(request_log(
+        scope,
+        late_attempt_id,
+        started_at,
+        "succeeded",
+        Some(1),
+    ));
+    rows.push(request_log(
+        other_scope,
+        Uuid::now_v7(),
+        started_at,
+        "succeeded",
+        Some(1),
+    ));
+    store
+        .insert_model_provider_request_logs_batch(&rows)
+        .await
+        .unwrap();
+    sqlx::query(
+        "update model_provider_request_logs set created_at = $1 where scope_id = $2 and attempt_id <> $3",
+    )
+    .bind(snapshot_created_before - Duration::seconds(1))
+    .bind(scope)
+    .bind(late_attempt_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query("update model_provider_request_logs set created_at = $1 where attempt_id = $2")
+        .bind(snapshot_created_before + Duration::seconds(1))
+        .bind(late_attempt_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    let first = store
+        .clear_model_provider_request_logs_batch(ClearModelProviderRequestLogsBatchInput {
+            scope_id: scope,
+            snapshot_created_before: Some(snapshot_created_before),
+        })
+        .await
+        .unwrap();
+    assert_eq!(first.deleted_count, 500);
+    assert!(first.has_more);
+    assert_eq!(first.snapshot_created_before, snapshot_created_before);
+    let second = store
+        .clear_model_provider_request_logs_batch(ClearModelProviderRequestLogsBatchInput {
+            scope_id: scope,
+            snapshot_created_before: Some(first.snapshot_created_before),
+        })
+        .await
+        .unwrap();
+    assert_eq!(second.deleted_count, 1);
+    assert!(!second.has_more);
+    let remaining = store
+        .list_model_provider_request_logs_page(query(scope, 1, 20))
+        .await
+        .unwrap();
+    assert_eq!(remaining.total_count, 1);
+    assert_eq!(remaining.items[0].attempt_id, late_attempt_id);
+    assert_eq!(
+        store
+            .list_model_provider_request_logs_page(query(other_scope, 1, 20))
+            .await
+            .unwrap()
+            .total_count,
+        1
+    );
+}

@@ -3,6 +3,9 @@ use super::*;
 const RUNTIME_READ_MODEL_CONTRACT_METADATA_SQL: &str = include_str!(
     "../../../migrations/20260630103000_preserve_runtime_read_model_contract_metadata.sql"
 );
+const MODEL_PROVIDER_REQUEST_LOGS_METADATA_SQL: &str = include_str!(
+    "../../../migrations/20260713130000_register_model_provider_request_logs_runtime_read.sql"
+);
 
 #[tokio::test]
 async fn runtime_record_repository_registers_builtin_runtime_read_models() {
@@ -23,6 +26,8 @@ async fn runtime_record_repository_registers_builtin_runtime_read_models() {
         "flow_run_events",
         "flow_run_checkpoints",
         "flow_run_callback_tasks",
+        // AC-009/AC-010: the provider request log table is registered read-only.
+        "model_provider_request_logs",
     ] {
         assert!(
             model_codes.contains(&expected),
@@ -54,6 +59,23 @@ async fn runtime_record_repository_registers_builtin_runtime_read_models() {
     }));
     assert!(run_logs.fields.iter().all(|field| !field.is_writable));
 
+    let provider_request_logs = metadata
+        .iter()
+        .find(|model| model.model_code == "model_provider_request_logs")
+        .unwrap();
+    assert_eq!(
+        provider_request_logs.physical_table_name,
+        "model_provider_request_logs"
+    );
+    assert!(provider_request_logs
+        .fields
+        .iter()
+        .any(|field| field.code == "attempt_id" && field.is_unique && !field.is_writable));
+    assert!(provider_request_logs
+        .fields
+        .iter()
+        .all(|field| !field.is_writable));
+
     let node_runs = metadata
         .iter()
         .find(|model| model.model_code == "node_runs")
@@ -68,6 +90,117 @@ async fn runtime_record_repository_registers_builtin_runtime_read_models() {
     assert!(!node_field_codes.contains(&"input_payload"));
     assert!(!node_field_codes.contains(&"output_payload"));
     assert!(!node_field_codes.contains(&"debug_payload"));
+}
+
+#[tokio::test]
+async fn model_provider_request_log_migration_preserves_user_metadata_and_existing_grant() {
+    // AC-009: rerunning the seed repairs system contract only.
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let model_id: Uuid = sqlx::query_scalar(
+        "select id from model_definitions where code = 'model_provider_request_logs'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    let status_field_id: Uuid = sqlx::query_scalar(
+        "select id from model_fields where data_model_id = $1 and code = 'status'",
+    )
+    .bind(model_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    sqlx::query("update model_definitions set title = 'Custom provider logs' where id = $1")
+        .bind(model_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::query(
+        "update model_fields set title = 'Custom status', display_interface = 'badge', display_options = '{\"tone\":\"warning\"}'::jsonb where id = $1",
+    )
+    .bind(status_field_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "update scope_data_model_grants set enabled = false, permission_profile = 'owner' where scope_kind = 'system' and scope_id = $1 and data_model_id = $2",
+    )
+    .bind(SYSTEM_SCOPE_ID)
+    .bind(model_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    sqlx::raw_sql(MODEL_PROVIDER_REQUEST_LOGS_METADATA_SQL)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    let title: String = sqlx::query_scalar("select title from model_definitions where id = $1")
+        .bind(model_id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    let (field_title, display_interface, display_options): (
+        String,
+        Option<String>,
+        serde_json::Value,
+    ) = sqlx::query_as(
+        "select title, display_interface, display_options from model_fields where id = $1",
+    )
+    .bind(status_field_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    let (enabled, permission_profile): (bool, String) = sqlx::query_as(
+        "select enabled, permission_profile from scope_data_model_grants where scope_kind = 'system' and scope_id = $1 and data_model_id = $2",
+    )
+    .bind(SYSTEM_SCOPE_ID)
+    .bind(model_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(title, "Custom provider logs");
+    assert_eq!(field_title, "Custom status");
+    assert_eq!(display_interface.as_deref(), Some("badge"));
+    assert_eq!(display_options, json!({ "tone": "warning" }));
+    assert!(!enabled);
+    assert_eq!(permission_profile, "owner");
+}
+
+#[tokio::test]
+async fn new_workspace_receives_model_provider_request_log_read_grant() {
+    // AC-009: bootstrap grants newly created workspaces access to the runtime read model.
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let workspace_id = Uuid::now_v7();
+    let actor_user_id = Uuid::now_v7();
+    insert_workspace(&store, workspace_id).await;
+    insert_user(&store, actor_user_id, "provider-request-log-grant").await;
+
+    SystemMetadataBootstrapService::new(store.clone())
+        .ensure_builtin_runtime_read_model_grants(actor_user_id, workspace_id)
+        .await
+        .unwrap();
+
+    let model_id: Uuid = sqlx::query_scalar(
+        "select id from model_definitions where code = 'model_provider_request_logs'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    let (enabled, permission_profile): (bool, String) = sqlx::query_as(
+        "select enabled, permission_profile from scope_data_model_grants where scope_kind = 'workspace' and scope_id = $1 and data_model_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(model_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(enabled);
+    assert_eq!(permission_profile, "scope_all");
 }
 
 #[tokio::test]

@@ -928,6 +928,20 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         let _ = input;
         anyhow::bail!("list_model_provider_request_logs_page not implemented")
     }
+    async fn delete_model_provider_request_logs(
+        &self,
+        input: DeleteModelProviderRequestLogsInput,
+    ) -> anyhow::Result<u64> {
+        let _ = input;
+        anyhow::bail!("delete_model_provider_request_logs not implemented")
+    }
+    async fn clear_model_provider_request_logs_batch(
+        &self,
+        input: ClearModelProviderRequestLogsBatchInput,
+    ) -> anyhow::Result<ClearModelProviderRequestLogsBatchResult> {
+        let _ = input;
+        anyhow::bail!("clear_model_provider_request_logs_batch not implemented")
+    }
     async fn list_capability_invocations(
         &self,
         flow_run_id: Uuid,
@@ -1164,6 +1178,27 @@ pub struct ProviderRequestLogTask {
 }
 
 pub type InsertModelProviderRequestLogInput = ProviderRequestLogTask;
+
+pub const MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT: usize = 500;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteModelProviderRequestLogsInput {
+    pub scope_id: Uuid,
+    pub attempt_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClearModelProviderRequestLogsBatchInput {
+    pub scope_id: Uuid,
+    pub snapshot_created_before: Option<OffsetDateTime>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClearModelProviderRequestLogsBatchResult {
+    pub deleted_count: u64,
+    pub has_more: bool,
+    pub snapshot_created_before: OffsetDateTime,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListModelProviderRequestLogsPageInput {

@@ -21,25 +21,40 @@ import { useAuthStore } from '../../../../state/auth-store';
 import {
   createSettingsDataModel,
   createSettingsDataModelField,
+  createSettingsDataSourceConnection,
   deleteSettingsDataModel,
   deleteSettingsDataModelField,
   fetchSettingsDataModelAdvisorFindings,
   fetchSettingsDataModelScopeGrants,
   fetchSettingsDataModels,
-  fetchSettingsDataSourceInstances,
+  fetchSettingsDataSourceCatalog,
+  fetchSettingsDataSourceConnections,
+  fetchSettingsDataSourceResources,
+  fetchSettingsMainDataSource,
+  discoverSettingsDataSourceResources,
+  mapSettingsDataSourceResourceToModel,
+  previewSettingsDataSourceResource,
   settingsDataModelAdvisorFindingsQueryKey,
   settingsDataModelsQueryKey,
   settingsDataModelScopeGrantsQueryKey,
-  settingsDataSourcesQueryKey,
+  settingsDataSourceCatalogQueryKey,
+  settingsDataSourceConnectionsQueryKey,
+  settingsDataSourceResourcesQueryKey,
+  settingsMainDataSourceQueryKey,
+  validateSettingsDataSourceConnection,
   updateSettingsDataModel,
   updateSettingsDataModelField,
   updateSettingsDataModelScopeGrant,
   type CreateSettingsDataModelFieldInput,
   type CreateSettingsDataModelInput,
+  type CreateSettingsDataSourceConnectionInput,
   type SettingsDataModel,
   type SettingsDataModelField,
   type SettingsDataModelScopeGrant,
-  type SettingsDataSourceInstance,
+  type SettingsDataSource,
+  type SettingsDataSourceConnection,
+  type SettingsDataSourcePreview,
+  type SettingsDataSourceRemoteResource,
   type UpdateSettingsDataModelFieldInput,
   type UpdateSettingsDataModelInput,
   type UpdateSettingsDataModelScopeGrantInput
@@ -48,6 +63,8 @@ import { DataModelDetail } from '../../components/data-models/DataModelDetail';
 import { DataModelDetailDrawer } from '../../components/data-models/DataModelDetailDrawer';
 import { DataModelTable } from '../../components/data-models/DataModelTable';
 import { DataSourcePanel } from '../../components/data-models/DataSourcePanel';
+import { DataSourceResourcePreviewDrawer } from '../../components/data-models/DataSourceResourcePreviewDrawer';
+import { DataSourceResourcesPanel } from '../../components/data-models/DataSourceResourcesPanel';
 import '../../components/data-models/data-model-panel.css';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -56,7 +73,7 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : null;
 }
 
-const emptySources: SettingsDataSourceInstance[] = [];
+const emptyConnections: SettingsDataSourceConnection[] = [];
 const emptyModels: SettingsDataModel[] = [];
 
 function readSourceIdFromLocation() {
@@ -91,13 +108,32 @@ export function SettingsDataModelsSection({
   );
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
+  const [resourcePreview, setResourcePreview] = useState<{
+    resource: SettingsDataSourceRemoteResource;
+    preview: SettingsDataSourcePreview;
+  } | null>(null);
 
-  const sourcesQuery = useQuery({
-    queryKey: settingsDataSourcesQueryKey,
-    queryFn: fetchSettingsDataSourceInstances
+  const mainSourceQuery = useQuery({
+    queryKey: settingsMainDataSourceQueryKey,
+    queryFn: fetchSettingsMainDataSource
+  });
+  const connectionsQuery = useQuery({
+    queryKey: settingsDataSourceConnectionsQueryKey,
+    queryFn: fetchSettingsDataSourceConnections
+  });
+  const catalogQuery = useQuery({
+    queryKey: settingsDataSourceCatalogQueryKey,
+    queryFn: fetchSettingsDataSourceCatalog
   });
 
-  const sources = sourcesQuery.data ?? emptySources;
+  const connections = connectionsQuery.data ?? emptyConnections;
+  const sources = useMemo<SettingsDataSource[]>(
+    () =>
+      mainSourceQuery.data
+        ? [mainSourceQuery.data, ...connections]
+        : connections,
+    [connections, mainSourceQuery.data]
+  );
   const selectedSource = useMemo(
     () => sources.find((source) => source.id === selectedSourceId) ?? null,
     [selectedSourceId, sources]
@@ -106,8 +142,16 @@ export function SettingsDataModelsSection({
 
   const modelsQuery = useQuery({
     queryKey: settingsDataModelsQueryKey(effectiveSourceId ?? ''),
-    queryFn: () => fetchSettingsDataModels(effectiveSourceId ?? ''),
-    enabled: Boolean(effectiveSourceId)
+    queryFn: () => fetchSettingsDataModels(selectedSource as SettingsDataSource),
+    enabled: Boolean(selectedSource)
+  });
+
+  const selectedConnection =
+    selectedSource?.source_kind === 'external_source' ? selectedSource : null;
+  const resourcesQuery = useQuery({
+    queryKey: settingsDataSourceResourcesQueryKey(selectedConnection?.id ?? ''),
+    queryFn: () => fetchSettingsDataSourceResources(selectedConnection?.id ?? ''),
+    enabled: selectedConnection?.status === 'ready'
   });
 
   const models = modelsQuery.data ?? emptyModels;
@@ -142,13 +186,19 @@ export function SettingsDataModelsSection({
   useEffect(() => {
     if (
       selectedSourceId &&
-      sources.length > 0 &&
+      !mainSourceQuery.isLoading &&
+      !connectionsQuery.isLoading &&
       !sources.some((source) => source.id === selectedSourceId)
     ) {
       setSelectedSourceId(null);
       writeSourceIdToLocation(null);
     }
-  }, [selectedSourceId, sources]);
+  }, [
+    connectionsQuery.isLoading,
+    mainSourceQuery.isLoading,
+    selectedSourceId,
+    sources
+  ]);
 
   const openSourceManager = (sourceId: string) => {
     setSelectedSourceId(sourceId);
@@ -161,6 +211,100 @@ export function SettingsDataModelsSection({
     setEditingModelId(null);
     writeSourceIdToLocation(null);
   };
+
+  const createConnectionMutation = useMutation({
+    mutationFn: (input: CreateSettingsDataSourceConnectionInput) => {
+      if (!csrfToken) {
+        throw new Error('missing csrf token');
+      }
+      return createSettingsDataSourceConnection(input, csrfToken);
+    },
+    onSuccess: async (connection) => {
+      messageApi.success(i18nText('settings', 'auto.connection_created'));
+      await queryClient.invalidateQueries({
+        queryKey: settingsDataSourceConnectionsQueryKey
+      });
+      openSourceManager(connection.id);
+    }
+  });
+
+  const validateConnectionMutation = useMutation({
+    mutationFn: (connection: SettingsDataSourceConnection) => {
+      if (!csrfToken) {
+        throw new Error('missing csrf token');
+      }
+      return validateSettingsDataSourceConnection(connection.id, csrfToken);
+    },
+    onSuccess: async () => {
+      messageApi.success(i18nText('settings', 'auto.connection_ready'));
+      await queryClient.invalidateQueries({
+        queryKey: settingsDataSourceConnectionsQueryKey
+      });
+    }
+  });
+
+  const discoverResourcesMutation = useMutation({
+    mutationFn: (connection: SettingsDataSourceConnection) => {
+      if (!csrfToken) {
+        throw new Error('missing csrf token');
+      }
+      return discoverSettingsDataSourceResources(connection.id, csrfToken);
+    },
+    onSuccess: async (_result, connection) => {
+      await queryClient.invalidateQueries({
+        queryKey: settingsDataSourceResourcesQueryKey(connection.id)
+      });
+    }
+  });
+
+  const previewResourceMutation = useMutation({
+    onMutate: () => setResourcePreview(null),
+    mutationFn: ({
+      connection,
+      resource
+    }: {
+      connection: SettingsDataSourceConnection;
+      resource: SettingsDataSourceRemoteResource;
+    }) => {
+      if (!csrfToken) {
+        throw new Error('missing csrf token');
+      }
+      return previewSettingsDataSourceResource(
+        connection.id,
+        resource.resource_key,
+        csrfToken
+      );
+    },
+    onSuccess: (preview, { resource }) => {
+      setResourcePreview({ resource, preview });
+    }
+  });
+
+  const mapResourceMutation = useMutation({
+    mutationFn: ({
+      connection,
+      resource
+    }: {
+      connection: SettingsDataSourceConnection;
+      resource: SettingsDataSourceRemoteResource;
+    }) => {
+      if (!csrfToken) {
+        throw new Error('missing csrf token');
+      }
+      return mapSettingsDataSourceResourceToModel(
+        connection.id,
+        resource.resource_key,
+        csrfToken
+      );
+    },
+    onSuccess: async (model, { connection }) => {
+      messageApi.success(i18nText('settings', 'auto.data_model_created'));
+      setSelectedModelId(model.id);
+      await queryClient.invalidateQueries({
+        queryKey: settingsDataModelsQueryKey(connection.id)
+      });
+    }
+  });
 
   const scopeGrantsQuery = useQuery({
     queryKey: settingsDataModelScopeGrantsQueryKey(editingModel?.id ?? ''),
@@ -338,7 +482,10 @@ export function SettingsDataModelsSection({
   });
 
   const errorMessage =
-    getErrorMessage(sourcesQuery.error) ??
+    getErrorMessage(mainSourceQuery.error) ??
+    getErrorMessage(connectionsQuery.error) ??
+    getErrorMessage(catalogQuery.error) ??
+    getErrorMessage(resourcesQuery.error) ??
     getErrorMessage(modelsQuery.error) ??
     getErrorMessage(scopeGrantsQuery.error) ??
     getErrorMessage(advisorQuery.error) ??
@@ -348,7 +495,11 @@ export function SettingsDataModelsSection({
     getErrorMessage(createFieldMutation.error) ??
     getErrorMessage(updateFieldMutation.error) ??
     getErrorMessage(deleteFieldMutation.error) ??
-    getErrorMessage(saveGrantMutation.error);
+    getErrorMessage(saveGrantMutation.error) ??
+    getErrorMessage(validateConnectionMutation.error) ??
+    getErrorMessage(discoverResourcesMutation.error) ??
+    getErrorMessage(previewResourceMutation.error) ??
+    getErrorMessage(mapResourceMutation.error);
 
   return (
     <SettingsSectionSurface
@@ -423,14 +574,64 @@ export function SettingsDataModelsSection({
                     ? i18nText("settings", "auto.ready")
                     : selectedSource.status}
                 </Tag>
-                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                  <code className="data-model-panel__code-badge">
-                    {selectedSource.source_code}
-                  </code>
-                </Typography.Text>
+                {selectedConnection ? (
+                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                    <code className="data-model-panel__code-badge">
+                      {selectedConnection.source_code}
+                    </code>
+                  </Typography.Text>
+                ) : null}
               </Flex>
 
             </div>
+            {selectedConnection ? (
+              <DataSourceResourcesPanel
+                connection={selectedConnection}
+                resources={resourcesQuery.data?.entries ?? []}
+                loading={resourcesQuery.isLoading}
+                validating={validateConnectionMutation.isPending}
+                discovering={discoverResourcesMutation.isPending}
+                previewingResourceKey={
+                  previewResourceMutation.isPending
+                    ? (previewResourceMutation.variables?.resource.resource_key ??
+                      null)
+                    : null
+                }
+                mappingResourceKey={
+                  mapResourceMutation.isPending
+                    ? (mapResourceMutation.variables?.resource.resource_key ??
+                      null)
+                    : null
+                }
+                canManage={canManage}
+                onValidate={() =>
+                  validateConnectionMutation.mutate(selectedConnection)
+                }
+                onDiscover={() =>
+                  discoverResourcesMutation.mutate(selectedConnection)
+                }
+                onPreview={(resource) =>
+                  previewResourceMutation.mutate({
+                    connection: selectedConnection,
+                    resource
+                  })
+                }
+                onMap={(resource) =>
+                  mapResourceMutation.mutate({
+                    connection: selectedConnection,
+                    resource
+                  })
+                }
+              />
+            ) : null}
+            {selectedConnection && resourcePreview ? (
+              <DataSourceResourcePreviewDrawer
+                connection={selectedConnection}
+                resource={resourcePreview.resource}
+                preview={resourcePreview.preview}
+                onClose={() => setResourcePreview(null)}
+              />
+            ) : null}
             <DataModelTable
               models={models}
               selectedSource={selectedSource}
@@ -502,9 +703,24 @@ export function SettingsDataModelsSection({
           </Flex>
         ) : (
           <DataSourcePanel
-            sources={sources}
-            loading={sourcesQuery.isLoading}
-            onOpenSource={openSourceManager}
+            mainSource={mainSourceQuery.data ?? null}
+            connections={connections}
+            catalog={catalogQuery.data?.entries ?? []}
+            loading={
+              mainSourceQuery.isLoading ||
+              connectionsQuery.isLoading ||
+              catalogQuery.isLoading
+            }
+            creating={createConnectionMutation.isPending}
+            creationErrorMessage={getErrorMessage(
+              createConnectionMutation.error
+            )}
+            canManage={canManage}
+            onOpenMainSource={() => openSourceManager('main_source')}
+            onOpenConnection={openSourceManager}
+            onCreateConnection={(input) =>
+              createConnectionMutation.mutateAsync(input).then(() => undefined)
+            }
           />
         )}
       </div>

@@ -47,6 +47,13 @@ pub struct ValidateDataSourceInstanceCommand {
 }
 
 #[derive(Debug, Clone)]
+pub struct DiscoverDataSourceResourcesCommand {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub instance_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpdateDataSourceDefaultsCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
@@ -95,13 +102,21 @@ pub struct DataSourceCatalogEntryView {
     pub plugin_version: String,
     pub display_name: String,
     pub protocol: String,
+    pub config_schema: Vec<PluginFormFieldSchema>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ValidateDataSourceInstanceResult {
     pub instance: domain::DataSourceInstanceRecord,
-    pub catalog: domain::DataSourceCatalogCacheRecord,
     pub output: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct DataSourceResourcesView {
+    pub entries: Vec<DataSourceCatalogEntry>,
+    pub refresh_status: domain::DataSourceCatalogRefreshStatus,
+    pub last_error_message: Option<String>,
+    pub refreshed_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone)]
@@ -186,22 +201,35 @@ where
             .map(|assignment| assignment.installation_id)
             .collect::<HashSet<_>>();
 
-        let mut entries = self
+        let installations = self
             .repository
             .list_installations()
             .await?
             .into_iter()
             .filter(|installation| installation.contract_version == "1flowbase.data_source/v1")
             .filter(|installation| assigned_installation_ids.contains(&installation.id))
-            .map(|installation| DataSourceCatalogEntryView {
+            .collect::<Vec<_>>();
+        let mut entries = Vec::with_capacity(installations.len());
+        for installation in installations {
+            let installation = self.ready_installation(installation.id).await?;
+            let installed_path = installation.installed_path.clone();
+            let package = tokio::task::spawn_blocking(move || {
+                plugin_framework::DataSourcePackage::load_from_dir(installed_path)
+            })
+            .await??;
+            if package.definition.source_code != installation.provider_code {
+                return Err(ControlPlaneError::InvalidInput("source_code").into());
+            }
+            entries.push(DataSourceCatalogEntryView {
                 installation_id: installation.id,
                 source_code: installation.provider_code,
                 plugin_id: installation.plugin_id,
                 plugin_version: installation.plugin_version,
                 display_name: installation.display_name,
                 protocol: installation.protocol,
-            })
-            .collect::<Vec<_>>();
+                config_schema: package.definition.config_schema,
+            });
+        }
         entries.sort_by(|left, right| left.display_name.cmp(&right.display_name));
         Ok(entries)
     }
@@ -352,14 +380,6 @@ where
                 secret_json.clone(),
             )
             .await?;
-        let catalog_json = self
-            .runtime
-            .discover_catalog(&installation, existing.config_json.clone(), secret_json)
-            .await?;
-        let catalog_json = redact_value(&catalog_json, &secret_values);
-        let _catalog_entries: Vec<DataSourceCatalogEntry> =
-            serde_json::from_value(catalog_json.clone())?;
-        let now = OffsetDateTime::now_utc();
 
         let instance = self
             .repository
@@ -369,16 +389,6 @@ where
                 status: domain::DataSourceInstanceStatus::Ready,
                 metadata_json: existing.metadata_json.clone(),
                 updated_by: actor.user_id,
-            })
-            .await?;
-        let catalog = self
-            .repository
-            .upsert_catalog_cache(&UpsertDataSourceCatalogCacheInput {
-                data_source_instance_id: instance.id,
-                refresh_status: domain::DataSourceCatalogRefreshStatus::Ready,
-                catalog_json,
-                last_error_message: None,
-                refreshed_at: Some(now),
             })
             .await?;
 
@@ -391,17 +401,13 @@ where
                 Some(instance.id),
                 "data_source.instance_validated",
                 json!({
-                    "refresh_status": catalog.refresh_status.as_str(),
+                    "status": instance.status.as_str(),
                 }),
             ),
         )
         .await?;
 
-        Ok(ValidateDataSourceInstanceResult {
-            instance,
-            catalog,
-            output,
-        })
+        Ok(ValidateDataSourceInstanceResult { instance, output })
     }
 
     pub async fn update_defaults(
@@ -488,6 +494,111 @@ where
         Ok(defaults)
     }
 
+    pub async fn list_resources(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+        instance_id: Uuid,
+    ) -> Result<DataSourceResourcesView> {
+        let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        ensure_workspace_matches(&actor, workspace_id)?;
+        ensure_external_data_source_permission(&actor, "view")?;
+
+        let instance = self
+            .repository
+            .get_instance(workspace_id, instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
+        ensure_ready_connection(&instance, "list_resources")?;
+
+        let Some(cache) = self
+            .repository
+            .get_catalog_cache(workspace_id, instance_id)
+            .await?
+        else {
+            return Ok(DataSourceResourcesView {
+                entries: Vec::new(),
+                refresh_status: domain::DataSourceCatalogRefreshStatus::Idle,
+                last_error_message: None,
+                refreshed_at: None,
+            });
+        };
+        let entries = serde_json::from_value(cache.catalog_json)?;
+        Ok(DataSourceResourcesView {
+            entries,
+            refresh_status: cache.refresh_status,
+            last_error_message: cache.last_error_message,
+            refreshed_at: cache.refreshed_at,
+        })
+    }
+
+    pub async fn discover_resources(
+        &self,
+        command: DiscoverDataSourceResourcesCommand,
+    ) -> Result<DataSourceResourcesView> {
+        let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
+        ensure_workspace_matches(&actor, command.workspace_id)?;
+        ensure_external_data_source_permission(&actor, "configure")?;
+
+        let instance = self
+            .repository
+            .get_instance(command.workspace_id, command.instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
+        ensure_ready_connection(&instance, "discover_resources")?;
+        let installation = self.ready_installation(instance.installation_id).await?;
+        ensure_installation_assigned(
+            &self.repository,
+            command.workspace_id,
+            instance.installation_id,
+        )
+        .await?;
+
+        let secret_json = self
+            .repository
+            .get_secret_json(instance.id)
+            .await?
+            .unwrap_or_else(|| json!({}));
+        let secret_values = collect_secret_strings(&secret_json);
+        self.ensure_runtime_loaded(&installation).await?;
+        let catalog_json = self
+            .runtime
+            .discover_catalog(&installation, instance.config_json, secret_json)
+            .await?;
+        let catalog_json = redact_value(&catalog_json, &secret_values);
+        let entries: Vec<DataSourceCatalogEntry> = serde_json::from_value(catalog_json.clone())?;
+        let cache = self
+            .repository
+            .upsert_catalog_cache(&UpsertDataSourceCatalogCacheInput {
+                data_source_instance_id: instance.id,
+                refresh_status: domain::DataSourceCatalogRefreshStatus::Ready,
+                catalog_json,
+                last_error_message: None,
+                refreshed_at: Some(OffsetDateTime::now_utc()),
+            })
+            .await?;
+
+        AuthRepository::append_audit_log(
+            &self.repository,
+            &audit_log(
+                Some(command.workspace_id),
+                Some(actor.user_id),
+                "data_source_instance",
+                Some(instance.id),
+                "data_source.resources_discovered",
+                json!({ "resource_count": entries.len() }),
+            ),
+        )
+        .await?;
+
+        Ok(DataSourceResourcesView {
+            entries,
+            refresh_status: cache.refresh_status,
+            last_error_message: cache.last_error_message,
+            refreshed_at: cache.refreshed_at,
+        })
+    }
+
     pub async fn rotate_secret(
         &self,
         command: RotateDataSourceSecretCommand,
@@ -553,6 +664,7 @@ where
             .get_instance(command.workspace_id, command.instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
+        ensure_ready_connection(&instance, "map_resource_to_model")?;
         let installation = self.ready_installation(instance.installation_id).await?;
         ensure_installation_assigned(
             &self.repository,
@@ -609,7 +721,7 @@ where
                 data_source_instance_id: Some(instance.id),
                 source_kind: domain::DataModelSourceKind::ExternalSource,
                 external_resource_key: Some(descriptor_resource_key.clone()),
-                external_table_id: Some(descriptor_resource_key.clone()),
+                external_table_id: None,
                 external_capability_snapshot: Some(serde_json::to_value(&descriptor.capabilities)?),
                 code: model_code,
                 title: model_title,
@@ -697,6 +809,7 @@ where
             .get_instance(command.workspace_id, command.instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
+        ensure_ready_connection(&instance, "preview_read")?;
         let installation = self.ready_installation(instance.installation_id).await?;
         ensure_installation_assigned(
             &self.repository,
@@ -879,6 +992,23 @@ fn ensure_data_source_installation(
         return Err(ControlPlaneError::InvalidInput("source_code").into());
     }
     Ok(())
+}
+
+fn ensure_ready_connection(
+    instance: &domain::DataSourceInstanceRecord,
+    action: &'static str,
+) -> Result<()> {
+    if instance.status == domain::DataSourceInstanceStatus::Ready {
+        return Ok(());
+    }
+
+    Err(ControlPlaneError::InvalidStateTransition {
+        resource: "data_source_instance",
+        action,
+        from: instance.status.as_str().to_string(),
+        to: domain::DataSourceInstanceStatus::Ready.as_str().to_string(),
+    }
+    .into())
 }
 
 fn normalize_required_text(value: &str, field: &'static str) -> Result<String> {

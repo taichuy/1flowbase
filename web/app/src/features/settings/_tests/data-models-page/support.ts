@@ -133,8 +133,30 @@ const hostInfrastructureApi = vi.hoisted(() => ({
   saveSettingsHostInfrastructureProviderConfig: vi.fn()
 }));
 
+const consoleNavigationApi = vi.hoisted(() => ({
+  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+  fetchSettingsConsoleNavigation: vi.fn()
+}));
+
 const dataModelsApi = vi.hoisted(() => ({
-  settingsDataSourcesQueryKey: ['settings', 'data-models', 'sources'],
+  settingsMainDataSourceQueryKey: ['settings', 'data-models', 'main-source'],
+  settingsDataSourceConnectionsQueryKey: [
+    'settings',
+    'data-models',
+    'connections'
+  ],
+  settingsDataSourceCatalogQueryKey: [
+    'settings',
+    'data-models',
+    'connection-catalog'
+  ],
+  settingsDataSourceResourcesQueryKey: vi.fn((connectionId: string) => [
+    'settings',
+    'data-models',
+    'connections',
+    connectionId,
+    'resources'
+  ]),
   settingsDataModelsQueryKey: vi.fn((sourceId: string) => [
     'settings',
     'data-models',
@@ -165,8 +187,17 @@ const dataModelsApi = vi.hoisted(() => ({
     'openapi',
     modelId
   ]),
-  fetchSettingsDataSourceInstances: vi.fn(),
-  updateSettingsDataSourceDefaults: vi.fn(),
+  fetchSettingsMainDataSource: vi.fn(),
+  fetchSettingsDataSourceConnections: vi.fn(),
+  fetchSettingsDataSourceCatalog: vi.fn(),
+  createSettingsDataSourceConnection: vi.fn(),
+  validateSettingsDataSourceConnection: vi.fn(),
+  fetchSettingsDataSourceResources: vi.fn(),
+  discoverSettingsDataSourceResources: vi.fn(),
+  previewSettingsDataSourceResource: vi.fn(),
+  mapSettingsDataSourceResourceToModel: vi.fn(),
+  updateSettingsMainDataSourceDefaults: vi.fn(),
+  updateSettingsDataSourceConnectionDefaults: vi.fn(),
   fetchSettingsDataModels: vi.fn(),
   createSettingsDataModel: vi.fn(),
   updateSettingsDataModel: vi.fn(),
@@ -192,6 +223,7 @@ vi.mock('../../api/system-runtime', () => systemRuntimeApi);
 vi.mock('../../api/file-management', () => fileManagementApi);
 vi.mock('../../api/host-infrastructure', () => hostInfrastructureApi);
 vi.mock('../../api/data-models', () => dataModelsApi);
+vi.mock('../../api/console-navigation', () => consoleNavigationApi);
 vi.mock('@scalar/api-reference-react', () => ({
   ApiReferenceReact: () =>
     createElement('div', { 'data-testid': 'settings-page-scalar' }, 'Scalar')
@@ -642,6 +674,28 @@ export function setupDataModelsPageTest() {
     xxl: false
   });
 
+  consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue({
+    route_definitions: [
+      {
+        route_id: 'settings.data-models',
+        surface_key: 'data-models',
+        path: '/settings/data-models',
+        surface_kind: 'system'
+      }
+    ],
+    navigation_items: [
+      {
+        item_id: 'data-models',
+        route_id: 'settings.data-models',
+        parent_item_id: 'settings',
+        label_key: 'auto.data_source',
+        navigation_slot: 'settings',
+        order: 1
+      }
+    ],
+    permission_bindings: []
+  });
+
   membersApi.fetchSettingsMembers.mockResolvedValue([]);
   rolesApi.fetchSettingsRoles.mockResolvedValue([]);
   rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
@@ -682,22 +736,14 @@ export function setupDataModelsPageTest() {
     []
   );
 
-  dataModelsApi.fetchSettingsDataSourceInstances.mockResolvedValue([
-    {
-      id: 'main_source',
-      source_kind: 'main_source',
-      installation_id: 'main_source',
-      source_code: 'main_source',
-      display_name: '主数据源',
-      status: 'ready',
-      default_data_model_status: 'published',
-      config_json: {},
-      secret_ref: null,
-      secret_version: null,
-      catalog_refresh_status: null,
-      catalog_last_error_message: null,
-      catalog_refreshed_at: null
-    },
+  dataModelsApi.fetchSettingsMainDataSource.mockResolvedValue({
+    id: 'main_source',
+    source_kind: 'main_source',
+    display_name: '主数据源',
+    status: 'ready',
+    default_data_model_status: 'published'
+  });
+  dataModelsApi.fetchSettingsDataSourceConnections.mockResolvedValue([
     {
       id: 'source-1',
       source_kind: 'external_source',
@@ -714,9 +760,36 @@ export function setupDataModelsPageTest() {
       catalog_refreshed_at: '2026-04-30T08:00:00Z'
     }
   ]);
-  dataModelsApi.fetchSettingsDataModels.mockImplementation((sourceId: string) =>
+  dataModelsApi.fetchSettingsDataSourceCatalog.mockResolvedValue({
+    entries: [
+      {
+        installation_id: 'installation-1',
+        source_code: 'hubspot',
+        plugin_id: 'hubspot@1.0.0',
+        plugin_version: '1.0.0',
+        display_name: 'HubSpot',
+        protocol: 'stdio_json',
+        config_schema: []
+      }
+    ]
+  });
+  dataModelsApi.fetchSettingsDataSourceResources.mockResolvedValue({
+    entries: [
+      {
+        resource_key: 'contacts',
+        display_name: 'Contacts',
+        resource_kind: 'object',
+        capabilities: {},
+        metadata: {}
+      }
+    ],
+    refresh_status: 'ready',
+    last_error_message: null,
+    refreshed_at: '2026-04-30T08:00:00Z'
+  });
+  dataModelsApi.fetchSettingsDataModels.mockImplementation((source: { source_kind: string }) =>
     Promise.resolve(
-      sourceId === 'main_source'
+      source.source_kind === 'main_source'
         ? mainSourceModels
         : [contactsModel, draftOrdersModel]
     )
@@ -852,6 +925,24 @@ export function setupDataModelsPageTest() {
   dataModelsApi.createSettingsDataModel.mockResolvedValue({
     id: 'model-new'
   });
+  dataModelsApi.createSettingsDataSourceConnection.mockResolvedValue({
+    id: 'source-new'
+  });
+  dataModelsApi.validateSettingsDataSourceConnection.mockResolvedValue({
+    instance: { id: 'source-1', status: 'ready' },
+    output: {}
+  });
+  dataModelsApi.discoverSettingsDataSourceResources.mockResolvedValue({
+    entries: []
+  });
+  dataModelsApi.previewSettingsDataSourceResource.mockResolvedValue({
+    output: { rows: [], next_cursor: null }
+  });
+  dataModelsApi.mapSettingsDataSourceResourceToModel.mockResolvedValue({
+    id: 'model-mapped'
+  });
+  dataModelsApi.updateSettingsMainDataSourceDefaults.mockResolvedValue({});
+  dataModelsApi.updateSettingsDataSourceConnectionDefaults.mockResolvedValue({});
   dataModelsApi.createSettingsDataModelField.mockResolvedValue({
     id: 'field-new'
   });

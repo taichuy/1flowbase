@@ -132,6 +132,12 @@ impl BuiltinDataModelContract {
     }
 
     pub fn field_contract(self, field_code: &str) -> Option<BuiltinDataModelFieldContract> {
+        if self.code == "model_provider_request_logs" {
+            return MODEL_PROVIDER_REQUEST_LOG_FIELD_CONTRACTS
+                .iter()
+                .copied()
+                .find(|contract| contract.code == field_code);
+        }
         if !self.owns_field_code(field_code) {
             return None;
         }
@@ -426,6 +432,236 @@ const FLOW_RUN_CALLBACK_TASKS_FIELDS: &[&str] = &[
     "completed_at",
 ];
 
+const MODEL_PROVIDER_REQUEST_LOGS_FIELDS: &[&str] = &[
+    "id",
+    "scope_id",
+    "attempt_id",
+    "flow_run_id",
+    "application_id",
+    "conversation_id",
+    "application_name",
+    "attempt_index",
+    "is_retry",
+    "retry_reason",
+    "provider_instance_id",
+    "provider_instance_display_name",
+    "provider_code",
+    "protocol",
+    "upstream_model_id",
+    "reasoning_effort",
+    "status",
+    "error_code",
+    "failed_after_first_token",
+    "input_tokens",
+    "output_tokens",
+    "total_tokens",
+    "started_at",
+    "first_token_at",
+    "finished_at",
+    "time_to_first_token_ms",
+    "total_duration_ms",
+    "created_at",
+];
+
+const MODEL_PROVIDER_REQUEST_LOG_FIELD_CONTRACTS: &[BuiltinDataModelFieldContract] = &[
+    BuiltinDataModelFieldContract {
+        code: "id",
+        physical_column_name: "id",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: true,
+        is_unique: true,
+    },
+    BuiltinDataModelFieldContract {
+        code: "scope_id",
+        physical_column_name: "scope_id",
+        field_kind: crate::ModelFieldKind::ManyToOne,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "attempt_id",
+        physical_column_name: "attempt_id",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: true,
+        is_unique: true,
+    },
+    BuiltinDataModelFieldContract {
+        code: "flow_run_id",
+        physical_column_name: "flow_run_id",
+        field_kind: crate::ModelFieldKind::ManyToOne,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "application_id",
+        physical_column_name: "application_id",
+        field_kind: crate::ModelFieldKind::ManyToOne,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "conversation_id",
+        physical_column_name: "conversation_id",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "application_name",
+        physical_column_name: "application_name",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "attempt_index",
+        physical_column_name: "attempt_index",
+        field_kind: crate::ModelFieldKind::Number,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "is_retry",
+        physical_column_name: "is_retry",
+        field_kind: crate::ModelFieldKind::Boolean,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "retry_reason",
+        physical_column_name: "retry_reason",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "provider_instance_id",
+        physical_column_name: "provider_instance_id",
+        field_kind: crate::ModelFieldKind::ManyToOne,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "provider_instance_display_name",
+        physical_column_name: "provider_instance_display_name",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "provider_code",
+        physical_column_name: "provider_code",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "protocol",
+        physical_column_name: "protocol",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "upstream_model_id",
+        physical_column_name: "upstream_model_id",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "reasoning_effort",
+        physical_column_name: "reasoning_effort",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "status",
+        physical_column_name: "status",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "error_code",
+        physical_column_name: "error_code",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "failed_after_first_token",
+        physical_column_name: "failed_after_first_token",
+        field_kind: crate::ModelFieldKind::Boolean,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "input_tokens",
+        physical_column_name: "input_tokens",
+        field_kind: crate::ModelFieldKind::Number,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "output_tokens",
+        physical_column_name: "output_tokens",
+        field_kind: crate::ModelFieldKind::Number,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "total_tokens",
+        physical_column_name: "total_tokens",
+        field_kind: crate::ModelFieldKind::Number,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "started_at",
+        physical_column_name: "started_at",
+        field_kind: crate::ModelFieldKind::Datetime,
+        is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "first_token_at",
+        physical_column_name: "first_token_at",
+        field_kind: crate::ModelFieldKind::Datetime,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "finished_at",
+        physical_column_name: "finished_at",
+        field_kind: crate::ModelFieldKind::Datetime,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "time_to_first_token_ms",
+        physical_column_name: "time_to_first_token_ms",
+        field_kind: crate::ModelFieldKind::Number,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "total_duration_ms",
+        physical_column_name: "total_duration_ms",
+        field_kind: crate::ModelFieldKind::Number,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "created_at",
+        physical_column_name: "created_at",
+        field_kind: crate::ModelFieldKind::Datetime,
+        is_required: true,
+        is_unique: false,
+    },
+];
+
 pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContract> {
     let core_capabilities = DataModelCapabilities::core_builtin();
     let runtime_read_capabilities = DataModelCapabilities::runtime_read_builtin();
@@ -498,6 +734,13 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
             physical_table_name: "flow_run_callback_tasks",
             kind: BuiltinDataModelKind::RuntimeRead,
             system_field_codes: FLOW_RUN_CALLBACK_TASKS_FIELDS,
+            capabilities: runtime_read_capabilities,
+        },
+        "model_provider_request_logs" => BuiltinDataModelContract {
+            code: "model_provider_request_logs",
+            physical_table_name: "model_provider_request_logs",
+            kind: BuiltinDataModelKind::RuntimeRead,
+            system_field_codes: MODEL_PROVIDER_REQUEST_LOGS_FIELDS,
             capabilities: runtime_read_capabilities,
         },
         _ => return None,

@@ -10,20 +10,29 @@ import {
   deleteConsoleDataModel,
   deleteConsoleDataModelField,
   deleteConsoleRuntimeModelRecord,
+  createConsoleDataSourceConnection,
+  discoverConsoleDataSourceResources,
+  fetchConsoleDataSourceCatalog,
+  fetchConsoleDataSourceConnections,
+  fetchConsoleDataSourceResources,
+  fetchConsoleMainDataSource,
   fetchConsoleDataModelAdvisorFindings,
   fetchConsoleDataModelOpenApiDocument,
   fetchConsoleDataModelRecordPreview,
   fetchConsoleDataModelScopeGrants,
   fetchConsoleAgentFlowDataModelOptions,
   fetchConsoleDataModels,
-  fetchConsoleDataSourceInstances,
   fetchConsoleRuntimeModelRecord,
   fetchConsoleRuntimeModelRecords,
+  mapConsoleDataSourceResourceToModel,
+  previewConsoleDataSourceResource,
   updateConsoleDataModel,
   updateConsoleDataModelField,
   updateConsoleDataModelScopeGrant,
   updateConsoleRuntimeModelRecord,
-  updateConsoleDataSourceDefaults
+  updateConsoleDataSourceConnectionDefaults,
+  updateConsoleMainDataSourceDefaults,
+  validateConsoleDataSourceConnection
 } from '../console-data-models';
 
 describe('console-data-models client', () => {
@@ -31,9 +40,9 @@ describe('console-data-models client', () => {
     async (input) => input as never
   );
 
-  test('updateConsoleDataSourceDefaults patches defaults with CSRF', async () => {
+  test('AC-001 updates main-source and connection defaults through distinct contracts', async () => {
     await expect(
-      updateConsoleDataSourceDefaults(
+      updateConsoleDataSourceConnectionDefaults(
         'source-1',
         {
           default_data_model_status: 'draft'
@@ -45,25 +54,96 @@ describe('console-data-models client', () => {
       method: 'PATCH',
       csrfToken: 'csrf-123'
     });
+
+    await expect(
+      updateConsoleMainDataSourceDefaults(
+        { default_data_model_status: 'published' },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/data-sources/main-source/defaults',
+      method: 'PATCH',
+      csrfToken: 'csrf-123'
+    });
+  });
+
+  test('AC-001/002 reads main source, assigned extension catalog, and connections separately', async () => {
+    await expect(fetchConsoleMainDataSource()).resolves.toMatchObject({
+      path: '/api/console/data-sources/main-source'
+    });
+    await expect(fetchConsoleDataSourceCatalog()).resolves.toMatchObject({
+      path: '/api/console/data-sources/catalog'
+    });
+    await expect(fetchConsoleDataSourceConnections()).resolves.toMatchObject({
+      path: '/api/console/data-sources/instances'
+    });
+  });
+
+  test('AC-003/004 creates, validates, discovers, previews, and maps through connection context', async () => {
+    await expect(
+      createConsoleDataSourceConnection(
+        {
+          installation_id: 'installation-1',
+          source_code: 'hubspot',
+          display_name: 'HubSpot production',
+          config_json: { base_url: 'https://example.com' },
+          secret_json: { api_key: 'secret' }
+        },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/data-sources/instances',
+      method: 'POST',
+      csrfToken: 'csrf-123'
+    });
+    await expect(
+      validateConsoleDataSourceConnection('source-1', 'csrf-123')
+    ).resolves.toMatchObject({
+      path: '/api/console/data-sources/instances/source-1/validate',
+      method: 'POST'
+    });
+    await expect(fetchConsoleDataSourceResources('source-1')).resolves.toMatchObject({
+      path: '/api/console/data-sources/instances/source-1/resources'
+    });
+    await expect(
+      discoverConsoleDataSourceResources('source-1', 'csrf-123')
+    ).resolves.toMatchObject({
+      path: '/api/console/data-sources/instances/source-1/resources/discover',
+      method: 'POST'
+    });
+    await expect(
+      previewConsoleDataSourceResource(
+        'source-1',
+        { resource_key: 'contacts', limit: 20, options_json: {} },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/data-sources/instances/source-1/preview-read',
+      method: 'POST'
+    });
+    await expect(
+      mapConsoleDataSourceResourceToModel(
+        'source-1',
+        'contacts',
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/data-sources/instances/source-1/resources/map-to-model',
+      method: 'POST',
+      body: { resource_key: 'contacts' }
+    });
   });
 
   test.each([
     {
-      name: 'data source collection',
-      request: () => fetchConsoleDataSourceInstances(),
-      expected: {
-        path: '/api/console/data-sources/instances'
-      }
-    },
-    {
       name: 'filtered model collection',
       request: () =>
         fetchConsoleDataModels({
-          data_source_instance_id: 'main_source',
+          source_kind: 'main_source',
           filter: { code: { $includes: 'customer profile' } }
         }),
       expected: {
-        path: '/api/console/models?data_source_instance_id=main_source&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer+profile%22%7D%7D'
+        path: '/api/console/models?source_kind=main_source&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer+profile%22%7D%7D'
       }
     },
     {
@@ -77,14 +157,11 @@ describe('console-data-models client', () => {
     await expect(request()).resolves.toMatchObject(expected);
   });
 
-  test('create and update Data Models use the console model routes', async () => {
+  test('AC-005 generic Data Model creation only accepts main-source metadata', async () => {
     await expect(
       createConsoleDataModel(
         {
           scope_kind: 'workspace',
-          data_source_instance_id: 'source-1',
-          external_resource_key: 'contacts',
-          external_table_id: 'crm.contacts',
           code: 'orders',
           title: 'Orders',
           status: 'draft'
@@ -96,9 +173,6 @@ describe('console-data-models client', () => {
       method: 'POST',
       body: {
         scope_kind: 'workspace',
-        data_source_instance_id: 'source-1',
-        external_resource_key: 'contacts',
-        external_table_id: 'crm.contacts',
         code: 'orders',
         title: 'Orders',
         status: 'draft'
