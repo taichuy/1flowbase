@@ -94,8 +94,11 @@ where
         &self,
         actor: domain::ActorContext,
     ) -> Result<HostInfrastructureProviderConfigList> {
-        ensure_permission(&actor, "plugin_config.view.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        ensure_permission(
+            &actor,
+            access_control::SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
+        )
+        .map_err(ControlPlaneError::PermissionDenied)?;
 
         let saved_configs = self
             .repository
@@ -153,8 +156,11 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        ensure_permission(
+            &actor,
+            access_control::SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
+        )
+        .map_err(ControlPlaneError::PermissionDenied)?;
 
         let groups = self.load_provider_groups().await?;
         let group = groups

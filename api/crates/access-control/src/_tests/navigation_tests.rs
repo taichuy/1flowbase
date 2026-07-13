@@ -74,6 +74,23 @@ fn settings_members_route_actor_sees_only_members_settings_entries() {
 }
 
 #[test]
+fn explicit_settings_feature_actors_see_their_registered_navigation_item() {
+    for feature in [
+        "auth-center",
+        "host-infrastructure",
+        "memory-observation",
+        "applications",
+    ] {
+        let actor = scoped_actor(&[&format!("settings_feature.access.system.{feature}")]);
+        let navigation = accessible_console_navigation(&actor);
+        let item_ids = item_ids(&navigation);
+        assert!(item_ids.contains(&format!("settings.{feature}").as_str()));
+        assert!(!item_ids.contains(&"settings.members"));
+        assert!(!item_ids.contains(&"settings.roles"));
+    }
+}
+
+#[test]
 fn authenticated_actor_sees_workbench_and_templates_without_route_page_permission() {
     let actor = scoped_actor(&[]);
 

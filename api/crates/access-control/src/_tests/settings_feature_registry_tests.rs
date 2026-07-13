@@ -1,7 +1,7 @@
 use access_control::{
-    AccessRule, SettingsApiRoute, SettingsFeatureConsoleSurface, SettingsFeatureLifecycle,
-    SettingsFeatureOwner, SettingsFeatureOwnerKind, SettingsFeatureRegistration,
-    SettingsFeatureRegistry,
+    core_settings_feature_registrations, AccessRule, SettingsApiRoute,
+    SettingsFeatureConsoleSurface, SettingsFeatureLifecycle, SettingsFeatureOwner,
+    SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
 };
 
 fn feature(
@@ -33,6 +33,114 @@ fn feature(
             })
             .collect(),
     }
+}
+
+#[test]
+fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() {
+    let registry = SettingsFeatureRegistry::compile(core_settings_feature_registrations())
+        .expect("Core SettingsFeature inventory must compile");
+
+    let routes = |feature_id: &str| {
+        registry
+            .inventory()
+            .features
+            .iter()
+            .find(|feature| feature.feature_id == feature_id)
+            .unwrap_or_else(|| panic!("missing Core SettingsFeature {feature_id}"))
+            .api_routes
+            .iter()
+            .map(|route| (route.method.as_str(), route.path.as_str()))
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        routes("system.auth-center"),
+        vec![
+            (
+                "DELETE",
+                "/api/console/settings/auth-center/authenticators/{id}",
+            ),
+            ("GET", "/api/console/settings/auth-center/overview"),
+            ("POST", "/api/console/settings/auth-center/authenticators"),
+            (
+                "POST",
+                "/api/console/settings/auth-center/authenticators/{id}/actions/enable",
+            ),
+            (
+                "POST",
+                "/api/console/settings/auth-center/authenticators/{id}/copy",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/auth-center/authenticators/order",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/auth-center/authenticators/{id}/config",
+            ),
+        ]
+    );
+    assert_eq!(
+        routes("system.host-infrastructure"),
+        vec![
+            ("GET", "/api/console/settings/host-infrastructure/cache"),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries",
+            ),
+            ("GET", "/api/console/settings/host-infrastructure/providers"),
+            (
+                "POST",
+                "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/clear",
+            ),
+            (
+                "POST",
+                "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries/clear",
+            ),
+            (
+                "POST",
+                "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries/reveal",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/host-infrastructure/providers/{installation_id}/{provider_code}/config",
+            ),
+        ]
+    );
+    assert_eq!(
+        routes("system.memory-observation"),
+        vec![
+            ("GET", "/api/console/settings/host-infrastructure/memory"),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries",
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries/search",
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/stats",
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/tree",
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory/stats",
+            ),
+            (
+                "POST",
+                "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries/reveal",
+            ),
+        ]
+    );
+    assert_eq!(
+        routes("system.applications"),
+        vec![("GET", "/api/console/settings/applications")]
+    );
 }
 
 #[test]

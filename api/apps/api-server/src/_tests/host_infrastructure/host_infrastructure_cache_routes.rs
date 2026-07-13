@@ -177,7 +177,7 @@ async fn host_infrastructure_cache_routes_reveal_and_clear_with_audit() {
 }
 
 #[tokio::test]
-async fn host_infrastructure_cache_routes_keep_viewer_metadata_only() {
+async fn host_infrastructure_cache_feature_redacts_lists_and_allows_explicit_reveal_and_clear() {
     let (state, _database_url) = test_api_state_with_database_url().await;
     state
         .infrastructure
@@ -187,13 +187,13 @@ async fn host_infrastructure_cache_routes_keep_viewer_metadata_only() {
         .unwrap();
     let app = crate::app_with_state_and_config(state, &test_config());
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    create_role(&app, &root_cookie, &root_csrf, "plugin_viewer").await;
+    create_role(&app, &root_cookie, &root_csrf, "cache_settings_feature").await;
     replace_role_permissions(
         &app,
         &root_cookie,
         &root_csrf,
-        "plugin_viewer",
-        &["plugin_config.view.all"],
+        "cache_settings_feature",
+        &["settings_feature.access.system.host-infrastructure"],
     )
     .await;
     let member_id =
@@ -203,7 +203,7 @@ async fn host_infrastructure_cache_routes_keep_viewer_metadata_only() {
         &root_cookie,
         &root_csrf,
         &member_id,
-        &["plugin_viewer"],
+        &["cache_settings_feature"],
     )
     .await;
     let (viewer_cookie, viewer_csrf) =
@@ -223,7 +223,26 @@ async fn host_infrastructure_cache_routes_keep_viewer_metadata_only() {
         .unwrap();
     assert_eq!(overview_response.status(), StatusCode::OK);
     let overview_payload = response_json(overview_response).await;
-    assert_eq!(overview_payload["data"]["can_manage"], false);
+    assert_eq!(overview_payload["data"]["can_manage"], true);
+
+    let entries_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/host-infrastructure/cache/domains/application-logs/entries")
+                .header("cookie", &viewer_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(entries_response.status(), StatusCode::OK);
+    let entries_payload = response_json(entries_response).await;
+    assert!(entries_payload["data"]["entries"][0]
+        .as_object()
+        .unwrap()
+        .get("value")
+        .is_none());
 
     let reveal_response = app
         .clone()
@@ -241,7 +260,11 @@ async fn host_infrastructure_cache_routes_keep_viewer_metadata_only() {
         )
         .await
         .unwrap();
-    assert_eq!(reveal_response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(reveal_response.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(reveal_response).await["data"]["value"],
+        json!({ "secret": true })
+    );
 
     let clear_response = app
         .clone()
@@ -256,5 +279,5 @@ async fn host_infrastructure_cache_routes_keep_viewer_metadata_only() {
         )
         .await
         .unwrap();
-    assert_eq!(clear_response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(clear_response.status(), StatusCode::OK);
 }

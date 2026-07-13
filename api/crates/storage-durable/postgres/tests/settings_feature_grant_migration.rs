@@ -10,6 +10,25 @@ const MEMBERS_VISIBILITY: &str = "settings_route.visible.settings.members";
 const ROLES_VISIBILITY: &str = "settings_route.visible.settings.roles";
 const MEMBERS_FEATURE: &str = "settings_feature.access.system.members";
 const ROLES_FEATURE: &str = "settings_feature.access.system.roles";
+// This target embeds the shipped explicit Settings namespace migration as well.
+const EXPLICIT_SETTINGS_MIGRATION_VERSION: i64 = 20260714125600;
+const AUTH_CENTER_VISIBILITY: &str = "settings_route.visible.settings.auth-center";
+const HOST_INFRASTRUCTURE_VISIBILITY: &str = "settings_route.visible.settings.host-infrastructure";
+const MEMORY_OBSERVATION_VISIBILITY: &str = "settings_route.visible.settings.memory-observation";
+const APPLICATIONS_VISIBILITY: &str = "settings_route.visible.settings.applications";
+const AUTH_CENTER_FEATURE: &str = "settings_feature.access.system.auth-center";
+const HOST_INFRASTRUCTURE_FEATURE: &str = "settings_feature.access.system.host-infrastructure";
+const MEMORY_OBSERVATION_FEATURE: &str = "settings_feature.access.system.memory-observation";
+const APPLICATIONS_FEATURE: &str = "settings_feature.access.system.applications";
+const UNMIGRATED_VISIBILITIES: &[&str] = &[
+    "settings_route.visible.settings.docs",
+    "settings_route.visible.settings.api-key-authentication",
+    "settings_route.visible.settings.system-runtime",
+    "settings_route.visible.settings.files",
+    "settings_route.visible.settings.data-models",
+    "settings_route.visible.settings.model-providers",
+    "settings_route.visible.settings.mcp-management",
+];
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
@@ -41,6 +60,27 @@ fn before_settings_feature_grant_migrator() -> Migrator {
 async fn historical_pool() -> PgPool {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     before_settings_feature_grant_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    pool
+}
+
+fn before_explicit_settings_feature_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < EXPLICIT_SETTINGS_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+async fn explicit_settings_historical_pool() -> PgPool {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    before_explicit_settings_feature_migrator()
         .run(&pool)
         .await
         .unwrap();
@@ -155,6 +195,57 @@ async fn seed_historical_permissions(pool: &PgPool) {
         ),
     ] {
         insert_permission(pool, code, resource, action, scope).await;
+    }
+}
+
+async fn seed_explicit_settings_historical_permissions(pool: &PgPool) {
+    for (code, resource, action, scope) in [
+        (
+            AUTH_CENTER_VISIBILITY,
+            "settings_route",
+            "visible",
+            "settings.auth-center",
+        ),
+        (
+            HOST_INFRASTRUCTURE_VISIBILITY,
+            "settings_route",
+            "visible",
+            "settings.host-infrastructure",
+        ),
+        (
+            MEMORY_OBSERVATION_VISIBILITY,
+            "settings_route",
+            "visible",
+            "settings.memory-observation",
+        ),
+        (
+            APPLICATIONS_VISIBILITY,
+            "settings_route",
+            "visible",
+            "settings.applications",
+        ),
+        ("user.view.all", "user", "view", "all"),
+        ("user.manage.all", "user", "manage", "all"),
+        ("plugin_config.view.all", "plugin_config", "view", "all"),
+        (
+            "plugin_config.configure.all",
+            "plugin_config",
+            "configure",
+            "all",
+        ),
+        ("application.view.all", "application", "view", "all"),
+    ] {
+        insert_permission(pool, code, resource, action, scope).await;
+    }
+    for code in UNMIGRATED_VISIBILITIES {
+        insert_permission(
+            pool,
+            code,
+            "settings_route",
+            "visible",
+            code.trim_start_matches("settings_route.visible."),
+        )
+        .await;
     }
 }
 
@@ -277,6 +368,177 @@ async fn migration_rolls_back_all_grants_when_legacy_cleanup_fails() {
     let new_definition_count: i64 =
         sqlx::query_scalar("select count(*) from permission_definitions where code = any($1)")
             .bind(&[MEMBERS_FEATURE, ROLES_FEATURE])
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(new_definition_count, 0);
+}
+
+#[tokio::test]
+async fn migration_reconciles_four_explicit_settings_features_and_preserves_other_seven() {
+    let pool = explicit_settings_historical_pool().await;
+    let store = PgControlPlaneStore::new(pool.clone());
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "Explicit settings migration")
+        .await
+        .unwrap();
+    seed_explicit_settings_historical_permissions(&pool).await;
+
+    let auth_role = insert_role(&pool, workspace.id, "legacy_auth_center").await;
+    let host_role = insert_role(&pool, workspace.id, "legacy_host_infrastructure").await;
+    let memory_role = insert_role(&pool, workspace.id, "legacy_memory_observation").await;
+    let applications_role = insert_role(&pool, workspace.id, "legacy_applications").await;
+    let untouched_role = insert_role(&pool, workspace.id, "legacy_unmigrated_settings").await;
+    grant(&pool, auth_role, workspace.id, AUTH_CENTER_VISIBILITY).await;
+    grant(
+        &pool,
+        host_role,
+        workspace.id,
+        HOST_INFRASTRUCTURE_VISIBILITY,
+    )
+    .await;
+    grant(
+        &pool,
+        memory_role,
+        workspace.id,
+        MEMORY_OBSERVATION_VISIBILITY,
+    )
+    .await;
+    grant(
+        &pool,
+        applications_role,
+        workspace.id,
+        APPLICATIONS_VISIBILITY,
+    )
+    .await;
+    for code in UNMIGRATED_VISIBILITIES {
+        grant(&pool, untouched_role, workspace.id, code).await;
+    }
+
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+    assert_eq!(
+        permission_codes(&pool, auth_role).await,
+        BTreeSet::from([
+            AUTH_CENTER_FEATURE.to_string(),
+            "user.view.all".to_string(),
+            "user.manage.all".to_string(),
+        ])
+    );
+    assert_eq!(
+        permission_codes(&pool, host_role).await,
+        BTreeSet::from([
+            HOST_INFRASTRUCTURE_FEATURE.to_string(),
+            "plugin_config.view.all".to_string(),
+            "plugin_config.configure.all".to_string(),
+        ])
+    );
+    assert_eq!(
+        permission_codes(&pool, memory_role).await,
+        BTreeSet::from([
+            MEMORY_OBSERVATION_FEATURE.to_string(),
+            "plugin_config.view.all".to_string(),
+            "plugin_config.configure.all".to_string(),
+        ])
+    );
+    assert_eq!(
+        permission_codes(&pool, applications_role).await,
+        BTreeSet::from([
+            APPLICATIONS_FEATURE.to_string(),
+            "application.view.all".to_string(),
+        ])
+    );
+    assert_eq!(
+        permission_codes(&pool, untouched_role).await,
+        UNMIGRATED_VISIBILITIES
+            .iter()
+            .map(|code| (*code).to_string())
+            .collect()
+    );
+
+    let removed_legacy_definitions: i64 =
+        sqlx::query_scalar("select count(*) from permission_definitions where code = any($1)")
+            .bind(&[
+                AUTH_CENTER_VISIBILITY,
+                HOST_INFRASTRUCTURE_VISIBILITY,
+                MEMORY_OBSERVATION_VISIBILITY,
+                APPLICATIONS_VISIBILITY,
+            ])
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(removed_legacy_definitions, 0);
+
+    for (role_code, feature_code) in [
+        ("new_auth_center_feature_only", AUTH_CENTER_FEATURE),
+        (
+            "new_host_infrastructure_feature_only",
+            HOST_INFRASTRUCTURE_FEATURE,
+        ),
+        (
+            "new_memory_observation_feature_only",
+            MEMORY_OBSERVATION_FEATURE,
+        ),
+        ("new_applications_feature_only", APPLICATIONS_FEATURE),
+    ] {
+        let new_feature_only = insert_role(&pool, workspace.id, role_code).await;
+        grant(&pool, new_feature_only, workspace.id, feature_code).await;
+        assert_eq!(
+            permission_codes(&pool, new_feature_only).await,
+            BTreeSet::from([feature_code.to_string()])
+        );
+    }
+}
+
+#[tokio::test]
+async fn explicit_settings_migration_rolls_back_when_legacy_cleanup_fails() {
+    let pool = explicit_settings_historical_pool().await;
+    let store = PgControlPlaneStore::new(pool.clone());
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "Explicit settings rollback")
+        .await
+        .unwrap();
+    seed_explicit_settings_historical_permissions(&pool).await;
+    let role_id = insert_role(&pool, workspace.id, "legacy_auth_center").await;
+    grant(&pool, role_id, workspace.id, AUTH_CENTER_VISIBILITY).await;
+
+    sqlx::raw_sql(
+        r#"
+        create function reject_explicit_settings_visibility_delete() returns trigger language plpgsql as $$
+        begin
+            if old.code = 'settings_route.visible.settings.auth-center' then
+                raise exception 'forced explicit settings cleanup failure';
+            end if;
+            return old;
+        end;
+        $$;
+        create trigger reject_explicit_settings_visibility_delete
+        before delete on permission_definitions
+        for each row execute function reject_explicit_settings_visibility_delete();
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let error = sqlx::migrate!("./migrations").run(&pool).await.unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("forced explicit settings cleanup failure"));
+    assert_eq!(
+        permission_codes(&pool, role_id).await,
+        BTreeSet::from([AUTH_CENTER_VISIBILITY.to_string()])
+    );
+    let new_definition_count: i64 =
+        sqlx::query_scalar("select count(*) from permission_definitions where code = any($1)")
+            .bind(&[
+                AUTH_CENTER_FEATURE,
+                HOST_INFRASTRUCTURE_FEATURE,
+                MEMORY_OBSERVATION_FEATURE,
+                APPLICATIONS_FEATURE,
+            ])
             .fetch_one(&pool)
             .await
             .unwrap();

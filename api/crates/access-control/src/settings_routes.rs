@@ -60,13 +60,8 @@ pub struct SettingsRouteSpec {
     pub api_scopes: &'static [SettingsRouteApiScope],
 }
 
-const USER_VIEW_PERMISSIONS: &[&str] = &["user.view.all"];
-const USER_ALL_PERMISSIONS: &[&str] = &["user.view.all", "user.manage.all"];
 const SYSTEM_RUNTIME_PERMISSIONS: &[&str] = &["system_runtime.view.all"];
-const PLUGIN_VIEW_PERMISSIONS: &[&str] = &["plugin_config.view.all"];
-const PLUGIN_ALL_PERMISSIONS: &[&str] = &["plugin_config.view.all", "plugin_config.configure.all"];
 const API_REFERENCE_PERMISSIONS: &[&str] = &["api_reference.view.all"];
-const APPLICATION_VIEW_PERMISSIONS: &[&str] = &["application.view.all"];
 const FILES_VISIBILITY_PERMISSIONS: &[&str] = &[
     "file_table.view.all",
     "file_table.view.own",
@@ -142,46 +137,10 @@ const API_KEY_AUTHENTICATION_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRo
     methods: SettingsRouteApiMethods::Any,
 }];
 
-const AUTH_CENTER_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
-    scope_id: "console.settings.auth_center",
-    path: "/api/console/settings/auth-center",
-    path_match: SettingsRouteApiPathMatch::Prefix,
-    methods: SettingsRouteApiMethods::Any,
-}];
-
 const SYSTEM_RUNTIME_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
     scope_id: "console.system",
     path: "/api/console/system/",
     path_match: SettingsRouteApiPathMatch::Prefix,
-    methods: SettingsRouteApiMethods::ReadOnly,
-}];
-
-const HOST_INFRASTRUCTURE_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.settings.host_infrastructure.cache",
-        path: "/api/console/settings/host-infrastructure/cache",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.settings.host_infrastructure.providers",
-        path: "/api/console/settings/host-infrastructure/providers",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-];
-
-const MEMORY_OBSERVATION_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
-    scope_id: "console.settings.host_infrastructure.memory",
-    path: "/api/console/settings/host-infrastructure/memory",
-    path_match: SettingsRouteApiPathMatch::Prefix,
-    methods: SettingsRouteApiMethods::Any,
-}];
-
-const APPLICATIONS_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
-    scope_id: "console.settings.applications",
-    path: "/api/console/settings/applications",
-    path_match: SettingsRouteApiPathMatch::Exact,
     methods: SettingsRouteApiMethods::ReadOnly,
 }];
 
@@ -267,17 +226,6 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         api_scopes: API_KEY_AUTHENTICATION_API_SCOPES,
     },
     SettingsRouteSpec {
-        route_id: "settings.auth-center",
-        surface_key: "auth-center",
-        path: "/settings/auth-center",
-        label_key: "auto.auth_center",
-        order: 300,
-        visibility_permission_code: "settings_route.visible.settings.auth-center",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(USER_VIEW_PERMISSIONS),
-        implied_permissions: USER_ALL_PERMISSIONS,
-        api_scopes: AUTH_CENTER_API_SCOPES,
-    },
-    SettingsRouteSpec {
         route_id: "settings.system-runtime",
         surface_key: "system-runtime",
         path: "/settings/system-runtime",
@@ -287,41 +235,6 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(SYSTEM_RUNTIME_PERMISSIONS),
         implied_permissions: SYSTEM_RUNTIME_PERMISSIONS,
         api_scopes: SYSTEM_RUNTIME_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.host-infrastructure",
-        surface_key: "host-infrastructure",
-        path: "/settings/host-infrastructure",
-        label_key: "auto.infrastructure",
-        order: 500,
-        visibility_permission_code: "settings_route.visible.settings.host-infrastructure",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(PLUGIN_VIEW_PERMISSIONS),
-        implied_permissions: PLUGIN_ALL_PERMISSIONS,
-        api_scopes: HOST_INFRASTRUCTURE_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.memory-observation",
-        surface_key: "memory-observation",
-        path: "/settings/memory-observation",
-        label_key: "auto.memory_observation",
-        order: 600,
-        visibility_permission_code: "settings_route.visible.settings.memory-observation",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(PLUGIN_VIEW_PERMISSIONS),
-        implied_permissions: PLUGIN_ALL_PERMISSIONS,
-        api_scopes: MEMORY_OBSERVATION_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.applications",
-        surface_key: "applications",
-        path: "/settings/applications",
-        label_key: "auto.application_management",
-        order: 700,
-        visibility_permission_code: "settings_route.visible.settings.applications",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
-            APPLICATION_VIEW_PERMISSIONS,
-        ),
-        implied_permissions: APPLICATION_VIEW_PERMISSIONS,
-        api_scopes: APPLICATIONS_API_SCOPES,
     },
     SettingsRouteSpec {
         route_id: "settings.files",

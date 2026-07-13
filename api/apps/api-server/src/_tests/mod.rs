@@ -27,6 +27,7 @@ mod role_routes;
 mod route_docs;
 mod runtime_event_stream;
 mod session_routes;
+mod settings_feature_explicit_namespace_routes;
 mod settings_feature_members_routes;
 mod settings_feature_roles_routes;
 pub(crate) mod support;

@@ -8,6 +8,18 @@ use serde::{Deserialize, Serialize};
 
 pub const SETTINGS_FEATURE_INVENTORY_SCHEMA_VERSION: &str =
     "1flowbase.settings-feature-inventory/v1";
+pub const SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID: &str = "system.applications";
+pub const SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.applications";
+pub const SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID: &str = "system.auth-center";
+pub const SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.auth-center";
+pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_ID: &str = "system.host-infrastructure";
+pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.host-infrastructure";
+pub const SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_ID: &str = "system.memory-observation";
+pub const SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.memory-observation";
 pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_ID: &str = "system.members";
 pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.members";
@@ -71,6 +83,155 @@ impl SettingsFeatureRegistration {
 
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.applications".to_string(),
+                surface_key: "applications".to_string(),
+                path: "/settings/applications".to_string(),
+                label_key: "auto.application_management".to_string(),
+                order: 700,
+            },
+            api_routes: settings_api_routes(&[(
+                "GET",
+                "/api/console/settings/applications",
+            )]),
+        },
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.auth-center".to_string(),
+                surface_key: "auth-center".to_string(),
+                path: "/settings/auth-center".to_string(),
+                label_key: "auto.auth_center".to_string(),
+                order: 300,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/auth-center/overview"),
+                (
+                    "POST",
+                    "/api/console/settings/auth-center/authenticators",
+                ),
+                (
+                    "PUT",
+                    "/api/console/settings/auth-center/authenticators/order",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/auth-center/authenticators/{id}/actions/enable",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/auth-center/authenticators/{id}/copy",
+                ),
+                (
+                    "PUT",
+                    "/api/console/settings/auth-center/authenticators/{id}/config",
+                ),
+                (
+                    "DELETE",
+                    "/api/console/settings/auth-center/authenticators/{id}",
+                ),
+            ]),
+        },
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.host-infrastructure".to_string(),
+                surface_key: "host-infrastructure".to_string(),
+                path: "/settings/host-infrastructure".to_string(),
+                label_key: "auto.infrastructure".to_string(),
+                order: 500,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/host-infrastructure/cache"),
+                (
+                    "GET",
+                    "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries/reveal",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries/clear",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/clear",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/host-infrastructure/providers",
+                ),
+                (
+                    "PUT",
+                    "/api/console/settings/host-infrastructure/providers/{installation_id}/{provider_code}/config",
+                ),
+            ]),
+        },
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.memory-observation".to_string(),
+                surface_key: "memory-observation".to_string(),
+                path: "/settings/memory-observation".to_string(),
+                label_key: "auto.memory_observation".to_string(),
+                order: 600,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/host-infrastructure/memory"),
+                (
+                    "GET",
+                    "/api/console/settings/host-infrastructure/memory/stats",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/stats",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries/search",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/tree",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries/reveal",
+                ),
+            ]),
+        },
         SettingsFeatureRegistration {
             feature_id: SYSTEM_MEMBERS_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {

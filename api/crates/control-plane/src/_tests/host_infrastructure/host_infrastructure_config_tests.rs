@@ -148,7 +148,7 @@ async fn list_providers_aggregates_contracts_for_inactive_disabled_extension() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
         workspace_id,
-        &["plugin_config.view.all"],
+        &["settings_feature.access.system.host-infrastructure"],
     ));
     let install_root =
         std::env::temp_dir().join(format!("host-infra-config-list-{}", Uuid::now_v7()));
@@ -189,7 +189,7 @@ async fn save_provider_config_sets_pending_restart_without_runtime_activation() 
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
         workspace_id,
-        &["plugin_config.view.all", "plugin_config.configure.all"],
+        &["settings_feature.access.system.host-infrastructure"],
     ));
     let install_root =
         std::env::temp_dir().join(format!("host-infra-config-save-{}", Uuid::now_v7()));
@@ -248,7 +248,7 @@ async fn save_provider_config_rejects_undeclared_contracts() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
         workspace_id,
-        &["plugin_config.configure.all"],
+        &["settings_feature.access.system.host-infrastructure"],
     ));
     let install_root =
         std::env::temp_dir().join(format!("host-infra-config-invalid-{}", Uuid::now_v7()));

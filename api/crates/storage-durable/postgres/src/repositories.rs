@@ -1,8 +1,9 @@
 use anyhow::Result;
 use control_plane::errors::ControlPlaneError;
 use control_plane::ports::{
-    ApplicationRepository, AuthRepository, BootstrapRepository, CreateApplicationInput,
-    CreateMemberInput, FlowRepository, MemberRepository, UpdateProfileInput, WorkspaceRepository,
+    ApplicationRepository, AuthRepository, AuthenticatorSettingsRepository, BootstrapRepository,
+    CreateApplicationInput, CreateMemberInput, FlowRepository, MemberRepository,
+    UpdateProfileInput, WorkspaceRepository,
 };
 use domain::{
     ActorContext, ApplicationRecord, AuditLogRecord, AuthenticatorRecord, FlowChangeKind,
@@ -331,6 +332,25 @@ impl PgControlPlaneStore {
             version_id,
         )
         .await
+    }
+}
+
+#[async_trait::async_trait]
+impl AuthenticatorSettingsRepository for PgControlPlaneStore {
+    async fn create_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
+        PgControlPlaneStore::create_authenticator(self, authenticator).await
+    }
+
+    async fn update_authenticator_config(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
+        PgControlPlaneStore::update_authenticator_config(self, authenticator).await
+    }
+
+    async fn delete_authenticator_if_unbound(&self, id: Uuid) -> Result<()> {
+        PgControlPlaneStore::delete_authenticator_if_unbound(self, id).await
+    }
+
+    async fn update_authenticator_order(&self, ids: &[Uuid]) -> Result<()> {
+        PgControlPlaneStore::update_authenticator_order(self, ids).await
     }
 }
 
