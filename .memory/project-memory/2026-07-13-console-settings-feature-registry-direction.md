@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 后台注册设置项统一 SettingsFeature 授权与 API Scope
-summary: 用户确认后台注册设置项作为唯一产品授权单位；Core/HostExtension 在注册时聚合 Settings API scope，角色只授权 feature，CLI 与 compiled inventory 作为后续开发和 QA 强制入口。运行时代码直接切到新 contract，但已发布开源实例可能存在历史授权，必须一次性迁移并逐角色验证零差异。完整实现 Issue #1256 已创建，当前等待 Issue 确认后进入 ADR/TDD。
+summary: 用户确认后台注册设置项作为唯一产品授权单位；API ownership 跟随设置页提供的操作能力而不是底层数据资源，角色授权 feature 后可完成整页操作，不追加 business action。现有 /api/console 可重命名、拆分和删除，历史角色授权必须迁移且不保留运行时 fallback。
 keywords:
   - settings-feature
   - console-settings
@@ -14,8 +14,8 @@ match_when:
   - 调整 Settings API 权限或角色设置授权
   - 实现 HostExtension console surface 或注册 CLI
 created_at: 2026-07-13 16
-updated_at: 2026-07-13 16
-last_verified_at: 2026-07-13 16
+updated_at: 2026-07-13 23
+last_verified_at: 2026-07-13 23
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/1256
@@ -30,7 +30,8 @@ scope:
 
 - 用户已确认架构方向，并要求同步后端开发 Skill、QA Skill、`api/AGENTS.md`，以及把统一注册 CLI 纳入完整线上 Issue。
 - 用户确认当前团队尚未正式使用该功能，但已发布开源项目的外部部署可能存在历史授权；必须迁移旧 permission/grant rows，运行时切换后不保留双读、legacy alias 或 fallback。
-- AI 已创建 Issue #1256；当前阶段是 `phase:discussion`，等待用户确认 Issue 正文后进入 ADR/TDD 实现。
+- Issue #1256 阶段 1 registry foundation 已提交；用户进一步确认 `/api/console` 权限模块尚未稳定，旧接口允许按新 contract 重命名、拆分和删除。
+- Settings API ownership 按设置用例归属：例如成员页的角色选项和角色绑定属于成员设置能力，即使底层读取 role repository，也不要求另一个角色设置 feature 或 business action。
 
 ## 为什么这样做
 
@@ -43,4 +44,4 @@ scope:
 
 ## 截止日期
 
-- 未指定；下一步是用户确认 Issue #1256。
+- 未指定；下一步是更新 Issue / ADR 后恢复 TDD，实现 API cutover、历史 grant 迁移、CLI、前端与独立 QA。

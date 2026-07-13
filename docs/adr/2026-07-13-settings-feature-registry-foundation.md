@@ -34,6 +34,14 @@ SettingsFeatureRegistration
 
 阶段 1 仅编译 access rule，不接入 api-server middleware。后续 route assembly 必须显式声明 Settings API；`/api/console/settings/**` 未注册 route 必须 403，普通 console business API 继续执行 `Action` 语义。
 
+### Settings use-case ownership
+
+Settings API ownership 跟随设置项提供的操作能力，不跟随底层数据资源名称。角色授权某个 `SettingsFeature` 后，即可进入该设置项并完成页面提供的整组操作，不再额外要求所读取资源的 business action 或另一个 SettingsFeature。
+
+例如成员设置中的“给成员分配角色”属于成员设置能力。成员页读取可分配角色选项、查看成员当前角色以及保存角色绑定，都由承载该操作的 SettingsFeature 授权；角色数据仍复用既有 role service / repository。角色定义、角色权限配置等另一设置项的操作使用自己的 API ownership，不能因为两者读取同一领域数据而共享一个模糊 HTTP owner。
+
+当前 `/api/console` 权限 contract 尚未稳定，允许按设置用例重命名、拆分或删除旧接口。迁移直接切到职责单一的新 Settings API，不保留旧 URL fallback、双路由或运行时兼容层。
+
 ### Compiled inventory
 
 清单 schema 固定为 `1flowbase.settings-feature-inventory/v1`，每项包含：
