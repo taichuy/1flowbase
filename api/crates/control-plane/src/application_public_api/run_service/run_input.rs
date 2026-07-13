@@ -1,4 +1,5 @@
 use serde_json::{json, Map, Value};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 
 use super::super::{
@@ -32,6 +33,42 @@ pub(crate) fn freeze_run_input_environment(
         payload.insert("sys".to_string(), Value::Object(sys));
     }
     Value::Object(payload)
+}
+
+pub(crate) enum WorkflowRunTriggerContext<'a> {
+    Extension,
+    Schedule {
+        scheduled_at: OffsetDateTime,
+        timezone: &'a str,
+    },
+}
+
+pub(crate) fn freeze_workflow_run_input_environment(
+    input_payload: Value,
+    variables: &[domain::ApplicationEnvironmentVariable],
+    trigger_context: WorkflowRunTriggerContext<'_>,
+) -> Result<Value, time::error::Format> {
+    let mut payload = input_payload.as_object().cloned().unwrap_or_default();
+    payload.remove("sys");
+    payload.remove("trigger");
+    payload.insert(
+        "env".to_string(),
+        Value::Object(application_environment_variable_payload(variables)),
+    );
+    let trigger = match trigger_context {
+        WorkflowRunTriggerContext::Extension => json!({ "type": "extension" }),
+        WorkflowRunTriggerContext::Schedule {
+            scheduled_at,
+            timezone,
+        } => json!({
+            "type": "schedule",
+            "scheduled_at": scheduled_at.format(&Rfc3339)?,
+            "timezone": timezone,
+        }),
+    };
+
+    payload.insert("trigger".to_string(), trigger);
+    Ok(Value::Object(payload))
 }
 
 pub(crate) fn compiled_plan_start_node_id(plan: &Value) -> Option<String> {

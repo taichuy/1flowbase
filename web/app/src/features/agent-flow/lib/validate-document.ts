@@ -45,6 +45,7 @@ import {
   isConditionRule
 } from './if-else-branches';
 import { isSelectorVisible } from './selector-options';
+import { workflowTriggerVariableNodeId } from './variables/workflow-trigger-variables';
 import { parseTemplateSelectorTokens } from './template-binding';
 import {
   environmentVariableNodeId,
@@ -421,7 +422,8 @@ function isRuntimeSelectorSource(source: string) {
   return (
     source === systemVariableNodeId ||
     source === environmentVariableNodeId ||
-    source === conversationVariableNodeId
+    source === conversationVariableNodeId ||
+    source === workflowTriggerVariableNodeId
   );
 }
 
@@ -654,7 +656,8 @@ function validateAnswerPresentationReferences(
 export function validateDocument(
   document: FlowAuthoringDocument,
   providerOptions?: AgentFlowModelProviderOptions | null,
-  environmentVariables: AgentFlowEnvironmentVariable[] = []
+  environmentVariables: AgentFlowEnvironmentVariable[] = [],
+  workflowTriggerContext: unknown = null
 ): AgentFlowIssue[] {
   const issues: AgentFlowIssue[] = [];
   const nodeIds = new Set(document.graph.nodes.map((node) => node.id));
@@ -921,7 +924,13 @@ export function validateDocument(
 
         if (
           selector.length === 0 ||
-          isSelectorVisible(document, node.id, selector, environmentVariables)
+          isSelectorVisible(
+            document,
+            node.id,
+            selector,
+            environmentVariables,
+            workflowTriggerContext
+          )
         ) {
           continue;
         }
@@ -975,7 +984,13 @@ export function validateDocument(
         );
       }
 
-      validateCodeNamedBindings(issues, node, document, environmentVariables);
+      validateCodeNamedBindings(
+        issues,
+        node,
+        document,
+        environmentVariables,
+        workflowTriggerContext
+      );
     }
 
     if (node.type === 'code' && node.outputs.length === 0) {

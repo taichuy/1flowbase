@@ -33,6 +33,11 @@ export type StartInputSourceOption = {
   label: string;
 };
 
+export type StartInputContractKind =
+  | 'agent'
+  | 'workflow_schedule'
+  | 'workflow_http';
+
 function createNextField(
   index: number,
   sourceOptions: StartInputSourceOption[]
@@ -137,15 +142,18 @@ type EditingInputField = {
 };
 
 export function StartInputFieldsField({
+  contractKind,
   value,
   sourceOptions = [],
   onChange
 }: {
+  contractKind: StartInputContractKind;
   value: unknown;
   sourceOptions?: StartInputSourceOption[];
   onChange: (value: FlowStartInputField[]) => void;
 }) {
   const fields = normalizeList(value);
+  const variableNamespace = contractKind === 'agent' ? 'userinput' : 'input';
   const [editing, setEditing] = useState<EditingInputField | null>(null);
   const [expandedSystemKeys, setExpandedSystemKeys] = useState<Set<string>>(
     () => new Set()
@@ -301,7 +309,7 @@ export function StartInputFieldsField({
                   </span>
                   <span className="agent-flow-start-input-fields__name-stack">
                     <span className="agent-flow-node-detail__list-item-name">
-                      userinput.{field.key}
+                      {variableNamespace}.{field.key}
                     </span>
                     {field.label && field.label !== field.key ? (
                       <span className="agent-flow-start-input-fields__label">
@@ -352,90 +360,92 @@ export function StartInputFieldsField({
         />
       )}
 
-      <div className="agent-flow-start-input-fields__system">
-        <Typography.Text
-          strong
-          className="agent-flow-start-input-fields__system-title"
-        >
-          {i18nText('agentFlow', 'auto.system_variables')}
-        </Typography.Text>
-        <div className="agent-flow-node-detail__list">
-          {startSystemVariables.map((variable) => {
-            const example = systemVariableExample(variable.key);
-            const expanded = expandedSystemKeys.has(variable.key);
-            const systemRowContent = (
-              <>
-                <span className="agent-flow-node-detail__list-item-left">
-                  {example ? (
-                    <span className="agent-flow-start-input-fields__system-chevron">
-                      {expanded ? <DownOutlined /> : <RightOutlined />}
+      {contractKind === 'agent' ? (
+        <div className="agent-flow-start-input-fields__system">
+          <Typography.Text
+            strong
+            className="agent-flow-start-input-fields__system-title"
+          >
+            {i18nText('agentFlow', 'auto.system_variables')}
+          </Typography.Text>
+          <div className="agent-flow-node-detail__list">
+            {startSystemVariables.map((variable) => {
+              const example = systemVariableExample(variable.key);
+              const expanded = expandedSystemKeys.has(variable.key);
+              const systemRowContent = (
+                <>
+                  <span className="agent-flow-node-detail__list-item-left">
+                    {example ? (
+                      <span className="agent-flow-start-input-fields__system-chevron">
+                        {expanded ? <DownOutlined /> : <RightOutlined />}
+                      </span>
+                    ) : null}
+                    <span className="agent-flow-node-detail__list-item-icon">
+                      {'{x}'}
                     </span>
-                  ) : null}
-                  <span className="agent-flow-node-detail__list-item-icon">
-                    {'{x}'}
+                    <span className="agent-flow-node-detail__list-item-name">
+                      {variable.title}
+                    </span>
                   </span>
-                  <span className="agent-flow-node-detail__list-item-name">
-                    {variable.title}
+                  <span className="agent-flow-node-detail__list-item-type">
+                    {formatSystemVariableType(variable)}
                   </span>
-                </span>
-                <span className="agent-flow-node-detail__list-item-type">
-                  {formatSystemVariableType(variable)}
-                </span>
-              </>
-            );
+                </>
+              );
 
-            return (
-              <div
-                key={variable.key}
-                data-testid={`start-system-variable-${variable.key}`}
-                className={[
-                  'agent-flow-start-input-fields__system-variable',
-                  expanded
-                    ? 'agent-flow-start-input-fields__system-variable--expanded'
-                    : null
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                {example ? (
-                  <button
-                    type="button"
-                    className="agent-flow-node-detail__list-item agent-flow-start-input-fields__system-trigger"
-                    aria-expanded={expanded}
-                    onClick={() => {
-                      toggleSystemVariable(variable.key);
-                    }}
-                  >
-                    {systemRowContent}
-                  </button>
-                ) : (
-                  <div className="agent-flow-node-detail__list-item">
-                    {systemRowContent}
-                  </div>
-                )}
-                {example && expanded ? (
-                  <JsonPreviewBlock
-                    className="agent-flow-start-input-fields__system-json"
-                    collapsible={false}
-                    copyAriaLabel={i18nText('agentFlow', 'auto.copy_json', {
-                      value1: variable.title
-                    })}
-                    displayTitle=""
-                    fullscreenAriaLabel={i18nText(
-                      'agentFlow',
-                      'auto.zoom_view_json',
-                      { value1: variable.title }
-                    )}
-                    height="180px"
-                    title={variable.title}
-                    value={example}
-                  />
-                ) : null}
-              </div>
-            );
-          })}
+              return (
+                <div
+                  key={variable.key}
+                  data-testid={`start-system-variable-${variable.key}`}
+                  className={[
+                    'agent-flow-start-input-fields__system-variable',
+                    expanded
+                      ? 'agent-flow-start-input-fields__system-variable--expanded'
+                      : null
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  {example ? (
+                    <button
+                      type="button"
+                      className="agent-flow-node-detail__list-item agent-flow-start-input-fields__system-trigger"
+                      aria-expanded={expanded}
+                      onClick={() => {
+                        toggleSystemVariable(variable.key);
+                      }}
+                    >
+                      {systemRowContent}
+                    </button>
+                  ) : (
+                    <div className="agent-flow-node-detail__list-item">
+                      {systemRowContent}
+                    </div>
+                  )}
+                  {example && expanded ? (
+                    <JsonPreviewBlock
+                      className="agent-flow-start-input-fields__system-json"
+                      collapsible={false}
+                      copyAriaLabel={i18nText('agentFlow', 'auto.copy_json', {
+                        value1: variable.title
+                      })}
+                      displayTitle=""
+                      fullscreenAriaLabel={i18nText(
+                        'agentFlow',
+                        'auto.zoom_view_json',
+                        { value1: variable.title }
+                      )}
+                      height="180px"
+                      title={variable.title}
+                      value={example}
+                    />
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      ) : null}
       {floatingPanel}
     </div>
   );

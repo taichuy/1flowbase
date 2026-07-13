@@ -9,6 +9,7 @@
     "workflow_schedule_disabled": "已停用",
     "workflow_trigger_type_extension": "扩展接口触发",
     "workflow_trigger_type_schedule": "定时触发",
+    "trigger_variables": "触发变量",
     "workflow_schedule_input_payload": "输入 payload",
     "workflow_schedule_input_payload_invalid": "输入 payload 必须是合法 JSON",
     "workflow_test_run": "测试运行",

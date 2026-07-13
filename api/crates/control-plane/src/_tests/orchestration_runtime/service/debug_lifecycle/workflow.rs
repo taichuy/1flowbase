@@ -46,7 +46,7 @@ fn workflow_document(flow_id: Uuid) -> Value {
                     "bindings": {
                         "template": {
                             "kind": "templated_text",
-                            "value": "ticket-{{ node-workflow-start.customer_id }}"
+                            "value": "{{ trigger.type }}-ticket-{{ node-workflow-start.customer_id }}"
                         }
                     },
                     "outputs": [
@@ -156,10 +156,22 @@ async fn workflow_debug_run_persists_workflow_end_projection_as_flow_output() {
     assert_eq!(completed.flow_run.status, domain::FlowRunStatus::Succeeded);
     assert_eq!(
         completed.flow_run.output_payload,
-        json!({ "ticket_id": "ticket-C-42" })
+        json!({ "ticket_id": "extension-ticket-C-42" })
     );
     assert_eq!(
         node_run(&completed, "node-workflow-end").output_payload,
-        json!({ "ticket_id": "ticket-C-42" })
+        json!({ "ticket_id": "extension-ticket-C-42" })
+    );
+    assert_eq!(
+        node_run(&completed, "node-workflow-start").input_payload["sys"],
+        json!({
+            "application_id": seeded.application_id.to_string(),
+            "workflow_id": seeded.flow_id.to_string(),
+            "workflow_run_id": completed.flow_run.id.to_string()
+        })
+    );
+    assert_eq!(
+        node_run(&completed, "node-workflow-start").input_payload["trigger"],
+        json!({ "type": "extension" })
     );
 }

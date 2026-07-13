@@ -36,7 +36,9 @@ describe('workflow start variables', () => {
 
     const selectorOptions = listVisibleSelectorOptions(
       document,
-      'node-workflow-end'
+      'node-workflow-end',
+      [],
+      { triggerType: 'schedule' }
     );
     const selectorValues = selectorOptions.map((option) => option.value);
 
@@ -51,6 +53,24 @@ describe('workflow start variables', () => {
       'history'
     ]);
     expect(selectorValues).not.toContainEqual(['node-workflow-start', 'tools']);
+    expect(selectorValues).toEqual(
+      expect.arrayContaining([
+        ['sys', 'application_id'],
+        ['sys', 'workflow_id'],
+        ['sys', 'workflow_run_id'],
+        ['trigger', 'type'],
+        ['trigger', 'scheduled_at'],
+        ['trigger', 'timezone']
+      ])
+    );
+    expect(selectorValues).not.toEqual(
+      expect.arrayContaining([
+        ['sys', 'conversation_id'],
+        ['sys', 'dialog_count'],
+        ['sys', 'user_id'],
+        ['sys', 'model_parameters']
+      ])
+    );
 
     const variableOutputs =
       getWorkflowStartNodeVariableOutputs(workflowStartNode);

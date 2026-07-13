@@ -3,8 +3,13 @@ import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { getNodeVariableOutputs } from './variables/start-node-variables';
 import {
   agentFlowSystemVariables,
-  systemVariableNodeId
+  systemVariableNodeId,
+  workflowSystemVariables
 } from './variables/system-variables';
+import {
+  getWorkflowTriggerVariables,
+  workflowTriggerVariableNodeId
+} from './variables/workflow-trigger-variables';
 import {
   environmentVariableNodeId,
   formatEnvironmentVariableTitle,
@@ -190,10 +195,23 @@ function visibleInternalLlmToolArgumentOptions(
 export function listVisibleSelectorOptions(
   document: FlowAuthoringDocument,
   nodeId: string,
-  environmentVariables: AgentFlowEnvironmentVariable[] = []
+  environmentVariables: AgentFlowEnvironmentVariable[] = [],
+  workflowTriggerContext: unknown = null
 ): FlowSelectorOption[] {
   const visibleNodeIds = collectUpstreamNodeIds(document, nodeId);
-  const systemOptions = agentFlowSystemVariables.map((variable) => ({
+  const isWorkflowDocument = document.graph.nodes.some(
+    (node) => node.type === 'workflow_start'
+  );
+  const triggerType =
+    typeof workflowTriggerContext === 'object' &&
+    workflowTriggerContext !== null &&
+    'triggerType' in workflowTriggerContext
+      ? workflowTriggerContext.triggerType
+      : null;
+  const systemVariables = isWorkflowDocument
+    ? workflowSystemVariables
+    : agentFlowSystemVariables;
+  const systemOptions = systemVariables.map((variable) => ({
     nodeId: systemVariableNodeId,
     nodeLabel: i18nText('agentFlow', 'auto.system_variables'),
     outputKey: variable.key,
@@ -203,6 +221,17 @@ export function listVisibleSelectorOptions(
     value: [systemVariableNodeId, variable.key],
     displayLabel: variable.title
   }));
+  const triggerOptions = isWorkflowDocument
+    ? getWorkflowTriggerVariables(triggerType).map((variable) => ({
+        nodeId: workflowTriggerVariableNodeId,
+        nodeLabel: i18nText('workflow', 'auto.trigger_variables'),
+        outputKey: variable.key,
+        outputLabel: variable.title,
+        valueType: variable.valueType,
+        value: [workflowTriggerVariableNodeId, variable.key],
+        displayLabel: variable.title
+      }))
+    : [];
   const environmentOptions = environmentVariables.map((variable) => ({
     nodeId: environmentVariableNodeId,
     nodeLabel: i18nText('agentFlow', 'auto.environment_variables'),
@@ -212,17 +241,17 @@ export function listVisibleSelectorOptions(
     value: [environmentVariableNodeId, variable.name],
     displayLabel: formatEnvironmentVariableTitle(variable.name)
   }));
-  const conversationOptions = listConversationVariables(document).map(
-    (variable) => ({
-      nodeId: conversationVariableNodeId,
-      nodeLabel: i18nText('agentFlow', 'auto.conversation_variables'),
-      outputKey: variable.name,
-      outputLabel: formatConversationVariableTitle(variable.name),
-      valueType: variable.valueType,
-      value: [conversationVariableNodeId, variable.name],
-      displayLabel: formatConversationVariableTitle(variable.name)
-    })
-  );
+  const conversationOptions = isWorkflowDocument
+    ? []
+    : listConversationVariables(document).map((variable) => ({
+        nodeId: conversationVariableNodeId,
+        nodeLabel: i18nText('agentFlow', 'auto.conversation_variables'),
+        outputKey: variable.name,
+        outputLabel: formatConversationVariableTitle(variable.name),
+        valueType: variable.valueType,
+        value: [conversationVariableNodeId, variable.name],
+        displayLabel: formatConversationVariableTitle(variable.name)
+      }));
 
   const nodeOptions = document.graph.nodes
     .filter((node) => visibleNodeIds.has(node.id))
@@ -251,6 +280,7 @@ export function listVisibleSelectorOptions(
 
   return [
     ...systemOptions,
+    ...triggerOptions,
     ...environmentOptions,
     ...conversationOptions,
     ...toolArgumentOptions,
@@ -335,7 +365,8 @@ export function isSelectorVisible(
   document: FlowAuthoringDocument,
   nodeId: string,
   selector: string[],
-  environmentVariables: AgentFlowEnvironmentVariable[] = []
+  environmentVariables: AgentFlowEnvironmentVariable[] = [],
+  workflowTriggerContext: unknown = null
 ): boolean {
   if (selector.length < 2) {
     return false;
@@ -344,7 +375,8 @@ export function isSelectorVisible(
   return listVisibleSelectorOptions(
     document,
     nodeId,
-    environmentVariables
+    environmentVariables,
+    workflowTriggerContext
   ).some(
     (option) =>
       option.value.length === selector.length &&

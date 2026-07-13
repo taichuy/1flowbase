@@ -76,7 +76,11 @@ function escapedPattern(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function expectSystemVariableType(key: string, title: string, valueType: string) {
+function expectSystemVariableType(
+  key: string,
+  title: string,
+  valueType: string
+) {
   const row = screen.getByTestId(`start-system-variable-${key}`);
 
   expect(within(row).getByText(title)).toBeInTheDocument();
@@ -120,21 +124,9 @@ describe('start input fields', () => {
     expect(screen.getByText('userinput.tools')).toBeInTheDocument();
     expect(screen.getByText('userinput.tool_choice')).toBeInTheDocument();
     expectSystemVariableType('history', 'userinput.history', 'array');
-    expectSystemVariableType(
-      'files',
-      'userinput.files',
-      'array[object]'
-    );
-    expectSystemVariableType(
-      'tools',
-      'userinput.tools',
-      'array[object]'
-    );
-    expectSystemVariableType(
-      'tool_choice',
-      'userinput.tool_choice',
-      'json'
-    );
+    expectSystemVariableType('files', 'userinput.files', 'array[object]');
+    expectSystemVariableType('tools', 'userinput.tools', 'array[object]');
+    expectSystemVariableType('tool_choice', 'userinput.tool_choice', 'json');
     expect(screen.queryByText('上一轮用户消息')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /userinput\.history/ }));
@@ -391,6 +383,7 @@ describe('start input fields', () => {
     const onWorkflowChange = vi.fn();
     const { rerender } = renderWithProviders(
       <StartInputFieldsField
+        contractKind="workflow_http"
         value={[]}
         sourceOptions={[
           { value: 'path', label: 'path' },
@@ -414,7 +407,11 @@ describe('start input fields', () => {
 
     rerender(
       <AppProviders>
-        <StartInputFieldsField value={[]} onChange={vi.fn()} />
+        <StartInputFieldsField
+          contractKind="agent"
+          value={[]}
+          onChange={vi.fn()}
+        />
       </AppProviders>
     );
     fireEvent.click(screen.getByRole('button', { name: '新增输入字段' }));

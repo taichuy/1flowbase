@@ -160,8 +160,8 @@ export function WorkflowCanvasFrame({
     getLastSavedDocument: () => lastSavedDocumentRef.current
   });
   const issues = useMemo(
-    () => validateWorkflowDocument(workingDocument),
-    [workingDocument]
+    () => validateWorkflowDocument(workingDocument, triggerContext),
+    [triggerContext, workingDocument]
   );
   const issueCountByNodeId = useMemo(
     () => countIssuesByNodeId(issues),

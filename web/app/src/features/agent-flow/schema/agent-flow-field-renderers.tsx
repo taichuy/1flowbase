@@ -36,6 +36,7 @@ import { LlmPromptMessagesField } from '../components/detail/fields/LlmPromptMes
 import { LlmResponseFormatField } from '../components/detail/fields/LlmResponseFormatField';
 import {
   StartInputFieldsField,
+  type StartInputContractKind,
   type StartInputSourceOption
 } from '../components/detail/fields/StartInputFieldsField';
 import { StartModelListField } from '../components/detail/fields/StartModelListField';
@@ -669,10 +670,31 @@ function renderStartInputFieldsField({
   adapter,
   block
 }: SchemaFieldRendererProps) {
+  const node = adapter.getDerived('node') as FlowNodeDocument | undefined;
+  const workflowTriggerContext = adapter.getDerived('workflowTriggerContext');
+  const triggerType =
+    typeof workflowTriggerContext === 'object' &&
+    workflowTriggerContext !== null &&
+    'triggerType' in workflowTriggerContext &&
+    typeof workflowTriggerContext.triggerType === 'string'
+      ? workflowTriggerContext.triggerType
+      : null;
+  const contractKind: StartInputContractKind =
+    node?.type === 'workflow_start'
+      ? triggerType === 'schedule'
+        ? 'workflow_schedule'
+        : 'workflow_http'
+      : 'agent';
+  const sourceOptions =
+    contractKind === 'workflow_http'
+      ? ((block.options ?? []) as StartInputSourceOption[])
+      : [];
+
   return (
     <StartInputFieldsField
+      contractKind={contractKind}
       value={adapter.getValue(block.path)}
-      sourceOptions={(block.options ?? []) as StartInputSourceOption[]}
+      sourceOptions={sourceOptions}
       onChange={(nextValue) => adapter.setValue(block.path, nextValue)}
     />
   );

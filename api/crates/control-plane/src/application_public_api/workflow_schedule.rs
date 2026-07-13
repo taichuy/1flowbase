@@ -5,8 +5,8 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::run_service::{
-    public_compiled_plan_start_node_id, public_freeze_run_input_environment,
-    ApplicationPublishedFlowRunRepository,
+    public_freeze_workflow_run_input_environment, ApplicationPublishedFlowRunRepository,
+    WorkflowRunTriggerContext,
 };
 use crate::{
     application_public_api::{
@@ -250,17 +250,18 @@ where
             .get_application_compiled_plan(publication.compiled_plan_id)
             .await?
             .ok_or(ControlPlaneError::InvalidInput("compiled_plan"))?;
-        let start_node_id = public_compiled_plan_start_node_id(&compiled_plan.plan);
         let environment_variables = self
             .repository
             .list_application_environment_variables(trigger.workspace_id, trigger.application_id)
             .await?;
-        let input_payload = public_freeze_run_input_environment(
+        let input_payload = public_freeze_workflow_run_input_environment(
             trigger.input_payload.clone(),
             &environment_variables,
-            None,
-            start_node_id.as_deref(),
-        );
+            WorkflowRunTriggerContext::Schedule {
+                scheduled_at: command.scheduled_at,
+                timezone: &trigger.timezone,
+            },
+        )?;
         let idempotency_key =
             schedule_idempotency_key(trigger.application_id, command.scheduled_at);
         if let Some(existing) = self

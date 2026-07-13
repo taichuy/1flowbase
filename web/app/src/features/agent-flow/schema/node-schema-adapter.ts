@@ -363,7 +363,8 @@ export function createAgentFlowNodeSchemaAdapter({
         return listVisibleSelectorOptions(
           document,
           nodeId,
-          environmentVariables
+          environmentVariables,
+          workflowTriggerContext
         );
       }
 

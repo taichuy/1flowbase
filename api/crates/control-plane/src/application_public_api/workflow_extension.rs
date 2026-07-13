@@ -14,8 +14,8 @@ use super::{
     native::write_selector,
     publications::ApplicationPublicationVersionRecord,
     run_service::{
-        public_compiled_plan_start_node_id, public_freeze_run_input_environment,
-        ApplicationPublishedFlowRunRepository,
+        public_compiled_plan_start_node_id, public_freeze_workflow_run_input_environment,
+        ApplicationPublishedFlowRunRepository, WorkflowRunTriggerContext,
     },
 };
 use crate::{
@@ -148,12 +148,12 @@ where
 
         let node_input_payload = map_extension_parameters(&publication, &command.parameters)
             .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
-        let input_payload = public_freeze_run_input_environment(
+        let input_payload = public_freeze_workflow_run_input_environment(
             node_input_payload,
             &environment_variables,
-            None,
-            Some(&start_node_id),
-        );
+            WorkflowRunTriggerContext::Extension,
+        )
+        .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
         let started_at = OffsetDateTime::now_utc();
         let created = self
             .repository
