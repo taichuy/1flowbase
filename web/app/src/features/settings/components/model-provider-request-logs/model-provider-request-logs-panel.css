@@ -4,10 +4,9 @@
   flex-direction: column;
   gap: 16px;
   width: 100%;
-  height: calc(100dvh - 220px);
+  height: 100%;
   min-width: 0;
-  min-height: 360px;
-  max-height: calc(100dvh - 220px);
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -31,12 +30,4 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
-
-@media (max-height: 720px) {
-  .model-provider-request-logs-panel {
-    height: calc(100dvh - 180px);
-    min-height: 280px;
-    max-height: calc(100dvh - 180px);
-  }
 }

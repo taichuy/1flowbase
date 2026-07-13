@@ -469,6 +469,42 @@ describe('ModelProvidersPage - layout and style', () => {
     expect(cssSource).toContain('@media (max-width: 768px)');
   });
 
+  test('keeps request log height owned by the model provider tabs', () => {
+    const tabsSource = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        '../../pages/settings-page/ModelProviderSettingsTabs.tsx'
+      ),
+      'utf8'
+    );
+    const tabsCssSource = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        '../../pages/settings-page/model-provider-settings-tabs.css'
+      ),
+      'utf8'
+    );
+    const requestLogsCssSource = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        '../../components/model-provider-request-logs/model-provider-request-logs-panel.css'
+      ),
+      'utf8'
+    );
+
+    expect(tabsSource).toContain('className="model-provider-settings-tabs"');
+    expect(tabsCssSource).toContain(
+      '.model-provider-settings-tabs > .ant-tabs-content-holder'
+    );
+    expect(tabsCssSource).toContain(
+      '.model-provider-settings-tabs .ant-tabs-tabpane'
+    );
+    expect(tabsCssSource).toContain('min-height: 0;');
+    expect(requestLogsCssSource).toContain('height: 100%;');
+    expect(requestLogsCssSource).not.toContain('100dvh');
+    expect(requestLogsCssSource).not.toContain('@media (max-height:');
+  });
+
   test('keeps provider modal tabs inside the fixed-height scroll shell', () => {
     const cssSource = fs.readFileSync(
       path.resolve(

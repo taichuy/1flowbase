@@ -158,7 +158,7 @@ async fn create_external_model_and_field_mapping_keys() {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/models?data_source_instance_id={data_source_instance_id}"
+                    "/api/console/models?data_source_id={data_source_instance_id}"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
@@ -176,9 +176,10 @@ async fn create_external_model_and_field_mapping_keys() {
     .unwrap();
     let created_model = &listed_models["data"][0];
     assert_eq!(
-        created_model["data_source_instance_id"],
+        created_model["data_source_id"],
         json!(data_source_instance_id)
     );
+    assert!(created_model.get("data_source_instance_id").is_none());
     assert_eq!(created_model["source_kind"], json!("external_source"));
     assert_eq!(created_model["external_resource_key"], json!("contacts"));
     assert_eq!(created_model["external_table_id"], json!("crm.contacts"));

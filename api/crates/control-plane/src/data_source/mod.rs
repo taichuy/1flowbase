@@ -6,7 +6,7 @@ use plugin_framework::data_source_contract::{
     DataSourcePreviewReadInput, DataSourcePreviewReadOutput, DataSourceResourceDescriptor,
 };
 use plugin_framework::provider_contract::PluginFormFieldSchema;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
@@ -26,6 +26,13 @@ use crate::{
         UpdateMainSourceDefaultsInput, UpsertDataSourceCatalogCacheInput,
         UpsertDataSourceSecretInput,
     },
+};
+
+mod instance_config;
+
+use instance_config::{
+    classify_data_source_config, load_data_source_config_schema,
+    validate_data_source_secret_rotation,
 };
 
 #[derive(Debug, Clone)]
@@ -62,6 +69,13 @@ pub struct UpdateDataSourceDefaultsCommand {
 }
 
 #[derive(Debug, Clone)]
+pub struct UpdateMainDataSourceDefaultsCommand {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub defaults: domain::DataSourceDefaults,
+}
+
+#[derive(Debug, Clone)]
 pub struct RotateDataSourceSecretCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
@@ -92,6 +106,55 @@ pub struct MapDataSourceResourceToModelCommand {
 pub struct DataSourceInstanceView {
     pub instance: domain::DataSourceInstanceRecord,
     pub catalog: Option<domain::DataSourceCatalogCacheRecord>,
+}
+
+#[derive(Debug, Clone)]
+pub enum DataSourceBackendView {
+    Core {
+        defaults: domain::DataSourceDefaults,
+    },
+    RuntimeExtension(DataSourceInstanceView),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DataSourceCapabilitiesView {
+    pub can_update_defaults: bool,
+    pub can_create_data_model: bool,
+    pub can_validate: bool,
+    pub can_discover_resources: bool,
+    pub can_preview_resources: bool,
+    pub can_map_resources: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DataSourceView {
+    pub backend: DataSourceBackendView,
+}
+
+impl DataSourceView {
+    pub fn capabilities(&self) -> DataSourceCapabilitiesView {
+        match &self.backend {
+            DataSourceBackendView::Core { .. } => DataSourceCapabilitiesView {
+                can_update_defaults: true,
+                can_create_data_model: true,
+                can_validate: false,
+                can_discover_resources: false,
+                can_preview_resources: false,
+                can_map_resources: false,
+            },
+            DataSourceBackendView::RuntimeExtension(view) => {
+                let ready = view.instance.status == domain::DataSourceInstanceStatus::Ready;
+                DataSourceCapabilitiesView {
+                    can_update_defaults: true,
+                    can_create_data_model: false,
+                    can_validate: true,
+                    can_discover_resources: ready,
+                    can_preview_resources: ready,
+                    can_map_resources: ready,
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -134,6 +197,7 @@ pub struct MapDataSourceResourceToModelResult {
 pub struct DataSourceService<R, H> {
     repository: R,
     runtime: H,
+    secret_master_key: String,
     node_id: Option<String>,
     install_root: Option<PathBuf>,
 }
@@ -143,10 +207,11 @@ where
     R: AuthRepository + PluginRepository + DataSourceRepository + ModelDefinitionRepository,
     H: DataSourceRuntimePort,
 {
-    pub fn new(repository: R, runtime: H) -> Self {
+    pub fn new(repository: R, runtime: H, secret_master_key: impl Into<String>) -> Self {
         Self {
             repository,
             runtime,
+            secret_master_key: secret_master_key.into(),
             node_id: None,
             install_root: None,
         }
@@ -255,6 +320,31 @@ where
             .collect())
     }
 
+    pub async fn list_data_sources(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Vec<DataSourceView>> {
+        let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        ensure_workspace_matches(&actor, workspace_id)?;
+        ensure_external_data_source_permission(&actor, "view")?;
+
+        let defaults =
+            DataSourceRepository::get_main_source_defaults(&self.repository, workspace_id).await?;
+        let instances = self.repository.list_instances(workspace_id).await?;
+        let mut data_sources = Vec::with_capacity(instances.len() + 1);
+        data_sources.push(DataSourceView {
+            backend: DataSourceBackendView::Core { defaults },
+        });
+        data_sources.extend(instances.into_iter().map(|instance| DataSourceView {
+            backend: DataSourceBackendView::RuntimeExtension(DataSourceInstanceView {
+                instance,
+                catalog: None,
+            }),
+        }));
+        Ok(data_sources)
+    }
+
     pub async fn create_instance(
         &self,
         command: CreateDataSourceInstanceCommand,
@@ -272,9 +362,12 @@ where
         .await?;
         ensure_data_source_installation(&installation, &command.source_code)?;
 
+        let config_schema = load_data_source_config_schema(&installation).await?;
+
         let instance_id = Uuid::now_v7();
         let secret_ref = domain::data_source_secret_ref(instance_id);
-        let (config_json, secret_json) = sanitize_config_and_merge_secrets(
+        let (config_json, secret_json) = classify_data_source_config(
+            &config_schema,
             &command.config_json,
             &command.secret_json,
             &secret_ref,
@@ -297,19 +390,26 @@ where
             })
             .await?;
 
-        self.repository
-            .upsert_secret(&UpsertDataSourceSecretInput {
-                data_source_instance_id: instance.id,
-                secret_ref: secret_ref.clone(),
-                secret_json,
-                secret_version: 1,
-            })
-            .await?;
-        let instance = self
-            .repository
-            .get_instance(command.workspace_id, instance.id)
-            .await?
-            .unwrap_or(instance);
+        let instance = if secret_json
+            .as_object()
+            .is_some_and(|secrets| !secrets.is_empty())
+        {
+            self.repository
+                .upsert_secret(&UpsertDataSourceSecretInput {
+                    data_source_instance_id: instance.id,
+                    secret_ref,
+                    plaintext_secret_json: secret_json,
+                    master_key: self.secret_master_key.clone(),
+                    secret_version: 1,
+                })
+                .await?;
+            self.repository
+                .get_instance(command.workspace_id, instance.id)
+                .await?
+                .unwrap_or(instance)
+        } else {
+            instance
+        };
 
         AuthRepository::append_audit_log(
             &self.repository,
@@ -322,8 +422,8 @@ where
                 json!({
                     "installation_id": command.installation_id,
                     "source_code": instance.source_code,
-                    "secret_ref": secret_ref,
-                    "secret_version": 1,
+                    "secret_ref": instance.secret_ref.clone(),
+                    "secret_version": instance.secret_version,
                 }),
             ),
         )
@@ -358,7 +458,7 @@ where
 
         let secret_json = self
             .repository
-            .get_secret_json(existing.id)
+            .get_secret_json(existing.id, &self.secret_master_key)
             .await?
             .unwrap_or_else(|| json!({}));
 
@@ -458,9 +558,9 @@ where
         DataSourceRepository::get_main_source_defaults(&self.repository, workspace_id).await
     }
 
-    pub async fn update_main_source_defaults(
+    pub async fn update_main_data_source_defaults(
         &self,
-        command: UpdateDataSourceDefaultsCommand,
+        command: UpdateMainDataSourceDefaultsCommand,
     ) -> Result<domain::DataSourceDefaults> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
@@ -556,7 +656,7 @@ where
 
         let secret_json = self
             .repository
-            .get_secret_json(instance.id)
+            .get_secret_json(instance.id, &self.secret_master_key)
             .await?
             .unwrap_or_else(|| json!({}));
         let secret_values = collect_secret_strings(&secret_json);
@@ -612,11 +712,15 @@ where
             .get_instance(command.workspace_id, command.instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
+        let installation = self.ready_installation(existing.installation_id).await?;
+        ensure_data_source_installation(&installation, &existing.source_code)?;
+        let config_schema = load_data_source_config_schema(&installation).await?;
         let secret_ref = existing
             .secret_ref
             .clone()
             .unwrap_or_else(|| domain::data_source_secret_ref(existing.id));
-        let secret_json = ensure_json_object(&command.secret_json, "secret_json")?;
+        let secret_json =
+            validate_data_source_secret_rotation(&config_schema, &command.secret_json)?;
 
         let secret = self
             .repository
@@ -624,7 +728,8 @@ where
                 workspace_id: command.workspace_id,
                 data_source_instance_id: existing.id,
                 secret_ref: secret_ref.clone(),
-                secret_json,
+                plaintext_secret_json: secret_json,
+                master_key: self.secret_master_key.clone(),
                 updated_by: actor.user_id,
             })
             .await?;
@@ -676,7 +781,7 @@ where
         let resource_key = normalize_required_text(&command.resource_key, "resource_key")?;
         let secret_json = self
             .repository
-            .get_secret_json(instance.id)
+            .get_secret_json(instance.id, &self.secret_master_key)
             .await?
             .unwrap_or_else(|| json!({}));
         let secret_values = collect_secret_strings(&secret_json);
@@ -820,7 +925,7 @@ where
 
         let secret_json = self
             .repository
-            .get_secret_json(instance.id)
+            .get_secret_json(instance.id, &self.secret_master_key)
             .await?
             .unwrap_or_else(|| json!({}));
         let secret_values = collect_secret_strings(&secret_json);
@@ -1061,180 +1166,6 @@ fn model_field_kind_from_schema(schema: &PluginFormFieldSchema) -> domain::Model
     }
 }
 
-fn ensure_json_object(value: &Value, field: &'static str) -> Result<Value> {
-    if value.is_object() {
-        Ok(value.clone())
-    } else {
-        Err(ControlPlaneError::InvalidInput(field).into())
-    }
-}
-
-fn sanitize_config_and_merge_secrets(
-    config_json: &Value,
-    secret_json: &Value,
-    secret_ref: &str,
-    secret_version: i32,
-) -> Result<(Value, Value)> {
-    let config_json = ensure_json_object(config_json, "config_json")?;
-    let mut merged_secret_json = ensure_json_object(secret_json, "secret_json")?;
-    let sanitized_config = scrub_secret_like_config_values(
-        &config_json,
-        &mut merged_secret_json,
-        secret_ref,
-        secret_version,
-        &mut Vec::new(),
-    );
-    Ok((sanitized_config, merged_secret_json))
-}
-
-fn scrub_secret_like_config_values(
-    value: &Value,
-    secret_json: &mut Value,
-    secret_ref: &str,
-    secret_version: i32,
-    path: &mut Vec<String>,
-) -> Value {
-    match value {
-        Value::Object(object) => {
-            let mut sanitized = Map::new();
-            for (key, child) in object {
-                path.push(key.clone());
-                let next = if is_secret_bearing_config_value(key, child, path, object)
-                    && !is_secret_reference_marker(child)
-                {
-                    store_config_secret_value(secret_json, path, child.clone());
-                    secret_reference_marker(secret_ref, secret_version)
-                } else {
-                    scrub_secret_like_config_values(
-                        child,
-                        secret_json,
-                        secret_ref,
-                        secret_version,
-                        path,
-                    )
-                };
-                path.pop();
-                sanitized.insert(key.clone(), next);
-            }
-            Value::Object(sanitized)
-        }
-        Value::Array(items) => Value::Array(
-            items
-                .iter()
-                .enumerate()
-                .map(|(index, item)| {
-                    path.push(index.to_string());
-                    let next = scrub_secret_like_config_values(
-                        item,
-                        secret_json,
-                        secret_ref,
-                        secret_version,
-                        path,
-                    );
-                    path.pop();
-                    next
-                })
-                .collect(),
-        ),
-        _ => value.clone(),
-    }
-}
-
-fn store_config_secret_value(secret_json: &mut Value, path: &[String], value: Value) {
-    if let Some(last) = path.last() {
-        if path.len() == 1 {
-            if let Some(secret_object) = secret_json.as_object_mut() {
-                secret_object
-                    .entry(last.clone())
-                    .or_insert_with(|| value.clone());
-            }
-        }
-    }
-
-    let pointer = format!("/{}", path.join("/"));
-    if let Some(secret_object) = secret_json.as_object_mut() {
-        let entry = secret_object
-            .entry("__config_secret_values")
-            .or_insert_with(|| Value::Object(Map::new()));
-        if let Some(config_secret_values) = entry.as_object_mut() {
-            config_secret_values.insert(pointer, value);
-        }
-    }
-}
-
-fn is_secret_like_config_key(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase().replace(['-', ' '], "_");
-    if normalized == "secret_ref" || normalized == "secret_version" || normalized.ends_with("_ref")
-    {
-        return false;
-    }
-
-    normalized.contains("secret")
-        || normalized.contains("password")
-        || normalized.contains("token")
-        || normalized.contains("api_key")
-        || normalized.contains("apikey")
-        || normalized.contains("authorization")
-        || normalized.contains("private_key")
-}
-
-fn is_secret_bearing_config_value(
-    key: &str,
-    child: &Value,
-    path: &[String],
-    parent: &Map<String, Value>,
-) -> bool {
-    if is_secret_like_config_key(key) {
-        return true;
-    }
-
-    if key == "value" && path_matches_headers_value(path) {
-        return parent
-            .get("name")
-            .or_else(|| parent.get("key"))
-            .and_then(Value::as_str)
-            .map(is_secret_bearing_header_name)
-            .unwrap_or(false);
-    }
-
-    key == "value" && path_matches_credentials_value(path) && !child.is_null()
-}
-
-fn is_secret_bearing_header_name(name: &str) -> bool {
-    matches!(
-        name.trim().to_ascii_lowercase().as_str(),
-        "authorization"
-            | "proxy-authorization"
-            | "x-api-key"
-            | "api-key"
-            | "x-auth-token"
-            | "cookie"
-    )
-}
-
-fn path_matches_headers_value(path: &[String]) -> bool {
-    path.len() >= 3
-        && path.last().map(String::as_str) == Some("value")
-        && path.get(path.len() - 3).map(String::as_str) == Some("headers")
-        && path
-            .get(path.len() - 2)
-            .map(|segment| segment.parse::<usize>().is_ok())
-            .unwrap_or(false)
-}
-
-fn path_matches_credentials_value(path: &[String]) -> bool {
-    path.len() >= 2
-        && path.last().map(String::as_str) == Some("value")
-        && path.get(path.len() - 2).map(String::as_str) == Some("credentials")
-}
-
-fn is_secret_reference_marker(value: &Value) -> bool {
-    value
-        .as_object()
-        .map(|object| object.contains_key("secret_ref") && object.contains_key("secret_version"))
-        .unwrap_or(false)
-}
-
 pub fn collect_secret_strings(value: &Value) -> HashSet<String> {
     let mut secrets = HashSet::new();
     collect_secret_strings_into(value, &mut secrets);
@@ -1311,13 +1242,6 @@ fn redact_preview_output(
             .next_cursor
             .map(|cursor| redact_string(&cursor, secrets)),
     }
-}
-
-fn secret_reference_marker(secret_ref: &str, secret_version: i32) -> Value {
-    json!({
-        "secret_ref": secret_ref,
-        "secret_version": secret_version,
-    })
 }
 
 fn ensure_data_source_defaults_compatible(defaults: domain::DataSourceDefaults) -> Result<()> {

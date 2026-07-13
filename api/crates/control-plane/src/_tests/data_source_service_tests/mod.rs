@@ -87,7 +87,10 @@ fn seeded_installation() -> PluginInstallationRecord {
         runtime_status: PluginRuntimeStatus::Active,
         availability_status: PluginAvailabilityStatus::Available,
         package_path: None,
-        installed_path: "/tmp/fixture-data-source".to_string(),
+        installed_path: format!(
+            "{}/src/_tests/fixtures/acme_data_source",
+            env!("CARGO_MANIFEST_DIR")
+        ),
         checksum: None,
         manifest_fingerprint: None,
         signature_status: None,
@@ -540,14 +543,14 @@ impl DataSourceRepository for InMemoryDataSourceRepository {
         let record = DataSourceSecretRecord {
             data_source_instance_id: input.data_source_instance_id,
             secret_ref: input.secret_ref.clone(),
-            encrypted_secret_json: input.secret_json.clone(),
+            encrypted_secret_json: input.plaintext_secret_json.clone(),
             secret_version: input.secret_version,
             updated_at: OffsetDateTime::now_utc(),
         };
-        self.secrets
-            .write()
-            .await
-            .insert(input.data_source_instance_id, input.secret_json.clone());
+        self.secrets.write().await.insert(
+            input.data_source_instance_id,
+            input.plaintext_secret_json.clone(),
+        );
         self.secret_records
             .write()
             .await
@@ -579,8 +582,10 @@ impl DataSourceRepository for InMemoryDataSourceRepository {
             .await
             .get(&input.data_source_instance_id)
             .cloned();
-        let secret_json =
-            merge_config_marker_secret_values(existing_secret_json.as_ref(), &input.secret_json);
+        let secret_json = merge_rotated_secret_values(
+            existing_secret_json.as_ref(),
+            &input.plaintext_secret_json,
+        );
         let record = DataSourceSecretRecord {
             data_source_instance_id: input.data_source_instance_id,
             secret_ref: input.secret_ref.clone(),
@@ -615,7 +620,7 @@ impl DataSourceRepository for InMemoryDataSourceRepository {
         Ok(self.secret_records.read().await.get(&instance_id).cloned())
     }
 
-    async fn get_secret_json(&self, instance_id: Uuid) -> Result<Option<Value>> {
+    async fn get_secret_json(&self, instance_id: Uuid, _master_key: &str) -> Result<Option<Value>> {
         Ok(self.secrets.read().await.get(&instance_id).cloned())
     }
 
@@ -936,18 +941,26 @@ fn is_test_secret_reference_marker(value: &Value) -> bool {
         .unwrap_or(false)
 }
 
-fn merge_config_marker_secret_values(existing: Option<&Value>, incoming: &Value) -> Value {
-    let mut merged = incoming.clone();
-    let Some(merged_object) = merged.as_object_mut() else {
-        return merged;
+fn merge_rotated_secret_values(existing: Option<&Value>, incoming: &Value) -> Value {
+    let Some(incoming_object) = incoming.as_object() else {
+        return incoming.clone();
     };
+    let mut merged_object = existing
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for (key, value) in incoming_object {
+        if key != "__config_secret_values" {
+            merged_object.insert(key.clone(), value.clone());
+        }
+    }
 
     let mut marker_values = existing
         .and_then(|value| value.get("__config_secret_values"))
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
-    if let Some(incoming_marker_values) = merged_object
+    if let Some(incoming_marker_values) = incoming_object
         .get("__config_secret_values")
         .and_then(Value::as_object)
     {
@@ -962,7 +975,7 @@ fn merge_config_marker_secret_values(existing: Option<&Value>, incoming: &Value)
         );
     }
 
-    merged
+    Value::Object(merged_object)
 }
 
 #[derive(Clone)]

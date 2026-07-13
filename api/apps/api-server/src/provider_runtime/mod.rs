@@ -100,13 +100,19 @@ impl ApiProviderRuntime {
 pub struct ApiDataSourceRuntimeRecordBackend {
     repository: MainDurableStore,
     runtime: ApiProviderRuntime,
+    secret_master_key: String,
 }
 
 impl ApiDataSourceRuntimeRecordBackend {
-    pub fn new(repository: MainDurableStore, runtime: ApiProviderRuntime) -> Self {
+    pub fn new(
+        repository: MainDurableStore,
+        runtime: ApiProviderRuntime,
+        secret_master_key: impl Into<String>,
+    ) -> Self {
         Self {
             repository,
             runtime,
+            secret_master_key: secret_master_key.into(),
         }
     }
 
@@ -146,9 +152,13 @@ impl ApiDataSourceRuntimeRecordBackend {
         if installation.provider_code != instance.source_code {
             return Err(ControlPlaneError::InvalidInput("source_code").into());
         }
-        let secret_json = DataSourceRepository::get_secret_json(&self.repository, instance.id)
-            .await?
-            .unwrap_or_else(|| serde_json::json!({}));
+        let secret_json = DataSourceRepository::get_secret_json(
+            &self.repository,
+            instance.id,
+            &self.secret_master_key,
+        )
+        .await?
+        .unwrap_or_else(|| serde_json::json!({}));
         let secret_values = collect_secret_strings(&secret_json);
 
         Ok(DataSourceRuntimeTarget {

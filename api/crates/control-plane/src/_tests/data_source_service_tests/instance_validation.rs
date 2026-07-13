@@ -4,7 +4,7 @@ use super::*;
 async fn ac_003_validate_instance_marks_ready_without_discovering_resources() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository.clone(), runtime);
+    let service = DataSourceService::new(repository.clone(), runtime, "test-master-key");
 
     let created = service
         .create_instance(CreateDataSourceInstanceCommand {
@@ -42,7 +42,11 @@ async fn ac_003_validate_instance_marks_ready_without_discovering_resources() {
 #[tokio::test]
 async fn ac_004_only_ready_connections_discover_and_read_cached_resources() {
     let repository = InMemoryDataSourceRepository::default();
-    let service = DataSourceService::new(repository.clone(), StubDataSourceRuntime::ready());
+    let service = DataSourceService::new(
+        repository.clone(),
+        StubDataSourceRuntime::ready(),
+        "test-master-key",
+    );
     let created = service
         .create_instance(CreateDataSourceInstanceCommand {
             actor_user_id: user_id(),
@@ -106,7 +110,11 @@ async fn create_instance_requires_external_data_source_configure_permission_not_
         ["state_model.manage.all".to_string()],
     );
     let denied_repository = InMemoryDataSourceRepository::with_actor(state_model_actor);
-    let denied_service = DataSourceService::new(denied_repository, StubDataSourceRuntime::ready());
+    let denied_service = DataSourceService::new(
+        denied_repository,
+        StubDataSourceRuntime::ready(),
+        "test-master-key",
+    );
 
     let denied = denied_service
         .create_instance(CreateDataSourceInstanceCommand {
@@ -130,8 +138,11 @@ async fn create_instance_requires_external_data_source_configure_permission_not_
         ["external_data_source.configure.all".to_string()],
     );
     let allowed_repository = InMemoryDataSourceRepository::with_actor(data_source_actor);
-    let allowed_service =
-        DataSourceService::new(allowed_repository, StubDataSourceRuntime::ready());
+    let allowed_service = DataSourceService::new(
+        allowed_repository.clone(),
+        StubDataSourceRuntime::ready(),
+        "test-master-key",
+    );
 
     let created = allowed_service
         .create_instance(CreateDataSourceInstanceCommand {
@@ -146,4 +157,19 @@ async fn create_instance_requires_external_data_source_configure_permission_not_
         .await
         .unwrap();
     assert_eq!(created.instance.display_name, "HubSpot");
+    assert!(created.instance.secret_ref.is_none());
+    assert!(created.instance.secret_version.is_none());
+    assert!(allowed_repository
+        .get_secret_record(created.instance.id)
+        .await
+        .unwrap()
+        .is_none());
+    let created_audit = allowed_repository
+        .audit_events()
+        .await
+        .into_iter()
+        .find(|event| event.event_code == "data_source.instance_created")
+        .unwrap();
+    assert!(created_audit.payload["secret_ref"].is_null());
+    assert!(created_audit.payload["secret_version"].is_null());
 }

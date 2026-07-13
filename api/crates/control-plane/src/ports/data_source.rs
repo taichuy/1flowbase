@@ -56,7 +56,8 @@ pub struct UpdateDataSourceInstanceConfigInput {
 pub struct UpsertDataSourceSecretInput {
     pub data_source_instance_id: Uuid,
     pub secret_ref: String,
-    pub secret_json: serde_json::Value,
+    pub plaintext_secret_json: serde_json::Value,
+    pub master_key: String,
     pub secret_version: i32,
 }
 
@@ -65,7 +66,8 @@ pub struct RotateDataSourceSecretInput {
     pub workspace_id: Uuid,
     pub data_source_instance_id: Uuid,
     pub secret_ref: String,
-    pub secret_json: serde_json::Value,
+    pub plaintext_secret_json: serde_json::Value,
+    pub master_key: String,
     pub updated_by: Uuid,
 }
 
@@ -148,8 +150,11 @@ pub trait DataSourceRepository: Send + Sync {
         &self,
         instance_id: Uuid,
     ) -> anyhow::Result<Option<domain::DataSourceSecretRecord>>;
-    async fn get_secret_json(&self, instance_id: Uuid)
-        -> anyhow::Result<Option<serde_json::Value>>;
+    async fn get_secret_json(
+        &self,
+        instance_id: Uuid,
+        master_key: &str,
+    ) -> anyhow::Result<Option<serde_json::Value>>;
     async fn upsert_catalog_cache(
         &self,
         input: &UpsertDataSourceCatalogCacheInput,

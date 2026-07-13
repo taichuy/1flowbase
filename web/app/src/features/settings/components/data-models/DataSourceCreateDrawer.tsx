@@ -12,12 +12,12 @@ import {
 } from 'antd';
 
 import type {
-  CreateSettingsDataSourceConnectionInput,
+  CreateSettingsDataSourceInput,
   SettingsDataSourceCatalogEntry
 } from '../../api/data-models';
 import { i18nText } from '../../../../shared/i18n/text';
 
-interface ConnectionFormValues {
+interface DataSourceFormValues {
   installation_id: string;
   display_name: string;
   values: Record<string, unknown>;
@@ -47,7 +47,7 @@ function schemaFieldControl(field: SettingsDataSourceCatalogEntry['config_schema
   return <Input placeholder={field.placeholder ?? undefined} />;
 }
 
-export function DataSourceConnectionDrawer({
+export function DataSourceCreateDrawer({
   open,
   catalog,
   saving,
@@ -60,9 +60,9 @@ export function DataSourceConnectionDrawer({
   saving: boolean;
   errorMessage: string | null;
   onClose: () => void;
-  onCreate: (input: CreateSettingsDataSourceConnectionInput) => Promise<void>;
+  onCreate: (input: CreateSettingsDataSourceInput) => Promise<void>;
 }) {
-  const [form] = Form.useForm<ConnectionFormValues>();
+  const [form] = Form.useForm<DataSourceFormValues>();
   const installationId = Form.useWatch('installation_id', form);
   const selectedExtension = useMemo(
     () => catalog.find((entry) => entry.installation_id === installationId),
@@ -117,7 +117,7 @@ export function DataSourceConnectionDrawer({
 
   return (
     <Drawer
-      title={i18nText('settings', 'auto.new_external_connection')}
+      title={i18nText('settings', 'auto.add_data_source')}
       open={open}
       width={520}
       onClose={onClose}
@@ -155,7 +155,7 @@ export function DataSourceConnectionDrawer({
         </Form.Item>
         <Form.Item
           name="display_name"
-          label={i18nText('settings', 'auto.connection_name')}
+          label={i18nText('settings', 'auto.data_source_name')}
           rules={[{ required: true }]}
         >
           <Input />

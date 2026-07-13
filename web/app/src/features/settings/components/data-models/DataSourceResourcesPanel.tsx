@@ -8,13 +8,13 @@ import {
 } from '@ant-design/icons';
 
 import type {
-  SettingsDataSourceConnection,
+  SettingsRuntimeExtensionDataSource,
   SettingsDataSourceRemoteResource
 } from '../../api/data-models';
 import { i18nText } from '../../../../shared/i18n/text';
 
 export function DataSourceResourcesPanel({
-  connection,
+  dataSource,
   resources,
   loading,
   validating,
@@ -27,7 +27,7 @@ export function DataSourceResourcesPanel({
   onPreview,
   onMap
 }: {
-  connection: SettingsDataSourceConnection;
+  dataSource: SettingsRuntimeExtensionDataSource;
   resources: SettingsDataSourceRemoteResource[];
   loading: boolean;
   validating: boolean;
@@ -70,8 +70,10 @@ export function DataSourceResourcesPanel({
         <Space>
           <Button
             type="link"
-            icon={<EyeOutlined />}
-            disabled={!canManage}
+            icon={<EyeOutlined aria-hidden="true" />}
+            disabled={
+              !canManage || !dataSource.capabilities.can_preview_resources
+            }
             loading={previewingResourceKey === resource.resource_key}
             onClick={() => onPreview(resource)}
           >
@@ -79,8 +81,10 @@ export function DataSourceResourcesPanel({
           </Button>
           <Button
             type="link"
-            icon={<LinkOutlined />}
-            disabled={!canManage}
+            icon={<LinkOutlined aria-hidden="true" />}
+            disabled={
+              !canManage || !dataSource.capabilities.can_map_resources
+            }
             loading={mappingResourceKey === resource.resource_key}
             onClick={() => onMap(resource)}
           >
@@ -101,28 +105,28 @@ export function DataSourceResourcesPanel({
         >
           {i18nText('settings', 'auto.remote_resources')}
         </Typography.Title>
-        {connection.status === 'ready' ? (
+        {dataSource.capabilities.can_discover_resources ? (
           <Button
-            icon={<ReloadOutlined />}
+            icon={<ReloadOutlined aria-hidden="true" />}
             disabled={!canManage}
             loading={discovering}
             onClick={onDiscover}
           >
             {i18nText('settings', 'auto.discover_resources')}
           </Button>
-        ) : (
+        ) : dataSource.capabilities.can_validate ? (
           <Button
             type="primary"
-            icon={<CheckCircleOutlined />}
+            icon={<CheckCircleOutlined aria-hidden="true" />}
             disabled={!canManage}
             loading={validating}
             onClick={onValidate}
           >
-            {i18nText('settings', 'auto.validate_connection')}
+            {i18nText('settings', 'auto.validate_data_source')}
           </Button>
-        )}
+        ) : null}
       </Flex>
-      {connection.status === 'ready' ? (
+      {dataSource.capabilities.can_discover_resources ? (
         <Table
           rowKey="resource_key"
           size="small"

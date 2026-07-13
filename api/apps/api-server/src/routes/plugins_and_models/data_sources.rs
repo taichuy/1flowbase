@@ -7,10 +7,11 @@ use axum::{
     Json, Router,
 };
 use control_plane::data_source::{
-    CreateDataSourceInstanceCommand, DataSourceCatalogEntryView, DataSourceInstanceView,
-    DataSourceResourcesView, DataSourceService, DiscoverDataSourceResourcesCommand,
-    MapDataSourceResourceToModelCommand, PreviewDataSourceReadCommand, PreviewDataSourceReadResult,
-    RotateDataSourceSecretCommand, UpdateDataSourceDefaultsCommand,
+    CreateDataSourceInstanceCommand, DataSourceBackendView, DataSourceCatalogEntryView,
+    DataSourceInstanceView, DataSourceResourcesView, DataSourceService, DataSourceView,
+    DiscoverDataSourceResourcesCommand, MapDataSourceResourceToModelCommand,
+    PreviewDataSourceReadCommand, PreviewDataSourceReadResult, RotateDataSourceSecretCommand,
+    UpdateDataSourceDefaultsCommand, UpdateMainDataSourceDefaultsCommand,
     ValidateDataSourceInstanceCommand, ValidateDataSourceInstanceResult,
 };
 use serde::{Deserialize, Serialize};
@@ -30,7 +31,7 @@ use crate::{
 use super::model_definitions::{to_model_definition_response, ModelDefinitionResponse};
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateDataSourceInstanceBody {
+pub struct CreateDataSourceBody {
     pub installation_id: String,
     pub source_code: String,
     pub display_name: String,
@@ -140,35 +141,49 @@ pub struct DataSourceResourcesResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct MainDataSourceResponse {
-    pub id: String,
-    pub source_kind: String,
-    pub display_name: String,
-    pub status: String,
-    pub default_data_model_status: String,
+pub struct DataSourceCapabilitiesResponse {
+    pub can_update_defaults: bool,
+    pub can_create_data_model: bool,
+    pub can_validate: bool,
+    pub can_discover_resources: bool,
+    pub can_preview_resources: bool,
+    pub can_map_resources: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct DataSourceInstanceResponse {
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DataSourceBackendResponse {
+    Core {
+        durable_backend: String,
+    },
+    RuntimeExtension {
+        installation_id: String,
+        source_code: String,
+        #[schema(value_type = Object)]
+        config_json: serde_json::Value,
+        secret_ref: Option<String>,
+        secret_version: Option<i32>,
+        catalog_refresh_status: Option<String>,
+        catalog_last_error_message: Option<String>,
+        catalog_refreshed_at: Option<String>,
+    },
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DataSourceResponse {
     pub id: String,
-    pub source_kind: String,
-    pub installation_id: String,
-    pub source_code: String,
     pub display_name: String,
     pub status: String,
+    pub enabled: bool,
+    pub fixed: bool,
     pub default_data_model_status: String,
-    #[schema(value_type = Object)]
-    pub config_json: serde_json::Value,
-    pub secret_ref: Option<String>,
-    pub secret_version: Option<i32>,
-    pub catalog_refresh_status: Option<String>,
-    pub catalog_last_error_message: Option<String>,
-    pub catalog_refreshed_at: Option<String>,
+    pub capabilities: DataSourceCapabilitiesResponse,
+    pub backend: DataSourceBackendResponse,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ValidateDataSourceResponse {
-    pub instance: DataSourceInstanceResponse,
+    pub data_source: DataSourceResponse,
     #[schema(value_type = Object)]
     pub output: serde_json::Value,
 }
@@ -190,41 +205,36 @@ pub struct PreviewDataSourceReadResponse {
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/data-sources/catalog", get(list_catalog))
-        .route("/data-sources/main-source", get(get_main_source))
         .route(
-            "/data-sources/main-source/defaults",
-            patch(update_main_source_defaults),
+            "/data-sources",
+            get(list_data_sources).post(create_data_source),
         )
         .route(
-            "/data-sources/instances",
-            get(list_instances).post(create_instance),
-        )
-        .route(
-            "/data-sources/instances/:instance_id/defaults",
+            "/data-sources/:data_source_id/defaults",
             patch(update_defaults),
         )
         .route(
-            "/data-sources/instances/:instance_id/validate",
-            post(validate_instance),
+            "/data-sources/:data_source_id/validate",
+            post(validate_data_source),
         )
         .route(
-            "/data-sources/instances/:instance_id/secret/rotate",
+            "/data-sources/:data_source_id/secret/rotate",
             post(rotate_secret),
         )
         .route(
-            "/data-sources/instances/:instance_id/preview-read",
+            "/data-sources/:data_source_id/preview-read",
             post(preview_read),
         )
         .route(
-            "/data-sources/instances/:instance_id/resources",
+            "/data-sources/:data_source_id/resources",
             get(list_resources),
         )
         .route(
-            "/data-sources/instances/:instance_id/resources/discover",
+            "/data-sources/:data_source_id/resources/discover",
             post(discover_resources),
         )
         .route(
-            "/data-sources/instances/:instance_id/resources/map-to-model",
+            "/data-sources/:data_source_id/resources/map-to-model",
             post(map_resource_to_model),
         )
 }
@@ -233,6 +243,7 @@ fn service(state: &ApiState) -> DataSourceService<MainDurableStore, ApiProviderR
     DataSourceService::new(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
+        state.provider_secret_master_key.clone(),
     )
     .with_node_artifact_context(
         state.api_node_id.clone(),
@@ -324,44 +335,70 @@ fn to_resources_response(view: DataSourceResourcesView) -> DataSourceResourcesRe
     }
 }
 
-fn to_instance_response(view: DataSourceInstanceView) -> DataSourceInstanceResponse {
-    let catalog = view.catalog;
-    DataSourceInstanceResponse {
-        id: view.instance.id.to_string(),
-        source_kind: domain::DataModelSourceKind::ExternalSource
-            .as_str()
-            .to_string(),
-        installation_id: view.instance.installation_id.to_string(),
-        source_code: view.instance.source_code,
-        display_name: view.instance.display_name,
-        status: view.instance.status.as_str().to_string(),
-        default_data_model_status: view
-            .instance
-            .defaults
-            .data_model_status
-            .as_str()
-            .to_string(),
-        config_json: view.instance.config_json,
-        secret_ref: view.instance.secret_ref,
-        secret_version: view.instance.secret_version,
-        catalog_refresh_status: catalog
-            .as_ref()
-            .map(|cache| cache.refresh_status.as_str().to_string()),
-        catalog_last_error_message: catalog
-            .as_ref()
-            .and_then(|cache| cache.last_error_message.clone()),
-        catalog_refreshed_at: catalog.and_then(|cache| format_optional_time(cache.refreshed_at)),
+fn to_data_source_response(view: DataSourceView) -> DataSourceResponse {
+    let capabilities = view.capabilities();
+    let capabilities = DataSourceCapabilitiesResponse {
+        can_update_defaults: capabilities.can_update_defaults,
+        can_create_data_model: capabilities.can_create_data_model,
+        can_validate: capabilities.can_validate,
+        can_discover_resources: capabilities.can_discover_resources,
+        can_preview_resources: capabilities.can_preview_resources,
+        can_map_resources: capabilities.can_map_resources,
+    };
+
+    match view.backend {
+        DataSourceBackendView::Core { defaults } => DataSourceResponse {
+            id: "main".to_string(),
+            display_name: "主数据源".to_string(),
+            status: "ready".to_string(),
+            enabled: true,
+            fixed: true,
+            default_data_model_status: defaults.data_model_status.as_str().to_string(),
+            capabilities,
+            backend: DataSourceBackendResponse::Core {
+                durable_backend: "postgresql".to_string(),
+            },
+        },
+        DataSourceBackendView::RuntimeExtension(view) => {
+            let catalog = view.catalog;
+            let enabled = view.instance.status != domain::DataSourceInstanceStatus::Disabled;
+            DataSourceResponse {
+                id: view.instance.id.to_string(),
+                display_name: view.instance.display_name,
+                status: view.instance.status.as_str().to_string(),
+                enabled,
+                fixed: false,
+                default_data_model_status: view
+                    .instance
+                    .defaults
+                    .data_model_status
+                    .as_str()
+                    .to_string(),
+                capabilities,
+                backend: DataSourceBackendResponse::RuntimeExtension {
+                    installation_id: view.instance.installation_id.to_string(),
+                    source_code: view.instance.source_code,
+                    config_json: view.instance.config_json,
+                    secret_ref: view.instance.secret_ref,
+                    secret_version: view.instance.secret_version,
+                    catalog_refresh_status: catalog
+                        .as_ref()
+                        .map(|cache| cache.refresh_status.as_str().to_string()),
+                    catalog_last_error_message: catalog
+                        .as_ref()
+                        .and_then(|cache| cache.last_error_message.clone()),
+                    catalog_refreshed_at: catalog
+                        .and_then(|cache| format_optional_time(cache.refreshed_at)),
+                },
+            }
+        }
     }
 }
 
-fn main_source_response(defaults: domain::DataSourceDefaults) -> MainDataSourceResponse {
-    MainDataSourceResponse {
-        id: "main_source".to_string(),
-        source_kind: domain::DataModelSourceKind::MainSource.as_str().to_string(),
-        display_name: "主数据源".to_string(),
-        status: "ready".to_string(),
-        default_data_model_status: defaults.data_model_status.as_str().to_string(),
-    }
+fn to_runtime_extension_data_source_response(view: DataSourceInstanceView) -> DataSourceResponse {
+    to_data_source_response(DataSourceView {
+        backend: DataSourceBackendView::RuntimeExtension(view),
+    })
 }
 
 fn parse_model_status(raw: &str) -> Result<domain::DataModelStatus, ApiError> {
@@ -379,7 +416,7 @@ fn parse_model_status(raw: &str) -> Result<domain::DataModelStatus, ApiError> {
 
 fn to_validate_response(result: ValidateDataSourceInstanceResult) -> ValidateDataSourceResponse {
     ValidateDataSourceResponse {
-        instance: to_instance_response(DataSourceInstanceView {
+        data_source: to_runtime_extension_data_source_response(DataSourceInstanceView {
             instance: result.instance,
             catalog: None,
         }),
@@ -419,53 +456,38 @@ pub async fn list_catalog(
 
 #[utoipa::path(
     get,
-    path = "/api/console/data-sources/main-source",
-    operation_id = "data_source_get_main_source",
-    responses((status = 200, body = MainDataSourceResponse), (status = 401, body = crate::error_response::ErrorBody))
+    path = "/api/console/data-sources",
+    operation_id = "data_source_list",
+    responses((status = 200, body = [DataSourceResponse]), (status = 401, body = crate::error_response::ErrorBody))
 )]
-pub async fn get_main_source(
+pub async fn list_data_sources(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-) -> Result<Json<ApiSuccess<MainDataSourceResponse>>, ApiError> {
+) -> Result<Json<ApiSuccess<Vec<DataSourceResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let defaults = service(&state)
-        .get_main_source_defaults(context.user.id, context.actor.current_workspace_id)
+    let data_sources = service(&state)
+        .list_data_sources(context.user.id, context.actor.current_workspace_id)
         .await?;
-    Ok(Json(ApiSuccess::new(main_source_response(defaults))))
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/console/data-sources/instances",
-    operation_id = "data_source_list_instances",
-    responses((status = 200, body = [DataSourceInstanceResponse]), (status = 401, body = crate::error_response::ErrorBody))
-)]
-pub async fn list_instances(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-) -> Result<Json<ApiSuccess<Vec<DataSourceInstanceResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let sources = service(&state)
-        .list_instances(context.user.id, context.actor.current_workspace_id)
-        .await?
-        .into_iter()
-        .map(to_instance_response)
-        .collect();
-    Ok(Json(ApiSuccess::new(sources)))
+    Ok(Json(ApiSuccess::new(
+        data_sources
+            .into_iter()
+            .map(to_data_source_response)
+            .collect(),
+    )))
 }
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances",
-    operation_id = "data_source_create_instance",
-    request_body = CreateDataSourceInstanceBody,
-    responses((status = 201, body = DataSourceInstanceResponse), (status = 403, body = crate::error_response::ErrorBody))
+    path = "/api/console/data-sources",
+    operation_id = "data_source_create",
+    request_body = CreateDataSourceBody,
+    responses((status = 201, body = DataSourceResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
-pub async fn create_instance(
+pub async fn create_data_source(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(body): Json<CreateDataSourceInstanceBody>,
-) -> Result<(StatusCode, Json<ApiSuccess<DataSourceInstanceResponse>>), ApiError> {
+    Json(body): Json<CreateDataSourceBody>,
+) -> Result<(StatusCode, Json<ApiSuccess<DataSourceResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let created = service(&state)
@@ -481,80 +503,71 @@ pub async fn create_instance(
         .await?;
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_instance_response(created))),
+        Json(ApiSuccess::new(to_runtime_extension_data_source_response(
+            created,
+        ))),
     ))
 }
 
 #[utoipa::path(
     patch,
-    path = "/api/console/data-sources/instances/{instance_id}/defaults",
+    path = "/api/console/data-sources/{data_source_id}/defaults",
     operation_id = "data_source_update_defaults",
     request_body = UpdateDataSourceDefaultsBody,
-    responses((status = 200, body = DataSourceInstanceResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+    responses((status = 200, body = DataSourceResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn update_defaults(
     State(state): State<Arc<ApiState>>,
-    Path(instance_id): Path<String>,
+    Path(data_source_id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<UpdateDataSourceDefaultsBody>,
-) -> Result<Json<ApiSuccess<DataSourceInstanceResponse>>, ApiError> {
+) -> Result<Json<ApiSuccess<DataSourceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let defaults = domain::DataSourceDefaults {
         data_model_status: parse_model_status(&body.default_data_model_status)?,
     };
+
+    if data_source_id == "main" {
+        let defaults = service(&state)
+            .update_main_data_source_defaults(UpdateMainDataSourceDefaultsCommand {
+                actor_user_id: context.user.id,
+                workspace_id: context.actor.current_workspace_id,
+                defaults,
+            })
+            .await?;
+        return Ok(Json(ApiSuccess::new(to_data_source_response(
+            DataSourceView {
+                backend: DataSourceBackendView::Core { defaults },
+            },
+        ))));
+    }
+
     let instance = service(&state)
         .update_defaults(UpdateDataSourceDefaultsCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&instance_id, "instance_id")?,
+            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
             defaults,
         })
         .await?;
-    Ok(Json(ApiSuccess::new(to_instance_response(
-        DataSourceInstanceView {
+    Ok(Json(ApiSuccess::new(
+        to_runtime_extension_data_source_response(DataSourceInstanceView {
             instance,
             catalog: None,
-        },
-    ))))
-}
-
-#[utoipa::path(
-    patch,
-    path = "/api/console/data-sources/main-source/defaults",
-    operation_id = "data_source_update_main_source_defaults",
-    request_body = UpdateDataSourceDefaultsBody,
-    responses((status = 200, body = MainDataSourceResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
-)]
-pub async fn update_main_source_defaults(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Json(body): Json<UpdateDataSourceDefaultsBody>,
-) -> Result<Json<ApiSuccess<MainDataSourceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let defaults = service(&state)
-        .update_main_source_defaults(UpdateDataSourceDefaultsCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            instance_id: Uuid::nil(),
-            defaults: domain::DataSourceDefaults {
-                data_model_status: parse_model_status(&body.default_data_model_status)?,
-            },
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(main_source_response(defaults))))
+        }),
+    )))
 }
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances/{instance_id}/validate",
-    operation_id = "data_source_validate_instance",
+    path = "/api/console/data-sources/{data_source_id}/validate",
+    operation_id = "data_source_validate",
     responses((status = 200, body = ValidateDataSourceResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
-pub async fn validate_instance(
+pub async fn validate_data_source(
     State(state): State<Arc<ApiState>>,
-    Path(instance_id): Path<String>,
+    Path(data_source_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ValidateDataSourceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
@@ -563,7 +576,7 @@ pub async fn validate_instance(
         .validate_instance(ValidateDataSourceInstanceCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&instance_id, "instance_id")?,
+            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
         })
         .await?;
     Ok(Json(ApiSuccess::new(to_validate_response(result))))
@@ -571,39 +584,41 @@ pub async fn validate_instance(
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances/{instance_id}/secret/rotate",
+    path = "/api/console/data-sources/{data_source_id}/secret/rotate",
     operation_id = "data_source_rotate_secret",
     request_body = RotateDataSourceSecretBody,
-    responses((status = 200, body = DataSourceInstanceResponse), (status = 403, body = crate::error_response::ErrorBody))
+    responses((status = 200, body = DataSourceResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn rotate_secret(
     State(state): State<Arc<ApiState>>,
-    Path(instance_id): Path<String>,
+    Path(data_source_id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<RotateDataSourceSecretBody>,
-) -> Result<Json<ApiSuccess<DataSourceInstanceResponse>>, ApiError> {
+) -> Result<Json<ApiSuccess<DataSourceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let result = service(&state)
         .rotate_secret(RotateDataSourceSecretCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&instance_id, "instance_id")?,
+            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
             secret_json: body.secret_json,
         })
         .await?;
-    Ok(Json(ApiSuccess::new(to_instance_response(result))))
+    Ok(Json(ApiSuccess::new(
+        to_runtime_extension_data_source_response(result),
+    )))
 }
 
 #[utoipa::path(
     get,
-    path = "/api/console/data-sources/instances/{instance_id}/resources",
+    path = "/api/console/data-sources/{data_source_id}/resources",
     operation_id = "data_source_list_resources",
     responses((status = 200, body = DataSourceResourcesResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_resources(
     State(state): State<Arc<ApiState>>,
-    Path(instance_id): Path<String>,
+    Path(data_source_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<DataSourceResourcesResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
@@ -611,7 +626,7 @@ pub async fn list_resources(
         .list_resources(
             context.user.id,
             context.actor.current_workspace_id,
-            parse_uuid(&instance_id, "instance_id")?,
+            parse_uuid(&data_source_id, "data_source_id")?,
         )
         .await?;
     Ok(Json(ApiSuccess::new(to_resources_response(resources))))
@@ -619,13 +634,13 @@ pub async fn list_resources(
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances/{instance_id}/resources/discover",
+    path = "/api/console/data-sources/{data_source_id}/resources/discover",
     operation_id = "data_source_discover_resources",
     responses((status = 200, body = DataSourceResourcesResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn discover_resources(
     State(state): State<Arc<ApiState>>,
-    Path(instance_id): Path<String>,
+    Path(data_source_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<DataSourceResourcesResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
@@ -634,7 +649,7 @@ pub async fn discover_resources(
         .discover_resources(DiscoverDataSourceResourcesCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&instance_id, "instance_id")?,
+            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
         })
         .await?;
     Ok(Json(ApiSuccess::new(to_resources_response(resources))))
@@ -642,14 +657,14 @@ pub async fn discover_resources(
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances/{instance_id}/preview-read",
+    path = "/api/console/data-sources/{data_source_id}/preview-read",
     operation_id = "data_source_preview_read",
     request_body = PreviewDataSourceReadBody,
     responses((status = 200, body = PreviewDataSourceReadResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn preview_read(
     State(state): State<Arc<ApiState>>,
-    Path(instance_id): Path<String>,
+    Path(data_source_id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<PreviewDataSourceReadBody>,
 ) -> Result<Json<ApiSuccess<PreviewDataSourceReadResponse>>, ApiError> {
@@ -659,7 +674,7 @@ pub async fn preview_read(
         .preview_read(PreviewDataSourceReadCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&instance_id, "instance_id")?,
+            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
             resource_key: body.resource_key,
             limit: body.limit,
             cursor: body.cursor,
@@ -671,14 +686,14 @@ pub async fn preview_read(
 
 #[utoipa::path(
     post,
-    path = "/api/console/data-sources/instances/{instance_id}/resources/map-to-model",
+    path = "/api/console/data-sources/{data_source_id}/resources/map-to-model",
     operation_id = "data_source_map_resource_to_model",
     request_body = MapDataSourceResourceToModelBody,
     responses((status = 201, body = ModelDefinitionResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn map_resource_to_model(
     State(state): State<Arc<ApiState>>,
-    Path(instance_id): Path<String>,
+    Path(data_source_id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<MapDataSourceResourceToModelBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelDefinitionResponse>>), ApiError> {
@@ -688,7 +703,7 @@ pub async fn map_resource_to_model(
         .map_resource_to_model(MapDataSourceResourceToModelCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&instance_id, "instance_id")?,
+            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
             resource_key: body.resource_key,
         })
         .await?;

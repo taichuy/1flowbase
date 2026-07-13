@@ -10,12 +10,11 @@ import {
   deleteConsoleDataModel,
   deleteConsoleDataModelField,
   deleteConsoleRuntimeModelRecord,
-  createConsoleDataSourceConnection,
+  createConsoleDataSource,
   discoverConsoleDataSourceResources,
   fetchConsoleDataSourceCatalog,
-  fetchConsoleDataSourceConnections,
+  fetchConsoleDataSources,
   fetchConsoleDataSourceResources,
-  fetchConsoleMainDataSource,
   fetchConsoleDataModelAdvisorFindings,
   fetchConsoleDataModelOpenApiDocument,
   fetchConsoleDataModelRecordPreview,
@@ -30,9 +29,8 @@ import {
   updateConsoleDataModelField,
   updateConsoleDataModelScopeGrant,
   updateConsoleRuntimeModelRecord,
-  updateConsoleDataSourceConnectionDefaults,
-  updateConsoleMainDataSourceDefaults,
-  validateConsoleDataSourceConnection
+  updateConsoleDataSourceDefaults,
+  validateConsoleDataSource
 } from '../console-data-models';
 
 describe('console-data-models client', () => {
@@ -40,9 +38,9 @@ describe('console-data-models client', () => {
     async (input) => input as never
   );
 
-  test('AC-001 updates main-source and connection defaults through distinct contracts', async () => {
+  test('AC-001 updates every data source through one contract', async () => {
     await expect(
-      updateConsoleDataSourceConnectionDefaults(
+      updateConsoleDataSourceDefaults(
         'source-1',
         {
           default_data_model_status: 'draft'
@@ -50,38 +48,36 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/instances/source-1/defaults',
+      path: '/api/console/data-sources/source-1/defaults',
       method: 'PATCH',
       csrfToken: 'csrf-123'
     });
 
     await expect(
-      updateConsoleMainDataSourceDefaults(
+      updateConsoleDataSourceDefaults(
+        'main',
         { default_data_model_status: 'published' },
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/main-source/defaults',
+      path: '/api/console/data-sources/main/defaults',
       method: 'PATCH',
       csrfToken: 'csrf-123'
     });
   });
 
-  test('AC-001/002 reads main source, assigned extension catalog, and connections separately', async () => {
-    await expect(fetchConsoleMainDataSource()).resolves.toMatchObject({
-      path: '/api/console/data-sources/main-source'
+  test('AC-001/002 reads one data source list and the assigned extension catalog', async () => {
+    await expect(fetchConsoleDataSources()).resolves.toMatchObject({
+      path: '/api/console/data-sources'
     });
     await expect(fetchConsoleDataSourceCatalog()).resolves.toMatchObject({
       path: '/api/console/data-sources/catalog'
     });
-    await expect(fetchConsoleDataSourceConnections()).resolves.toMatchObject({
-      path: '/api/console/data-sources/instances'
-    });
   });
 
-  test('AC-003/004 creates, validates, discovers, previews, and maps through connection context', async () => {
+  test('AC-003/004 creates, validates, discovers, previews, and maps through data source context', async () => {
     await expect(
-      createConsoleDataSourceConnection(
+      createConsoleDataSource(
         {
           installation_id: 'installation-1',
           source_code: 'hubspot',
@@ -92,23 +88,23 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/instances',
+      path: '/api/console/data-sources',
       method: 'POST',
       csrfToken: 'csrf-123'
     });
     await expect(
-      validateConsoleDataSourceConnection('source-1', 'csrf-123')
+      validateConsoleDataSource('source-1', 'csrf-123')
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/instances/source-1/validate',
+      path: '/api/console/data-sources/source-1/validate',
       method: 'POST'
     });
     await expect(fetchConsoleDataSourceResources('source-1')).resolves.toMatchObject({
-      path: '/api/console/data-sources/instances/source-1/resources'
+      path: '/api/console/data-sources/source-1/resources'
     });
     await expect(
       discoverConsoleDataSourceResources('source-1', 'csrf-123')
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/instances/source-1/resources/discover',
+      path: '/api/console/data-sources/source-1/resources/discover',
       method: 'POST'
     });
     await expect(
@@ -118,7 +114,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/instances/source-1/preview-read',
+      path: '/api/console/data-sources/source-1/preview-read',
       method: 'POST'
     });
     await expect(
@@ -128,7 +124,7 @@ describe('console-data-models client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/data-sources/instances/source-1/resources/map-to-model',
+      path: '/api/console/data-sources/source-1/resources/map-to-model',
       method: 'POST',
       body: { resource_key: 'contacts' }
     });
@@ -139,11 +135,11 @@ describe('console-data-models client', () => {
       name: 'filtered model collection',
       request: () =>
         fetchConsoleDataModels({
-          source_kind: 'main_source',
+          data_source_id: 'main',
           filter: { code: { $includes: 'customer profile' } }
         }),
       expected: {
-        path: '/api/console/models?source_kind=main_source&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer+profile%22%7D%7D'
+        path: '/api/console/models?data_source_id=main&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer+profile%22%7D%7D'
       }
     },
     {

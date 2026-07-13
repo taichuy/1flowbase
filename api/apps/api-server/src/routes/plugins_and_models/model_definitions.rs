@@ -113,8 +113,7 @@ pub struct ConfirmationQuery {
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ListModelsQuery {
-    pub source_kind: Option<String>,
-    pub data_source_instance_id: Option<String>,
+    pub data_source_id: Option<String>,
     pub filter: Option<String>,
 }
 
@@ -189,7 +188,7 @@ pub struct ModelDefinitionResponse {
     pub title: String,
     pub status: String,
     pub runtime_availability: String,
-    pub data_source_instance_id: Option<String>,
+    pub data_source_id: Option<String>,
     pub source_kind: String,
     pub external_resource_key: Option<String>,
     pub external_table_id: Option<String>,
@@ -364,6 +363,12 @@ pub(super) fn to_model_definition_response(
         .cloned()
         .map(|field| to_model_field_response(&model, field))
         .collect();
+    let data_source_id = match model.source_kind {
+        domain::DataModelSourceKind::MainSource => Some("main".to_string()),
+        domain::DataModelSourceKind::ExternalSource => {
+            model.data_source_instance_id.map(|id| id.to_string())
+        }
+    };
 
     ModelDefinitionResponse {
         id: model.id.to_string(),
@@ -373,7 +378,7 @@ pub(super) fn to_model_definition_response(
         title: model.title,
         status: model.status.as_str().to_string(),
         runtime_availability: runtime_availability_for_status(model.status).to_string(),
-        data_source_instance_id: model.data_source_instance_id.map(|id| id.to_string()),
+        data_source_id,
         source_kind: model.source_kind.as_str().to_string(),
         external_resource_key: model.external_resource_key,
         external_table_id: model.external_table_id,
@@ -537,36 +542,19 @@ pub async fn list_models(
     let mut models = ModelDefinitionService::new(state.store.clone())
         .list_models(context.user.id)
         .await?;
-    if query.source_kind.is_some() && query.data_source_instance_id.is_some() {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "data_model_source_filter",
-        )
-        .into());
-    }
-    if let Some(source_kind) = query.source_kind.as_deref() {
-        match source_kind {
-            "main_source" => models.retain(|model| {
+    if let Some(data_source_id) = query.data_source_id.as_deref() {
+        if data_source_id == "main" {
+            models.retain(|model| {
                 model.source_kind == domain::DataModelSourceKind::MainSource
                     && model.data_source_instance_id.is_none()
-            }),
-            "external_source" => models.retain(|model| {
+            });
+        } else {
+            let data_source_id = helpers::parse_uuid(data_source_id, "data_source_id")?;
+            models.retain(|model| {
                 model.source_kind == domain::DataModelSourceKind::ExternalSource
-                    && model.data_source_instance_id.is_some()
-            }),
-            _ => {
-                return Err(
-                    control_plane::errors::ControlPlaneError::InvalidInput("source_kind").into(),
-                )
-            }
+                    && model.data_source_instance_id == Some(data_source_id)
+            });
         }
-    }
-    if let Some(data_source_instance_id) = query.data_source_instance_id.as_deref() {
-        let data_source_instance_id =
-            helpers::parse_uuid(data_source_instance_id, "data_source_instance_id")?;
-        models.retain(|model| {
-            model.source_kind == domain::DataModelSourceKind::ExternalSource
-                && model.data_source_instance_id == Some(data_source_instance_id)
-        });
     }
     let filter = parse_resource_filter(query.filter.as_deref())?;
     models = STATE_MODEL_RESOURCE.filter_records(models, filter.as_ref())?;

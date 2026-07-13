@@ -143,7 +143,8 @@ async fn creates_instance_secret_and_catalog_cache_rows() {
         &UpsertDataSourceSecretInput {
             data_source_instance_id: created.id,
             secret_ref: domain::data_source_secret_ref(created.id),
-            secret_json: json!({ "client_secret": "secret" }),
+            plaintext_secret_json: json!({ "client_secret": "secret" }),
+            master_key: "test-master-key".into(),
             secret_version: 1,
         },
     )
@@ -169,6 +170,18 @@ async fn creates_instance_secret_and_catalog_cache_rows() {
             .unwrap();
     assert_eq!(secret_scope_id, workspace.id);
     assert_ne!(secret_platform_id, created.id);
+    let stored_secret: serde_json::Value = sqlx::query_scalar(
+        "select encrypted_secret_json from data_source_secrets where data_source_instance_id = $1",
+    )
+    .bind(created.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        stored_secret["algorithm"],
+        json!("aead_xchacha20poly1305_v1")
+    );
+    assert!(!stored_secret.to_string().contains("secret"));
 
     let cache = <PgControlPlaneStore as DataSourceRepository>::upsert_catalog_cache(
         &store,
@@ -207,11 +220,14 @@ async fn creates_instance_secret_and_catalog_cache_rows() {
     assert_eq!(cache_scope_id, workspace.id);
     assert_ne!(cache_platform_id, created.id);
 
-    let loaded_secret =
-        <PgControlPlaneStore as DataSourceRepository>::get_secret_json(&store, created.id)
-            .await
-            .unwrap()
-            .unwrap();
+    let loaded_secret = <PgControlPlaneStore as DataSourceRepository>::get_secret_json(
+        &store,
+        created.id,
+        "test-master-key",
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(loaded_secret, json!({ "client_secret": "secret" }));
 }
 
@@ -249,7 +265,8 @@ async fn instance_record_returns_secret_reference_and_version_without_secret_val
         &UpsertDataSourceSecretInput {
             data_source_instance_id: created.id,
             secret_ref: domain::data_source_secret_ref(created.id),
-            secret_json: json!({ "access_token": plaintext }),
+            plaintext_secret_json: json!({ "access_token": plaintext }),
+            master_key: "test-master-key".into(),
             secret_version: 2,
         },
     )
@@ -305,7 +322,8 @@ async fn rotate_secret_increments_version_inside_repository_update() {
         &UpsertDataSourceSecretInput {
             data_source_instance_id: created.id,
             secret_ref: domain::data_source_secret_ref(created.id),
-            secret_json: json!({ "client_secret": "initial" }),
+            plaintext_secret_json: json!({ "client_secret": "initial" }),
+            master_key: "test-master-key".into(),
             secret_version: 1,
         },
     )
@@ -318,7 +336,8 @@ async fn rotate_secret_increments_version_inside_repository_update() {
             workspace_id: workspace.id,
             data_source_instance_id: created.id,
             secret_ref: domain::data_source_secret_ref(created.id),
-            secret_json: json!({ "client_secret": "rotated-once" }),
+            plaintext_secret_json: json!({ "client_secret": "rotated-once" }),
+            master_key: "test-master-key".into(),
             updated_by: actor.id,
         },
     )
@@ -330,7 +349,8 @@ async fn rotate_secret_increments_version_inside_repository_update() {
             workspace_id: workspace.id,
             data_source_instance_id: created.id,
             secret_ref: domain::data_source_secret_ref(created.id),
-            secret_json: json!({ "client_secret": "rotated-twice" }),
+            plaintext_secret_json: json!({ "client_secret": "rotated-twice" }),
+            master_key: "test-master-key".into(),
             updated_by: actor.id,
         },
     )
@@ -350,10 +370,14 @@ async fn rotate_secret_increments_version_inside_repository_update() {
         json!(3)
     );
     assert_eq!(
-        <PgControlPlaneStore as DataSourceRepository>::get_secret_json(&store, created.id)
-            .await
-            .unwrap()
-            .unwrap()["client_secret"],
+        <PgControlPlaneStore as DataSourceRepository>::get_secret_json(
+            &store,
+            created.id,
+            "test-master-key",
+        )
+        .await
+        .unwrap()
+        .unwrap()["client_secret"],
         "rotated-twice"
     );
 }
@@ -401,13 +425,14 @@ async fn rotate_secret_preserves_existing_config_marker_values_when_payload_is_p
         &UpsertDataSourceSecretInput {
             data_source_instance_id: created.id,
             secret_ref: domain::data_source_secret_ref(created.id),
-            secret_json: json!({
+            plaintext_secret_json: json!({
                 "client_secret": "initial-client-secret",
                 "__config_secret_values": {
                     "/access_token": "config-token-secret",
                     "/headers/0/value": "authorization-secret"
                 }
             }),
+            master_key: "test-master-key".into(),
             secret_version: 1,
         },
     )
@@ -420,18 +445,22 @@ async fn rotate_secret_preserves_existing_config_marker_values_when_payload_is_p
             workspace_id: workspace.id,
             data_source_instance_id: created.id,
             secret_ref: domain::data_source_secret_ref(created.id),
-            secret_json: json!({ "client_secret": "rotated-client-secret" }),
+            plaintext_secret_json: json!({ "client_secret": "rotated-client-secret" }),
+            master_key: "test-master-key".into(),
             updated_by: actor.id,
         },
     )
     .await
     .unwrap();
 
-    let stored_secret =
-        <PgControlPlaneStore as DataSourceRepository>::get_secret_json(&store, created.id)
-            .await
-            .unwrap()
-            .unwrap();
+    let stored_secret = <PgControlPlaneStore as DataSourceRepository>::get_secret_json(
+        &store,
+        created.id,
+        "test-master-key",
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(stored_secret["client_secret"], "rotated-client-secret");
     assert_eq!(
         stored_secret["__config_secret_values"]["/access_token"],

@@ -12,7 +12,23 @@ use control_plane::{
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::repositories::PgControlPlaneStore;
+use crate::{
+    repositories::PgControlPlaneStore,
+    secret_crypto::{decrypt_secret_json, encrypt_secret_json},
+};
+
+fn decrypt_data_source_secret(
+    stored: &serde_json::Value,
+    master_key: &str,
+) -> Result<serde_json::Value> {
+    if stored.get("algorithm").is_some() {
+        decrypt_secret_json(stored, master_key)
+    } else {
+        // Historical data source rows were stored as plaintext JSON. Read them in place so
+        // existing instances keep running; only explicit create/rotate writes use AEAD.
+        Ok(stored.clone())
+    }
+}
 
 fn parse_instance_status(value: &str) -> Result<domain::DataSourceInstanceStatus> {
     match value {
@@ -143,21 +159,31 @@ fn is_secret_reference_marker(value: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
-fn merge_config_marker_secret_values(
+// Partial rotation overwrites submitted top-level credentials while retaining the rest. The
+// host-owned config marker map is merged separately because each entry represents one path.
+fn merge_rotated_secret_values(
     existing: Option<&serde_json::Value>,
     incoming: &serde_json::Value,
 ) -> serde_json::Value {
-    let mut merged = incoming.clone();
-    let Some(merged_object) = merged.as_object_mut() else {
-        return merged;
+    let Some(incoming_object) = incoming.as_object() else {
+        return incoming.clone();
     };
+    let mut merged_object = existing
+        .and_then(serde_json::Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for (key, value) in incoming_object {
+        if key != "__config_secret_values" {
+            merged_object.insert(key.clone(), value.clone());
+        }
+    }
 
     let mut marker_values = existing
         .and_then(|value| value.get("__config_secret_values"))
         .and_then(serde_json::Value::as_object)
         .cloned()
         .unwrap_or_default();
-    if let Some(incoming_marker_values) = merged_object
+    if let Some(incoming_marker_values) = incoming_object
         .get("__config_secret_values")
         .and_then(serde_json::Value::as_object)
     {
@@ -172,7 +198,7 @@ fn merge_config_marker_secret_values(
         );
     }
 
-    merged
+    serde_json::Value::Object(merged_object)
 }
 
 #[async_trait]
@@ -531,6 +557,8 @@ impl DataSourceRepository for PgControlPlaneStore {
         &self,
         input: &UpsertDataSourceSecretInput,
     ) -> Result<domain::DataSourceSecretRecord> {
+        let encrypted_secret_json =
+            encrypt_secret_json(&input.plaintext_secret_json, &input.master_key)?;
         let row = sqlx::query(
             r#"
             with parent as (
@@ -572,7 +600,7 @@ impl DataSourceRepository for PgControlPlaneStore {
         )
         .bind(input.data_source_instance_id)
         .bind(Uuid::now_v7())
-        .bind(&input.secret_json)
+        .bind(&encrypted_secret_json)
         .bind(input.secret_version)
         .fetch_one(self.pool())
         .await?;
@@ -601,7 +629,7 @@ impl DataSourceRepository for PgControlPlaneStore {
         .await?
         .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
         let config_json: serde_json::Value = instance_row.get("config_json");
-        let existing_secret_json: Option<serde_json::Value> = sqlx::query(
+        let stored_secret_json: Option<serde_json::Value> = sqlx::query(
             r#"
             select encrypted_secret_json
             from data_source_secrets
@@ -613,8 +641,15 @@ impl DataSourceRepository for PgControlPlaneStore {
         .fetch_optional(&mut *transaction)
         .await?
         .map(|row| row.get("encrypted_secret_json"));
-        let secret_json =
-            merge_config_marker_secret_values(existing_secret_json.as_ref(), &input.secret_json);
+        let existing_secret_json = stored_secret_json
+            .as_ref()
+            .map(|stored| decrypt_data_source_secret(stored, &input.master_key))
+            .transpose()?;
+        let plaintext_secret_json = merge_rotated_secret_values(
+            existing_secret_json.as_ref(),
+            &input.plaintext_secret_json,
+        );
+        let encrypted_secret_json = encrypt_secret_json(&plaintext_secret_json, &input.master_key)?;
 
         let secret_row = sqlx::query(
             r#"
@@ -657,7 +692,7 @@ impl DataSourceRepository for PgControlPlaneStore {
         )
         .bind(input.data_source_instance_id)
         .bind(Uuid::now_v7())
-        .bind(&secret_json)
+        .bind(&encrypted_secret_json)
         .fetch_one(&mut *transaction)
         .await?;
         let secret = map_secret(secret_row)?;
@@ -743,7 +778,11 @@ impl DataSourceRepository for PgControlPlaneStore {
         row.map(map_secret).transpose()
     }
 
-    async fn get_secret_json(&self, instance_id: Uuid) -> Result<Option<serde_json::Value>> {
+    async fn get_secret_json(
+        &self,
+        instance_id: Uuid,
+        master_key: &str,
+    ) -> Result<Option<serde_json::Value>> {
         let row = sqlx::query(
             r#"
             select encrypted_secret_json
@@ -755,7 +794,11 @@ impl DataSourceRepository for PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
 
-        Ok(row.map(|row| row.get("encrypted_secret_json")))
+        row.map(|row| {
+            let stored: serde_json::Value = row.get("encrypted_secret_json");
+            decrypt_data_source_secret(&stored, master_key)
+        })
+        .transpose()
     }
 
     async fn upsert_catalog_cache(

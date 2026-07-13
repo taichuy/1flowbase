@@ -26,10 +26,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import {
-  updateSettingsDataSourceConnectionDefaults,
-  updateSettingsMainDataSourceDefaults,
-  settingsDataSourceConnectionsQueryKey,
-  settingsMainDataSourceQueryKey,
+  updateSettingsDataSourceDefaults,
+  settingsDataSourcesQueryKey,
   type UpdateSettingsDataSourceDefaultsInput,
   type CreateSettingsDataModelInput,
   type SettingsDataModel,
@@ -148,21 +146,12 @@ export function DataModelTable({
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
-      return source.source_kind === 'main_source'
-        ? updateSettingsMainDataSourceDefaults(patch, csrfToken)
-        : updateSettingsDataSourceConnectionDefaults(
-            source.id,
-            patch,
-            csrfToken
-          );
+      return updateSettingsDataSourceDefaults(source.id, patch, csrfToken);
     },
-    onSuccess: async (_result, variables) => {
+    onSuccess: async () => {
       message.success(i18nText('settings', 'auto.default_state_saved'));
       await queryClient.invalidateQueries({
-        queryKey:
-          variables.source.source_kind === 'main_source'
-            ? settingsMainDataSourceQueryKey
-            : settingsDataSourceConnectionsQueryKey
+        queryKey: settingsDataSourcesQueryKey
       });
     }
   });
@@ -280,7 +269,7 @@ export function DataModelTable({
         <span className="data-model-panel__sr-only">
           {i18nText('settings', 'auto.data_sheet')}
         </span>
-        {selectedSource?.source_kind === 'main_source' ? (
+        {selectedSource?.capabilities.can_create_data_model ? (
           <Button
             type="primary"
             icon={<PlusOutlined aria-hidden="true" />}
@@ -317,7 +306,11 @@ export function DataModelTable({
                   checked={isApiOpen(selectedSource.default_data_model_status)}
                   checkedChildren={i18nText('settings', 'auto.open')}
                   unCheckedChildren={i18nText('settings', 'auto.closed')}
-                  disabled={updateDefaultsMutation.isPending}
+                  disabled={
+                    !canManage ||
+                    !selectedSource.capabilities.can_update_defaults ||
+                    updateDefaultsMutation.isPending
+                  }
                   onChange={(value) =>
                     updateDefaultsMutation.mutate({
                       source: selectedSource,
@@ -458,7 +451,7 @@ export function DataModelTable({
         mode={drawerState.mode}
         model={drawerState.model}
         source={
-          selectedSource?.source_kind === 'main_source'
+          selectedSource?.capabilities.can_create_data_model
             ? selectedSource
             : null
         }

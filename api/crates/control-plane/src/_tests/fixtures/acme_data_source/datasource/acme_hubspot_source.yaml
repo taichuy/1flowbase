@@ -1,0 +1,42 @@
+source_code: acme_hubspot_source
+display_name: Acme HubSpot Source
+auth_modes:
+  - api_key
+capabilities:
+  - validate_config
+  - test_connection
+  - discover_catalog
+  - describe_resource
+  - preview_read
+  - import_snapshot
+supports_sync: true
+supports_webhook: false
+resource_kinds:
+  - object
+config_schema:
+  - key: client_id
+    label: Client ID
+    type: string
+    required: false
+  - key: client_secret
+    label: Client Secret
+    type: string
+    required: false
+    send_mode: secret_ref
+  - key: base_url
+    label: Base URL
+    type: string
+    required: false
+  - key: access_token
+    label: Access Token
+    type: string
+    required: false
+    send_mode: secret_ref
+  - key: headers
+    label: Headers
+    type: json
+    required: false
+  - key: credentials
+    label: Credentials
+    type: json
+    required: false

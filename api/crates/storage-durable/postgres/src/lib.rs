@@ -26,6 +26,7 @@ pub mod plugin_worker_repository;
 pub mod repositories;
 pub mod role_repository;
 pub mod runtime_record_repository;
+mod secret_crypto;
 pub mod workspace_repository;
 
 pub use connection::{

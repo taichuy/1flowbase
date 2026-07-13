@@ -6,7 +6,6 @@ export type ConsoleDataModelStatus =
   | 'disabled'
   | 'broken';
 
-export type ConsoleDataSourceKind = 'main_source' | 'external_source';
 export type ConsoleDataModelScopeKind = 'workspace' | 'system';
 export type ConsoleDataModelSourceKind = 'main_source' | 'external_source';
 export type ConsoleDataModelPermissionProfile =
@@ -40,29 +39,53 @@ export interface ConsoleDataModelFieldCapabilities {
   can_delete: boolean;
 }
 
-export interface ConsoleMainDataSource {
-  id: 'main_source';
-  source_kind: 'main_source';
-  display_name: string;
-  status: 'ready';
-  default_data_model_status: ConsoleDataModelStatus;
+export interface ConsoleDataSourceCapabilities {
+  can_update_defaults: boolean;
+  can_create_data_model: boolean;
+  can_validate: boolean;
+  can_discover_resources: boolean;
+  can_preview_resources: boolean;
+  can_map_resources: boolean;
 }
 
-export interface ConsoleDataSourceConnection {
+interface ConsoleDataSourceBase {
   id: string;
-  source_kind: 'external_source';
-  installation_id: string;
-  source_code: string;
   display_name: string;
   status: string;
+  enabled: boolean;
+  fixed: boolean;
   default_data_model_status: ConsoleDataModelStatus;
-  config_json: Record<string, unknown>;
-  secret_ref: string | null;
-  secret_version: number | null;
-  catalog_refresh_status: string | null;
-  catalog_last_error_message: string | null;
-  catalog_refreshed_at: string | null;
+  capabilities: ConsoleDataSourceCapabilities;
 }
+
+export interface ConsoleCoreDataSource extends ConsoleDataSourceBase {
+  id: 'main';
+  fixed: true;
+  backend: {
+    kind: 'core';
+    durable_backend: string;
+  };
+}
+
+export interface ConsoleRuntimeExtensionDataSource
+  extends ConsoleDataSourceBase {
+  fixed: false;
+  backend: {
+    kind: 'runtime_extension';
+    installation_id: string;
+    source_code: string;
+    config_json: Record<string, unknown>;
+    secret_ref: string | null;
+    secret_version: number | null;
+    catalog_refresh_status: string | null;
+    catalog_last_error_message: string | null;
+    catalog_refreshed_at: string | null;
+  };
+}
+
+export type ConsoleDataSource =
+  | ConsoleCoreDataSource
+  | ConsoleRuntimeExtensionDataSource;
 
 export interface ConsoleDataSourceConfigFieldOption {
   label: string;
@@ -158,7 +181,7 @@ export interface ConsoleDataModel {
   title: string;
   status: ConsoleDataModelStatus;
   runtime_availability: string;
-  data_source_instance_id: string | null;
+  data_source_id: string | null;
   source_kind: ConsoleDataModelSourceKind;
   external_resource_key: string | null;
   external_table_id: string | null;
@@ -233,8 +256,7 @@ export interface UpdateConsoleDataSourceDefaultsInput {
 }
 
 export interface FetchConsoleDataModelsInput {
-  source_kind?: 'main_source';
-  data_source_instance_id?: string;
+  data_source_id?: string;
   filter?: Record<string, unknown>;
 }
 
@@ -245,7 +267,7 @@ export interface CreateConsoleDataModelInput {
   status?: ConsoleDataModelStatus;
 }
 
-export interface CreateConsoleDataSourceConnectionInput {
+export interface CreateConsoleDataSourceInput {
   installation_id: string;
   source_code: string;
   display_name: string;
@@ -429,13 +451,6 @@ function appendRuntimeRecordsQuery(
   return query ? `${path}?${query}` : path;
 }
 
-export function fetchConsoleMainDataSource(baseUrl?: string) {
-  return apiFetch<ConsoleMainDataSource>({
-    path: '/api/console/data-sources/main-source',
-    baseUrl
-  });
-}
-
 export function fetchConsoleDataSourceCatalog(baseUrl?: string) {
   return apiFetch<ConsoleDataSourceCatalog>({
     path: '/api/console/data-sources/catalog',
@@ -443,20 +458,20 @@ export function fetchConsoleDataSourceCatalog(baseUrl?: string) {
   });
 }
 
-export function fetchConsoleDataSourceConnections(baseUrl?: string) {
-  return apiFetch<ConsoleDataSourceConnection[]>({
-    path: '/api/console/data-sources/instances',
+export function fetchConsoleDataSources(baseUrl?: string) {
+  return apiFetch<ConsoleDataSource[]>({
+    path: '/api/console/data-sources',
     baseUrl
   });
 }
 
-export function createConsoleDataSourceConnection(
-  input: CreateConsoleDataSourceConnectionInput,
+export function createConsoleDataSource(
+  input: CreateConsoleDataSourceInput,
   csrfToken: string,
   baseUrl?: string
 ) {
-  return apiFetch<ConsoleDataSourceConnection>({
-    path: '/api/console/data-sources/instances',
+  return apiFetch<ConsoleRuntimeExtensionDataSource>({
+    path: '/api/console/data-sources',
     method: 'POST',
     body: input,
     csrfToken,
@@ -464,44 +479,30 @@ export function createConsoleDataSourceConnection(
   });
 }
 
-export function validateConsoleDataSourceConnection(
-  instanceId: string,
+export function validateConsoleDataSource(
+  dataSourceId: string,
   csrfToken: string,
   baseUrl?: string
 ) {
   return apiFetch<{
-    instance: ConsoleDataSourceConnection;
+    data_source: ConsoleRuntimeExtensionDataSource;
     output: Record<string, unknown>;
   }>({
-    path: `/api/console/data-sources/instances/${encodedPathSegment(instanceId)}/validate`,
+    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/validate`,
     method: 'POST',
     csrfToken,
     baseUrl
   });
 }
 
-export function updateConsoleDataSourceConnectionDefaults(
-  instanceId: string,
+export function updateConsoleDataSourceDefaults(
+  dataSourceId: string,
   input: UpdateConsoleDataSourceDefaultsInput,
   csrfToken: string,
   baseUrl?: string
 ) {
-  return apiFetch<ConsoleDataSourceConnection>({
-    path: `/api/console/data-sources/instances/${encodedPathSegment(instanceId)}/defaults`,
-    method: 'PATCH',
-    body: input,
-    csrfToken,
-    baseUrl
-  });
-}
-
-export function updateConsoleMainDataSourceDefaults(
-  input: UpdateConsoleDataSourceDefaultsInput,
-  csrfToken: string,
-  baseUrl?: string
-) {
-  return apiFetch<ConsoleMainDataSource>({
-    path: '/api/console/data-sources/main-source/defaults',
+  return apiFetch<ConsoleDataSource>({
+    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/defaults`,
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -510,22 +511,22 @@ export function updateConsoleMainDataSourceDefaults(
 }
 
 export function fetchConsoleDataSourceResources(
-  instanceId: string,
+  dataSourceId: string,
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataSourceResources>({
-    path: `/api/console/data-sources/instances/${encodedPathSegment(instanceId)}/resources`,
+    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/resources`,
     baseUrl
   });
 }
 
 export function discoverConsoleDataSourceResources(
-  instanceId: string,
+  dataSourceId: string,
   csrfToken: string,
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataSourceResources>({
-    path: `/api/console/data-sources/instances/${encodedPathSegment(instanceId)}/resources/discover`,
+    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/resources/discover`,
     method: 'POST',
     csrfToken,
     baseUrl
@@ -533,13 +534,13 @@ export function discoverConsoleDataSourceResources(
 }
 
 export function previewConsoleDataSourceResource(
-  instanceId: string,
+  dataSourceId: string,
   input: PreviewConsoleDataSourceResourceInput,
   csrfToken: string,
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataSourcePreview>({
-    path: `/api/console/data-sources/instances/${encodedPathSegment(instanceId)}/preview-read`,
+    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/preview-read`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -548,13 +549,13 @@ export function previewConsoleDataSourceResource(
 }
 
 export function mapConsoleDataSourceResourceToModel(
-  instanceId: string,
+  dataSourceId: string,
   resourceKey: string,
   csrfToken: string,
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModel>({
-    path: `/api/console/data-sources/instances/${encodedPathSegment(instanceId)}/resources/map-to-model`,
+    path: `/api/console/data-sources/${encodedPathSegment(dataSourceId)}/resources/map-to-model`,
     method: 'POST',
     body: { resource_key: resourceKey },
     csrfToken,
@@ -568,8 +569,7 @@ export function fetchConsoleDataModels(
 ) {
   return apiFetch<ConsoleDataModel[]>({
     path: appendQuery('/api/console/models', {
-      source_kind: input.source_kind,
-      data_source_instance_id: input.data_source_instance_id,
+      data_source_id: input.data_source_id,
       filter: input.filter ? JSON.stringify(input.filter) : undefined
     }),
     baseUrl

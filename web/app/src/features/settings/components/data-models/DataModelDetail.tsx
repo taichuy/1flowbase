@@ -267,9 +267,9 @@ export function DataModelDetail({
       : [
           [
             {
-              key: 'data_source_instance_id',
-              label: i18nText('settings', 'auto.external_connections'),
-              value: model.data_source_instance_id ?? '-'
+              key: 'data_source_id',
+              label: i18nText('settings', 'auto.data_source'),
+              value: model.data_source_id ?? '-'
             },
             {
               key: 'external_resource_key',

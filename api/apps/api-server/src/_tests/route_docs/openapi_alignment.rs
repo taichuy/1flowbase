@@ -93,8 +93,8 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
         "/api/runtime/models/{model_code}/delete/{id}",
         "/api/console/session/actions/revoke-all",
         "/api/console/me/actions/change-password",
-        "/api/console/data-sources/instances/{instance_id}/secret/rotate",
-        "/api/console/data-sources/instances/{instance_id}/resources/map-to-model",
+        "/api/console/data-sources/{data_source_id}/secret/rotate",
+        "/api/console/data-sources/{data_source_id}/resources/map-to-model",
         "/api/console/applications/{id}/orchestration/debug-artifacts/{artifact_id}",
         "/v1/messages/count_tokens",
     ] {

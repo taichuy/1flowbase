@@ -1,0 +1,28 @@
+manifest_version: 1
+plugin_id: acme_hubspot_source@0.1.0
+version: 0.1.0
+vendor: 1flowbase tests
+display_name: Acme HubSpot Source
+description: Test data source package
+icon: icon.svg
+source_kind: uploaded
+trust_level: unverified
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes:
+  - data_source
+binding_targets:
+  - workspace
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.data_source/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: outbound_only
+  secrets: provider_instance_only
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/acme_hubspot_source

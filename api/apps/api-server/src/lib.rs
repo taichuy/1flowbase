@@ -314,6 +314,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             Arc::new(ApiDataSourceRuntimeRecordBackend::new(
                 store.clone(),
                 api_provider_runtime.clone(),
+                config.provider_secret_master_key.clone(),
             )),
         ),
     );

@@ -21,16 +21,15 @@ import { useAuthStore } from '../../../../state/auth-store';
 import {
   createSettingsDataModel,
   createSettingsDataModelField,
-  createSettingsDataSourceConnection,
+  createSettingsDataSource,
   deleteSettingsDataModel,
   deleteSettingsDataModelField,
   fetchSettingsDataModelAdvisorFindings,
   fetchSettingsDataModelScopeGrants,
   fetchSettingsDataModels,
   fetchSettingsDataSourceCatalog,
-  fetchSettingsDataSourceConnections,
+  fetchSettingsDataSources,
   fetchSettingsDataSourceResources,
-  fetchSettingsMainDataSource,
   discoverSettingsDataSourceResources,
   mapSettingsDataSourceResourceToModel,
   previewSettingsDataSourceResource,
@@ -38,21 +37,20 @@ import {
   settingsDataModelsQueryKey,
   settingsDataModelScopeGrantsQueryKey,
   settingsDataSourceCatalogQueryKey,
-  settingsDataSourceConnectionsQueryKey,
+  settingsDataSourcesQueryKey,
   settingsDataSourceResourcesQueryKey,
-  settingsMainDataSourceQueryKey,
-  validateSettingsDataSourceConnection,
+  validateSettingsDataSource,
   updateSettingsDataModel,
   updateSettingsDataModelField,
   updateSettingsDataModelScopeGrant,
   type CreateSettingsDataModelFieldInput,
   type CreateSettingsDataModelInput,
-  type CreateSettingsDataSourceConnectionInput,
+  type CreateSettingsDataSourceInput,
   type SettingsDataModel,
   type SettingsDataModelField,
   type SettingsDataModelScopeGrant,
   type SettingsDataSource,
-  type SettingsDataSourceConnection,
+  type SettingsRuntimeExtensionDataSource,
   type SettingsDataSourcePreview,
   type SettingsDataSourceRemoteResource,
   type UpdateSettingsDataModelFieldInput,
@@ -73,8 +71,14 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : null;
 }
 
-const emptyConnections: SettingsDataSourceConnection[] = [];
+const emptyDataSources: SettingsDataSource[] = [];
 const emptyModels: SettingsDataModel[] = [];
+
+function isRuntimeExtensionDataSource(
+  source: SettingsDataSource | null
+): source is SettingsRuntimeExtensionDataSource {
+  return source?.backend.kind === 'runtime_extension';
+}
 
 function readSourceIdFromLocation() {
   if (typeof window === 'undefined') {
@@ -113,27 +117,16 @@ export function SettingsDataModelsSection({
     preview: SettingsDataSourcePreview;
   } | null>(null);
 
-  const mainSourceQuery = useQuery({
-    queryKey: settingsMainDataSourceQueryKey,
-    queryFn: fetchSettingsMainDataSource
-  });
-  const connectionsQuery = useQuery({
-    queryKey: settingsDataSourceConnectionsQueryKey,
-    queryFn: fetchSettingsDataSourceConnections
+  const dataSourcesQuery = useQuery({
+    queryKey: settingsDataSourcesQueryKey,
+    queryFn: fetchSettingsDataSources
   });
   const catalogQuery = useQuery({
     queryKey: settingsDataSourceCatalogQueryKey,
     queryFn: fetchSettingsDataSourceCatalog
   });
 
-  const connections = connectionsQuery.data ?? emptyConnections;
-  const sources = useMemo<SettingsDataSource[]>(
-    () =>
-      mainSourceQuery.data
-        ? [mainSourceQuery.data, ...connections]
-        : connections,
-    [connections, mainSourceQuery.data]
-  );
+  const sources = dataSourcesQuery.data ?? emptyDataSources;
   const selectedSource = useMemo(
     () => sources.find((source) => source.id === selectedSourceId) ?? null,
     [selectedSourceId, sources]
@@ -142,16 +135,26 @@ export function SettingsDataModelsSection({
 
   const modelsQuery = useQuery({
     queryKey: settingsDataModelsQueryKey(effectiveSourceId ?? ''),
-    queryFn: () => fetchSettingsDataModels(selectedSource as SettingsDataSource),
+    queryFn: () => fetchSettingsDataModels(effectiveSourceId ?? ''),
     enabled: Boolean(selectedSource)
   });
 
-  const selectedConnection =
-    selectedSource?.source_kind === 'external_source' ? selectedSource : null;
+  const selectedRuntimeExtensionDataSource = isRuntimeExtensionDataSource(
+    selectedSource
+  )
+    ? selectedSource
+    : null;
   const resourcesQuery = useQuery({
-    queryKey: settingsDataSourceResourcesQueryKey(selectedConnection?.id ?? ''),
-    queryFn: () => fetchSettingsDataSourceResources(selectedConnection?.id ?? ''),
-    enabled: selectedConnection?.status === 'ready'
+    queryKey: settingsDataSourceResourcesQueryKey(
+      selectedRuntimeExtensionDataSource?.id ?? ''
+    ),
+    queryFn: () =>
+      fetchSettingsDataSourceResources(
+        selectedRuntimeExtensionDataSource?.id ?? ''
+      ),
+    enabled:
+      selectedRuntimeExtensionDataSource?.capabilities
+        .can_discover_resources === true
   });
 
   const models = modelsQuery.data ?? emptyModels;
@@ -171,6 +174,7 @@ export function SettingsDataModelsSection({
     ) {
       setSelectedModelId(null);
       setEditingModelId(null);
+      setResourcePreview(null);
     }
   }, [effectiveSourceId]);
 
@@ -186,16 +190,14 @@ export function SettingsDataModelsSection({
   useEffect(() => {
     if (
       selectedSourceId &&
-      !mainSourceQuery.isLoading &&
-      !connectionsQuery.isLoading &&
+      !dataSourcesQuery.isLoading &&
       !sources.some((source) => source.id === selectedSourceId)
     ) {
       setSelectedSourceId(null);
       writeSourceIdToLocation(null);
     }
   }, [
-    connectionsQuery.isLoading,
-    mainSourceQuery.isLoading,
+    dataSourcesQuery.isLoading,
     selectedSourceId,
     sources
   ]);
@@ -209,50 +211,51 @@ export function SettingsDataModelsSection({
     setSelectedSourceId(null);
     setSelectedModelId(null);
     setEditingModelId(null);
+    setResourcePreview(null);
     writeSourceIdToLocation(null);
   };
 
-  const createConnectionMutation = useMutation({
-    mutationFn: (input: CreateSettingsDataSourceConnectionInput) => {
+  const createDataSourceMutation = useMutation({
+    mutationFn: (input: CreateSettingsDataSourceInput) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
-      return createSettingsDataSourceConnection(input, csrfToken);
+      return createSettingsDataSource(input, csrfToken);
     },
-    onSuccess: async (connection) => {
-      messageApi.success(i18nText('settings', 'auto.connection_created'));
+    onSuccess: async (dataSource) => {
+      messageApi.success(i18nText('settings', 'auto.data_source_created'));
       await queryClient.invalidateQueries({
-        queryKey: settingsDataSourceConnectionsQueryKey
+        queryKey: settingsDataSourcesQueryKey
       });
-      openSourceManager(connection.id);
+      openSourceManager(dataSource.id);
     }
   });
 
-  const validateConnectionMutation = useMutation({
-    mutationFn: (connection: SettingsDataSourceConnection) => {
+  const validateDataSourceMutation = useMutation({
+    mutationFn: (dataSource: SettingsRuntimeExtensionDataSource) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
-      return validateSettingsDataSourceConnection(connection.id, csrfToken);
+      return validateSettingsDataSource(dataSource.id, csrfToken);
     },
     onSuccess: async () => {
-      messageApi.success(i18nText('settings', 'auto.connection_ready'));
+      messageApi.success(i18nText('settings', 'auto.data_source_ready'));
       await queryClient.invalidateQueries({
-        queryKey: settingsDataSourceConnectionsQueryKey
+        queryKey: settingsDataSourcesQueryKey
       });
     }
   });
 
   const discoverResourcesMutation = useMutation({
-    mutationFn: (connection: SettingsDataSourceConnection) => {
+    mutationFn: (dataSource: SettingsRuntimeExtensionDataSource) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
-      return discoverSettingsDataSourceResources(connection.id, csrfToken);
+      return discoverSettingsDataSourceResources(dataSource.id, csrfToken);
     },
-    onSuccess: async (_result, connection) => {
+    onSuccess: async (_result, dataSource) => {
       await queryClient.invalidateQueries({
-        queryKey: settingsDataSourceResourcesQueryKey(connection.id)
+        queryKey: settingsDataSourceResourcesQueryKey(dataSource.id)
       });
     }
   });
@@ -260,17 +263,17 @@ export function SettingsDataModelsSection({
   const previewResourceMutation = useMutation({
     onMutate: () => setResourcePreview(null),
     mutationFn: ({
-      connection,
+      dataSource,
       resource
     }: {
-      connection: SettingsDataSourceConnection;
+      dataSource: SettingsRuntimeExtensionDataSource;
       resource: SettingsDataSourceRemoteResource;
     }) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
       return previewSettingsDataSourceResource(
-        connection.id,
+        dataSource.id,
         resource.resource_key,
         csrfToken
       );
@@ -282,26 +285,26 @@ export function SettingsDataModelsSection({
 
   const mapResourceMutation = useMutation({
     mutationFn: ({
-      connection,
+      dataSource,
       resource
     }: {
-      connection: SettingsDataSourceConnection;
+      dataSource: SettingsRuntimeExtensionDataSource;
       resource: SettingsDataSourceRemoteResource;
     }) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
       return mapSettingsDataSourceResourceToModel(
-        connection.id,
+        dataSource.id,
         resource.resource_key,
         csrfToken
       );
     },
-    onSuccess: async (model, { connection }) => {
+    onSuccess: async (model, { dataSource }) => {
       messageApi.success(i18nText('settings', 'auto.data_model_created'));
       setSelectedModelId(model.id);
       await queryClient.invalidateQueries({
-        queryKey: settingsDataModelsQueryKey(connection.id)
+        queryKey: settingsDataModelsQueryKey(dataSource.id)
       });
     }
   });
@@ -482,8 +485,7 @@ export function SettingsDataModelsSection({
   });
 
   const errorMessage =
-    getErrorMessage(mainSourceQuery.error) ??
-    getErrorMessage(connectionsQuery.error) ??
+    getErrorMessage(dataSourcesQuery.error) ??
     getErrorMessage(catalogQuery.error) ??
     getErrorMessage(resourcesQuery.error) ??
     getErrorMessage(modelsQuery.error) ??
@@ -496,7 +498,7 @@ export function SettingsDataModelsSection({
     getErrorMessage(updateFieldMutation.error) ??
     getErrorMessage(deleteFieldMutation.error) ??
     getErrorMessage(saveGrantMutation.error) ??
-    getErrorMessage(validateConnectionMutation.error) ??
+    getErrorMessage(validateDataSourceMutation.error) ??
     getErrorMessage(discoverResourcesMutation.error) ??
     getErrorMessage(previewResourceMutation.error) ??
     getErrorMessage(mapResourceMutation.error);
@@ -524,7 +526,7 @@ export function SettingsDataModelsSection({
                     title: (
                       <Button
                         type="link"
-                        icon={<HomeOutlined />}
+                        icon={<HomeOutlined aria-hidden="true" />}
                         className="data-model-panel__breadcrumb-link"
                         onClick={closeSourceManager}
                       >
@@ -544,17 +546,17 @@ export function SettingsDataModelsSection({
                 <Button
                   aria-label={i18nText("settings", "auto.back")}
                   className="data-model-panel__back-button"
-                  icon={<ArrowLeftOutlined />}
+                  icon={<ArrowLeftOutlined aria-hidden="true" />}
                   onClick={closeSourceManager}
                   type="text"
                 />
                 <div
-                  className={`data-model-panel__source-icon-wrapper ${selectedSource.source_kind} small`}
+                  className={`data-model-panel__source-icon-wrapper ${selectedSource.backend.kind} small`}
                 >
-                  {selectedSource.source_kind === 'main_source' ? (
-                    <DatabaseOutlined />
+                  {selectedSource.backend.kind === 'core' ? (
+                    <DatabaseOutlined aria-hidden="true" />
                   ) : (
-                    <CloudServerOutlined />
+                    <CloudServerOutlined aria-hidden="true" />
                   )}
                 </div>
                 <Typography.Title
@@ -574,22 +576,22 @@ export function SettingsDataModelsSection({
                     ? i18nText("settings", "auto.ready")
                     : selectedSource.status}
                 </Tag>
-                {selectedConnection ? (
+                {selectedRuntimeExtensionDataSource ? (
                   <Typography.Text type="secondary" style={{ fontSize: 13 }}>
                     <code className="data-model-panel__code-badge">
-                      {selectedConnection.source_code}
+                      {selectedRuntimeExtensionDataSource.backend.source_code}
                     </code>
                   </Typography.Text>
                 ) : null}
               </Flex>
 
             </div>
-            {selectedConnection ? (
+            {selectedRuntimeExtensionDataSource ? (
               <DataSourceResourcesPanel
-                connection={selectedConnection}
+                dataSource={selectedRuntimeExtensionDataSource}
                 resources={resourcesQuery.data?.entries ?? []}
                 loading={resourcesQuery.isLoading}
-                validating={validateConnectionMutation.isPending}
+                validating={validateDataSourceMutation.isPending}
                 discovering={discoverResourcesMutation.isPending}
                 previewingResourceKey={
                   previewResourceMutation.isPending
@@ -605,28 +607,32 @@ export function SettingsDataModelsSection({
                 }
                 canManage={canManage}
                 onValidate={() =>
-                  validateConnectionMutation.mutate(selectedConnection)
+                  validateDataSourceMutation.mutate(
+                    selectedRuntimeExtensionDataSource
+                  )
                 }
                 onDiscover={() =>
-                  discoverResourcesMutation.mutate(selectedConnection)
+                  discoverResourcesMutation.mutate(
+                    selectedRuntimeExtensionDataSource
+                  )
                 }
                 onPreview={(resource) =>
                   previewResourceMutation.mutate({
-                    connection: selectedConnection,
+                    dataSource: selectedRuntimeExtensionDataSource,
                     resource
                   })
                 }
                 onMap={(resource) =>
                   mapResourceMutation.mutate({
-                    connection: selectedConnection,
+                    dataSource: selectedRuntimeExtensionDataSource,
                     resource
                   })
                 }
               />
             ) : null}
-            {selectedConnection && resourcePreview ? (
+            {selectedRuntimeExtensionDataSource && resourcePreview ? (
               <DataSourceResourcePreviewDrawer
-                connection={selectedConnection}
+                dataSource={selectedRuntimeExtensionDataSource}
                 resource={resourcePreview.resource}
                 preview={resourcePreview.preview}
                 onClose={() => setResourcePreview(null)}
@@ -703,23 +709,23 @@ export function SettingsDataModelsSection({
           </Flex>
         ) : (
           <DataSourcePanel
-            mainSource={mainSourceQuery.data ?? null}
-            connections={connections}
+            dataSources={sources}
             catalog={catalogQuery.data?.entries ?? []}
-            loading={
-              mainSourceQuery.isLoading ||
-              connectionsQuery.isLoading ||
-              catalogQuery.isLoading
-            }
-            creating={createConnectionMutation.isPending}
+            loading={dataSourcesQuery.isLoading || catalogQuery.isLoading}
+            creating={createDataSourceMutation.isPending}
             creationErrorMessage={getErrorMessage(
-              createConnectionMutation.error
+              createDataSourceMutation.error
             )}
             canManage={canManage}
-            onOpenMainSource={() => openSourceManager('main_source')}
-            onOpenConnection={openSourceManager}
-            onCreateConnection={(input) =>
-              createConnectionMutation.mutateAsync(input).then(() => undefined)
+            onRefresh={async () => {
+              await Promise.all([
+                dataSourcesQuery.refetch(),
+                catalogQuery.refetch()
+              ]);
+            }}
+            onOpenDataSource={openSourceManager}
+            onCreateDataSource={(input) =>
+              createDataSourceMutation.mutateAsync(input).then(() => undefined)
             }
           />
         )}

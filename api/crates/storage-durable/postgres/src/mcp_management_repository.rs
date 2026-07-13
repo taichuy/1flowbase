@@ -12,7 +12,7 @@ use control_plane::{
 use serde_json::json;
 use sqlx::Row;
 
-use crate::model_provider_repository::secret_crypto::{decrypt_secret_json, encrypt_secret_json};
+use crate::secret_crypto::{decrypt_secret_json, encrypt_secret_json};
 use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;

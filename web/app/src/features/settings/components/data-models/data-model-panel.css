@@ -369,7 +369,7 @@
   flex-shrink: 0;
 }
 
-.data-model-panel__source-icon-wrapper.main_source {
+.data-model-panel__source-icon-wrapper.core {
   background: color-mix(in srgb, var(--brand-primary) 8%, var(--bg-surface, #ffffff));
   color: var(--brand-primary);
   border-color: color-mix(in srgb, var(--brand-primary) 20%, transparent);
@@ -393,7 +393,7 @@
   border-color: var(--ant-color-primary-border);
 }
 
-.data-model-panel__source-icon-wrapper.external_source {
+.data-model-panel__source-icon-wrapper.runtime_extension {
   background: rgba(147, 51, 234, 0.08);
   color: #9333ea;
   border-color: rgba(147, 51, 234, 0.15);

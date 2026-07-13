@@ -5,7 +5,7 @@ import { Button, Drawer, Form, Input, Switch } from 'antd';
 import type {
   CreateSettingsDataModelInput,
   SettingsDataModel,
-  SettingsMainDataSource,
+  SettingsDataSource,
   UpdateSettingsDataModelInput
 } from '../../api/data-models';
 import { DataModelFieldLabel } from './DataModelHelpTooltip';
@@ -42,7 +42,7 @@ export function DataModelFormDrawer({
   open: boolean;
   mode: 'create' | 'edit';
   model: SettingsDataModel | null;
-  source: SettingsMainDataSource | null;
+  source: SettingsDataSource | null;
   saving: boolean;
   onClose: () => void;
   onCreate: (input: CreateSettingsDataModelInput) => void;

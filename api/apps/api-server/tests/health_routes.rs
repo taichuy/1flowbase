@@ -203,6 +203,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             std::sync::Arc::new(ApiDataSourceRuntimeRecordBackend::new(
                 store.clone(),
                 api_provider_runtime,
+                config.provider_secret_master_key.clone(),
             )),
         ),
     );

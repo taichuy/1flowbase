@@ -1,6 +1,6 @@
 import {
   batchDeleteConsoleDataModels,
-  createConsoleDataSourceConnection,
+  createConsoleDataSource,
   createConsoleDataModel,
   createConsoleDataModelField,
   createConsoleDataModelScopeGrant,
@@ -13,17 +13,15 @@ import {
   fetchConsoleDataModelScopeGrants,
   fetchConsoleDataModels,
   fetchConsoleDataSourceCatalog,
-  fetchConsoleDataSourceConnections,
+  fetchConsoleDataSources,
   fetchConsoleDataSourceResources,
-  fetchConsoleMainDataSource,
   mapConsoleDataSourceResourceToModel,
   previewConsoleDataSourceResource,
   updateConsoleDataModel,
   updateConsoleDataModelField,
   updateConsoleDataModelScopeGrant,
-  updateConsoleDataSourceConnectionDefaults,
-  updateConsoleMainDataSourceDefaults,
-  validateConsoleDataSourceConnection,
+  updateConsoleDataSourceDefaults,
+  validateConsoleDataSource,
   type BatchDeleteConsoleDataModelsInput,
   type BatchDeleteConsoleDataModelsResult,
   type ConsoleDataModel,
@@ -32,15 +30,15 @@ import {
   type ConsoleDataModelScopeGrant,
   type ConsoleDataModelOpenApiDocument,
   type ConsoleDataSourceCatalogEntry,
-  type ConsoleDataSourceConnection,
+  type ConsoleDataSource,
   type ConsoleDataSourceRemoteResource,
   type ConsoleDataSourceResources,
-  type ConsoleMainDataSource,
+  type ConsoleRuntimeExtensionDataSource,
   type ConsoleDataSourcePreview,
   type ConsoleRuntimeRecordPreview,
   type CreateConsoleDataModelFieldInput,
   type CreateConsoleDataModelInput,
-  type CreateConsoleDataSourceConnectionInput,
+  type CreateConsoleDataSourceInput,
   type CreateConsoleDataModelScopeGrantInput,
   type UpdateConsoleDataModelFieldInput,
   type UpdateConsoleDataModelInput,
@@ -48,11 +46,9 @@ import {
   type UpdateConsoleDataSourceDefaultsInput
 } from '@1flowbase/api-client';
 
-export type SettingsMainDataSource = ConsoleMainDataSource;
-export type SettingsDataSourceConnection = ConsoleDataSourceConnection;
-export type SettingsDataSource =
-  | SettingsMainDataSource
-  | SettingsDataSourceConnection;
+export type SettingsDataSource = ConsoleDataSource;
+export type SettingsRuntimeExtensionDataSource =
+  ConsoleRuntimeExtensionDataSource;
 export type SettingsDataSourceCatalogEntry = ConsoleDataSourceCatalogEntry;
 export type SettingsDataSourceRemoteResource = ConsoleDataSourceRemoteResource;
 export type SettingsDataSourceResources = ConsoleDataSourceResources;
@@ -68,8 +64,7 @@ export type BatchDeleteSettingsDataModelsInput =
 export type BatchDeleteSettingsDataModelsResult =
   BatchDeleteConsoleDataModelsResult;
 export type CreateSettingsDataModelInput = CreateConsoleDataModelInput;
-export type CreateSettingsDataSourceConnectionInput =
-  CreateConsoleDataSourceConnectionInput;
+export type CreateSettingsDataSourceInput = CreateConsoleDataSourceInput;
 export type UpdateSettingsDataModelInput = UpdateConsoleDataModelInput;
 export type CreateSettingsDataModelFieldInput =
   CreateConsoleDataModelFieldInput;
@@ -82,26 +77,26 @@ export type UpdateSettingsDataModelScopeGrantInput =
 export type UpdateSettingsDataSourceDefaultsInput =
   UpdateConsoleDataSourceDefaultsInput;
 
-export const settingsMainDataSourceQueryKey = [
+export const settingsDataSourcesQueryKey = [
   'settings',
   'data-models',
-  'main-source'
-] as const;
-
-export const settingsDataSourceConnectionsQueryKey = [
-  'settings',
-  'data-models',
-  'connections'
+  'data-sources'
 ] as const;
 
 export const settingsDataSourceCatalogQueryKey = [
   'settings',
   'data-models',
-  'connection-catalog'
+  'data-source-catalog'
 ] as const;
 
-export function settingsDataSourceResourcesQueryKey(connectionId: string) {
-  return ['settings', 'data-models', 'connections', connectionId, 'resources'] as const;
+export function settingsDataSourceResourcesQueryKey(dataSourceId: string) {
+  return [
+    'settings',
+    'data-models',
+    'data-sources',
+    dataSourceId,
+    'resources'
+  ] as const;
 }
 
 export function settingsDataModelsQueryKey(
@@ -140,96 +135,79 @@ export function settingsDataModelOpenApiQueryKey(modelId: string) {
   return ['settings', 'data-models', 'openapi', modelId] as const;
 }
 
-export function fetchSettingsMainDataSource() {
-  return fetchConsoleMainDataSource();
-}
-
-export function fetchSettingsDataSourceConnections() {
-  return fetchConsoleDataSourceConnections();
+export function fetchSettingsDataSources() {
+  return fetchConsoleDataSources();
 }
 
 export function fetchSettingsDataSourceCatalog() {
   return fetchConsoleDataSourceCatalog();
 }
 
-export function createSettingsDataSourceConnection(
-  input: CreateSettingsDataSourceConnectionInput,
+export function createSettingsDataSource(
+  input: CreateSettingsDataSourceInput,
   csrfToken: string
 ) {
-  return createConsoleDataSourceConnection(input, csrfToken);
+  return createConsoleDataSource(input, csrfToken);
 }
 
-export function validateSettingsDataSourceConnection(
-  connectionId: string,
+export function validateSettingsDataSource(
+  dataSourceId: string,
   csrfToken: string
 ) {
-  return validateConsoleDataSourceConnection(connectionId, csrfToken);
+  return validateConsoleDataSource(dataSourceId, csrfToken);
 }
 
-export function updateSettingsDataSourceConnectionDefaults(
-  connectionId: string,
+export function updateSettingsDataSourceDefaults(
+  dataSourceId: string,
   input: UpdateSettingsDataSourceDefaultsInput,
   csrfToken: string
 ) {
-  return updateConsoleDataSourceConnectionDefaults(
-    connectionId,
-    input,
-    csrfToken
-  );
+  return updateConsoleDataSourceDefaults(dataSourceId, input, csrfToken);
 }
 
-export function updateSettingsMainDataSourceDefaults(
-  input: UpdateSettingsDataSourceDefaultsInput,
-  csrfToken: string
-) {
-  return updateConsoleMainDataSourceDefaults(input, csrfToken);
-}
-
-export function fetchSettingsDataSourceResources(connectionId: string) {
-  return fetchConsoleDataSourceResources(connectionId);
+export function fetchSettingsDataSourceResources(dataSourceId: string) {
+  return fetchConsoleDataSourceResources(dataSourceId);
 }
 
 export function discoverSettingsDataSourceResources(
-  connectionId: string,
+  dataSourceId: string,
   csrfToken: string
 ) {
-  return discoverConsoleDataSourceResources(connectionId, csrfToken);
+  return discoverConsoleDataSourceResources(dataSourceId, csrfToken);
 }
 
 export function previewSettingsDataSourceResource(
-  connectionId: string,
+  dataSourceId: string,
   resourceKey: string,
   csrfToken: string
 ) {
   return previewConsoleDataSourceResource(
-    connectionId,
+    dataSourceId,
     { resource_key: resourceKey, limit: 20, options_json: {} },
     csrfToken
   );
 }
 
 export function mapSettingsDataSourceResourceToModel(
-  connectionId: string,
+  dataSourceId: string,
   resourceKey: string,
   csrfToken: string
 ) {
   return mapConsoleDataSourceResourceToModel(
-    connectionId,
+    dataSourceId,
     resourceKey,
     csrfToken
   );
 }
 
 export function fetchSettingsDataModels(
-  source: SettingsDataSource,
+  dataSourceId: string,
   filter?: Record<string, unknown>
 ) {
-  const sourceFilter =
-    source.source_kind === 'main_source'
-      ? { source_kind: 'main_source' as const }
-      : { data_source_instance_id: source.id };
   return fetchConsoleDataModels(
-    filter === undefined ? sourceFilter : { ...sourceFilter, filter }
+    filter === undefined
+      ? { data_source_id: dataSourceId }
+      : { data_source_id: dataSourceId, filter }
   );
 }
 

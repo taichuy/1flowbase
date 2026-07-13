@@ -112,6 +112,15 @@ config_schema:
     label: Client ID
     type: string
     required: true
+  - key: client_secret
+    label: Client Secret
+    type: string
+    required: true
+    send_mode: secret_ref
+  - key: headers
+    label: Headers
+    type: json
+    required: false
 "#,
     );
     write_test_executable(
@@ -251,9 +260,268 @@ async fn seed_data_source_installation(
 }
 
 #[tokio::test]
-async fn ac_001_003_data_source_routes_separate_main_source_and_external_connections() {
+async fn data_source_create_rejects_missing_required_package_config_field() {
     let package = create_fixture_package();
     let (state, _database_url) = test_api_state_with_database_url().await;
+    let config = test_config();
+    let app = crate::app_with_state_and_config(state.clone(), &config);
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let installation_id = seed_data_source_installation(&state, package.path()).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/data-sources")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "source_code": "fixture_data_source",
+                        "display_name": "Missing Required Field",
+                        "installation_id": installation_id.clone(),
+                        "config_json": {},
+                        "secret_json": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn data_source_create_rejects_fields_not_declared_by_package_config_schema() {
+    let package = create_fixture_package();
+    let (state, _database_url) = test_api_state_with_database_url().await;
+    let config = test_config();
+    let app = crate::app_with_state_and_config(state.clone(), &config);
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let installation_id = seed_data_source_installation(&state, package.path()).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/data-sources")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "source_code": "fixture_data_source",
+                        "display_name": "Undeclared Field",
+                        "installation_id": installation_id,
+                        "config_json": {
+                            "client_id": "abc",
+                            "undeclared": "must-not-be-stored"
+                        },
+                        "secret_json": { "client_secret": "secret" }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/data-sources")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "source_code": "fixture_data_source",
+                        "display_name": "Undeclared Secret Field",
+                        "installation_id": installation_id,
+                        "config_json": { "client_id": "abc" },
+                        "secret_json": {
+                            "client_secret": "secret",
+                            "undeclared_secret": "must-not-be-stored"
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn data_source_create_classifies_fields_by_schema_and_encrypts_secrets_at_rest() {
+    let package = create_fixture_package();
+    let (state, database_url) = test_api_state_with_database_url().await;
+    let config = test_config();
+    let app = crate::app_with_state_and_config(state.clone(), &config);
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let installation_id = seed_data_source_installation(&state, package.path()).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/data-sources")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "source_code": "fixture_data_source",
+                        "display_name": "Schema Classified",
+                        "installation_id": installation_id.clone(),
+                        "config_json": { "client_secret": "secret-from-public-input" },
+                        "secret_json": { "client_id": "public-from-secret-input" }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let payload: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        payload["data"]["backend"]["config_json"]["client_id"],
+        json!("public-from-secret-input")
+    );
+    assert!(payload["data"]["backend"]["config_json"]
+        .get("client_secret")
+        .is_none());
+    assert!(!payload.to_string().contains("secret-from-public-input"));
+
+    let canonical_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/data-sources")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "source_code": "fixture_data_source",
+                        "display_name": "Canonical Buckets",
+                        "installation_id": installation_id,
+                        "config_json": { "client_id": "public-from-secret-input" },
+                        "secret_json": { "client_secret": "secret-from-public-input" }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let canonical_status = canonical_response.status();
+    let canonical_body = to_bytes(canonical_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(
+        canonical_status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&canonical_body)
+    );
+    let canonical_payload: Value = serde_json::from_slice(&canonical_body).unwrap();
+    assert_eq!(
+        payload["data"]["backend"]["config_json"],
+        canonical_payload["data"]["backend"]["config_json"]
+    );
+
+    let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
+    let instance_id = uuid::Uuid::parse_str(payload["data"]["id"].as_str().unwrap()).unwrap();
+    let stored_secret: Value = sqlx::query_scalar(
+        "select encrypted_secret_json from data_source_secrets where data_source_instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        stored_secret["algorithm"],
+        json!("aead_xchacha20poly1305_v1")
+    );
+    assert!(!stored_secret
+        .to_string()
+        .contains("secret-from-public-input"));
+
+    sqlx::query(
+        "update data_source_secrets set encrypted_secret_json = $2 where data_source_instance_id = $1",
+    )
+    .bind(instance_id)
+    .bind(json!({
+        "algorithm": "aead_xchacha20poly1305_v1",
+        "nonce": "00"
+    }))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let malformed = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/console/data-sources/{instance_id}/validate"))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(malformed.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    sqlx::query(
+        "update data_source_secrets set encrypted_secret_json = $2 where data_source_instance_id = $1",
+    )
+    .bind(instance_id)
+    .bind(json!({ "client_secret": "legacy-plaintext-secret" }))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let legacy_plaintext = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/console/data-sources/{instance_id}/validate"))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(legacy_plaintext.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources() {
+    let package = create_fixture_package();
+    let (state, database_url) = test_api_state_with_database_url().await;
     let config = test_config();
     let app = crate::app_with_state_and_config(state.clone(), &config);
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -283,7 +551,7 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/data-sources/instances")
+                .uri("/api/console/data-sources")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -313,6 +581,10 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
     let instance_id = create_payload["data"]["id"].as_str().unwrap().to_string();
     assert_eq!(create_payload["data"]["status"].as_str(), Some("draft"));
     assert_eq!(
+        create_payload["data"]["backend"]["kind"].as_str(),
+        Some("runtime_extension")
+    );
+    assert_eq!(
         create_payload["data"]["default_data_model_status"].as_str(),
         Some("published")
     );
@@ -323,75 +595,55 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
     assert!(!create_payload.to_string().contains("route-header-secret"));
     assert!(!create_payload.to_string().contains("route-secret-echo"));
     assert_eq!(
-        create_payload["data"]["config_json"]["headers"][0]["value"]["secret_ref"],
-        create_payload["data"]["secret_ref"]
+        create_payload["data"]["backend"]["config_json"]["headers"][0]["value"]["secret_ref"],
+        create_payload["data"]["backend"]["secret_ref"]
     );
     assert_eq!(
-        create_payload["data"]["config_json"]["headers"][1]["value"].as_str(),
+        create_payload["data"]["backend"]["config_json"]["headers"][1]["value"].as_str(),
         Some("not-secret")
     );
 
-    let main_source = app
+    let list_data_sources = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/data-sources/main-source")
+                .uri("/api/console/data-sources")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(main_source.status(), StatusCode::OK);
-    let main_source_payload: Value =
-        serde_json::from_slice(&to_bytes(main_source.into_body(), usize::MAX).await.unwrap())
-            .unwrap();
-    assert_eq!(main_source_payload["data"]["id"], json!("main_source"));
-    assert_eq!(
-        main_source_payload["data"]["source_kind"],
-        json!("main_source")
-    );
+    assert_eq!(list_data_sources.status(), StatusCode::OK);
+    let list_payload: Value = serde_json::from_slice(
+        &to_bytes(list_data_sources.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let listed_sources = list_payload["data"].as_array().unwrap();
+    assert_eq!(listed_sources.len(), 2);
+    let main_source = &listed_sources[0];
+    assert_eq!(main_source["id"], json!("main"));
+    assert_eq!(main_source["backend"]["kind"], json!("core"));
+    assert_eq!(main_source["fixed"], json!(true));
+    assert_eq!(main_source["enabled"], json!(true));
     for forbidden_field in [
         "installation_id",
         "source_code",
         "config_json",
         "secret_ref",
         "secret_version",
-        "catalog_refresh_status",
-        "catalog_last_error_message",
-        "catalog_refreshed_at",
     ] {
-        assert!(!main_source_payload["data"]
+        assert!(!main_source["backend"]
             .as_object()
             .unwrap()
             .contains_key(forbidden_field));
     }
-
-    let list_instances = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/console/data-sources/instances")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(list_instances.status(), StatusCode::OK);
-    let list_payload: Value = serde_json::from_slice(
-        &to_bytes(list_instances.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    let listed_sources = list_payload["data"].as_array().unwrap();
-    assert!(listed_sources
-        .iter()
-        .all(|source| source["source_kind"].as_str() == Some("external_source")));
     assert!(listed_sources.iter().any(|source| {
         source["id"].as_str() == Some(&instance_id)
-            && source["source_kind"].as_str() == Some("external_source")
+            && source["backend"]["kind"].as_str() == Some("runtime_extension")
+            && source["backend"]["installation_id"].as_str() == Some(installation_id.as_str())
             && source["default_data_model_status"].as_str() == Some("published")
             && !source
                 .as_object()
@@ -404,7 +656,7 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/api/console/data-sources/main-source/defaults")
+                .uri("/api/console/data-sources/main/defaults")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -424,7 +676,7 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
     .unwrap();
     assert_eq!(
         main_source_defaults_payload["data"]["id"].as_str(),
-        Some("main_source")
+        Some("main")
     );
     assert_eq!(
         main_source_defaults_payload["data"]["default_data_model_status"].as_str(),
@@ -440,9 +692,7 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!(
-                    "/api/console/data-sources/instances/{instance_id}/defaults"
-                ))
+                .uri(format!("/api/console/data-sources/{instance_id}/defaults"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -474,9 +724,7 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!(
-                    "/api/console/data-sources/instances/{instance_id}/validate"
-                ))
+                .uri(format!("/api/console/data-sources/{instance_id}/validate"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())
@@ -488,7 +736,7 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
     let validate_payload: Value =
         serde_json::from_slice(&to_bytes(validate.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(
-        validate_payload["data"]["instance"]["status"].as_str(),
+        validate_payload["data"]["data_source"]["status"].as_str(),
         Some("ready")
     );
     assert!(!validate_payload.to_string().contains("route-secret-echo"));
@@ -510,7 +758,7 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/data-sources/instances/{instance_id}/resources/discover"
+                    "/api/console/data-sources/{instance_id}/resources/discover"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -537,9 +785,7 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!(
-                    "/api/console/data-sources/instances/{instance_id}/resources"
-                ))
+                .uri(format!("/api/console/data-sources/{instance_id}/resources"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -564,7 +810,7 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/data-sources/instances/{instance_id}/preview-read"
+                    "/api/console/data-sources/{instance_id}/preview-read"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -604,7 +850,7 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/data-sources/instances/{instance_id}/secret/rotate"
+                    "/api/console/data-sources/{instance_id}/secret/rotate"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -628,9 +874,28 @@ async fn ac_001_003_data_source_routes_separate_main_source_and_external_connect
         String::from_utf8_lossy(&rotate_body)
     );
     let rotate_payload: Value = serde_json::from_slice(&rotate_body).unwrap();
-    assert_eq!(rotate_payload["data"]["secret_version"].as_i64(), Some(2));
-    assert!(rotate_payload["data"]["secret_ref"].as_str().is_some());
+    assert_eq!(
+        rotate_payload["data"]["backend"]["secret_version"].as_i64(),
+        Some(2)
+    );
+    assert!(rotate_payload["data"]["backend"]["secret_ref"]
+        .as_str()
+        .is_some());
     assert!(!rotate_payload.to_string().contains("rotated-route-secret"));
+
+    let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
+    let stored_secret: Value = sqlx::query_scalar(
+        "select encrypted_secret_json from data_source_secrets where data_source_instance_id = $1",
+    )
+    .bind(uuid::Uuid::parse_str(&instance_id).unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        stored_secret["algorithm"],
+        json!("aead_xchacha20poly1305_v1")
+    );
+    assert!(!stored_secret.to_string().contains("rotated-route-secret"));
 }
 
 #[tokio::test]
@@ -648,7 +913,7 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/data-sources/instances")
+                .uri("/api/console/data-sources")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -676,9 +941,7 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!(
-                    "/api/console/data-sources/instances/{instance_id}/validate"
-                ))
+                .uri(format!("/api/console/data-sources/{instance_id}/validate"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())
@@ -694,7 +957,7 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/data-sources/instances/{instance_id}/resources/map-to-model"
+                    "/api/console/data-sources/{instance_id}/resources/map-to-model"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -721,9 +984,10 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
         Some("external_source")
     );
     assert_eq!(
-        payload["data"]["data_source_instance_id"].as_str(),
+        payload["data"]["data_source_id"].as_str(),
         Some(instance_id)
     );
+    assert!(payload["data"].get("data_source_instance_id").is_none());
     assert_eq!(
         payload["data"]["external_resource_key"].as_str(),
         Some("contacts")
@@ -749,9 +1013,7 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!(
-                    "/api/console/models?data_source_instance_id={instance_id}"
-                ))
+                .uri(format!("/api/console/models?data_source_id={instance_id}"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -768,10 +1030,10 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
     let models = list_payload["data"].as_array().unwrap();
     assert!(models.iter().any(|model| {
         model["id"].as_str() == payload["data"]["id"].as_str()
-            && model["data_source_instance_id"].as_str() == Some(instance_id)
+            && model["data_source_id"].as_str() == Some(instance_id)
     }));
     assert!(models.iter().all(|model| {
-        model["data_source_instance_id"].as_str() == Some(instance_id)
+        model["data_source_id"].as_str() == Some(instance_id)
             && model["source_kind"].as_str() == Some("external_source")
     }));
 }

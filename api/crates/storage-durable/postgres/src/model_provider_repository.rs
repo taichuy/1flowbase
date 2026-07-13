@@ -12,7 +12,7 @@ use control_plane::{
         UpsertModelProviderMainInstanceInput, UpsertModelProviderSecretInput,
     },
 };
-use serde_json::{json, Value};
+use serde_json::Value;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -26,15 +26,14 @@ use crate::{
 };
 
 mod row_mappers;
-pub(crate) mod secret_crypto;
 
+use crate::secret_crypto::{decrypt_secret_json, encrypt_secret_json};
 use row_mappers::{
     map_catalog_cache, map_catalog_entry, map_catalog_source, map_catalog_sync_run,
     map_failover_queue_item, map_failover_queue_snapshot, map_failover_queue_template,
     map_instance, map_main_instance, map_main_model_distribution_rule, map_preview_session,
     map_secret,
 };
-use secret_crypto::{decrypt_secret_json, encrypt_secret_json};
 
 async fn list_main_model_distribution_rules(
     pool: &sqlx::PgPool,

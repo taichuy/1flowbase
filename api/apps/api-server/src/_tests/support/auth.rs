@@ -202,6 +202,7 @@ async fn test_state_with_runtime_profile_state(
                 crate::provider_runtime::ApiDataSourceRuntimeRecordBackend::new(
                     store.clone(),
                     api_provider_runtime,
+                    config.provider_secret_master_key.clone(),
                 ),
             ),
         ),

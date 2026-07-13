@@ -26,27 +26,37 @@ beforeEach(setupDataModelsPageTest);
 afterEach(cleanupDataModelsPageTest);
 
 describe('Settings data models page', () => {
-  test('AC-002 separates the main source and external connections on the first screen', async () => {
+  test('AC-002 presents main and other data sources in one table', async () => {
     renderApp('/settings/data-models');
 
+    await waitFor(() =>
+      expect(dataModelsApi.fetchSettingsDataSources).toHaveBeenCalled()
+    );
+
     expect(
-      await screen.findByRole(
-        'heading',
-        { name: '主数据源' },
+      await screen.findByText(
+        '主数据源',
+        undefined,
         { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
       )
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: '外部连接' })
-    ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: '新建连接' })
-      ).toBeEnabled()
-    );
+    const table = screen.getByRole('table', { name: '数据源列表' });
+    expect(within(table).getByText('HubSpot')).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: '数据源名称' }))
+      .toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: '类型' }))
+      .toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: '状态' }))
+      .toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: '已启用' }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '主数据源' }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '外部连接' }))
+      .not.toBeInTheDocument();
   });
 
-  test('AC-004/005 external connections map discovered resources without generic table-id input', async () => {
+  test('AC-004/005 runtime extension data sources map discovered resources without generic table-id input', async () => {
     renderApp('/settings/data-models?source=source-1');
 
     expect(
@@ -281,7 +291,7 @@ describe('Settings data models page', () => {
     }
   );
 
-  test('AC-003 keeps connection config and secret after rejection, then closes after retry succeeds', async () => {
+  test('AC-003 keeps data source config and secret after rejection, then closes after retry succeeds', async () => {
     dataModelsApi.fetchSettingsDataSourceCatalog.mockResolvedValueOnce({
       entries: [
         {
@@ -320,22 +330,29 @@ describe('Settings data models page', () => {
         }
       ]
     });
-    dataModelsApi.createSettingsDataSourceConnection
-      .mockRejectedValueOnce(new Error('connection rejected'))
+    dataModelsApi.createSettingsDataSource
+      .mockRejectedValueOnce(new Error('data source rejected'))
       .mockResolvedValueOnce({ id: 'source-new' });
 
     renderApp('/settings/data-models');
 
-    const newConnectionButton = await screen.findByRole(
-      'button',
-      { name: '新建连接' },
+    await findDataModelsNavigation();
+    await screen.findByText(
+      '主数据源',
+      undefined,
       { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
     );
-    await waitFor(() => expect(newConnectionButton).toBeEnabled());
-    fireEvent.click(newConnectionButton);
+
+    const addDataSourceButton = await screen.findByRole(
+      'button',
+      { name: '新增数据源' },
+      { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+    );
+    await waitFor(() => expect(addDataSourceButton).toBeEnabled());
+    fireEvent.click(addDataSourceButton);
     const createDrawer = await screen.findByRole('dialog');
-    expect(within(createDrawer).getByText('新建外部连接')).toBeInTheDocument();
-    fireEvent.change(within(createDrawer).getByLabelText('连接名称'), {
+    expect(within(createDrawer).getByText('新增数据源')).toBeInTheDocument();
+    fireEvent.change(within(createDrawer).getByLabelText('数据源名称'), {
       target: { value: 'CRM primary' }
     });
     fireEvent.change(within(createDrawer).getByLabelText('Endpoint'), {
@@ -347,9 +364,9 @@ describe('Settings data models page', () => {
 
     fireEvent.click(screen.getByLabelText('创建'));
 
-    expect(await screen.findByText('connection rejected')).toBeInTheDocument();
+    expect(await screen.findByText('data source rejected')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByLabelText('连接名称')).toHaveValue('CRM primary');
+    expect(screen.getByLabelText('数据源名称')).toHaveValue('CRM primary');
     expect(screen.getByLabelText('Endpoint')).toHaveValue(
       'https://crm.example.com'
     );
@@ -374,10 +391,10 @@ describe('Settings data models page', () => {
         .find((row) => within(row).queryByText('HubSpot'));
       expect(hubSpotRow).toBeInstanceOf(HTMLElement);
       expect(
-        within(hubSpotRow as HTMLElement).getByLabelText('HubSpot 启用')
+        within(hubSpotRow as HTMLElement).getByLabelText('HubSpot 已启用')
       ).toBeChecked();
       fireEvent.click(
-        within(hubSpotRow as HTMLElement).getByRole('button', { name: '配置' })
+        within(hubSpotRow as HTMLElement).getByRole('button', { name: '查看' })
       );
       expect(await screen.findByText('数据源管理')).toBeInTheDocument();
       expect(
@@ -396,8 +413,8 @@ describe('Settings data models page', () => {
         screen.getByRole('heading', { name: 'HubSpot' })
       ).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: '新建数据表' })
-      ).toBeInTheDocument();
+        screen.queryByRole('button', { name: '新建数据表' })
+      ).not.toBeInTheDocument();
       expect(screen.getByText('数据表')).toBeInTheDocument();
       expect(
         screen.getByRole('columnheader', { name: 'API 状态' })
@@ -405,9 +422,26 @@ describe('Settings data models page', () => {
       expect(
         screen.queryByRole('columnheader', { name: '状态' })
       ).not.toBeInTheDocument();
-      expect(await screen.findByText('Contacts')).toBeInTheDocument();
-      expect(screen.getByText('contacts')).toBeInTheDocument();
-      const contactsRow = screen
+      await waitFor(
+        () => {
+          const currentModelsTable = screen
+            .getByRole('columnheader', { name: 'API 状态' })
+            .closest('table');
+          expect(currentModelsTable).toBeInstanceOf(HTMLTableElement);
+          expect(
+            within(currentModelsTable as HTMLTableElement).getByText('Contacts')
+          ).toBeInTheDocument();
+        },
+        { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+      );
+      const modelsTable = screen
+        .getByRole('columnheader', { name: 'API 状态' })
+        .closest('table');
+      expect(modelsTable).toBeInstanceOf(HTMLTableElement);
+      expect(
+        within(modelsTable as HTMLTableElement).getAllByText('contacts').length
+      ).toBeGreaterThan(0);
+      const contactsRow = within(modelsTable as HTMLTableElement)
         .getAllByRole('row')
         .find((row) => within(row).queryByText('Contacts'));
       expect(contactsRow).toBeInstanceOf(HTMLElement);
@@ -436,7 +470,7 @@ describe('Settings data models page', () => {
       expect(mainSourceRow).toBeInstanceOf(HTMLElement);
       fireEvent.click(
         within(mainSourceRow as HTMLElement).getByRole('button', {
-          name: '配置'
+          name: '查看'
         })
       );
 
@@ -534,7 +568,7 @@ describe('Settings data models page', () => {
   );
 
   test('hides selected data source implementation metadata in model management', async () => {
-    renderApp('/settings/data-models?source=main_source');
+    renderApp('/settings/data-models?source=main');
 
     expect(
       await screen.findByRole('heading', { name: '主数据源' })
@@ -553,7 +587,7 @@ describe('Settings data models page', () => {
   test(
     'keeps runtime log model structural management read-only by backend capability',
     async () => {
-      renderApp('/settings/data-models?source=main_source');
+      renderApp('/settings/data-models?source=main');
 
       const editorDialog = await openDataModelEditorByTitle('Runtime Logs');
       expect(
@@ -974,7 +1008,7 @@ describe('Settings data models page', () => {
           code: 'companies',
           title: 'Companies',
           status: 'draft',
-          data_source_instance_id: 'source-1',
+          data_source_id: 'source-1',
           external_resource_key: 'crm.companies',
           external_table_id: 'crm.companies'
         }),
@@ -1187,7 +1221,7 @@ describe('Settings data models page', () => {
   test(
     'keeps system field physical metadata and deletion disabled by capability',
     async () => {
-      renderApp('/settings/data-models?source=main_source');
+      renderApp('/settings/data-models?source=main');
 
       const editorDialog = await openDataModelEditorByTitle('Attachments');
       expect(
@@ -1234,7 +1268,7 @@ describe('Settings data models page', () => {
   );
 
   test('keeps main source field creation focused on basic field settings', async () => {
-    renderApp('/settings/data-models?source=main_source');
+    renderApp('/settings/data-models?source=main');
 
     const editorDialog = await openDataModelEditorByTitle('Attachments');
     fireEvent.click(

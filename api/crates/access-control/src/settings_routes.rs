@@ -210,8 +210,8 @@ const DATA_MODELS_API_SCOPES: &[SettingsRouteApiScope] = &[
         methods: SettingsRouteApiMethods::ReadOnly,
     },
     SettingsRouteApiScope {
-        scope_id: "console.data_sources.instances",
-        path: "/api/console/data-sources/instances",
+        scope_id: "console.data_sources",
+        path: "/api/console/data-sources",
         path_match: SettingsRouteApiPathMatch::Prefix,
         methods: SettingsRouteApiMethods::Any,
     },

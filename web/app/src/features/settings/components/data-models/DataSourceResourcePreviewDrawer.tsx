@@ -14,9 +14,9 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 
 import type {
-  SettingsDataSourceConnection,
   SettingsDataSourcePreview,
-  SettingsDataSourceRemoteResource
+  SettingsDataSourceRemoteResource,
+  SettingsRuntimeExtensionDataSource
 } from '../../api/data-models';
 import { i18nText } from '../../../../shared/i18n/text';
 
@@ -145,12 +145,12 @@ function PreviewValue({
 }
 
 export function DataSourceResourcePreviewDrawer({
-  connection,
+  dataSource,
   resource,
   preview,
   onClose
 }: {
-  connection: SettingsDataSourceConnection;
+  dataSource: SettingsRuntimeExtensionDataSource;
   resource: SettingsDataSourceRemoteResource;
   preview: SettingsDataSourcePreview;
   onClose: () => void;
@@ -200,7 +200,7 @@ export function DataSourceResourcePreviewDrawer({
     >
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Space direction="vertical" size={2}>
-          <Typography.Text>{connection.display_name}</Typography.Text>
+          <Typography.Text>{dataSource.display_name}</Typography.Text>
           <Typography.Text type="secondary">
             <code className="data-model-panel__code-badge">
               {resource.resource_key}

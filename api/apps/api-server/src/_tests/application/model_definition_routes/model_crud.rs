@@ -91,7 +91,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/models?source_kind=main_source")
+                .uri("/api/console/models?data_source_id=main")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -119,7 +119,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
             && model["source_kind"].as_str() == Some("main_source")
     }));
     assert!(models.iter().all(|model| {
-        model["data_source_instance_id"].is_null()
+        model["data_source_id"].as_str() == Some("main")
             && model["source_kind"].as_str() == Some("main_source")
     }));
     let users_model = models
@@ -532,7 +532,7 @@ async fn model_definition_routes_filter_models_by_title_code_or_table_id() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/models?source_kind=main_source&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer%22%7D%7D")
+                .uri("/api/console/models?data_source_id=main&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22customer%22%7D%7D")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -620,7 +620,7 @@ async fn model_definition_routes_batch_delete_models_from_action_endpoint() {
     let list_response = app
         .oneshot(
             Request::builder()
-                .uri("/api/console/models?source_kind=main_source&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22orders%22%7D%7D")
+                .uri("/api/console/models?data_source_id=main&filter=%7B%22code%22%3A%7B%22%24includes%22%3A%22orders%22%7D%7D")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

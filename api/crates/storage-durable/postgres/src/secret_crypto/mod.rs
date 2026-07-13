@@ -1,8 +1,10 @@
-use super::*;
+use anyhow::{anyhow, bail, Result};
 use chacha20poly1305::{
     aead::{Aead, AeadCore, KeyInit, OsRng},
     XChaCha20Poly1305,
 };
+use control_plane::errors::ControlPlaneError;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 const AEAD_ALGORITHM: &str = "aead_xchacha20poly1305_v1";
@@ -20,7 +22,7 @@ pub(crate) fn encrypt_secret_json(secret_json: &Value, master_key: &str) -> Resu
     let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
     let ciphertext = cipher
         .encrypt(&nonce, plaintext.as_slice())
-        .map_err(|_| anyhow!("failed to encrypt provider secret"))?;
+        .map_err(|_| anyhow!("failed to encrypt secret"))?;
 
     Ok(json!({
         "algorithm": AEAD_ALGORITHM,
@@ -113,7 +115,7 @@ fn xor_hex(bytes: &[u8], key: &[u8]) -> String {
         .collect::<String>()
 }
 
-pub(super) fn xor_hex_decode(ciphertext: &str, key: &[u8]) -> Result<Vec<u8>> {
+fn xor_hex_decode(ciphertext: &str, key: &[u8]) -> Result<Vec<u8>> {
     let encrypted = hex_decode(ciphertext)?;
 
     Ok(encrypted
@@ -172,5 +174,15 @@ mod tests {
         });
 
         assert_eq!(decrypt_secret_json(&legacy, "legacy-key").unwrap(), secret);
+    }
+
+    #[test]
+    fn decrypt_secret_rejects_plaintext_json() {
+        let error = decrypt_secret_json(&json!({"api_key": "plaintext"}), "master-key")
+            .expect_err("shared crypto must not accept plaintext");
+
+        assert!(error
+            .to_string()
+            .contains("missing secret encryption algorithm"));
     }
 }

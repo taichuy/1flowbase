@@ -231,7 +231,19 @@ const hostInfrastructureApi = vi.hoisted(() => ({
 }));
 
 const dataModelsApi = vi.hoisted(() => ({
-  settingsDataSourcesQueryKey: ['settings', 'data-models', 'sources'],
+  settingsDataSourcesQueryKey: ['settings', 'data-models', 'data-sources'],
+  settingsDataSourceCatalogQueryKey: [
+    'settings',
+    'data-models',
+    'data-source-catalog'
+  ],
+  settingsDataSourceResourcesQueryKey: vi.fn((dataSourceId: string) => [
+    'settings',
+    'data-models',
+    'data-sources',
+    dataSourceId,
+    'resources'
+  ]),
   settingsDataModelsQueryKey: vi.fn((sourceId: string) => [
     'settings',
     'data-models',
@@ -256,7 +268,14 @@ const dataModelsApi = vi.hoisted(() => ({
     'record-preview',
     modelCode
   ]),
-  fetchSettingsDataSourceInstances: vi.fn(),
+  fetchSettingsDataSources: vi.fn(),
+  fetchSettingsDataSourceCatalog: vi.fn(),
+  createSettingsDataSource: vi.fn(),
+  validateSettingsDataSource: vi.fn(),
+  fetchSettingsDataSourceResources: vi.fn(),
+  discoverSettingsDataSourceResources: vi.fn(),
+  previewSettingsDataSourceResource: vi.fn(),
+  mapSettingsDataSourceResourceToModel: vi.fn(),
   updateSettingsDataSourceDefaults: vi.fn(),
   fetchSettingsDataModels: vi.fn(),
   createSettingsDataModel: vi.fn(),
@@ -733,23 +752,28 @@ describe('SettingsPage', () => {
         entries: []
       }
     );
-    dataModelsApi.fetchSettingsDataSourceInstances.mockResolvedValue([
+    dataModelsApi.fetchSettingsDataSources.mockResolvedValue([
       {
-        id: 'main_source',
-        source_kind: 'main_source',
-        installation_id: 'main_source',
-        source_code: 'main_source',
+        id: 'main',
         display_name: '主数据源',
         status: 'ready',
+        enabled: true,
+        fixed: true,
         default_data_model_status: 'published',
-        config_json: {},
-        secret_ref: null,
-        secret_version: null,
-        catalog_refresh_status: null,
-        catalog_last_error_message: null,
-        catalog_refreshed_at: null
+        capabilities: {
+          can_update_defaults: true,
+          can_create_data_model: true,
+          can_validate: false,
+          can_discover_resources: false,
+          can_preview_resources: false,
+          can_map_resources: false
+        },
+        backend: { kind: 'core', durable_backend: 'postgresql' }
       }
     ]);
+    dataModelsApi.fetchSettingsDataSourceCatalog.mockResolvedValue({
+      entries: []
+    });
     dataModelsApi.fetchSettingsDataModels.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataModelScopeGrants.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataModelAdvisorFindings.mockResolvedValue([]);
@@ -1518,7 +1542,7 @@ describe('SettingsPage', () => {
       'href',
       '/settings/data-models'
     );
-    expect(dataModelsApi.fetchSettingsDataSourceInstances).toHaveBeenCalled();
+    expect(dataModelsApi.fetchSettingsDataSources).toHaveBeenCalled();
     expect(
       await screen.findByText('主数据源', {}, { timeout: 10000 })
     ).toBeInTheDocument();
