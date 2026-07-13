@@ -80,6 +80,7 @@ fn explicit_settings_feature_actors_see_their_registered_navigation_item() {
         "host-infrastructure",
         "memory-observation",
         "applications",
+        "files",
     ] {
         let actor = scoped_actor(&[&format!("settings_feature.access.system.{feature}")]);
         let navigation = accessible_console_navigation(&actor);

@@ -88,18 +88,18 @@ fn to_response(record: domain::FileStorageRecord) -> FileStorageResponse {
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route(
-            "/file-storages",
+            "/settings/files/storages",
             get(list_file_storages).post(create_file_storage),
         )
         .route(
-            "/file-storages/:id",
+            "/settings/files/storages/:id",
             axum::routing::put(update_file_storage).delete(delete_file_storage),
         )
 }
 
 #[utoipa::path(
     get,
-    path = "/api/console/file-storages",
+    path = "/api/console/settings/files/storages",
     responses((status = 200, body = [FileStorageResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_file_storages(
@@ -118,7 +118,7 @@ pub async fn list_file_storages(
 
 #[utoipa::path(
     post,
-    path = "/api/console/file-storages",
+    path = "/api/console/settings/files/storages",
     request_body = CreateFileStorageBody,
     responses((status = 201, body = FileStorageResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
@@ -151,7 +151,7 @@ pub async fn create_file_storage(
 
 #[utoipa::path(
     put,
-    path = "/api/console/file-storages/{id}",
+    path = "/api/console/settings/files/storages/{id}",
     request_body = UpdateFileStorageBody,
     params(("id" = String, Path, description = "File storage id")),
     responses((status = 200, body = FileStorageResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
@@ -182,7 +182,7 @@ pub async fn update_file_storage(
 
 #[utoipa::path(
     delete,
-    path = "/api/console/file-storages/{id}",
+    path = "/api/console/settings/files/storages/{id}",
     params(("id" = String, Path, description = "File storage id")),
     responses((status = 204), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]

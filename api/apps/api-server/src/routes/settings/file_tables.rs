@@ -8,8 +8,9 @@ use axum::{
 };
 use control_plane::file_management::{
     BindFileTableStorageCommand, CreateFileTableCommand, DeleteFileTableCommand, FileTableService,
+    FileTableWithStorageTitle,
 };
-use control_plane::ports::{FileManagementRepository, RuntimeRegistrySync};
+use control_plane::ports::RuntimeRegistrySync;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -53,19 +54,9 @@ fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }
 
-async fn to_response<R>(
-    repository: &R,
-    record: domain::FileTableRecord,
-) -> Result<FileTableResponse, ApiError>
-where
-    R: FileManagementRepository,
-{
-    let bound_storage_title = repository
-        .get_file_storage(record.bound_storage_id)
-        .await?
-        .map(|storage| storage.title);
-
-    Ok(FileTableResponse {
+fn to_response(result: FileTableWithStorageTitle) -> FileTableResponse {
+    let record = result.table;
+    FileTableResponse {
         id: record.id.to_string(),
         code: record.code,
         title: record.title,
@@ -76,26 +67,29 @@ where
         scope_id: record.scope_id.to_string(),
         model_definition_id: record.model_definition_id.to_string(),
         bound_storage_id: record.bound_storage_id.to_string(),
-        bound_storage_title,
+        bound_storage_title: result.bound_storage_title,
         is_builtin: record.is_builtin,
         is_default: record.is_default,
         status: record.status,
-    })
+    }
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route(
-            "/file-tables",
+            "/settings/files/tables",
             get(list_file_tables).post(create_file_table),
         )
-        .route("/file-tables/:id", delete(delete_file_table))
-        .route("/file-tables/:id/binding", put(bind_file_table_storage))
+        .route("/settings/files/tables/:id", delete(delete_file_table))
+        .route(
+            "/settings/files/tables/:id/binding",
+            put(bind_file_table_storage),
+        )
 }
 
 #[utoipa::path(
     get,
-    path = "/api/console/file-tables",
+    path = "/api/console/settings/files/tables",
     responses((status = 200, body = [FileTableResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_file_tables(
@@ -106,18 +100,15 @@ pub async fn list_file_tables(
     let tables = FileTableService::new(state.store.clone())
         .list_tables(context.user.id)
         .await?;
-    let mut response = Vec::with_capacity(tables.len());
 
-    for table in tables {
-        response.push(to_response(&state.store, table).await?);
-    }
-
-    Ok(Json(ApiSuccess::new(response)))
+    Ok(Json(ApiSuccess::new(
+        tables.into_iter().map(to_response).collect(),
+    )))
 }
 
 #[utoipa::path(
     post,
-    path = "/api/console/file-tables",
+    path = "/api/console/settings/files/tables",
     request_body = CreateFileTableBody,
     responses((status = 201, body = FileTableResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
@@ -142,13 +133,13 @@ pub async fn create_file_table(
 
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_response(&state.store, created).await?)),
+        Json(ApiSuccess::new(to_response(created))),
     ))
 }
 
 #[utoipa::path(
     put,
-    path = "/api/console/file-tables/{id}/binding",
+    path = "/api/console/settings/files/tables/{id}/binding",
     request_body = BindFileTableStorageBody,
     params(("id" = String, Path, description = "File table id")),
     responses((status = 200, body = FileTableResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
@@ -170,14 +161,12 @@ pub async fn bind_file_table_storage(
         })
         .await?;
 
-    Ok(Json(ApiSuccess::new(
-        to_response(&state.store, updated).await?,
-    )))
+    Ok(Json(ApiSuccess::new(to_response(updated))))
 }
 
 #[utoipa::path(
     delete,
-    path = "/api/console/file-tables/{id}",
+    path = "/api/console/settings/files/tables/{id}",
     params(("id" = String, Path, description = "File table id")),
     responses((status = 204), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]

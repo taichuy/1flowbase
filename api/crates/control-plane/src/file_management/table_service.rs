@@ -27,6 +27,12 @@ pub struct DeleteFileTableCommand {
     pub file_table_id: Uuid,
 }
 
+#[derive(Debug)]
+pub struct FileTableWithStorageTitle {
+    pub table: domain::FileTableRecord,
+    pub bound_storage_title: Option<String>,
+}
+
 pub struct FileTableService<R> {
     repository: R,
 }
@@ -39,27 +45,27 @@ where
         Self { repository }
     }
 
-    pub async fn list_tables(&self, actor_user_id: Uuid) -> Result<Vec<domain::FileTableRecord>> {
+    pub async fn list_tables(&self, actor_user_id: Uuid) -> Result<Vec<FileTableWithStorageTitle>> {
         let actor = self
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        if !actor.is_root
-            && !actor.has_permission("file_table.view.all")
-            && !actor.has_permission("file_table.view.own")
-        {
-            return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
-        }
 
-        self.repository
+        let tables = self
+            .repository
             .list_visible_file_tables(actor.current_workspace_id)
-            .await
+            .await?;
+        let mut visible_tables = Vec::with_capacity(tables.len());
+        for table in tables {
+            visible_tables.push(self.with_storage_title(table).await?);
+        }
+        Ok(visible_tables)
     }
 
     pub async fn bind_storage(
         &self,
         command: BindFileTableStorageCommand,
-    ) -> Result<domain::FileTableRecord> {
+    ) -> Result<FileTableWithStorageTitle> {
         let actor = FileManagementRepository::load_actor_context_for_user(
             &self.repository,
             command.actor_user_id,
@@ -69,13 +75,15 @@ where
             return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
         }
 
-        self.repository
+        let table = self
+            .repository
             .update_file_table_binding(&UpdateFileStorageBindingInput {
                 actor_user_id: command.actor_user_id,
                 file_table_id: command.file_table_id,
                 bound_storage_id: command.bound_storage_id,
             })
-            .await
+            .await?;
+        self.with_storage_title(table).await
     }
 
     pub async fn delete_table(&self, command: DeleteFileTableCommand) -> Result<()> {
@@ -95,6 +103,21 @@ where
             })
             .await
     }
+
+    async fn with_storage_title(
+        &self,
+        table: domain::FileTableRecord,
+    ) -> Result<FileTableWithStorageTitle> {
+        let bound_storage_title = self
+            .repository
+            .get_file_storage(table.bound_storage_id)
+            .await?
+            .map(|storage| storage.title);
+        Ok(FileTableWithStorageTitle {
+            table,
+            bound_storage_title,
+        })
+    }
 }
 
 impl<R> FileTableService<R>
@@ -104,15 +127,12 @@ where
     pub async fn create_table(
         &self,
         command: CreateFileTableCommand,
-    ) -> Result<domain::FileTableRecord> {
+    ) -> Result<FileTableWithStorageTitle> {
         let actor = FileManagementRepository::load_actor_context_for_user(
             &self.repository,
             command.actor_user_id,
         )
         .await?;
-        if !actor.is_root && !actor.has_permission("file_table.create.all") {
-            return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
-        }
 
         let default_storage = self
             .repository
@@ -120,7 +140,7 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("file_storage"))?;
 
-        FileTableProvisioningService::new(self.repository.clone())
+        let table = FileTableProvisioningService::new(self.repository.clone())
             .create_workspace_file_table(CreateWorkspaceFileTableCommand {
                 actor_user_id: command.actor_user_id,
                 workspace_id: actor.current_workspace_id,
@@ -128,6 +148,7 @@ where
                 title: command.title,
                 default_storage_id: default_storage.id,
             })
-            .await
+            .await?;
+        self.with_storage_title(table).await
     }
 }

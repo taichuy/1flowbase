@@ -14,6 +14,8 @@ pub const SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION: &str =
 pub const SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID: &str = "system.auth-center";
 pub const SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.auth-center";
+pub const SYSTEM_FILES_SETTINGS_FEATURE_ID: &str = "system.files";
+pub const SYSTEM_FILES_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.access.system.files";
 pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_ID: &str = "system.host-infrastructure";
 pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.host-infrastructure";
@@ -144,6 +146,35 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                     "DELETE",
                     "/api/console/settings/auth-center/authenticators/{id}",
                 ),
+            ]),
+        },
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_FILES_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.files".to_string(),
+                surface_key: "files".to_string(),
+                path: "/settings/files".to_string(),
+                label_key: "auto.file_management".to_string(),
+                order: 800,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/files/storages"),
+                ("POST", "/api/console/settings/files/storages"),
+                ("PUT", "/api/console/settings/files/storages/{id}"),
+                ("DELETE", "/api/console/settings/files/storages/{id}"),
+                ("GET", "/api/console/settings/files/tables"),
+                ("POST", "/api/console/settings/files/tables"),
+                (
+                    "PUT",
+                    "/api/console/settings/files/tables/{id}/binding",
+                ),
+                ("DELETE", "/api/console/settings/files/tables/{id}"),
             ]),
         },
         SettingsFeatureRegistration {

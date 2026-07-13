@@ -238,9 +238,9 @@ async fn openapi_contains_file_management_routes() {
     let paths = openapi_paths().await;
 
     for route in [
-        "/api/console/file-storages",
-        "/api/console/file-tables",
-        "/api/console/file-tables/{id}/binding",
+        "/api/console/settings/files/storages",
+        "/api/console/settings/files/tables",
+        "/api/console/settings/files/tables/{id}/binding",
         "/api/console/files/upload",
         "/api/console/files/{file_table_id}/records/{record_id}/content",
     ] {

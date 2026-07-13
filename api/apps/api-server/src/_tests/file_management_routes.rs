@@ -1,6 +1,6 @@
 use crate::_tests::support::{
-    create_member, login_and_capture_cookie, replace_member_roles, test_app,
-    test_app_with_database_url,
+    create_member, create_role, login_and_capture_cookie, replace_member_roles,
+    replace_role_permissions, seed_workspace, test_app, test_app_with_database_url,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -9,6 +9,8 @@ use axum::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
+
+const FILES_FEATURE_PERMISSION: &str = "settings_feature.access.system.files";
 
 fn build_file_upload_body(
     boundary: &str,
@@ -82,6 +84,297 @@ async fn revoke_model_grant(database_url: &str, model_id: &str, workspace_id: &s
     .unwrap();
 }
 
+async fn register_files_feature_permission(database_url: &str) {
+    let store = storage_durable::build_main_durable_postgres(database_url)
+        .await
+        .expect("test database should be available")
+        .store;
+    store
+        .upsert_permission_catalog(&[domain::PermissionDefinition {
+            code: FILES_FEATURE_PERMISSION.to_string(),
+            resource: "settings_feature".to_string(),
+            action: "access".to_string(),
+            scope: "system.files".to_string(),
+            name: "settings_feature:access:system.files".to_string(),
+        }])
+        .await
+        .expect("files feature permission should be seeded");
+}
+
+// AC-003/AC-004: system.files alone may list the current workspace's file tables,
+// while system file-storage administration remains a root-only domain boundary.
+#[tokio::test]
+async fn settings_feature_files_route_keeps_storage_root_boundary() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    register_files_feature_permission(&database_url).await;
+    create_role(&app, &root_cookie, &root_csrf, "files_feature_only").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "files_feature_only",
+        &[FILES_FEATURE_PERMISSION],
+    )
+    .await;
+    let actor_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "files-feature-actor",
+        "temp-pass",
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &actor_id,
+        &["files_feature_only"],
+    )
+    .await;
+    let (actor_cookie, actor_csrf) =
+        login_and_capture_cookie(&app, "files-feature-actor", "temp-pass").await;
+
+    let create_table = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/files/tables")
+                .header("cookie", &actor_cookie)
+                .header("x-csrf-token", &actor_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "code": "feature_owned_assets",
+                        "title": "Feature owned assets"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_table.status(), StatusCode::CREATED);
+    let created_table = response_json(create_table).await;
+    let current_table_id = created_table["data"]["id"].as_str().unwrap().to_string();
+    let current_workspace = current_workspace_id(&app, &actor_cookie).await;
+    assert_eq!(created_table["data"]["scope_kind"], "workspace");
+    assert_eq!(created_table["data"]["scope_id"], current_workspace);
+
+    let outside_workspace = seed_workspace(&database_url, "Outside files").await;
+    let outside_table_id = Uuid::now_v7();
+    let store = storage_durable::build_main_durable_postgres(&database_url)
+        .await
+        .unwrap()
+        .store;
+    sqlx::query(
+        r#"
+        insert into file_tables (
+            id, code, title, scope_kind, scope_id, model_definition_id,
+            bound_storage_id, is_builtin, is_default, status, created_by, updated_by
+        )
+        select
+            $1, $2, 'Outside assets', 'workspace', $3, model_definition_id,
+            bound_storage_id, false, false, status, created_by, updated_by
+        from file_tables
+        where id = $4
+        "#,
+    )
+    .bind(outside_table_id)
+    .bind(format!("outside_assets_{}", outside_table_id.simple()))
+    .bind(outside_workspace)
+    .bind(Uuid::parse_str(&current_table_id).unwrap())
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let tables = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/files/tables")
+                .header("cookie", &actor_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(tables.status(), StatusCode::OK);
+    let tables = response_json(tables).await;
+    assert!(tables["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|table| table["id"] == current_table_id));
+    assert!(!tables["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|table| table["id"] == outside_table_id.to_string()));
+
+    let storages = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/files/storages")
+                .header("cookie", &actor_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(storages.status(), StatusCode::FORBIDDEN);
+
+    let storage_write = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/files/storages")
+                .header("cookie", &actor_cookie)
+                .header("x-csrf-token", &actor_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "code": "workspace_forbidden",
+                        "title": "Workspace forbidden",
+                        "driver_type": "local",
+                        "enabled": true,
+                        "is_default": false,
+                        "config_json": { "root_path": "/tmp/workspace-forbidden" },
+                        "rule_json": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(storage_write.status(), StatusCode::FORBIDDEN);
+
+    let binding_write = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/settings/files/tables/{current_table_id}/binding"
+                ))
+                .header("cookie", &actor_cookie)
+                .header("x-csrf-token", &actor_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "bound_storage_id": Uuid::now_v7() }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(binding_write.status(), StatusCode::FORBIDDEN);
+
+    let delete_table = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/settings/files/tables/{current_table_id}"
+                ))
+                .header("cookie", &actor_cookie)
+                .header("x-csrf-token", &actor_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(delete_table.status(), StatusCode::FORBIDDEN);
+}
+
+// AC-002/AC-003/AC-011: legacy business actions do not authorize system.files,
+// unregistered Settings routes fail closed, and the old HTTP contract is removed.
+#[tokio::test]
+async fn settings_feature_files_route_rejects_legacy_actions_and_removes_old_http_routes() {
+    let (app, _) = test_app_with_database_url().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_role(&app, &root_cookie, &root_csrf, "legacy_files_actions").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "legacy_files_actions",
+        &[
+            "file_storage.view.all",
+            "file_storage.manage.all",
+            "file_table.view.all",
+            "file_table.view.own",
+            "file_table.create.all",
+            "file_table.delete.all",
+            "file_table.delete.own",
+            "file_table.bind.all",
+        ],
+    )
+    .await;
+    let actor_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "legacy-files-actor",
+        "temp-pass",
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &actor_id,
+        &["legacy_files_actions"],
+    )
+    .await;
+    let (actor_cookie, _) = login_and_capture_cookie(&app, "legacy-files-actor", "temp-pass").await;
+
+    let action_only = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/files/tables")
+                .header("cookie", &actor_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(action_only.status(), StatusCode::FORBIDDEN);
+
+    let unregistered = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/files/unregistered")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unregistered.status(), StatusCode::FORBIDDEN);
+
+    for legacy_path in ["/api/console/file-storages", "/api/console/file-tables"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(legacy_path)
+                    .header("cookie", &root_cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{legacy_path}");
+    }
+}
+
 #[tokio::test]
 async fn file_management_routes_create_workspace_table_upload_and_read_by_storage_snapshot() {
     let app = test_app().await;
@@ -96,7 +389,7 @@ async fn file_management_routes_create_workspace_table_upload_and_read_by_storag
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/file-storages")
+                .uri("/api/console/settings/files/storages")
                 .header("cookie", &root_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -115,7 +408,7 @@ async fn file_management_routes_create_workspace_table_upload_and_read_by_storag
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/file-tables")
+                .uri("/api/console/settings/files/tables")
                 .header("cookie", &admin_cookie)
                 .header("x-csrf-token", &admin_csrf)
                 .header("content-type", "application/json")
@@ -149,7 +442,7 @@ async fn file_management_routes_create_workspace_table_upload_and_read_by_storag
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/file-storages")
+                .uri("/api/console/settings/files/storages")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -227,7 +520,9 @@ async fn file_management_routes_create_workspace_table_upload_and_read_by_storag
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/file-tables/{file_table_id}/binding"))
+                .uri(format!(
+                    "/api/console/settings/files/tables/{file_table_id}/binding"
+                ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -314,7 +609,7 @@ async fn file_routes_reject_upload_and_read_without_persisted_scope_grant() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/file-storages")
+                .uri("/api/console/settings/files/storages")
                 .header("cookie", &root_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -328,7 +623,7 @@ async fn file_routes_reject_upload_and_read_without_persisted_scope_grant() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/file-tables")
+                .uri("/api/console/settings/files/tables")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -474,7 +769,7 @@ async fn file_management_settings_routes_enforce_root_only_storage_and_binding_r
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/file-tables")
+                .uri("/api/console/settings/files/tables")
                 .header("cookie", &admin_cookie)
                 .header("x-csrf-token", &admin_csrf)
                 .header("content-type", "application/json")
@@ -498,7 +793,7 @@ async fn file_management_settings_routes_enforce_root_only_storage_and_binding_r
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/file-storages")
+                .uri("/api/console/settings/files/storages")
                 .header("cookie", &root_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -517,7 +812,7 @@ async fn file_management_settings_routes_enforce_root_only_storage_and_binding_r
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/file-tables")
+                .uri("/api/console/settings/files/tables")
                 .header("cookie", &admin_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -536,7 +831,7 @@ async fn file_management_settings_routes_enforce_root_only_storage_and_binding_r
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/file-storages")
+                .uri("/api/console/settings/files/storages")
                 .header("cookie", &admin_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -550,7 +845,7 @@ async fn file_management_settings_routes_enforce_root_only_storage_and_binding_r
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/file-storages")
+                .uri("/api/console/settings/files/storages")
                 .header("cookie", &admin_cookie)
                 .header("x-csrf-token", &admin_csrf)
                 .header("content-type", "application/json")
@@ -580,7 +875,9 @@ async fn file_management_settings_routes_enforce_root_only_storage_and_binding_r
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/file-tables/{file_table_id}/binding"))
+                .uri(format!(
+                    "/api/console/settings/files/tables/{file_table_id}/binding"
+                ))
                 .header("cookie", &admin_cookie)
                 .header("x-csrf-token", &admin_csrf)
                 .header("content-type", "application/json")
@@ -598,7 +895,7 @@ async fn file_management_settings_routes_enforce_root_only_storage_and_binding_r
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/file-storages/00000000-0000-0000-0000-000000000001")
+                .uri("/api/console/settings/files/storages/00000000-0000-0000-0000-000000000001")
                 .header("cookie", &admin_cookie)
                 .header("x-csrf-token", &admin_csrf)
                 .header("content-type", "application/json")
@@ -614,7 +911,7 @@ async fn file_management_settings_routes_enforce_root_only_storage_and_binding_r
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/api/console/file-storages/00000000-0000-0000-0000-000000000001")
+                .uri("/api/console/settings/files/storages/00000000-0000-0000-0000-000000000001")
                 .header("cookie", &admin_cookie)
                 .header("x-csrf-token", &admin_csrf)
                 .body(Body::empty())
@@ -629,7 +926,9 @@ async fn file_management_settings_routes_enforce_root_only_storage_and_binding_r
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/console/file-tables/{file_table_id}"))
+                .uri(format!(
+                    "/api/console/settings/files/tables/{file_table_id}"
+                ))
                 .header("cookie", &admin_cookie)
                 .header("x-csrf-token", &admin_csrf)
                 .body(Body::empty())
@@ -651,7 +950,7 @@ async fn file_management_settings_routes_allow_root_to_update_and_delete_storage
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/file-storages")
+                .uri("/api/console/settings/files/storages")
                 .header("cookie", &root_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -667,7 +966,7 @@ async fn file_management_settings_routes_allow_root_to_update_and_delete_storage
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/file-tables")
+                .uri("/api/console/settings/files/tables")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -693,7 +992,7 @@ async fn file_management_settings_routes_allow_root_to_update_and_delete_storage
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/file-storages")
+                .uri("/api/console/settings/files/storages")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -724,7 +1023,7 @@ async fn file_management_settings_routes_allow_root_to_update_and_delete_storage
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/file-storages/{storage_id}"))
+                .uri(format!("/api/console/settings/files/storages/{storage_id}"))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -767,7 +1066,9 @@ async fn file_management_settings_routes_allow_root_to_update_and_delete_storage
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/console/file-tables/{file_table_id}"))
+                .uri(format!(
+                    "/api/console/settings/files/tables/{file_table_id}"
+                ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .body(Body::empty())
@@ -782,7 +1083,7 @@ async fn file_management_settings_routes_allow_root_to_update_and_delete_storage
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/file-tables")
+                .uri("/api/console/settings/files/tables")
                 .header("cookie", &root_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -804,7 +1105,7 @@ async fn file_management_settings_routes_allow_root_to_update_and_delete_storage
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/console/file-storages/{storage_id}"))
+                .uri(format!("/api/console/settings/files/storages/{storage_id}"))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .body(Body::empty())
@@ -819,7 +1120,7 @@ async fn file_management_settings_routes_allow_root_to_update_and_delete_storage
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/file-storages")
+                .uri("/api/console/settings/files/storages")
                 .header("cookie", &root_cookie)
                 .body(Body::empty())
                 .unwrap(),

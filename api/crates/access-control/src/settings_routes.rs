@@ -62,21 +62,6 @@ pub struct SettingsRouteSpec {
 
 const SYSTEM_RUNTIME_PERMISSIONS: &[&str] = &["system_runtime.view.all"];
 const API_REFERENCE_PERMISSIONS: &[&str] = &["api_reference.view.all"];
-const FILES_VISIBILITY_PERMISSIONS: &[&str] = &[
-    "file_table.view.all",
-    "file_table.view.own",
-    "file_table.create.all",
-];
-const FILES_ALL_PERMISSIONS: &[&str] = &[
-    "file_storage.view.all",
-    "file_storage.manage.all",
-    "file_table.view.all",
-    "file_table.view.own",
-    "file_table.create.all",
-    "file_table.delete.all",
-    "file_table.delete.own",
-    "file_table.bind.all",
-];
 const STATE_MODEL_VISIBILITY_PERMISSIONS: &[&str] = &[
     "state_model.view.all",
     "state_model.view.own",
@@ -143,21 +128,6 @@ const SYSTEM_RUNTIME_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiSc
     path_match: SettingsRouteApiPathMatch::Prefix,
     methods: SettingsRouteApiMethods::ReadOnly,
 }];
-
-const FILES_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.file_storages",
-        path: "/api/console/file-storages",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.file_tables",
-        path: "/api/console/file-tables",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-];
 
 const DATA_MODELS_API_SCOPES: &[SettingsRouteApiScope] = &[
     SettingsRouteApiScope {
@@ -235,19 +205,6 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(SYSTEM_RUNTIME_PERMISSIONS),
         implied_permissions: SYSTEM_RUNTIME_PERMISSIONS,
         api_scopes: SYSTEM_RUNTIME_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.files",
-        surface_key: "files",
-        path: "/settings/files",
-        label_key: "auto.file_management",
-        order: 800,
-        visibility_permission_code: "settings_route.visible.settings.files",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(
-            FILES_VISIBILITY_PERMISSIONS,
-        ),
-        implied_permissions: FILES_ALL_PERMISSIONS,
-        api_scopes: FILES_API_SCOPES,
     },
     SettingsRouteSpec {
         route_id: "settings.data-models",

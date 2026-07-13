@@ -20,11 +20,22 @@ const AUTH_CENTER_FEATURE: &str = "settings_feature.access.system.auth-center";
 const HOST_INFRASTRUCTURE_FEATURE: &str = "settings_feature.access.system.host-infrastructure";
 const MEMORY_OBSERVATION_FEATURE: &str = "settings_feature.access.system.memory-observation";
 const APPLICATIONS_FEATURE: &str = "settings_feature.access.system.applications";
+const FILES_SETTINGS_MIGRATION_VERSION: i64 = 20260714170000;
+const FILES_VISIBILITY: &str = "settings_route.visible.settings.files";
+const FILES_FEATURE: &str = "settings_feature.access.system.files";
 const UNMIGRATED_VISIBILITIES: &[&str] = &[
     "settings_route.visible.settings.docs",
     "settings_route.visible.settings.api-key-authentication",
     "settings_route.visible.settings.system-runtime",
     "settings_route.visible.settings.files",
+    "settings_route.visible.settings.data-models",
+    "settings_route.visible.settings.model-providers",
+    "settings_route.visible.settings.mcp-management",
+];
+const REMAINING_VISIBILITIES_AFTER_FILES: &[&str] = &[
+    "settings_route.visible.settings.docs",
+    "settings_route.visible.settings.api-key-authentication",
+    "settings_route.visible.settings.system-runtime",
     "settings_route.visible.settings.data-models",
     "settings_route.visible.settings.model-providers",
     "settings_route.visible.settings.mcp-management",
@@ -81,6 +92,27 @@ fn before_explicit_settings_feature_migrator() -> Migrator {
 async fn explicit_settings_historical_pool() -> PgPool {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     before_explicit_settings_feature_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    pool
+}
+
+fn before_files_settings_feature_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < FILES_SETTINGS_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+async fn files_settings_historical_pool() -> PgPool {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    before_files_settings_feature_migrator()
         .run(&pool)
         .await
         .unwrap();
@@ -238,6 +270,37 @@ async fn seed_explicit_settings_historical_permissions(pool: &PgPool) {
         insert_permission(pool, code, resource, action, scope).await;
     }
     for code in UNMIGRATED_VISIBILITIES {
+        insert_permission(
+            pool,
+            code,
+            "settings_route",
+            "visible",
+            code.trim_start_matches("settings_route.visible."),
+        )
+        .await;
+    }
+}
+
+async fn seed_files_settings_historical_permissions(pool: &PgPool) {
+    for (code, resource, action, scope) in [
+        (
+            FILES_VISIBILITY,
+            "settings_route",
+            "visible",
+            "settings.files",
+        ),
+        ("file_storage.view.all", "file_storage", "view", "all"),
+        ("file_storage.manage.all", "file_storage", "manage", "all"),
+        ("file_table.view.all", "file_table", "view", "all"),
+        ("file_table.view.own", "file_table", "view", "own"),
+        ("file_table.create.all", "file_table", "create", "all"),
+        ("file_table.delete.all", "file_table", "delete", "all"),
+        ("file_table.delete.own", "file_table", "delete", "own"),
+        ("file_table.bind.all", "file_table", "bind", "all"),
+    ] {
+        insert_permission(pool, code, resource, action, scope).await;
+    }
+    for code in REMAINING_VISIBILITIES_AFTER_FILES {
         insert_permission(
             pool,
             code,
@@ -416,7 +479,10 @@ async fn migration_reconciles_four_explicit_settings_features_and_preserves_othe
         grant(&pool, untouched_role, workspace.id, code).await;
     }
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    before_files_settings_feature_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
 
     assert_eq!(
         permission_codes(&pool, auth_role).await,
@@ -523,7 +589,10 @@ async fn explicit_settings_migration_rolls_back_when_legacy_cleanup_fails() {
     .await
     .unwrap();
 
-    let error = sqlx::migrate!("./migrations").run(&pool).await.unwrap_err();
+    let error = before_files_settings_feature_migrator()
+        .run(&pool)
+        .await
+        .unwrap_err();
     assert!(error
         .to_string()
         .contains("forced explicit settings cleanup failure"));
@@ -539,6 +608,114 @@ async fn explicit_settings_migration_rolls_back_when_legacy_cleanup_fails() {
                 MEMORY_OBSERVATION_FEATURE,
                 APPLICATIONS_FEATURE,
             ])
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(new_definition_count, 0);
+}
+
+#[tokio::test]
+async fn migration_reconciles_files_grants_and_preserves_remaining_six_visibilities() {
+    let pool = files_settings_historical_pool().await;
+    let store = PgControlPlaneStore::new(pool.clone());
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "Files settings migration")
+        .await
+        .unwrap();
+    seed_files_settings_historical_permissions(&pool).await;
+
+    let files_role = insert_role(&pool, workspace.id, "legacy_files").await;
+    let untouched_role = insert_role(&pool, workspace.id, "legacy_remaining_settings").await;
+    grant(&pool, files_role, workspace.id, FILES_VISIBILITY).await;
+    grant(&pool, files_role, workspace.id, "file_table.view.all").await;
+    for code in REMAINING_VISIBILITIES_AFTER_FILES {
+        grant(&pool, untouched_role, workspace.id, code).await;
+    }
+
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+    assert_eq!(
+        permission_codes(&pool, files_role).await,
+        BTreeSet::from([
+            FILES_FEATURE.to_string(),
+            "file_storage.view.all".to_string(),
+            "file_storage.manage.all".to_string(),
+            "file_table.view.all".to_string(),
+            "file_table.view.own".to_string(),
+            "file_table.create.all".to_string(),
+            "file_table.delete.all".to_string(),
+            "file_table.delete.own".to_string(),
+            "file_table.bind.all".to_string(),
+        ])
+    );
+    assert_eq!(
+        permission_codes(&pool, untouched_role).await,
+        REMAINING_VISIBILITIES_AFTER_FILES
+            .iter()
+            .map(|code| (*code).to_string())
+            .collect()
+    );
+
+    let removed_legacy_definitions: i64 =
+        sqlx::query_scalar("select count(*) from permission_definitions where code = $1")
+            .bind(FILES_VISIBILITY)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(removed_legacy_definitions, 0);
+
+    let new_feature_only = insert_role(&pool, workspace.id, "new_files_feature_only").await;
+    grant(&pool, new_feature_only, workspace.id, FILES_FEATURE).await;
+    assert_eq!(
+        permission_codes(&pool, new_feature_only).await,
+        BTreeSet::from([FILES_FEATURE.to_string()])
+    );
+}
+
+#[tokio::test]
+async fn files_settings_migration_rolls_back_when_legacy_cleanup_fails() {
+    let pool = files_settings_historical_pool().await;
+    let store = PgControlPlaneStore::new(pool.clone());
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "Files settings rollback")
+        .await
+        .unwrap();
+    seed_files_settings_historical_permissions(&pool).await;
+    let role_id = insert_role(&pool, workspace.id, "legacy_files").await;
+    grant(&pool, role_id, workspace.id, FILES_VISIBILITY).await;
+
+    sqlx::raw_sql(
+        r#"
+        create function reject_files_settings_visibility_delete() returns trigger language plpgsql as $$
+        begin
+            if old.code = 'settings_route.visible.settings.files' then
+                raise exception 'forced files settings cleanup failure';
+            end if;
+            return old;
+        end;
+        $$;
+        create trigger reject_files_settings_visibility_delete
+        before delete on permission_definitions
+        for each row execute function reject_files_settings_visibility_delete();
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let error = sqlx::migrate!("./migrations").run(&pool).await.unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("forced files settings cleanup failure"));
+    assert_eq!(
+        permission_codes(&pool, role_id).await,
+        BTreeSet::from([FILES_VISIBILITY.to_string()])
+    );
+    let new_definition_count: i64 =
+        sqlx::query_scalar("select count(*) from permission_definitions where code = $1")
+            .bind(FILES_FEATURE)
             .fetch_one(&pool)
             .await
             .unwrap();

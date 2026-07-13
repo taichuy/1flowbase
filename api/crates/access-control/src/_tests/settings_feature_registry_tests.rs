@@ -141,6 +141,19 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
         routes("system.applications"),
         vec![("GET", "/api/console/settings/applications")]
     );
+    assert_eq!(
+        routes("system.files"),
+        vec![
+            ("DELETE", "/api/console/settings/files/storages/{id}"),
+            ("DELETE", "/api/console/settings/files/tables/{id}"),
+            ("GET", "/api/console/settings/files/storages"),
+            ("GET", "/api/console/settings/files/tables"),
+            ("POST", "/api/console/settings/files/storages"),
+            ("POST", "/api/console/settings/files/tables"),
+            ("PUT", "/api/console/settings/files/storages/{id}"),
+            ("PUT", "/api/console/settings/files/tables/{id}/binding",),
+        ]
+    );
 }
 
 #[test]

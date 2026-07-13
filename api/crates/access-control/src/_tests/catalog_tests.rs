@@ -40,12 +40,14 @@ fn permission_catalog_seeds_migrated_settings_feature_codes() {
         "host-infrastructure",
         "memory-observation",
         "applications",
+        "files",
     ] {
         assert!(codes.contains(&format!("settings_feature.access.system.{feature}")));
         assert!(!codes.contains(&format!("settings_route.visible.settings.{feature}")));
     }
     assert!(!codes.contains(&"settings_route.visible.settings.roles".to_string()));
     assert!(!codes.contains(&"settings_route.visible.settings.members".to_string()));
+    assert!(!codes.contains(&"settings_route.visible.settings.files".to_string()));
 }
 
 #[test]
