@@ -1,5 +1,8 @@
 use std::collections::BTreeSet;
 
+use access_control::{
+    SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
+};
 use serde::Deserialize;
 
 use crate::error::{FrameworkResult, PluginFrameworkError};
@@ -155,6 +158,8 @@ pub struct HostExtensionContributionManifest {
     pub scope_providers: Vec<ScopeProviderContributionManifest>,
     pub routes: Vec<HostExtensionRouteManifest>,
     #[serde(default)]
+    pub settings_features: Vec<SettingsFeatureRegistration>,
+    #[serde(default)]
     pub console_surfaces: HostExtensionConsoleSurfacesManifest,
     pub workers: Vec<HostExtensionWorkerManifest>,
     pub migrations: Vec<HostExtensionMigrationManifest>,
@@ -228,6 +233,7 @@ fn validate_host_extension_contribution_manifest(
         validate_non_empty(&route.action.resource, "routes[].action.resource")?;
         validate_non_empty(&route.action.action, "routes[].action.action")?;
     }
+    validate_settings_features(manifest)?;
     validate_console_surfaces(&manifest.extension_id, &manifest.console_surfaces)?;
     for worker in &manifest.workers {
         validate_non_empty(&worker.worker_id, "workers[].worker_id")?;
@@ -248,6 +254,44 @@ fn validate_host_extension_contribution_manifest(
             ));
         }
     }
+
+    Ok(())
+}
+
+fn validate_settings_features(manifest: &HostExtensionContributionManifest) -> FrameworkResult<()> {
+    for registration in &manifest.settings_features {
+        if registration.owner.kind != SettingsFeatureOwnerKind::HostExtension {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "settings_features[].owner.kind must be host_extension",
+            ));
+        }
+        if registration.owner.owner_id != manifest.extension_id {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "settings_features[].owner.owner_id must equal extension_id",
+            ));
+        }
+        if registration.owner.version != manifest.version {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "settings_features[].owner.version must equal extension version",
+            ));
+        }
+        validate_extension_owned_id(
+            &manifest.extension_id,
+            &registration.feature_id,
+            "settings_features[].feature_id",
+        )?;
+        validate_extension_owned_id(
+            &manifest.extension_id,
+            &registration.console_surface.route_id,
+            "settings_features[].console_surface.route_id",
+        )?;
+    }
+
+    SettingsFeatureRegistry::compile(manifest.settings_features.clone()).map_err(|error| {
+        PluginFrameworkError::invalid_provider_package(format!(
+            "invalid settings_features registration: {error}"
+        ))
+    })?;
 
     Ok(())
 }

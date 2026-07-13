@@ -2559,6 +2559,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 name = "plugin-framework"
 version = "0.2.6"
 dependencies = [
+ "access-control",
  "ed25519-dalek",
  "flate2",
  "serde",

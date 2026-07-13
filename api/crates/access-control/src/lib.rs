@@ -3,6 +3,7 @@ extern crate self as access_control;
 mod catalog;
 mod evaluator;
 mod navigation;
+mod settings_features;
 mod settings_routes;
 
 pub use catalog::{builtin_role_templates, permission_catalog};
@@ -12,6 +13,12 @@ pub use navigation::{
     builtin_console_navigation, ConsoleNavigation, ConsoleNavigationItem, ConsoleNavigationSlot,
     ConsolePermissionBinding, ConsolePermissionRequirement, ConsoleRouteDefinition,
     ConsoleSurfaceKind,
+};
+pub use settings_features::{
+    AccessRule, SettingsApiRoute, SettingsFeatureCompiledInventory, SettingsFeatureConsoleSurface,
+    SettingsFeatureInventoryEntry, SettingsFeatureLifecycle, SettingsFeatureOwner,
+    SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
+    SettingsFeatureRegistryError,
 };
 pub use settings_routes::{
     expand_permissions_with_settings_routes, settings_route_permission_definitions,
