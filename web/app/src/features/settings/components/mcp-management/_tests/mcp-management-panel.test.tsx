@@ -11,6 +11,11 @@ import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 
 const mcpManagementApi = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
+  settingsOfficialMcpBundlesQueryKey: [
+    'settings',
+    'mcp-management',
+    'official-bundles'
+  ],
   createSettingsMcpInstance: vi.fn(),
   createSettingsMcpTool: vi.fn(),
   createSettingsMcpToolBinding: vi.fn(),
@@ -21,11 +26,17 @@ const mcpManagementApi = vi.hoisted(() => ({
   deleteSettingsMcpToolBinding: vi.fn(),
   executeSettingsMcpToolDebug: vi.fn(),
   moveSettingsMcpGroup: vi.fn(),
+  previewSettingsMcpBundle: vi.fn(),
+  importSettingsMcpBundle: vi.fn(),
+  importSettingsOfficialMcpBundle: vi.fn(),
+  exportSettingsMcpBundle: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
   exportSettingsMcpInstanceDirectory: vi.fn(),
   fetchSettingsMcpClientCredential: vi.fn(async () => ({
     saved: false
   })),
+  fetchSettingsOfficialMcpBundles: vi.fn(),
+  previewSettingsOfficialMcpBundle: vi.fn(),
   refreshSettingsMcpToolDescription: vi.fn(),
   saveSettingsMcpClientCredential: vi.fn(async () => ({ saved: true })),
   updateSettingsMcpInstance: vi.fn(),
@@ -348,6 +359,8 @@ function renderPanelWithMountedTool({
               des_id: 'des-1',
               des_id_required: false,
               status: 'enabled',
+              availability_status: 'available',
+              availability_reason: null,
               revision: 1
             }
           ],
@@ -461,6 +474,141 @@ describe('McpManagementPanel', () => {
             }
           : body.mcp_arguments
     );
+    mcpManagementApi.previewSettingsMcpBundle.mockResolvedValue({
+      manifest: {
+        schema_version: '1flowbase.mcp.bundle/v1',
+        organization: 'taichuy',
+        bundle_id: '1flowbase_zh_hans',
+        bundle_version: '1.0.0',
+        locale: 'zh_Hans',
+        minimum_host_version: '0.2.6',
+        exported_from_system_version: '0.2.5',
+        exported_at: '2026-07-13T10:00:00Z',
+        files: []
+      },
+      current_system_version: '0.2.6',
+      version_status: 'exported_from_older_system',
+      tools: [
+        { id: 'runtime_profile', result: 'imported', reason: null },
+        {
+          id: 'removed_tool',
+          result: 'unavailable',
+          reason: 'interface_missing'
+        }
+      ],
+      instances: [{ id: 'system', result: 'imported', reason: null }]
+    });
+    mcpManagementApi.importSettingsMcpBundle.mockResolvedValue({
+      manifest: {
+        schema_version: '1flowbase.mcp.bundle/v1',
+        organization: 'taichuy',
+        bundle_id: '1flowbase_zh_hans',
+        bundle_version: '1.0.0',
+        locale: 'zh_Hans',
+        minimum_host_version: '0.2.6',
+        exported_from_system_version: '0.2.5',
+        exported_at: '2026-07-13T10:00:00Z',
+        files: []
+      },
+      current_system_version: '0.2.6',
+      version_status: 'exported_from_older_system',
+      status: 'completed_with_warnings',
+      tools: [
+        { id: 'runtime_profile', result: 'imported', reason: null },
+        {
+          id: 'removed_tool',
+          result: 'unavailable',
+          reason: 'interface_missing'
+        }
+      ],
+      instances: [{ id: 'system', result: 'imported', reason: null }]
+    });
+    mcpManagementApi.fetchSettingsOfficialMcpBundles.mockResolvedValue({
+      source: {
+        source_kind: 'default',
+        source_label: '1flowbase official',
+        catalog_url: 'https://example.test/mcp/catalog.json'
+      },
+      entries: [
+        {
+          organization: 'taichuy',
+          bundle_id: '1flowbase_zh_hans',
+          latest_version: '1.0.0',
+          locale: 'zh_Hans',
+          minimum_host_version: '0.2.6',
+          exported_from_system_version: '0.2.5',
+          release_tag: 'mcp-taichuy-1flowbase_zh_hans-v1.0.0',
+          download_url: 'https://example.test/bundle.zip',
+          artifact_sha256: null
+        }
+      ]
+    });
+    mcpManagementApi.previewSettingsOfficialMcpBundle.mockImplementation(
+      async () => mcpManagementApi.previewSettingsMcpBundle()
+    );
+    mcpManagementApi.importSettingsOfficialMcpBundle.mockImplementation(
+      async () => mcpManagementApi.importSettingsMcpBundle()
+    );
+  });
+
+  test('previews an MCP bundle, warns for older source and imports the remaining items', async () => {
+    // AC-005, AC-007, AC-009 and AC-010.
+    renderPanel();
+
+    const file = new File(['bundle'], 'taichuy-bundle.zip', {
+      type: 'application/zip'
+    });
+    fireEvent.change(screen.getByLabelText('选择 MCP 配置包'), {
+      target: { files: [file] }
+    });
+
+    expect(
+      await screen.findByText('配置包来自较低版本的 1flowbase')
+    ).toBeInTheDocument();
+    expect(screen.getByText('removed_tool')).toBeInTheDocument();
+    expect(screen.getByText('接口不存在')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '仍然导入' }));
+    await waitFor(() => {
+      expect(mcpManagementApi.importSettingsMcpBundle).toHaveBeenCalledWith(
+        file,
+        expect.any(String)
+      );
+    });
+    expect(await screen.findByText('导入完成，但存在警告')).toBeInTheDocument();
+  });
+
+  test('previews and imports an official MCP bundle through the backend', async () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: /导入整套/ }));
+    const sourceDialog = await screen.findByRole('dialog', {
+      name: '选择配置包来源'
+    });
+    expect(within(sourceDialog).getByText('官方配置包')).toBeInTheDocument();
+    expect(
+      await within(sourceDialog).findByText('taichuy/1flowbase_zh_hans')
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(sourceDialog).getByRole('button', { name: '预检' }));
+    await waitFor(() => {
+      expect(
+        mcpManagementApi.previewSettingsOfficialMcpBundle
+      ).toHaveBeenCalledWith(
+        { organization: 'taichuy', bundle_id: '1flowbase_zh_hans' },
+        expect.any(String)
+      );
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: '仍然导入' }));
+    await waitFor(() => {
+      expect(
+        mcpManagementApi.importSettingsOfficialMcpBundle
+      ).toHaveBeenCalledWith(
+        { organization: 'taichuy', bundle_id: '1flowbase_zh_hans' },
+        expect.any(String)
+      );
+    });
   });
 
   test('keeps mount paths in binding management instead of the tool table', () => {

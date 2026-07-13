@@ -13,6 +13,7 @@ pub mod host_route_registry;
 pub mod host_worker_registry;
 pub mod middleware;
 pub mod official_agent_flow_templates;
+pub mod official_mcp_bundles;
 pub mod official_plugin_registry;
 pub mod openapi;
 pub mod openapi_docs;
@@ -321,6 +322,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let resolved_official_source = config.resolve_official_plugin_source();
     let resolved_official_agent_flow_template_source =
         config.resolve_official_agent_flow_template_source();
+    let resolved_official_mcp_bundle_source = config.resolve_official_mcp_bundle_source();
     let official_agent_flow_template_cache = infrastructure.cache_store();
     let trusted_public_keys = config.official_plugin_trusted_public_keys()?;
     let process_started_at = OffsetDateTime::now_utc();
@@ -347,6 +349,11 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             official_agent_flow_templates::ApiOfficialAgentFlowTemplateRegistry::new(
                 resolved_official_agent_flow_template_source,
                 official_agent_flow_template_cache,
+            ),
+        ),
+        official_mcp_bundle_source: Arc::new(
+            official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
+                resolved_official_mcp_bundle_source,
             ),
         ),
         api_node_id: config.api_node_id.clone(),

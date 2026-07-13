@@ -12,6 +12,7 @@ pub mod frontend_block_catalog;
 pub mod frontstage;
 pub mod host_extension;
 pub mod js_dependency;
+pub mod mcp_bundle;
 pub mod mcp_management;
 pub mod model_provider;
 pub mod modeling;
@@ -70,6 +71,12 @@ pub use host_extension::{
 };
 pub use js_dependency::{
     ApplicationJsDependencySelection, JsDependencyPermissions, JsDependencyRegistryEntry,
+};
+pub use mcp_bundle::{
+    McpBundleFile, McpBundleFileKind, McpBundleGroup, McpBundleImportReport, McpBundleInstance,
+    McpBundleInstanceDiscoveryPolicy, McpBundleItemReport, McpBundleManifest, McpBundlePackage,
+    McpBundlePreview, McpBundleTool, McpBundleToolBinding, McpBundleVersionStatus,
+    MCP_BUNDLE_SCHEMA_VERSION,
 };
 pub use mcp_management::{
     McpCatalogSnapshot, McpDescriptionCheckResult, McpExportPackage, McpGroupRecord,

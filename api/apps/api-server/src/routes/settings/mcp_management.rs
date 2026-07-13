@@ -1,3 +1,4 @@
+pub(crate) mod bundles;
 pub(crate) mod debug_execute;
 
 use std::{
@@ -98,6 +99,8 @@ pub struct McpToolResponse {
     pub des_id: String,
     pub des_id_required: bool,
     pub status: String,
+    pub availability_status: String,
+    pub availability_reason: Option<String>,
     pub revision: i32,
 }
 
@@ -386,6 +389,7 @@ pub fn router() -> Router<Arc<ApiState>> {
             "/mcp/instances/:instance_id/discovery-policy",
             get(get_mcp_instance_discovery_policy).put(update_mcp_instance_discovery_policy),
         )
+        .merge(bundles::router())
 }
 
 pub async fn get_mcp_client_credential(
@@ -704,7 +708,9 @@ pub async fn create_mcp_tool(
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_tool_response_with_operation(
-            record, operation,
+            record,
+            operation,
+            "available",
         ))),
     ))
 }
@@ -744,7 +750,9 @@ pub async fn update_mcp_tool(
         )?)
         .await?;
     Ok(Json(ApiSuccess::new(to_tool_response_with_operation(
-        record, operation,
+        record,
+        operation,
+        "available",
     ))))
 }
 
@@ -1905,17 +1913,21 @@ fn to_tool_response(
     record: domain::McpToolRecord,
     operations: &HashMap<String, String>,
 ) -> McpToolResponse {
-    let operation = operations
-        .get(&record.interface_id)
-        .cloned()
-        .unwrap_or_else(|| record.interface_id.clone());
+    let available_operation = operations.get(&record.interface_id).cloned();
+    let availability_status = if available_operation.is_some() {
+        "available"
+    } else {
+        "interface_missing"
+    };
+    let operation = available_operation.unwrap_or_else(|| record.interface_id.clone());
 
-    to_tool_response_with_operation(record, operation)
+    to_tool_response_with_operation(record, operation, availability_status)
 }
 
 fn to_tool_response_with_operation(
     record: domain::McpToolRecord,
     operation: String,
+    availability_status: &str,
 ) -> McpToolResponse {
     McpToolResponse {
         id: record.id.to_string(),
@@ -1935,6 +1947,9 @@ fn to_tool_response_with_operation(
         des_id: record.des_id,
         des_id_required: record.des_id_required,
         status: record.status.as_str().into(),
+        availability_status: availability_status.into(),
+        availability_reason: (availability_status != "available")
+            .then(|| availability_status.to_string()),
         revision: record.revision,
     }
 }

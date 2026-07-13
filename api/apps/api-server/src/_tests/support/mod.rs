@@ -3,7 +3,7 @@ mod auth;
 mod packages;
 mod plugins;
 
-use std::{fs, path::Path, sync::Arc};
+use std::{fs, io::Write, path::Path, sync::Arc};
 
 use argon2::{
     password_hash::{PasswordHasher, SaltString},
@@ -41,6 +41,11 @@ use crate::{
         OfficialAgentFlowTemplateCatalogEntry, OfficialAgentFlowTemplateCatalogPage,
         OfficialAgentFlowTemplateCatalogSnapshot, OfficialAgentFlowTemplateCatalogSource,
         OfficialAgentFlowTemplateSourcePort,
+    },
+    official_mcp_bundles::{
+        DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogEntry,
+        OfficialMcpBundleCatalogSnapshot, OfficialMcpBundleCatalogSource,
+        OfficialMcpBundleSourcePort,
     },
     provider_runtime::{ApiProviderRuntime, ApiRuntimeServices},
     runtime_profile_client::{

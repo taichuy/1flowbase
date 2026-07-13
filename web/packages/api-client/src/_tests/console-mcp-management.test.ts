@@ -10,14 +10,20 @@ import {
   deleteConsoleMcpTool,
   deleteConsoleMcpToolBinding,
   executeConsoleMcpToolDebug,
+  exportConsoleMcpBundle,
   exportConsoleMcpCatalog,
   exportConsoleMcpInstanceDirectory,
   fetchConsoleMcpCatalog,
   fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
   fetchConsoleMcpListItems,
+  fetchConsoleOfficialMcpBundles,
   fetchConsoleMcpTool,
   moveConsoleMcpGroup,
+  importConsoleMcpBundle,
+  importConsoleOfficialMcpBundle,
+  previewConsoleMcpBundle,
+  previewConsoleOfficialMcpBundle,
   refreshConsoleMcpToolDescription,
   updateConsoleMcpInstance,
   updateConsoleMcpInstanceDiscoveryPolicy,
@@ -31,6 +37,9 @@ describe('console-mcp-management client', () => {
     async (input) => input as never
   );
   vi.spyOn(transport, 'apiFetchVoid').mockImplementation(
+    async (input) => input as never
+  );
+  vi.spyOn(transport, 'apiFetchBlob').mockImplementation(
     async (input) => input as never
   );
 
@@ -72,6 +81,11 @@ describe('console-mcp-management client', () => {
       expected: { path: '/api/console/mcp/instances/export' }
     },
     {
+      name: 'official MCP bundles',
+      request: () => fetchConsoleOfficialMcpBundles(),
+      expected: { path: '/api/console/mcp/bundles/official' }
+    },
+    {
       name: 'single tool',
       request: () => fetchConsoleMcpTool('runtime/get'),
       expected: { path: '/api/console/mcp/tools/runtime%2Fget' }
@@ -86,6 +100,80 @@ describe('console-mcp-management client', () => {
   ])('reads the $name route', async ({ request, expected }) => {
     await expect(request()).resolves.toMatchObject(expected);
   });
+
+  test('exports a complete MCP bundle as a blob', async () => {
+    await expect(
+      exportConsoleMcpBundle(
+        {
+          organization: 'taichuy',
+          bundle_id: '1flowbase_zh_hans',
+          bundle_version: '1.0.0',
+          locale: 'zh_Hans',
+          minimum_host_version: '0.2.6'
+        },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/mcp/bundles/export',
+      method: 'POST',
+      csrfToken: 'csrf-123'
+    });
+  });
+
+  test.each([
+    {
+      name: 'preview',
+      request: (file: File) => previewConsoleMcpBundle(file, 'csrf-123'),
+      path: '/api/console/mcp/bundles/preview-upload'
+    },
+    {
+      name: 'import',
+      request: (file: File) => importConsoleMcpBundle(file, 'csrf-123'),
+      path: '/api/console/mcp/bundles/import-upload'
+    }
+  ])('uploads a local MCP bundle for $name', async ({ request, path }) => {
+    const file = new File(['bundle'], 'bundle.zip', {
+      type: 'application/zip'
+    });
+    const result = (await request(file)) as unknown as {
+      path: string;
+      rawBody: FormData;
+      contentType: null;
+    };
+    expect(result).toMatchObject({ path, method: 'POST', contentType: null });
+    expect(result.rawBody.get('file')).toBe(file);
+  });
+
+  test.each([
+    {
+      name: 'preview',
+      request: () =>
+        previewConsoleOfficialMcpBundle(
+          { organization: 'taichuy', bundle_id: '1flowbase_zh_hans' },
+          'csrf-123'
+        ),
+      path: '/api/console/mcp/bundles/preview-official'
+    },
+    {
+      name: 'import',
+      request: () =>
+        importConsoleOfficialMcpBundle(
+          { organization: 'taichuy', bundle_id: '1flowbase_zh_hans' },
+          'csrf-123'
+        ),
+      path: '/api/console/mcp/bundles/import-official'
+    }
+  ])(
+    'uses the backend for official MCP bundle $name',
+    async ({ request, path }) => {
+      await expect(request()).resolves.toMatchObject({
+        path,
+        method: 'POST',
+        body: { organization: 'taichuy', bundle_id: '1flowbase_zh_hans' },
+        csrfToken: 'csrf-123'
+      });
+    }
+  );
 
   test.each([
     {

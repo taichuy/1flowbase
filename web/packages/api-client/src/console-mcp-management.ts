@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchVoid } from './transport';
+import { apiFetch, apiFetchBlob, apiFetchVoid } from './transport';
 
 export interface ConsoleMcpInstance {
   id: string;
@@ -47,7 +47,79 @@ export interface ConsoleMcpTool {
   des_id: string;
   des_id_required: boolean;
   status: string;
+  availability_status: string;
+  availability_reason: string | null;
   revision: number;
+}
+
+export interface ConsoleMcpBundleManifest {
+  schema_version: string;
+  organization: string;
+  bundle_id: string;
+  bundle_version: string;
+  locale: 'zh_Hans' | 'en_US';
+  minimum_host_version: string;
+  exported_from_system_version: string;
+  exported_at: string;
+  files: Array<{ path: string; kind: 'tool' | 'instance'; sha256: string }>;
+}
+
+export type ConsoleMcpBundleVersionStatus =
+  | 'same_system_version'
+  | 'exported_from_older_system'
+  | 'exported_from_newer_system'
+  | 'unknown_system_version';
+
+export interface ConsoleMcpBundleItemReport {
+  id: string;
+  result: 'imported' | 'unavailable' | 'skipped' | 'failed';
+  reason: string | null;
+}
+
+export interface ConsoleMcpBundlePreview {
+  manifest: ConsoleMcpBundleManifest;
+  current_system_version: string;
+  version_status: ConsoleMcpBundleVersionStatus;
+  tools: ConsoleMcpBundleItemReport[];
+  instances: ConsoleMcpBundleItemReport[];
+}
+
+export interface ConsoleMcpBundleImportReport extends ConsoleMcpBundlePreview {
+  status: 'completed' | 'completed_with_warnings' | 'failed';
+}
+
+export interface ExportConsoleMcpBundleBody {
+  organization: string;
+  bundle_id: string;
+  bundle_version: string;
+  locale: 'zh_Hans' | 'en_US';
+  minimum_host_version: string;
+}
+
+export interface ConsoleOfficialMcpBundleEntry {
+  organization: string;
+  bundle_id: string;
+  latest_version: string;
+  locale: 'zh_Hans' | 'en_US';
+  minimum_host_version: string;
+  exported_from_system_version: string;
+  release_tag: string;
+  download_url: string;
+  artifact_sha256: string | null;
+}
+
+export interface ConsoleOfficialMcpBundleCatalog {
+  source: {
+    source_kind: string;
+    source_label: string;
+    catalog_url: string;
+  };
+  entries: ConsoleOfficialMcpBundleEntry[];
+}
+
+export interface ConsoleOfficialMcpBundleBody {
+  organization: string;
+  bundle_id: string;
 }
 
 export interface ConsoleMcpToolBinding {
@@ -266,6 +338,99 @@ export function exportConsoleMcpCatalog(baseUrl?: string) {
 export function exportConsoleMcpInstanceDirectory(baseUrl?: string) {
   return apiFetch<ConsoleMcpInstanceDirectoryExportPackage>({
     path: '/api/console/mcp/instances/export',
+    baseUrl
+  });
+}
+
+export function exportConsoleMcpBundle(
+  body: ExportConsoleMcpBundleBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchBlob({
+    path: '/api/console/mcp/bundles/export',
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+function uploadConsoleMcpBundle<T>(
+  path: string,
+  file: File,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  const formData = new FormData();
+  formData.set('file', file);
+  return apiFetch<T>({
+    path,
+    method: 'POST',
+    rawBody: formData,
+    contentType: null,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function previewConsoleMcpBundle(
+  file: File,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return uploadConsoleMcpBundle<ConsoleMcpBundlePreview>(
+    '/api/console/mcp/bundles/preview-upload',
+    file,
+    csrfToken,
+    baseUrl
+  );
+}
+
+export function importConsoleMcpBundle(
+  file: File,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return uploadConsoleMcpBundle<ConsoleMcpBundleImportReport>(
+    '/api/console/mcp/bundles/import-upload',
+    file,
+    csrfToken,
+    baseUrl
+  );
+}
+
+export function fetchConsoleOfficialMcpBundles(baseUrl?: string) {
+  return apiFetch<ConsoleOfficialMcpBundleCatalog>({
+    path: '/api/console/mcp/bundles/official',
+    baseUrl
+  });
+}
+
+export function previewConsoleOfficialMcpBundle(
+  body: ConsoleOfficialMcpBundleBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpBundlePreview>({
+    path: '/api/console/mcp/bundles/preview-official',
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function importConsoleOfficialMcpBundle(
+  body: ConsoleOfficialMcpBundleBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpBundleImportReport>({
+    path: '/api/console/mcp/bundles/import-official',
+    method: 'POST',
+    body,
+    csrfToken,
     baseUrl
   });
 }

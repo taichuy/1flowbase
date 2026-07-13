@@ -8,13 +8,19 @@ import {
   deleteConsoleMcpTool,
   deleteConsoleMcpToolBinding,
   executeConsoleMcpToolDebug,
+  exportConsoleMcpBundle,
   exportConsoleMcpCatalog,
   exportConsoleMcpInstanceDirectory,
+  fetchConsoleOfficialMcpBundles,
   fetchConsoleMcpCatalog,
   fetchConsoleMcpClientCredential,
   fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
+  importConsoleMcpBundle,
+  importConsoleOfficialMcpBundle,
   moveConsoleMcpGroup,
+  previewConsoleMcpBundle,
+  previewConsoleOfficialMcpBundle,
   refreshConsoleMcpToolDescription,
   saveConsoleMcpClientCredential,
   updateConsoleMcpInstance,
@@ -24,14 +30,24 @@ import {
   upsertConsoleMcpGroup,
   type ConsoleMcpCatalog,
   type ConsoleMcpInterfaceCapability,
+  type ConsoleOfficialMcpBundleBody,
   type ConsoleMcpToolDebugExecuteResponse,
   type ExecuteConsoleMcpToolDebugBody,
+  type ExportConsoleMcpBundleBody,
   type SaveConsoleMcpGroupBody,
   type SaveConsoleMcpInstanceBody,
   type SaveConsoleMcpToolBindingBody,
   type SaveConsoleMcpToolBody,
   type UpdateConsoleMcpInstanceDiscoveryPolicyBody,
   type UpdateConsoleMcpToolBody
+} from '@1flowbase/api-client';
+
+export type {
+  ConsoleMcpBundleImportReport as SettingsMcpBundleImportReport,
+  ConsoleMcpBundlePreview as SettingsMcpBundlePreview,
+  ExportConsoleMcpBundleBody as ExportSettingsMcpBundleBody,
+  ConsoleOfficialMcpBundleCatalog as SettingsOfficialMcpBundleCatalog,
+  ConsoleOfficialMcpBundleEntry as SettingsOfficialMcpBundleEntry
 } from '@1flowbase/api-client';
 
 export type SettingsMcpCatalog = ConsoleMcpCatalog;
@@ -50,6 +66,12 @@ export const settingsMcpInterfaceCapabilitiesQueryKey = [
   'settings',
   'mcp-management',
   'interface-capabilities'
+] as const;
+
+export const settingsOfficialMcpBundlesQueryKey = [
+  'settings',
+  'mcp-management',
+  'official-bundles'
 ] as const;
 
 export function fetchSettingsMcpCatalog() {
@@ -89,6 +111,39 @@ export function exportSettingsMcpCatalog() {
 
 export function exportSettingsMcpInstanceDirectory() {
   return exportConsoleMcpInstanceDirectory();
+}
+
+export function exportSettingsMcpBundle(
+  body: ExportConsoleMcpBundleBody,
+  csrfToken: string
+) {
+  return exportConsoleMcpBundle(body, csrfToken);
+}
+
+export function previewSettingsMcpBundle(file: File, csrfToken: string) {
+  return previewConsoleMcpBundle(file, csrfToken);
+}
+
+export function importSettingsMcpBundle(file: File, csrfToken: string) {
+  return importConsoleMcpBundle(file, csrfToken);
+}
+
+export function fetchSettingsOfficialMcpBundles() {
+  return fetchConsoleOfficialMcpBundles();
+}
+
+export function previewSettingsOfficialMcpBundle(
+  body: ConsoleOfficialMcpBundleBody,
+  csrfToken: string
+) {
+  return previewConsoleOfficialMcpBundle(body, csrfToken);
+}
+
+export function importSettingsOfficialMcpBundle(
+  body: ConsoleOfficialMcpBundleBody,
+  csrfToken: string
+) {
+  return importConsoleOfficialMcpBundle(body, csrfToken);
 }
 
 export function createSettingsMcpInstance(

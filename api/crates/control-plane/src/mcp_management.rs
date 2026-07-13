@@ -110,7 +110,7 @@ pub struct SaveMcpClientCredentialCommand {
 }
 
 pub struct McpManagementService<R> {
-    repository: R,
+    pub(crate) repository: R,
 }
 
 impl<R> McpManagementService<R>
@@ -742,7 +742,7 @@ where
         })
     }
 
-    async fn authorize_view(&self, actor_user_id: Uuid) -> Result<domain::ActorContext> {
+    pub(crate) async fn authorize_view(&self, actor_user_id: Uuid) -> Result<domain::ActorContext> {
         let actor = self
             .repository
             .load_actor_context_for_user(actor_user_id)
@@ -756,7 +756,10 @@ where
         Err(ControlPlaneError::PermissionDenied("permission_denied").into())
     }
 
-    async fn authorize_manage(&self, actor_user_id: Uuid) -> Result<domain::ActorContext> {
+    pub(crate) async fn authorize_manage(
+        &self,
+        actor_user_id: Uuid,
+    ) -> Result<domain::ActorContext> {
         let actor = self
             .repository
             .load_actor_context_for_user(actor_user_id)
@@ -768,21 +771,21 @@ where
     }
 }
 
-fn validate_identifier(value: &str, field: &'static str) -> Result<()> {
+pub(crate) fn validate_identifier(value: &str, field: &'static str) -> Result<()> {
     if value.trim().is_empty() || value.len() > 255 {
         return Err(ControlPlaneError::InvalidInput(field).into());
     }
     Ok(())
 }
 
-fn validate_path(value: &str) -> Result<()> {
+pub(crate) fn validate_path(value: &str) -> Result<()> {
     if !value.starts_with('/') || value.len() > 255 {
         return Err(ControlPlaneError::InvalidInput("path").into());
     }
     Ok(())
 }
 
-fn validate_positive(value: i32, field: &'static str) -> Result<()> {
+pub(crate) fn validate_positive(value: i32, field: &'static str) -> Result<()> {
     if value <= 0 {
         return Err(ControlPlaneError::InvalidInput(field).into());
     }
@@ -831,7 +834,7 @@ fn generate_short_id() -> String {
     output
 }
 
-fn normalize_des_id(value: Option<String>) -> String {
+pub(crate) fn normalize_des_id(value: Option<String>) -> String {
     let trimmed = value.unwrap_or_default().trim().to_owned();
     if trimmed.is_empty() {
         generate_short_id()
@@ -840,7 +843,7 @@ fn normalize_des_id(value: Option<String>) -> String {
     }
 }
 
-fn input_mapping_requires_des_id(input_mapping: &serde_json::Value) -> bool {
+pub(crate) fn input_mapping_requires_des_id(input_mapping: &serde_json::Value) -> bool {
     const DES_ID: &str = "des_id";
 
     let Some(mapping) = input_mapping.as_object() else {

@@ -112,6 +112,14 @@ pub struct UpdateMcpInstanceDiscoveryPolicyInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct ImportMcpInstanceInput {
+    pub instance: CreateMcpInstanceInput,
+    pub groups: Vec<UpsertMcpGroupInput>,
+    pub bindings: Vec<CreateMcpToolBindingInput>,
+    pub discovery_policy: UpdateMcpInstanceDiscoveryPolicyInput,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpsertMcpClientCredentialInput {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -140,6 +148,10 @@ pub trait McpManagementRepository: Send + Sync {
     async fn create_mcp_instance(
         &self,
         input: &CreateMcpInstanceInput,
+    ) -> anyhow::Result<domain::McpInstanceRecord>;
+    async fn import_mcp_instance_atomically(
+        &self,
+        input: &ImportMcpInstanceInput,
     ) -> anyhow::Result<domain::McpInstanceRecord>;
     async fn update_mcp_instance(
         &self,

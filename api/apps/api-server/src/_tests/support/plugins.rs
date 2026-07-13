@@ -7,6 +7,91 @@ pub(super) struct InMemoryOfficialPluginSource;
 #[derive(Clone, Default)]
 pub(super) struct InMemoryOfficialAgentFlowTemplateSource;
 
+#[derive(Clone, Default)]
+pub(super) struct InMemoryOfficialMcpBundleSource;
+
+#[async_trait]
+impl OfficialMcpBundleSourcePort for InMemoryOfficialMcpBundleSource {
+    async fn list_catalog(&self) -> anyhow::Result<OfficialMcpBundleCatalogSnapshot> {
+        Ok(OfficialMcpBundleCatalogSnapshot {
+            source: OfficialMcpBundleCatalogSource {
+                source_kind: "official_registry".into(),
+                source_label: "官方源".into(),
+                catalog_url: "https://example.com/mcp/catalog.json".into(),
+            },
+            entries: vec![OfficialMcpBundleCatalogEntry {
+                organization: "taichuy".into(),
+                bundle_id: "test_bundle".into(),
+                latest_version: "1.0.0".into(),
+                locale: "zh_Hans".into(),
+                minimum_host_version: "0.2.0".into(),
+                exported_from_system_version: "0.1.0".into(),
+                release_tag: "mcp-taichuy-test_bundle-v1.0.0".into(),
+                download_url: "https://example.com/test-bundle.zip".into(),
+                artifact_sha256: None,
+            }],
+        })
+    }
+
+    async fn download_bundle(
+        &self,
+        organization: &str,
+        bundle_id: &str,
+    ) -> anyhow::Result<DownloadedOfficialMcpBundle> {
+        if organization != "taichuy" || bundle_id != "test_bundle" {
+            return Err(anyhow::anyhow!("official MCP bundle not found"));
+        }
+        Ok(DownloadedOfficialMcpBundle {
+            file_name: "taichuy-test_bundle-v1.0.0.zip".into(),
+            package_bytes: build_official_mcp_bundle(),
+        })
+    }
+}
+
+fn build_official_mcp_bundle() -> Vec<u8> {
+    let tool = serde_json::to_vec(&json!({
+        "tool_id": "official_runtime_profile",
+        "name": "Runtime profile",
+        "short_description": "Runtime profile",
+        "full_description": "Read runtime profile",
+        "interface_id": "get_runtime_profile",
+        "parameter_schema_snapshot": {},
+        "result_schema_snapshot": {},
+        "input_mapping": {},
+        "output_mapping": {},
+        "permission_code_snapshot": null,
+        "risk_level_snapshot": "low",
+        "status": "enabled"
+    }))
+    .unwrap();
+    let manifest = serde_json::to_vec(&json!({
+        "schema_version": "1flowbase.mcp.bundle/v1",
+        "organization": "taichuy",
+        "bundle_id": "test_bundle",
+        "bundle_version": "1.0.0",
+        "locale": "zh_Hans",
+        "minimum_host_version": "0.2.0",
+        "exported_from_system_version": "0.1.0",
+        "exported_at": "2026-07-13T10:00:00Z",
+        "files": [{
+            "path": "tools/runtime-profile.json",
+            "kind": "tool",
+            "sha256": format!("sha256:{:x}", Sha256::digest(&tool))
+        }]
+    }))
+    .unwrap();
+    let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    archive.start_file("manifest.json", options).unwrap();
+    archive.write_all(&manifest).unwrap();
+    archive
+        .start_file("tools/runtime-profile.json", options)
+        .unwrap();
+    archive.write_all(&tool).unwrap();
+    archive.finish().unwrap().into_inner()
+}
+
 #[async_trait]
 impl OfficialPluginSourcePort for InMemoryOfficialPluginSource {
     async fn list_official_catalog(&self) -> anyhow::Result<OfficialPluginCatalogSnapshot> {

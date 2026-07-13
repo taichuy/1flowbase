@@ -14,6 +14,7 @@ import {
 } from './mcp-management-route-state';
 import { McpInstancesTab } from './McpInstancesTab';
 import { McpToolsTab } from './McpToolsTab';
+import { McpBundleActions } from './bundle/McpBundleActions';
 import './mcp-management-panel.css';
 
 export function McpManagementPanel({
@@ -51,6 +52,7 @@ export function McpManagementPanel({
     <Tabs
       activeKey={activeTab}
       className="mcp-management"
+      tabBarExtraContent={<McpBundleActions canManage={canManage} />}
       items={[
         {
           key: 'instances',

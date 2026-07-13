@@ -53,6 +53,8 @@ pub struct ApiConfig {
     pub official_plugin_trusted_public_keys_json: String,
     pub official_agent_flow_template_default_index_url: String,
     pub official_agent_flow_template_mirror_index_url: Option<String>,
+    pub official_mcp_bundle_default_catalog_url: String,
+    pub official_mcp_bundle_mirror_catalog_url: Option<String>,
     pub bootstrap_workspace_name: String,
     pub bootstrap_root_account: String,
     pub bootstrap_root_email: String,
@@ -75,6 +77,14 @@ pub struct ResolvedOfficialAgentFlowTemplateSourceConfig {
     pub source_kind: String,
     pub source_label: String,
     pub index_url: String,
+    pub github_proxy_url: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedOfficialMcpBundleSourceConfig {
+    pub source_kind: String,
+    pub source_label: String,
+    pub catalog_url: String,
     pub github_proxy_url: Option<String>,
 }
 
@@ -185,6 +195,19 @@ impl ApiConfig {
             .get("API_OFFICIAL_AGENT_FLOW_TEMPLATE_MIRROR_INDEX_URL")
             .cloned()
             .filter(|value| !value.trim().is_empty());
+        let official_mcp_bundle_default_catalog_url = map
+            .get("API_OFFICIAL_MCP_BUNDLE_DEFAULT_CATALOG_URL")
+            .cloned()
+            .or_else(|| map.get("API_OFFICIAL_MCP_BUNDLE_CATALOG_URL").cloned())
+            .unwrap_or_else(|| {
+                format!(
+                    "https://raw.githubusercontent.com/{official_plugin_repository}/main/mcp/catalog.json"
+                )
+            });
+        let official_mcp_bundle_mirror_catalog_url = map
+            .get("API_OFFICIAL_MCP_BUNDLE_MIRROR_CATALOG_URL")
+            .cloned()
+            .filter(|value| !value.trim().is_empty());
 
         if env == ApiEnvironment::Production && cors_allowed_origins.is_none() {
             return Err(anyhow!(
@@ -246,6 +269,8 @@ impl ApiConfig {
             official_plugin_trusted_public_keys_json,
             official_agent_flow_template_default_index_url,
             official_agent_flow_template_mirror_index_url,
+            official_mcp_bundle_default_catalog_url,
+            official_mcp_bundle_mirror_catalog_url,
             bootstrap_workspace_name: get("BOOTSTRAP_WORKSPACE_NAME")?,
             bootstrap_root_account: get("BOOTSTRAP_ROOT_ACCOUNT")?,
             bootstrap_root_email: get("BOOTSTRAP_ROOT_EMAIL")?,
@@ -313,6 +338,27 @@ impl ApiConfig {
             source_kind: "official_registry".into(),
             source_label: "官方源".into(),
             index_url: self.official_agent_flow_template_default_index_url.clone(),
+            github_proxy_url: self.official_plugin_github_proxy_url.clone(),
+        }
+    }
+
+    pub fn resolve_official_mcp_bundle_source(&self) -> ResolvedOfficialMcpBundleSourceConfig {
+        if let Some(mirror_url) = self
+            .official_mcp_bundle_mirror_catalog_url
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+        {
+            return ResolvedOfficialMcpBundleSourceConfig {
+                source_kind: "mirror_registry".into(),
+                source_label: "镜像源".into(),
+                catalog_url: mirror_url,
+                github_proxy_url: self.official_plugin_github_proxy_url.clone(),
+            };
+        }
+        ResolvedOfficialMcpBundleSourceConfig {
+            source_kind: "official_registry".into(),
+            source_label: "官方源".into(),
+            catalog_url: self.official_mcp_bundle_default_catalog_url.clone(),
             github_proxy_url: self.official_plugin_github_proxy_url.clone(),
         }
     }

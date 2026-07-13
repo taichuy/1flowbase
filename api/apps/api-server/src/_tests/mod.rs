@@ -11,6 +11,7 @@ mod frontend_block_catalog_routes;
 mod frontstage_routes;
 mod host_extensions;
 mod host_infrastructure;
+mod mcp_bundle_routes;
 mod mcp_client_credential_routes;
 mod mcp_management_debug_execute_routes;
 mod mcp_management_routes;

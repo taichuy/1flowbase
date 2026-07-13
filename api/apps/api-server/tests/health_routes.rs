@@ -7,6 +7,10 @@ use api_server::{
     official_agent_flow_templates::{
         OfficialAgentFlowTemplateCatalogSnapshot, OfficialAgentFlowTemplateSourcePort,
     },
+    official_mcp_bundles::{
+        DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogSnapshot,
+        OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
+    },
     provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
     runtime_profile_client::{HostApiRuntimeProfileCollector, PluginRunnerSystemPort},
 };
@@ -47,6 +51,31 @@ struct NoopOfficialPluginSource;
 
 #[derive(Clone, Default)]
 struct NoopOfficialAgentFlowTemplateSource;
+
+#[derive(Clone, Default)]
+struct NoopOfficialMcpBundleSource;
+
+#[async_trait]
+impl OfficialMcpBundleSourcePort for NoopOfficialMcpBundleSource {
+    async fn list_catalog(&self) -> anyhow::Result<OfficialMcpBundleCatalogSnapshot> {
+        Ok(OfficialMcpBundleCatalogSnapshot {
+            source: OfficialMcpBundleCatalogSource {
+                source_kind: "official_registry".into(),
+                source_label: "官方源".into(),
+                catalog_url: "https://official.example.com/mcp/catalog.json".into(),
+            },
+            entries: Vec::new(),
+        })
+    }
+
+    async fn download_bundle(
+        &self,
+        _organization: &str,
+        _bundle_id: &str,
+    ) -> anyhow::Result<DownloadedOfficialMcpBundle> {
+        anyhow::bail!("official MCP bundle source not configured for health route tests")
+    }
+}
 
 #[async_trait]
 impl OfficialPluginSourcePort for NoopOfficialPluginSource {
@@ -207,6 +236,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             official_agent_flow_template_source: std::sync::Arc::new(
                 NoopOfficialAgentFlowTemplateSource,
             ),
+            official_mcp_bundle_source: std::sync::Arc::new(NoopOfficialMcpBundleSource),
             api_node_id: config.api_node_id.clone(),
             provider_install_root: config.provider_install_root.clone(),
             provider_secret_master_key: config.provider_secret_master_key.clone(),

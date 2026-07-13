@@ -10,6 +10,7 @@ use crate::host_infrastructure::HostInfrastructureRegistry;
 use crate::openapi_docs::ApiDocsRegistry;
 use crate::{
     official_agent_flow_templates::OfficialAgentFlowTemplateSourcePort,
+    official_mcp_bundles::OfficialMcpBundleSourcePort,
     provider_runtime::ApiRuntimeServices,
     runtime_activity::ApplicationRuntimeActivityTracker,
     runtime_profile_client::{ApiRuntimeProfilePort, PluginRunnerSystemPort},
@@ -29,6 +30,7 @@ pub struct ApiState {
     pub plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
     pub official_agent_flow_template_source: Arc<dyn OfficialAgentFlowTemplateSourcePort>,
+    pub official_mcp_bundle_source: Arc<dyn OfficialMcpBundleSourcePort>,
     pub api_node_id: String,
     pub provider_install_root: String,
     pub provider_secret_master_key: String,

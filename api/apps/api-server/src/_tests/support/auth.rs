@@ -2,7 +2,10 @@ use super::applications::{
     create_member, create_role, replace_member_roles, replace_role_permissions,
     sample_runtime_profile, set_user_preferred_locale,
 };
-use super::plugins::{InMemoryOfficialAgentFlowTemplateSource, InMemoryOfficialPluginSource};
+use super::plugins::{
+    InMemoryOfficialAgentFlowTemplateSource, InMemoryOfficialMcpBundleSource,
+    InMemoryOfficialPluginSource,
+};
 use super::*;
 use axum::response::Response;
 use control_plane::ports::FileManagementRepository;
@@ -233,6 +236,7 @@ async fn test_state_with_runtime_profile_state(
             plugin_runner_system,
             official_plugin_source: Arc::new(InMemoryOfficialPluginSource),
             official_agent_flow_template_source: Arc::new(InMemoryOfficialAgentFlowTemplateSource),
+            official_mcp_bundle_source: Arc::new(InMemoryOfficialMcpBundleSource),
             api_node_id: config.api_node_id.clone(),
             provider_install_root: config.provider_install_root.clone(),
             provider_secret_master_key: config.provider_secret_master_key.clone(),

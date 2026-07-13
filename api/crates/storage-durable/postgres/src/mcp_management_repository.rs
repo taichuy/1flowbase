@@ -4,9 +4,9 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         AuthRepository, CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
-        McpManagementRepository, UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput,
-        UpdateMcpToolBindingInput, UpdateMcpToolInput, UpsertMcpClientCredentialInput,
-        UpsertMcpGroupInput,
+        ImportMcpInstanceInput, McpManagementRepository, UpdateMcpInstanceDiscoveryPolicyInput,
+        UpdateMcpInstanceInput, UpdateMcpToolBindingInput, UpdateMcpToolInput,
+        UpsertMcpClientCredentialInput, UpsertMcpGroupInput,
     },
 };
 use serde_json::json;
@@ -314,6 +314,106 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(input.id)
         .bind(input.actor_user_id)
+        .execute(&mut *transaction)
+        .await?;
+
+        transaction.commit().await?;
+        map_instance(row)
+    }
+
+    async fn import_mcp_instance_atomically(
+        &self,
+        input: &ImportMcpInstanceInput,
+    ) -> Result<domain::McpInstanceRecord> {
+        let instance = &input.instance;
+        let mut transaction = self.pool().begin().await?;
+        let row = sqlx::query(
+            r#"
+            insert into mcp_instances (
+                id, workspace_id, instance_id, name, description_short, status,
+                default_entry_path, created_by, updated_by
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+            returning *
+            "#,
+        )
+        .bind(instance.id)
+        .bind(instance.workspace_id)
+        .bind(&instance.instance_id)
+        .bind(&instance.name)
+        .bind(&instance.description_short)
+        .bind(instance.status.as_str())
+        .bind(&instance.default_entry_path)
+        .bind(instance.actor_user_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+
+        for group in &input.groups {
+            sqlx::query(
+                r#"
+                insert into mcp_groups (
+                    id, instance_record_id, path, display_name, description_short,
+                    enabled, sort_order, scope_id, created_by, updated_by
+                ) values (
+                    $1, $2, $3, $4, $5, $6, $7,
+                    (select scope_id from mcp_instances where id = $2), $8, $8
+                )
+                "#,
+            )
+            .bind(group.id)
+            .bind(group.instance_record_id)
+            .bind(&group.path)
+            .bind(&group.display_name)
+            .bind(&group.description_short)
+            .bind(group.enabled)
+            .bind(group.sort_order)
+            .bind(group.actor_user_id)
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        for binding in &input.bindings {
+            sqlx::query(
+                r#"
+                insert into mcp_tool_bindings (
+                    id, instance_record_id, tool_record_id, group_path, display_alias,
+                    visible, sort_order, scope_id, created_by, updated_by
+                ) values (
+                    $1, $2, $3, $4, $5, $6, $7,
+                    (select scope_id from mcp_instances where id = $2), $8, $8
+                )
+                "#,
+            )
+            .bind(binding.id)
+            .bind(binding.instance_record_id)
+            .bind(binding.tool_record_id)
+            .bind(&binding.group_path)
+            .bind(&binding.display_alias)
+            .bind(binding.visible)
+            .bind(binding.sort_order)
+            .bind(binding.actor_user_id)
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        let policy = &input.discovery_policy;
+        sqlx::query(
+            r#"
+            insert into mcp_instance_discovery_policies (
+                id, workspace_id, instance_record_id, list_default_limit,
+                list_max_depth, list_regex_enabled, list_regex_max_length,
+                list_return_fields, created_by, updated_by
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(policy.workspace_id)
+        .bind(policy.instance_record_id)
+        .bind(policy.list_default_limit)
+        .bind(policy.list_max_depth)
+        .bind(policy.list_regex_enabled)
+        .bind(policy.list_regex_max_length)
+        .bind(&policy.list_return_fields)
+        .bind(policy.actor_user_id)
         .execute(&mut *transaction)
         .await?;
 
