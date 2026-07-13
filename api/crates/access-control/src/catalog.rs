@@ -1,6 +1,6 @@
 use domain::{PermissionDefinition, RoleScopeKind, RoleTemplate};
 
-use crate::settings_route_permission_definitions;
+use crate::{settings_feature_permission_definitions, settings_route_permission_definitions};
 
 fn push_permissions(
     permissions: &mut Vec<PermissionDefinition>,
@@ -154,6 +154,7 @@ pub fn permission_catalog() -> Vec<PermissionDefinition> {
         &[("view", &["all"]), ("manage", &["all"])],
     );
     permissions.extend(settings_route_permission_definitions());
+    permissions.extend(settings_feature_permission_definitions());
 
     permissions
 }

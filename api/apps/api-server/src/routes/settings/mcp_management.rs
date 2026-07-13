@@ -1579,13 +1579,6 @@ fn file_table_permission(method: &str, path: &str) -> Option<String> {
     }
 }
 
-fn role_permission(method: &str) -> Option<String> {
-    match method {
-        "GET" | "HEAD" | "OPTIONS" => permission_code("role_permission.view.all"),
-        _ => permission_code("role_permission.manage.all"),
-    }
-}
-
 fn state_model_permission(method: &str, path: &str) -> Option<String> {
     match method {
         "GET" | "HEAD" | "OPTIONS" => permission_code("state_model.view.all"),
@@ -1610,6 +1603,12 @@ fn external_data_source_permission(method: &str, path: &str) -> Option<String> {
 }
 
 fn operation_permission_code(method: &str, path: &str) -> Option<String> {
+    if path.starts_with("/api/console/settings/members") {
+        return permission_code(access_control::SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION);
+    }
+    if path.starts_with("/api/console/settings/roles") {
+        return permission_code(access_control::SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION);
+    }
     if path.starts_with("/api/console/docs/") {
         return permission_code("api_reference.view.all");
     }
@@ -1617,12 +1616,6 @@ fn operation_permission_code(method: &str, path: &str) -> Option<String> {
         || path.starts_with("/api/console/system/release-status")
     {
         return permission_code("system_runtime.view.all");
-    }
-    if path.starts_with("/api/console/permissions") || path.starts_with("/api/console/roles") {
-        return role_permission(method);
-    }
-    if path.starts_with("/api/console/members") {
-        return read_or_manage_permission(method, "user");
     }
     if path.starts_with("/api/console/workspace") || path.starts_with("/api/console/workspaces") {
         return view_or_configure_permission(method, "workspace");

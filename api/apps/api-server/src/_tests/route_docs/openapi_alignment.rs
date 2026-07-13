@@ -32,7 +32,7 @@ async fn create_member(app: &axum::Router, cookie: &str, csrf: &str, account: &s
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -461,8 +461,8 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
     let legacy_member_id = create_member(&app, &cookie, &csrf, "legacy-member").await;
 
     for route in [
-        "/api/console/members/{id}/disable",
-        "/api/console/members/{id}/reset-password",
+        "/api/console/settings/members/{id}/disable",
+        "/api/console/settings/members/{id}/reset-password",
     ] {
         assert!(
             !paths.contains_key(route),
@@ -473,7 +473,7 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
     let member_mutation_paths = paths
         .keys()
         .filter(|route| {
-            route.starts_with("/api/console/members/{id}/")
+            route.starts_with("/api/console/settings/members/{id}/")
                 && (route.contains("disable") || route.contains("reset-password"))
         })
         .cloned()
@@ -481,8 +481,8 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
     assert_eq!(
         member_mutation_paths,
         vec![
-            "/api/console/members/{id}/actions/disable".to_string(),
-            "/api/console/members/{id}/actions/reset-password".to_string(),
+            "/api/console/settings/members/{id}/disable".to_string(),
+            "/api/console/settings/members/{id}/reset-password".to_string(),
         ]
     );
 
@@ -492,7 +492,7 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{action_member_id}/actions/reset-password"
+                    "/api/console/settings/members/{action_member_id}/reset-password"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -515,7 +515,7 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{action_member_id}/actions/disable"
+                    "/api/console/settings/members/{action_member_id}/disable"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -532,7 +532,7 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/members/{legacy_member_id}/reset-password"
+                    "/api/console/settings/members/{legacy_member_id}/reset-password"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -553,7 +553,9 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/members/{legacy_member_id}/disable"))
+                .uri(format!(
+                    "/api/console/settings/members/{legacy_member_id}/disable"
+                ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())

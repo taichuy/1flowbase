@@ -15,10 +15,13 @@ pub use navigation::{
     ConsoleSurfaceKind,
 };
 pub use settings_features::{
-    AccessRule, SettingsApiRoute, SettingsFeatureCompiledInventory, SettingsFeatureConsoleSurface,
+    core_settings_feature_registrations, settings_feature_permission_definitions, AccessRule,
+    SettingsApiRoute, SettingsFeatureCompiledInventory, SettingsFeatureConsoleSurface,
     SettingsFeatureInventoryEntry, SettingsFeatureLifecycle, SettingsFeatureOwner,
     SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
-    SettingsFeatureRegistryError,
+    SettingsFeatureRegistryError, SYSTEM_MEMBERS_SETTINGS_FEATURE_ID,
+    SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION, SYSTEM_ROLES_SETTINGS_FEATURE_ID,
+    SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION,
 };
 pub use settings_routes::{
     expand_permissions_with_settings_routes, settings_route_permission_definitions,

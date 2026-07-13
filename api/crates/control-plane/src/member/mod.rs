@@ -1,11 +1,11 @@
-use access_control::ensure_permission;
+use access_control::{ensure_permission, SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION};
 use anyhow::Result;
 use uuid::Uuid;
 
 use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
-    ports::{CreateMemberInput, MemberRepository, UpdateMemberInput},
+    ports::{CreateMemberInput, MemberRepository, RoleRepository, UpdateMemberInput},
 };
 
 pub struct CreateMemberCommand {
@@ -58,6 +58,12 @@ pub struct ReplaceMemberRolesCommand {
     pub role_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssignableRoleOption {
+    pub code: String,
+    pub name: String,
+}
+
 pub struct MemberService<R> {
     repository: R,
 }
@@ -75,7 +81,8 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(&actor, "user.view.all").map_err(ControlPlaneError::PermissionDenied)?;
+        ensure_permission(&actor, SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION)
+            .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .list_members(actor.current_workspace_id)
             .await
@@ -86,7 +93,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "user.manage.all")
+        ensure_permission(&actor, SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
 
         let user = self
@@ -124,7 +131,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "user.manage.all")
+        ensure_permission(&actor, SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
 
         let user = self
@@ -158,7 +165,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "user.manage.all")
+        ensure_permission(&actor, SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .disable_member(command.actor_user_id, command.target_user_id)
@@ -181,7 +188,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "user.manage.all")
+        ensure_permission(&actor, SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .enable_member(command.actor_user_id, command.target_user_id)
@@ -204,7 +211,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "user.manage.all")
+        ensure_permission(&actor, SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .delete_member(command.actor_user_id, command.target_user_id)
@@ -227,7 +234,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "user.manage.all")
+        ensure_permission(&actor, SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .reset_member_password(
@@ -254,7 +261,7 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "role_permission.manage.all")
+        ensure_permission(&actor, SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         self.repository
             .replace_member_roles(
@@ -275,5 +282,34 @@ where
             ))
             .await?;
         Ok(())
+    }
+}
+
+impl<R> MemberService<R>
+where
+    R: MemberRepository + RoleRepository,
+{
+    pub async fn list_assignable_role_options(
+        &self,
+        actor_user_id: Uuid,
+    ) -> Result<Vec<AssignableRoleOption>> {
+        let actor =
+            MemberRepository::load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        ensure_permission(&actor, SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION)
+            .map_err(ControlPlaneError::PermissionDenied)?;
+
+        Ok(
+            RoleRepository::list_roles(&self.repository, actor.current_workspace_id)
+                .await?
+                .into_iter()
+                .filter(|role| {
+                    role.scope_kind == domain::RoleScopeKind::Workspace && role.code != "root"
+                })
+                .map(|role| AssignableRoleOption {
+                    code: role.code,
+                    name: role.name,
+                })
+                .collect(),
+        )
     }
 }

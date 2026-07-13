@@ -18,7 +18,7 @@ async fn create_member(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -54,7 +54,7 @@ async fn create_role(app: &axum::Router, cookie: &str, csrf: &str, code: &str) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -86,7 +86,9 @@ async fn replace_role_permissions(
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/roles/{role_code}/permissions"))
+                .uri(format!(
+                    "/api/console/settings/roles/{role_code}/permissions"
+                ))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -116,7 +118,7 @@ async fn replace_member_roles(
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/members/{member_id}/roles"))
+                .uri(format!("/api/console/settings/members/{member_id}/roles"))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -353,7 +355,7 @@ async fn docs_routes_allow_root_and_granted_members() {
     let category_payload: Value = serde_json::from_slice(&category_body).unwrap();
     assert_eq!(category_payload["info"]["title"], "1flowbase API");
     assert!(category_payload["paths"]["/api/console/me"]["patch"].is_object());
-    assert!(category_payload["paths"]["/api/console/members"]["get"].is_object());
+    assert!(category_payload["paths"]["/api/console/settings/members"]["get"].is_object());
 
     let operation_response = app
         .clone()

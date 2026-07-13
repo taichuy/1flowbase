@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use access_control::ensure_permission;
 use axum::{extract::State, http::HeaderMap, routing::get, Json, Router};
-use control_plane::errors::ControlPlaneError;
+use control_plane::role::RoleService;
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -21,12 +20,12 @@ pub struct PermissionResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/permissions", get(list_permissions))
+    Router::new().route("/settings/roles/permission-options", get(list_permissions))
 }
 
 #[utoipa::path(
     get,
-    path = "/api/console/permissions",
+    path = "/api/console/settings/roles/permission-options",
     responses((status = 200, body = [PermissionResponse]), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_permissions(
@@ -34,12 +33,8 @@ pub async fn list_permissions(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<PermissionResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_permission(&context.actor, "role_permission.view.all")
-        .map_err(ControlPlaneError::PermissionDenied)?;
-
-    let permissions = state
-        .store
-        .list_permissions()
+    let permissions = RoleService::new(state.store.clone())
+        .list_permission_options(context.user.id)
         .await?
         .into_iter()
         .map(|permission| PermissionResponse {

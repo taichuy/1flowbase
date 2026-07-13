@@ -143,7 +143,7 @@ fn registry_groups_catalog_by_api_prefix_and_singletons_for_non_api_paths() {
             "/api/console/me": {
                 "patch": { "operationId": "patch_me", "summary": "Patch me" }
             },
-            "/api/console/members": {
+            "/api/console/settings/members": {
                 "get": { "operationId": "list_members", "summary": "List members" }
             },
             "/api/runtime/jobs": {
@@ -179,7 +179,7 @@ fn category_operations_pagination_returns_stable_pages() {
             "/api/console/user-api-keys": {
                 "post": { "operationId": "create_user_api_key", "summary": "Create user API key" }
             },
-            "/api/console/members": {
+            "/api/console/settings/members": {
                 "get": { "operationId": "list_members", "summary": "List members" }
             },
             "/api/console/workspace": {
@@ -252,7 +252,7 @@ fn category_spec_builder_keeps_all_category_operations_closed() {
             "/api/console/me": {
                 "patch": { "operationId": "patch_me", "summary": "Patch me" }
             },
-            "/api/console/members": {
+            "/api/console/settings/members": {
                 "get": { "operationId": "list_members", "summary": "List members" }
             },
             "/api/runtime/jobs": {
@@ -268,7 +268,7 @@ fn category_spec_builder_keeps_all_category_operations_closed() {
 
     assert_eq!(spec["paths"].as_object().unwrap().len(), 2);
     assert!(spec["paths"]["/api/console/me"]["patch"].is_object());
-    assert!(spec["paths"]["/api/console/members"]["get"].is_object());
+    assert!(spec["paths"]["/api/console/settings/members"]["get"].is_object());
     assert!(spec["paths"]["/api/runtime/jobs"].is_null());
     assert!(spec["components"].is_object());
 }

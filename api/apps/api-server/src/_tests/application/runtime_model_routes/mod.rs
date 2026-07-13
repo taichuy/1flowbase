@@ -481,7 +481,7 @@ async fn create_member(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
@@ -524,7 +524,7 @@ async fn replace_member_roles(
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/console/members/{member_id}/roles"))
+                .uri(format!("/api/console/settings/members/{member_id}/roles"))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")

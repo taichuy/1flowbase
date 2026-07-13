@@ -252,7 +252,7 @@ async fn console_navigation_route_uses_settings_route_visibility_permissions() {
         &root_cookie,
         &root_csrf,
         "settings_route_roles_only",
-        &["settings_route.visible.settings.roles"],
+        &["settings_feature.access.system.roles"],
     )
     .await;
     replace_member_roles(

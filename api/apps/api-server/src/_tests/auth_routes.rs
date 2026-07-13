@@ -310,7 +310,7 @@ async fn console_user_api_key_reuses_bound_user_permissions_and_denies_missing_p
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),

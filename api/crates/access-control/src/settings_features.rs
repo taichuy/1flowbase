@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 
 pub const SETTINGS_FEATURE_INVENTORY_SCHEMA_VERSION: &str =
     "1flowbase.settings-feature-inventory/v1";
+pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_ID: &str = "system.members";
+pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.members";
+pub const SYSTEM_ROLES_SETTINGS_FEATURE_ID: &str = "system.roles";
+pub const SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.access.system.roles";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -62,6 +67,90 @@ impl SettingsFeatureRegistration {
     pub fn permission_code(&self) -> String {
         format!("settings_feature.access.{}", self.feature_id)
     }
+}
+
+pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
+    vec![
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_MEMBERS_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.members".to_string(),
+                surface_key: "members".to_string(),
+                path: "/settings/members".to_string(),
+                label_key: "auto.user_management".to_string(),
+                order: 1200,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/members"),
+                ("POST", "/api/console/settings/members"),
+                ("GET", "/api/console/settings/members/role-options"),
+                ("PATCH", "/api/console/settings/members/{id}"),
+                ("DELETE", "/api/console/settings/members/{id}"),
+                ("POST", "/api/console/settings/members/{id}/disable"),
+                ("POST", "/api/console/settings/members/{id}/enable"),
+                ("POST", "/api/console/settings/members/{id}/reset-password"),
+                ("PUT", "/api/console/settings/members/{id}/roles"),
+            ]),
+        },
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_ROLES_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.roles".to_string(),
+                surface_key: "roles".to_string(),
+                path: "/settings/roles".to_string(),
+                label_key: "auto.permission_management".to_string(),
+                order: 1300,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/roles"),
+                ("POST", "/api/console/settings/roles"),
+                ("GET", "/api/console/settings/roles/permission-options"),
+                ("PATCH", "/api/console/settings/roles/{id}"),
+                ("DELETE", "/api/console/settings/roles/{id}"),
+                ("GET", "/api/console/settings/roles/{id}/permissions"),
+                ("PUT", "/api/console/settings/roles/{id}/permissions"),
+                ("GET", "/api/console/settings/roles/{id}/frontstage-routes"),
+                ("PUT", "/api/console/settings/roles/{id}/frontstage-routes"),
+                ("GET", "/api/console/settings/roles/{id}/data-policy"),
+                ("PUT", "/api/console/settings/roles/{id}/data-policy"),
+            ]),
+        },
+    ]
+}
+
+pub fn settings_feature_permission_definitions() -> Vec<domain::PermissionDefinition> {
+    core_settings_feature_registrations()
+        .into_iter()
+        .map(|registration| domain::PermissionDefinition {
+            code: registration.permission_code(),
+            resource: "settings_feature".to_string(),
+            action: "access".to_string(),
+            scope: registration.feature_id.clone(),
+            name: format!("settings_feature:access:{}", registration.feature_id),
+        })
+        .collect()
+}
+
+fn settings_api_routes(routes: &[(&str, &str)]) -> Vec<SettingsApiRoute> {
+    routes
+        .iter()
+        .map(|(method, path)| SettingsApiRoute {
+            method: (*method).to_string(),
+            path: (*path).to_string(),
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,9 +250,31 @@ impl SettingsFeatureRegistry {
     }
 
     pub fn access_rule(&self, method: &str, path: &str) -> Option<&AccessRule> {
+        let method = method.to_ascii_uppercase();
         self.access_rules
-            .get(&(method.to_ascii_uppercase(), path.to_string()))
+            .get(&(method.clone(), path.to_string()))
+            .or_else(|| {
+                self.access_rules
+                    .iter()
+                    .find_map(|((route_method, route_path), rule)| {
+                        (route_method == &method && settings_route_matches(route_path, path))
+                            .then_some(rule)
+                    })
+            })
     }
+}
+
+fn settings_route_matches(route_template: &str, request_path: &str) -> bool {
+    let template_segments = route_template.split('/').collect::<Vec<_>>();
+    let request_segments = request_path.split('/').collect::<Vec<_>>();
+    template_segments.len() == request_segments.len()
+        && template_segments
+            .iter()
+            .zip(request_segments)
+            .all(|(template, actual)| {
+                (template.starts_with('{') && template.ends_with('}') && !actual.is_empty())
+                    || template == &actual
+            })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

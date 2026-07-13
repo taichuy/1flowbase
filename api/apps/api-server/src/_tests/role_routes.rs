@@ -19,7 +19,7 @@ async fn role_routes_create_replace_permissions_and_protect_root() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -43,7 +43,7 @@ async fn role_routes_create_replace_permissions_and_protect_root() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/roles/qa/permissions")
+                .uri("/api/console/settings/roles/qa/permissions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -71,7 +71,7 @@ async fn role_routes_create_replace_permissions_and_protect_root() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/roles/qa/permissions")
+                .uri("/api/console/settings/roles/qa/permissions")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -91,7 +91,7 @@ async fn role_routes_create_replace_permissions_and_protect_root() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/roles/root/permissions")
+                .uri("/api/console/settings/roles/root/permissions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -119,7 +119,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -142,7 +142,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/roles/data_editor/data-policy")
+                .uri("/api/console/settings/roles/data_editor/data-policy")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -189,7 +189,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/roles/data_editor/data-policy")
+                .uri("/api/console/settings/roles/data_editor/data-policy")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -245,7 +245,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/roles/data_editor/data-policy")
+                .uri("/api/console/settings/roles/data_editor/data-policy")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -278,7 +278,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/roles/data_editor/data-policy")
+                .uri("/api/console/settings/roles/data_editor/data-policy")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -316,7 +316,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/roles/root/data-policy")
+                .uri("/api/console/settings/roles/root/data-policy")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -352,7 +352,7 @@ async fn role_routes_roundtrip_policy_flags_and_protect_default_role_from_clear(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -390,7 +390,7 @@ async fn role_routes_roundtrip_policy_flags_and_protect_default_role_from_clear(
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/api/console/roles/qa")
+                .uri("/api/console/settings/roles/qa")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -415,7 +415,7 @@ async fn role_routes_roundtrip_policy_flags_and_protect_default_role_from_clear(
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -448,7 +448,7 @@ async fn role_routes_roundtrip_policy_flags_and_protect_default_role_from_clear(
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/api/console/roles/qa")
+                .uri("/api/console/settings/roles/qa")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -487,7 +487,7 @@ async fn root_can_login_create_member_create_role_and_bind_permissions() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/members")
+                .uri("/api/console/settings/members")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -517,7 +517,7 @@ async fn root_can_login_create_member_create_role_and_bind_permissions() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -541,7 +541,7 @@ async fn root_can_login_create_member_create_role_and_bind_permissions() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/roles/viewer/permissions")
+                .uri("/api/console/settings/roles/viewer/permissions")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -562,7 +562,7 @@ async fn root_can_login_create_member_create_role_and_bind_permissions() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/permissions")
+                .uri("/api/console/settings/roles/permission-options")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -574,7 +574,7 @@ async fn root_can_login_create_member_create_role_and_bind_permissions() {
 }
 
 #[tokio::test]
-async fn settings_roles_route_permission_grants_roles_api_without_legacy_role_permission() {
+async fn settings_roles_feature_grants_roles_api_without_legacy_role_permission() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let member_id = create_member(
@@ -591,7 +591,7 @@ async fn settings_roles_route_permission_grants_roles_api_without_legacy_role_pe
         &root_cookie,
         &root_csrf,
         "settings_route_roles_only",
-        &["settings_route.visible.settings.roles"],
+        &["settings_feature.access.system.roles"],
     )
     .await;
     replace_member_roles(
@@ -610,7 +610,7 @@ async fn settings_roles_route_permission_grants_roles_api_without_legacy_role_pe
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", &member_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -664,7 +664,7 @@ async fn legacy_role_permission_without_settings_route_permission_is_forbidden_o
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/roles")
+                .uri("/api/console/settings/roles")
                 .header("cookie", &member_cookie)
                 .body(Body::empty())
                 .unwrap(),

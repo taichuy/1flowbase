@@ -27,6 +27,8 @@ mod role_routes;
 mod route_docs;
 mod runtime_event_stream;
 mod session_routes;
+mod settings_feature_members_routes;
+mod settings_feature_roles_routes;
 pub(crate) mod support;
 mod system_routes;
 mod workflow_schedule_worker;

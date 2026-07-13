@@ -62,8 +62,6 @@ pub struct SettingsRouteSpec {
 
 const USER_VIEW_PERMISSIONS: &[&str] = &["user.view.all"];
 const USER_ALL_PERMISSIONS: &[&str] = &["user.view.all", "user.manage.all"];
-const ROLE_VIEW_PERMISSIONS: &[&str] = &["role_permission.view.all"];
-const ROLE_ALL_PERMISSIONS: &[&str] = &["role_permission.view.all", "role_permission.manage.all"];
 const SYSTEM_RUNTIME_PERMISSIONS: &[&str] = &["system_runtime.view.all"];
 const PLUGIN_VIEW_PERMISSIONS: &[&str] = &["plugin_config.view.all"];
 const PLUGIN_ALL_PERMISSIONS: &[&str] = &["plugin_config.view.all", "plugin_config.configure.all"];
@@ -245,36 +243,6 @@ const MCP_MANAGEMENT_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiSc
     methods: SettingsRouteApiMethods::Any,
 }];
 
-const MEMBERS_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.members",
-        path: "/api/console/members",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.roles.readonly",
-        path: "/api/console/roles",
-        path_match: SettingsRouteApiPathMatch::Exact,
-        methods: SettingsRouteApiMethods::ReadOnly,
-    },
-];
-
-const ROLES_API_SCOPES: &[SettingsRouteApiScope] = &[
-    SettingsRouteApiScope {
-        scope_id: "console.permissions",
-        path: "/api/console/permissions",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-    SettingsRouteApiScope {
-        scope_id: "console.roles",
-        path: "/api/console/roles",
-        path_match: SettingsRouteApiPathMatch::Prefix,
-        methods: SettingsRouteApiMethods::Any,
-    },
-];
-
 const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
     SettingsRouteSpec {
         route_id: "settings.docs",
@@ -404,33 +372,6 @@ const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
         legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(MCP_VISIBILITY_PERMISSIONS),
         implied_permissions: MCP_ALL_PERMISSIONS,
         api_scopes: MCP_MANAGEMENT_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.members",
-        surface_key: "members",
-        path: "/settings/members",
-        label_key: "auto.user_management",
-        order: 1200,
-        visibility_permission_code: "settings_route.visible.settings.members",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(USER_VIEW_PERMISSIONS),
-        implied_permissions: &[
-            "user.view.all",
-            "user.manage.all",
-            "role_permission.view.all",
-            "role_permission.manage.all",
-        ],
-        api_scopes: MEMBERS_API_SCOPES,
-    },
-    SettingsRouteSpec {
-        route_id: "settings.roles",
-        surface_key: "roles",
-        path: "/settings/roles",
-        label_key: "auto.permission_management",
-        order: 1300,
-        visibility_permission_code: "settings_route.visible.settings.roles",
-        legacy_visibility: SettingsRouteLegacyVisibility::AnyPermission(ROLE_VIEW_PERMISSIONS),
-        implied_permissions: ROLE_ALL_PERMISSIONS,
-        api_scopes: ROLES_API_SCOPES,
     },
 ];
 
