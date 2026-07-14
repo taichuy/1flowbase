@@ -2,12 +2,53 @@ use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
     replace_role_permissions, test_app,
 };
+use access_control::ConsoleRouteOwnership;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use serde_json::json;
 use tower::ServiceExt;
+
+#[test]
+fn role_console_policy_routes_use_the_api_client_paths_and_explicit_operations() {
+    let route_assembly = crate::routes::roles::route_assembly();
+    let bindings = route_assembly
+        .bindings()
+        .iter()
+        .filter_map(|binding| {
+            let ConsoleRouteOwnership::ConsoleOperation(operation_id) = &binding.ownership else {
+                return None;
+            };
+            (operation_id.starts_with("roles.console_policy")).then_some((
+                binding.route.method.as_str(),
+                binding.route.path.as_str(),
+                operation_id.as_str(),
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        bindings,
+        vec![
+            (
+                "GET",
+                "/api/console/settings/roles/console-policy-catalog",
+                "roles.console_policy_catalog.view",
+            ),
+            (
+                "GET",
+                "/api/console/settings/roles/:id/console-policy",
+                "roles.console_policy.view",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/roles/:id/console-policy",
+                "roles.console_policy.replace",
+            ),
+        ]
+    );
+}
 
 #[tokio::test]
 async fn role_list_exposes_only_workspace_admin_and_member_builtins() {

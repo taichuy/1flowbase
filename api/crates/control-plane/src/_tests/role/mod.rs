@@ -5,7 +5,10 @@ use access_control::{
 };
 
 use crate::_tests::support::MemoryRoleRepository;
-use crate::ports::{RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput};
+use crate::ports::{
+    ReplaceRoleConsolePolicyInput, RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput,
+    RoleRepository,
+};
 use crate::role::{
     ConsolePolicyGroupInput, ConsolePolicyOperationInput, CreateRoleCommand, DeleteRoleCommand,
     ReplaceRoleConsolePolicyCommand, ReplaceRoleDataPolicyCommand, ReplaceRolePermissionsCommand,
@@ -114,7 +117,12 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
     }
 }
 
-fn policy_group(kind: &str, group_id: &str, mode: &str, operations: Vec<ConsolePolicyOperationInput>) -> ConsolePolicyGroupInput {
+fn policy_group(
+    kind: &str,
+    group_id: &str,
+    mode: &str,
+    operations: Vec<ConsolePolicyOperationInput>,
+) -> ConsolePolicyGroupInput {
     ConsolePolicyGroupInput {
         kind: kind.to_string(),
         group_id: group_id.to_string(),
@@ -155,13 +163,32 @@ async fn role_service_console_policy_catalog_localizes_compiled_inventory() {
         .await
         .unwrap();
 
-    assert_eq!(catalog.schema_version, "1flowbase.console-operation-inventory/v1");
+    assert_eq!(
+        catalog.schema_version,
+        "1flowbase.console-operation-inventory/v1"
+    );
+    assert_eq!(catalog.locale, "zh_Hans");
     assert_eq!(catalog.groups.len(), 3);
     assert_eq!(catalog.groups[0].group_id, "system.applications");
     assert_eq!(catalog.groups[0].operations[0].label, "创建应用");
-    assert_eq!(catalog.groups[0].operations[1].authorization.kind(), "resource_action");
+    assert_eq!(catalog.groups[0].operations[0].order, 100);
+    assert!(catalog.groups[0].operations[0]
+        .allowed_row_scopes
+        .is_empty());
+    assert_eq!(
+        catalog.groups[0].operations[1].authorization.kind(),
+        "resource_action"
+    );
+    assert_eq!(
+        catalog.groups[0].operations[1].allowed_row_scopes,
+        vec![
+            domain::ConsoleOperationRowScope::Disabled,
+            domain::ConsoleOperationRowScope::Own,
+            domain::ConsoleOperationRowScope::ScopeAll,
+        ]
+    );
     assert_eq!(catalog.resources[0].resource_code, "applications");
-    assert_eq!(catalog.resources[0].actions[1].label, "查看应用");
+    assert_eq!(catalog.resources[0].actions[1].label, "查看");
     assert!(!catalog.groups[0].operations[0]
         .label
         .contains("applications.create"));
@@ -179,16 +206,21 @@ async fn role_service_console_policy_round_trips_disabled_full_custom_and_row_sc
                 actor_user_id: repository.root_user_id(),
                 role_code: "policy-editor".to_string(),
                 groups: vec![
-                    policy_group("settings_feature", "system.applications", "custom", vec![
-                        ConsolePolicyOperationInput::Simple {
-                            operation_id: "applications.create".to_string(),
-                            enabled: true,
-                        },
-                        ConsolePolicyOperationInput::Row {
-                            operation_id: "applications.view".to_string(),
-                            scope: "own".to_string(),
-                        },
-                    ]),
+                    policy_group(
+                        "settings_feature",
+                        "system.applications",
+                        "custom",
+                        vec![
+                            ConsolePolicyOperationInput::Simple {
+                                operation_id: "applications.create".to_string(),
+                                enabled: true,
+                            },
+                            ConsolePolicyOperationInput::Row {
+                                operation_id: "applications.view".to_string(),
+                                scope: "own".to_string(),
+                            },
+                        ],
+                    ),
                     policy_group("settings_feature", "system.files", "full", vec![]),
                     policy_group("other", "other.files", "disabled", vec![]),
                 ],
@@ -208,11 +240,23 @@ async fn role_service_console_policy_round_trips_disabled_full_custom_and_row_sc
         .unwrap();
 
     assert_eq!(policy.groups(), fetched.groups());
-    assert_eq!(fetched.groups()[0].mode(), domain::ConsolePolicyMode::Custom);
-    assert_eq!(fetched.groups()[0].operations()[1].row_scope(), Some(domain::ConsoleOperationRowScope::Own));
+    assert_eq!(
+        fetched.groups()[0].mode(),
+        domain::ConsolePolicyMode::Custom
+    );
+    assert_eq!(
+        fetched.groups()[0].operations()[1].row_scope(),
+        Some(domain::ConsoleOperationRowScope::Own)
+    );
     assert_eq!(fetched.groups()[1].mode(), domain::ConsolePolicyMode::Full);
-    assert_eq!(fetched.groups()[2].mode(), domain::ConsolePolicyMode::Disabled);
-    assert_eq!(repository.audit_events(), vec!["role.created", "role.console_policy_replaced"]);
+    assert_eq!(
+        fetched.groups()[2].mode(),
+        domain::ConsolePolicyMode::Disabled
+    );
+    assert_eq!(
+        repository.audit_events(),
+        vec!["role.created", "role.console_policy_replaced"]
+    );
 }
 
 #[tokio::test]
@@ -281,6 +325,154 @@ async fn role_service_console_policy_rejects_unknown_operation() {
 
     assert!(error.to_string().contains("console_policy_operation"));
     assert_eq!(repository.audit_events(), vec!["role.created"]);
+}
+
+// AC-004/AC-006: the role-policy write boundary must reject malformed policy
+// shapes rather than normalizing an ambiguous or wider grant.
+#[tokio::test]
+async fn role_service_console_policy_rejects_duplicate_groups_operations_type_mismatches_and_group_shapes(
+) {
+    let repository = MemoryRoleRepository::default();
+    let service = RoleService::new(repository.clone());
+    editable_role(&service, &repository, "policy-editor").await;
+
+    let duplicate_group = service
+        .replace_console_policy(
+            ReplaceRoleConsolePolicyCommand {
+                actor_user_id: repository.root_user_id(),
+                role_code: "policy-editor".to_string(),
+                groups: vec![
+                    policy_group(
+                        "settings_feature",
+                        "system.applications",
+                        "disabled",
+                        vec![],
+                    ),
+                    policy_group(
+                        "settings_feature",
+                        "system.applications",
+                        "disabled",
+                        vec![],
+                    ),
+                ],
+            },
+            &console_policy_inventory(),
+        )
+        .await
+        .unwrap_err();
+    assert!(duplicate_group
+        .to_string()
+        .contains("console_policy_group_duplicate"));
+
+    let duplicate_operation = service
+        .replace_console_policy(
+            ReplaceRoleConsolePolicyCommand {
+                actor_user_id: repository.root_user_id(),
+                role_code: "policy-editor".to_string(),
+                groups: vec![policy_group(
+                    "settings_feature",
+                    "system.applications",
+                    "custom",
+                    vec![
+                        ConsolePolicyOperationInput::Simple {
+                            operation_id: "applications.create".to_string(),
+                            enabled: true,
+                        },
+                        ConsolePolicyOperationInput::Simple {
+                            operation_id: "applications.create".to_string(),
+                            enabled: false,
+                        },
+                    ],
+                )],
+            },
+            &console_policy_inventory(),
+        )
+        .await
+        .unwrap_err();
+    assert!(duplicate_operation
+        .to_string()
+        .contains("console_policy_operation_duplicate"));
+
+    let type_mismatch = service
+        .replace_console_policy(
+            ReplaceRoleConsolePolicyCommand {
+                actor_user_id: repository.root_user_id(),
+                role_code: "policy-editor".to_string(),
+                groups: vec![policy_group(
+                    "settings_feature",
+                    "system.applications",
+                    "custom",
+                    vec![ConsolePolicyOperationInput::Row {
+                        operation_id: "applications.create".to_string(),
+                        scope: "own".to_string(),
+                    }],
+                )],
+            },
+            &console_policy_inventory(),
+        )
+        .await
+        .unwrap_err();
+    assert!(type_mismatch
+        .to_string()
+        .contains("console_policy_operation_type"));
+
+    for mode in ["disabled", "full"] {
+        let error = service
+            .replace_console_policy(
+                ReplaceRoleConsolePolicyCommand {
+                    actor_user_id: repository.root_user_id(),
+                    role_code: "policy-editor".to_string(),
+                    groups: vec![policy_group(
+                        "settings_feature",
+                        "system.applications",
+                        mode,
+                        vec![ConsolePolicyOperationInput::Simple {
+                            operation_id: "applications.create".to_string(),
+                            enabled: true,
+                        }],
+                    )],
+                },
+                &console_policy_inventory(),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("console_policy_group_shape"));
+    }
+
+    assert_eq!(repository.audit_events(), vec!["role.created"]);
+}
+
+// AC-004: an active catalog group without a stored row is a concrete denied
+// group, so callers can render and edit every active group deterministically.
+#[tokio::test]
+async fn role_service_console_policy_defaults_missing_active_groups_to_disabled() {
+    let repository = MemoryRoleRepository::default();
+    let service = RoleService::new(repository.clone());
+    editable_role(&service, &repository, "policy-editor").await;
+    repository
+        .replace_role_console_policy(&ReplaceRoleConsolePolicyInput {
+            actor_user_id: repository.root_user_id(),
+            workspace_id: Uuid::nil(),
+            role_code: "policy-editor".to_string(),
+            groups: vec![],
+        })
+        .await
+        .unwrap();
+
+    let policy = service
+        .get_console_policy(
+            repository.root_user_id(),
+            "policy-editor",
+            &console_policy_inventory(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(policy.groups().len(), 3);
+    assert!(policy
+        .groups()
+        .iter()
+        .all(|group| group.mode() == domain::ConsolePolicyMode::Disabled));
 }
 
 #[tokio::test]

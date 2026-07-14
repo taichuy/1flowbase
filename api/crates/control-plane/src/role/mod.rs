@@ -19,6 +19,16 @@ use crate::{
 };
 
 pub mod console_policy_migration;
+mod console_policy_validation;
+
+use console_policy_validation::{
+    complete_stored_console_policy, role_console_policy_groups_from_input,
+    CompiledConsolePolicyOperationIndex, CompiledConsolePolicyOperationKind, ConsolePolicyGroupKey,
+};
+pub use console_policy_validation::{
+    ConsolePolicyAuthorization, ConsolePolicyCatalog, ConsolePolicyCatalogAction,
+    ConsolePolicyCatalogGroup, ConsolePolicyCatalogOperation, ConsolePolicyCatalogResource,
+};
 
 pub struct CreateRoleCommand {
     pub actor_user_id: Uuid,
@@ -84,73 +94,6 @@ pub enum ConsolePolicyOperationInput {
     Row { operation_id: String, scope: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConsolePolicyCatalog {
-    pub schema_version: String,
-    pub groups: Vec<ConsolePolicyCatalogGroup>,
-    pub resources: Vec<ConsolePolicyCatalogResource>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConsolePolicyCatalogGroup {
-    pub kind: String,
-    pub group_id: String,
-    pub label: String,
-    pub description: String,
-    pub operations: Vec<ConsolePolicyCatalogOperation>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConsolePolicyCatalogOperation {
-    pub operation_id: String,
-    pub label: String,
-    pub description: String,
-    pub authorization: ConsolePolicyAuthorization,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ConsolePolicyAuthorization {
-    Simple,
-    ResourceAction {
-        resource_code: String,
-        action_code: String,
-    },
-}
-
-impl ConsolePolicyAuthorization {
-    pub fn kind(&self) -> &'static str {
-        match self {
-            Self::Simple => "simple",
-            Self::ResourceAction { .. } => "resource_action",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConsolePolicyCatalogResource {
-    pub resource_code: String,
-    pub label: String,
-    pub description: String,
-    pub actions: Vec<ConsolePolicyCatalogAction>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConsolePolicyCatalogAction {
-    pub action_code: String,
-    pub label: String,
-    pub description: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CompiledConsolePolicyOperationKind {
-    Simple,
-    Row,
-}
-
-type ConsolePolicyGroupKey = (String, String);
-type CompiledConsolePolicyOperationIndex =
-    BTreeMap<ConsolePolicyGroupKey, BTreeMap<String, CompiledConsolePolicyOperationKind>>;
-
 const CONSOLE_POLICY_TRANSLATIONS: &[(&str, &str, &str)] = &[
     ("auto.api_documentation", "API documentation", "API 文档"),
     (
@@ -168,11 +111,7 @@ const CONSOLE_POLICY_TRANSLATIONS: &[(&str, &str, &str)] = &[
     ("auto.data_source", "Data source", "数据源"),
     ("auto.file_management", "File management", "文件管理"),
     ("auto.infrastructure", "Infrastructure", "基础设施"),
-    (
-        "auto.memory_observation",
-        "Memory observation",
-        "内存观测",
-    ),
+    ("auto.memory_observation", "Memory observation", "内存观测"),
     ("auto.user_management", "User management", "用户管理"),
     ("auto.model_providers", "Model providers", "模型提供商"),
     ("auto.mcp_management", "MCP management", "MCP 管理"),
@@ -693,7 +632,9 @@ fn localized_reference(reference: &str, locale: &str) -> Result<String, ControlP
             _ => "",
         })
         .filter(|value| !value.is_empty())
-        .ok_or(ControlPlaneError::InvalidInput("console_policy_translation"))?;
+        .ok_or(ControlPlaneError::InvalidInput(
+            "console_policy_translation",
+        ))?;
     Ok(value.to_string())
 }
 
@@ -712,100 +653,107 @@ fn domain_console_policy_group(
             domain::ConsolePolicyGroup::settings_feature(group_id)
                 .map_err(|_| ControlPlaneError::InvalidInput("console_policy_group"))
         }
-        RegisteredConsolePolicyGroup::Other(group_id) => domain::ConsolePolicyGroup::other(group_id)
-            .map_err(|_| ControlPlaneError::InvalidInput("console_policy_group")),
+        RegisteredConsolePolicyGroup::Other(group_id) => {
+            domain::ConsolePolicyGroup::other(group_id)
+                .map_err(|_| ControlPlaneError::InvalidInput("console_policy_group"))
+        }
     }
 }
 
 fn console_policy_group_key(group: &domain::ConsolePolicyGroup) -> ConsolePolicyGroupKey {
-    (group.kind().as_str().to_string(), group.group_id().as_str().to_string())
+    (
+        group.kind().as_str().to_string(),
+        group.group_id().as_str().to_string(),
+    )
 }
 
 fn console_policy_group_text(
     group: &domain::ConsolePolicyGroup,
     locale: &str,
 ) -> Result<(String, String), ControlPlaneError> {
-    let (label_ref, english_description, simplified_chinese_description) = match (
-        group.kind().as_str(),
-        group.group_id().as_str(),
-    ) {
-        ("settings_feature", "system.docs") => (
-            "auto.api_documentation",
-            "API documentation operations",
-            "API 文档操作",
-        ),
-        ("settings_feature", "system.api-key-authentication") => (
-            "auto.api_key_authentication",
-            "API key authentication operations",
-            "API Key 认证操作",
-        ),
-        ("settings_feature", "system.system-runtime") => (
-            "auto.system_runtime",
-            "System runtime operations",
-            "系统运行操作",
-        ),
-        ("settings_feature", "system.applications") => (
-            "auto.application_management",
-            "Application management operations",
-            "应用管理操作",
-        ),
-        ("settings_feature", "system.auth-center") => (
-            "auto.auth_center",
-            "Authentication center operations",
-            "认证中心操作",
-        ),
-        ("settings_feature", "system.data-models") => (
-            "auto.data_source",
-            "Data model and data source operations",
-            "数据模型与数据源操作",
-        ),
-        ("settings_feature", "system.files") => (
-            "auto.file_management",
-            "File management operations",
-            "文件管理操作",
-        ),
-        ("settings_feature", "system.host-infrastructure") => (
-            "auto.infrastructure",
-            "Host infrastructure operations",
-            "主机基础设施操作",
-        ),
-        ("settings_feature", "system.memory-observation") => (
-            "auto.memory_observation",
-            "Memory observation operations",
-            "内存观测操作",
-        ),
-        ("settings_feature", "system.members") => (
-            "auto.user_management",
-            "Member management operations",
-            "成员管理操作",
-        ),
-        ("settings_feature", "system.model-providers") => (
-            "auto.model_providers",
-            "Model provider operations",
-            "模型提供商操作",
-        ),
-        ("settings_feature", "system.mcp-management") => (
-            "auto.mcp_management",
-            "MCP management operations",
-            "MCP 管理操作",
-        ),
-        ("settings_feature", "system.roles") => (
-            "auto.permission_management",
-            "Role and permission operations",
-            "角色与权限操作",
-        ),
-        ("other", "other.data-sources") => (
-            "auto.data_source",
-            "Other data source operations",
-            "其他数据源操作",
-        ),
-        ("other", "other.files") => (
-            "auto.file_management",
-            "Other file operations",
-            "其他文件操作",
-        ),
-        _ => return Err(ControlPlaneError::InvalidInput("console_policy_group_translation")),
-    };
+    let (label_ref, english_description, simplified_chinese_description) =
+        match (group.kind().as_str(), group.group_id().as_str()) {
+            ("settings_feature", "system.docs") => (
+                "auto.api_documentation",
+                "API documentation operations",
+                "API 文档操作",
+            ),
+            ("settings_feature", "system.api-key-authentication") => (
+                "auto.api_key_authentication",
+                "API key authentication operations",
+                "API Key 认证操作",
+            ),
+            ("settings_feature", "system.system-runtime") => (
+                "auto.system_runtime",
+                "System runtime operations",
+                "系统运行操作",
+            ),
+            ("settings_feature", "system.applications") => (
+                "auto.application_management",
+                "Application management operations",
+                "应用管理操作",
+            ),
+            ("settings_feature", "system.auth-center") => (
+                "auto.auth_center",
+                "Authentication center operations",
+                "认证中心操作",
+            ),
+            ("settings_feature", "system.data-models") => (
+                "auto.data_source",
+                "Data model and data source operations",
+                "数据模型与数据源操作",
+            ),
+            ("settings_feature", "system.files") => (
+                "auto.file_management",
+                "File management operations",
+                "文件管理操作",
+            ),
+            ("settings_feature", "system.host-infrastructure") => (
+                "auto.infrastructure",
+                "Host infrastructure operations",
+                "主机基础设施操作",
+            ),
+            ("settings_feature", "system.memory-observation") => (
+                "auto.memory_observation",
+                "Memory observation operations",
+                "内存观测操作",
+            ),
+            ("settings_feature", "system.members") => (
+                "auto.user_management",
+                "Member management operations",
+                "成员管理操作",
+            ),
+            ("settings_feature", "system.model-providers") => (
+                "auto.model_providers",
+                "Model provider operations",
+                "模型提供商操作",
+            ),
+            ("settings_feature", "system.mcp-management") => (
+                "auto.mcp_management",
+                "MCP management operations",
+                "MCP 管理操作",
+            ),
+            ("settings_feature", "system.roles") => (
+                "auto.permission_management",
+                "Role and permission operations",
+                "角色与权限操作",
+            ),
+            ("other", "other.data-sources") => (
+                "auto.data_source",
+                "Other data source operations",
+                "其他数据源操作",
+            ),
+            ("other", "other.files") => (
+                "auto.file_management",
+                "Other file operations",
+                "其他文件操作",
+            ),
+            _ => {
+                return Err(ControlPlaneError::InvalidInput(
+                    "console_policy_group_translation",
+                ))
+            }
+        };
     Ok((
         localized_reference(label_ref, locale)?,
         localized_pair(locale, english_description, simplified_chinese_description),
@@ -821,12 +769,16 @@ fn compiled_console_policy_operations(
             .insert(resource.resource_code.clone(), resource)
             .is_some()
         {
-            return Err(ControlPlaneError::InvalidInput("console_policy_resource_duplicate"));
+            return Err(ControlPlaneError::InvalidInput(
+                "console_policy_resource_duplicate",
+            ));
         }
         let mut actions = BTreeSet::new();
         for action in &resource.actions {
             if !actions.insert(action.action_code.as_str()) {
-                return Err(ControlPlaneError::InvalidInput("console_policy_action_duplicate"));
+                return Err(ControlPlaneError::InvalidInput(
+                    "console_policy_action_duplicate",
+                ));
             }
         }
     }
@@ -849,7 +801,9 @@ fn compiled_console_policy_operations(
                     || resource.scope_field.as_deref() != Some("scope_id")
                     || resource.owner_field.as_deref() != Some("created_by")
                 {
-                    return Err(ControlPlaneError::InvalidInput("console_policy_resource_scope"));
+                    return Err(ControlPlaneError::InvalidInput(
+                        "console_policy_resource_scope",
+                    ));
                 }
                 if !resource
                     .actions
@@ -871,7 +825,9 @@ fn compiled_console_policy_operations(
             .insert(operation.operation_id.clone(), operation_kind)
             .is_some()
         {
-            return Err(ControlPlaneError::InvalidInput("console_policy_operation_duplicate"));
+            return Err(ControlPlaneError::InvalidInput(
+                "console_policy_operation_duplicate",
+            ));
         }
     }
     Ok(groups)
@@ -888,8 +844,14 @@ fn operation_text(
         .as_deref()
         .map(|reference| localized_reference(reference, locale))
         .transpose()?
-        .or_else(|| console_policy_group_text(group, locale).ok().map(|(_, description)| description))
-        .ok_or(ControlPlaneError::InvalidInput("console_policy_description"))?;
+        .or_else(|| {
+            console_policy_group_text(group, locale)
+                .ok()
+                .map(|(_, description)| description)
+        })
+        .ok_or(ControlPlaneError::InvalidInput(
+            "console_policy_description",
+        ))?;
     Ok((label, description))
 }
 
@@ -912,12 +874,17 @@ fn build_console_policy_catalog_for_locale(
             .iter()
             .filter(|operation| {
                 domain_console_policy_group(&operation.policy_group)
-                    .map(|candidate| console_policy_group_key(&candidate) == (kind.clone(), group_id.clone()))
+                    .map(|candidate| {
+                        console_policy_group_key(&candidate) == (kind.clone(), group_id.clone())
+                    })
                     .unwrap_or(false)
                     && !matches!(operation.authorization, ConsoleAuthorization::Authenticated)
             })
             .map(|operation| {
                 let (label, description) = operation_text(operation, &group, locale)?;
+                let operation_kind = operations
+                    .get(&operation.operation_id)
+                    .ok_or(ControlPlaneError::InvalidInput("console_policy_operation"))?;
                 let authorization = match &operation.authorization {
                     ConsoleAuthorization::Simple => ConsolePolicyAuthorization::Simple,
                     ConsoleAuthorization::ResourceAction {
@@ -931,6 +898,14 @@ fn build_console_policy_catalog_for_locale(
                         return Err(ControlPlaneError::InvalidInput("console_policy_type"));
                     }
                 };
+                let allowed_row_scopes = match operation_kind {
+                    CompiledConsolePolicyOperationKind::Simple => Vec::new(),
+                    CompiledConsolePolicyOperationKind::Row => vec![
+                        domain::ConsoleOperationRowScope::Disabled,
+                        domain::ConsoleOperationRowScope::Own,
+                        domain::ConsoleOperationRowScope::ScopeAll,
+                    ],
+                };
                 Ok((
                     operation.order,
                     operation.operation_id.clone(),
@@ -938,6 +913,8 @@ fn build_console_policy_catalog_for_locale(
                         operation_id: operation.operation_id.clone(),
                         label,
                         description,
+                        order: operation.order,
+                        allowed_row_scopes,
                         authorization,
                     },
                 ))
@@ -945,7 +922,7 @@ fn build_console_policy_catalog_for_locale(
             .collect::<Result<Vec<_>, ControlPlaneError>>()?;
         operation_views.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
         groups.push(ConsolePolicyCatalogGroup {
-            kind,
+            kind: group.kind(),
             group_id,
             label,
             description,
@@ -955,6 +932,13 @@ fn build_console_policy_catalog_for_locale(
                 .collect(),
         });
     }
+    groups.sort_by(|left, right| {
+        let left_kind_order = (left.kind == domain::ConsolePolicyGroupKind::Other) as u8;
+        let right_kind_order = (right.kind == domain::ConsolePolicyGroupKind::Other) as u8;
+        left_kind_order
+            .cmp(&right_kind_order)
+            .then(left.group_id.cmp(&right.group_id))
+    });
 
     let resources = inventory
         .resources
@@ -966,7 +950,9 @@ fn build_console_policy_catalog_for_locale(
                 .as_deref()
                 .map(|reference| localized_reference(reference, locale))
                 .transpose()?
-                .ok_or(ControlPlaneError::InvalidInput("console_policy_description"))?;
+                .ok_or(ControlPlaneError::InvalidInput(
+                    "console_policy_description",
+                ))?;
             let mut actions = resource
                 .actions
                 .iter()
@@ -977,7 +963,9 @@ fn build_console_policy_catalog_for_locale(
                         .as_deref()
                         .map(|reference| localized_reference(reference, locale))
                         .transpose()?
-                        .ok_or(ControlPlaneError::InvalidInput("console_policy_description"))?;
+                        .ok_or(ControlPlaneError::InvalidInput(
+                            "console_policy_description",
+                        ))?;
                     Ok(ConsolePolicyCatalogAction {
                         action_code: action.action_code.clone(),
                         label,
@@ -997,6 +985,7 @@ fn build_console_policy_catalog_for_locale(
 
     Ok(ConsolePolicyCatalog {
         schema_version: inventory.schema_version.to_string(),
+        locale: locale.to_string(),
         groups,
         resources,
     })
@@ -1098,8 +1087,7 @@ where
             .repository
             .get_role_console_policy(actor.current_workspace_id, role_code)
             .await?;
-        validate_stored_console_policy(&policy, &operation_index)?;
-        Ok(policy)
+        complete_stored_console_policy(policy, &operation_index).map_err(Into::into)
     }
 
     pub async fn replace_console_policy(
