@@ -97,7 +97,11 @@ export interface ConsoleMcpBundleManifest {
   minimum_host_version: string;
   exported_from_system_version: string;
   exported_at: string;
-  files: Array<{ path: string; kind: 'tool' | 'instance'; sha256: string }>;
+  files: Array<{
+    path: string;
+    kind: 'tool' | 'instance' | 'connection';
+    sha256: string;
+  }>;
 }
 
 export type ConsoleMcpBundleVersionStatus =
@@ -118,6 +122,7 @@ export interface ConsoleMcpBundlePreview {
   version_status: ConsoleMcpBundleVersionStatus;
   tools: ConsoleMcpBundleItemReport[];
   instances: ConsoleMcpBundleItemReport[];
+  connections: ConsoleMcpBundleItemReport[];
 }
 
 export interface ConsoleMcpBundleImportReport extends ConsoleMcpBundlePreview {

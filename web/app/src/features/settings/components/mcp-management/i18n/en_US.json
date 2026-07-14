@@ -74,6 +74,7 @@
     "mcp_bundle_source_unknown": "The source system version cannot be compared",
     "mcp_bundle_interface_missing": "Interface not found",
     "mcp_bundle_id_conflict": "The same ID already exists locally",
+    "mcp_bundle_connection_missing": "Third-party MCP connection is missing",
     "mcp_bundle_binding_tool_missing": "The binding references a missing Tool",
     "mcp_bundle_import_completed": "Import completed",
     "mcp_bundle_import_completed_with_warnings": "Import completed with warnings",

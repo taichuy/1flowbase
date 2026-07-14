@@ -57,7 +57,18 @@ function itemReason(reason: string | null) {
       );
     case 'tool_id_conflict':
     case 'instance_id_conflict':
+    case 'connection_id_conflict':
       return i18nText('settingsMcpManagement', 'auto.mcp_bundle_id_conflict');
+    case 'connection_missing':
+      return i18nText(
+        'settingsMcpManagement',
+        'auto.mcp_bundle_connection_missing'
+      );
+    case 'credentials_missing':
+      return i18nText(
+        'settingsMcpManagement',
+        'auto.upstream_credentials_missing'
+      );
     case 'binding_tool_missing':
       return i18nText(
         'settingsMcpManagement',
@@ -190,7 +201,8 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
   const rows = review
     ? [
         ...review.tools.map((item) => ({ ...item, kind: 'Tool' })),
-        ...review.instances.map((item) => ({ ...item, kind: 'Instance' }))
+        ...review.instances.map((item) => ({ ...item, kind: 'Instance' })),
+        ...review.connections.map((item) => ({ ...item, kind: 'Connection' }))
       ]
     : [];
 

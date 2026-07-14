@@ -525,7 +525,7 @@ describe('McpManagementPanel', () => {
     );
     mcpManagementApi.previewSettingsMcpBundle.mockResolvedValue({
       manifest: {
-        schema_version: '1flowbase.mcp.bundle/v1',
+        schema_version: '1flowbase.mcp.bundle/v2',
         organization: 'taichuy',
         bundle_id: '1flowbase_zh_hans',
         bundle_version: '1.0.0',
@@ -533,7 +533,13 @@ describe('McpManagementPanel', () => {
         minimum_host_version: '0.2.6',
         exported_from_system_version: '0.2.5',
         exported_at: '2026-07-13T10:00:00Z',
-        files: []
+        files: [
+          {
+            path: 'connections/019b5f8f.json',
+            kind: 'connection',
+            sha256: 'connection-sha256'
+          }
+        ]
       },
       current_system_version: '0.2.6',
       version_status: 'exported_from_older_system',
@@ -545,11 +551,18 @@ describe('McpManagementPanel', () => {
           reason: 'interface_missing'
         }
       ],
-      instances: [{ id: 'system', result: 'imported', reason: null }]
+      instances: [{ id: 'system', result: 'imported', reason: null }],
+      connections: [
+        {
+          id: '019b5f8f-0000-7000-8000-000000000001',
+          result: 'unavailable',
+          reason: 'credentials_missing'
+        }
+      ]
     });
     mcpManagementApi.importSettingsMcpBundle.mockResolvedValue({
       manifest: {
-        schema_version: '1flowbase.mcp.bundle/v1',
+        schema_version: '1flowbase.mcp.bundle/v2',
         organization: 'taichuy',
         bundle_id: '1flowbase_zh_hans',
         bundle_version: '1.0.0',
@@ -557,7 +570,13 @@ describe('McpManagementPanel', () => {
         minimum_host_version: '0.2.6',
         exported_from_system_version: '0.2.5',
         exported_at: '2026-07-13T10:00:00Z',
-        files: []
+        files: [
+          {
+            path: 'connections/019b5f8f.json',
+            kind: 'connection',
+            sha256: 'connection-sha256'
+          }
+        ]
       },
       current_system_version: '0.2.6',
       version_status: 'exported_from_older_system',
@@ -570,7 +589,14 @@ describe('McpManagementPanel', () => {
           reason: 'interface_missing'
         }
       ],
-      instances: [{ id: 'system', result: 'imported', reason: null }]
+      instances: [{ id: 'system', result: 'imported', reason: null }],
+      connections: [
+        {
+          id: '019b5f8f-0000-7000-8000-000000000001',
+          result: 'unavailable',
+          reason: 'credentials_missing'
+        }
+      ]
     });
     mcpManagementApi.fetchSettingsOfficialMcpBundles.mockResolvedValue({
       source: {
@@ -616,6 +642,10 @@ describe('McpManagementPanel', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('removed_tool')).toBeInTheDocument();
     expect(screen.getByText('接口不存在')).toBeInTheDocument();
+    expect(
+      screen.getByText('019b5f8f-0000-7000-8000-000000000001')
+    ).toBeInTheDocument();
+    expect(screen.getByText('缺少凭据')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '仍然导入' }));
     await waitFor(() => {

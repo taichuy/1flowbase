@@ -74,6 +74,7 @@
     "mcp_bundle_source_unknown": "无法确认配置包来源系统版本",
     "mcp_bundle_interface_missing": "接口不存在",
     "mcp_bundle_id_conflict": "本地已存在相同 ID",
+    "mcp_bundle_connection_missing": "第三方MCP连接不存在",
     "mcp_bundle_binding_tool_missing": "Binding 引用的 Tool 不存在",
     "mcp_bundle_import_completed": "导入完成",
     "mcp_bundle_import_completed_with_warnings": "导入完成，但存在警告",
