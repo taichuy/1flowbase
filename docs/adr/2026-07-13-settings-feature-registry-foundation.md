@@ -3,7 +3,7 @@
 - 状态：Accepted（生产授权切换完成）
 - 日期：2026-07-13
 - 关联 Issue：[GitHub Issue #1256](https://github.com/taichuy/1flowbase/issues/1256)
-- 替代关系：仓库当前没有可核对的同主题 ADR；本文不引用历史 `docs/superpowers` 计划或规格。
+- 替代关系：仓库当前没有可核对的更早同主题 ADR；本文不引用历史 `docs/superpowers` 计划或规格。本文的整组 SettingsFeature 授权与仅对 Settings API fail-closed 的边界，已由 [console operation 授权 contract](./2026-07-14-console-operation-authorization-contract.md) 扩展并部分替代；本文的注册、owner、lifecycle、compiled inventory 与领域数据约束继续有效。
 
 ## Context
 
