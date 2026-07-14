@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
+use access_control::{
+    ConsoleRouteOwnership::ConsoleOperation, SYSTEM_DOCS_SETTINGS_FEATURE_PERMISSION,
+};
 use axum::{
     extract::{Path, Query, State},
     http::HeaderMap,
-    routing::get,
     Json, Router,
 };
 use control_plane::errors::ControlPlaneError;
@@ -21,6 +23,7 @@ use crate::{
         DocsCatalogCategoryOperationsPage, DOCS_OPERATIONS_PAGE_SIZE,
     },
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
     runtime_data_model_docs,
 };
 
@@ -68,19 +71,38 @@ pub struct DataModelOpenApiDocumentResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/docs/catalog", get(get_docs_catalog))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    ConsoleRouteAssembly::new()
+        .route(
+            "/docs/catalog",
+            console_get(
+                get_docs_catalog,
+                ConsoleOperation(SYSTEM_DOCS_SETTINGS_FEATURE_PERMISSION.to_string()),
+            ),
+        )
         .route(
             "/docs/categories/:category_id/operations",
-            get(get_category_operations),
+            console_get(
+                get_category_operations,
+                ConsoleOperation(SYSTEM_DOCS_SETTINGS_FEATURE_PERMISSION.to_string()),
+            ),
         )
         .route(
             "/docs/categories/:category_id/openapi.json",
-            get(get_category_openapi),
+            console_get(
+                get_category_openapi,
+                ConsoleOperation(SYSTEM_DOCS_SETTINGS_FEATURE_PERMISSION.to_string()),
+            ),
         )
         .route(
             "/docs/operations/:operation_id/openapi.json",
-            get(get_operation_openapi),
+            console_get(
+                get_operation_openapi,
+                ConsoleOperation(SYSTEM_DOCS_SETTINGS_FEATURE_PERMISSION.to_string()),
+            ),
         )
 }
 

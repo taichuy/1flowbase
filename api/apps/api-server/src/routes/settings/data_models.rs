@@ -1,83 +1,171 @@
 use std::sync::Arc;
 
-use axum::{
-    routing::{get, patch, post},
-    Router,
+use access_control::{
+    ConsoleRouteOwnership::ConsoleOperation, DATA_SOURCES_CREATE_OPERATION_ID,
+    DATA_SOURCES_DEFAULTS_UPDATE_OPERATION_ID, DATA_SOURCES_DISCOVER_OPERATION_ID,
+    DATA_SOURCES_LIST_OPERATION_ID, DATA_SOURCES_MAP_TO_MODEL_OPERATION_ID,
+    DATA_SOURCES_PREVIEW_OPERATION_ID, DATA_SOURCES_VALIDATE_OPERATION_ID,
+    DATA_SOURCES_VIEW_OPERATION_ID, MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID,
+    MODEL_DEFINITIONS_CREATE_OPERATION_ID, MODEL_DEFINITIONS_DELETE_OPERATION_ID,
+    MODEL_DEFINITIONS_LIST_OPERATION_ID, MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID,
+    MODEL_DEFINITIONS_UPDATE_OPERATION_ID, MODEL_FIELDS_CREATE_OPERATION_ID,
+    MODEL_FIELDS_DELETE_OPERATION_ID, MODEL_FIELDS_UPDATE_OPERATION_ID,
+    MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID, MODEL_SCOPE_GRANTS_LIST_OPERATION_ID,
+    MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID, SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION,
 };
+use axum::Router;
 
 use crate::{
     app_state::ApiState,
-    routes::{data_sources, docs, model_definitions},
+    routes::{
+        console_route_assembly::{console_get, console_patch, console_post, ConsoleRouteAssembly},
+        data_sources, docs, model_definitions,
+    },
 };
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    ConsoleRouteAssembly::new()
         .route(
             "/settings/data-models/data-sources/catalog",
-            get(data_sources::list_catalog),
+            console_get(
+                data_sources::list_catalog,
+                ConsoleOperation(SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/data-sources",
-            get(data_sources::list_data_sources).post(data_sources::create_data_source),
+            console_get(
+                data_sources::list_data_sources,
+                ConsoleOperation(DATA_SOURCES_LIST_OPERATION_ID.to_string()),
+            )
+            .post(
+                data_sources::create_data_source,
+                ConsoleOperation(DATA_SOURCES_CREATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/data-sources/:data_source_id/defaults",
-            patch(data_sources::update_defaults),
+            console_patch(
+                data_sources::update_defaults,
+                ConsoleOperation(DATA_SOURCES_DEFAULTS_UPDATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/data-sources/:data_source_id/validate",
-            post(data_sources::validate_data_source),
+            console_post(
+                data_sources::validate_data_source,
+                ConsoleOperation(DATA_SOURCES_VALIDATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/data-sources/:data_source_id/resources",
-            get(data_sources::list_resources),
+            console_get(
+                data_sources::list_resources,
+                ConsoleOperation(DATA_SOURCES_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/data-sources/:data_source_id/resources/discover",
-            post(data_sources::discover_resources),
+            console_post(
+                data_sources::discover_resources,
+                ConsoleOperation(DATA_SOURCES_DISCOVER_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/data-sources/:data_source_id/preview-read",
-            post(data_sources::preview_read),
+            console_post(
+                data_sources::preview_read,
+                ConsoleOperation(DATA_SOURCES_PREVIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/data-sources/:data_source_id/resources/map-to-model",
-            post(data_sources::map_resource_to_model),
+            console_post(
+                data_sources::map_resource_to_model,
+                ConsoleOperation(DATA_SOURCES_MAP_TO_MODEL_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/model-definitions",
-            get(model_definitions::list_models).post(model_definitions::create_model),
+            console_get(
+                model_definitions::list_models,
+                ConsoleOperation(MODEL_DEFINITIONS_LIST_OPERATION_ID.to_string()),
+            )
+            .post(
+                model_definitions::create_model,
+                ConsoleOperation(MODEL_DEFINITIONS_CREATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/model-definitions:batchDelete",
-            post(model_definitions::batch_delete_models),
+            console_post(
+                model_definitions::batch_delete_models,
+                ConsoleOperation(MODEL_DEFINITIONS_DELETE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/model-definitions/:id",
-            patch(model_definitions::update_model).delete(model_definitions::delete_model),
+            console_patch(
+                model_definitions::update_model,
+                ConsoleOperation(MODEL_DEFINITIONS_UPDATE_OPERATION_ID.to_string()),
+            )
+            .delete(
+                model_definitions::delete_model,
+                ConsoleOperation(MODEL_DEFINITIONS_DELETE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/model-definitions/:id/advisor-findings",
-            get(model_definitions::get_advisor_findings),
+            console_get(
+                model_definitions::get_advisor_findings,
+                ConsoleOperation(MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/model-definitions/:id/fields",
-            post(model_definitions::create_field),
+            console_post(
+                model_definitions::create_field,
+                ConsoleOperation(MODEL_FIELDS_CREATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/model-definitions/:id/fields/:field_id",
-            patch(model_definitions::update_field).delete(model_definitions::delete_field),
+            console_patch(
+                model_definitions::update_field,
+                ConsoleOperation(MODEL_FIELDS_UPDATE_OPERATION_ID.to_string()),
+            )
+            .delete(
+                model_definitions::delete_field,
+                ConsoleOperation(MODEL_FIELDS_DELETE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/model-definitions/:id/scope-grants",
-            get(model_definitions::list_scope_grants).post(model_definitions::create_scope_grant),
+            console_get(
+                model_definitions::list_scope_grants,
+                ConsoleOperation(MODEL_SCOPE_GRANTS_LIST_OPERATION_ID.to_string()),
+            )
+            .post(
+                model_definitions::create_scope_grant,
+                ConsoleOperation(MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/model-definitions/:id/scope-grants/:grant_id",
-            patch(model_definitions::update_scope_grant),
+            console_patch(
+                model_definitions::update_scope_grant,
+                ConsoleOperation(MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/data-models/model-definitions/:model_id/openapi.json",
-            get(docs::get_data_model_openapi),
+            console_get(
+                docs::get_data_model_openapi,
+                ConsoleOperation(MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID.to_string()),
+            ),
         )
 }

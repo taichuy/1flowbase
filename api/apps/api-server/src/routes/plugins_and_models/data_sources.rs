@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
+use access_control::{
+    ConsoleRouteOwnership::ConsoleOperation, DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
+};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::post,
     Json, Router,
 };
 use control_plane::data_source::{
@@ -26,6 +28,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
+    routes::console_route_assembly::{console_post, ConsoleRouteAssembly},
 };
 
 use super::model_definitions::{to_model_definition_response, ModelDefinitionResponse};
@@ -203,9 +206,16 @@ pub struct PreviewDataSourceReadResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route(
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    ConsoleRouteAssembly::new().route(
         "/data-sources/:data_source_id/secret/rotate",
-        post(rotate_secret),
+        console_post(
+            rotate_secret,
+            ConsoleOperation(DATA_SOURCES_SECRET_ROTATE_OPERATION_ID.to_string()),
+        ),
     )
 }
 

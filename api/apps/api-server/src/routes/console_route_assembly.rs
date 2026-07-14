@@ -14,7 +14,19 @@ use access_control::{
     APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID, APPLICATIONS_PUBLISH_OPERATION_ID,
     APPLICATIONS_RESOURCE_CODE, APPLICATIONS_RUN_OPERATION_ID, APPLICATIONS_UPDATE_ACTION_CODE,
     APPLICATIONS_UPDATE_OPERATION_ID, APPLICATIONS_VIEW_ACTION_CODE,
-    APPLICATIONS_VIEW_OPERATION_ID, SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID,
+    APPLICATIONS_VIEW_OPERATION_ID, DATA_SOURCES_CREATE_OPERATION_ID,
+    DATA_SOURCES_DEFAULTS_UPDATE_OPERATION_ID, DATA_SOURCES_DISCOVER_OPERATION_ID,
+    DATA_SOURCES_LIST_OPERATION_ID, DATA_SOURCES_MAP_TO_MODEL_OPERATION_ID,
+    DATA_SOURCES_PREVIEW_OPERATION_ID, DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
+    DATA_SOURCES_VALIDATE_OPERATION_ID, DATA_SOURCES_VIEW_ACTION_CODE,
+    DATA_SOURCES_VIEW_OPERATION_ID, DATA_SOURCE_INSTANCES_RESOURCE_CODE,
+    MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID, MODEL_DEFINITIONS_CREATE_OPERATION_ID,
+    MODEL_DEFINITIONS_DELETE_OPERATION_ID, MODEL_DEFINITIONS_LIST_OPERATION_ID,
+    MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID, MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
+    MODEL_FIELDS_CREATE_OPERATION_ID, MODEL_FIELDS_DELETE_OPERATION_ID,
+    MODEL_FIELDS_UPDATE_OPERATION_ID, MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID,
+    MODEL_SCOPE_GRANTS_LIST_OPERATION_ID, MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID,
+    SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID, SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID,
 };
 use axum::{
     handler::Handler,
@@ -198,6 +210,9 @@ pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<std::sync:
         .merge(super::application_api::route_assembly())
         .merge(super::application_orchestration::route_assembly())
         .merge(super::application_runtime::route_assembly())
+        .merge(super::data_models::route_assembly())
+        .merge(super::docs::route_assembly())
+        .merge(super::data_sources::route_assembly())
 }
 
 fn routes_owned_by(
@@ -215,6 +230,17 @@ fn routes_owned_by(
             }
         })
         .collect()
+}
+
+fn route_templates_match(left: &str, right: &str) -> bool {
+    let left = left.trim_matches('/').split('/').collect::<Vec<_>>();
+    let right = right.trim_matches('/').split('/').collect::<Vec<_>>();
+    left.len() == right.len()
+        && left.iter().zip(right).all(|(left, right)| {
+            left == &right
+                || ((left.starts_with(':') || left.starts_with('{'))
+                    && (right.starts_with(':') || right.starts_with('{')))
+        })
 }
 
 pub fn compile_migrated_core_console_operation_registry(
@@ -239,7 +265,21 @@ pub fn compile_migrated_core_console_operation_registry(
                 owner: feature.owner.clone(),
                 lifecycle: feature.lifecycle,
                 console_surface: feature.console_surface.clone(),
-                api_routes: feature.api_routes.clone(),
+                api_routes: feature
+                    .api_routes
+                    .iter()
+                    .filter(|route| {
+                        bindings.iter().any(|binding| {
+                            binding.route.method.eq_ignore_ascii_case(&route.method)
+                                && route_templates_match(&binding.route.path, &route.path)
+                                && binding.ownership
+                                    == ConsoleRouteOwnership::ConsoleOperation(
+                                        feature.permission_code.clone(),
+                                    )
+                        })
+                    })
+                    .cloned()
+                    .collect(),
             }),
     )?;
     let authenticated_routes = bindings
@@ -350,6 +390,70 @@ pub fn compile_migrated_core_console_operation_registry(
         routes: routes_owned_by(bindings, operation_id),
         authorization: ConsoleAuthorization::Simple,
     });
+    let data_model_simple_operations = [
+        (DATA_SOURCES_LIST_OPERATION_ID, 300),
+        (DATA_SOURCES_CREATE_OPERATION_ID, 310),
+        (DATA_SOURCES_DEFAULTS_UPDATE_OPERATION_ID, 320),
+        (DATA_SOURCES_VALIDATE_OPERATION_ID, 330),
+        (DATA_SOURCES_DISCOVER_OPERATION_ID, 340),
+        (DATA_SOURCES_PREVIEW_OPERATION_ID, 350),
+        (DATA_SOURCES_MAP_TO_MODEL_OPERATION_ID, 360),
+        (MODEL_DEFINITIONS_LIST_OPERATION_ID, 370),
+        (MODEL_DEFINITIONS_CREATE_OPERATION_ID, 380),
+        (MODEL_DEFINITIONS_UPDATE_OPERATION_ID, 390),
+        (MODEL_DEFINITIONS_DELETE_OPERATION_ID, 400),
+        (MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID, 410),
+        (MODEL_FIELDS_CREATE_OPERATION_ID, 420),
+        (MODEL_FIELDS_UPDATE_OPERATION_ID, 430),
+        (MODEL_FIELDS_DELETE_OPERATION_ID, 440),
+        (MODEL_SCOPE_GRANTS_LIST_OPERATION_ID, 450),
+        (MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID, 460),
+        (MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID, 470),
+        (MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID, 480),
+    ]
+    .into_iter()
+    .map(|(operation_id, order)| ConsoleOperationRegistration {
+        operation_id: operation_id.to_string(),
+        owner: core_owner.clone(),
+        lifecycle: SettingsFeatureLifecycle::Active,
+        policy_group: ConsolePolicyGroup::SettingsFeature(
+            SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID.to_string(),
+        ),
+        label_ref: format!("console.operations.{operation_id}.label"),
+        description_ref: Some(format!("console.operations.{operation_id}.description")),
+        order,
+        routes: routes_owned_by(bindings, operation_id),
+        authorization: ConsoleAuthorization::Simple,
+    });
+    let data_sources_view_operation = ConsoleOperationRegistration {
+        operation_id: DATA_SOURCES_VIEW_OPERATION_ID.to_string(),
+        owner: core_owner.clone(),
+        lifecycle: SettingsFeatureLifecycle::Active,
+        policy_group: ConsolePolicyGroup::SettingsFeature(
+            SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID.to_string(),
+        ),
+        label_ref: "console.operations.data_sources.view.label".to_string(),
+        description_ref: Some("console.operations.data_sources.view.description".to_string()),
+        order: 490,
+        routes: routes_owned_by(bindings, DATA_SOURCES_VIEW_OPERATION_ID),
+        authorization: ConsoleAuthorization::ResourceAction {
+            resource_code: DATA_SOURCE_INSTANCES_RESOURCE_CODE.to_string(),
+            action_code: DATA_SOURCES_VIEW_ACTION_CODE.to_string(),
+        },
+    };
+    let data_source_secret_rotate_operation = ConsoleOperationRegistration {
+        operation_id: DATA_SOURCES_SECRET_ROTATE_OPERATION_ID.to_string(),
+        owner: core_owner.clone(),
+        lifecycle: SettingsFeatureLifecycle::Active,
+        policy_group: ConsolePolicyGroup::Other("other.data-sources".to_string()),
+        label_ref: "console.operations.data_sources.secret.rotate.label".to_string(),
+        description_ref: Some(
+            "console.operations.data_sources.secret.rotate.description".to_string(),
+        ),
+        order: 500,
+        routes: routes_owned_by(bindings, DATA_SOURCES_SECRET_ROTATE_OPERATION_ID),
+        authorization: ConsoleAuthorization::Simple,
+    };
     let applications_resource = ResourceAccessRegistration {
         resource_code: APPLICATIONS_RESOURCE_CODE.to_string(),
         owner: core_owner.clone(),
@@ -378,12 +482,33 @@ pub fn compile_migrated_core_console_operation_registry(
         })
         .collect(),
     };
+    let data_source_instances_resource = ResourceAccessRegistration {
+        resource_code: DATA_SOURCE_INSTANCES_RESOURCE_CODE.to_string(),
+        owner: core_owner.clone(),
+        lifecycle: SettingsFeatureLifecycle::Active,
+        scope_kind: ResourceAccessScopeKind::Workspace,
+        identity_field: "id".to_string(),
+        scope_field: Some("scope_id".to_string()),
+        owner_field: Some("created_by".to_string()),
+        label_ref: "console.resources.data_source_instances.label".to_string(),
+        description_ref: Some("console.resources.data_source_instances.description".to_string()),
+        actions: vec![ResourceAccessAction {
+            action_code: DATA_SOURCES_VIEW_ACTION_CODE.to_string(),
+            label_ref: "console.resources.data_source_instances.actions.view.label".to_string(),
+            description_ref: Some(
+                "console.resources.data_source_instances.actions.view.description".to_string(),
+            ),
+        }],
+    };
     let registry = ConsoleOperationRegistry::compile(
         &migrated_settings,
         std::iter::once(authenticated_operation)
             .chain(applications_operations)
-            .chain(applications_simple_operations),
-        [applications_resource],
+            .chain(applications_simple_operations)
+            .chain(data_model_simple_operations)
+            .chain(std::iter::once(data_sources_view_operation))
+            .chain(std::iter::once(data_source_secret_rotate_operation)),
+        [applications_resource, data_source_instances_resource],
     )?;
     registry.validate_console_route_coverage(bindings.iter().cloned())?;
     Ok(registry)
