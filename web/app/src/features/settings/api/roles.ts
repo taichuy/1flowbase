@@ -1,25 +1,32 @@
 import {
   createConsoleRole,
   deleteConsoleRole,
+  fetchConsoleRoleConsolePolicy,
   fetchConsoleRoleDataPolicy,
   fetchConsoleRolePermissions,
   fetchConsoleRoleFrontstageRoutes,
   listConsoleRoles,
   replaceConsoleRoleDataPolicy,
+  replaceConsoleRoleConsolePolicy,
   replaceConsoleRolePermissions,
   replaceConsoleRoleFrontstageRoutes,
   updateConsoleRole,
   type ConsoleRole,
+  type ConsoleRoleConsolePolicy,
   type ConsoleRoleDataPolicyScope,
   type ConsoleRolePermissions,
   type ConsoleRoleFrontstageRoutes,
   type ReplaceConsoleRoleFrontstageRoutesInput,
   type CreateConsoleRoleInput,
   type ReplaceConsoleRolePermissionsInput,
+  type ReplaceConsoleRoleConsolePolicyInput,
   type UpdateConsoleRoleInput
 } from '@1flowbase/api-client';
 
 export type SettingsRole = ConsoleRole;
+export type SettingsRoleConsolePolicy = ConsoleRoleConsolePolicy;
+export type ReplaceSettingsRoleConsolePolicyInput =
+  ReplaceConsoleRoleConsolePolicyInput;
 export type SettingsRolePermissions = ConsoleRolePermissions;
 export type SettingsRoleFrontstageRoutes = ConsoleRoleFrontstageRoutes;
 export type SettingsRoleDataPolicyScope = Exclude<
@@ -59,6 +66,8 @@ export interface ReplaceSettingsRoleDataPolicyInput {
 }
 
 export const settingsRolesQueryKey = ['settings', 'roles'] as const;
+export const settingsRoleConsolePolicyQueryKey = (roleCode: string) =>
+  ['settings', 'roles', roleCode, 'console-policy'] as const;
 export const settingsRolePermissionsQueryKey = (roleCode: string) =>
   ['settings', 'roles', roleCode, 'permissions'] as const;
 export const settingsRoleFrontstageRoutesQueryKey = (roleCode: string) =>
@@ -87,6 +96,20 @@ export function updateSettingsRole(
 
 export function deleteSettingsRole(roleCode: string, csrfToken: string): Promise<void> {
   return deleteConsoleRole(roleCode, csrfToken);
+}
+
+export function fetchSettingsRoleConsolePolicy(
+  roleCode: string
+): Promise<SettingsRoleConsolePolicy> {
+  return fetchConsoleRoleConsolePolicy(roleCode);
+}
+
+export function replaceSettingsRoleConsolePolicy(
+  roleCode: string,
+  input: ReplaceSettingsRoleConsolePolicyInput,
+  csrfToken: string
+): Promise<void> {
+  return replaceConsoleRoleConsolePolicy(roleCode, input, csrfToken);
 }
 
 export function fetchSettingsRolePermissions(

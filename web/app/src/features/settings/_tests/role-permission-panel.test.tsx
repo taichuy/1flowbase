@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const rolesApi = vi.hoisted(() => ({
   settingsRolesQueryKey: ['settings', 'roles'],
+  settingsRoleConsolePolicyQueryKey: vi.fn((roleCode: string) => [
+    'settings',
+    'roles',
+    roleCode,
+    'console-policy'
+  ]),
   settingsRolePermissionsQueryKey: vi.fn((roleCode: string) => [
     'settings',
     'roles',
@@ -25,6 +31,8 @@ const rolesApi = vi.hoisted(() => ({
   createSettingsRole: vi.fn(),
   updateSettingsRole: vi.fn(),
   deleteSettingsRole: vi.fn(),
+  fetchSettingsRoleConsolePolicy: vi.fn(),
+  replaceSettingsRoleConsolePolicy: vi.fn(),
   fetchSettingsRolePermissions: vi.fn(),
   replaceSettingsRolePermissions: vi.fn(),
   fetchSettingsRoleFrontstageRoutes: vi.fn(),
@@ -34,8 +42,8 @@ const rolesApi = vi.hoisted(() => ({
 }));
 
 const permissionsApi = vi.hoisted(() => ({
-  settingsPermissionsQueryKey: ['settings', 'permissions'],
-  fetchSettingsPermissions: vi.fn()
+  settingsConsolePolicyCatalogQueryKey: ['settings', 'console-policy-catalog'],
+  fetchSettingsConsolePolicyCatalog: vi.fn()
 }));
 
 const dataModelsApi = vi.hoisted(() => ({
@@ -49,6 +57,7 @@ vi.mock('../api/data-models', () => dataModelsApi);
 
 import { AppProviders } from '../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
+import { appI18n } from '../../../shared/i18n/app-i18n';
 import { RolePermissionPanel } from '../components/RolePermissionPanel';
 
 function authenticate() {
@@ -200,7 +209,8 @@ function defaultDataModels() {
 }
 
 describe('RolePermissionPanel', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await appI18n.changeLanguage('zh_Hans');
     resetAuthStore();
     authenticate();
     rolesApi.fetchSettingsRoles.mockResolvedValue([
@@ -265,59 +275,124 @@ describe('RolePermissionPanel', () => {
     rolesApi.updateSettingsRole.mockResolvedValue(undefined);
     rolesApi.fetchSettingsRoleDataPolicy.mockResolvedValue(defaultDataPolicy);
     rolesApi.replaceSettingsRoleDataPolicy.mockResolvedValue(undefined);
-    permissionsApi.fetchSettingsPermissions.mockResolvedValue([]);
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue({
+      schema_version: '2026-07-14',
+      groups: [],
+      resources: []
+    });
+    rolesApi.fetchSettingsRoleConsolePolicy.mockResolvedValue({
+      role_code: 'member',
+      groups: []
+    });
+    rolesApi.replaceSettingsRoleConsolePolicy.mockResolvedValue(undefined);
     dataModelsApi.fetchSettingsAllDataModels.mockResolvedValue(
       defaultDataModels()
     );
   });
 
-  test('AC-005 manages registered SettingsFeature grants with table checkboxes', async () => {
-    permissionsApi.fetchSettingsPermissions.mockResolvedValue([
-      {
-        code: 'settings_feature.access.system.roles',
-        resource: 'settings_feature',
-        action: 'access',
-        scope: 'system.roles',
-        name: 'settings_feature:access:system.roles',
-        settings_feature: {
-          feature_id: 'system.roles',
-          label_key: 'auto.permission_management',
-          order: 800
+  test('AC-003/008/009 renders backend-owned Other labels without exposing codes', async () => {
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue({
+      schema_version: '2026-07-14',
+      groups: [
+        {
+          kind: 'settings_feature',
+          group_id: 'settings.applications',
+          label: '应用管理',
+          description: '管理当前空间中的应用',
+          operations: [
+            {
+              operation_id: 'applications.read',
+              label: '查询应用',
+              description: '查看应用记录',
+              order: 1,
+              authorization: {
+                kind: 'resource_action',
+                resource_code: 'application',
+                action_code: 'read'
+              }
+            },
+            {
+              operation_id: 'applications.publish',
+              label: '发布应用',
+              description: null,
+              order: 2,
+              authorization: { kind: 'simple' }
+            }
+          ]
+        },
+        {
+          kind: 'other',
+          group_id: 'other.general',
+          label: '其他',
+          description: '其他已注册操作',
+          operations: [
+            {
+              operation_id: 'audit.export',
+              label: '导出审计记录',
+              description: null,
+              order: 1,
+              authorization: { kind: 'simple' }
+            }
+          ]
         }
-      },
-      {
-        code: 'settings_feature.access.system.members',
-        resource: 'settings_feature',
-        action: 'access',
-        scope: 'system.members',
-        name: 'settings_feature:access:system.members',
-        settings_feature: {
-          feature_id: 'system.members',
-          label_key: 'auto.user_management',
-          order: 600
+      ],
+      resources: [
+        {
+          resource_code: 'application',
+          label: '应用',
+          description: null,
+          actions: [
+            { action_code: 'read', label: '查询', description: null }
+          ]
         }
-      }
-    ]);
-    rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
+      ]
+    });
+    rolesApi.fetchSettingsRoleConsolePolicy.mockResolvedValue({
       role_code: 'member',
-      permission_codes: ['settings_feature.access.system.roles']
+      groups: [
+        {
+          kind: 'settings_feature',
+          group_id: 'settings.applications',
+          mode: 'full',
+          operations: [
+            {
+              operation_id: 'applications.read',
+              kind: 'row',
+              scope: 'scope_all'
+            },
+            {
+              operation_id: 'applications.publish',
+              kind: 'simple',
+              enabled: true
+            }
+          ]
+        },
+        {
+          kind: 'other',
+          group_id: 'other.general',
+          mode: 'disabled',
+          operations: [
+            {
+              operation_id: 'audit.export',
+              kind: 'simple',
+              enabled: false
+            }
+          ]
+        }
+      ]
     });
 
     renderPanel();
 
-    const generalTab = await screen.findByRole('tab', { name: '基础通用' });
-    expect(generalTab).toHaveAttribute('aria-selected', 'true');
+    const backendTab = await screen.findByRole('tab', { name: '后台系统设置' });
+    expect(backendTab).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      '基础通用',
       '动态路由',
       '表-通用配置',
       '表-单独配置',
-      '后台系统设置'
+      '后台系统设置',
+      '其他'
     ]);
-
-    fireEvent.click(
-      screen.getByRole('tab', { name: '后台系统设置' })
-    );
 
     expect(
       screen.getByRole('columnheader', { name: '后台设置' })
@@ -325,31 +400,148 @@ describe('RolePermissionPanel', () => {
     expect(
       screen.getByRole('columnheader', { name: '开放权限' })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('checkbox', { name: '开放 权限管理 权限' })
-    ).toBeChecked();
-    const membersCheckbox = screen.getByRole('checkbox', {
-      name: '开放 用户管理 权限'
-    });
-    expect(membersCheckbox).not.toBeChecked();
+    expect(screen.getByText('应用管理')).toBeInTheDocument();
+    expect(screen.getByText('完整')).toBeInTheDocument();
+    expect(screen.queryByText('applications.read')).not.toBeInTheDocument();
+    expect(screen.queryByText('application')).not.toBeInTheDocument();
+    expect(screen.queryByText(/\{.*operation_id/)).not.toBeInTheDocument();
 
-    fireEvent.click(membersCheckbox);
+    fireEvent.click(screen.getByRole('tab', { name: '其他' }));
+    expect(screen.getByText('导出审计记录')).toBeInTheDocument();
+    expect(screen.getByText('已禁用')).toBeInTheDocument();
+    expect(screen.queryByText('other.general')).not.toBeInTheDocument();
+
+    expect(screen.queryByRole('tab', { name: '基础通用' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: '系统管理' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Agent 应用' })).not.toBeInTheDocument();
+  });
+
+  test('AC-004 toggles group mode and saves simple/resource scopes from the detail drawer', async () => {
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue({
+      schema_version: '2026-07-14',
+      groups: [
+        {
+          kind: 'settings_feature',
+          group_id: 'settings.applications',
+          label: '应用管理',
+          description: null,
+          operations: [
+            {
+              operation_id: 'applications.read',
+              label: '查询应用',
+              description: null,
+              order: 1,
+              authorization: {
+                kind: 'resource_action',
+                resource_code: 'application',
+                action_code: 'read'
+              }
+            },
+            {
+              operation_id: 'applications.publish',
+              label: '发布应用',
+              description: null,
+              order: 2,
+              authorization: { kind: 'simple' }
+            }
+          ]
+        }
+      ],
+      resources: [
+        {
+          resource_code: 'application',
+          label: '应用',
+          description: null,
+          actions: [{ action_code: 'read', label: '查询', description: null }]
+        }
+      ]
+    });
+    rolesApi.fetchSettingsRoleConsolePolicy.mockResolvedValue({
+      role_code: 'member',
+      groups: [
+        {
+          kind: 'settings_feature',
+          group_id: 'settings.applications',
+          mode: 'custom',
+          operations: [
+            {
+              operation_id: 'applications.read',
+              kind: 'row',
+              scope: 'own'
+            },
+            {
+              operation_id: 'applications.publish',
+              kind: 'simple',
+              enabled: false
+            }
+          ]
+        }
+      ]
+    });
+
+    renderPanel();
+
+    const accessCheckbox = await screen.findByRole('checkbox', {
+      name: '开放 应用管理 权限'
+    });
+    expect(accessCheckbox).toBeChecked();
+    expect(screen.getByText('自定义')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '详细配置 应用管理' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('查询应用')).toBeInTheDocument();
+    expect(within(drawer).getByRole('checkbox', { name: '发布应用' })).not.toBeChecked();
+
+    fireEvent.mouseDown(
+      within(drawer).getByRole('combobox', { name: '查询应用 作用域' })
+    );
+    fireEvent.click((await screen.findAllByTitle('本空间')).at(-1)!);
+    fireEvent.click(within(drawer).getByRole('checkbox', { name: '发布应用' }));
+    fireEvent.click(within(drawer).getByRole('button', { name: '保存权限配置' }));
 
     await waitFor(() => {
-      expect(rolesApi.replaceSettingsRolePermissions).toHaveBeenCalledWith(
+      expect(rolesApi.replaceSettingsRoleConsolePolicy).toHaveBeenCalledWith(
         'member',
         {
-          permission_codes: [
-            'settings_feature.access.system.roles',
-            'settings_feature.access.system.members'
+          groups: [
+            {
+              kind: 'settings_feature',
+              group_id: 'settings.applications',
+              mode: 'custom',
+              operations: [
+                {
+                  operation_id: 'applications.read',
+                  kind: 'row',
+                  scope: 'scope_all'
+                },
+                {
+                  operation_id: 'applications.publish',
+                  kind: 'simple',
+                  enabled: true
+                }
+              ]
+            }
           ]
         },
         'csrf-123'
       );
     });
 
-    expect(screen.queryByRole('tree')).not.toBeInTheDocument();
-    expect(screen.queryByText('settings_feature')).not.toBeInTheDocument();
+    fireEvent.click(accessCheckbox);
+    await waitFor(() => {
+      expect(rolesApi.replaceSettingsRoleConsolePolicy).toHaveBeenCalledWith(
+        'member',
+        {
+          groups: [
+            expect.objectContaining({
+              group_id: 'settings.applications',
+              mode: 'disabled'
+            })
+          ]
+        },
+        'csrf-123'
+      );
+    });
   });
 
   test('dynamic route group selects descendants without persisting the group id', async () => {
@@ -448,11 +640,10 @@ describe('RolePermissionPanel', () => {
   test('submits default data policy without a create scope', async () => {
     renderPanel();
 
-    await screen.findByRole('tab', { name: '基础通用' });
+    await screen.findByRole('tab', { name: '动态路由' });
     expect(
       screen.getAllByRole('tab').map((tab) => tab.textContent)
     ).toEqual([
-      '基础通用',
       '动态路由',
       '表-通用配置',
       '表-单独配置'
@@ -537,7 +728,7 @@ describe('RolePermissionPanel', () => {
   test('submits per-model override payload and hides system_all choices', async () => {
     renderPanel();
 
-    await screen.findByRole('tab', { name: '基础通用' });
+    await screen.findByRole('tab', { name: '动态路由' });
     fireEvent.click(screen.getByRole('tab', { name: '表-单独配置' }));
 
     const ordersRow = await screen.findByRole('row', { name: /Orders orders/ });
@@ -580,7 +771,7 @@ describe('RolePermissionPanel', () => {
   test('disables data policy controls when the user cannot manage roles', async () => {
     renderPanel(false);
 
-    await screen.findByRole('tab', { name: '基础通用' });
+    await screen.findByRole('tab', { name: '动态路由' });
     fireEvent.click(screen.getByRole('tab', { name: '表-通用配置' }));
 
     const defaultSection = await screen.findByRole('region', {
@@ -596,40 +787,59 @@ describe('RolePermissionPanel', () => {
     expect(screen.getByRole('button', { name: '保存数据权限' })).toBeDisabled();
   }, 20000);
 
-  test('groups unknown permission resources under 其他 with the raw resource key', async () => {
-    permissionsApi.fetchSettingsPermissions.mockResolvedValue([
-      {
-        code: 'user.view.all',
-        resource: 'user',
-        action: 'view',
-        scope: 'all',
-        name: '查看用户'
-      },
-      {
-        code: 'custom_resource.audit.all',
-        resource: 'custom_resource',
-        action: 'audit',
-        scope: 'all',
-        name: 'Audit custom resource'
-      }
-    ]);
-    rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
+  test('AC-009 renders backend labels in both locales without exposing policy codes', async () => {
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockImplementation(async () => {
+      const isEnglish = appI18n.language === 'en_US';
+      return {
+        schema_version: '2026-07-14',
+        groups: [
+          {
+            kind: 'other' as const,
+            group_id: 'other.general',
+            label: isEnglish ? 'Other settings' : '其他设置',
+            description: null,
+            operations: [
+              {
+                operation_id: 'audit.export',
+                label: isEnglish ? 'Export audit records' : '导出审计记录',
+                description: null,
+                order: 1,
+                authorization: { kind: 'simple' as const }
+              }
+            ]
+          }
+        ],
+        resources: []
+      };
+    });
+    rolesApi.fetchSettingsRoleConsolePolicy.mockResolvedValue({
       role_code: 'member',
-      permission_codes: ['custom_resource.audit.all']
+      groups: [
+        {
+          kind: 'other',
+          group_id: 'other.general',
+          mode: 'disabled',
+          operations: [
+            { operation_id: 'audit.export', kind: 'simple', enabled: false }
+          ]
+        }
+      ]
     });
 
+    await appI18n.changeLanguage('en_US');
+    const englishView = renderPanel();
+    expect(await screen.findByText('Other settings')).toBeInTheDocument();
+    expect(screen.getByText('Export audit records')).toBeInTheDocument();
+    expect(screen.queryByText('other.general')).not.toBeInTheDocument();
+    expect(screen.queryByText('audit.export')).not.toBeInTheDocument();
+    englishView.unmount();
+
+    await appI18n.changeLanguage('zh_Hans');
     renderPanel();
-
-    fireEvent.click(await screen.findByRole('tab', { name: '其他' }));
-
-    const resourceNode = screen
-      .getByText('custom_resource')
-      .closest('.ant-tree-treenode');
-    const switcher = resourceNode?.querySelector<HTMLElement>('.ant-tree-switcher');
-    expect(switcher).toBeTruthy();
-    fireEvent.click(switcher!);
-
-    expect(await screen.findByText('Audit custom resource')).toBeInTheDocument();
+    expect(await screen.findByText('其他设置')).toBeInTheDocument();
+    expect(screen.getByText('导出审计记录')).toBeInTheDocument();
+    expect(screen.queryByText('other.general')).not.toBeInTheDocument();
+    expect(screen.queryByText('audit.export')).not.toBeInTheDocument();
   }, 20000);
 
 });

@@ -4,10 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Checkbox,
+  Drawer,
   Form,
   Input,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tabs,
@@ -29,23 +31,24 @@ import {
 
 import { useAuthStore } from '../../../state/auth-store';
 import {
-  fetchSettingsPermissions,
-  settingsPermissionsQueryKey,
-  type SettingsPermission
+  fetchSettingsConsolePolicyCatalog,
+  settingsConsolePolicyCatalogQueryKey,
+  type SettingsConsolePolicyCatalog
 } from '../api/permissions';
 import {
   createSettingsRole,
   deleteSettingsRole,
-  fetchSettingsRolePermissions,
+  fetchSettingsRoleConsolePolicy,
   fetchSettingsRoleFrontstageRoutes,
   fetchSettingsRoles,
-  replaceSettingsRolePermissions,
+  replaceSettingsRoleConsolePolicy,
   replaceSettingsRoleFrontstageRoutes,
   settingsRoleFrontstageRoutesQueryKey,
-  settingsRolePermissionsQueryKey,
+  settingsRoleConsolePolicyQueryKey,
   settingsRolesQueryKey,
   updateSettingsRole,
   type SettingsRole,
+  type SettingsRoleConsolePolicy,
   type SettingsRoleFrontstageRoutes
 } from '../api/roles';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
@@ -56,57 +59,36 @@ const BACKEND_SYSTEM_SETTINGS_TAB = i18nText(
   'settings',
   'auto.backend_system_settings'
 );
+const CONSOLE_POLICY_TAB = 'console-policy';
+const OTHER_POLICY_TAB = 'other-policy';
+const DYNAMIC_ROUTE_TAB = 'dynamic-routes';
+const ROLE_TABLE_GENERAL_TAB = 'table-general-policy';
+const ROLE_TABLE_SINGLE_TAB = 'table-single-policy';
 
-// 分类映射，根据要求
-const RESOURCE_MAP: Record<
-  string,
-  { tab: string; label: string; order: number }
-> = {
-  settings_feature: {
-    tab: BACKEND_SYSTEM_SETTINGS_TAB,
-    label: i18nText("settings", "auto.settings"),
-    order: 0
-  },
-  role_permission: {
-    tab: i18nText("settings", "auto.basic_configuration"),
-    label: i18nText("settings", "auto.permission_role_permission"),
-    order: 1
-  },
-  user: { tab: i18nText("settings", "auto.basic_configuration"), label: i18nText("settings", "auto.user"), order: 2 },
-  team: { tab: i18nText("settings", "auto.basic_configuration"), label: i18nText("settings", "auto.team"), order: 3 },
-  external_data_source: {
-    tab: i18nText("settings", "auto.basic_configuration"),
-    label: i18nText("settings", "auto.data_source_external_data_source"),
-    order: 4
-  },
+type ConsolePolicyCatalogGroup = SettingsConsolePolicyCatalog['groups'][number];
+type ConsolePolicyGroup = SettingsRoleConsolePolicy['groups'][number];
 
-  application: { tab: i18nText("settings", "auto.system_management"), label: i18nText("settings", "auto.application"), order: 1 },
-  embedded_app: { tab: i18nText("settings", "auto.system_management"), label: i18nText("settings", "auto.subsystem_embedded_app"), order: 2 },
-  plugin_config: {
-    tab: i18nText("settings", "auto.system_management"),
-    label: i18nText("settings", "auto.plugin_configuration_plugin_config"),
-    order: 3
-  },
-  state_model: { tab: i18nText("settings", "auto.system_management"), label: i18nText("settings", "auto.model_supplier_state_model"), order: 4 },
-
-  flow: { tab: i18nText("settings", "auto.agent_application"), label: i18nText("settings", "auto.workflow"), order: 1 },
-  publish_endpoint: {
-    tab: i18nText("settings", "auto.agent_application"),
-    label: i18nText("settings", "auto.publish_endpoint"),
-    order: 2
+function consolePolicyModeLabel(mode: ConsolePolicyGroup['mode']) {
+  switch (mode) {
+    case 'disabled':
+      return i18nText('settings', 'auto.permission_policy_mode_disabled');
+    case 'full':
+      return i18nText('settings', 'auto.permission_policy_mode_full');
+    case 'custom':
+      return i18nText('settings', 'auto.permission_policy_mode_custom');
   }
-};
+}
 
-const TAB_ORDER = [
-  i18nText("settings", "auto.basic_configuration"),
-  i18nText("settings", "auto.system_management"),
-  BACKEND_SYSTEM_SETTINGS_TAB,
-  i18nText("settings", "auto.agent_application"),
-  i18nText("settings", "auto.others")
-];
-const ROLE_PERMISSION_GENERAL_TAB = i18nText("settings", "auto.basic_general");
-const ROLE_TABLE_GENERAL_TAB = i18nText("settings", "auto.table_general_configuration");
-const ROLE_TABLE_SINGLE_TAB = i18nText("settings", "auto.table_single_configuration");
+function consolePolicyScopeLabel(scope: Extract<ConsolePolicyGroup['operations'][number], { kind: 'row' }>['scope']) {
+  switch (scope) {
+    case 'disabled':
+      return i18nText('settings', 'auto.disabled');
+    case 'own':
+      return i18nText('settings', 'auto.own_records');
+    case 'scope_all':
+      return i18nText('settings', 'auto.scope_all_records');
+  }
+}
 
 export function RolePermissionPanel({
   canManageRoles
@@ -119,12 +101,18 @@ export function RolePermissionPanel({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoleCode, setSelectedRoleCode] = useState<string | null>(null);
-  const [activePermissionTab, setActivePermissionTab] = useState(
-    ROLE_PERMISSION_GENERAL_TAB
-  );
+  const [activePermissionTab, setActivePermissionTab] =
+    useState(CONSOLE_POLICY_TAB);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<SettingsRole | null>(null);
+  const [consolePolicyGroups, setConsolePolicyGroups] = useState<
+    SettingsRoleConsolePolicy['groups']
+  >([]);
+  const [consolePolicyDetail, setConsolePolicyDetail] = useState<{
+    catalogGroup: ConsolePolicyCatalogGroup;
+    policyGroup: ConsolePolicyGroup;
+  } | null>(null);
 
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
@@ -135,9 +123,9 @@ export function RolePermissionPanel({
     queryFn: fetchSettingsRoles
   });
 
-  const permissionsQuery = useQuery({
-    queryKey: settingsPermissionsQueryKey,
-    queryFn: fetchSettingsPermissions
+  const consolePolicyCatalogQuery = useQuery({
+    queryKey: settingsConsolePolicyCatalogQueryKey,
+    queryFn: fetchSettingsConsolePolicyCatalog
   });
 
   const roleFrontstageRoutesQuery = useQuery({
@@ -146,14 +134,12 @@ export function RolePermissionPanel({
     enabled: Boolean(selectedRoleCode)
   });
 
-  const rolePermissionsQuery = useQuery({
-    queryKey: settingsRolePermissionsQueryKey(selectedRoleCode ?? 'none'),
-    queryFn: () => fetchSettingsRolePermissions(selectedRoleCode ?? ''),
+  const roleConsolePolicyQuery = useQuery({
+    queryKey: settingsRoleConsolePolicyQueryKey(selectedRoleCode ?? 'none'),
+    queryFn: () => fetchSettingsRoleConsolePolicy(selectedRoleCode ?? ''),
     enabled: Boolean(selectedRoleCode)
   });
 
-  // Local state for fast UI updates
-  const [localCheckedCodes, setLocalCheckedCodes] = useState<string[]>([]);
   const [localCheckedRouteIds, setLocalCheckedRouteIds] = useState<string[]>([]);
 
   const routeKindById = useMemo(() => {
@@ -191,15 +177,15 @@ export function RolePermissionPanel({
   }, [localCheckedRouteIds, roleFrontstageRoutesQuery.data?.tree]);
 
   useEffect(() => {
-    setLocalCheckedCodes(rolePermissionsQuery.data?.permission_codes ?? []);
-  }, [rolePermissionsQuery.data?.permission_codes]);
-
-  useEffect(() => {
     setLocalCheckedRouteIds([
       ...(roleFrontstageRoutesQuery.data?.checked_page_ids ?? []),
       ...(roleFrontstageRoutesQuery.data?.checked_tab_ids ?? [])
     ]);
   }, [roleFrontstageRoutesQuery.data]);
+
+  useEffect(() => {
+    setConsolePolicyGroups(roleConsolePolicyQuery.data?.groups ?? []);
+  }, [roleConsolePolicyQuery.data?.groups]);
 
   useEffect(() => {
     if (!selectedRoleCode && rolesQuery.data?.length) {
@@ -226,115 +212,34 @@ export function RolePermissionPanel({
     activePermissionTab === ROLE_TABLE_GENERAL_TAB ||
     activePermissionTab === ROLE_TABLE_SINGLE_TAB;
 
-  const tabsData = useMemo(() => {
-    const allPerms = permissionsQuery.data ?? [];
-    const tabsMap = new Map<string, Map<string, SettingsPermission[]>>();
-
-    allPerms.forEach((p) => {
-      const resKey = p.resource || 'other';
-      const mapInfo = RESOURCE_MAP[resKey];
-      const tabName = mapInfo ? mapInfo.tab : i18nText("settings", "auto.others");
-
-      if (!tabsMap.has(tabName)) {
-        tabsMap.set(tabName, new Map());
-      }
-      const resMap = tabsMap.get(tabName)!;
-      if (!resMap.has(resKey)) {
-        resMap.set(resKey, []);
-      }
-      resMap.get(resKey)!.push(p);
-    });
-
-    return TAB_ORDER.filter((t) => tabsMap.has(t)).map((tabName) => {
-      const resMap = tabsMap.get(tabName)!;
-      const resources = Array.from(resMap.entries())
-        .map(([resKey, perms]) => {
-          const mapInfo = RESOURCE_MAP[resKey];
-          return {
-            key: resKey,
-            label: mapInfo ? mapInfo.label : resKey,
-            order: mapInfo ? mapInfo.order : 99,
-            permissions: perms
-          };
-        })
-        .sort((a, b) => a.order - b.order);
-
-      const treeData: TreeDataNode[] = resources.flatMap((res) => {
-        const permissionNodes = [...res.permissions]
-          .sort(
-            (left, right) =>
-              (left.settings_feature?.order ?? 0) -
-              (right.settings_feature?.order ?? 0)
-          )
-          .map((p) => ({
-            title: (
-              <span title={p.code}>
-                {p.settings_feature
-                  ? i18nText('settings', p.settings_feature.label_key)
-                  : p.name}
-              </span>
-            ),
-            key: p.code
-          }));
-
-        if (res.key === 'settings_feature') {
-          return permissionNodes;
-        }
-
-        return [{
-          title: res.label,
-          key: `resource:${res.key}`,
-          children: permissionNodes
-        }];
-      });
-
-      const tabLeafKeys = resources.flatMap((res) =>
-        res.permissions.map((p) => p.code)
-      );
-      const permissions = resources
-        .flatMap((res) => res.permissions)
-        .sort(
-          (left, right) =>
-            (left.settings_feature?.order ?? 0) -
-            (right.settings_feature?.order ?? 0)
-        );
-
-      return {
-        key: tabName,
-        label: tabName,
-        treeData,
-        tabLeafKeys,
-        permissions
-      };
-    });
-  }, [permissionsQuery.data]);
-
   const invalidateRoles = async () => {
     await queryClient.invalidateQueries({ queryKey: settingsRolesQueryKey });
-    if (selectedRoleCode) {
-      await queryClient.invalidateQueries({
-        queryKey: settingsRolePermissionsQueryKey(selectedRoleCode)
-      });
-    }
   };
 
-  const replacePermissionsMutation = useMutation({
-    mutationFn: async (permissionCodes: string[]) => {
+  const replaceConsolePolicyMutation = useMutation({
+    mutationFn: async (groups: SettingsRoleConsolePolicy['groups']) => {
       if (!csrfToken || !selectedRoleCode) throw new Error('missing selection');
-      return replaceSettingsRolePermissions(
+      return replaceSettingsRoleConsolePolicy(
         selectedRoleCode,
-        { permission_codes: permissionCodes },
+        { groups },
         csrfToken
       );
     },
     onSuccess: async () => {
-      messageApi.success(i18nText("settings", "auto.permissions_updated_successfully"));
-      await invalidateRoles();
+      messageApi.success(
+        i18nText('settings', 'auto.permission_policy_updated_successfully')
+      );
+      if (selectedRoleCode) {
+        await queryClient.invalidateQueries({
+          queryKey: settingsRoleConsolePolicyQueryKey(selectedRoleCode)
+        });
+      }
     },
     onError: () => {
-      messageApi.error(i18nText("settings", "auto.permission_update_failed"));
-      // revert local state on error
-      setLocalCheckedCodes(rolePermissionsQuery.data?.permission_codes ?? []);
+      messageApi.error(
+        i18nText('settings', 'auto.permission_policy_update_failed')
+      );
+      setConsolePolicyGroups(roleConsolePolicyQuery.data?.groups ?? []);
     }
   });
 
@@ -437,119 +342,202 @@ export function RolePermissionPanel({
     });
   };
 
+  const saveConsolePolicyGroups = (
+    groups: SettingsRoleConsolePolicy['groups']
+  ) => {
+    setConsolePolicyGroups(groups);
+    replaceConsolePolicyMutation.mutate(groups);
+  };
+
+  const openConsolePolicyDetail = (catalogGroup: ConsolePolicyCatalogGroup) => {
+    const policyGroup = consolePolicyGroups.find(
+      (group) =>
+        group.kind === catalogGroup.kind && group.group_id === catalogGroup.group_id
+    );
+    if (!policyGroup) return;
+
+    setConsolePolicyDetail({
+      catalogGroup,
+      policyGroup: {
+        ...policyGroup,
+        operations: policyGroup.operations.map((operation) => ({ ...operation }))
+      }
+    });
+  };
+
+  const updateConsolePolicyDetailOperation = (
+    operationId: string,
+    value: boolean | Extract<ConsolePolicyGroup['operations'][number], { kind: 'row' }>['scope']
+  ) => {
+    setConsolePolicyDetail((current) => {
+      if (!current) return current;
+      const catalogOperation = current.catalogGroup.operations.find(
+        (operation) => operation.operation_id === operationId
+      );
+      if (!catalogOperation) return current;
+
+      const nextPolicyOperation =
+        catalogOperation.authorization.kind === 'simple'
+          ? {
+              operation_id: operationId,
+              kind: 'simple' as const,
+              enabled: Boolean(value)
+            }
+          : {
+              operation_id: operationId,
+              kind: 'row' as const,
+              scope: value as Extract<
+                ConsolePolicyGroup['operations'][number],
+                { kind: 'row' }
+              >['scope']
+            };
+      const existingOperationIndex = current.policyGroup.operations.findIndex(
+        (operation) => operation.operation_id === operationId
+      );
+      const operations = [...current.policyGroup.operations];
+      if (existingOperationIndex === -1) {
+        operations.push(nextPolicyOperation);
+      } else {
+        operations[existingOperationIndex] = nextPolicyOperation;
+      }
+
+      return {
+        ...current,
+        policyGroup: { ...current.policyGroup, operations }
+      };
+    });
+  };
+
+  const saveConsolePolicyDetail = () => {
+    if (!consolePolicyDetail) return;
+    const nextGroups = consolePolicyGroups.map((group) =>
+      group.kind === consolePolicyDetail.policyGroup.kind &&
+      group.group_id === consolePolicyDetail.policyGroup.group_id
+        ? consolePolicyDetail.policyGroup
+        : group
+    );
+    setConsolePolicyDetail(null);
+    saveConsolePolicyGroups(nextGroups);
+  };
+
   const permissionTabItems = useMemo(() => {
-    const renderBackendSettingsTable = (
-      tab: (typeof tabsData)[number]
+    const catalogGroups = consolePolicyCatalogQuery.data?.groups ?? [];
+    const policyTableRows = (kind: ConsolePolicyCatalogGroup['kind']) =>
+      catalogGroups
+        .filter((catalogGroup) => catalogGroup.kind === kind)
+        .map((catalogGroup) => ({
+          key: `${catalogGroup.kind}:${catalogGroup.group_id}`,
+          catalogGroup,
+          policyGroup: consolePolicyGroups.find(
+            (group) =>
+              group.kind === catalogGroup.kind &&
+              group.group_id === catalogGroup.group_id
+          )
+        }))
+        .filter(
+          (
+            row
+          ): row is {
+            key: string;
+            catalogGroup: ConsolePolicyCatalogGroup;
+            policyGroup: ConsolePolicyGroup;
+          } => Boolean(row.policyGroup)
+        );
+
+    const renderConsolePolicyTable = (
+      kind: ConsolePolicyCatalogGroup['kind']
     ) => (
-      <Table<SettingsPermission>
-        rowKey="code"
+      <Table
+        rowKey="key"
         pagination={false}
-        dataSource={tab.permissions}
+        dataSource={policyTableRows(kind)}
         columns={[
           {
             title: i18nText('settings', 'auto.backend_setting'),
             key: 'backend-setting',
-            render: (_, permission) => (
-              <span title={permission.code}>
-                {permission.settings_feature
-                  ? i18nText(
-                      'settings',
-                      permission.settings_feature.label_key
-                    )
-                  : permission.name}
-              </span>
+            render: (
+              _: unknown,
+              row: ReturnType<typeof policyTableRows>[number]
+            ) => (
+              <Space direction="vertical" size={0}>
+                <Typography.Text strong>{row.catalogGroup.label}</Typography.Text>
+                {row.catalogGroup.description ? (
+                  <Typography.Text type="secondary">
+                    {row.catalogGroup.description}
+                  </Typography.Text>
+                ) : null}
+              </Space>
             )
           },
           {
             title: i18nText('settings', 'auto.grant_access'),
             key: 'grant-access',
             width: 160,
-            align: 'center',
-            render: (_, permission) => {
-              const settingLabel = permission.settings_feature
-                ? i18nText(
-                    'settings',
-                    permission.settings_feature.label_key
-                  )
-                : permission.name;
-
-              return (
-                <Checkbox
-                  aria-label={i18nText(
-                    'settings',
-                    'auto.grant_backend_setting_access',
-                    { value1: settingLabel }
-                  )}
-                  disabled={!canManageRoles || !selectedRole?.is_editable}
-                  checked={localCheckedCodes.includes(permission.code)}
-                  onChange={(event) => {
-                    const newCodes = event.target.checked
-                      ? Array.from(
-                          new Set([...localCheckedCodes, permission.code])
-                        )
-                      : localCheckedCodes.filter(
-                          (code) => code !== permission.code
-                        );
-                    setLocalCheckedCodes(newCodes);
-                    replacePermissionsMutation.mutate(newCodes);
-                  }}
-                />
-              );
-            }
+            align: 'center' as const,
+            render: (
+              _: unknown,
+              row: ReturnType<typeof policyTableRows>[number]
+            ) => (
+              <Checkbox
+                aria-label={i18nText(
+                  'settings',
+                  'auto.grant_backend_setting_access',
+                  { value1: row.catalogGroup.label }
+                )}
+                disabled={!canManageRoles || !selectedRole?.is_editable}
+                checked={row.policyGroup.mode !== 'disabled'}
+                onChange={(event) => {
+                  const nextGroups = consolePolicyGroups.map((group) =>
+                    group.kind === row.catalogGroup.kind &&
+                    group.group_id === row.catalogGroup.group_id
+                      ? {
+                          ...group,
+                          mode: event.target.checked ? ('full' as const) : ('disabled' as const)
+                        }
+                      : group
+                  );
+                  saveConsolePolicyGroups(nextGroups);
+                }}
+              />
+            )
+          },
+          {
+            title: i18nText('settings', 'auto.permission_policy_summary'),
+            key: 'policy-summary',
+            render: (
+              _: unknown,
+              row: ReturnType<typeof policyTableRows>[number]
+            ) => <Tag>{consolePolicyModeLabel(row.policyGroup.mode)}</Tag>
+          },
+          {
+            title: i18nText('settings', 'auto.operation'),
+            key: 'policy-detail',
+            render: (
+              _: unknown,
+              row: ReturnType<typeof policyTableRows>[number]
+            ) => (
+              <Button
+                type="link"
+                aria-label={i18nText(
+                  'settings',
+                  'auto.permission_policy_details',
+                  { value1: row.catalogGroup.label }
+                )}
+                disabled={!canManageRoles || !selectedRole?.is_editable}
+                onClick={() => openConsolePolicyDetail(row.catalogGroup)}
+              >
+                {i18nText('settings', 'auto.permission_policy_details_text')}
+              </Button>
+            )
           }
         ]}
       />
     );
 
-    const renderPermissionTree = (tab: (typeof tabsData)[number]) => (
-      <div style={{ paddingBottom: 32 }}>
-        <Tree
-          checkable
-          disabled={!canManageRoles || !selectedRole?.is_editable}
-          checkedKeys={localCheckedCodes.filter((code) =>
-            tab.tabLeafKeys.includes(code)
-          )}
-          onCheck={(checkedKeysValue) => {
-            const keys = Array.isArray(checkedKeysValue)
-              ? checkedKeysValue
-              : checkedKeysValue.checked;
-            const newlyCheckedLeaves = keys
-              .map(String)
-              .filter((k) => !k.startsWith('resource:'));
-
-            const otherCheckedCodes = localCheckedCodes.filter(
-              (c) => !tab.tabLeafKeys.includes(c)
-            );
-            const newCodes = [...otherCheckedCodes, ...newlyCheckedLeaves];
-
-            setLocalCheckedCodes(newCodes);
-            replacePermissionsMutation.mutate(newCodes);
-          }}
-          treeData={tab.treeData}
-          defaultExpandAll={false}
-        />
-      </div>
-    );
-
-    const regularTabs = tabsData.map((tab) => ({
-      key:
-        tab.key === i18nText("settings", "auto.basic_configuration")
-          ? ROLE_PERMISSION_GENERAL_TAB
-          : tab.key,
-      label:
-        tab.label === i18nText("settings", "auto.basic_configuration")
-          ? ROLE_PERMISSION_GENERAL_TAB
-          : tab.label,
-      children:
-        tab.key === BACKEND_SYSTEM_SETTINGS_TAB
-          ? renderBackendSettingsTable(tab)
-          : renderPermissionTree(tab)
-    }));
-
     const defaultDataPolicyTab = selectedRole
       ? {
           key: ROLE_TABLE_GENERAL_TAB,
-          label: ROLE_TABLE_GENERAL_TAB,
+          label: i18nText('settings', 'auto.table_general_configuration'),
           children: (
             <RoleDataPolicySection
               canEdit={canManageRoles && selectedRole.is_editable}
@@ -564,7 +552,7 @@ export function RolePermissionPanel({
     const singleModelPolicyTab = selectedRole
       ? {
           key: ROLE_TABLE_SINGLE_TAB,
-          label: ROLE_TABLE_SINGLE_TAB,
+          label: i18nText('settings', 'auto.table_single_configuration'),
           children: (
             <RoleDataPolicySection
               canEdit={canManageRoles && selectedRole.is_editable}
@@ -576,21 +564,9 @@ export function RolePermissionPanel({
         }
       : null;
 
-    const fallbackGeneralTab = {
-      key: ROLE_PERMISSION_GENERAL_TAB,
-      label: ROLE_PERMISSION_GENERAL_TAB,
-      children: <div style={{ paddingBottom: 32 }} />
-    };
-    const generalTab = regularTabs.find(
-      (tab) => tab.key === ROLE_PERMISSION_GENERAL_TAB
-    ) ?? fallbackGeneralTab;
-    const restTabs = regularTabs.filter(
-      (tab) => tab.key !== ROLE_PERMISSION_GENERAL_TAB
-    );
-
     const dynamicRouteTab = {
-      key: 'dynamic-routes',
-      label: '动态路由',
+      key: DYNAMIC_ROUTE_TAB,
+      label: i18nText('settings', 'auto.dynamic_routes'),
       children: (
         <Tree
           checkable
@@ -627,25 +603,43 @@ export function RolePermissionPanel({
       )
     };
 
+    const settingsFeatureGroups = catalogGroups.filter(
+      (group) => group.kind === 'settings_feature'
+    );
+    const otherGroups = catalogGroups.filter((group) => group.kind === 'other');
+    const backendSettingsTab = settingsFeatureGroups.length
+      ? {
+          key: CONSOLE_POLICY_TAB,
+          label: BACKEND_SYSTEM_SETTINGS_TAB,
+          children: renderConsolePolicyTable('settings_feature')
+        }
+      : null;
+    const otherPolicyTab = otherGroups.length
+      ? {
+          key: OTHER_POLICY_TAB,
+          label: i18nText('settings', 'auto.others'),
+          children: renderConsolePolicyTable('other')
+        }
+      : null;
+
     return [
-      generalTab,
       dynamicRouteTab,
       ...(defaultDataPolicyTab ? [defaultDataPolicyTab] : []),
       ...(singleModelPolicyTab ? [singleModelPolicyTab] : []),
-      ...restTabs
+      ...(backendSettingsTab ? [backendSettingsTab] : []),
+      ...(otherPolicyTab ? [otherPolicyTab] : [])
     ];
   }, [
     canManageRoles,
+    consolePolicyCatalogQuery.data,
+    consolePolicyGroups,
     dataPolicyFormId,
     displayedCheckedRouteIds,
-    localCheckedCodes,
     localCheckedRouteIds,
     replaceFrontstageRoutesMutation,
-    replacePermissionsMutation,
     roleFrontstageRoutesQuery.data,
     routeKindById,
-    selectedRole,
-    tabsData
+    selectedRole
   ]);
 
   return (
@@ -861,8 +855,8 @@ export function RolePermissionPanel({
                 <div
                   style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}
                 >
-                  {permissionsQuery.isLoading ||
-                  rolePermissionsQuery.isLoading ? (
+                  {consolePolicyCatalogQuery.isLoading ||
+                  roleConsolePolicyQuery.isLoading ? (
                     <div style={{ padding: 32, textAlign: 'center' }}>
                       {i18nText("settings", "auto.loading_permission_data")}</div>
                   ) : (
@@ -993,6 +987,150 @@ export function RolePermissionPanel({
             </Form.Item>
           </Form>
         </Modal>
+
+        <Drawer
+          title={
+            consolePolicyDetail
+              ? i18nText('settings', 'auto.permission_policy_detail_title', {
+                  value1: consolePolicyDetail.catalogGroup.label
+                })
+              : undefined
+          }
+          open={Boolean(consolePolicyDetail)}
+          onClose={() => setConsolePolicyDetail(null)}
+          width={640}
+          destroyOnHidden
+          footer={
+            <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button onClick={() => setConsolePolicyDetail(null)}>
+                {i18nText('settings', 'auto.cancel')}
+              </Button>
+              <Button
+                type="primary"
+                loading={replaceConsolePolicyMutation.isPending}
+                disabled={!canManageRoles || !selectedRole?.is_editable}
+                onClick={saveConsolePolicyDetail}
+              >
+                {i18nText('settings', 'auto.permission_policy_save')}
+              </Button>
+            </Space>
+          }
+        >
+          {consolePolicyDetail ? (
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              {consolePolicyDetail.catalogGroup.description ? (
+                <Typography.Paragraph type="secondary">
+                  {consolePolicyDetail.catalogGroup.description}
+                </Typography.Paragraph>
+              ) : null}
+              <Table
+                rowKey="operation_id"
+                pagination={false}
+                dataSource={[...consolePolicyDetail.catalogGroup.operations].sort(
+                  (left, right) => left.order - right.order
+                )}
+                columns={[
+                  {
+                    title: i18nText('settings', 'auto.permission_policy_operation'),
+                    key: 'operation',
+                    render: (
+                      _: unknown,
+                      operation: ConsolePolicyCatalogGroup['operations'][number]
+                    ) => (
+                      <Space direction="vertical" size={0}>
+                        <Typography.Text>{operation.label}</Typography.Text>
+                        {operation.description ? (
+                          <Typography.Text type="secondary">
+                            {operation.description}
+                          </Typography.Text>
+                        ) : null}
+                      </Space>
+                    )
+                  },
+                  {
+                    title: i18nText('settings', 'auto.permission_policy_scope'),
+                    key: 'policy',
+                    render: (
+                      _: unknown,
+                      operation: ConsolePolicyCatalogGroup['operations'][number]
+                    ) => {
+                      const policyOperation =
+                        consolePolicyDetail.policyGroup.operations.find(
+                          (candidate) =>
+                            candidate.operation_id === operation.operation_id
+                        );
+
+                      if (operation.authorization.kind === 'simple') {
+                        return (
+                          <Checkbox
+                            aria-label={operation.label}
+                            checked={
+                              policyOperation?.kind === 'simple' &&
+                              policyOperation.enabled
+                            }
+                            disabled={
+                              !canManageRoles ||
+                              !selectedRole?.is_editable ||
+                              replaceConsolePolicyMutation.isPending
+                            }
+                            onChange={(event) =>
+                              updateConsolePolicyDetailOperation(
+                                operation.operation_id,
+                                event.target.checked
+                              )
+                            }
+                          />
+                        );
+                      }
+
+                      const scope =
+                        policyOperation?.kind === 'row'
+                          ? policyOperation.scope
+                          : 'disabled';
+                      return (
+                        <Select
+                          aria-label={`${operation.label} ${i18nText(
+                            'settings',
+                            'auto.permission_policy_scope'
+                          )}`}
+                          value={scope}
+                          disabled={
+                            !canManageRoles ||
+                            !selectedRole?.is_editable ||
+                            replaceConsolePolicyMutation.isPending
+                          }
+                          options={[
+                            {
+                              value: 'disabled',
+                              label: consolePolicyScopeLabel('disabled')
+                            },
+                            {
+                              value: 'own',
+                              label: consolePolicyScopeLabel('own')
+                            },
+                            {
+                              value: 'scope_all',
+                              label: consolePolicyScopeLabel('scope_all')
+                            }
+                          ]}
+                          onChange={(value) =>
+                            updateConsolePolicyDetailOperation(
+                              operation.operation_id,
+                              value as Extract<
+                                ConsolePolicyGroup['operations'][number],
+                                { kind: 'row' }
+                              >['scope']
+                            )
+                          }
+                        />
+                      );
+                    }
+                  }
+                ]}
+              />
+            </Space>
+          ) : null}
+        </Drawer>
       </div>
     </SettingsSectionSurface>
   );

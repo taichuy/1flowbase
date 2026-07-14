@@ -5,9 +5,12 @@ import {
   createConsoleRole,
   deleteConsoleRole,
   fetchConsoleRoleDataPolicy,
+  fetchConsoleRoleConsolePolicy,
+  fetchConsoleRoleConsolePolicyCatalog,
   fetchConsoleRoleFrontstageRoutes,
   fetchConsoleRolePermissions,
   listConsoleRoles,
+  replaceConsoleRoleConsolePolicy,
   replaceConsoleRoleDataPolicy,
   replaceConsoleRoleFrontstageRoutes,
   replaceConsoleRolePermissions,
@@ -79,6 +82,45 @@ describe('console roles client', () => {
     });
     await expect(fetchConsoleRoleDataPolicy('member')).resolves.toMatchObject({
       path: '/api/console/settings/roles/member/data-policy'
+    });
+  });
+
+  test('uses the console policy catalog and role policy contract (Issue #1259 AC-003/004)', async () => {
+    const input = {
+      groups: [
+        {
+          kind: 'settings_feature' as const,
+          group_id: 'settings.applications',
+          mode: 'custom' as const,
+          operations: [
+            {
+              operation_id: 'applications.read',
+              kind: 'row' as const,
+              scope: 'own' as const
+            },
+            {
+              operation_id: 'applications.publish',
+              kind: 'simple' as const,
+              enabled: true
+            }
+          ]
+        }
+      ]
+    };
+
+    await expect(fetchConsoleRoleConsolePolicyCatalog()).resolves.toMatchObject({
+      path: '/api/console/settings/roles/console-policy-catalog'
+    });
+    await expect(fetchConsoleRoleConsolePolicy('member')).resolves.toMatchObject({
+      path: '/api/console/settings/roles/member/console-policy'
+    });
+    await expect(
+      replaceConsoleRoleConsolePolicy('member', input, 'csrf-123')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/roles/member/console-policy',
+      method: 'PUT',
+      body: input,
+      csrfToken: 'csrf-123'
     });
   });
 

@@ -26,10 +26,22 @@ pub fn compile_core_settings_feature_registry() -> Result<
     .map(Arc::new)
 }
 
+pub fn compile_core_console_operation_registry(
+    settings_features: &access_control::SettingsFeatureRegistry,
+) -> anyhow::Result<Arc<access_control::ConsoleOperationRegistry>> {
+    let assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly();
+    crate::routes::console_route_assembly::compile_migrated_core_console_operation_registry(
+        settings_features,
+        assembly.bindings(),
+    )
+    .map(Arc::new)
+}
+
 #[derive(Clone)]
 pub struct ApiState {
     pub store: MainDurableStore,
     pub settings_feature_registry: Arc<access_control::SettingsFeatureRegistry>,
+    pub console_operation_registry: Arc<access_control::ConsoleOperationRegistry>,
     pub infrastructure: Arc<HostInfrastructureRegistry>,
     pub console_surface_registry: Arc<ConsoleSurfaceRegistry>,
     pub file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,

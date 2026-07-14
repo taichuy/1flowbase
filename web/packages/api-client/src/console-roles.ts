@@ -17,6 +17,92 @@ export interface ConsoleRolePermissions {
   permission_codes: string[];
 }
 
+export type ConsolePolicyGroupKind = 'settings_feature' | 'other';
+export type ConsolePolicyMode = 'disabled' | 'full' | 'custom';
+export type ConsolePolicyRowScope = 'disabled' | 'own' | 'scope_all';
+
+export interface ConsolePolicyOperationSimpleAuthorization {
+  kind: 'simple';
+}
+
+export interface ConsolePolicyOperationResourceActionAuthorization {
+  kind: 'resource_action';
+  resource_code: string;
+  action_code: string;
+}
+
+export type ConsolePolicyOperationAuthorization =
+  | ConsolePolicyOperationSimpleAuthorization
+  | ConsolePolicyOperationResourceActionAuthorization;
+
+export interface ConsolePolicyCatalogOperation {
+  operation_id: string;
+  label: string;
+  description: string | null;
+  order: number;
+  authorization: ConsolePolicyOperationAuthorization;
+}
+
+export interface ConsolePolicyCatalogGroup {
+  kind: ConsolePolicyGroupKind;
+  group_id: string;
+  label: string;
+  description: string | null;
+  operations: ConsolePolicyCatalogOperation[];
+}
+
+export interface ConsolePolicyCatalogResourceAction {
+  action_code: string;
+  label: string;
+  description: string | null;
+}
+
+export interface ConsolePolicyCatalogResource {
+  resource_code: string;
+  label: string;
+  description: string | null;
+  actions: ConsolePolicyCatalogResourceAction[];
+}
+
+export interface ConsolePolicyCatalog {
+  schema_version: string;
+  groups: ConsolePolicyCatalogGroup[];
+  resources: ConsolePolicyCatalogResource[];
+}
+
+export interface ConsoleRoleConsolePolicySimpleOperation {
+  operation_id: string;
+  kind: 'simple';
+  enabled: boolean;
+}
+
+export interface ConsoleRoleConsolePolicyRowOperation {
+  operation_id: string;
+  kind: 'row';
+  scope: ConsolePolicyRowScope;
+}
+
+export type ConsoleRoleConsolePolicyOperation =
+  | ConsoleRoleConsolePolicySimpleOperation
+  | ConsoleRoleConsolePolicyRowOperation;
+
+export interface ConsoleRoleConsolePolicyGroup {
+  kind: ConsolePolicyGroupKind;
+  group_id: string;
+  mode: ConsolePolicyMode;
+  operations: ConsoleRoleConsolePolicyOperation[];
+}
+
+export interface ConsoleRoleConsolePolicy {
+  role_code: string;
+  groups: ConsoleRoleConsolePolicyGroup[];
+}
+
+export type ReplaceConsoleRoleConsolePolicyInput = Pick<
+  ConsoleRoleConsolePolicy,
+  'groups'
+>;
+
 export interface ConsoleRoleFrontstageRouteNode {
   id: string;
   kind: 'group' | 'page' | 'tab';
@@ -145,6 +231,40 @@ export function fetchConsoleRolePermissions(
 ): Promise<ConsoleRolePermissions> {
   return apiFetch<ConsoleRolePermissions>({
     path: `/api/console/settings/roles/${roleCode}/permissions`,
+    baseUrl
+  });
+}
+
+export function fetchConsoleRoleConsolePolicyCatalog(
+  baseUrl?: string
+): Promise<ConsolePolicyCatalog> {
+  return apiFetch<ConsolePolicyCatalog>({
+    path: '/api/console/settings/roles/console-policy-catalog',
+    baseUrl
+  });
+}
+
+export function fetchConsoleRoleConsolePolicy(
+  roleCode: string,
+  baseUrl?: string
+): Promise<ConsoleRoleConsolePolicy> {
+  return apiFetch<ConsoleRoleConsolePolicy>({
+    path: `/api/console/settings/roles/${roleCode}/console-policy`,
+    baseUrl
+  });
+}
+
+export function replaceConsoleRoleConsolePolicy(
+  roleCode: string,
+  input: ReplaceConsoleRoleConsolePolicyInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<void> {
+  return apiFetchVoid({
+    path: `/api/console/settings/roles/${roleCode}/console-policy`,
+    method: 'PUT',
+    body: input,
+    csrfToken,
     baseUrl
   });
 }

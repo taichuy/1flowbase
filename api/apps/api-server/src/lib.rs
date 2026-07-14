@@ -144,37 +144,10 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
         .nest("/api/agent/v1", routes::application_public_api::router())
         .nest("/api/ex", routes::application_public_api::ex::router())
         .nest("/api", routes::mcp_protocol::router())
-        .nest("/api/console", routes::applications::router())
-        .nest("/api/console", routes::application_management::router())
-        .nest("/api/console", routes::application_api::router())
-        .nest("/api/console", routes::application_orchestration::router())
-        .nest("/api/console", routes::application_runtime::router())
-        .nest("/api/console", routes::data_models::router())
-        .nest("/api/console", routes::docs::router())
-        .nest("/api/console", routes::data_sources::router())
-        .nest("/api/console", routes::files::router())
-        .nest("/api/console", routes::file_storages::router())
-        .nest("/api/console", routes::file_tables::router())
-        .nest("/api/console", routes::host_infrastructure::router())
-        .nest("/api/console", routes::mcp_management::router())
-        .nest("/api/console", routes::user_api_keys::router())
-        .nest("/api/console", routes::me::router())
-        .nest("/api/console", routes::workspace::router())
-        .nest("/api/console", routes::members::router())
-        .nest("/api/console", routes::navigation::router())
-        .nest("/api/console", routes::model_definitions::router())
-        .nest("/api/console", routes::model_providers::router())
-        .nest("/api/console", routes::frontend_block_catalog::router())
-        .nest("/api/console", routes::js_dependencies::router())
-        .nest("/api/console", routes::node_contributions::router())
-        .nest("/api/console", routes::roles::router())
-        .nest("/api/console", routes::permissions::router())
-        .nest("/api/console", routes::frontstage::router())
-        .nest("/api/console", routes::plugins::router())
-        .nest("/api/console", routes::session::router())
-        .nest("/api/console", routes::auth_center::router())
-        .nest("/api/console", routes::system::router())
-        .nest("/api/console", routes::workspaces::router())
+        .nest(
+            "/api/console",
+            routes::console_route_assembly::migrated_core_console_route_assembly().into_router(),
+        )
         .nest("/api/runtime", routes::runtime_models::router())
         .nest("/api/public/auth", routes::auth::router());
 
@@ -331,13 +304,13 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let process_started_at = OffsetDateTime::now_utc();
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
     let settings_feature_registry = compile_core_settings_feature_registry()?;
-    routes::console_route_assembly::validate_migrated_core_console_route_coverage(
-        &settings_feature_registry,
-    )?;
+    let console_operation_registry =
+        app_state::compile_core_console_operation_registry(&settings_feature_registry)?;
 
     let state = Arc::new(ApiState {
         store,
         settings_feature_registry,
+        console_operation_registry,
         infrastructure,
         console_surface_registry,
         file_storage_registry,

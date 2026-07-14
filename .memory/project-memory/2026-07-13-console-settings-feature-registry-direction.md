@@ -14,11 +14,12 @@ match_when:
   - 调整 Settings API 权限或角色设置授权
   - 实现 HostExtension console surface 或注册 CLI
 created_at: 2026-07-13 16
-updated_at: 2026-07-14 12
-last_verified_at: 2026-07-14 12
+updated_at: 2026-07-14 13
+last_verified_at: 2026-07-14 13
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/1256
+  - https://github.com/taichuy/1flowbase/issues/1259
   - .agents/skills/backend-development
   - .agents/skills/qa-evaluation
   - api/AGENTS.md
@@ -34,6 +35,8 @@ scope:
 - Settings API ownership 按设置用例归属：例如成员页的角色选项和角色绑定属于成员设置能力，即使底层读取 role repository，也不要求另一个角色设置 feature 或 business action。
 - 用户在 2026-07-14 11 确认旧“路由页面”授权已无产品价值，要求直接完成最终切换；API 文档、API Key、系统运行、MCP 管理迁入 SettingsFeature，删除 `settings_route.visible.*` 运行时、隐含权限展开和角色页旧 tab。
 - 用户在 2026-07-14 12 确认角色权限页将 SettingsFeature 从“基础通用”移到独立“后台系统设置”Tab，并使用每项一行的表格呈现；“开放权限”复选框即时增删该 SettingsFeature grant。这只改变角色页信息架构，不改变 permission code、授权存储或后端注册 contract。
+- 用户在 2026-07-14 13 进一步选择一次性重构 `/api/console/*` 权限配置。动态路由和两类表数据权限保持现状；SettingsFeature 管理其显式注册的 console API 操作，允许保留显式注册的“其他”分组承载尚未归属 feature 的 console 操作。用户最终否定应用协作者、单应用 ACL 和应用详情权限入口，也不采用任意关系图：后台资源注册时声明通用权限字段与 CRUD 操作，角色只配置 `own / scope_all`（仅自己 / 当前空间）；本期不增加 `system_all` 或跨空间授权，等多租户阶段再设计。应用与其他表资源复用同一模型，多语言元数据随注册项提供；“其他”只接收显式注册但尚未归属 SettingsFeature 的操作，未注册 console route 必须由启动/CI 拒绝并在运行时 fail closed。
+- 以上新方向已于 2026-07-14 13 整理为线上 L0 Issue #1259（`grade:g4 / phase:discussion`），并在 #1256 回链；等待用户审阅确认后再创建直接 L1 与 ADR，不提前进入实现。
 
 ## 为什么这样做
 
