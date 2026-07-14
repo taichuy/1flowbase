@@ -100,8 +100,7 @@ async fn ac_004_only_ready_connections_discover_and_read_cached_resources() {
 }
 
 #[tokio::test]
-async fn create_instance_requires_external_data_source_configure_permission_not_state_model_manage()
-{
+async fn create_instance_requires_data_source_console_policy_not_legacy_permissions() {
     let state_model_actor = ActorContext::scoped_in_scope(
         user_id(),
         tenant_id(),
@@ -130,14 +129,53 @@ async fn create_instance_requires_external_data_source_configure_permission_not_
         .unwrap_err();
     assert!(denied.to_string().contains("permission_denied"));
 
-    let data_source_actor = ActorContext::scoped_in_scope(
+    let legacy_actor = ActorContext::scoped_in_scope(
         user_id(),
         tenant_id(),
         workspace_id(),
         "member",
         ["external_data_source.configure.all".to_string()],
     );
-    let allowed_repository = InMemoryDataSourceRepository::with_actor(data_source_actor);
+    let legacy_service = DataSourceService::new(
+        InMemoryDataSourceRepository::with_actor(legacy_actor),
+        StubDataSourceRuntime::ready(),
+        "test-master-key",
+    );
+    let legacy_denied = legacy_service
+        .create_instance(CreateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            installation_id: installation_id(),
+            source_code: "acme_hubspot_source".into(),
+            display_name: "Legacy HubSpot".into(),
+            config_json: json!({ "client_id": "abc" }),
+            secret_json: json!({}),
+        })
+        .await
+        .unwrap_err();
+    assert!(legacy_denied.to_string().contains("permission_denied"));
+
+    let policy_actor =
+        ActorContext::scoped_in_scope(user_id(), tenant_id(), workspace_id(), "member", []);
+    let allowed_repository = InMemoryDataSourceRepository::with_actor(policy_actor);
+    allowed_repository
+        .set_console_policies(vec![domain::RoleConsolePolicy::new(
+            Uuid::now_v7(),
+            vec![domain::RoleConsoleGroupPolicy::custom(
+                domain::ConsolePolicyGroup::settings_feature(
+                    access_control::SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID,
+                )
+                .unwrap(),
+                vec![domain::ConsoleOperationPolicy::simple(
+                    domain::ConsoleOperationId::try_from(
+                        access_control::DATA_SOURCES_CREATE_OPERATION_ID,
+                    )
+                    .unwrap(),
+                    true,
+                )],
+            )],
+        )])
+        .await;
     let allowed_service = DataSourceService::new(
         allowed_repository.clone(),
         StubDataSourceRuntime::ready(),

@@ -20,11 +20,11 @@ use crate::{
     ports::{
         AddModelFieldInput, AuthRepository, CreateDataSourceInstanceInput,
         CreateDataSourcePreviewSessionInput, CreateModelDefinitionInput,
-        CreateScopeDataModelGrantInput, DataSourceRepository, DataSourceRuntimePort,
-        ModelDefinitionRepository, PluginRepository, RotateDataSourceSecretInput,
-        UpdateDataSourceDefaultsInput, UpdateDataSourceInstanceStatusInput,
-        UpdateMainSourceDefaultsInput, UpsertDataSourceCatalogCacheInput,
-        UpsertDataSourceSecretInput,
+        CreateScopeDataModelGrantInput, DataSourceInstanceVisibility, DataSourceRepository,
+        DataSourceRuntimePort, ModelDefinitionRepository, PluginRepository,
+        RotateDataSourceSecretInput, UpdateDataSourceDefaultsInput,
+        UpdateDataSourceInstanceStatusInput, UpdateMainSourceDefaultsInput,
+        UpsertDataSourceCatalogCacheInput, UpsertDataSourceSecretInput,
     },
 };
 
@@ -198,15 +198,8 @@ pub struct DataSourceService<R, H> {
     repository: R,
     runtime: H,
     secret_master_key: String,
-    use_case: DataSourceUseCase,
     node_id: Option<String>,
     install_root: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum DataSourceUseCase {
-    BusinessActions,
-    DataModelSettings,
 }
 
 impl<R, H> DataSourceService<R, H>
@@ -219,7 +212,6 @@ where
             repository,
             runtime,
             secret_master_key: secret_master_key.into(),
-            use_case: DataSourceUseCase::BusinessActions,
             node_id: None,
             install_root: None,
         }
@@ -230,37 +222,7 @@ where
         runtime: H,
         secret_master_key: impl Into<String>,
     ) -> Self {
-        Self {
-            repository,
-            runtime,
-            secret_master_key: secret_master_key.into(),
-            use_case: DataSourceUseCase::DataModelSettings,
-            node_id: None,
-            install_root: None,
-        }
-    }
-
-    fn ensure_use_case_permission(
-        &self,
-        actor: &domain::ActorContext,
-        action: &str,
-    ) -> Result<(), ControlPlaneError> {
-        match self.use_case {
-            DataSourceUseCase::BusinessActions => {
-                ensure_external_data_source_permission(actor, action)
-            }
-            DataSourceUseCase::DataModelSettings
-                if actor.is_root
-                    || actor.has_permission(
-                        access_control::SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION,
-                    ) =>
-            {
-                Ok(())
-            }
-            DataSourceUseCase::DataModelSettings => {
-                Err(ControlPlaneError::PermissionDenied("permission_denied"))
-            }
-        }
+        Self::new(repository, runtime, secret_master_key)
     }
 
     pub fn with_node_artifact_context(
@@ -295,6 +257,55 @@ where
         }
     }
 
+    async fn ensure_console_simple_operation(
+        &self,
+        actor: &domain::ActorContext,
+        group: &domain::ConsolePolicyGroup,
+        operation_id: &str,
+    ) -> Result<()> {
+        if actor.is_root {
+            return Ok(());
+        }
+        let policies = self
+            .repository
+            .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+            .await?;
+        ensure_console_simple_operation(&policies, group, operation_id).map_err(Into::into)
+    }
+
+    async fn data_source_view_visibility(
+        &self,
+        actor: &domain::ActorContext,
+    ) -> Result<DataSourceInstanceVisibility> {
+        if actor.is_root {
+            return Ok(DataSourceInstanceVisibility::ScopeAll);
+        }
+        let policies = self
+            .repository
+            .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+            .await?;
+        resolve_data_source_instance_visibility(&policies).map_err(Into::into)
+    }
+
+    async fn data_source_list_visibility(
+        &self,
+        actor: &domain::ActorContext,
+    ) -> Result<DataSourceInstanceVisibility> {
+        if actor.is_root {
+            return Ok(DataSourceInstanceVisibility::ScopeAll);
+        }
+        let policies = self
+            .repository
+            .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+            .await?;
+        ensure_console_simple_operation(
+            &policies,
+            &data_models_console_policy_group(),
+            access_control::DATA_SOURCES_LIST_OPERATION_ID,
+        )?;
+        resolve_data_source_instance_visibility(&policies).map_err(Into::into)
+    }
+
     pub async fn list_catalog(
         &self,
         actor_user_id: Uuid,
@@ -302,7 +313,12 @@ where
     ) -> Result<Vec<DataSourceCatalogEntryView>> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
         ensure_workspace_matches(&actor, workspace_id)?;
-        self.ensure_use_case_permission(&actor, "view")?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &data_models_console_policy_group(),
+            access_control::SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION,
+        )
+        .await?;
 
         let assigned_installation_ids = self
             .repository
@@ -352,11 +368,11 @@ where
     ) -> Result<Vec<DataSourceInstanceView>> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
         ensure_workspace_matches(&actor, workspace_id)?;
-        self.ensure_use_case_permission(&actor, "view")?;
+        let visibility = self.data_source_view_visibility(&actor).await?;
 
         Ok(self
             .repository
-            .list_instances(workspace_id)
+            .list_instances(workspace_id, actor.user_id, visibility)
             .await?
             .into_iter()
             .map(|instance| DataSourceInstanceView {
@@ -373,11 +389,16 @@ where
     ) -> Result<Vec<DataSourceView>> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
         ensure_workspace_matches(&actor, workspace_id)?;
-        self.ensure_use_case_permission(&actor, "view")?;
+        // `data_sources.list` opens this endpoint, while the registered `data_sources.view`
+        // resource action controls which persisted instance rows are visible.
+        let visibility = self.data_source_list_visibility(&actor).await?;
 
         let defaults =
             DataSourceRepository::get_main_source_defaults(&self.repository, workspace_id).await?;
-        let instances = self.repository.list_instances(workspace_id).await?;
+        let instances = self
+            .repository
+            .list_instances(workspace_id, actor.user_id, visibility)
+            .await?;
         let mut data_sources = Vec::with_capacity(instances.len() + 1);
         data_sources.push(DataSourceView {
             backend: DataSourceBackendView::Core { defaults },
@@ -397,7 +418,12 @@ where
     ) -> Result<DataSourceInstanceView> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        self.ensure_use_case_permission(&actor, "configure")?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &data_models_console_policy_group(),
+            access_control::DATA_SOURCES_CREATE_OPERATION_ID,
+        )
+        .await?;
 
         let installation = self.ready_installation(command.installation_id).await?;
         ensure_installation_assigned(
@@ -487,7 +513,12 @@ where
     ) -> Result<ValidateDataSourceInstanceResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        self.ensure_use_case_permission(&actor, "configure")?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &data_models_console_policy_group(),
+            access_control::DATA_SOURCES_VALIDATE_OPERATION_ID,
+        )
+        .await?;
 
         let existing = self
             .repository
@@ -562,7 +593,12 @@ where
     ) -> Result<domain::DataSourceInstanceRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        self.ensure_use_case_permission(&actor, "configure")?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &data_models_console_policy_group(),
+            access_control::DATA_SOURCES_DEFAULTS_UPDATE_OPERATION_ID,
+        )
+        .await?;
         ensure_data_source_defaults_compatible(command.defaults)?;
 
         let instance = self
@@ -600,7 +636,12 @@ where
     ) -> Result<domain::DataSourceDefaults> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
         ensure_workspace_matches(&actor, workspace_id)?;
-        self.ensure_use_case_permission(&actor, "view")?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &data_models_console_policy_group(),
+            access_control::DATA_SOURCES_LIST_OPERATION_ID,
+        )
+        .await?;
         DataSourceRepository::get_main_source_defaults(&self.repository, workspace_id).await
     }
 
@@ -610,7 +651,12 @@ where
     ) -> Result<domain::DataSourceDefaults> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        self.ensure_use_case_permission(&actor, "configure")?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &data_models_console_policy_group(),
+            access_control::DATA_SOURCES_DEFAULTS_UPDATE_OPERATION_ID,
+        )
+        .await?;
         ensure_data_source_defaults_compatible(command.defaults)?;
 
         let defaults = self
@@ -648,11 +694,11 @@ where
     ) -> Result<DataSourceResourcesView> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
         ensure_workspace_matches(&actor, workspace_id)?;
-        self.ensure_use_case_permission(&actor, "view")?;
+        let visibility = self.data_source_view_visibility(&actor).await?;
 
         let instance = self
             .repository
-            .get_instance(workspace_id, instance_id)
+            .get_instance_for_visibility(workspace_id, instance_id, actor.user_id, visibility)
             .await?
             .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
         ensure_ready_connection(&instance, "list_resources")?;
@@ -684,7 +730,12 @@ where
     ) -> Result<DataSourceResourcesView> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        self.ensure_use_case_permission(&actor, "configure")?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &data_models_console_policy_group(),
+            access_control::DATA_SOURCES_DISCOVER_OPERATION_ID,
+        )
+        .await?;
 
         let instance = self
             .repository
@@ -751,7 +802,12 @@ where
     ) -> Result<DataSourceInstanceView> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        self.ensure_use_case_permission(&actor, "configure")?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &data_sources_other_console_policy_group(),
+            access_control::DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
+        )
+        .await?;
 
         let existing = self
             .repository
@@ -808,7 +864,12 @@ where
     ) -> Result<MapDataSourceResourceToModelResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        self.ensure_use_case_permission(&actor, "configure")?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &data_models_console_policy_group(),
+            access_control::DATA_SOURCES_MAP_TO_MODEL_OPERATION_ID,
+        )
+        .await?;
 
         let instance = self
             .repository
@@ -953,7 +1014,12 @@ where
     ) -> Result<PreviewDataSourceReadResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_workspace_matches(&actor, command.workspace_id)?;
-        self.ensure_use_case_permission(&actor, "configure")?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &data_models_console_policy_group(),
+            access_control::DATA_SOURCES_PREVIEW_OPERATION_ID,
+        )
+        .await?;
 
         let instance = self
             .repository
@@ -1098,18 +1164,49 @@ fn ensure_workspace_matches(actor: &domain::ActorContext, workspace_id: Uuid) ->
     }
 }
 
-fn ensure_external_data_source_permission(
-    actor: &domain::ActorContext,
-    action: &str,
-) -> Result<(), ControlPlaneError> {
-    if actor.is_root
-        || actor.has_permission(&format!("external_data_source.{action}.all"))
-        || actor.has_permission(&format!("external_data_source.{action}.own"))
-    {
-        return Ok(());
-    }
+fn data_models_console_policy_group() -> domain::ConsolePolicyGroup {
+    domain::ConsolePolicyGroup::settings_feature(
+        access_control::SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID,
+    )
+    .expect("compiled data models settings feature id must be valid")
+}
 
-    Err(ControlPlaneError::PermissionDenied("permission_denied"))
+fn data_sources_other_console_policy_group() -> domain::ConsolePolicyGroup {
+    domain::ConsolePolicyGroup::other("other.data-sources")
+        .expect("compiled data source other group id must be valid")
+}
+
+fn ensure_console_simple_operation(
+    policies: &[domain::RoleConsolePolicy],
+    group: &domain::ConsolePolicyGroup,
+    operation_id: &str,
+) -> Result<(), ControlPlaneError> {
+    let operation_id = domain::ConsoleOperationId::try_from(operation_id)
+        .expect("compiled data source simple operation id must be valid");
+    if domain::effective_console_simple_operation(policies, group, &operation_id) {
+        Ok(())
+    } else {
+        Err(ControlPlaneError::PermissionDenied("permission_denied"))
+    }
+}
+
+fn resolve_data_source_instance_visibility(
+    policies: &[domain::RoleConsolePolicy],
+) -> Result<DataSourceInstanceVisibility, ControlPlaneError> {
+    let operation_id =
+        domain::ConsoleOperationId::try_from(access_control::DATA_SOURCES_VIEW_OPERATION_ID)
+            .expect("compiled data source view operation id must be valid");
+    match domain::effective_console_row_scope(
+        policies,
+        &data_models_console_policy_group(),
+        &operation_id,
+    ) {
+        domain::ConsoleOperationRowScope::ScopeAll => Ok(DataSourceInstanceVisibility::ScopeAll),
+        domain::ConsoleOperationRowScope::Own => Ok(DataSourceInstanceVisibility::Own),
+        domain::ConsoleOperationRowScope::Disabled => {
+            Err(ControlPlaneError::PermissionDenied("permission_denied"))
+        }
+    }
 }
 
 async fn ensure_installation_assigned<R>(

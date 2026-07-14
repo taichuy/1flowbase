@@ -107,6 +107,7 @@ fn seeded_installation() -> PluginInstallationRecord {
 #[derive(Clone)]
 struct InMemoryDataSourceRepository {
     actor: ActorContext,
+    console_policies: Arc<RwLock<Vec<domain::RoleConsolePolicy>>>,
     installations: Arc<RwLock<HashMap<Uuid, PluginInstallationRecord>>>,
     artifact_instances: Arc<RwLock<HashMap<(String, Uuid), PluginArtifactInstanceRecord>>>,
     assignments: Arc<RwLock<Vec<PluginAssignmentRecord>>>,
@@ -135,6 +136,7 @@ impl Default for InMemoryDataSourceRepository {
         };
         Self {
             actor,
+            console_policies: Arc::new(RwLock::new(Vec::new())),
             installations: Arc::new(RwLock::new(HashMap::from([(
                 installation.id,
                 installation,
@@ -185,6 +187,10 @@ impl InMemoryDataSourceRepository {
 
     async fn cached_catalog(&self, instance_id: Uuid) -> Option<DataSourceCatalogCacheRecord> {
         self.caches.read().await.get(&instance_id).cloned()
+    }
+
+    async fn set_console_policies(&self, policies: Vec<domain::RoleConsolePolicy>) {
+        *self.console_policies.write().await = policies;
     }
 }
 
@@ -434,6 +440,37 @@ impl crate::ports::PluginRepository for InMemoryDataSourceRepository {
 
 #[async_trait]
 impl DataSourceRepository for InMemoryDataSourceRepository {
+    async fn list_instances(
+        &self,
+        workspace_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: crate::ports::DataSourceInstanceVisibility,
+    ) -> Result<Vec<DataSourceInstanceRecord>> {
+        Ok(self
+            .instances
+            .read()
+            .await
+            .values()
+            .filter(|instance| match visibility {
+                crate::ports::DataSourceInstanceVisibility::Own => {
+                    instance.workspace_id == workspace_id && instance.created_by == actor_user_id
+                }
+                crate::ports::DataSourceInstanceVisibility::ScopeAll => {
+                    instance.workspace_id == workspace_id
+                }
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn load_role_console_policies_for_user(
+        &self,
+        _actor_user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        Ok(self.console_policies.read().await.clone())
+    }
+
     async fn create_instance(
         &self,
         input: &CreateDataSourceInstanceInput,
@@ -533,6 +570,28 @@ impl DataSourceRepository for InMemoryDataSourceRepository {
             .await
             .get(&instance_id)
             .filter(|instance| instance.workspace_id == workspace_id)
+            .cloned())
+    }
+
+    async fn get_instance_for_visibility(
+        &self,
+        workspace_id: Uuid,
+        instance_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: crate::ports::DataSourceInstanceVisibility,
+    ) -> Result<Option<DataSourceInstanceRecord>> {
+        Ok(self
+            .instances
+            .read()
+            .await
+            .get(&instance_id)
+            .filter(|instance| {
+                instance.workspace_id == workspace_id
+                    && (matches!(
+                        visibility,
+                        crate::ports::DataSourceInstanceVisibility::ScopeAll
+                    ) || instance.created_by == actor_user_id)
+            })
             .cloned())
     }
 
@@ -1246,6 +1305,7 @@ impl DataSourceRuntimePort for StubDataSourceRuntime {
     }
 }
 
+mod console_policy;
 mod crud_runtime;
 mod defaults_and_mapping;
 mod instance_validation;

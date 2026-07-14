@@ -3,10 +3,11 @@ use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        CreateDataSourceInstanceInput, CreateDataSourcePreviewSessionInput, DataSourceRepository,
-        RotateDataSourceSecretInput, RotateDataSourceSecretOutput,
-        UpdateDataSourceInstanceConfigInput, UpdateDataSourceInstanceStatusInput,
-        UpsertDataSourceCatalogCacheInput, UpsertDataSourceSecretInput,
+        CreateDataSourceInstanceInput, CreateDataSourcePreviewSessionInput,
+        DataSourceInstanceVisibility, DataSourceRepository, RotateDataSourceSecretInput,
+        RotateDataSourceSecretOutput, UpdateDataSourceInstanceConfigInput,
+        UpdateDataSourceInstanceStatusInput, UpsertDataSourceCatalogCacheInput,
+        UpsertDataSourceSecretInput,
     },
 };
 use sqlx::Row;
@@ -206,7 +207,13 @@ impl DataSourceRepository for PgControlPlaneStore {
     async fn list_instances(
         &self,
         workspace_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: DataSourceInstanceVisibility,
     ) -> Result<Vec<domain::DataSourceInstanceRecord>> {
+        let visibility = match visibility {
+            DataSourceInstanceVisibility::Own => "own",
+            DataSourceInstanceVisibility::ScopeAll => "scope_all",
+        };
         let rows = sqlx::query(
             r#"
             select
@@ -227,14 +234,45 @@ impl DataSourceRepository for PgControlPlaneStore {
             left join data_source_secrets secrets
               on secrets.data_source_instance_id = data_source_instances.id
             where data_source_instances.workspace_id = $1
+              and ($3 = 'scope_all' or data_source_instances.created_by = $2)
             order by data_source_instances.display_name asc, data_source_instances.created_at asc
             "#,
         )
         .bind(workspace_id)
+        .bind(actor_user_id)
+        .bind(visibility)
         .fetch_all(self.pool())
         .await?;
 
         rows.into_iter().map(map_instance).collect()
+    }
+
+    async fn load_role_console_policies_for_user(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        let role_ids: Vec<Uuid> = sqlx::query_scalar(
+            r#"
+            select role.id
+            from user_role_bindings binding
+            join roles role on role.id = binding.role_id
+            where binding.user_id = $1
+              and (role.scope_kind = 'system' or role.workspace_id = $2)
+            order by role.scope_kind asc, role.code asc, role.id asc
+            "#,
+        )
+        .bind(actor_user_id)
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?;
+        let mut policies = Vec::with_capacity(role_ids.len());
+        for role_id in role_ids {
+            policies.push(
+                crate::role_repository::role_console_policy_by_id(self.pool(), role_id).await?,
+            );
+        }
+        Ok(policies)
     }
 
     async fn create_instance(
@@ -547,6 +585,51 @@ impl DataSourceRepository for PgControlPlaneStore {
         )
         .bind(workspace_id)
         .bind(instance_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(map_instance).transpose()
+    }
+
+    async fn get_instance_for_visibility(
+        &self,
+        workspace_id: Uuid,
+        instance_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: DataSourceInstanceVisibility,
+    ) -> Result<Option<domain::DataSourceInstanceRecord>> {
+        let visibility = match visibility {
+            DataSourceInstanceVisibility::Own => "own",
+            DataSourceInstanceVisibility::ScopeAll => "scope_all",
+        };
+        let row = sqlx::query(
+            r#"
+            select
+                data_source_instances.id,
+                data_source_instances.workspace_id,
+                data_source_instances.installation_id,
+                data_source_instances.source_code,
+                data_source_instances.display_name,
+                data_source_instances.status,
+                data_source_instances.config_json,
+                data_source_instances.metadata_json,
+                data_source_instances.default_data_model_status,
+                data_source_instances.created_by,
+                data_source_instances.created_at,
+                data_source_instances.updated_at,
+                secrets.secret_version
+            from data_source_instances
+            left join data_source_secrets secrets
+              on secrets.data_source_instance_id = data_source_instances.id
+            where data_source_instances.workspace_id = $1
+              and data_source_instances.id = $2
+              and ($4 = 'scope_all' or data_source_instances.created_by = $3)
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(instance_id)
+        .bind(actor_user_id)
+        .bind(visibility)
         .fetch_optional(self.pool())
         .await?;
 

@@ -6,6 +6,12 @@ use plugin_framework::data_source_contract::{
     DataSourceUpdateRecordOutput,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataSourceInstanceVisibility {
+    Own,
+    ScopeAll,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateDataSourceInstanceInput {
     pub instance_id: Uuid,
@@ -102,9 +108,16 @@ pub trait DataSourceRepository: Send + Sync {
     async fn list_instances(
         &self,
         _workspace_id: Uuid,
+        _actor_user_id: Uuid,
+        _visibility: DataSourceInstanceVisibility,
     ) -> anyhow::Result<Vec<domain::DataSourceInstanceRecord>> {
         anyhow::bail!("list_data_source_instances is not implemented")
     }
+    async fn load_role_console_policies_for_user(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>>;
     async fn create_instance(
         &self,
         input: &CreateDataSourceInstanceInput,
@@ -137,6 +150,13 @@ pub trait DataSourceRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
         instance_id: Uuid,
+    ) -> anyhow::Result<Option<domain::DataSourceInstanceRecord>>;
+    async fn get_instance_for_visibility(
+        &self,
+        workspace_id: Uuid,
+        instance_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: DataSourceInstanceVisibility,
     ) -> anyhow::Result<Option<domain::DataSourceInstanceRecord>>;
     async fn upsert_secret(
         &self,
