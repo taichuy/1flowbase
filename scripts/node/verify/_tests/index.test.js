@@ -59,6 +59,24 @@ test('verify index dispatches state protocol subcommand', async () => {
   assert.deepEqual(capturedArgv, ['--model', '1flowbase']);
 });
 
+test('verify index dispatches console operation registry hygiene subcommand', async () => {
+  let capturedArgv = null;
+
+  const status = await main([
+    'console-operation-registry-hygiene',
+    '--compiled-inventory',
+    'tmp/compiled.json',
+  ], {
+    runConsoleOperationRegistryHygieneImpl(argv) {
+      capturedArgv = argv;
+      return 0;
+    },
+  });
+
+  assert.equal(status, 0);
+  assert.deepEqual(capturedArgv, ['--compiled-inventory', 'tmp/compiled.json']);
+});
+
 test('verify index rejects unknown subcommands', async () => {
   await assert.rejects(
     () => main(['unknown']),
