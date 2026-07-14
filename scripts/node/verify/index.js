@@ -33,6 +33,9 @@ const {
   parseStateProtocolsCliArgs,
   runStateProtocols,
 } = require('./state-protocols.js');
+const {
+  main: runConsoleOperationRegistryHygiene,
+} = require('../console-operation-registry-hygiene/cli.js');
 const VALID_BACKEND_TARGETS = new Set([
   'all',
   'static',
@@ -42,7 +45,15 @@ const VALID_BACKEND_TARGETS = new Set([
   'check',
   'image-llm-vision',
 ]);
-const VERIFY_COMMANDS = new Set(['backend', 'backend-consistency', 'ci', 'coverage', 'repo', 'state-protocols']);
+const VERIFY_COMMANDS = new Set([
+  'backend',
+  'backend-consistency',
+  'ci',
+  'console-operation-registry-hygiene',
+  'coverage',
+  'repo',
+  'state-protocols',
+]);
 const FRONTEND_METRICS = ['lines', 'functions', 'statements', 'branches'];
 const COVERAGE_SCOPE_LABEL = '1flowbase-verify-coverage';
 const BACKEND_CONSISTENCY_TARGET_REPORT_FILE = 'backend-consistency-targets.json';
@@ -1138,7 +1149,10 @@ function parseVerifyCliArgs(argv) {
 }
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
-  writeStdout('Usage: node scripts/node/verify <backend|backend-consistency|ci|coverage|repo|state-protocols> [args]\n');
+  writeStdout(
+    'Usage: node scripts/node/verify '
+      + '<backend|backend-consistency|ci|console-operation-registry-hygiene|coverage|repo|state-protocols> [args]\n'
+  );
 }
 
 async function main(argv = [], deps = {}) {
@@ -1163,6 +1177,13 @@ async function main(argv = [], deps = {}) {
 
   if (options.command === 'ci') {
     return (deps.runCiImpl || runCi)(options.rest, deps);
+  }
+
+  if (options.command === 'console-operation-registry-hygiene') {
+    return (deps.runConsoleOperationRegistryHygieneImpl || runConsoleOperationRegistryHygiene)(
+      options.rest,
+      deps
+    );
   }
 
   if (options.command === 'coverage') {

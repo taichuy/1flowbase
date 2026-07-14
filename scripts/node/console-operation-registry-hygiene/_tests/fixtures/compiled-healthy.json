@@ -1,0 +1,134 @@
+{
+  "schema_version": "1flowbase.console-operation-inventory/v1",
+  "operations": [
+    {
+      "operation_id": "core.authenticated",
+      "owner": {
+        "kind": "core",
+        "owner_id": "boot-core",
+        "version": "test"
+      },
+      "lifecycle": "active",
+      "policy_group": {
+        "Other": "core.authenticated"
+      },
+      "label_ref": "console.operations.core_authenticated.label",
+      "description_ref": null,
+      "order": 0,
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/api/console/health"
+        }
+      ],
+      "authorization": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "operation_id": "applications.view",
+      "owner": {
+        "kind": "core",
+        "owner_id": "boot-core",
+        "version": "test"
+      },
+      "lifecycle": "active",
+      "policy_group": {
+        "SettingsFeature": "system.applications"
+      },
+      "label_ref": "console.operations.applications.view.label",
+      "description_ref": "console.operations.applications.view.description",
+      "order": 100,
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/api/console/applications"
+        }
+      ],
+      "authorization": {
+        "kind": "resource_action",
+        "resource_code": "applications",
+        "action_code": "view"
+      }
+    },
+    {
+      "operation_id": "applications.run",
+      "owner": {
+        "kind": "core",
+        "owner_id": "boot-core",
+        "version": "test"
+      },
+      "lifecycle": "active",
+      "policy_group": {
+        "Other": "other.applications"
+      },
+      "label_ref": "console.operations.applications.run.label",
+      "description_ref": "console.operations.applications.run.description",
+      "order": 190,
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/api/console/applications/:id/run"
+        }
+      ],
+      "authorization": {
+        "kind": "simple"
+      }
+    }
+  ],
+  "resources": [
+    {
+      "resource_code": "applications",
+      "owner": {
+        "kind": "core",
+        "owner_id": "boot-core",
+        "version": "test"
+      },
+      "lifecycle": "active",
+      "scope_kind": "workspace",
+      "identity_field": "id",
+      "scope_field": "scope_id",
+      "owner_field": "created_by",
+      "label_ref": "console.resources.applications.label",
+      "description_ref": "console.resources.applications.description",
+      "actions": [
+        {
+          "action_code": "view",
+          "label_ref": "console.resources.applications.actions.view.label",
+          "description_ref": "console.resources.applications.actions.view.description"
+        }
+      ]
+    }
+  ],
+  "route_assembly": [
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/health"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:application_id/run"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.run"
+      }
+    }
+  ]
+}

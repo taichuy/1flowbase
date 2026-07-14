@@ -1,7 +1,9 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use access_control::{
-    SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
+    ConsoleAuthorization, ConsoleOperationRegistration, ConsolePolicyGroup, ResourceAccessAction,
+    ResourceAccessRegistration, SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
+    SettingsFeatureRegistration, SettingsFeatureRegistry,
 };
 use serde::Deserialize;
 
@@ -160,9 +162,31 @@ pub struct HostExtensionContributionManifest {
     #[serde(default)]
     pub settings_features: Vec<SettingsFeatureRegistration>,
     #[serde(default)]
+    pub console_operations: Vec<ConsoleOperationRegistration>,
+    #[serde(default)]
+    pub console_resources: Vec<ResourceAccessRegistration>,
+    #[serde(default)]
+    pub console_i18n_refs: Vec<String>,
+    #[serde(default)]
     pub console_surfaces: HostExtensionConsoleSurfacesManifest,
     pub workers: Vec<HostExtensionWorkerManifest>,
     pub migrations: Vec<HostExtensionMigrationManifest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostExtensionConsoleContribution {
+    pub operations: Vec<ConsoleOperationRegistration>,
+    pub resources: Vec<ResourceAccessRegistration>,
+}
+
+impl HostExtensionContributionManifest {
+    pub fn console_contribution(&self) -> FrameworkResult<HostExtensionConsoleContribution> {
+        validate_console_contributions(self)?;
+        Ok(HostExtensionConsoleContribution {
+            operations: self.console_operations.clone(),
+            resources: self.console_resources.clone(),
+        })
+    }
 }
 
 pub fn parse_host_extension_contribution_manifest(
@@ -234,6 +258,7 @@ fn validate_host_extension_contribution_manifest(
         validate_non_empty(&route.action.action, "routes[].action.action")?;
     }
     validate_settings_features(manifest)?;
+    validate_console_contributions(manifest)?;
     validate_console_surfaces(&manifest.extension_id, &manifest.console_surfaces)?;
     for worker in &manifest.workers {
         validate_non_empty(&worker.worker_id, "workers[].worker_id")?;
@@ -256,6 +281,420 @@ fn validate_host_extension_contribution_manifest(
     }
 
     Ok(())
+}
+
+fn validate_console_contributions(
+    manifest: &HostExtensionContributionManifest,
+) -> FrameworkResult<()> {
+    let declared_i18n_refs = manifest
+        .console_i18n_refs
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if declared_i18n_refs.len() != manifest.console_i18n_refs.len() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "console_i18n_refs[] must be unique",
+        ));
+    }
+    for reference in &manifest.console_i18n_refs {
+        validate_i18n_ref(
+            &manifest.extension_id,
+            reference,
+            "console_i18n_refs[]",
+        )?;
+    }
+
+    let mut operation_ids = BTreeSet::<String>::new();
+    let mut resource_codes = BTreeSet::<String>::new();
+    let mut route_owners = BTreeMap::<(String, String), String>::new();
+    let mut referenced_i18n_refs = BTreeSet::<String>::new();
+
+    for operation in &manifest.console_operations {
+        validate_console_operation(
+            manifest,
+            operation,
+            &declared_i18n_refs,
+            &mut referenced_i18n_refs,
+            &mut operation_ids,
+            &mut route_owners,
+        )?;
+    }
+
+    for resource in &manifest.console_resources {
+        validate_console_resource(
+            manifest,
+            resource,
+            &declared_i18n_refs,
+            &mut referenced_i18n_refs,
+            &mut resource_codes,
+        )?;
+    }
+
+    let resources = manifest
+        .console_resources
+        .iter()
+        .map(|resource| (resource.resource_code.as_str(), resource))
+        .collect::<BTreeMap<_, _>>();
+    for operation in &manifest.console_operations {
+        if let ConsoleAuthorization::ResourceAction {
+            resource_code,
+            action_code,
+        } = &operation.authorization
+        {
+            let Some(resource) = resources.get(resource_code.as_str()) else {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "console_operations[].authorization references unknown resource",
+                ));
+            };
+            if !resource
+                .actions
+                .iter()
+                .any(|action| action.action_code == *action_code)
+            {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "console_operations[].authorization references unknown resource action",
+                ));
+            }
+        }
+    }
+
+    if referenced_i18n_refs.len() != declared_i18n_refs.len()
+        || declared_i18n_refs
+            .iter()
+            .any(|reference| !referenced_i18n_refs.contains(reference))
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "console_i18n_refs[] contains an unused reference",
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_console_operation(
+    manifest: &HostExtensionContributionManifest,
+    operation: &ConsoleOperationRegistration,
+    declared_i18n_refs: &BTreeSet<String>,
+    referenced_i18n_refs: &mut BTreeSet<String>,
+    operation_ids: &mut BTreeSet<String>,
+    route_owners: &mut BTreeMap<(String, String), String>,
+) -> FrameworkResult<()> {
+    let field = "console_operations[]";
+    validate_non_empty(&operation.operation_id, &format!("{field}.operation_id"))?;
+    if !operation_ids.insert(operation.operation_id.clone()) {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "console_operations[].operation_id must be unique",
+        ));
+    }
+    validate_console_owner(manifest, &operation.owner, &format!("{field}.owner"))?;
+    validate_extension_owned_id(
+        &manifest.extension_id,
+        &operation.operation_id,
+        &format!("{field}.operation_id"),
+    )?;
+    validate_active_lifecycle(operation.lifecycle, &format!("{field}.lifecycle"))?;
+    validate_console_policy_group(manifest, &operation.policy_group, field)?;
+    validate_i18n_reference(
+        manifest,
+        &operation.label_ref,
+        &format!("{field}.label_ref"),
+        declared_i18n_refs,
+        referenced_i18n_refs,
+    )?;
+    if let Some(description_ref) = operation.description_ref.as_deref() {
+        validate_i18n_reference(
+            manifest,
+            description_ref,
+            &format!("{field}.description_ref"),
+            declared_i18n_refs,
+            referenced_i18n_refs,
+        )?;
+    }
+    if operation.routes.is_empty() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "console_operations[].routes must not be empty",
+        ));
+    }
+
+    for route in &operation.routes {
+        validate_console_route(route, field, route_owners, &operation.operation_id)?;
+    }
+
+    Ok(())
+}
+
+fn validate_console_resource(
+    manifest: &HostExtensionContributionManifest,
+    resource: &ResourceAccessRegistration,
+    declared_i18n_refs: &BTreeSet<String>,
+    referenced_i18n_refs: &mut BTreeSet<String>,
+    resource_codes: &mut BTreeSet<String>,
+) -> FrameworkResult<()> {
+    let field = "console_resources[]";
+    validate_non_empty(&resource.resource_code, &format!("{field}.resource_code"))?;
+    if !resource_codes.insert(resource.resource_code.clone()) {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "console_resources[].resource_code must be unique",
+        ));
+    }
+    validate_console_owner(manifest, &resource.owner, &format!("{field}.owner"))?;
+    validate_extension_owned_id(
+        &manifest.extension_id,
+        &resource.resource_code,
+        &format!("{field}.resource_code"),
+    )?;
+    validate_active_lifecycle(resource.lifecycle, &format!("{field}.lifecycle"))?;
+    validate_non_empty(
+        &resource.identity_field,
+        &format!("{field}.identity_field"),
+    )?;
+    validate_optional_non_empty(
+        resource.scope_field.as_deref(),
+        &format!("{field}.scope_field"),
+    )?;
+    validate_optional_non_empty(
+        resource.owner_field.as_deref(),
+        &format!("{field}.owner_field"),
+    )?;
+    validate_i18n_reference(
+        manifest,
+        &resource.label_ref,
+        &format!("{field}.label_ref"),
+        declared_i18n_refs,
+        referenced_i18n_refs,
+    )?;
+    if let Some(description_ref) = resource.description_ref.as_deref() {
+        validate_i18n_reference(
+            manifest,
+            description_ref,
+            &format!("{field}.description_ref"),
+            declared_i18n_refs,
+            referenced_i18n_refs,
+        )?;
+    }
+    if resource.actions.is_empty() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "console_resources[].actions must not be empty",
+        ));
+    }
+
+    let mut action_codes = BTreeSet::new();
+    for action in &resource.actions {
+        validate_console_resource_action(
+            manifest,
+            action,
+            declared_i18n_refs,
+            referenced_i18n_refs,
+            &mut action_codes,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_console_resource_action(
+    manifest: &HostExtensionContributionManifest,
+    action: &ResourceAccessAction,
+    declared_i18n_refs: &BTreeSet<String>,
+    referenced_i18n_refs: &mut BTreeSet<String>,
+    action_codes: &mut BTreeSet<String>,
+) -> FrameworkResult<()> {
+    let field = "console_resources[].actions[]";
+    validate_non_empty(&action.action_code, &format!("{field}.action_code"))?;
+    if !action_codes.insert(action.action_code.clone()) {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "console_resources[].actions[].action_code must be unique",
+        ));
+    }
+    validate_i18n_reference(
+        manifest,
+        &action.label_ref,
+        &format!("{field}.label_ref"),
+        declared_i18n_refs,
+        referenced_i18n_refs,
+    )?;
+    if let Some(description_ref) = action.description_ref.as_deref() {
+        validate_i18n_reference(
+            manifest,
+            description_ref,
+            &format!("{field}.description_ref"),
+            declared_i18n_refs,
+            referenced_i18n_refs,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_console_owner(
+    manifest: &HostExtensionContributionManifest,
+    owner: &access_control::ConsoleOperationOwner,
+    field: &str,
+) -> FrameworkResult<()> {
+    if owner.kind != SettingsFeatureOwnerKind::HostExtension {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field}.kind must be host_extension"
+        )));
+    }
+    if owner.owner_id != manifest.extension_id {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field}.owner_id must equal extension_id"
+        )));
+    }
+    if owner.version != manifest.version {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field}.version must equal extension version"
+        )));
+    }
+    validate_non_empty(&owner.owner_id, &format!("{field}.owner_id"))?;
+    validate_non_empty(&owner.version, &format!("{field}.version"))?;
+    Ok(())
+}
+
+fn validate_active_lifecycle(
+    lifecycle: SettingsFeatureLifecycle,
+    field: &str,
+) -> FrameworkResult<()> {
+    if lifecycle == SettingsFeatureLifecycle::Inactive {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field} must be active"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_console_policy_group(
+    manifest: &HostExtensionContributionManifest,
+    group: &ConsolePolicyGroup,
+    field: &str,
+) -> FrameworkResult<()> {
+    match group {
+        ConsolePolicyGroup::SettingsFeature(feature_id) => {
+            if !manifest
+                .settings_features
+                .iter()
+                .any(|feature| feature.feature_id == *feature_id)
+            {
+                return Err(PluginFrameworkError::invalid_provider_package(format!(
+                    "{field}.policy_group references unknown settings feature"
+                )));
+            }
+        }
+        ConsolePolicyGroup::Other(group_id) => {
+            validate_non_empty(group_id, &format!("{field}.policy_group"))?;
+            if !is_extension_owned_group_id(&manifest.extension_id, group_id) {
+                return Err(PluginFrameworkError::invalid_provider_package(format!(
+                    "{field}.policy_group must stay in the extension namespace"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_console_route(
+    route: &access_control::ConsoleRouteBinding,
+    field: &str,
+    route_owners: &mut BTreeMap<(String, String), String>,
+    operation_id: &str,
+) -> FrameworkResult<()> {
+    let method = route.method.to_ascii_uppercase();
+    if !matches!(
+        method.as_str(),
+        "GET" | "HEAD" | "OPTIONS" | "POST" | "PUT" | "PATCH" | "DELETE"
+    ) {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field}.routes[].method is unsupported"
+        )));
+    }
+    if !route.path.starts_with("/api/console/") && route.path != "/api/console" {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field}.routes[].path must start with /api/console/"
+        )));
+    }
+
+    let shape = console_route_shape(&route.path);
+    let key = (method.clone(), shape.clone());
+    if route_owners.contains_key(&key)
+        || route_owners.iter().any(|((existing_method, existing_shape), _)| {
+            existing_method == &method && console_route_templates_are_ambiguous(existing_shape, &shape)
+        })
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field}.routes contains duplicate or ambiguous ownership"
+        )));
+    }
+    route_owners.insert(key, operation_id.to_string());
+    Ok(())
+}
+
+fn validate_i18n_ref(
+    extension_id: &str,
+    reference: &str,
+    field: &str,
+) -> FrameworkResult<()> {
+    validate_non_empty(reference, field)?;
+    validate_extension_owned_id(extension_id, reference, field)
+}
+
+fn validate_i18n_reference(
+    manifest: &HostExtensionContributionManifest,
+    reference: &str,
+    field: &str,
+    declared_i18n_refs: &BTreeSet<String>,
+    referenced_i18n_refs: &mut BTreeSet<String>,
+) -> FrameworkResult<()> {
+    validate_i18n_ref(&manifest.extension_id, reference, field)?;
+    if !declared_i18n_refs.contains(reference) {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field} references unknown console_i18n_refs entry"
+        )));
+    }
+    referenced_i18n_refs.insert(reference.to_string());
+    Ok(())
+}
+
+fn is_extension_owned_group_id(extension_id: &str, group_id: &str) -> bool {
+    is_extension_owned_id(extension_id, group_id)
+        || group_id == format!("other.{extension_id}")
+        || group_id.starts_with(&format!("other.{extension_id}."))
+}
+
+fn console_route_shape(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            if segment.starts_with(':') || segment.starts_with('{') && segment.ends_with('}') {
+                "{}"
+            } else {
+                segment
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn console_route_templates_are_ambiguous(left: &str, right: &str) -> bool {
+    let left_segments = left.split('/').collect::<Vec<_>>();
+    let right_segments = right.split('/').collect::<Vec<_>>();
+    if left_segments.len() != right_segments.len()
+        || !left_segments
+            .iter()
+            .zip(right_segments.iter())
+            .all(|(left, right)| *left == *right || *left == "{}" || *right == "{}")
+    {
+        return false;
+    }
+
+    let mut left_is_more_specific = false;
+    let mut right_is_more_specific = false;
+    for (left, right) in left_segments.iter().zip(right_segments.iter()) {
+        match (*left == "{}", *right == "{}") {
+            (false, true) => left_is_more_specific = true,
+            (true, false) => right_is_more_specific = true,
+            (false, false) | (true, true) => {}
+        }
+    }
+
+    left_is_more_specific == right_is_more_specific
 }
 
 fn validate_settings_features(manifest: &HostExtensionContributionManifest) -> FrameworkResult<()> {
@@ -499,6 +938,15 @@ fn validate_non_empty(value: &str, field: &str) -> FrameworkResult<()> {
     if value.trim().is_empty() {
         return Err(PluginFrameworkError::invalid_provider_package(format!(
             "{field} must not be empty"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_optional_non_empty(value: Option<&str>, field: &str) -> FrameworkResult<()> {
+    if value.is_some_and(|value| value.trim().is_empty()) {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field} must not be empty when present"
         )));
     }
     Ok(())
