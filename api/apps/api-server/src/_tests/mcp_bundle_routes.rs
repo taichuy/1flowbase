@@ -324,7 +324,7 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
             "name": "Runtime profile",
             "short_description": "Runtime profile",
             "full_description": "Read runtime profile.",
-            "interface_id": "get_runtime_profile",
+            "execution_target": {"kind":"interface_wrapper","interface_id":"get_runtime_profile"},
             "parameter_schema": {},
             "result_schema": {},
             "input_mapping": {},
@@ -388,7 +388,7 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
     let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
     let manifest: Value =
         serde_json::from_reader(archive.by_name("manifest.json").unwrap()).unwrap();
-    assert_eq!(manifest["schema_version"], json!("1flowbase.mcp.bundle/v1"));
+    assert_eq!(manifest["schema_version"], json!("1flowbase.mcp.bundle/v2"));
     assert_eq!(manifest["exported_from_system_version"], json!("0.2.6"));
     assert_eq!(manifest["bundle_version"], json!("1.0.0"));
 
@@ -403,6 +403,8 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
         .to_string();
     let tool: Value = serde_json::from_reader(archive.by_name(&tool_path).unwrap()).unwrap();
     assert_eq!(tool["tool_id"], json!("portable_runtime_profile"));
+    assert_eq!(tool["execution_target"]["kind"], json!("interface_wrapper"));
+    assert!(tool.get("interface_id").is_none());
     for internal_field in [
         "id",
         "workspace_id",

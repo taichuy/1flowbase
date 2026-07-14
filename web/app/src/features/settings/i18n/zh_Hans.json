@@ -725,6 +725,7 @@
     "mcp_management": "MCP 管理",
     "mcp_instances": "MCP 实例",
     "mcp_tool_config": "Tool 配置",
+    "mcp_third_party": "第三方MCP",
     "mcp_meta_config": "MCP 配置",
     "mcp_load_failed": "MCP 配置加载失败",
     "mcp_instances_hint": "MCP 实例决定 mcp.list 可见目录；只有 enabled 实例会被发现。",

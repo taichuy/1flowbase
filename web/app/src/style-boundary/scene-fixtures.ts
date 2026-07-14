@@ -63,7 +63,10 @@ export const styleBoundaryMcpCatalog = {
       name: 'Runtime profile',
       short_description: 'Read runtime profile',
       full_description: 'Read the current system runtime profile.',
-      interface_id: 'get_runtime_profile',
+      execution_target: {
+        kind: 'interface_wrapper' as const,
+        interface_id: 'get_runtime_profile'
+      },
       operation: 'GET /api/console/system/runtime-profile',
       parameter_schema: {
         type: 'object',
@@ -94,6 +97,8 @@ export const styleBoundaryMcpCatalog = {
       des_id: 'Abc_1234',
       des_id_required: true,
       status: 'enabled',
+      availability_status: 'available',
+      availability_reason: null,
       revision: 1
     }
   ],

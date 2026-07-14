@@ -1,5 +1,7 @@
 pub(crate) mod bundles;
 pub(crate) mod debug_execute;
+pub(crate) mod upstream;
+pub(crate) mod upstream_client;
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -16,7 +18,8 @@ use control_plane::mcp_management::{
     CreateMcpInstanceCommand, CreateMcpToolBindingCommand, CreateMcpToolCommand,
     McpManagementService, MoveMcpGroupCommand, RefreshMcpToolDescriptionCommand,
     SaveMcpClientCredentialCommand, UpdateMcpInstanceDiscoveryPolicyCommand,
-    UpdateMcpToolBindingCommand, UpdateMcpToolCommand, UpsertMcpGroupCommand,
+    UpdateMcpProxyToolCommand, UpdateMcpToolBindingCommand, UpdateMcpToolCommand,
+    UpsertMcpGroupCommand,
 };
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};
@@ -86,7 +89,7 @@ pub struct McpToolResponse {
     pub name: String,
     pub short_description: String,
     pub full_description: String,
-    pub interface_id: String,
+    pub execution_target: McpToolExecutionTargetDto,
     pub operation: String,
     #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,
@@ -101,9 +104,46 @@ pub struct McpToolResponse {
     pub des_id: String,
     pub des_id_required: bool,
     pub status: String,
-    pub availability_status: String,
+    pub availability_status: McpToolAvailabilityStatusDto,
     pub availability_reason: Option<String>,
     pub revision: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum McpToolAvailabilityStatusDto {
+    Available,
+    InterfaceMissing,
+    UpstreamDisabled,
+    CredentialsMissing,
+    UpstreamToolMissing,
+    MappingInvalid,
+}
+
+impl From<domain::McpToolAvailabilityStatus> for McpToolAvailabilityStatusDto {
+    fn from(status: domain::McpToolAvailabilityStatus) -> Self {
+        match status {
+            domain::McpToolAvailabilityStatus::Available => Self::Available,
+            domain::McpToolAvailabilityStatus::InterfaceMissing => Self::InterfaceMissing,
+            domain::McpToolAvailabilityStatus::UpstreamDisabled => Self::UpstreamDisabled,
+            domain::McpToolAvailabilityStatus::CredentialsMissing => Self::CredentialsMissing,
+            domain::McpToolAvailabilityStatus::UpstreamToolMissing => Self::UpstreamToolMissing,
+            domain::McpToolAvailabilityStatus::MappingInvalid => Self::MappingInvalid,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum McpToolExecutionTargetDto {
+    InterfaceWrapper {
+        interface_id: String,
+    },
+    McpProxy {
+        upstream_connection_id: String,
+        remote_tool_name: String,
+        source_schema_hash: String,
+    },
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -250,7 +290,7 @@ pub struct CreateMcpToolBody {
     pub name: String,
     pub short_description: String,
     pub full_description: String,
-    pub interface_id: String,
+    pub execution_target: McpToolExecutionTargetDto,
     #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,
     #[schema(value_type = Object)]
@@ -270,7 +310,7 @@ pub struct UpdateMcpToolBody {
     pub des_id: Option<String>,
     pub short_description: String,
     pub full_description: String,
-    pub interface_id: String,
+    pub execution_target: McpToolExecutionTargetDto,
     #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,
     #[schema(value_type = Object)]
@@ -503,6 +543,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .merge(bundles::route_assembly())
+        .merge(upstream::route_assembly())
 }
 
 pub async fn get_mcp_client_credential(
@@ -791,13 +832,14 @@ pub async fn list_mcp_tools(
         .read_workspace_catalog(context.user.id)
         .await?;
     let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
-    Ok(Json(ApiSuccess::new(
-        snapshot
-            .tools
-            .into_iter()
-            .map(|record| to_tool_response(record, &operations))
-            .collect(),
-    )))
+    let mut tools = Vec::with_capacity(snapshot.tools.len());
+    for record in snapshot.tools {
+        tools.push(
+            to_tool_response_for_actor(state.as_ref(), context.user.id, record, &operations)
+                .await?,
+        );
+    }
+    Ok(Json(ApiSuccess::new(tools)))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/tools", request_body = CreateMcpToolBody, responses((status = 201, body = McpToolResponse)))]
@@ -808,8 +850,9 @@ pub async fn create_mcp_tool(
 ) -> Result<(StatusCode, Json<ApiSuccess<McpToolResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let interface_id = interface_target_id(&body.execution_target)?;
     let interface_entry =
-        bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
+        bindable_mcp_interface(state.as_ref(), context.user.id, interface_id).await?;
     let operation = interface_operation(&interface_entry);
     let record = McpManagementService::new(state.store.clone())
         .create_tool(to_create_tool_command(
@@ -823,7 +866,7 @@ pub async fn create_mcp_tool(
         Json(ApiSuccess::new(to_tool_response_with_operation(
             record,
             operation,
-            "available",
+            domain::McpToolAvailabilityStatus::Available,
         ))),
     ))
 }
@@ -839,7 +882,9 @@ pub async fn get_mcp_tool(
         .get_tool(context.user.id, &tool_id)
         .await?;
     let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
-    Ok(Json(ApiSuccess::new(to_tool_response(record, &operations))))
+    Ok(Json(ApiSuccess::new(
+        to_tool_response_for_actor(state.as_ref(), context.user.id, record, &operations).await?,
+    )))
 }
 
 #[utoipa::path(put, path = "/api/console/mcp/tools/{tool_id}", request_body = UpdateMcpToolBody, responses((status = 200, body = McpToolResponse)))]
@@ -851,22 +896,51 @@ pub async fn update_mcp_tool(
 ) -> Result<Json<ApiSuccess<McpToolResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let interface_entry =
-        bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
-    let operation = interface_operation(&interface_entry);
-    let record = McpManagementService::new(state.store.clone())
-        .update_tool(to_update_tool_command(
-            context.user.id,
-            tool_id,
-            body,
-            interface_entry,
-        )?)
-        .await?;
-    Ok(Json(ApiSuccess::new(to_tool_response_with_operation(
-        record,
-        operation,
-        "available",
-    ))))
+    match &body.execution_target {
+        McpToolExecutionTargetDto::InterfaceWrapper { interface_id } => {
+            let interface_entry =
+                bindable_mcp_interface(state.as_ref(), context.user.id, interface_id).await?;
+            let operation = interface_operation(&interface_entry);
+            let record = McpManagementService::new(state.store.clone())
+                .update_tool(to_update_tool_command(
+                    context.user.id,
+                    tool_id,
+                    body,
+                    interface_entry,
+                )?)
+                .await?;
+            Ok(Json(ApiSuccess::new(to_tool_response_with_operation(
+                record,
+                operation,
+                domain::McpToolAvailabilityStatus::Available,
+            ))))
+        }
+        McpToolExecutionTargetDto::McpProxy { .. } => {
+            let execution_target = to_domain_execution_target(&body.execution_target)?;
+            let record = McpManagementService::new(state.store.clone())
+                .update_proxy_tool(UpdateMcpProxyToolCommand {
+                    actor_user_id: context.user.id,
+                    tool_id,
+                    des_id: body.des_id,
+                    name: body.name,
+                    short_description: body.short_description,
+                    full_description: body.full_description,
+                    execution_target,
+                    parameter_schema: body.parameter_schema,
+                    result_schema: body.result_schema,
+                    input_mapping: body.input_mapping,
+                    output_mapping: body.output_mapping,
+                    risk_level: parse_risk_level(&body.risk_level)?,
+                    status: parse_tool_status(&body.status)?,
+                })
+                .await?;
+            let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+            Ok(Json(ApiSuccess::new(
+                to_tool_response_for_actor(state.as_ref(), context.user.id, record, &operations)
+                    .await?,
+            )))
+        }
+    }
 }
 
 #[utoipa::path(delete, path = "/api/console/mcp/tools/{tool_id}", responses((status = 204)))]
@@ -1048,6 +1122,36 @@ fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }
 
+fn interface_target_id(target: &McpToolExecutionTargetDto) -> Result<&str, ApiError> {
+    match target {
+        McpToolExecutionTargetDto::InterfaceWrapper { interface_id } => Ok(interface_id),
+        McpToolExecutionTargetDto::McpProxy { .. } => {
+            Err(control_plane::errors::ControlPlaneError::InvalidInput("execution_target").into())
+        }
+    }
+}
+
+fn to_domain_execution_target(
+    target: &McpToolExecutionTargetDto,
+) -> Result<domain::McpToolExecutionTarget, ApiError> {
+    Ok(match target {
+        McpToolExecutionTargetDto::InterfaceWrapper { interface_id } => {
+            domain::McpToolExecutionTarget::InterfaceWrapper {
+                interface_id: interface_id.clone(),
+            }
+        }
+        McpToolExecutionTargetDto::McpProxy {
+            upstream_connection_id,
+            remote_tool_name,
+            source_schema_hash,
+        } => domain::McpToolExecutionTarget::McpProxy {
+            upstream_connection_id: parse_uuid(upstream_connection_id, "upstream_connection_id")?,
+            remote_tool_name: remote_tool_name.clone(),
+            source_schema_hash: source_schema_hash.clone(),
+        },
+    })
+}
+
 fn parse_instance_status(value: &str) -> Result<domain::McpInstanceStatus, ApiError> {
     match value {
         "draft" => Ok(domain::McpInstanceStatus::Draft),
@@ -1065,6 +1169,16 @@ fn parse_tool_status(value: &str) -> Result<domain::McpToolStatus, ApiError> {
         "disabled" => Ok(domain::McpToolStatus::Disabled),
         "archived" => Ok(domain::McpToolStatus::Archived),
         _ => Err(control_plane::errors::ControlPlaneError::InvalidInput("status").into()),
+    }
+}
+
+fn parse_risk_level(value: &str) -> Result<domain::McpRiskLevel, ApiError> {
+    match value {
+        "low" => Ok(domain::McpRiskLevel::Low),
+        "medium" => Ok(domain::McpRiskLevel::Medium),
+        "high" => Ok(domain::McpRiskLevel::High),
+        "critical" => Ok(domain::McpRiskLevel::Critical),
+        _ => Err(control_plane::errors::ControlPlaneError::InvalidInput("risk_level").into()),
     }
 }
 
@@ -2024,21 +2138,75 @@ fn to_tool_response(
     record: domain::McpToolRecord,
     operations: &HashMap<String, String>,
 ) -> McpToolResponse {
-    let available_operation = operations.get(&record.interface_id).cloned();
-    let availability_status = if available_operation.is_some() {
-        "available"
-    } else {
-        "interface_missing"
+    let (operation, availability_status) = match &record.execution_target {
+        domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
+            let available_operation = operations.get(interface_id).cloned();
+            let availability_status = if available_operation.is_some() {
+                domain::McpToolAvailabilityStatus::Available
+            } else {
+                domain::McpToolAvailabilityStatus::InterfaceMissing
+            };
+            (
+                available_operation.unwrap_or_else(|| interface_id.clone()),
+                availability_status,
+            )
+        }
+        domain::McpToolExecutionTarget::McpProxy {
+            remote_tool_name, ..
+        } => (
+            format!("MCP tools/call {remote_tool_name}"),
+            domain::McpToolAvailabilityStatus::Available,
+        ),
     };
-    let operation = available_operation.unwrap_or_else(|| record.interface_id.clone());
 
     to_tool_response_with_operation(record, operation, availability_status)
 }
 
-fn to_tool_response_with_operation(
+async fn to_tool_response_for_actor(
+    state: &ApiState,
+    actor_user_id: Uuid,
+    record: domain::McpToolRecord,
+    operations: &HashMap<String, String>,
+) -> Result<McpToolResponse, ApiError> {
+    let availability = match &record.execution_target {
+        domain::McpToolExecutionTarget::McpProxy {
+            upstream_connection_id,
+            remote_tool_name,
+            ..
+        } => Some(
+            McpManagementService::new(state.store.clone())
+                .upstream_proxy_availability(
+                    actor_user_id,
+                    *upstream_connection_id,
+                    remote_tool_name,
+                )
+                .await?,
+        ),
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. } => None,
+    };
+    if let Some(availability) = availability {
+        let operation = match &record.execution_target {
+            domain::McpToolExecutionTarget::McpProxy {
+                remote_tool_name, ..
+            } => {
+                format!("MCP tools/call {remote_tool_name}")
+            }
+            domain::McpToolExecutionTarget::InterfaceWrapper { .. } => String::new(),
+        };
+        Ok(to_tool_response_with_operation(
+            record,
+            operation,
+            availability,
+        ))
+    } else {
+        Ok(to_tool_response(record, operations))
+    }
+}
+
+pub(super) fn to_tool_response_with_operation(
     record: domain::McpToolRecord,
     operation: String,
-    availability_status: &str,
+    availability_status: domain::McpToolAvailabilityStatus,
 ) -> McpToolResponse {
     McpToolResponse {
         id: record.id.to_string(),
@@ -2047,7 +2215,20 @@ fn to_tool_response_with_operation(
         name: record.name,
         short_description: record.short_description,
         full_description: record.full_description,
-        interface_id: record.interface_id,
+        execution_target: match record.execution_target {
+            domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
+                McpToolExecutionTargetDto::InterfaceWrapper { interface_id }
+            }
+            domain::McpToolExecutionTarget::McpProxy {
+                upstream_connection_id,
+                remote_tool_name,
+                source_schema_hash,
+            } => McpToolExecutionTargetDto::McpProxy {
+                upstream_connection_id: upstream_connection_id.to_string(),
+                remote_tool_name,
+                source_schema_hash,
+            },
+        },
         operation,
         parameter_schema: record.parameter_schema,
         result_schema: record.result_schema,
@@ -2059,8 +2240,8 @@ fn to_tool_response_with_operation(
         des_id_required: record.des_id_required,
         status: record.status.as_str().into(),
         availability_status: availability_status.into(),
-        availability_reason: (availability_status != "available")
-            .then(|| availability_status.to_string()),
+        availability_reason: (availability_status != domain::McpToolAvailabilityStatus::Available)
+            .then(|| availability_status.as_str().to_string()),
         revision: record.revision,
     }
 }

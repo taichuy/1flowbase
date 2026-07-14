@@ -29,6 +29,50 @@ export interface ConsoleMcpGroup {
   sort_order: number;
 }
 
+export interface ConsoleMcpInterfaceWrapperExecutionTarget {
+  kind: 'interface_wrapper';
+  interface_id: string;
+}
+
+export interface ConsoleMcpProxyExecutionTarget {
+  kind: 'mcp_proxy';
+  upstream_connection_id: string;
+  remote_tool_name: string;
+  source_schema_hash: string;
+}
+
+export type ConsoleMcpToolExecutionTarget =
+  | ConsoleMcpInterfaceWrapperExecutionTarget
+  | ConsoleMcpProxyExecutionTarget;
+
+export type ConsoleMcpToolAvailabilityStatus =
+  | 'available'
+  | 'interface_missing'
+  | 'upstream_disabled'
+  | 'credentials_missing'
+  | 'upstream_tool_missing'
+  | 'mapping_invalid';
+
+export interface ConsoleMcpProxyInputMappingEntry {
+  local_path: string;
+  remote_path: string;
+  required: boolean;
+}
+
+export interface ConsoleMcpProxyInputMapping {
+  mappings: ConsoleMcpProxyInputMappingEntry[];
+}
+
+export interface ConsoleMcpProxyOutputMappingEntry {
+  remote_path: string;
+  local_path: string;
+  required: boolean;
+}
+
+export interface ConsoleMcpProxyOutputMapping {
+  mappings: ConsoleMcpProxyOutputMappingEntry[];
+}
+
 export interface ConsoleMcpTool {
   id: string;
   workspace_id: string;
@@ -36,7 +80,7 @@ export interface ConsoleMcpTool {
   name: string;
   short_description: string;
   full_description: string;
-  interface_id: string;
+  execution_target: ConsoleMcpToolExecutionTarget;
   operation: string;
   parameter_schema: unknown;
   result_schema: unknown;
@@ -47,7 +91,7 @@ export interface ConsoleMcpTool {
   des_id: string;
   des_id_required: boolean;
   status: string;
-  availability_status: string;
+  availability_status: ConsoleMcpToolAvailabilityStatus;
   availability_reason: string | null;
   revision: number;
 }
@@ -61,7 +105,11 @@ export interface ConsoleMcpBundleManifest {
   minimum_host_version: string;
   exported_from_system_version: string;
   exported_at: string;
-  files: Array<{ path: string; kind: 'tool' | 'instance'; sha256: string }>;
+  files: Array<{
+    path: string;
+    kind: 'tool' | 'instance' | 'connection';
+    sha256: string;
+  }>;
 }
 
 export type ConsoleMcpBundleVersionStatus =
@@ -82,6 +130,7 @@ export interface ConsoleMcpBundlePreview {
   version_status: ConsoleMcpBundleVersionStatus;
   tools: ConsoleMcpBundleItemReport[];
   instances: ConsoleMcpBundleItemReport[];
+  connections: ConsoleMcpBundleItemReport[];
 }
 
 export interface ConsoleMcpBundleImportReport extends ConsoleMcpBundlePreview {
@@ -227,23 +276,41 @@ export interface MoveConsoleMcpGroupBody {
   sort_order: number;
 }
 
-export interface SaveConsoleMcpToolBody {
+interface SaveConsoleMcpToolBodyBase {
   tool_id: string;
   des_id: string;
   name: string;
   short_description: string;
   full_description: string;
-  interface_id: string;
   parameter_schema: unknown;
   result_schema: unknown;
-  input_mapping: unknown;
-  output_mapping: unknown;
   permission_code: string | null;
   risk_level: string;
   status: string;
 }
 
-export type UpdateConsoleMcpToolBody = Omit<SaveConsoleMcpToolBody, 'tool_id'>;
+export type SaveConsoleMcpToolBody = SaveConsoleMcpToolBodyBase &
+  (
+    | {
+        execution_target: ConsoleMcpInterfaceWrapperExecutionTarget;
+        input_mapping: unknown;
+        output_mapping: unknown;
+      }
+    | {
+        execution_target: ConsoleMcpProxyExecutionTarget;
+        input_mapping: ConsoleMcpProxyInputMapping;
+        output_mapping: ConsoleMcpProxyOutputMapping;
+      }
+  );
+
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
+export type UpdateConsoleMcpToolBody = DistributiveOmit<
+  SaveConsoleMcpToolBody,
+  'tool_id'
+>;
 
 export interface SaveConsoleMcpToolBindingBody {
   group_path: string;
@@ -275,6 +342,98 @@ export interface ConsoleMcpToolDebugDetailsResponse {
   interface_arguments: unknown;
   interface_response: unknown;
   tool_result: unknown;
+}
+
+export type ConsoleMcpUpstreamTransport = 'streamable_http';
+export type ConsoleMcpUpstreamAuthType = 'none' | 'bearer' | 'custom_header';
+export type ConsoleMcpUpstreamConnectionStatus = 'enabled' | 'disabled';
+export type ConsoleMcpUpstreamCredentialsStatus =
+  | 'not_required'
+  | 'configured'
+  | 'missing';
+
+export interface ConsoleMcpUpstreamConnection {
+  connection_id: string;
+  workspace_id: string;
+  name: string;
+  endpoint: string;
+  transport: ConsoleMcpUpstreamTransport;
+  auth_type: ConsoleMcpUpstreamAuthType;
+  status: ConsoleMcpUpstreamConnectionStatus;
+  credentials_status: ConsoleMcpUpstreamCredentialsStatus;
+  custom_header_name: string | null;
+  last_connected_at: string | null;
+  last_discovered_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SaveConsoleMcpUpstreamConnectionBody {
+  name: string;
+  endpoint: string;
+  transport: ConsoleMcpUpstreamTransport;
+  auth_type: ConsoleMcpUpstreamAuthType;
+  custom_header_name: string | null;
+  status: ConsoleMcpUpstreamConnectionStatus;
+}
+
+export type SaveConsoleMcpUpstreamConnectionCredentialsBody =
+  | { kind: 'bearer'; token: string }
+  | {
+      kind: 'custom_header';
+      header_name: string;
+      header_value: string;
+    };
+
+export interface ConsoleMcpUpstreamConnectionTestResult {
+  connection_id: string;
+  ok: boolean;
+  server_name: string | null;
+  server_version: string | null;
+  protocol_version: string | null;
+  tested_at: string;
+  error: string | null;
+}
+
+export type ConsoleMcpUpstreamToolSourceStatus =
+  | 'not_imported'
+  | 'imported'
+  | 'definition_changed'
+  | 'remote_missing';
+
+export interface ConsoleMcpUpstreamDiscoveredTool {
+  remote_tool_name: string;
+  description: string | null;
+  input_schema: unknown;
+  output_schema: unknown;
+  source_status: ConsoleMcpUpstreamToolSourceStatus;
+  imported_tool_id: string | null;
+  schema_hash: string;
+}
+
+export interface ConsoleMcpUpstreamDiscoveryResult {
+  connection_id: string;
+  server_name: string | null;
+  server_version: string | null;
+  protocol_version: string;
+  discovered_at: string;
+  items: ConsoleMcpUpstreamDiscoveredTool[];
+}
+
+export interface ImportConsoleMcpUpstreamToolsBody {
+  remote_tool_names: string[];
+}
+
+export interface ExecuteConsoleMcpProxyToolDebugBody {
+  arguments: unknown;
+}
+
+export interface ConsoleMcpProxyToolDebugResponse {
+  local_arguments: unknown;
+  remote_arguments: unknown;
+  upstream_result: unknown;
+  mapped_result: unknown;
 }
 
 export function fetchConsoleMcpCatalog(baseUrl?: string) {
@@ -700,6 +859,139 @@ export function fetchConsoleMcpInstanceDiscoveryPolicy(
 ) {
   return apiFetch<ConsoleMcpInstanceDiscoveryPolicy>({
     path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/discovery-policy`,
+    baseUrl
+  });
+}
+
+export function fetchConsoleMcpUpstreamConnections(baseUrl?: string) {
+  return apiFetch<ConsoleMcpUpstreamConnection[]>({
+    path: '/api/console/mcp/upstream-connections',
+    baseUrl
+  });
+}
+
+export function createConsoleMcpUpstreamConnection(
+  body: SaveConsoleMcpUpstreamConnectionBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpUpstreamConnection>({
+    path: '/api/console/mcp/upstream-connections',
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleMcpUpstreamConnection(
+  connectionId: string,
+  body: SaveConsoleMcpUpstreamConnectionBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpUpstreamConnection>({
+    path: `/api/console/mcp/upstream-connections/${encodeURIComponent(connectionId)}`,
+    method: 'PUT',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteConsoleMcpUpstreamConnection(
+  connectionId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: `/api/console/mcp/upstream-connections/${encodeURIComponent(connectionId)}`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function saveConsoleMcpUpstreamConnectionCredentials(
+  connectionId: string,
+  body: SaveConsoleMcpUpstreamConnectionCredentialsBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: `/api/console/mcp/upstream-connections/${encodeURIComponent(connectionId)}/credentials`,
+    method: 'PUT',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteConsoleMcpUpstreamConnectionCredentials(
+  connectionId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: `/api/console/mcp/upstream-connections/${encodeURIComponent(connectionId)}/credentials`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function testConsoleMcpUpstreamConnection(
+  connectionId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpUpstreamConnectionTestResult>({
+    path: `/api/console/mcp/upstream-connections/${encodeURIComponent(connectionId)}/test`,
+    method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function discoverConsoleMcpUpstreamConnection(
+  connectionId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpUpstreamDiscoveryResult>({
+    path: `/api/console/mcp/upstream-connections/${encodeURIComponent(connectionId)}/discover`,
+    method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function importConsoleMcpUpstreamTools(
+  connectionId: string,
+  body: ImportConsoleMcpUpstreamToolsBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpTool[]>({
+    path: `/api/console/mcp/upstream-connections/${encodeURIComponent(connectionId)}/imports`,
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function executeConsoleMcpProxyToolDebug(
+  toolId: string,
+  body: ExecuteConsoleMcpProxyToolDebugBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpProxyToolDebugResponse>({
+    path: `/api/console/mcp/tools/${encodeURIComponent(toolId)}/debug`,
+    method: 'POST',
+    body,
+    csrfToken,
     baseUrl
   });
 }

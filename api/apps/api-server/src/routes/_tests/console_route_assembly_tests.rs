@@ -1086,6 +1086,56 @@ fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
                 "/api/console/mcp/bundles/import-upload",
                 "mcp.bundles.import"
             ),
+            (
+                "GET",
+                "/api/console/mcp/upstream-connections",
+                "mcp.upstream_connections.view"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/upstream-connections",
+                "mcp.upstream_connections.create"
+            ),
+            (
+                "PUT",
+                "/api/console/mcp/upstream-connections/:connection_id",
+                "mcp.upstream_connections.update"
+            ),
+            (
+                "DELETE",
+                "/api/console/mcp/upstream-connections/:connection_id",
+                "mcp.upstream_connections.delete"
+            ),
+            (
+                "PUT",
+                "/api/console/mcp/upstream-connections/:connection_id/credentials",
+                "mcp.upstream_credentials.update"
+            ),
+            (
+                "DELETE",
+                "/api/console/mcp/upstream-connections/:connection_id/credentials",
+                "mcp.upstream_credentials.delete"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/upstream-connections/:connection_id/test",
+                "mcp.upstream_connections.test"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/upstream-connections/:connection_id/discover",
+                "mcp.upstream_connections.discover"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/upstream-connections/:connection_id/imports",
+                "mcp.upstream_tools.import"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/tools/:tool_id/debug",
+                "mcp.upstream_tools.debug"
+            ),
         ]
     );
     assert_eq!(

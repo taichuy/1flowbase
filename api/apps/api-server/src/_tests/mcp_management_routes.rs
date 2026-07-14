@@ -300,7 +300,7 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
                         "name": "Create order",
                         "short_description": "Create order",
                         "full_description": "Create a runtime order record through a concrete Data Model interface.",
-                        "interface_id": create_interface_id,
+                        "execution_target": {"kind":"interface_wrapper","interface_id":create_interface_id},
                         "parameter_schema": {},
                         "result_schema": {},
                         "input_mapping": {},
@@ -318,7 +318,7 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
     assert_eq!(create_tool_response.status(), StatusCode::CREATED);
     let create_tool_payload = response_json(create_tool_response).await;
     assert_eq!(
-        create_tool_payload["data"]["interface_id"].as_str(),
+        create_tool_payload["data"]["execution_target"]["interface_id"].as_str(),
         Some(create_interface_id.as_str())
     );
     assert_eq!(
@@ -345,7 +345,7 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
                         "des_id": "des-runtime-update",
                         "short_description": "Update order",
                         "full_description": "Update a runtime order record through a concrete Data Model interface.",
-                        "interface_id": update_interface_id,
+                        "execution_target": {"kind":"interface_wrapper","interface_id":update_interface_id},
                         "parameter_schema": {},
                         "result_schema": {},
                         "input_mapping": {},
@@ -363,7 +363,7 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
     assert_eq!(update_tool_response.status(), StatusCode::OK);
     let update_tool_payload = response_json(update_tool_response).await;
     assert_eq!(
-        update_tool_payload["data"]["interface_id"].as_str(),
+        update_tool_payload["data"]["execution_target"]["interface_id"].as_str(),
         Some(update_interface_id.as_str())
     );
     assert_eq!(
@@ -449,7 +449,7 @@ async fn mcp_tool_create_rejects_non_bindable_agent_interface() {
                         "name": "Agent run proxy",
                         "short_description": "Agent run proxy",
                         "full_description": "This should remain unavailable for MCP binding.",
-                        "interface_id": agent_interface_id,
+                        "execution_target": {"kind":"interface_wrapper","interface_id":agent_interface_id},
                         "parameter_schema": {},
                         "result_schema": {},
                         "input_mapping": {},
@@ -636,7 +636,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
                         "name": "Runtime profile",
                         "short_description": "Runtime profile",
                         "full_description": "Read system runtime topology and locale profile.",
-                        "interface_id": "get_runtime_profile",
+                        "execution_target": {"kind":"interface_wrapper","interface_id":"get_runtime_profile"},
                         "parameter_schema": { "type": "object", "properties": { "fake": { "type": "string" } } },
                         "result_schema": { "type": "string" },
                         "input_mapping": {},
@@ -857,7 +857,7 @@ async fn mcp_tool_create_requires_tool_id() {
                         "name": "Runtime profile",
                         "short_description": "Runtime profile",
                         "full_description": "Read system runtime topology and locale profile.",
-                        "interface_id": "get_runtime_profile",
+                        "execution_target": {"kind":"interface_wrapper","interface_id":"get_runtime_profile"},
                         "parameter_schema": {},
                         "result_schema": {},
                         "input_mapping": {},

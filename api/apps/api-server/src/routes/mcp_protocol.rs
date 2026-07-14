@@ -11,6 +11,9 @@ use domain::mcp_management::{McpInstanceStatus, McpToolStatus};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use super::mcp_management::upstream_client::{
+    map_proxy_arguments, map_proxy_result, McpStreamableHttpClient,
+};
 use super::mcp_management::{bindable_mcp_interface, McpDebugExecuteBody, McpDebugResponseMode};
 use crate::{
     app_state::ApiState,
@@ -162,24 +165,131 @@ async fn handle_mcp_request(
                         .get("arguments")
                         .cloned()
                         .unwrap_or_else(|| json!({}));
-                    let interface =
-                        bindable_mcp_interface(state.as_ref(), context.user.id, &tool.interface_id)
+                    match &tool.execution_target {
+                        domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
+                            let interface = bindable_mcp_interface(
+                                state.as_ref(),
+                                context.user.id,
+                                interface_id,
+                            )
                             .await?;
-                    let body = McpDebugExecuteBody {
-                        interface_id: tool.interface_id.clone(),
-                        debug_response_mode: McpDebugResponseMode::ToolResult,
-                        mcp_arguments: tool_arguments,
-                        input_mapping: tool.input_mapping.clone(),
-                        output_mapping: tool.output_mapping.clone(),
-                    };
-                    match super::mcp_management::debug_execute::execute(
-                        state, headers, interface, body,
-                    )
-                    .await
-                    {
-                        Ok(value) => tool_result(value),
-                        Err(_) => {
-                            return Ok(jsonrpc_error(request.id, -32603, "Tool execution failed"))
+                            let body = McpDebugExecuteBody {
+                                interface_id: interface_id.clone(),
+                                debug_response_mode: McpDebugResponseMode::ToolResult,
+                                mcp_arguments: tool_arguments,
+                                input_mapping: tool.input_mapping.clone(),
+                                output_mapping: tool.output_mapping.clone(),
+                            };
+                            match super::mcp_management::debug_execute::execute(
+                                state.clone(),
+                                headers,
+                                interface,
+                                body,
+                            )
+                            .await
+                            {
+                                Ok(value) => tool_result(value),
+                                Err(_) => {
+                                    return Ok(jsonrpc_error(
+                                        request.id,
+                                        -32603,
+                                        "Tool execution failed",
+                                    ))
+                                }
+                            }
+                        }
+                        domain::McpToolExecutionTarget::McpProxy {
+                            upstream_connection_id,
+                            remote_tool_name,
+                            ..
+                        } => {
+                            let availability = service
+                                .upstream_proxy_availability(
+                                    context.user.id,
+                                    *upstream_connection_id,
+                                    remote_tool_name,
+                                )
+                                .await?;
+                            if availability != domain::McpToolAvailabilityStatus::Available {
+                                return Ok(jsonrpc_error_data(
+                                    request.id,
+                                    -32603,
+                                    "Upstream tool unavailable",
+                                    json!({"availability_status":availability.as_str()}),
+                                ));
+                            }
+                            let connection = service
+                                .get_upstream_connection(context.user.id, *upstream_connection_id)
+                                .await?;
+                            let secret = service
+                                .upstream_secret_for_execution(
+                                    context.user.id,
+                                    *upstream_connection_id,
+                                    &state.provider_secret_master_key,
+                                )
+                                .await?;
+                            let remote_arguments =
+                                match map_proxy_arguments(&tool_arguments, &tool.input_mapping) {
+                                    Ok(arguments) => arguments,
+                                    Err(error) => {
+                                        return Ok(jsonrpc_error_data(
+                                            request.id,
+                                            -32602,
+                                            "Invalid tool arguments",
+                                            json!({"reason":error.to_string()}),
+                                        ))
+                                    }
+                                };
+                            let client = match McpStreamableHttpClient::connect(
+                                &connection,
+                                secret.as_ref(),
+                            )
+                            .await
+                            {
+                                Ok(client) => client,
+                                Err(error) => {
+                                    return Ok(jsonrpc_error_data(
+                                        request.id,
+                                        -32603,
+                                        "Upstream MCP connection failed",
+                                        json!({"reason":error.to_string()}),
+                                    ))
+                                }
+                            };
+                            let upstream =
+                                match client.call_tool(remote_tool_name, remote_arguments).await {
+                                    Ok(result) => result,
+                                    Err(error) => {
+                                        return Ok(jsonrpc_error_data(
+                                            request.id,
+                                            -32603,
+                                            "Upstream MCP tools/call failed",
+                                            json!({"reason":error.to_string()}),
+                                        ))
+                                    }
+                                };
+                            let mapped = match map_proxy_result(&upstream, &tool.output_mapping) {
+                                Ok(result) => result,
+                                Err(error) => {
+                                    return Ok(jsonrpc_error_data(
+                                        request.id,
+                                        -32603,
+                                        "Tool result mapping failed",
+                                        json!({"reason":error.to_string()}),
+                                    ))
+                                }
+                            };
+                            match serde_json::to_value(mapped) {
+                                Ok(value) => value,
+                                Err(error) => {
+                                    return Ok(jsonrpc_error_data(
+                                        request.id,
+                                        -32603,
+                                        "Tool result serialization failed",
+                                        json!({"reason":error.to_string()}),
+                                    ))
+                                }
+                            }
                         }
                     }
                 }
@@ -289,4 +399,40 @@ fn jsonrpc_error(
             error: Some(json!({"code":code,"message":message})),
         }),
     )
+}
+
+fn jsonrpc_error_data(
+    id: Option<Value>,
+    code: i32,
+    message: &'static str,
+    data: Value,
+) -> (StatusCode, Json<JsonRpcResponse>) {
+    (
+        StatusCode::OK,
+        Json(JsonRpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: None,
+            error: Some(json!({"code":code,"message":message,"data":data})),
+        }),
+    )
+}
+
+#[cfg(test)]
+mod issue_1246_tests {
+    use super::*;
+
+    #[test]
+    fn issue_1246_ac_012_runtime_error_preserves_safe_diagnostic_data() {
+        let (_, response) = jsonrpc_error_data(
+            Some(json!("call-1")),
+            -32603,
+            "Upstream MCP tools/call failed",
+            json!({"reason":"upstream protocol error: tool unavailable"}),
+        );
+        assert_eq!(
+            response.0.error.unwrap()["data"]["reason"],
+            json!("upstream protocol error: tool unavailable")
+        );
+    }
 }

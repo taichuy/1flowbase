@@ -1,4 +1,8 @@
-export const mcpManagementTabKeys = ['instances', 'tools'] as const;
+export const mcpManagementTabKeys = [
+  'instances',
+  'tools',
+  'third-party'
+] as const;
 
 export type McpManagementTabKey = (typeof mcpManagementTabKeys)[number];
 

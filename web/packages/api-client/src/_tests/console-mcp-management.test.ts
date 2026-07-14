@@ -1,5 +1,9 @@
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, expectTypeOf, test, vi } from 'vitest';
 import * as transport from '../transport';
+import type {
+  ConsoleMcpTool,
+  ConsoleMcpToolAvailabilityStatus
+} from '../console-mcp-management';
 
 import {
   createConsoleMcpInstance,
@@ -33,6 +37,12 @@ import {
 } from '../console-mcp-management';
 
 describe('console-mcp-management client', () => {
+  test('AC-016 keeps availability_status as the exact public DTO union', () => {
+    expectTypeOf<
+      ConsoleMcpTool['availability_status']
+    >().toEqualTypeOf<ConsoleMcpToolAvailabilityStatus>();
+  });
+
   vi.spyOn(transport, 'apiFetch').mockImplementation(
     async (input) => input as never
   );
@@ -268,7 +278,10 @@ describe('console-mcp-management client', () => {
             name: 'Get Runtime',
             short_description: 'Runtime profile',
             full_description: 'Read runtime profile',
-            interface_id: 'get_runtime_profile',
+            execution_target: {
+              kind: 'interface_wrapper',
+              interface_id: 'get_runtime_profile'
+            },
             parameter_schema: {},
             result_schema: {},
             input_mapping: {},
@@ -295,7 +308,10 @@ describe('console-mcp-management client', () => {
             des_id: 'des12345',
             short_description: 'Runtime profile',
             full_description: 'Read runtime profile',
-            interface_id: 'get_runtime_profile',
+            execution_target: {
+              kind: 'interface_wrapper',
+              interface_id: 'get_runtime_profile'
+            },
             parameter_schema: {},
             result_schema: {},
             input_mapping: {},

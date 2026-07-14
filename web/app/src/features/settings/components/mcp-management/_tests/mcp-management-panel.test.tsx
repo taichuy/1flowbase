@@ -16,6 +16,12 @@ const mcpManagementApi = vi.hoisted(() => ({
     'mcp-management',
     'official-bundles'
   ],
+  settingsMcpUpstreamConnectionsQueryKey: [
+    'settings',
+    'mcp-management',
+    'upstream-connections'
+  ],
+  createSettingsMcpUpstreamConnection: vi.fn(),
   createSettingsMcpInstance: vi.fn(),
   createSettingsMcpTool: vi.fn(),
   createSettingsMcpToolBinding: vi.fn(),
@@ -24,6 +30,10 @@ const mcpManagementApi = vi.hoisted(() => ({
   deleteSettingsMcpInstance: vi.fn(),
   deleteSettingsMcpTool: vi.fn(),
   deleteSettingsMcpToolBinding: vi.fn(),
+  deleteSettingsMcpUpstreamConnection: vi.fn(),
+  deleteSettingsMcpUpstreamConnectionCredentials: vi.fn(),
+  discoverSettingsMcpUpstreamConnection: vi.fn(),
+  executeSettingsMcpProxyToolDebug: vi.fn(),
   executeSettingsMcpToolDebug: vi.fn(),
   moveSettingsMcpGroup: vi.fn(),
   previewSettingsMcpBundle: vi.fn(),
@@ -32,17 +42,24 @@ const mcpManagementApi = vi.hoisted(() => ({
   exportSettingsMcpBundle: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
   exportSettingsMcpInstanceDirectory: vi.fn(),
-  fetchSettingsMcpClientCredential: vi.fn(async () => ({
-    saved: false
-  })),
+  fetchSettingsMcpClientCredential: vi.fn(
+    async (): Promise<{ saved: boolean; api_key?: string }> => ({
+      saved: false
+    })
+  ),
   fetchSettingsOfficialMcpBundles: vi.fn(),
+  fetchSettingsMcpUpstreamConnections: vi.fn(async () => []),
+  importSettingsMcpUpstreamTools: vi.fn(),
   previewSettingsOfficialMcpBundle: vi.fn(),
   refreshSettingsMcpToolDescription: vi.fn(),
   saveSettingsMcpClientCredential: vi.fn(async () => ({ saved: true })),
+  saveSettingsMcpUpstreamConnectionCredentials: vi.fn(),
+  testSettingsMcpUpstreamConnection: vi.fn(),
   updateSettingsMcpInstance: vi.fn(),
   updateSettingsMcpInstanceDiscoveryPolicy: vi.fn(),
   updateSettingsMcpTool: vi.fn(),
   updateSettingsMcpToolBinding: vi.fn(),
+  updateSettingsMcpUpstreamConnection: vi.fn(),
   upsertSettingsMcpGroup: vi.fn()
 }));
 const vditorMock = vi.hoisted(() => ({
@@ -301,11 +318,13 @@ function renderPanel(
 function renderPanelWithMountedTool({
   includeBinding = true,
   includeGroup = false,
-  operation = 'POST /api/console/apps'
+  operation = 'POST /api/console/apps',
+  proxy = false
 }: {
   includeBinding?: boolean;
   includeGroup?: boolean;
   operation?: string;
+  proxy?: boolean;
 } = {}) {
   return render(
     <AppProviders>
@@ -348,12 +367,42 @@ function renderPanelWithMountedTool({
               name: 'Search customer',
               short_description: 'Find matching customers',
               full_description: 'Search customer',
-              interface_id: 'create_app',
+              execution_target: proxy
+                ? {
+                    kind: 'mcp_proxy' as const,
+                    upstream_connection_id: '019b-connection',
+                    remote_tool_name: 'search_documents',
+                    source_schema_hash: 'sha256:source'
+                  }
+                : {
+                    kind: 'interface_wrapper' as const,
+                    interface_id: 'create_app'
+                  },
               operation,
               parameter_schema: {},
               result_schema: {},
-              input_mapping: {},
-              output_mapping: {},
+              input_mapping: proxy
+                ? {
+                    mappings: [
+                      {
+                        local_path: 'request.query',
+                        remote_path: 'query.text',
+                        required: true
+                      }
+                    ]
+                  }
+                : {},
+              output_mapping: proxy
+                ? {
+                    mappings: [
+                      {
+                        remote_path: 'document.title',
+                        local_path: 'result.title',
+                        required: true
+                      }
+                    ]
+                  }
+                : {},
               permission_code: null,
               risk_level: 'low',
               des_id: 'des-1',
@@ -476,7 +525,7 @@ describe('McpManagementPanel', () => {
     );
     mcpManagementApi.previewSettingsMcpBundle.mockResolvedValue({
       manifest: {
-        schema_version: '1flowbase.mcp.bundle/v1',
+        schema_version: '1flowbase.mcp.bundle/v2',
         organization: 'taichuy',
         bundle_id: '1flowbase_zh_hans',
         bundle_version: '1.0.0',
@@ -484,7 +533,13 @@ describe('McpManagementPanel', () => {
         minimum_host_version: '0.2.6',
         exported_from_system_version: '0.2.5',
         exported_at: '2026-07-13T10:00:00Z',
-        files: []
+        files: [
+          {
+            path: 'connections/019b5f8f.json',
+            kind: 'connection',
+            sha256: 'connection-sha256'
+          }
+        ]
       },
       current_system_version: '0.2.6',
       version_status: 'exported_from_older_system',
@@ -496,11 +551,18 @@ describe('McpManagementPanel', () => {
           reason: 'interface_missing'
         }
       ],
-      instances: [{ id: 'system', result: 'imported', reason: null }]
+      instances: [{ id: 'system', result: 'imported', reason: null }],
+      connections: [
+        {
+          id: '019b5f8f-0000-7000-8000-000000000001',
+          result: 'unavailable',
+          reason: 'credentials_missing'
+        }
+      ]
     });
     mcpManagementApi.importSettingsMcpBundle.mockResolvedValue({
       manifest: {
-        schema_version: '1flowbase.mcp.bundle/v1',
+        schema_version: '1flowbase.mcp.bundle/v2',
         organization: 'taichuy',
         bundle_id: '1flowbase_zh_hans',
         bundle_version: '1.0.0',
@@ -508,7 +570,13 @@ describe('McpManagementPanel', () => {
         minimum_host_version: '0.2.6',
         exported_from_system_version: '0.2.5',
         exported_at: '2026-07-13T10:00:00Z',
-        files: []
+        files: [
+          {
+            path: 'connections/019b5f8f.json',
+            kind: 'connection',
+            sha256: 'connection-sha256'
+          }
+        ]
       },
       current_system_version: '0.2.6',
       version_status: 'exported_from_older_system',
@@ -521,7 +589,14 @@ describe('McpManagementPanel', () => {
           reason: 'interface_missing'
         }
       ],
-      instances: [{ id: 'system', result: 'imported', reason: null }]
+      instances: [{ id: 'system', result: 'imported', reason: null }],
+      connections: [
+        {
+          id: '019b5f8f-0000-7000-8000-000000000001',
+          result: 'unavailable',
+          reason: 'credentials_missing'
+        }
+      ]
     });
     mcpManagementApi.fetchSettingsOfficialMcpBundles.mockResolvedValue({
       source: {
@@ -567,6 +642,10 @@ describe('McpManagementPanel', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('removed_tool')).toBeInTheDocument();
     expect(screen.getByText('接口不存在')).toBeInTheDocument();
+    expect(
+      screen.getByText('019b5f8f-0000-7000-8000-000000000001')
+    ).toBeInTheDocument();
+    expect(screen.getByText('缺少凭据')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '仍然导入' }));
     await waitFor(() => {
@@ -638,7 +717,10 @@ describe('McpManagementPanel', () => {
       within(toolsPanel).getByRole('columnheader', { name: 'operation' })
     ).toBeInTheDocument();
     expect(
-      within(toolsPanel).getByRole('columnheader', { name: 'interface_id' })
+      within(toolsPanel).getByRole('columnheader', { name: 'Tool 类型' })
+    ).toBeInTheDocument();
+    expect(
+      within(toolsPanel).getByRole('columnheader', { name: '执行来源' })
     ).toBeInTheDocument();
     expect(
       within(toolsPanel).getByText('POST /api/console/apps')
@@ -1527,6 +1609,151 @@ describe('McpManagementPanel', () => {
       'aria-selected',
       'true'
     );
+  });
+
+  test('AC-001 restores the third-party MCP tab from the URL', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/settings/mcp-management?tab=third-party'
+    );
+
+    renderPanel();
+
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
+    expect(screen.getByRole('tab', { name: '第三方MCP' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
+
+  test('AC-002 AC-009 AC-010 AC-011 AC-014 edits the local MCP proxy contract without HTTP mapping fields', async () => {
+    mcpManagementApi.executeSettingsMcpProxyToolDebug.mockResolvedValue({
+      local_arguments: { request: { query: 'status' } },
+      remote_arguments: { query: { text: 'status' } },
+      upstream_result: { structuredContent: { document: { title: 'Status' } } },
+      mapped_result: { structuredContent: { result: { title: 'Status' } } }
+    });
+    renderPanelWithMountedTool({ includeBinding: false, proxy: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    expect(
+      screen.getByRole('columnheader', { name: 'Tool 类型' })
+    ).toBeInTheDocument();
+    const typeFilter = screen.getByRole('combobox', { name: 'Tool 类型' });
+    fireEvent.mouseDown(typeFilter);
+    await selectAntdOption('接口封装');
+    expect(
+      screen.queryByRole('row', { name: /Search customer/ })
+    ).not.toBeInTheDocument();
+    fireEvent.mouseDown(typeFilter);
+    await selectAntdOption('MCP 代理');
+    const toolRow = screen.getByRole('row', { name: /Search customer/ });
+    expect(within(toolRow).getByText('MCP 代理')).toBeInTheDocument();
+    fireEvent.click(within(toolRow).getAllByRole('button')[0]);
+
+    const dialog = await screen.findByRole('dialog');
+    clickSegmentedOption(dialog, 'interface');
+    expect(within(dialog).getByText('019b-connection')).toBeInTheDocument();
+    expect(within(dialog).getByText('search_documents')).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('combobox', { name: 'operation' })
+    ).not.toBeInTheDocument();
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'risk_level' })
+    );
+    await selectAntdOption('medium');
+
+    clickSegmentedOption(dialog, 'input_mapping');
+    expect(within(dialog).getByText('parameter_schema')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
+    fireEvent.change(await within(dialog).findByLabelText('JSON Schema 内容'), {
+      target: {
+        value: JSON.stringify({
+          type: 'object',
+          properties: { local_query: { type: 'string' } },
+          required: ['local_query']
+        })
+      }
+    });
+    expect(within(dialog).getByLabelText('local_path 1')).toHaveValue(
+      'request.query'
+    );
+    expect(within(dialog).getByLabelText('remote_path 1')).toHaveValue(
+      'query.text'
+    );
+    expect(within(dialog).queryByText('URL')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('JSON 请求体')).not.toBeInTheDocument();
+
+    clickSegmentedOption(dialog, 'output_mapping');
+    expect(within(dialog).getByText('result_schema')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
+    fireEvent.change(await within(dialog).findByLabelText('JSON Schema 内容'), {
+      target: {
+        value: JSON.stringify({
+          type: 'object',
+          properties: { local_title: { type: 'string' } }
+        })
+      }
+    });
+
+    clickSegmentedOption(dialog, 'debug');
+    fireEvent.change(within(dialog).getByLabelText('request.query'), {
+      target: { value: 'status' }
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '运行代理调试' })
+    );
+
+    await waitFor(() => {
+      expect(
+        mcpManagementApi.executeSettingsMcpProxyToolDebug
+      ).toHaveBeenCalledWith(
+        'search_customer',
+        { arguments: { request: { query: 'status' } } },
+        expect.any(String)
+      );
+    });
+    expect(
+      await within(dialog).findByText('远端 arguments')
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText('第三方原始结果')).toBeInTheDocument();
+    expect(within(dialog).getByText('本地映射结果')).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    await waitFor(() => {
+      expect(mcpManagementApi.updateSettingsMcpTool).toHaveBeenCalledWith(
+        'search_customer',
+        expect.objectContaining({
+          execution_target: {
+            kind: 'mcp_proxy',
+            upstream_connection_id: '019b-connection',
+            remote_tool_name: 'search_documents',
+            source_schema_hash: 'sha256:source'
+          },
+          input_mapping: {
+            mappings: [
+              {
+                local_path: 'request.query',
+                remote_path: 'query.text',
+                required: true
+              }
+            ]
+          },
+          parameter_schema: {
+            type: 'object',
+            properties: { local_query: { type: 'string' } },
+            required: ['local_query']
+          },
+          result_schema: {
+            type: 'object',
+            properties: { local_title: { type: 'string' } }
+          },
+          risk_level: 'medium'
+        }),
+        expect.any(String)
+      );
+    });
   });
 
   test('falls back from the removed meta tab to instances', async () => {

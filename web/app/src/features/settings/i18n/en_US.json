@@ -725,6 +725,7 @@
     "mcp_management": "MCP management",
     "mcp_instances": "MCP instances",
     "mcp_tool_config": "Tool configuration",
+    "mcp_third_party": "Third-party MCP",
     "mcp_meta_config": "MCP configuration",
     "mcp_load_failed": "Failed to load MCP configuration",
     "mcp_instances_hint": "MCP instances decide what mcp.list can discover; only enabled instances are discoverable.",

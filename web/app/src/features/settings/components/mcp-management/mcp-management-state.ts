@@ -57,6 +57,7 @@ export interface McpToolsState {
   editingTool: ConsoleMcpTool | null;
   step: string;
   keyword: string;
+  executionTargetKind: string | undefined;
   interfaceId: string | undefined;
   riskLevel: string | undefined;
   status: string | undefined;
@@ -72,6 +73,10 @@ export type McpToolsAction =
     }
   | { type: 'setStep'; value: SetStateAction<string> }
   | { type: 'setKeyword'; value: SetStateAction<string> }
+  | {
+      type: 'setExecutionTargetKind';
+      value: SetStateAction<string | undefined>;
+    }
   | {
       type: 'setInterfaceId';
       value: SetStateAction<string | undefined>;
@@ -89,6 +94,7 @@ export const initialMcpToolsState: McpToolsState = {
   editingTool: null,
   step: 'basic',
   keyword: '',
+  executionTargetKind: undefined,
   interfaceId: undefined,
   riskLevel: undefined,
   status: undefined,
@@ -189,6 +195,14 @@ export function mcpToolsReducer(
       return {
         ...state,
         keyword: resolveSetState(action.value, state.keyword)
+      };
+    case 'setExecutionTargetKind':
+      return {
+        ...state,
+        executionTargetKind: resolveSetState(
+          action.value,
+          state.executionTargetKind
+        )
       };
     case 'setInterfaceId':
       return {
