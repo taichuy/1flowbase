@@ -92,7 +92,7 @@ export interface ReplaceConsoleRolePermissionsInput {
 
 export function listConsoleRoles(baseUrl?: string): Promise<ConsoleRole[]> {
   return apiFetch<ConsoleRole[]>({
-    path: '/api/console/roles',
+    path: '/api/console/settings/roles',
     baseUrl
   });
 }
@@ -103,7 +103,7 @@ export function createConsoleRole(
   baseUrl?: string
 ): Promise<ConsoleRole> {
   return apiFetch<ConsoleRole>({
-    path: '/api/console/roles',
+    path: '/api/console/settings/roles',
     method: 'POST',
     body: input,
     csrfToken,
@@ -118,7 +118,7 @@ export function updateConsoleRole(
   baseUrl?: string
 ): Promise<void> {
   return apiFetchVoid({
-    path: `/api/console/roles/${roleCode}`,
+    path: `/api/console/settings/roles/${roleCode}`,
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -132,7 +132,7 @@ export function deleteConsoleRole(
   baseUrl?: string
 ): Promise<void> {
   return apiFetchVoid({
-    path: `/api/console/roles/${roleCode}`,
+    path: `/api/console/settings/roles/${roleCode}`,
     method: 'DELETE',
     csrfToken,
     baseUrl
@@ -144,7 +144,7 @@ export function fetchConsoleRolePermissions(
   baseUrl?: string
 ): Promise<ConsoleRolePermissions> {
   return apiFetch<ConsoleRolePermissions>({
-    path: `/api/console/roles/${roleCode}/permissions`,
+    path: `/api/console/settings/roles/${roleCode}/permissions`,
     baseUrl
   });
 }
@@ -156,7 +156,7 @@ export function replaceConsoleRolePermissions(
   baseUrl?: string
 ): Promise<void> {
   return apiFetchVoid({
-    path: `/api/console/roles/${roleCode}/permissions`,
+    path: `/api/console/settings/roles/${roleCode}/permissions`,
     method: 'PUT',
     body: input,
     csrfToken,
@@ -169,7 +169,7 @@ export function fetchConsoleRoleFrontstageRoutes(
   baseUrl?: string
 ): Promise<ConsoleRoleFrontstageRoutes> {
   return apiFetch<ConsoleRoleFrontstageRoutes>({
-    path: `/api/console/roles/${roleCode}/frontstage-routes`,
+    path: `/api/console/settings/roles/${roleCode}/frontstage-routes`,
     baseUrl
   });
 }
@@ -181,7 +181,7 @@ export function replaceConsoleRoleFrontstageRoutes(
   baseUrl?: string
 ): Promise<void> {
   return apiFetchVoid({
-    path: `/api/console/roles/${roleCode}/frontstage-routes`,
+    path: `/api/console/settings/roles/${roleCode}/frontstage-routes`,
     method: 'PUT',
     body: input,
     csrfToken,
@@ -194,7 +194,7 @@ export function fetchConsoleRoleDataPolicy(
   baseUrl?: string
 ): Promise<ConsoleRoleDataPolicy> {
   return apiFetch<ConsoleRoleDataPolicy>({
-    path: `/api/console/roles/${roleCode}/data-policy`,
+    path: `/api/console/settings/roles/${roleCode}/data-policy`,
     baseUrl
   });
 }
@@ -206,7 +206,7 @@ export function replaceConsoleRoleDataPolicy(
   baseUrl?: string
 ): Promise<void> {
   return apiFetchVoid({
-    path: `/api/console/roles/${roleCode}/data-policy`,
+    path: `/api/console/settings/roles/${roleCode}/data-policy`,
     method: 'PUT',
     body: input,
     csrfToken,

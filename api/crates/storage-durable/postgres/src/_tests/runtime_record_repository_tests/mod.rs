@@ -50,7 +50,7 @@ async fn insert_user(store: &PgControlPlaneStore, user_id: Uuid, account: &str) 
             created_by, updated_by
         )
         values (
-            $1, $2, $3, null, 'hash', $4, $5, null, '', 'manager', true, false, 'active', 1, null, null
+            $1, $2, $3, null, 'hash', $4, $5, null, '', 'member', true, false, 'active', 1, null, null
         )
         "#,
     )

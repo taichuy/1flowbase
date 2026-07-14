@@ -18,7 +18,7 @@ fn test_workspace(tenant_id: Uuid, workspace_id: Uuid, name: &str) -> WorkspaceR
 fn test_user(source_workspace_id: Uuid, target_workspace_id: Uuid) -> UserRecord {
     UserRecord {
         id: Uuid::now_v7(),
-        account: "manager".to_string(),
+        account: "member".to_string(),
         email: "manager@example.com".to_string(),
         phone: None,
         password_hash: "hash".to_string(),
@@ -40,7 +40,7 @@ fn test_user(source_workspace_id: Uuid, target_workspace_id: Uuid) -> UserRecord
                 workspace_id: Some(source_workspace_id),
             },
             BoundRole {
-                code: "manager".to_string(),
+                code: "member".to_string(),
                 scope_kind: RoleScopeKind::Workspace,
                 workspace_id: Some(target_workspace_id),
             },
@@ -92,7 +92,7 @@ async fn switch_workspace_rewrites_session_scope_and_rotates_csrf() {
     assert_eq!(result.session.tenant_id, tenant_id);
     assert_eq!(result.session.current_workspace_id, target_workspace_id);
     assert_eq!(result.actor.current_workspace_id, target_workspace_id);
-    assert_eq!(result.actor.effective_display_role, "manager");
+    assert_eq!(result.actor.effective_display_role, "member");
     assert_ne!(result.session.csrf_token, session.csrf_token);
     assert_eq!(result.session.expires_at_unix, session.expires_at_unix);
     assert_eq!(repository.audit_events(), vec!["session.switch_workspace"]);

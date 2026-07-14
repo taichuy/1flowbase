@@ -106,11 +106,11 @@ vi.mock('@1flowbase/api-client', () => ({
   replaceConsoleMemberRoles: vi.fn().mockResolvedValue(undefined),
   listConsolePermissions: vi.fn().mockResolvedValue([]),
   listConsoleRoles: vi.fn().mockResolvedValue([]),
-  createConsoleRole: vi.fn().mockResolvedValue({ code: 'manager' }),
+  createConsoleRole: vi.fn().mockResolvedValue({ code: 'member' }),
   updateConsoleRole: vi.fn().mockResolvedValue(undefined),
   deleteConsoleRole: vi.fn().mockResolvedValue(undefined),
   fetchConsoleRolePermissions: vi.fn().mockResolvedValue({
-    role_code: 'manager',
+    role_code: 'member',
     permission_codes: []
   }),
   replaceConsoleRolePermissions: vi.fn().mockResolvedValue(undefined),

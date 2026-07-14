@@ -193,7 +193,7 @@ impl MemoryAuthRepository {
     pub fn scoped_user(permissions: &[&str]) -> Self {
         let repository = Self::new(UserRecord {
             id: Uuid::now_v7(),
-            account: "manager".to_string(),
+            account: "member".to_string(),
             email: "manager@example.com".to_string(),
             phone: None,
             password_hash: "password-hash".to_string(),
@@ -203,13 +203,13 @@ impl MemoryAuthRepository {
             introduction: String::new(),
             preferred_locale: None,
             meta: serde_json::json!({}),
-            default_display_role: Some("manager".to_string()),
+            default_display_role: Some("member".to_string()),
             email_login_enabled: true,
             phone_login_enabled: false,
             status: UserStatus::Active,
             session_version: 1,
             roles: vec![BoundRole {
-                code: "manager".to_string(),
+                code: "member".to_string(),
                 scope_kind: RoleScopeKind::Workspace,
                 workspace_id: Some(Uuid::nil()),
             }],
@@ -304,7 +304,7 @@ impl AuthRepository for MemoryAuthRepository {
             .filter(|candidate| codes.iter().any(|code| code == *candidate))
             .map(str::to_string)
             .or_else(|| codes.first().cloned())
-            .unwrap_or_else(|| "manager".to_string());
+            .unwrap_or_else(|| "member".to_string());
 
         Ok(ActorContext {
             user_id,
@@ -429,7 +429,7 @@ pub fn memory_actor_context(is_root: bool, permissions: &[&str]) -> ActorContext
         ActorContext::scoped(
             user_id,
             workspace_id,
-            "manager",
+            "member",
             permissions.iter().map(|permission| permission.to_string()),
         )
     }

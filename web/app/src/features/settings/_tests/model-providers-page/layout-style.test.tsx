@@ -153,7 +153,7 @@ const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 
 function authenticateWithPermissions(
   permissions: string[],
-  effectiveDisplayRole: 'manager' | 'root' = 'manager'
+  effectiveDisplayRole: 'member' | 'root' = 'member'
 ) {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
@@ -209,7 +209,7 @@ describe('ModelProvidersPage - layout and style', () => {
     membersApi.fetchSettingsMembers.mockResolvedValue([]);
     rolesApi.fetchSettingsRoles.mockResolvedValue([]);
     rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
-      role_code: 'manager',
+      role_code: 'member',
       permission_codes: []
     });
     permissionsApi.fetchSettingsPermissions.mockResolvedValue([]);

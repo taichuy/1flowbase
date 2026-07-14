@@ -519,7 +519,7 @@ impl BootstrapRepository for PgControlPlaneStore {
             let (can_all, default_scope) = match role.code.as_str() {
                 "root" => (true, "system_all"),
                 "admin" => (true, "scope_all"),
-                "manager" => (true, "own"),
+                "member" => (true, "own"),
                 _ => (false, "own"),
             };
             sqlx::query(
@@ -799,7 +799,7 @@ impl AuthRepository for PgControlPlaneStore {
             .filter(|candidate| codes.iter().any(|code| code == *candidate))
             .map(str::to_string)
             .or_else(|| codes.first().cloned())
-            .unwrap_or_else(|| "manager".to_string());
+            .unwrap_or_else(|| "member".to_string());
 
         if codes.iter().any(|code| code == "root") {
             return Ok(ActorContext::root_in_scope(

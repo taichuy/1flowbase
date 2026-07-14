@@ -193,18 +193,15 @@ async fn create_member_with_default_role_assigns_default_role_and_login_identiti
 
     assert_eq!(member.account, "alice");
     assert_eq!(member.status, UserStatus::Active);
-    assert_eq!(member.default_display_role.as_deref(), Some("manager"));
-    assert_eq!(
-        role_codes_for_user(&store, member.id).await,
-        vec!["manager"]
-    );
+    assert_eq!(member.default_display_role.as_deref(), Some("member"));
+    assert_eq!(role_codes_for_user(&store, member.id).await, vec!["member"]);
     let member_role_scope: Uuid = sqlx::query_scalar(
         r#"
         select urb.scope_id
         from user_role_bindings urb
         join roles r on r.id = urb.role_id
         where urb.user_id = $1
-          and r.code = 'manager'
+          and r.code = 'member'
         "#,
     )
     .bind(member.id)
@@ -709,10 +706,7 @@ async fn replace_member_roles_rejects_unknown_code_without_clearing_existing_bin
         error.downcast_ref::<ControlPlaneError>(),
         Some(ControlPlaneError::InvalidInput("role_code"))
     ));
-    assert_eq!(
-        role_codes_for_user(&store, member.id).await,
-        vec!["manager"]
-    );
+    assert_eq!(role_codes_for_user(&store, member.id).await, vec!["member"]);
 }
 
 #[tokio::test]
@@ -880,7 +874,7 @@ async fn role_deletion_rejects_default_and_bound_roles_before_deleting_unused_cu
         &store,
         actor_user_id,
         workspace_id,
-        "manager",
+        "member",
     )
     .await;
     let default_role_error = default_role_result.unwrap_err();

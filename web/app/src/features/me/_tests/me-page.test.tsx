@@ -32,7 +32,7 @@ function authenticate(
     actor: {
       id: 'user-1',
       account: 'root',
-      effective_display_role: 'manager',
+      effective_display_role: 'member',
       current_workspace_id: 'workspace-1'
     },
     me: {
@@ -46,7 +46,7 @@ function authenticate(
       introduction: '',
       preferred_locale: preferredLocale,
       meta,
-      effective_display_role: 'manager',
+      effective_display_role: 'member',
       permissions: []
     }
   });
@@ -116,7 +116,7 @@ describe('MePage', () => {
         avatar_url: null,
         introduction: 'updated intro',
         preferred_locale: null,
-        effective_display_role: 'manager',
+        effective_display_role: 'member',
         permissions: []
       });
 

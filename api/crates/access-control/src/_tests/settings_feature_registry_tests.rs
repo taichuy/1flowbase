@@ -356,8 +356,8 @@ fn ac_001_core_and_host_extension_compile_one_stably_sorted_inventory() {
             SettingsFeatureOwnerKind::Core,
             "core",
             &[
-                ("POST", "/api/console/roles"),
-                ("GET", "/api/console/roles"),
+                ("POST", "/api/console/settings/roles"),
+                ("GET", "/api/console/settings/roles"),
             ],
         ),
         feature(
@@ -388,12 +388,12 @@ fn ac_001_core_and_host_extension_compile_one_stably_sorted_inventory() {
             .map(|route| (route.method.as_str(), route.path.as_str()))
             .collect::<Vec<_>>(),
         vec![
-            ("GET", "/api/console/roles"),
-            ("POST", "/api/console/roles")
+            ("GET", "/api/console/settings/roles"),
+            ("POST", "/api/console/settings/roles")
         ]
     );
     assert_eq!(
-        registry.access_rule("GET", "/api/console/roles"),
+        registry.access_rule("GET", "/api/console/settings/roles"),
         Some(&AccessRule::SettingsFeature("system.roles".to_string()))
     );
 }
@@ -405,7 +405,7 @@ fn ac_002_duplicate_feature_id_fails_closed() {
             "system.roles",
             SettingsFeatureOwnerKind::Core,
             "core",
-            &[("GET", "/api/console/roles")],
+            &[("GET", "/api/console/settings/roles")],
         ),
         feature(
             "system.roles",
@@ -428,20 +428,20 @@ fn ac_002_duplicate_method_and_path_ownership_fails_closed() {
             "system.roles",
             SettingsFeatureOwnerKind::Core,
             "core",
-            &[("GET", "/api/console/roles")],
+            &[("GET", "/api/console/settings/roles")],
         ),
         feature(
             "system.members",
             SettingsFeatureOwnerKind::Core,
             "core",
-            &[("get", "/api/console/roles")],
+            &[("get", "/api/console/settings/roles")],
         ),
     ])
     .expect_err("duplicate method + path ownership must fail closed");
 
     assert!(error
         .to_string()
-        .contains("duplicate Settings API ownership GET /api/console/roles"));
+        .contains("duplicate Settings API ownership GET /api/console/settings/roles"));
 }
 
 #[test]
@@ -450,7 +450,7 @@ fn ac_002_missing_owner_fails_closed() {
         "system.roles",
         SettingsFeatureOwnerKind::Core,
         "",
-        &[("GET", "/api/console/roles")],
+        &[("GET", "/api/console/settings/roles")],
     )])
     .expect_err("missing owner must fail closed");
 

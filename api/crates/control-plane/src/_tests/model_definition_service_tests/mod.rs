@@ -449,7 +449,7 @@ fn scoped_manager_in_workspace(actor_user_id: Uuid, workspace_id: Uuid) -> Actor
     ActorContext::scoped(
         actor_user_id,
         workspace_id,
-        "manager",
+        "member",
         [
             "state_model.view.all".into(),
             "state_model.manage.all".into(),

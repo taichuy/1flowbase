@@ -106,7 +106,7 @@ async function selectPolicyCombobox(
 }
 
 const defaultDataPolicy = {
-  role_code: 'manager',
+  role_code: 'member',
   default_policy: {
     can_view: true,
     can_create: true,
@@ -205,8 +205,8 @@ describe('RolePermissionPanel', () => {
     authenticate();
     rolesApi.fetchSettingsRoles.mockResolvedValue([
       {
-        code: 'manager',
-        name: 'Manager',
+        code: 'member',
+        name: 'Member',
         introduction: '默认管理角色',
         scope_kind: 'workspace',
         is_builtin: true,
@@ -217,11 +217,11 @@ describe('RolePermissionPanel', () => {
       }
     ]);
     rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
-      role_code: 'manager',
+      role_code: 'member',
       permission_codes: []
     });
     rolesApi.fetchSettingsRoleFrontstageRoutes.mockResolvedValue({
-      role_code: 'manager',
+      role_code: 'member',
       tree: [
         {
           id: 'root-page',
@@ -283,7 +283,7 @@ describe('RolePermissionPanel', () => {
 
     await waitFor(() => {
       expect(rolesApi.replaceSettingsRoleFrontstageRoutes).toHaveBeenCalledWith(
-        'manager',
+        'member',
         {
           page_ids: ['child-page'],
           tab_ids: ['child-tab']
@@ -350,7 +350,7 @@ describe('RolePermissionPanel', () => {
 
       await waitFor(() => {
         expect(rolesApi.updateSettingsRole).toHaveBeenCalledWith(
-          'manager',
+          'member',
           {
             name: 'Manager Updated',
             introduction: '默认管理角色',
@@ -420,7 +420,7 @@ describe('RolePermissionPanel', () => {
 
     await waitFor(() => {
       expect(rolesApi.replaceSettingsRoleDataPolicy).toHaveBeenCalledWith(
-        'manager',
+        'member',
         {
           default_policy: {
             can_view: true,
@@ -479,7 +479,7 @@ describe('RolePermissionPanel', () => {
 
     await waitFor(() => {
       expect(rolesApi.replaceSettingsRoleDataPolicy).toHaveBeenCalledWith(
-        'manager',
+        'member',
         expect.objectContaining({
           model_policies: expect.arrayContaining([
             {
@@ -533,7 +533,7 @@ describe('RolePermissionPanel', () => {
       }
     ]);
     rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
-      role_code: 'manager',
+      role_code: 'member',
       permission_codes: ['custom_resource.audit.all']
     });
 
@@ -569,7 +569,7 @@ describe('RolePermissionPanel', () => {
       }
     ]);
     rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
-      role_code: 'manager',
+      role_code: 'member',
       permission_codes: ['settings_route.visible.settings.roles']
     });
 

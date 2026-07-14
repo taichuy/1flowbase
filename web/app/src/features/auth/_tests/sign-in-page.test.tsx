@@ -59,7 +59,7 @@ describe('SignInPage', () => {
   test('submits account/password and redirects to home on success', async () => {
     signInWithPassword.mockResolvedValue({
       csrf_token: 'csrf-123',
-      effective_display_role: 'manager',
+      effective_display_role: 'member',
       current_workspace_id: 'workspace-1'
     });
     fetchCurrentMe.mockResolvedValue({
@@ -71,7 +71,7 @@ describe('SignInPage', () => {
       name: 'Root',
       avatar_url: null,
       introduction: '',
-      effective_display_role: 'manager',
+      effective_display_role: 'member',
       permissions: []
     });
 
@@ -142,7 +142,7 @@ describe('SignInPage', () => {
     });
     signInWithPassword.mockResolvedValue({
       csrf_token: 'csrf-123',
-      effective_display_role: 'manager',
+      effective_display_role: 'member',
       current_workspace_id: 'workspace-1'
     });
     fetchCurrentMe.mockResolvedValue({
@@ -154,7 +154,7 @@ describe('SignInPage', () => {
       name: 'Root',
       avatar_url: null,
       introduction: '',
-      effective_display_role: 'manager',
+      effective_display_role: 'member',
       permissions: []
     });
 

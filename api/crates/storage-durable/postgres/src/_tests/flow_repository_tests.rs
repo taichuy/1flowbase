@@ -65,7 +65,7 @@ async fn seed_user(store: &PgControlPlaneStore, workspace_id: Uuid, account_pref
             default_display_role, email_login_enabled, phone_login_enabled, status, session_version,
             created_by, updated_by
         ) values (
-            $1, $2, $3, null, 'hash', $4, $5, null, '', 'manager', true, false, 'active', 1, null, null
+            $1, $2, $3, null, 'hash', $4, $5, null, '', 'member', true, false, 'active', 1, null, null
         )
         "#,
     )

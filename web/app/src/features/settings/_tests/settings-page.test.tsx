@@ -401,7 +401,7 @@ function settingsConsoleNavigation(
 
 function authenticateWithPermissions(
   permissions: string[],
-  effectiveDisplayRole: 'manager' | 'root' = 'manager'
+  effectiveDisplayRole: 'member' | 'root' = 'member'
 ) {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
@@ -455,7 +455,7 @@ describe('SettingsPage', () => {
     membersApi.fetchSettingsMembers.mockResolvedValue([]);
     rolesApi.fetchSettingsRoles.mockResolvedValue([]);
     rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
-      role_code: 'manager',
+      role_code: 'member',
       permission_codes: []
     });
     permissionsApi.fetchSettingsPermissions.mockResolvedValue([]);
@@ -1388,11 +1388,11 @@ describe('SettingsPage', () => {
         name: 'Manager 1',
         nickname: 'Manager 1',
         introduction: '',
-        default_display_role: 'manager',
+        default_display_role: 'member',
         email_login_enabled: true,
         phone_login_enabled: false,
         status: 'active',
-        role_codes: ['manager']
+        role_codes: ['member']
       }
     ]);
 
@@ -1416,7 +1416,7 @@ describe('SettingsPage', () => {
     );
 
     if (!rootRow || !managerRow) {
-      throw new Error('Expected root and manager member rows to be rendered.');
+      throw new Error('Expected root and regular member rows to be rendered.');
     }
 
     expect(

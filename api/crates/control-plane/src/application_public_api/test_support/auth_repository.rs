@@ -49,7 +49,7 @@ impl AuthRepository for ApplicationPublicApiTestRepository {
             actor_user_id,
             TEST_TENANT_ID,
             TEST_WORKSPACE_ID,
-            "manager",
+            "member",
             permissions,
         ))
     }
@@ -81,7 +81,7 @@ impl AuthRepository for ApplicationPublicApiTestRepository {
             user_id,
             tenant_id,
             workspace_id,
-            "manager",
+            "member",
             permissions,
         ))
     }

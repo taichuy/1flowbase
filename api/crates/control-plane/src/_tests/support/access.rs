@@ -28,7 +28,7 @@ pub struct MemoryMemberRepository {
 
 impl Default for MemoryMemberRepository {
     fn default() -> Self {
-        Self::with_default_role("manager")
+        Self::with_default_role("member")
     }
 }
 
@@ -113,13 +113,13 @@ impl MemberRepository for MemoryMemberRepository {
             introduction: input.introduction.clone(),
             preferred_locale: None,
             meta: serde_json::json!({}),
-            default_display_role: Some("manager".to_string()),
+            default_display_role: Some("member".to_string()),
             email_login_enabled: true,
             phone_login_enabled: false,
             status: UserStatus::Active,
             session_version: 1,
             roles: vec![BoundRole {
-                code: "manager".to_string(),
+                code: "member".to_string(),
                 scope_kind: RoleScopeKind::Workspace,
                 workspace_id: Some(Uuid::nil()),
             }],

@@ -30,20 +30,20 @@ function authenticate() {
     csrfToken: 'csrf-123',
     actor: {
       id: 'user-1',
-      account: 'manager',
-      effective_display_role: 'manager',
+      account: 'member',
+      effective_display_role: 'member',
       current_workspace_id: 'workspace-1'
     },
     me: {
       id: 'user-1',
-      account: 'manager',
+      account: 'member',
       email: 'manager@example.com',
       phone: null,
-      nickname: 'manager',
-      name: 'manager',
+      nickname: 'member',
+      name: 'member',
       avatar_url: null,
       introduction: '',
-      effective_display_role: 'manager',
+      effective_display_role: 'member',
       permissions: ['user.view.all', 'user.manage.all']
     }
   });

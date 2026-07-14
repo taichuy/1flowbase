@@ -24,7 +24,7 @@ describe('console personal access tokens client', () => {
       createConsolePersonalAccessToken(
         {
           name: 'CI diagnostics',
-          role_code: 'manager',
+          role_code: 'member',
           expiration_policy: '1y'
         },
         'csrf-123'
@@ -35,7 +35,7 @@ describe('console personal access tokens client', () => {
       csrfToken: 'csrf-123',
       body: {
         name: 'CI diagnostics',
-        role_code: 'manager',
+        role_code: 'member',
         expiration_policy: '1y'
       }
     });

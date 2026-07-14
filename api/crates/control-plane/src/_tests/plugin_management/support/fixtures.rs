@@ -29,7 +29,7 @@ pub(crate) fn actor_with_permissions(workspace_id: Uuid, permissions: &[&str]) -
     ActorContext::scoped(
         Uuid::now_v7(),
         workspace_id,
-        "manager",
+        "member",
         permissions.iter().map(|value| value.to_string()),
     )
 }

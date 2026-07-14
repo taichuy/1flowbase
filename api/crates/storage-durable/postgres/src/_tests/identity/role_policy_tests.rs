@@ -74,7 +74,7 @@ async fn upsert_permission_catalog_grants_new_permissions_only_to_auto_grant_rol
 }
 
 #[tokio::test]
-async fn upsert_builtin_roles_sets_admin_auto_grant_and_manager_default_member_role() {
+async fn upsert_builtin_roles_sets_admin_auto_grant_and_member_default_role() {
     let (store, workspace_id) = bootstrapped_store().await;
 
     let role_flags: Vec<(String, bool, bool)> = sqlx::query_as(
@@ -95,7 +95,7 @@ async fn upsert_builtin_roles_sets_admin_auto_grant_and_manager_default_member_r
         vec![
             ("root".to_string(), false, false),
             ("admin".to_string(), true, false),
-            ("manager".to_string(), false, true),
+            ("member".to_string(), false, true),
         ]
     );
 }
@@ -151,7 +151,7 @@ async fn role_data_policy_migration_seeds_builtin_roles_and_new_roles_get_restri
                 "scope_all".to_string(),
             ),
             (
-                "manager".to_string(),
+                "member".to_string(),
                 true,
                 true,
                 true,
@@ -292,5 +292,5 @@ async fn upsert_permission_catalog_grants_settings_api_key_route_to_existing_wor
     .await
     .unwrap();
 
-    assert_eq!(granted_roles, vec!["admin", "manager"]);
+    assert_eq!(granted_roles, vec!["admin", "member"]);
 }

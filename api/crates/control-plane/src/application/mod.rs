@@ -804,7 +804,7 @@ impl ApplicationRepository for InMemoryApplicationRepository {
             actor_user_id,
             inner.tenant_id,
             inner.workspace_id,
-            "manager",
+            "member",
             inner.permissions.iter().cloned(),
         ))
     }

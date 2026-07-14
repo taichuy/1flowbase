@@ -165,7 +165,7 @@ pub fn builtin_role_templates() -> Vec<RoleTemplate> {
         .map(|permission| permission.code)
         .collect::<Vec<_>>();
 
-    let manager_resources = [
+    let member_resources = [
         "application",
         "flow",
         "publish_endpoint",
@@ -175,10 +175,10 @@ pub fn builtin_role_templates() -> Vec<RoleTemplate> {
         "external_data_source",
         "embedded_app",
     ];
-    let manager_permissions = all_codes
+    let member_permissions = all_codes
         .iter()
         .filter(|code| {
-            let matches_resource = manager_resources
+            let matches_resource = member_resources
                 .iter()
                 .any(|resource| code.starts_with(resource));
 
@@ -212,15 +212,15 @@ pub fn builtin_role_templates() -> Vec<RoleTemplate> {
             permissions: all_codes.clone(),
         },
         RoleTemplate {
-            code: "manager".to_string(),
-            name: "Manager".to_string(),
-            introduction: "工作区成员默认管理角色".to_string(),
+            code: "member".to_string(),
+            name: "Member".to_string(),
+            introduction: "工作区普通成员默认角色".to_string(),
             scope_kind: RoleScopeKind::Workspace,
             is_builtin: true,
             is_editable: true,
             auto_grant_new_permissions: false,
             is_default_member_role: true,
-            permissions: manager_permissions,
+            permissions: member_permissions,
         },
     ]
 }

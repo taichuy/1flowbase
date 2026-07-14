@@ -15,14 +15,14 @@ fn member_mapper_preserves_roles_and_status() {
         introduction: String::new(),
         preferred_locale: None,
         meta: serde_json::json!({}),
-        default_display_role: Some("manager".into()),
+        default_display_role: Some("member".into()),
         avatar_url: None,
         email_login_enabled: true,
         phone_login_enabled: false,
         status: "active".into(),
         session_version: 1,
         roles: vec![(
-            "manager".into(),
+            "member".into(),
             RoleScopeKind::Workspace,
             Some(Uuid::nil()),
         )],
@@ -32,5 +32,5 @@ fn member_mapper_preserves_roles_and_status() {
 
     assert!(matches!(user.status, UserStatus::Active));
     assert_eq!(user.roles.len(), 1);
-    assert_eq!(user.roles[0].code, "manager");
+    assert_eq!(user.roles[0].code, "member");
 }

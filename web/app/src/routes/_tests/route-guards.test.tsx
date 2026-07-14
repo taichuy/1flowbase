@@ -68,20 +68,20 @@ describe('RouteGuard', () => {
       csrfToken: 'csrf-123',
       actor: {
         id: 'user-1',
-        account: 'manager',
-        effective_display_role: 'manager',
+        account: 'member',
+        effective_display_role: 'member',
         current_workspace_id: 'workspace-1'
       },
       me: {
         id: 'user-1',
-        account: 'manager',
+        account: 'member',
         email: 'manager@example.com',
         phone: null,
         nickname: 'Manager',
         name: 'Manager',
         avatar_url: null,
         introduction: '',
-        effective_display_role: 'manager',
+        effective_display_role: 'member',
         permissions: []
       }
     });

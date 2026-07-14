@@ -10,6 +10,34 @@ use serde_json::json;
 use tower::ServiceExt;
 
 #[tokio::test]
+async fn role_list_exposes_only_workspace_admin_and_member_builtins() {
+    let app = test_app().await;
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/roles")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let codes = payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|role| role["code"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(codes, vec!["admin", "member"]);
+}
+
+#[tokio::test]
 async fn role_routes_create_replace_permissions_and_protect_root() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -433,15 +461,15 @@ async fn role_routes_roundtrip_policy_flags_and_protect_default_role_from_clear(
         .iter()
         .find(|role| role["code"].as_str() == Some("qa"))
         .unwrap();
-    let manager = roles
+    let member = roles
         .iter()
-        .find(|role| role["code"].as_str() == Some("manager"))
+        .find(|role| role["code"].as_str() == Some("member"))
         .unwrap();
 
     assert_eq!(qa["name"].as_str(), Some("QA Updated"));
     assert_eq!(qa["auto_grant_new_permissions"].as_bool(), Some(false));
     assert_eq!(qa["is_default_member_role"].as_bool(), Some(true));
-    assert_eq!(manager["is_default_member_role"].as_bool(), Some(false));
+    assert_eq!(member["is_default_member_role"].as_bool(), Some(false));
 
     let clear_response = app
         .clone()

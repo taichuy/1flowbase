@@ -41,7 +41,7 @@ async fn update_workspace_requires_workspace_configure_permission() {
                 user_id: Uuid::now_v7(),
                 tenant_id: workspace.tenant_id,
                 current_workspace_id: workspace.id,
-                effective_display_role: "manager".to_string(),
+                effective_display_role: "member".to_string(),
                 is_root: false,
                 permissions: Default::default(),
             },

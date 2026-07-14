@@ -359,7 +359,7 @@ export function seedStyleBoundaryAuth() {
     actor: {
       id: 'user-1',
       account: 'root',
-      effective_display_role: 'manager',
+      effective_display_role: 'member',
       current_workspace_id: 'workspace-1'
     },
     me: {

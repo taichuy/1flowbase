@@ -36,9 +36,9 @@ fn sample_user(default_display_role: Option<&str>, roles: &[&str]) -> UserRecord
 
 #[test]
 fn resolved_display_role_falls_back_to_first_bound_role() {
-    let user = sample_user(Some("deleted-role"), &["manager", "admin"]);
+    let user = sample_user(Some("deleted-role"), &["member", "admin"]);
 
-    assert_eq!(user.resolved_display_role().as_deref(), Some("manager"));
+    assert_eq!(user.resolved_display_role().as_deref(), Some("member"));
 }
 
 #[test]

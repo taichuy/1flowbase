@@ -120,9 +120,9 @@ async fn role_service_rejects_system_all_data_policy_for_workspace_roles() {
     service
         .create_role(CreateRoleCommand {
             actor_user_id: repository.root_user_id(),
-            code: "manager".into(),
-            name: "Manager".into(),
-            introduction: "manager role".into(),
+            code: "editor".into(),
+            name: "Editor".into(),
+            introduction: "editor role".into(),
             auto_grant_new_permissions: false,
             is_default_member_role: false,
         })
@@ -132,7 +132,7 @@ async fn role_service_rejects_system_all_data_policy_for_workspace_roles() {
     let default_scope_error = service
         .replace_data_policy(ReplaceRoleDataPolicyCommand {
             actor_user_id: repository.root_user_id(),
-            role_code: "manager".into(),
+            role_code: "editor".into(),
             default_policy: RoleDataPolicyDefaultsInput {
                 can_view: true,
                 can_create: true,
@@ -153,7 +153,7 @@ async fn role_service_rejects_system_all_data_policy_for_workspace_roles() {
     let model_scope_error = service
         .replace_data_policy(ReplaceRoleDataPolicyCommand {
             actor_user_id: repository.root_user_id(),
-            role_code: "manager".into(),
+            role_code: "editor".into(),
             default_policy: RoleDataPolicyDefaultsInput {
                 can_view: true,
                 can_create: true,

@@ -156,7 +156,7 @@ async fn list_accessible_workspaces_returns_only_memberships_for_non_root() {
     let workspace_c = insert_workspace(&store, tenant_id, "Workspace Access C").await;
     let user_id = Uuid::now_v7();
 
-    insert_user(&store, user_id, "member-access", "manager").await;
+    insert_user(&store, user_id, "member-access", "member").await;
     insert_membership(&store, workspace_a, user_id).await;
     insert_membership(&store, workspace_c, user_id).await;
 
@@ -239,7 +239,7 @@ async fn load_actor_context_ignores_display_role_when_role_is_missing_in_target_
     let target_workspace_id = insert_workspace(&store, tenant_id, "Workspace Target").await;
     let user_id = Uuid::now_v7();
     let source_admin_role = insert_workspace_role(&store, source_workspace_id, "admin").await;
-    let target_manager_role = insert_workspace_role(&store, target_workspace_id, "manager").await;
+    let target_manager_role = insert_workspace_role(&store, target_workspace_id, "member").await;
 
     insert_user(&store, user_id, "role-fallback", "admin").await;
     insert_membership(&store, source_workspace_id, user_id).await;
@@ -257,5 +257,5 @@ async fn load_actor_context_ignores_display_role_when_role_is_missing_in_target_
     .await
     .unwrap();
 
-    assert_eq!(actor.effective_display_role, "manager");
+    assert_eq!(actor.effective_display_role, "member");
 }

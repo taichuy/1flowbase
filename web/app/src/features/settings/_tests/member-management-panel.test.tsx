@@ -113,7 +113,7 @@ describe('MemberManagementPanel', () => {
         email_login_enabled: true,
         phone_login_enabled: false,
         status: 'active',
-        role_codes: ['root', 'manager']
+        role_codes: ['root', 'member']
       },
       {
         id: 'user-2',
@@ -123,11 +123,11 @@ describe('MemberManagementPanel', () => {
         name: 'User Name',
         nickname: 'User Nick',
         introduction: '',
-        default_display_role: 'manager',
+        default_display_role: 'member',
         email_login_enabled: true,
         phone_login_enabled: false,
         status: 'active',
-        role_codes: ['manager']
+        role_codes: ['member']
       },
       {
         id: 'user-3',
@@ -137,11 +137,11 @@ describe('MemberManagementPanel', () => {
         name: 'Disabled User',
         nickname: 'Disabled Nick',
         introduction: '',
-        default_display_role: 'manager',
+        default_display_role: 'member',
         email_login_enabled: true,
         phone_login_enabled: false,
         status: 'disabled',
-        role_codes: ['manager']
+        role_codes: ['member']
       }
     ]);
     membersApi.updateSettingsMember.mockResolvedValue({
@@ -156,15 +156,15 @@ describe('MemberManagementPanel', () => {
       email_login_enabled: true,
       phone_login_enabled: false,
       status: 'active',
-      role_codes: ['root', 'manager', 'operator']
+      role_codes: ['root', 'member', 'operator']
     });
     membersApi.replaceSettingsMemberRoles.mockResolvedValue(undefined);
     membersApi.enableSettingsMember.mockResolvedValue(undefined);
     membersApi.deleteSettingsMember.mockResolvedValue(undefined);
     rolesApi.fetchSettingsRoles.mockResolvedValue([
       {
-        code: 'manager',
-        name: 'Manager',
+        code: 'member',
+        name: 'Member',
         introduction: '',
         scope_kind: 'workspace',
         is_builtin: true,
@@ -323,7 +323,7 @@ describe('MemberManagementPanel', () => {
         await waitFor(() => {
           expect(membersApi.replaceSettingsMemberRoles).toHaveBeenCalledWith(
             'user-1',
-            { role_codes: ['root', 'manager', 'operator'] },
+            { role_codes: ['root', 'member', 'operator'] },
             'csrf-123'
           );
         });

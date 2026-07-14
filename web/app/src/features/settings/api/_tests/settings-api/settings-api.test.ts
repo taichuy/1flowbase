@@ -243,18 +243,18 @@ describe('settings api wrappers', () => {
       old_password: 'change-me',
       new_password: 'next-pass'
     };
-    const memberRolesInput = { role_codes: ['manager'] };
-    const roleInput = { code: 'manager', name: 'Manager' };
-    const roleUpdateInput = { name: 'Platform Manager' };
+    const memberRolesInput = { role_codes: ['member'] };
+    const roleInput = { code: 'member', name: 'Member' };
+    const roleUpdateInput = { name: 'Platform Member' };
     const rolePermissionsInput = { permission_codes: ['state_model.view.all'] };
 
     expect(settingsMembersQueryKey).toEqual(['settings', 'members']);
     expect(settingsPermissionsQueryKey).toEqual(['settings', 'permissions']);
     expect(settingsRolesQueryKey).toEqual(['settings', 'roles']);
-    expect(settingsRolePermissionsQueryKey('manager')).toEqual([
+    expect(settingsRolePermissionsQueryKey('member')).toEqual([
       'settings',
       'roles',
-      'manager',
+      'member',
       'permissions'
     ]);
 
@@ -278,11 +278,11 @@ describe('settings api wrappers', () => {
     await fetchSettingsPermissions();
     await fetchSettingsRoles();
     await createSettingsRole(roleInput as never, 'csrf-123');
-    await updateSettingsRole('manager', roleUpdateInput as never, 'csrf-123');
-    await deleteSettingsRole('manager', 'csrf-123');
-    await fetchSettingsRolePermissions('manager');
+    await updateSettingsRole('member', roleUpdateInput as never, 'csrf-123');
+    await deleteSettingsRole('member', 'csrf-123');
+    await fetchSettingsRolePermissions('member');
     await replaceSettingsRolePermissions(
-      'manager',
+      'member',
       rolePermissionsInput as never,
       'csrf-123'
     );
@@ -315,14 +315,14 @@ describe('settings api wrappers', () => {
     expect(listConsoleRoles).toHaveBeenCalledTimes(1);
     expect(createConsoleRole).toHaveBeenCalledWith(roleInput, 'csrf-123');
     expect(updateConsoleRole).toHaveBeenCalledWith(
-      'manager',
+      'member',
       roleUpdateInput,
       'csrf-123'
     );
-    expect(deleteConsoleRole).toHaveBeenCalledWith('manager', 'csrf-123');
-    expect(fetchConsoleRolePermissions).toHaveBeenCalledWith('manager');
+    expect(deleteConsoleRole).toHaveBeenCalledWith('member', 'csrf-123');
+    expect(fetchConsoleRolePermissions).toHaveBeenCalledWith('member');
     expect(replaceConsoleRolePermissions).toHaveBeenCalledWith(
-      'manager',
+      'member',
       rolePermissionsInput,
       'csrf-123'
     );

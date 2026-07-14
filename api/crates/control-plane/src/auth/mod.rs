@@ -328,7 +328,7 @@ where
                     .role_code
                     .as_deref()
                     .or(user.default_display_role.as_deref())
-                    .unwrap_or("manager"),
+                    .unwrap_or("member"),
             )
             .await?;
         self.repository.mark_api_key_used(api_key.id).await?;
