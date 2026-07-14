@@ -1,10 +1,14 @@
 use std::{collections::HashSet, convert::Infallible, sync::Arc};
 
+use access_control::{
+    APPLICATIONS_LOGS_EXPORT_OPERATION_ID, APPLICATIONS_LOGS_IMPORT_OPERATION_ID,
+    APPLICATIONS_RUN_OPERATION_ID, APPLICATIONS_UPDATE_OPERATION_ID,
+    APPLICATIONS_VIEW_OPERATION_ID,
+};
 use axum::{
     extract::{Path, Query, RawQuery, State},
     http::{HeaderMap, StatusCode},
     response::sse::{Event, KeepAlive, Sse},
-    routing::{get, post, put},
     Json, Router,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -46,6 +50,9 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
+    routes::console_route_assembly::{
+        console_get, console_post, console_put, ConsoleRouteAssembly,
+    },
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
@@ -84,145 +91,263 @@ fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
 
 include!("application_runtime/types.rs");
 
-#[allow(deprecated)]
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
+    route_assembly().into_router()
+}
+
+#[allow(deprecated)]
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
         .route(
             "/applications/:id/orchestration/debug-runs",
-            post(start_flow_debug_run),
+            console_post(
+                start_flow_debug_run,
+                ConsoleOperation(APPLICATIONS_RUN_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/debug-runs/stream",
-            post(start_flow_debug_run_stream),
+            console_post(
+                start_flow_debug_run_stream,
+                ConsoleOperation(APPLICATIONS_RUN_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/runs/:run_id/debug-stream",
-            get(subscribe_flow_debug_run_stream),
+            console_get(
+                subscribe_flow_debug_run_stream,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/runs/:run_id/debug-snapshot",
-            get(get_flow_debug_run_snapshot),
+            console_get(
+                get_flow_debug_run_snapshot,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/runs/:run_id/resume",
-            post(resume_flow_run),
+            console_post(
+                resume_flow_run,
+                ConsoleOperation(APPLICATIONS_RUN_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/runs/:run_id/cancel",
-            post(cancel_flow_run),
+            console_post(
+                cancel_flow_run,
+                ConsoleOperation(APPLICATIONS_RUN_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/callback-tasks/:callback_task_id/complete",
-            post(complete_callback_task),
+            console_post(
+                complete_callback_task,
+                ConsoleOperation(APPLICATIONS_RUN_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/nodes/:node_id/debug-runs",
-            post(start_node_debug_preview),
+            console_post(
+                start_node_debug_preview,
+                ConsoleOperation(APPLICATIONS_RUN_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/debug-variable-snapshot",
-            get(get_debug_variable_snapshot),
+            console_get(
+                get_debug_variable_snapshot,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/debug-variable-cache",
-            put(upsert_debug_variable_cache_entry).delete(delete_debug_variable_cache_entries),
+            console_put(
+                upsert_debug_variable_cache_entry,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            )
+            .delete(
+                delete_debug_variable_cache_entries,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/debug-artifacts/resolve",
-            post(resolve_runtime_debug_artifacts),
+            console_post(
+                resolve_runtime_debug_artifacts,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/debug-artifacts/:artifact_id",
-            get(get_runtime_debug_artifact),
+            console_get(
+                get_runtime_debug_artifact,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
-        .route("/applications/:id/logs/runs", get(list_application_runs))
+        .route(
+            "/applications/:id/logs/runs",
+            console_get(
+                list_application_runs,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
+        )
         .route(
             "/applications/:id/logs/runs/export",
-            post(export_application_runs_zip),
+            console_post(
+                export_application_runs_zip,
+                ConsoleOperation(APPLICATIONS_LOGS_EXPORT_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/archive",
-            post(export_application_runs_archive),
+            console_post(
+                export_application_runs_archive,
+                ConsoleOperation(APPLICATIONS_LOGS_EXPORT_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/archive/import-sessions",
-            post(create_run_archive_upload_session),
+            console_post(
+                create_run_archive_upload_session,
+                ConsoleOperation(APPLICATIONS_LOGS_IMPORT_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/archive/import-sessions/:session_id/chunks/:chunk_index",
-            put(upload_run_archive_chunk),
+            console_put(
+                upload_run_archive_chunk,
+                ConsoleOperation(APPLICATIONS_LOGS_IMPORT_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/archive/import-sessions/:session_id/complete",
-            post(complete_run_archive_upload_session),
+            console_post(
+                complete_run_archive_upload_session,
+                ConsoleOperation(APPLICATIONS_LOGS_IMPORT_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/archive/import-jobs/:job_id",
-            get(get_run_archive_import_job),
+            console_get(
+                get_run_archive_import_job,
+                ConsoleOperation(APPLICATIONS_LOGS_IMPORT_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/monitoring/run-metrics",
-            get(application_monitoring::get_application_run_monitoring_report),
+            console_get(
+                application_monitoring::get_application_run_monitoring_report,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/monitoring/runtime-activity",
-            get(application_monitoring::get_application_runtime_activity),
+            console_get(
+                application_monitoring::get_application_runtime_activity,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/conversations/:conversation_id/messages",
-            get(list_application_conversation_messages),
+            console_get(
+                list_application_conversation_messages,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/conversation/messages",
-            get(list_application_run_conversation_messages),
+            console_get(
+                list_application_run_conversation_messages,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/overview",
-            get(get_application_run_overview),
+            console_get(
+                get_application_run_overview,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/trace-tree",
-            get(get_application_run_trace_tree),
+            console_get(
+                get_application_run_trace_tree,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/export",
-            get(export_application_run_trace_dump),
+            console_get(
+                export_application_run_trace_dump,
+                ConsoleOperation(APPLICATIONS_LOGS_EXPORT_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/archive",
-            get(export_application_run_archive),
+            console_get(
+                export_application_run_archive,
+                ConsoleOperation(APPLICATIONS_LOGS_EXPORT_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/trace-tree/nodes",
-            get(get_application_run_trace_node_children),
+            console_get(
+                get_application_run_trace_node_children,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/content",
-            get(get_application_run_trace_node_content),
+            console_get(
+                get_application_run_trace_node_content,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/details/:detail_ref_id",
-            get(get_application_run_trace_node_detail),
+            console_get(
+                get_application_run_trace_node_detail,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/tool-callbacks/:tool_call_id/content",
-            get(get_application_run_trace_tool_callback_content),
+            console_get(
+                get_application_run_trace_tool_callback_content,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/resume-timeline",
-            get(get_application_run_resume_timeline),
+            console_get(
+                get_application_run_resume_timeline,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/nodes/:node_id",
-            get(get_application_run_node_last_run),
+            console_get(
+                get_application_run_node_last_run,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/logs/runs/:run_id/debug-stream",
-            get(get_runtime_debug_stream),
+            console_get(
+                get_runtime_debug_stream,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:id/orchestration/nodes/:node_id/last-run",
-            get(get_node_last_run),
+            console_get(
+                get_node_last_run,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
 }
 

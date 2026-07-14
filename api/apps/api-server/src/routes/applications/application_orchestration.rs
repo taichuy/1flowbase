@@ -1,9 +1,14 @@
 use std::sync::Arc;
 
+use access_control::{
+    APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID,
+    APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID,
+    APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID, APPLICATIONS_UPDATE_OPERATION_ID,
+    APPLICATIONS_VIEW_OPERATION_ID,
+};
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, patch, post, put},
     Json, Router,
 };
 use control_plane::{
@@ -25,6 +30,9 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{
+        console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
+    },
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -208,36 +216,72 @@ pub struct OfficialAgentFlowTemplateCatalogResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/applications/:id/orchestration", get(get_orchestration))
-        .route("/applications/:id/orchestration/draft", put(save_draft))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/applications/:id/orchestration",
+            console_get(
+                get_orchestration,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:id/orchestration/draft",
+            console_put(
+                save_draft,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
+        )
         .route(
             "/applications/:id/orchestration/template",
-            get(export_agent_flow_template),
+            console_get(
+                export_agent_flow_template,
+                ConsoleOperation(
+                    APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID.to_string(),
+                ),
+            ),
         )
         .route(
             "/applications/orchestration/template/preview",
-            post(preview_agent_flow_template),
+            console_post(preview_agent_flow_template, Authenticated),
         )
         .route(
             "/applications/orchestration/template/import",
-            post(import_agent_flow_template),
+            console_post(
+                import_agent_flow_template,
+                ConsoleOperation(
+                    APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID.to_string(),
+                ),
+            ),
         )
         .route(
             "/applications/orchestration/templates/official-catalog",
-            get(list_official_agent_flow_template_catalog),
+            console_get(list_official_agent_flow_template_catalog, Authenticated),
         )
         .route(
             "/applications/orchestration/templates/official/:workflow_id",
-            get(download_official_agent_flow_template),
+            console_get(download_official_agent_flow_template, Authenticated),
         )
         .route(
             "/applications/:id/orchestration/versions/:version_id/restore",
-            post(restore_version),
+            console_post(
+                restore_version,
+                ConsoleOperation(
+                    APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID.to_string(),
+                ),
+            ),
         )
         .route(
             "/applications/:id/orchestration/versions/:version_id",
-            patch(update_version),
+            console_patch(
+                update_version,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
         )
 }
 

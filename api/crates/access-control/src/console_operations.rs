@@ -18,6 +18,17 @@ pub const APPLICATIONS_CREATE_OPERATION_ID: &str = "applications.create";
 pub const APPLICATIONS_VIEW_OPERATION_ID: &str = "applications.view";
 pub const APPLICATIONS_UPDATE_OPERATION_ID: &str = "applications.update";
 pub const APPLICATIONS_DELETE_OPERATION_ID: &str = "applications.delete";
+pub const APPLICATIONS_PUBLISH_OPERATION_ID: &str = "applications.publish";
+pub const APPLICATIONS_API_SET_ENABLED_OPERATION_ID: &str = "applications.api.set_enabled";
+pub const APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID: &str =
+    "applications.orchestration.template.export";
+pub const APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID: &str =
+    "applications.orchestration.template.import";
+pub const APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID: &str =
+    "applications.orchestration.version.restore";
+pub const APPLICATIONS_RUN_OPERATION_ID: &str = "applications.run";
+pub const APPLICATIONS_LOGS_EXPORT_OPERATION_ID: &str = "applications.logs.export";
+pub const APPLICATIONS_LOGS_IMPORT_OPERATION_ID: &str = "applications.logs.import";
 pub const APPLICATIONS_CREATE_ACTION_CODE: &str = "create";
 pub const APPLICATIONS_VIEW_ACTION_CODE: &str = "view";
 pub const APPLICATIONS_UPDATE_ACTION_CODE: &str = "update";

@@ -5,9 +5,14 @@ use access_control::{
     ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteAssemblyBinding, ConsoleRouteBinding,
     ConsoleRouteOwnership, ResourceAccessAction, ResourceAccessRegistration,
     ResourceAccessScopeKind, SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
-    SettingsFeatureRegistration, SettingsFeatureRegistry, APPLICATIONS_CREATE_ACTION_CODE,
+    SettingsFeatureRegistration, SettingsFeatureRegistry,
+    APPLICATIONS_API_SET_ENABLED_OPERATION_ID, APPLICATIONS_CREATE_ACTION_CODE,
     APPLICATIONS_CREATE_OPERATION_ID, APPLICATIONS_DELETE_ACTION_CODE,
-    APPLICATIONS_DELETE_OPERATION_ID, APPLICATIONS_RESOURCE_CODE, APPLICATIONS_UPDATE_ACTION_CODE,
+    APPLICATIONS_DELETE_OPERATION_ID, APPLICATIONS_LOGS_EXPORT_OPERATION_ID,
+    APPLICATIONS_LOGS_IMPORT_OPERATION_ID, APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID,
+    APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID,
+    APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID, APPLICATIONS_PUBLISH_OPERATION_ID,
+    APPLICATIONS_RESOURCE_CODE, APPLICATIONS_RUN_OPERATION_ID, APPLICATIONS_UPDATE_ACTION_CODE,
     APPLICATIONS_UPDATE_OPERATION_ID, APPLICATIONS_VIEW_ACTION_CODE,
     APPLICATIONS_VIEW_OPERATION_ID, SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID,
 };
@@ -38,6 +43,21 @@ where
     }
 }
 
+pub fn console_delete<H, T, S>(
+    handler: H,
+    ownership: ConsoleRouteOwnership,
+) -> ConsoleMethodRouter<S>
+where
+    H: Handler<T, S>,
+    T: 'static,
+    S: Clone + Send + Sync + 'static,
+{
+    ConsoleMethodRouter {
+        router: axum::routing::delete(handler),
+        methods: vec![("DELETE", ownership)],
+    }
+}
+
 pub fn console_patch<H, T, S>(
     handler: H,
     ownership: ConsoleRouteOwnership,
@@ -62,6 +82,18 @@ where
     ConsoleMethodRouter {
         router: post(handler),
         methods: vec![("POST", ownership)],
+    }
+}
+
+pub fn console_put<H, T, S>(handler: H, ownership: ConsoleRouteOwnership) -> ConsoleMethodRouter<S>
+where
+    H: Handler<T, S>,
+    T: 'static,
+    S: Clone + Send + Sync + 'static,
+{
+    ConsoleMethodRouter {
+        router: axum::routing::put(handler),
+        methods: vec![("PUT", ownership)],
     }
 }
 
@@ -163,6 +195,9 @@ pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<std::sync:
         .merge(super::navigation::route_assembly())
         .merge(super::application_management::route_assembly())
         .merge(super::applications::route_assembly())
+        .merge(super::application_api::route_assembly())
+        .merge(super::application_orchestration::route_assembly())
+        .merge(super::application_runtime::route_assembly())
 }
 
 fn routes_owned_by(
@@ -291,9 +326,33 @@ pub fn compile_migrated_core_console_operation_registry(
             },
         },
     ];
+    let applications_simple_operations = [
+        (APPLICATIONS_PUBLISH_OPERATION_ID, 140),
+        (APPLICATIONS_API_SET_ENABLED_OPERATION_ID, 150),
+        (APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID, 160),
+        (APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID, 170),
+        (APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID, 180),
+        (APPLICATIONS_RUN_OPERATION_ID, 190),
+        (APPLICATIONS_LOGS_EXPORT_OPERATION_ID, 200),
+        (APPLICATIONS_LOGS_IMPORT_OPERATION_ID, 210),
+    ]
+    .into_iter()
+    .map(|(operation_id, order)| ConsoleOperationRegistration {
+        operation_id: operation_id.to_string(),
+        owner: core_owner.clone(),
+        lifecycle: SettingsFeatureLifecycle::Active,
+        policy_group: ConsolePolicyGroup::SettingsFeature(
+            SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID.to_string(),
+        ),
+        label_ref: format!("console.operations.{operation_id}.label"),
+        description_ref: Some(format!("console.operations.{operation_id}.description")),
+        order,
+        routes: routes_owned_by(bindings, operation_id),
+        authorization: ConsoleAuthorization::Simple,
+    });
     let applications_resource = ResourceAccessRegistration {
         resource_code: APPLICATIONS_RESOURCE_CODE.to_string(),
-        owner: core_owner,
+        owner: core_owner.clone(),
         lifecycle: SettingsFeatureLifecycle::Active,
         scope_kind: ResourceAccessScopeKind::Workspace,
         identity_field: "id".to_string(),
@@ -321,7 +380,9 @@ pub fn compile_migrated_core_console_operation_registry(
     };
     let registry = ConsoleOperationRegistry::compile(
         &migrated_settings,
-        std::iter::once(authenticated_operation).chain(applications_operations),
+        std::iter::once(authenticated_operation)
+            .chain(applications_operations)
+            .chain(applications_simple_operations),
         [applications_resource],
     )?;
     registry.validate_console_route_coverage(bindings.iter().cloned())?;

@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
+use access_control::{
+    APPLICATIONS_API_SET_ENABLED_OPERATION_ID, APPLICATIONS_PUBLISH_OPERATION_ID,
+    APPLICATIONS_UPDATE_OPERATION_ID, APPLICATIONS_VIEW_OPERATION_ID,
+};
 use axum::{
     extract::{Path, Query, State},
     http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{delete, get, post},
     Json, Router,
 };
 use control_plane::{
@@ -53,6 +56,9 @@ use crate::{
         DocsCatalogCategoryOperationsPage, DOCS_OPERATIONS_PAGE_SIZE,
     },
     response::ApiSuccess,
+    routes::console_route_assembly::{
+        console_delete, console_get, console_patch, console_post, ConsoleRouteAssembly,
+    },
 };
 
 const PUBLIC_RUNS_PATH: &str = "/api/agent/v1/runs";
@@ -265,50 +271,101 @@ pub struct ApplicationPublicationResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
         .route(
             "/applications/:application_id/api-keys",
-            get(list_application_api_keys).post(create_application_api_key),
+            console_get(
+                list_application_api_keys,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .post(
+                create_application_api_key,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:application_id/api-keys/:key_id",
-            delete(revoke_application_api_key),
+            console_delete(
+                revoke_application_api_key,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:application_id/api-mapping",
-            get(get_application_api_mapping).put(replace_application_api_mapping),
+            console_get(
+                get_application_api_mapping,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .put(
+                replace_application_api_mapping,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:application_id/api-publication",
-            get(get_application_api_publication),
+            console_get(
+                get_application_api_publication,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:application_id/api-publications",
-            post(publish_application_api),
+            console_post(
+                publish_application_api,
+                ConsoleOperation(APPLICATIONS_PUBLISH_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:application_id/api-status",
-            axum::routing::patch(patch_application_api_status),
+            console_patch(
+                patch_application_api_status,
+                ConsoleOperation(APPLICATIONS_API_SET_ENABLED_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:application_id/workflow-schedule-trigger",
-            get(get_workflow_schedule_trigger).put(replace_workflow_schedule_trigger),
+            console_get(
+                get_workflow_schedule_trigger,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .put(
+                replace_workflow_schedule_trigger,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:application_id/api-docs/catalog",
-            get(get_application_api_docs_catalog),
+            console_get(
+                get_application_api_docs_catalog,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:application_id/api-docs/categories/:category_id/operations",
-            get(get_application_api_docs_category_operations),
+            console_get(
+                get_application_api_docs_category_operations,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:application_id/api-docs/categories/:category_id/openapi.json",
-            get(get_application_api_docs_category_openapi),
+            console_get(
+                get_application_api_docs_category_openapi,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/applications/:application_id/api-docs/operations/:operation_id/openapi.json",
-            get(get_application_api_docs_operation_openapi),
+            console_get(
+                get_application_api_docs_operation_openapi,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
         )
 }
 
