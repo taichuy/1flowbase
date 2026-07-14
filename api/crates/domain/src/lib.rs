@@ -48,8 +48,9 @@ pub use builtin_data_model::{
     DataModelFieldOwnership, DataModelRecordCapabilities,
 };
 pub use console_policy::{
-    ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup,
-    ConsolePolicyGroupId, ConsolePolicyGroupKind, ConsolePolicyIdentifierError, ConsolePolicyMode,
+    effective_console_row_scope, effective_console_simple_operation, ConsoleOperationId,
+    ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup, ConsolePolicyGroupId,
+    ConsolePolicyGroupKind, ConsolePolicyIdentifierError, ConsolePolicyMode,
     RoleConsoleGroupPolicy, RoleConsolePolicy,
 };
 pub use data_source::{

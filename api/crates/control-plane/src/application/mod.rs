@@ -21,6 +21,8 @@ use crate::{
     },
 };
 
+pub mod console_policy_migration;
+
 pub struct CreateApplicationCommand {
     pub actor_user_id: Uuid,
     pub application_type: domain::ApplicationType,
@@ -77,7 +79,18 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        let visibility = resolve_application_visibility(&actor)?;
+        let visibility = if actor.is_root {
+            ApplicationVisibility::All
+        } else {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .await?;
+            resolve_application_console_visibility(
+                &policies,
+                access_control::APPLICATIONS_VIEW_OPERATION_ID,
+            )?
+        };
 
         self.repository
             .list_applications(actor.current_workspace_id, actor_user_id, visibility)
@@ -116,8 +129,26 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, "application.create.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor_user_id,
+                    actor.current_workspace_id,
+                )
+                .await?;
+            let operation_id = domain::ConsoleOperationId::try_from(
+                access_control::APPLICATIONS_CREATE_OPERATION_ID,
+            )
+            .expect("compiled applications create operation id must be valid");
+            if !domain::effective_console_simple_operation(
+                &policies,
+                &applications_console_group(),
+                &operation_id,
+            ) {
+                return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+            }
+        }
 
         let created = self
             .repository
@@ -168,8 +199,23 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-
-        ensure_application_edit_permission(&actor, &application)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor_user_id,
+                    actor.current_workspace_id,
+                )
+                .await?;
+            ensure_application_console_row_scope(
+                &actor,
+                &application,
+                effective_application_row_scope(
+                    &policies,
+                    access_control::APPLICATIONS_UPDATE_OPERATION_ID,
+                ),
+            )?;
+        }
 
         let updated = self
             .repository
@@ -209,8 +255,23 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-
-        ensure_application_delete_permission(&actor, &application)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor_user_id,
+                    actor.current_workspace_id,
+                )
+                .await?;
+            ensure_application_console_row_scope(
+                &actor,
+                &application,
+                effective_application_row_scope(
+                    &policies,
+                    access_control::APPLICATIONS_DELETE_OPERATION_ID,
+                ),
+            )?;
+        }
 
         self.repository
             .delete_application(&DeleteApplicationInput {
@@ -297,18 +358,28 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        let visibility = resolve_application_visibility(&actor)?;
+        let visibility = if actor.is_root {
+            ApplicationVisibility::All
+        } else {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .await?;
+            resolve_application_console_visibility(
+                &policies,
+                access_control::APPLICATIONS_VIEW_OPERATION_ID,
+            )?
+        };
         let application = self
             .repository
-            .get_application(actor.current_workspace_id, application_id)
+            .get_application_for_visibility(
+                actor.current_workspace_id,
+                application_id,
+                actor_user_id,
+                visibility,
+            )
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-
-        if matches!(visibility, ApplicationVisibility::Own)
-            && application.created_by != actor_user_id
-        {
-            return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
-        }
 
         Ok(application)
     }
@@ -460,6 +531,49 @@ pub(crate) fn resolve_application_visibility(
     Err(ControlPlaneError::PermissionDenied("permission_denied"))
 }
 
+fn applications_console_group() -> domain::ConsolePolicyGroup {
+    domain::ConsolePolicyGroup::settings_feature(
+        access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID,
+    )
+    .expect("compiled applications settings feature id must be valid")
+}
+
+fn effective_application_row_scope(
+    policies: &[domain::RoleConsolePolicy],
+    operation_id: &str,
+) -> domain::ConsoleOperationRowScope {
+    let operation_id = domain::ConsoleOperationId::try_from(operation_id)
+        .expect("compiled applications row operation id must be valid");
+    domain::effective_console_row_scope(policies, &applications_console_group(), &operation_id)
+}
+
+fn resolve_application_console_visibility(
+    policies: &[domain::RoleConsolePolicy],
+    operation_id: &str,
+) -> Result<ApplicationVisibility, ControlPlaneError> {
+    match effective_application_row_scope(policies, operation_id) {
+        domain::ConsoleOperationRowScope::ScopeAll => Ok(ApplicationVisibility::All),
+        domain::ConsoleOperationRowScope::Own => Ok(ApplicationVisibility::Own),
+        domain::ConsoleOperationRowScope::Disabled => {
+            Err(ControlPlaneError::PermissionDenied("permission_denied"))
+        }
+    }
+}
+
+fn ensure_application_console_row_scope(
+    actor: &domain::ActorContext,
+    application: &domain::ApplicationRecord,
+    scope: domain::ConsoleOperationRowScope,
+) -> Result<(), ControlPlaneError> {
+    match scope {
+        domain::ConsoleOperationRowScope::ScopeAll => Ok(()),
+        domain::ConsoleOperationRowScope::Own if application.created_by == actor.user_id => Ok(()),
+        domain::ConsoleOperationRowScope::Own | domain::ConsoleOperationRowScope::Disabled => {
+            Err(ControlPlaneError::PermissionDenied("permission_denied"))
+        }
+    }
+}
+
 pub(crate) fn ensure_application_edit_permission(
     actor: &domain::ActorContext,
     application: &domain::ApplicationRecord,
@@ -469,21 +583,6 @@ pub(crate) fn ensure_application_edit_permission(
     }
 
     if actor.has_permission("application.edit.own") && application.created_by == actor.user_id {
-        return Ok(());
-    }
-
-    Err(ControlPlaneError::PermissionDenied("permission_denied"))
-}
-
-fn ensure_application_delete_permission(
-    actor: &domain::ActorContext,
-    application: &domain::ApplicationRecord,
-) -> Result<(), ControlPlaneError> {
-    if actor.is_root || actor.has_permission("application.delete.all") {
-        return Ok(());
-    }
-
-    if actor.has_permission("application.delete.own") && application.created_by == actor.user_id {
         return Ok(());
     }
 
@@ -622,6 +721,8 @@ struct InMemoryApplicationRepositoryInner {
         HashMap<(Uuid, String, String), domain::ApplicationJsDependencySelection>,
     tags: HashMap<Uuid, domain::ApplicationTagCatalogEntry>,
     permissions: Vec<String>,
+    console_policies: Vec<domain::RoleConsolePolicy>,
+    actor_is_root: bool,
     workspace_id: Uuid,
     tenant_id: Uuid,
     audit_events: Vec<String>,
@@ -642,6 +743,8 @@ impl InMemoryApplicationRepository {
                 js_dependency_selections: HashMap::new(),
                 tags: HashMap::new(),
                 permissions: permissions.into_iter().map(str::to_string).collect(),
+                console_policies: Vec::new(),
+                actor_is_root: false,
                 workspace_id: Uuid::nil(),
                 tenant_id: Uuid::nil(),
                 audit_events: Vec::new(),
@@ -660,6 +763,37 @@ impl InMemoryApplicationRepository {
                 workflow_trigger_config: None,
                 actor_user_id,
                 workspace_id: inner.workspace_id,
+                application_type: domain::ApplicationType::AgentFlow,
+                workflow_trigger_type: None,
+                name: name.to_string(),
+                description: String::new(),
+                icon: None,
+                icon_type: None,
+                icon_background: None,
+            },
+        );
+        inner
+            .applications
+            .insert(application.id, application.clone());
+        application
+    }
+
+    fn insert_application_in_workspace(
+        &self,
+        workspace_id: Uuid,
+        actor_user_id: Uuid,
+        name: &str,
+    ) -> domain::ApplicationRecord {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("in-memory app repo mutex poisoned");
+        let application = build_application_record(
+            Uuid::now_v7(),
+            CreateApplicationInput {
+                workflow_trigger_config: None,
+                actor_user_id,
+                workspace_id,
                 application_type: domain::ApplicationType::AgentFlow,
                 workflow_trigger_type: None,
                 name: name.to_string(),
@@ -800,13 +934,35 @@ impl ApplicationRepository for InMemoryApplicationRepository {
             .lock()
             .expect("in-memory app repo mutex poisoned");
 
-        Ok(domain::ActorContext::scoped_in_scope(
-            actor_user_id,
-            inner.tenant_id,
-            inner.workspace_id,
-            "member",
-            inner.permissions.iter().cloned(),
-        ))
+        if inner.actor_is_root {
+            Ok(domain::ActorContext::root_in_scope(
+                actor_user_id,
+                inner.tenant_id,
+                inner.workspace_id,
+                "root",
+            ))
+        } else {
+            Ok(domain::ActorContext::scoped_in_scope(
+                actor_user_id,
+                inner.tenant_id,
+                inner.workspace_id,
+                "member",
+                inner.permissions.iter().cloned(),
+            ))
+        }
+    }
+
+    async fn load_role_console_policies_for_user(
+        &self,
+        _actor_user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        Ok(self
+            .inner
+            .lock()
+            .expect("in-memory app repo mutex poisoned")
+            .console_policies
+            .clone())
     }
 
     async fn list_applications(
@@ -913,6 +1069,28 @@ impl ApplicationRepository for InMemoryApplicationRepository {
             .cloned()
             .filter(|application| application.workspace_id == workspace_id);
 
+        Ok(application)
+    }
+
+    async fn get_application_for_visibility(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: ApplicationVisibility,
+    ) -> Result<Option<domain::ApplicationRecord>> {
+        let application = self
+            .inner
+            .lock()
+            .expect("in-memory app repo mutex poisoned")
+            .applications
+            .get(&application_id)
+            .cloned()
+            .filter(|application| application.workspace_id == workspace_id)
+            .filter(|application| {
+                matches!(visibility, ApplicationVisibility::All)
+                    || application.created_by == actor_user_id
+            });
         Ok(application)
     }
 
@@ -1107,19 +1285,68 @@ fn planned_sections(application_type: domain::ApplicationType) -> domain::Applic
 
 impl ApplicationService<InMemoryApplicationRepository> {
     pub fn for_tests() -> Self {
-        Self::new(InMemoryApplicationRepository::with_permissions(vec![
-            "application.view.all",
-            "application.create.all",
-            "application.edit.all",
-        ]))
+        Self::for_tests_with_console_policies(
+            vec![
+                "application.view.all",
+                "application.create.all",
+                "application.edit.all",
+            ],
+            vec![domain::RoleConsolePolicy::new(
+                Uuid::now_v7(),
+                vec![domain::RoleConsoleGroupPolicy::full(
+                    applications_console_group(),
+                )],
+            )],
+        )
     }
 
     pub fn for_tests_with_permissions(permissions: Vec<&str>) -> Self {
         Self::new(InMemoryApplicationRepository::with_permissions(permissions))
     }
 
+    pub fn for_tests_with_console_policies(
+        permissions: Vec<&str>,
+        policies: Vec<domain::RoleConsolePolicy>,
+    ) -> Self {
+        let repository = InMemoryApplicationRepository::with_permissions(permissions);
+        repository
+            .inner
+            .lock()
+            .expect("in-memory app repo mutex poisoned")
+            .console_policies = policies;
+        Self::new(repository)
+    }
+
+    pub fn for_tests_as_root() -> Self {
+        let repository = InMemoryApplicationRepository::with_permissions(Vec::new());
+        repository
+            .inner
+            .lock()
+            .expect("in-memory app repo mutex poisoned")
+            .actor_is_root = true;
+        Self::new(repository)
+    }
+
     pub fn seed_foreign_application(&self, name: &str) -> domain::ApplicationRecord {
         self.repository.insert_application(Uuid::now_v7(), name)
+    }
+
+    pub fn seed_application_for_actor(
+        &self,
+        actor_user_id: Uuid,
+        name: &str,
+    ) -> domain::ApplicationRecord {
+        self.repository.insert_application(actor_user_id, name)
+    }
+
+    pub fn seed_application_in_workspace(
+        &self,
+        workspace_id: Uuid,
+        actor_user_id: Uuid,
+        name: &str,
+    ) -> domain::ApplicationRecord {
+        self.repository
+            .insert_application_in_workspace(workspace_id, actor_user_id, name)
     }
 
     pub fn seed_js_dependency_catalog_entry(&self, entry: domain::JsDependencyRegistryEntry) {

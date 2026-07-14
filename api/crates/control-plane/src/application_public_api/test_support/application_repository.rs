@@ -9,6 +9,14 @@ impl ApplicationRepository for ApplicationPublicApiTestRepository {
         AuthRepository::load_actor_context_for_user(self, actor_user_id).await
     }
 
+    async fn load_role_console_policies_for_user(
+        &self,
+        _actor_user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>> {
+        anyhow::bail!("console policies are not available in public API test repository")
+    }
+
     async fn list_applications(
         &self,
         _workspace_id: Uuid,
@@ -49,6 +57,20 @@ impl ApplicationRepository for ApplicationPublicApiTestRepository {
             .get(&application_id)
             .cloned()
             .filter(|application| application.workspace_id == workspace_id))
+    }
+
+    async fn get_application_for_visibility(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: ApplicationVisibility,
+    ) -> anyhow::Result<Option<domain::ApplicationRecord>> {
+        let application = self.get_application(workspace_id, application_id).await?;
+        Ok(application.filter(|application| {
+            matches!(visibility, ApplicationVisibility::All)
+                || application.created_by == actor_user_id
+        }))
     }
 
     async fn list_application_tags(

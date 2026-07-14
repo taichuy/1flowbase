@@ -175,6 +175,11 @@ pub trait ApplicationRepository: Send + Sync {
         &self,
         actor_user_id: Uuid,
     ) -> anyhow::Result<domain::ActorContext>;
+    async fn load_role_console_policies_for_user(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>>;
     async fn list_applications(
         &self,
         workspace_id: Uuid,
@@ -194,6 +199,13 @@ pub trait ApplicationRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
         application_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ApplicationRecord>>;
+    async fn get_application_for_visibility(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: ApplicationVisibility,
     ) -> anyhow::Result<Option<domain::ApplicationRecord>>;
     async fn list_application_tags(
         &self,

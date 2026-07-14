@@ -66,6 +66,14 @@ impl ApplicationRepository for InMemoryOrchestrationRuntimeRepository {
         ApplicationRepository::load_actor_context_for_user(&self.flow, actor_user_id).await
     }
 
+    async fn load_role_console_policies_for_user(
+        &self,
+        _actor_user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>> {
+        anyhow::bail!("console policies are not available in runtime test repository")
+    }
+
     async fn list_applications(
         &self,
         workspace_id: Uuid,
@@ -105,6 +113,20 @@ impl ApplicationRepository for InMemoryOrchestrationRuntimeRepository {
         application_id: Uuid,
     ) -> Result<Option<domain::ApplicationRecord>> {
         ApplicationRepository::get_application(&self.flow, workspace_id, application_id).await
+    }
+
+    async fn get_application_for_visibility(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: ApplicationVisibility,
+    ) -> anyhow::Result<Option<domain::ApplicationRecord>> {
+        let application = self.get_application(workspace_id, application_id).await?;
+        Ok(application.filter(|application| {
+            matches!(visibility, ApplicationVisibility::All)
+                || application.created_by == actor_user_id
+        }))
     }
 
     async fn list_application_tags(

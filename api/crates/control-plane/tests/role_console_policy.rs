@@ -6,6 +6,9 @@ use domain::{
 };
 use uuid::Uuid;
 
+use control_plane::application::console_policy_migration::{
+    applications_console_policy_catalog, applications_legacy_console_grant_mappings,
+};
 use control_plane::role::console_policy_migration::{
     project_legacy_role_console_policy, CompiledConsolePolicyCatalog, CompiledConsolePolicyGroup,
     LegacyConsoleGrantMapping,
@@ -56,6 +59,52 @@ fn mappings() -> Vec<LegacyConsoleGrantMapping> {
             operations: vec![row("applications.view", ConsoleOperationRowScope::Own)],
         },
     ]
+}
+
+#[test]
+fn ac_010_applications_legacy_projection_is_exact_and_never_expands_partial_roles() {
+    let role_id = Uuid::now_v7();
+    let catalog = applications_console_policy_catalog();
+    let mappings = applications_legacy_console_grant_mappings();
+    let exact = project_legacy_role_console_policy(
+        role_id,
+        &[
+            access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION.into(),
+            "application.create.all".into(),
+            "application.view.all".into(),
+            "application.edit.all".into(),
+            "application.delete.all".into(),
+        ],
+        &catalog,
+        &mappings,
+    )
+    .expect("known exact applications profile must migrate");
+    assert_eq!(exact.policy.groups()[0].mode(), ConsolePolicyMode::Full);
+    assert!(exact.authorization_delta.added.is_empty());
+    assert!(exact.authorization_delta.removed.is_empty());
+
+    let partial = project_legacy_role_console_policy(
+        role_id,
+        &["application.view.own".into()],
+        &catalog,
+        &mappings,
+    )
+    .expect("known partial applications profile must migrate");
+    assert_eq!(partial.policy.groups()[0].mode(), ConsolePolicyMode::Custom);
+    assert_eq!(partial.policy.groups()[0].operations().len(), 1);
+    assert_eq!(
+        partial.policy.groups()[0].operations()[0].row_scope(),
+        Some(ConsoleOperationRowScope::Own)
+    );
+
+    let unknown = project_legacy_role_console_policy(
+        role_id,
+        &["application.publish.all".into()],
+        &catalog,
+        &mappings,
+    )
+    .unwrap_err();
+    assert!(unknown.to_string().contains("unknown legacy grant"));
 }
 
 #[test]

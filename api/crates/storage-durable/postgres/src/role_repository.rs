@@ -73,6 +73,89 @@ async fn insert_default_role_data_policy(
     Ok(())
 }
 
+pub(crate) async fn role_console_policy_by_id(
+    pool: &sqlx::PgPool,
+    role_id: Uuid,
+) -> Result<domain::RoleConsolePolicy> {
+    let rows = sqlx::query(
+        r#"
+        select
+          group_policy.id as group_policy_id,
+          group_policy.group_kind,
+          group_policy.group_id,
+          group_policy.mode,
+          operation_policy.operation_id,
+          operation_policy.policy_kind,
+          operation_policy.simple_enabled,
+          operation_policy.row_scope
+        from role_console_group_policies group_policy
+        left join role_console_operation_policies operation_policy
+          on operation_policy.group_policy_id = group_policy.id
+         and operation_policy.role_id = group_policy.role_id
+        where group_policy.role_id = $1
+        order by group_policy.group_kind, group_policy.group_id, operation_policy.operation_id
+        "#,
+    )
+    .bind(role_id)
+    .fetch_all(pool)
+    .await?;
+    let mut stored_groups = BTreeMap::<
+        Uuid,
+        (
+            domain::ConsolePolicyGroup,
+            domain::ConsolePolicyMode,
+            Vec<domain::ConsoleOperationPolicy>,
+        ),
+    >::new();
+    for row in rows {
+        let group_policy_id: Uuid = row.get("group_policy_id");
+        let group_kind_value: String = row.get("group_kind");
+        let group_kind = domain::ConsolePolicyGroupKind::parse(&group_kind_value)
+            .ok_or_else(|| anyhow!("stored console policy group kind is invalid"))?;
+        let group_id: String = row.get("group_id");
+        let group = domain::ConsolePolicyGroup::new(group_kind, &group_id)?;
+        let mode_value: String = row.get("mode");
+        let mode = domain::ConsolePolicyMode::parse(&mode_value)
+            .ok_or_else(|| anyhow!("stored console policy mode is invalid"))?;
+        let stored_group = stored_groups
+            .entry(group_policy_id)
+            .or_insert_with(|| (group, mode, Vec::new()));
+        let Some(operation_id) = row.get::<Option<String>, _>("operation_id") else {
+            continue;
+        };
+        let operation_id = domain::ConsoleOperationId::try_from(operation_id)?;
+        let policy_kind: String = row.get("policy_kind");
+        let operation = match policy_kind.as_str() {
+            "simple" => domain::ConsoleOperationPolicy::simple(
+                operation_id,
+                row.get::<Option<bool>, _>("simple_enabled")
+                    .ok_or_else(|| anyhow!("stored simple console policy is missing enabled"))?,
+            ),
+            "row" => {
+                let row_scope = row
+                    .get::<Option<String>, _>("row_scope")
+                    .as_deref()
+                    .and_then(domain::ConsoleOperationRowScope::parse)
+                    .ok_or_else(|| anyhow!("stored console row scope is invalid"))?;
+                domain::ConsoleOperationPolicy::row(operation_id, row_scope)
+            }
+            _ => return Err(anyhow!("stored console operation policy kind is invalid")),
+        };
+        stored_group.2.push(operation);
+    }
+    let groups = stored_groups
+        .into_values()
+        .map(|(group, mode, operations)| match mode {
+            domain::ConsolePolicyMode::Disabled => domain::RoleConsoleGroupPolicy::disabled(group),
+            domain::ConsolePolicyMode::Full => domain::RoleConsoleGroupPolicy::full(group),
+            domain::ConsolePolicyMode::Custom => {
+                domain::RoleConsoleGroupPolicy::custom(group, operations)
+            }
+        })
+        .collect();
+    Ok(domain::RoleConsolePolicy::new(role_id, groups))
+}
+
 #[async_trait]
 impl RoleRepository for PgControlPlaneStore {
     async fn load_actor_context_for_user(&self, actor_user_id: Uuid) -> Result<ActorContext> {
@@ -327,94 +410,7 @@ impl RoleRepository for PgControlPlaneStore {
         let role = find_role_by_code(self.pool(), workspace_id, role_code)
             .await?
             .ok_or(ControlPlaneError::NotFound("role"))?;
-        let rows = sqlx::query(
-            r#"
-            select
-              group_policy.id as group_policy_id,
-              group_policy.group_kind,
-              group_policy.group_id,
-              group_policy.mode,
-              operation_policy.operation_id,
-              operation_policy.policy_kind,
-              operation_policy.simple_enabled,
-              operation_policy.row_scope
-            from role_console_group_policies group_policy
-            left join role_console_operation_policies operation_policy
-              on operation_policy.group_policy_id = group_policy.id
-             and operation_policy.role_id = group_policy.role_id
-            where group_policy.role_id = $1
-            order by
-              group_policy.group_kind,
-              group_policy.group_id,
-              operation_policy.operation_id
-            "#,
-        )
-        .bind(role.id)
-        .fetch_all(self.pool())
-        .await?;
-
-        let mut stored_groups = BTreeMap::<
-            Uuid,
-            (
-                domain::ConsolePolicyGroup,
-                domain::ConsolePolicyMode,
-                Vec<domain::ConsoleOperationPolicy>,
-            ),
-        >::new();
-        for row in rows {
-            let group_policy_id: Uuid = row.get("group_policy_id");
-            let group_kind_value: String = row.get("group_kind");
-            let group_kind = domain::ConsolePolicyGroupKind::parse(&group_kind_value)
-                .ok_or_else(|| anyhow!("stored console policy group kind is invalid"))?;
-            let group_id: String = row.get("group_id");
-            let group = domain::ConsolePolicyGroup::new(group_kind, &group_id)?;
-            let mode_value: String = row.get("mode");
-            let mode = domain::ConsolePolicyMode::parse(&mode_value)
-                .ok_or_else(|| anyhow!("stored console policy mode is invalid"))?;
-            let stored_group = stored_groups
-                .entry(group_policy_id)
-                .or_insert_with(|| (group, mode, Vec::new()));
-
-            let operation_id: Option<String> = row.get("operation_id");
-            let Some(operation_id) = operation_id else {
-                continue;
-            };
-            let operation_id = domain::ConsoleOperationId::try_from(operation_id)?;
-            let policy_kind: String = row.get("policy_kind");
-            let operation = match policy_kind.as_str() {
-                "simple" => domain::ConsoleOperationPolicy::simple(
-                    operation_id,
-                    row.get::<Option<bool>, _>("simple_enabled")
-                        .ok_or_else(|| {
-                            anyhow!("stored simple console policy is missing enabled")
-                        })?,
-                ),
-                "row" => {
-                    let row_scope: Option<String> = row.get("row_scope");
-                    let row_scope = row_scope
-                        .as_deref()
-                        .and_then(domain::ConsoleOperationRowScope::parse)
-                        .ok_or_else(|| anyhow!("stored console row scope is invalid"))?;
-                    domain::ConsoleOperationPolicy::row(operation_id, row_scope)
-                }
-                _ => return Err(anyhow!("stored console operation policy kind is invalid")),
-            };
-            stored_group.2.push(operation);
-        }
-
-        let groups = stored_groups
-            .into_values()
-            .map(|(group, mode, operations)| match mode {
-                domain::ConsolePolicyMode::Disabled => {
-                    domain::RoleConsoleGroupPolicy::disabled(group)
-                }
-                domain::ConsolePolicyMode::Full => domain::RoleConsoleGroupPolicy::full(group),
-                domain::ConsolePolicyMode::Custom => {
-                    domain::RoleConsoleGroupPolicy::custom(group, operations)
-                }
-            })
-            .collect();
-        Ok(domain::RoleConsolePolicy::new(role.id, groups))
+        role_console_policy_by_id(self.pool(), role.id).await
     }
 
     async fn replace_role_console_policy(

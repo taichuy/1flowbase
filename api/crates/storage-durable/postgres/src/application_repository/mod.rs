@@ -43,6 +43,82 @@ fn map_application_record(row: sqlx::postgres::PgRow) -> Result<domain::Applicat
     })
 }
 
+async fn find_application(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    application_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    visibility: ApplicationVisibility,
+) -> Result<Option<domain::ApplicationRecord>> {
+    let visibility_value = match visibility {
+        ApplicationVisibility::Own => "own",
+        ApplicationVisibility::All => "all",
+    };
+    let row = sqlx::query(
+        r#"
+        select
+            a.id,
+            a.workspace_id,
+            a.application_type,
+            a.workflow_trigger_type,
+            a.name,
+            a.description,
+            a.icon_type,
+            a.icon,
+            a.icon_background,
+            a.created_by,
+            a.updated_at,
+            f.id as current_flow_id,
+            fd.id as current_draft_id,
+            a.api_enabled,
+            exists(
+                select 1
+                from api_keys key
+                where key.application_id = a.id
+                  and key.key_kind = 'application_api_key'
+                  and key.enabled = true
+            ) as has_application_api_keys,
+            exists(
+                select 1
+                from application_api_mappings mapping
+                where mapping.application_id = a.id
+            ) as has_application_api_mapping,
+            active_publication.id as active_publication_id,
+            coalesce(tags.tags, '[]'::jsonb) as tags
+        from applications a
+        left join flows f on f.application_id = a.id
+        left join flow_drafts fd on fd.flow_id = f.id
+        left join lateral (
+            select publication.id
+            from application_publication_versions publication
+            where publication.application_id = a.id
+              and publication.active = true
+            limit 1
+        ) active_publication on true
+        left join lateral (
+            select jsonb_agg(
+                jsonb_build_object('id', tag.id, 'name', tag.name)
+                order by tag.name asc, tag.id asc
+            ) as tags
+            from application_tag_bindings binding
+            join application_tags tag on tag.id = binding.tag_id
+            where binding.application_id = a.id
+        ) tags on true
+        where a.workspace_id = $1
+          and a.id = $2
+          and ($3::uuid is null or $4 = 'all' or a.created_by = $3)
+        "#,
+    )
+    .bind(workspace_id)
+    .bind(application_id)
+    .bind(actor_user_id)
+    .bind(visibility_value)
+    .fetch_optional(pool)
+    .await?;
+
+    row.map(map_application_record).transpose()
+}
+
 #[async_trait]
 impl ApplicationRepository for PgControlPlaneStore {
     async fn load_actor_context_for_user(
@@ -53,6 +129,34 @@ impl ApplicationRepository for PgControlPlaneStore {
         let tenant_id = tenant_id_for_workspace(self.pool(), workspace_id).await?;
 
         AuthRepository::load_actor_context(self, actor_user_id, tenant_id, workspace_id, None).await
+    }
+
+    async fn load_role_console_policies_for_user(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        let role_ids: Vec<Uuid> = sqlx::query_scalar(
+            r#"
+            select role.id
+            from user_role_bindings binding
+            join roles role on role.id = binding.role_id
+            where binding.user_id = $1
+              and (role.scope_kind = 'system' or role.workspace_id = $2)
+            order by role.scope_kind asc, role.code asc, role.id asc
+            "#,
+        )
+        .bind(actor_user_id)
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?;
+        let mut policies = Vec::with_capacity(role_ids.len());
+        for role_id in role_ids {
+            policies.push(
+                crate::role_repository::role_console_policy_by_id(self.pool(), role_id).await?,
+            );
+        }
+        Ok(policies)
     }
 
     async fn list_applications(
@@ -468,66 +572,31 @@ impl ApplicationRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         application_id: Uuid,
     ) -> Result<Option<domain::ApplicationRecord>> {
-        let row = sqlx::query(
-            r#"
-            select
-                a.id,
-                a.workspace_id,
-                a.application_type,
-                a.workflow_trigger_type,
-                a.name,
-                a.description,
-                a.icon_type,
-                a.icon,
-                a.icon_background,
-                a.created_by,
-                a.updated_at,
-                f.id as current_flow_id,
-                fd.id as current_draft_id,
-                a.api_enabled,
-                exists(
-                    select 1
-                    from api_keys key
-                    where key.application_id = a.id
-                      and key.key_kind = 'application_api_key'
-                      and key.enabled = true
-                ) as has_application_api_keys,
-                exists(
-                    select 1
-                    from application_api_mappings mapping
-                    where mapping.application_id = a.id
-                ) as has_application_api_mapping,
-                active_publication.id as active_publication_id,
-                coalesce(tags.tags, '[]'::jsonb) as tags
-            from applications a
-            left join flows f on f.application_id = a.id
-            left join flow_drafts fd on fd.flow_id = f.id
-            left join lateral (
-                select publication.id
-                from application_publication_versions publication
-                where publication.application_id = a.id
-                  and publication.active = true
-                limit 1
-            ) active_publication on true
-            left join lateral (
-                select jsonb_agg(
-                    jsonb_build_object('id', tag.id, 'name', tag.name)
-                    order by tag.name asc, tag.id asc
-                ) as tags
-                from application_tag_bindings binding
-                join application_tags tag on tag.id = binding.tag_id
-                where binding.application_id = a.id
-            ) tags on true
-            where a.workspace_id = $1
-              and a.id = $2
-            "#,
+        find_application(
+            self.pool(),
+            workspace_id,
+            application_id,
+            None,
+            ApplicationVisibility::All,
         )
-        .bind(workspace_id)
-        .bind(application_id)
-        .fetch_optional(self.pool())
-        .await?;
+        .await
+    }
 
-        row.map(map_application_record).transpose()
+    async fn get_application_for_visibility(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: ApplicationVisibility,
+    ) -> Result<Option<domain::ApplicationRecord>> {
+        find_application(
+            self.pool(),
+            workspace_id,
+            application_id,
+            Some(actor_user_id),
+            visibility,
+        )
+        .await
     }
 
     async fn list_application_tags(

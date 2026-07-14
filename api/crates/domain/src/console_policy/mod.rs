@@ -332,3 +332,65 @@ impl RoleConsolePolicy {
         &self.groups
     }
 }
+
+pub fn effective_console_simple_operation(
+    policies: &[RoleConsolePolicy],
+    group: &ConsolePolicyGroup,
+    operation_id: &ConsoleOperationId,
+) -> bool {
+    policies.iter().any(|policy| {
+        policy.groups().iter().any(|group_policy| {
+            if group_policy.group() != group {
+                return false;
+            }
+            match group_policy {
+                RoleConsoleGroupPolicy::Full { .. } => true,
+                RoleConsoleGroupPolicy::Custom { operations, .. } => {
+                    operations.iter().any(|operation| {
+                        matches!(
+                            operation,
+                            ConsoleOperationPolicy::Simple {
+                                operation_id: candidate,
+                                enabled: true,
+                            } if candidate == operation_id
+                        )
+                    })
+                }
+                RoleConsoleGroupPolicy::Disabled { .. } => false,
+            }
+        })
+    })
+}
+
+pub fn effective_console_row_scope(
+    policies: &[RoleConsolePolicy],
+    group: &ConsolePolicyGroup,
+    operation_id: &ConsoleOperationId,
+) -> ConsoleOperationRowScope {
+    policies
+        .iter()
+        .flat_map(RoleConsolePolicy::groups)
+        .filter(|group_policy| group_policy.group() == group)
+        .fold(
+            ConsoleOperationRowScope::Disabled,
+            |effective, group_policy| {
+                let granted = match group_policy {
+                    RoleConsoleGroupPolicy::Full { .. } => ConsoleOperationRowScope::ScopeAll,
+                    RoleConsoleGroupPolicy::Custom { operations, .. } => operations
+                        .iter()
+                        .filter_map(|operation| match operation {
+                            ConsoleOperationPolicy::Row {
+                                operation_id: candidate,
+                                scope,
+                            } if candidate == operation_id => Some(*scope),
+                            ConsoleOperationPolicy::Simple { .. }
+                            | ConsoleOperationPolicy::Row { .. } => None,
+                        })
+                        .max()
+                        .unwrap_or(ConsoleOperationRowScope::Disabled),
+                    RoleConsoleGroupPolicy::Disabled { .. } => ConsoleOperationRowScope::Disabled,
+                };
+                effective.max(granted)
+            },
+        )
+}

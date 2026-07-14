@@ -455,6 +455,19 @@ impl ApplicationRepository for InMemoryFlowRepository {
         ApplicationRepository::load_actor_context_for_user(&self.applications, actor_user_id).await
     }
 
+    async fn load_role_console_policies_for_user(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        ApplicationRepository::load_role_console_policies_for_user(
+            &self.applications,
+            actor_user_id,
+            workspace_id,
+        )
+        .await
+    }
+
     async fn list_applications(
         &self,
         workspace_id: Uuid,
@@ -488,6 +501,23 @@ impl ApplicationRepository for InMemoryFlowRepository {
     ) -> Result<Option<domain::ApplicationRecord>> {
         ApplicationRepository::get_application(&self.applications, workspace_id, application_id)
             .await
+    }
+
+    async fn get_application_for_visibility(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        visibility: crate::ports::ApplicationVisibility,
+    ) -> Result<Option<domain::ApplicationRecord>> {
+        ApplicationRepository::get_application_for_visibility(
+            &self.applications,
+            workspace_id,
+            application_id,
+            actor_user_id,
+            visibility,
+        )
+        .await
     }
 
     async fn update_application(

@@ -51,6 +51,61 @@ async fn role_store() -> (PgControlPlaneStore, Uuid, Uuid) {
     (store, workspace.id, actor_user_id)
 }
 
+async fn grant_legacy_application_permissions(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    role_code: &str,
+    permission_codes: &[&str],
+) {
+    let role_id: Uuid =
+        sqlx::query_scalar("select id from roles where workspace_id = $1 and code = $2")
+            .bind(workspace_id)
+            .bind(role_code)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    for code in permission_codes {
+        let parts = code.split('.').collect::<Vec<_>>();
+        let (resource, action, scope) = if parts[0] == "settings_feature" {
+            ("settings_feature", "access", "system.applications")
+        } else {
+            (parts[0], parts[1], parts[2])
+        };
+        sqlx::query(
+            r#"
+            insert into permission_definitions (
+              id, scope_id, resource, action, scope, code, name, introduction
+            )
+            values ($1, $2, $3, $4, $5, $6, $6, '')
+            on conflict (code) do nothing
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(domain::SYSTEM_SCOPE_ID)
+        .bind(resource)
+        .bind(action)
+        .bind(scope)
+        .bind(code)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"
+            insert into role_permissions (id, role_id, permission_id, scope_id)
+            select $1, $2, id, $3 from permission_definitions where code = $4
+            on conflict (role_id, permission_id) do nothing
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(role_id)
+        .bind(workspace_id)
+        .bind(code)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    }
+}
+
 fn group() -> ConsolePolicyGroup {
     ConsolePolicyGroup::settings_feature("system.applications").unwrap()
 }
@@ -273,4 +328,68 @@ async fn ac_010_console_policy_migration_ledger_blocks_unsafe_apply() {
     .execute(store.pool())
     .await;
     assert!(safe_apply.is_ok());
+}
+
+#[tokio::test]
+async fn ac_010_applications_console_policy_sql_rehearsal_preserves_exact_and_partial_profiles() {
+    let (store, workspace_id, actor_user_id) = role_store().await;
+    RoleRepository::create_team_role(
+        &store,
+        &CreateWorkspaceRoleInput {
+            actor_user_id,
+            workspace_id,
+            code: "viewer".into(),
+            name: "Viewer".into(),
+            introduction: String::new(),
+            auto_grant_new_permissions: false,
+            is_default_member_role: false,
+        },
+    )
+    .await
+    .unwrap();
+    grant_legacy_application_permissions(
+        &store,
+        workspace_id,
+        "operator",
+        &[
+            access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
+            "application.create.all",
+            "application.view.all",
+            "application.edit.all",
+            "application.delete.all",
+        ],
+    )
+    .await;
+    grant_legacy_application_permissions(&store, workspace_id, "viewer", &["application.view.own"])
+        .await;
+
+    sqlx::raw_sql(include_str!(
+        "../migrations/20260714233000_migrate_applications_console_policies.sql"
+    ))
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let exact = RoleRepository::get_role_console_policy(&store, workspace_id, "operator")
+        .await
+        .unwrap();
+    assert_eq!(exact.groups()[0].mode(), domain::ConsolePolicyMode::Full);
+    assert!(exact.groups()[0].operations().is_empty());
+
+    let partial = RoleRepository::get_role_console_policy(&store, workspace_id, "viewer")
+        .await
+        .unwrap();
+    assert_eq!(
+        partial.groups()[0].mode(),
+        domain::ConsolePolicyMode::Custom
+    );
+    assert_eq!(partial.groups()[0].operations().len(), 1);
+    assert_eq!(
+        partial.groups()[0].operations()[0].operation_id().as_str(),
+        access_control::APPLICATIONS_VIEW_OPERATION_ID
+    );
+    assert_eq!(
+        partial.groups()[0].operations()[0].row_scope(),
+        Some(ConsoleOperationRowScope::Own)
+    );
 }
