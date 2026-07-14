@@ -1,6 +1,12 @@
-use control_plane::ports::{
-    CreateWorkspaceRoleInput, ReplaceRoleConsolePolicyInput, RoleRepository,
+use control_plane::application::console_policy_migration::{
+    applications_console_policy_catalog, applications_legacy_console_grant_mappings,
+    applications_legacy_console_policy_source,
 };
+use control_plane::ports::{
+    CreateWorkspaceRoleInput, ReplaceRoleConsolePolicyInput,
+    RoleConsolePolicyMigrationRehearsalInput, RoleConsolePolicyMigrationRepository, RoleRepository,
+};
+use control_plane::role::console_policy_migration::project_legacy_role_console_policy;
 use domain::{
     ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup,
     RoleConsoleGroupPolicy,
@@ -118,6 +124,36 @@ fn custom_group(scope: ConsoleOperationRowScope) -> RoleConsoleGroupPolicy {
             scope,
         )],
     )
+}
+
+async fn applications_migration_input(
+    store: &PgControlPlaneStore,
+) -> RoleConsolePolicyMigrationRehearsalInput {
+    let source = applications_legacy_console_policy_source();
+    let inventories = store
+        .list_role_console_policy_migration_grants(&source)
+        .await
+        .unwrap();
+    let previews = inventories
+        .iter()
+        .map(|inventory| {
+            project_legacy_role_console_policy(
+                inventory.role_id,
+                &inventory.source_grants,
+                &applications_console_policy_catalog(),
+                &applications_legacy_console_grant_mappings(),
+            )
+            .unwrap()
+        })
+        .collect();
+    RoleConsolePolicyMigrationRehearsalInput {
+        run_id: Uuid::now_v7(),
+        source_contract: "applications-legacy/v1".into(),
+        catalog_fingerprint: "applications-crud+settings-feature/v1".into(),
+        mapping_fingerprint: "applications-known-grants/v1".into(),
+        source,
+        previews,
+    }
 }
 
 #[tokio::test]
@@ -392,4 +428,297 @@ async fn ac_010_applications_console_policy_sql_rehearsal_preserves_exact_and_pa
         partial.groups()[0].operations()[0].row_scope(),
         Some(ConsoleOperationRowScope::Own)
     );
+}
+
+#[tokio::test]
+async fn ac_011_rehearsal_fences_apply_and_verified_rollback_restores_pre_apply_policy() {
+    let (store, workspace_id, actor_user_id) = role_store().await;
+    grant_legacy_application_permissions(
+        &store,
+        workspace_id,
+        "operator",
+        &[
+            access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
+            "application.create.all",
+            "application.view.all",
+            "application.edit.all",
+            "application.delete.all",
+        ],
+    )
+    .await;
+
+    RoleRepository::replace_role_console_policy(
+        &store,
+        &ReplaceRoleConsolePolicyInput {
+            actor_user_id,
+            workspace_id,
+            role_code: "operator".into(),
+            groups: vec![custom_group(ConsoleOperationRowScope::Own)],
+        },
+    )
+    .await
+    .unwrap();
+
+    let input = applications_migration_input(&store).await;
+
+    store
+        .rehearse_role_console_policy_migration(&input)
+        .await
+        .unwrap();
+    let deterministic_role_previews: i64 = sqlx::query_scalar(
+        r#"
+        select count(*)
+        from role_console_policy_migration_role_previews
+        where run_id = $1
+          and effective_before = effective_after
+          and effective_delta = '[]'::jsonb
+          and authorization_delta = '{"added": [], "removed": []}'::jsonb
+        "#,
+    )
+    .bind(input.run_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(deterministic_role_previews, input.previews.len() as i64);
+    store
+        .apply_role_console_policy_migration(&input, actor_user_id)
+        .await
+        .unwrap();
+
+    let applied_run_state: (String, String, bool) = sqlx::query_as(
+        "select status, cutover_marker, write_fenced from role_console_policy_migration_runs where id = $1",
+    )
+    .bind(input.run_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        applied_run_state,
+        ("applied_fenced".into(), "console_policy".into(), true)
+    );
+
+    let applied = RoleRepository::get_role_console_policy(&store, workspace_id, "operator")
+        .await
+        .unwrap();
+    assert_eq!(applied.groups()[0].mode(), domain::ConsolePolicyMode::Full);
+    let fenced_write = RoleRepository::replace_role_console_policy(
+        &store,
+        &ReplaceRoleConsolePolicyInput {
+            actor_user_id,
+            workspace_id,
+            role_code: "operator".into(),
+            groups: vec![custom_group(ConsoleOperationRowScope::ScopeAll)],
+        },
+    )
+    .await;
+    assert!(fenced_write
+        .unwrap_err()
+        .to_string()
+        .contains("console policy migration write fence"));
+    let fenced_legacy_write = sqlx::query(
+        r#"
+        delete from role_permissions grant_row
+        using permission_definitions definition, roles role
+        where grant_row.permission_id = definition.id
+          and grant_row.role_id = role.id
+          and role.workspace_id = $1
+          and role.code = 'operator'
+          and definition.code = 'application.view.all'
+        "#,
+    )
+    .bind(workspace_id)
+    .execute(store.pool())
+    .await;
+    assert!(fenced_legacy_write
+        .unwrap_err()
+        .to_string()
+        .contains("console policy migration write fence"));
+
+    store
+        .rollback_role_console_policy_migration(input.run_id, actor_user_id)
+        .await
+        .unwrap();
+    let restored = RoleRepository::get_role_console_policy(&store, workspace_id, "operator")
+        .await
+        .unwrap();
+    assert_eq!(
+        restored.groups(),
+        vec![custom_group(ConsoleOperationRowScope::Own)].as_slice()
+    );
+
+    let retained_legacy_grants: i64 = sqlx::query_scalar(
+        r#"
+        select count(*)
+        from role_permissions grant_row
+        join permission_definitions definition on definition.id = grant_row.permission_id
+        join roles role on role.id = grant_row.role_id
+        where role.workspace_id = $1
+          and role.code = 'operator'
+          and (
+            definition.resource = 'application'
+            or definition.code = $2
+          )
+        "#,
+    )
+    .bind(workspace_id)
+    .bind(access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(retained_legacy_grants, 5);
+
+    let run_state: (String, String, bool, bool) = sqlx::query_as(
+        r#"
+        select status, cutover_marker, write_fenced, rollback_verified_at is not null
+        from role_console_policy_migration_runs
+        where id = $1
+        "#,
+    )
+    .bind(input.run_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        run_state,
+        ("rolled_back".into(), "legacy".into(), false, true)
+    );
+}
+
+#[tokio::test]
+async fn ac_011_finalize_releases_fence_and_prevents_destructive_rollback_after_user_edits() {
+    let (store, workspace_id, actor_user_id) = role_store().await;
+    grant_legacy_application_permissions(
+        &store,
+        workspace_id,
+        "operator",
+        &["application.view.all"],
+    )
+    .await;
+    let input = applications_migration_input(&store).await;
+    store
+        .rehearse_role_console_policy_migration(&input)
+        .await
+        .unwrap();
+    store
+        .apply_role_console_policy_migration(&input, actor_user_id)
+        .await
+        .unwrap();
+
+    let write_while_fenced = RoleRepository::replace_role_console_policy(
+        &store,
+        &ReplaceRoleConsolePolicyInput {
+            actor_user_id,
+            workspace_id,
+            role_code: "operator".into(),
+            groups: vec![custom_group(ConsoleOperationRowScope::Own)],
+        },
+    )
+    .await;
+    assert!(write_while_fenced
+        .unwrap_err()
+        .to_string()
+        .contains("console policy migration write fence"));
+
+    store
+        .finalize_role_console_policy_migration(input.run_id, actor_user_id)
+        .await
+        .unwrap();
+    RoleRepository::replace_role_console_policy(
+        &store,
+        &ReplaceRoleConsolePolicyInput {
+            actor_user_id,
+            workspace_id,
+            role_code: "operator".into(),
+            groups: vec![custom_group(ConsoleOperationRowScope::Own)],
+        },
+    )
+    .await
+    .unwrap();
+
+    let rollback_after_finalize = store
+        .rollback_role_console_policy_migration(input.run_id, actor_user_id)
+        .await;
+    assert!(rollback_after_finalize
+        .unwrap_err()
+        .to_string()
+        .contains("console_policy_migration_state"));
+    let edited = RoleRepository::get_role_console_policy(&store, workspace_id, "operator")
+        .await
+        .unwrap();
+    assert_eq!(
+        edited.groups(),
+        vec![custom_group(ConsoleOperationRowScope::Own)].as_slice()
+    );
+
+    let run_state: (String, String, bool, bool) = sqlx::query_as(
+        r#"
+        select status, cutover_marker, write_fenced,
+               finalized_by = $2 and finalized_at is not null
+        from role_console_policy_migration_runs
+        where id = $1
+        "#,
+    )
+    .bind(input.run_id)
+    .bind(actor_user_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        run_state,
+        ("applied".into(), "console_policy".into(), false, true)
+    );
+}
+
+#[tokio::test]
+async fn ac_011_migration_run_schema_rejects_finalized_actor_before_finalize() {
+    let (store, _, actor_user_id) = role_store().await;
+    let result = sqlx::query(
+        r#"
+        insert into role_console_policy_migration_runs (
+          id, source_contract, catalog_fingerprint, mapping_fingerprint,
+          source_filter, source_snapshot, status, cutover_marker, write_fenced,
+          finalized_by
+        )
+        values (
+          $1, 'applications-legacy/v1', 'catalog/v1', 'mapping/v1',
+          '{}', '{}', 'previewed', 'legacy', false, $2
+        )
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(actor_user_id)
+    .execute(store.pool())
+    .await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn ac_010_application_namespace_inventory_exposes_unknown_and_ignores_unrelated_grants() {
+    let (store, workspace_id, _) = role_store().await;
+    grant_legacy_application_permissions(
+        &store,
+        workspace_id,
+        "operator",
+        &["application.publish.all", "workflow.view.all"],
+    )
+    .await;
+    let source = applications_legacy_console_policy_source();
+    let inventories = store
+        .list_role_console_policy_migration_grants(&source)
+        .await
+        .unwrap();
+    let operator = inventories
+        .iter()
+        .find(|inventory| inventory.role_code == "operator")
+        .unwrap();
+    assert_eq!(operator.source_grants, vec!["application.publish.all"]);
+
+    let error = project_legacy_role_console_policy(
+        operator.role_id,
+        &operator.source_grants,
+        &applications_console_policy_catalog(),
+        &applications_legacy_console_grant_mappings(),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("unknown legacy grant"));
 }

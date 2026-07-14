@@ -7,6 +7,7 @@ use domain::{
     ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup,
 };
 
+use crate::ports::RoleConsolePolicyMigrationSource;
 use crate::role::console_policy_migration::{
     CompiledConsolePolicyCatalog, CompiledConsolePolicyGroup, LegacyConsoleGrantMapping,
 };
@@ -77,4 +78,11 @@ pub fn applications_legacy_console_grant_mappings() -> Vec<LegacyConsoleGrantMap
         }
     }
     mappings
+}
+
+pub fn applications_legacy_console_policy_source() -> RoleConsolePolicyMigrationSource {
+    RoleConsolePolicyMigrationSource {
+        permission_resources: vec!["application".to_string()],
+        exact_permission_codes: vec![SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION.to_string()],
+    }
 }

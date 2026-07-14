@@ -36,10 +36,29 @@ pub struct ConsolePolicyAuthorizationDelta {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ConsolePolicyEffectiveAuthorization {
+    pub operation_id: ConsoleOperationId,
+    pub simple_enabled: Option<bool>,
+    pub same_scope_own: Option<bool>,
+    pub same_scope_other: Option<bool>,
+    pub cross_scope: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ConsolePolicyEffectiveAuthorizationDelta {
+    pub operation_id: ConsoleOperationId,
+    pub before: Option<ConsolePolicyEffectiveAuthorization>,
+    pub after: Option<ConsolePolicyEffectiveAuthorization>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConsolePolicyMigrationPreview {
     pub source_grants: BTreeSet<String>,
     pub policy: RoleConsolePolicy,
     pub authorization_delta: ConsolePolicyAuthorizationDelta,
+    pub effective_before: Vec<ConsolePolicyEffectiveAuthorization>,
+    pub effective_after: Vec<ConsolePolicyEffectiveAuthorization>,
+    pub effective_delta: Vec<ConsolePolicyEffectiveAuthorizationDelta>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,11 +210,83 @@ pub fn project_legacy_role_console_policy(
         .map(|(_, policy)| policy.clone())
         .collect();
 
+    let effective_before = effective_authorization_matrix(&projected_operations);
+    let effective_after = effective_authorization_matrix(&effective_after);
+    let effective_delta = effective_authorization_delta(&effective_before, &effective_after);
+    if !effective_delta.is_empty() {
+        return Err(ConsolePolicyMigrationError::new(
+            "projected policy changes the effective authorization matrix",
+        ));
+    }
+
     Ok(ConsolePolicyMigrationPreview {
         source_grants,
         policy,
         authorization_delta: ConsolePolicyAuthorizationDelta { added, removed },
+        effective_before,
+        effective_after,
+        effective_delta,
     })
+}
+
+fn effective_authorization_matrix(
+    operations: &BTreeMap<ConsoleOperationId, ConsoleOperationPolicy>,
+) -> Vec<ConsolePolicyEffectiveAuthorization> {
+    operations
+        .values()
+        .map(|operation| match operation {
+            ConsoleOperationPolicy::Simple {
+                operation_id,
+                enabled,
+            } => ConsolePolicyEffectiveAuthorization {
+                operation_id: operation_id.clone(),
+                simple_enabled: Some(*enabled),
+                same_scope_own: None,
+                same_scope_other: None,
+                cross_scope: None,
+            },
+            ConsoleOperationPolicy::Row {
+                operation_id,
+                scope,
+            } => ConsolePolicyEffectiveAuthorization {
+                operation_id: operation_id.clone(),
+                simple_enabled: None,
+                same_scope_own: Some(*scope != ConsoleOperationRowScope::Disabled),
+                same_scope_other: Some(*scope == ConsoleOperationRowScope::ScopeAll),
+                cross_scope: Some(false),
+            },
+        })
+        .collect()
+}
+
+fn effective_authorization_delta(
+    before: &[ConsolePolicyEffectiveAuthorization],
+    after: &[ConsolePolicyEffectiveAuthorization],
+) -> Vec<ConsolePolicyEffectiveAuthorizationDelta> {
+    let before = before
+        .iter()
+        .map(|entry| (entry.operation_id.clone(), entry))
+        .collect::<BTreeMap<_, _>>();
+    let after = after
+        .iter()
+        .map(|entry| (entry.operation_id.clone(), entry))
+        .collect::<BTreeMap<_, _>>();
+    before
+        .keys()
+        .chain(after.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .filter_map(|operation_id| {
+            let before_entry = before.get(&operation_id).copied();
+            let after_entry = after.get(&operation_id).copied();
+            (before_entry != after_entry).then(|| ConsolePolicyEffectiveAuthorizationDelta {
+                operation_id,
+                before: before_entry.cloned(),
+                after: after_entry.cloned(),
+            })
+        })
+        .collect()
 }
 
 fn validate_granted_operation(

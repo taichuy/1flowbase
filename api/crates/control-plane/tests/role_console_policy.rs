@@ -276,4 +276,30 @@ fn ac_011_console_policy_preview_delta_is_deterministic_and_full_is_not_material
             "application.view.all".to_string(),
         ])
     );
+
+    let serialized = serde_json::to_value(&preview).unwrap();
+    assert_eq!(
+        serialized["effective_before"],
+        serialized["effective_after"]
+    );
+    assert_eq!(serialized["effective_delta"], serde_json::json!([]));
+    assert_eq!(
+        serialized["effective_before"],
+        serde_json::json!([
+            {
+                "operation_id": "applications.create",
+                "simple_enabled": true,
+                "same_scope_own": null,
+                "same_scope_other": null,
+                "cross_scope": null
+            },
+            {
+                "operation_id": "applications.view",
+                "simple_enabled": null,
+                "same_scope_own": true,
+                "same_scope_other": true,
+                "cross_scope": false
+            }
+        ])
+    );
 }

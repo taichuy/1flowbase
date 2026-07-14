@@ -406,6 +406,57 @@ pub struct ReplaceRoleConsolePolicyInput {
     pub groups: Vec<domain::RoleConsoleGroupPolicy>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RoleConsolePolicyMigrationSource {
+    pub permission_resources: Vec<String>,
+    pub exact_permission_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoleConsolePolicyMigrationGrantInventory {
+    pub role_id: Uuid,
+    pub workspace_id: Uuid,
+    pub role_code: String,
+    pub source_grants: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RoleConsolePolicyMigrationRehearsalInput {
+    pub run_id: Uuid,
+    pub source_contract: String,
+    pub catalog_fingerprint: String,
+    pub mapping_fingerprint: String,
+    pub source: RoleConsolePolicyMigrationSource,
+    pub previews: Vec<crate::role::console_policy_migration::ConsolePolicyMigrationPreview>,
+}
+
+#[async_trait]
+pub trait RoleConsolePolicyMigrationRepository: Send + Sync {
+    async fn list_role_console_policy_migration_grants(
+        &self,
+        source: &RoleConsolePolicyMigrationSource,
+    ) -> anyhow::Result<Vec<RoleConsolePolicyMigrationGrantInventory>>;
+    async fn rehearse_role_console_policy_migration(
+        &self,
+        input: &RoleConsolePolicyMigrationRehearsalInput,
+    ) -> anyhow::Result<()>;
+    async fn apply_role_console_policy_migration(
+        &self,
+        input: &RoleConsolePolicyMigrationRehearsalInput,
+        actor_user_id: Uuid,
+    ) -> anyhow::Result<()>;
+    async fn finalize_role_console_policy_migration(
+        &self,
+        run_id: Uuid,
+        actor_user_id: Uuid,
+    ) -> anyhow::Result<()>;
+    async fn rollback_role_console_policy_migration(
+        &self,
+        run_id: Uuid,
+        actor_user_id: Uuid,
+    ) -> anyhow::Result<()>;
+}
+
 #[async_trait]
 pub trait MemberRepository: Send + Sync {
     async fn load_actor_context_for_user(
