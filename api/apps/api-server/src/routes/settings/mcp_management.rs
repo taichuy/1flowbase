@@ -10,7 +10,6 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post, put},
     Json, Router,
 };
 use control_plane::mcp_management::{
@@ -31,6 +30,9 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_docs::{ApiDocsRegistry, DocsCatalogOperation},
     response::ApiSuccess,
+    routes::console_route_assembly::{
+        console_get, console_post, console_put, ConsoleRouteAssembly,
+    },
     runtime_data_model_docs,
 };
 
@@ -330,66 +332,177 @@ pub struct McpListQuery {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/mcp/catalog", get(get_mcp_catalog))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/mcp/catalog",
+            console_get(
+                get_mcp_catalog,
+                ConsoleOperation("mcp.catalog.view".to_string()),
+            ),
+        )
         .route(
             "/mcp/interface-capabilities",
-            get(list_mcp_interface_capabilities),
+            console_get(
+                list_mcp_interface_capabilities,
+                ConsoleOperation("mcp.catalog.view".to_string()),
+            ),
         )
-        .route("/mcp/list", get(list_mcp_items))
-        .route("/mcp/export", get(export_mcp_catalog))
+        .route(
+            "/mcp/list",
+            console_get(
+                list_mcp_items,
+                ConsoleOperation("mcp.catalog.view".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/export",
+            console_get(
+                export_mcp_catalog,
+                ConsoleOperation("mcp.catalog.export".to_string()),
+            ),
+        )
         .route(
             "/mcp/instances",
-            get(list_mcp_instances).post(create_mcp_instance),
+            console_get(
+                list_mcp_instances,
+                ConsoleOperation("mcp.instances.view".to_string()),
+            )
+            .post(
+                create_mcp_instance,
+                ConsoleOperation("mcp.instances.create".to_string()),
+            ),
         )
-        .route("/mcp/instances/export", get(export_mcp_instance_directory))
+        .route(
+            "/mcp/instances/export",
+            console_get(
+                export_mcp_instance_directory,
+                ConsoleOperation("mcp.instances.export".to_string()),
+            ),
+        )
         .route(
             "/mcp/instances/:instance_id",
-            put(update_mcp_instance).delete(delete_mcp_instance),
+            console_put(
+                update_mcp_instance,
+                ConsoleOperation("mcp.instances.update".to_string()),
+            )
+            .delete(
+                delete_mcp_instance,
+                ConsoleOperation("mcp.instances.delete".to_string()),
+            ),
         )
         .route(
             "/mcp/instances/:instance_id/client-credential",
-            get(get_mcp_client_credential)
-                .put(save_mcp_client_credential)
-                .delete(delete_mcp_client_credential),
+            console_get(
+                get_mcp_client_credential,
+                ConsoleOperation("mcp.client_credential.reveal".to_string()),
+            )
+            .put(
+                save_mcp_client_credential,
+                ConsoleOperation("mcp.client_credential.save".to_string()),
+            )
+            .delete(
+                delete_mcp_client_credential,
+                ConsoleOperation("mcp.client_credential.delete".to_string()),
+            ),
         )
         .route(
             "/mcp/instances/:instance_id/groups",
-            post(upsert_mcp_group).delete(delete_mcp_group),
+            console_post(
+                upsert_mcp_group,
+                ConsoleOperation("mcp.groups.upsert".to_string()),
+            )
+            .delete(
+                delete_mcp_group,
+                ConsoleOperation("mcp.groups.delete".to_string()),
+            ),
         )
         .route(
             "/mcp/instances/:instance_id/groups/move",
-            post(move_mcp_group),
+            console_post(
+                move_mcp_group,
+                ConsoleOperation("mcp.groups.move".to_string()),
+            ),
         )
         .route(
             "/mcp/instances/:instance_id/tool-bindings",
-            post(create_mcp_tool_binding),
+            console_post(
+                create_mcp_tool_binding,
+                ConsoleOperation("mcp.tool_bindings.create".to_string()),
+            ),
         )
         .route(
             "/mcp/tool-bindings/:binding_id",
-            put(update_mcp_tool_binding).delete(delete_mcp_tool_binding),
+            console_put(
+                update_mcp_tool_binding,
+                ConsoleOperation("mcp.tool_bindings.update".to_string()),
+            )
+            .delete(
+                delete_mcp_tool_binding,
+                ConsoleOperation("mcp.tool_bindings.delete".to_string()),
+            ),
         )
-        .route("/mcp/tools", get(list_mcp_tools).post(create_mcp_tool))
+        .route(
+            "/mcp/tools",
+            console_get(
+                list_mcp_tools,
+                ConsoleOperation("mcp.tools.view".to_string()),
+            )
+            .post(
+                create_mcp_tool,
+                ConsoleOperation("mcp.tools.create".to_string()),
+            ),
+        )
         .route(
             "/mcp/tools/:tool_id",
-            get(get_mcp_tool)
-                .put(update_mcp_tool)
-                .delete(delete_mcp_tool),
+            console_get(get_mcp_tool, ConsoleOperation("mcp.tools.view".to_string()))
+                .put(
+                    update_mcp_tool,
+                    ConsoleOperation("mcp.tools.update".to_string()),
+                )
+                .delete(
+                    delete_mcp_tool,
+                    ConsoleOperation("mcp.tools.delete".to_string()),
+                ),
         )
         .route(
             "/mcp/tools/:tool_id/description/refresh",
-            post(refresh_mcp_tool_description),
+            console_post(
+                refresh_mcp_tool_description,
+                ConsoleOperation("mcp.tools.description.refresh".to_string()),
+            ),
         )
         .route(
             "/mcp/tools/:tool_id/description-check",
-            post(check_mcp_tool_description),
+            console_post(
+                check_mcp_tool_description,
+                ConsoleOperation("mcp.tools.description.check".to_string()),
+            ),
         )
-        .route("/mcp/debug/execute", post(execute_mcp_debug))
+        .route(
+            "/mcp/debug/execute",
+            console_post(
+                execute_mcp_debug,
+                ConsoleOperation("mcp.debug.execute".to_string()),
+            ),
+        )
         .route(
             "/mcp/instances/:instance_id/discovery-policy",
-            get(get_mcp_instance_discovery_policy).put(update_mcp_instance_discovery_policy),
+            console_get(
+                get_mcp_instance_discovery_policy,
+                ConsoleOperation("mcp.discovery_policy.view".to_string()),
+            )
+            .put(
+                update_mcp_instance_discovery_policy,
+                ConsoleOperation("mcp.discovery_policy.update".to_string()),
+            ),
         )
-        .merge(bundles::router())
+        .merge(bundles::route_assembly())
 }
 
 pub async fn get_mcp_client_credential(

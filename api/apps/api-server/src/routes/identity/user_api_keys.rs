@@ -3,7 +3,6 @@ use std::{collections::BTreeSet, sync::Arc};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, post},
     Json, Router,
 };
 use control_plane::auth::{
@@ -21,6 +20,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -73,18 +73,35 @@ pub struct RevokeUserApiKeyResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    ConsoleRouteAssembly::new()
         .route(
             "/user-api-keys",
-            get(list_user_api_keys).post(create_user_api_key),
+            console_get(
+                list_user_api_keys,
+                access_control::ConsoleRouteOwnership::Authenticated,
+            )
+            .post(
+                create_user_api_key,
+                access_control::ConsoleRouteOwnership::Authenticated,
+            ),
         )
         .route(
             "/user-api-keys/role-options",
-            get(list_user_api_key_role_options),
+            console_get(
+                list_user_api_key_role_options,
+                access_control::ConsoleRouteOwnership::Authenticated,
+            ),
         )
         .route(
             "/user-api-keys/:api_key_id/revoke",
-            post(revoke_user_api_key),
+            console_post(
+                revoke_user_api_key,
+                access_control::ConsoleRouteOwnership::Authenticated,
+            ),
         )
 }
 

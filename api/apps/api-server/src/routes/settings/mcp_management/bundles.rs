@@ -9,8 +9,7 @@ use axum::{
     extract::{Multipart, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::Response,
-    routing::{get, post},
-    Json, Router,
+    Json,
 };
 use control_plane::{
     errors::ControlPlaneError,
@@ -26,22 +25,58 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_BUNDLE_FILES: usize = 256;
 
-pub(super) fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/mcp/bundles/official", get(list_official_bundles))
+pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/mcp/bundles/official",
+            console_get(
+                list_official_bundles,
+                ConsoleOperation("mcp.bundles.official.list".to_string()),
+            ),
+        )
         .route(
             "/mcp/bundles/preview-official",
-            post(preview_official_bundle),
+            console_post(
+                preview_official_bundle,
+                ConsoleOperation("mcp.bundles.preview".to_string()),
+            ),
         )
-        .route("/mcp/bundles/import-official", post(import_official_bundle))
-        .route("/mcp/bundles/export", post(export_bundle))
-        .route("/mcp/bundles/preview-upload", post(preview_uploaded_bundle))
-        .route("/mcp/bundles/import-upload", post(import_uploaded_bundle))
+        .route(
+            "/mcp/bundles/import-official",
+            console_post(
+                import_official_bundle,
+                ConsoleOperation("mcp.bundles.import".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/bundles/export",
+            console_post(
+                export_bundle,
+                ConsoleOperation("mcp.bundles.export".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/bundles/preview-upload",
+            console_post(
+                preview_uploaded_bundle,
+                ConsoleOperation("mcp.bundles.preview".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/bundles/import-upload",
+            console_post(
+                import_uploaded_bundle,
+                ConsoleOperation("mcp.bundles.import".to_string()),
+            ),
+        )
 }
 
 #[derive(Debug, Deserialize)]

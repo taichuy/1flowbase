@@ -7,7 +7,6 @@ use access_control::{
 use axum::{
     extract::{Path, Query, State},
     http::HeaderMap,
-    routing::{get, post, put},
     Json, Router,
 };
 use control_plane::{
@@ -38,6 +37,9 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{
+        console_get, console_post, console_put, ConsoleRouteAssembly,
+    },
 };
 
 mod memory_support;
@@ -344,62 +346,110 @@ pub struct MemoryEntryValueResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
         .route(
             "/settings/host-infrastructure/memory",
-            get(get_host_infrastructure_memory_overview),
+            console_get(
+                get_host_infrastructure_memory_overview,
+                ConsoleOperation("host_infrastructure.memory.view".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/memory/stats",
-            get(get_host_infrastructure_memory_stats_overview),
+            console_get(
+                get_host_infrastructure_memory_stats_overview,
+                ConsoleOperation("host_infrastructure.memory.view".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/memory/contracts/:contract_code/entries",
-            get(list_host_infrastructure_memory_entries),
+            console_get(
+                list_host_infrastructure_memory_entries,
+                ConsoleOperation("host_infrastructure.memory.view".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/memory/contracts/:contract_code/stats",
-            get(get_host_infrastructure_memory_stats),
+            console_get(
+                get_host_infrastructure_memory_stats,
+                ConsoleOperation("host_infrastructure.memory.view".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/memory/contracts/:contract_code/entries/search",
-            get(search_host_infrastructure_memory_entries),
+            console_get(
+                search_host_infrastructure_memory_entries,
+                ConsoleOperation("host_infrastructure.memory.view".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/memory/contracts/:contract_code/tree",
-            get(list_host_infrastructure_memory_tree),
+            console_get(
+                list_host_infrastructure_memory_tree,
+                ConsoleOperation("host_infrastructure.memory.view".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/memory/contracts/:contract_code/entries/reveal",
-            post(reveal_host_infrastructure_memory_entry),
+            console_post(
+                reveal_host_infrastructure_memory_entry,
+                ConsoleOperation("host_infrastructure.memory.reveal".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/cache",
-            get(get_host_infrastructure_cache_overview),
+            console_get(
+                get_host_infrastructure_cache_overview,
+                ConsoleOperation("host_infrastructure.cache.view".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/cache/domains/:domain_code/entries",
-            get(list_host_infrastructure_cache_entries),
+            console_get(
+                list_host_infrastructure_cache_entries,
+                ConsoleOperation("host_infrastructure.cache.view".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/cache/domains/:domain_code/entries/reveal",
-            post(reveal_host_infrastructure_cache_entry),
+            console_post(
+                reveal_host_infrastructure_cache_entry,
+                ConsoleOperation("host_infrastructure.cache.reveal".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/cache/domains/:domain_code/entries/clear",
-            post(clear_host_infrastructure_cache_entry),
+            console_post(
+                clear_host_infrastructure_cache_entry,
+                ConsoleOperation("host_infrastructure.cache.entry.clear".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/cache/domains/:domain_code/clear",
-            post(clear_host_infrastructure_cache_domain),
+            console_post(
+                clear_host_infrastructure_cache_domain,
+                ConsoleOperation("host_infrastructure.cache.domain.clear".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/providers",
-            get(list_host_infrastructure_providers),
+            console_get(
+                list_host_infrastructure_providers,
+                ConsoleOperation("host_infrastructure.providers.view".to_string()),
+            ),
         )
         .route(
             "/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
-            put(save_host_infrastructure_provider_config),
+            console_put(
+                save_host_infrastructure_provider_config,
+                ConsoleOperation("host_infrastructure.providers.configure".to_string()),
+            ),
         )
 }
 

@@ -8,6 +8,7 @@ use crate::{
     app_state::compile_core_settings_feature_registry,
     routes::console_route_assembly::{
         compile_migrated_core_console_operation_registry, migrated_core_console_route_assembly,
+        ConsoleRouteAssembly,
     },
 };
 
@@ -23,6 +24,26 @@ fn assembled_route(
         },
         ownership,
     }
+}
+
+fn route_bindings<'a, S>(assembly: &'a ConsoleRouteAssembly<S>) -> Vec<(&'a str, &'a str, &'a str)>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    assembly
+        .bindings()
+        .iter()
+        .map(|binding| {
+            (
+                binding.route.method.as_str(),
+                binding.route.path.as_str(),
+                match &binding.ownership {
+                    ConsoleRouteOwnership::ConsoleOperation(operation_id) => operation_id.as_str(),
+                    ConsoleRouteOwnership::Authenticated => "authenticated",
+                },
+            )
+        })
+        .collect()
 }
 
 #[test]
@@ -901,4 +922,187 @@ fn data_model_docs_and_data_source_routes_compile_exact_operations() {
         ConsolePolicyGroup::Other("other.data-sources".to_string())
     );
     assert_eq!(secret_rotate.routes.len(), 1);
+}
+
+#[test]
+fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
+    let host = crate::routes::host_infrastructure::route_assembly();
+    let mcp = crate::routes::mcp_management::route_assembly();
+    let user_api_keys = crate::routes::user_api_keys::route_assembly();
+
+    assert_eq!(
+        route_bindings(&host),
+        vec![
+            ("GET", "/api/console/settings/host-infrastructure/memory", "host_infrastructure.memory.view"),
+            ("GET", "/api/console/settings/host-infrastructure/memory/stats", "host_infrastructure.memory.view"),
+            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries", "host_infrastructure.memory.view"),
+            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/stats", "host_infrastructure.memory.view"),
+            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries/search", "host_infrastructure.memory.view"),
+            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/tree", "host_infrastructure.memory.view"),
+            ("POST", "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries/reveal", "host_infrastructure.memory.reveal"),
+            ("GET", "/api/console/settings/host-infrastructure/cache", "host_infrastructure.cache.view"),
+            ("GET", "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries", "host_infrastructure.cache.view"),
+            ("POST", "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries/reveal", "host_infrastructure.cache.reveal"),
+            ("POST", "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries/clear", "host_infrastructure.cache.entry.clear"),
+            ("POST", "/api/console/settings/host-infrastructure/cache/domains/:domain_code/clear", "host_infrastructure.cache.domain.clear"),
+            ("GET", "/api/console/settings/host-infrastructure/providers", "host_infrastructure.providers.view"),
+            ("PUT", "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config", "host_infrastructure.providers.configure"),
+        ]
+    );
+    assert_eq!(
+        route_bindings(&mcp),
+        vec![
+            ("GET", "/api/console/mcp/catalog", "mcp.catalog.view"),
+            (
+                "GET",
+                "/api/console/mcp/interface-capabilities",
+                "mcp.catalog.view"
+            ),
+            ("GET", "/api/console/mcp/list", "mcp.catalog.view"),
+            ("GET", "/api/console/mcp/export", "mcp.catalog.export"),
+            ("GET", "/api/console/mcp/instances", "mcp.instances.view"),
+            ("POST", "/api/console/mcp/instances", "mcp.instances.create"),
+            (
+                "GET",
+                "/api/console/mcp/instances/export",
+                "mcp.instances.export"
+            ),
+            (
+                "PUT",
+                "/api/console/mcp/instances/:instance_id",
+                "mcp.instances.update"
+            ),
+            (
+                "DELETE",
+                "/api/console/mcp/instances/:instance_id",
+                "mcp.instances.delete"
+            ),
+            (
+                "GET",
+                "/api/console/mcp/instances/:instance_id/client-credential",
+                "mcp.client_credential.reveal"
+            ),
+            (
+                "PUT",
+                "/api/console/mcp/instances/:instance_id/client-credential",
+                "mcp.client_credential.save"
+            ),
+            (
+                "DELETE",
+                "/api/console/mcp/instances/:instance_id/client-credential",
+                "mcp.client_credential.delete"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/instances/:instance_id/groups",
+                "mcp.groups.upsert"
+            ),
+            (
+                "DELETE",
+                "/api/console/mcp/instances/:instance_id/groups",
+                "mcp.groups.delete"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/instances/:instance_id/groups/move",
+                "mcp.groups.move"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/instances/:instance_id/tool-bindings",
+                "mcp.tool_bindings.create"
+            ),
+            (
+                "PUT",
+                "/api/console/mcp/tool-bindings/:binding_id",
+                "mcp.tool_bindings.update"
+            ),
+            (
+                "DELETE",
+                "/api/console/mcp/tool-bindings/:binding_id",
+                "mcp.tool_bindings.delete"
+            ),
+            ("GET", "/api/console/mcp/tools", "mcp.tools.view"),
+            ("POST", "/api/console/mcp/tools", "mcp.tools.create"),
+            ("GET", "/api/console/mcp/tools/:tool_id", "mcp.tools.view"),
+            ("PUT", "/api/console/mcp/tools/:tool_id", "mcp.tools.update"),
+            (
+                "DELETE",
+                "/api/console/mcp/tools/:tool_id",
+                "mcp.tools.delete"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/tools/:tool_id/description/refresh",
+                "mcp.tools.description.refresh"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/tools/:tool_id/description-check",
+                "mcp.tools.description.check"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/debug/execute",
+                "mcp.debug.execute"
+            ),
+            (
+                "GET",
+                "/api/console/mcp/instances/:instance_id/discovery-policy",
+                "mcp.discovery_policy.view"
+            ),
+            (
+                "PUT",
+                "/api/console/mcp/instances/:instance_id/discovery-policy",
+                "mcp.discovery_policy.update"
+            ),
+            (
+                "GET",
+                "/api/console/mcp/bundles/official",
+                "mcp.bundles.official.list"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/bundles/preview-official",
+                "mcp.bundles.preview"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/bundles/import-official",
+                "mcp.bundles.import"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/bundles/export",
+                "mcp.bundles.export"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/bundles/preview-upload",
+                "mcp.bundles.preview"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/bundles/import-upload",
+                "mcp.bundles.import"
+            ),
+        ]
+    );
+    assert_eq!(
+        route_bindings(&user_api_keys),
+        vec![
+            ("GET", "/api/console/user-api-keys", "authenticated"),
+            ("POST", "/api/console/user-api-keys", "authenticated"),
+            (
+                "GET",
+                "/api/console/user-api-keys/role-options",
+                "authenticated"
+            ),
+            (
+                "POST",
+                "/api/console/user-api-keys/:api_key_id/revoke",
+                "authenticated"
+            ),
+        ]
+    );
 }
