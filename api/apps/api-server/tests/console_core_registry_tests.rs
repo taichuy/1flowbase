@@ -81,7 +81,7 @@ fn ac_003_unknown_core_operation_metadata_fails_instead_of_becoming_other() {
 
     assert!(error
         .to_string()
-        .contains("no explicit Core operation specification"));
+        .contains("no explicit Core or HostExtension operation specification for core.unknown"));
 }
 
 #[test]

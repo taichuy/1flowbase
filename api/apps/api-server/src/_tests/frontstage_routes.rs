@@ -1,7 +1,10 @@
+use std::collections::BTreeSet;
+
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
     replace_role_permissions, seed_workspace, test_app, test_app_with_database_url,
 };
+use access_control::ConsoleRouteOwnership;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -9,6 +12,84 @@ use axum::{
 use serde_json::json;
 use serde_json::Value;
 use tower::ServiceExt;
+
+#[test]
+fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
+    let assembly = crate::routes::frontstage::route_assembly();
+    let routes = assembly
+        .bindings()
+        .iter()
+        .map(|binding| (binding.route.method.as_str(), binding.route.path.as_str()))
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        routes,
+        BTreeSet::from([
+            ("GET", "/api/console/frontstage/:workspace_id/pages"),
+            ("POST", "/api/console/frontstage/:workspace_id/pages"),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/groups",
+            ),
+            (
+                "PATCH",
+                "/api/console/frontstage/:workspace_id/pages/:page_id",
+            ),
+            (
+                "DELETE",
+                "/api/console/frontstage/:workspace_id/pages/:page_id",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/move",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id",
+            ),
+            (
+                "PATCH",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id",
+            ),
+            (
+                "DELETE",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id",
+            ),
+            (
+                "PUT",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/document",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/queries/dispatch",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/actions/dispatch",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref",
+            ),
+            (
+                "PUT",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref",
+            ),
+        ])
+    );
+    assert!(assembly
+        .bindings()
+        .iter()
+        .all(|binding| { binding.ownership == ConsoleRouteOwnership::Authenticated }));
+}
 
 async fn current_workspace_id(app: &axum::Router, cookie: &str) -> String {
     let response = app

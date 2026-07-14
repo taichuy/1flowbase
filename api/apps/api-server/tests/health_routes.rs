@@ -216,13 +216,17 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     let runtime_event_stream = infrastructure
         .runtime_event_stream()
         .expect("local health test infrastructure must provide runtime event stream");
+    let settings_feature_registry = api_server::app_state::compile_core_settings_feature_registry()
+        .expect("core settings feature registry should compile");
+    let console_operation_registry =
+        api_server::app_state::compile_core_console_operation_registry(&settings_feature_registry)
+            .expect("core console operation registry should compile");
 
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
             store,
-            settings_feature_registry:
-                api_server::app_state::compile_core_settings_feature_registry()
-                    .expect("core settings feature registry should compile"),
+            settings_feature_registry,
+            console_operation_registry,
             infrastructure,
             console_surface_registry: std::sync::Arc::new(
                 api_server::console_surface_registry::ConsoleSurfaceRegistry::default(),

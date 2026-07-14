@@ -121,6 +121,8 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
+    use super::{authorize_compiled_console_access, compiled_console_route_access};
+
     fn test_registry() -> ConsoleOperationRegistry {
         let settings = crate::app_state::compile_core_settings_feature_registry().unwrap();
         let owner = ConsoleOperationOwner {

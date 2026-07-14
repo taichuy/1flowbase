@@ -3,7 +3,6 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, post, put},
     Json, Router,
 };
 use control_plane::frontstage::{
@@ -28,6 +27,9 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{
+        console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ToSchema)]
@@ -226,48 +228,58 @@ fn default_navigation_placement() -> FrontstageNavigationPlacementResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::Authenticated;
+
+    ConsoleRouteAssembly::new()
         .route(
             "/frontstage/:workspace_id/pages",
-            get(list_frontstage_pages).post(create_frontstage_page),
+            console_get(list_frontstage_pages, Authenticated)
+                .post(create_frontstage_page, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/groups",
-            post(create_frontstage_group),
+            console_post(create_frontstage_group, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/:page_id",
-            axum::routing::patch(update_frontstage_page_title).delete(delete_frontstage_page),
+            console_patch(update_frontstage_page_title, Authenticated)
+                .delete(delete_frontstage_page, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/:page_id/move",
-            post(move_frontstage_page),
+            console_post(move_frontstage_page, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs",
-            get(list_frontstage_page_tabs).post(create_frontstage_page_tab),
+            console_get(list_frontstage_page_tabs, Authenticated)
+                .post(create_frontstage_page_tab, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id",
-            get(get_frontstage_page_detail)
-                .patch(update_frontstage_page_tab)
-                .delete(delete_frontstage_page_tab),
+            console_get(get_frontstage_page_detail, Authenticated)
+                .patch(update_frontstage_page_tab, Authenticated)
+                .delete(delete_frontstage_page_tab, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/document",
-            put(save_frontstage_tab_document),
+            console_put(save_frontstage_tab_document, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/queries/dispatch",
-            post(dispatch_frontstage_query),
+            console_post(dispatch_frontstage_query, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/actions/dispatch",
-            post(dispatch_frontstage_action),
+            console_post(dispatch_frontstage_action, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref",
-            get(get_frontstage_block_code).put(save_frontstage_block_code),
+            console_get(get_frontstage_block_code, Authenticated)
+                .put(save_frontstage_block_code, Authenticated),
         )
 }
 

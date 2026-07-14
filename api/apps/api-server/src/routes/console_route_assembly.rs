@@ -191,82 +191,6 @@ fn console_health_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new().route("/health", console_get(crate::console_health, Authenticated))
 }
 
-fn frontstage_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::Authenticated;
-
-    let bindings = [
-        ("GET", "/api/console/frontstage/:workspace_id/pages"),
-        ("POST", "/api/console/frontstage/:workspace_id/pages"),
-        ("POST", "/api/console/frontstage/:workspace_id/pages/groups"),
-        (
-            "PATCH",
-            "/api/console/frontstage/:workspace_id/pages/:page_id",
-        ),
-        (
-            "DELETE",
-            "/api/console/frontstage/:workspace_id/pages/:page_id",
-        ),
-        (
-            "POST",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/move",
-        ),
-        (
-            "GET",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/tabs",
-        ),
-        (
-            "POST",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/tabs",
-        ),
-        (
-            "GET",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id",
-        ),
-        (
-            "PATCH",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id",
-        ),
-        (
-            "DELETE",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id",
-        ),
-        (
-            "PUT",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/document",
-        ),
-        (
-            "POST",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/queries/dispatch",
-        ),
-        (
-            "POST",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/actions/dispatch",
-        ),
-        (
-            "GET",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref",
-        ),
-        (
-            "PUT",
-            "/api/console/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref",
-        ),
-    ]
-    .into_iter()
-    .map(|(method, path)| ConsoleRouteAssemblyBinding {
-        route: ConsoleRouteBinding {
-            method: method.to_string(),
-            path: path.to_string(),
-        },
-        ownership: Authenticated,
-    })
-    .collect();
-
-    ConsoleRouteAssembly {
-        router: super::frontstage::router(),
-        bindings,
-    }
-}
-
 pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
         .merge(console_health_route_assembly())
@@ -296,7 +220,7 @@ pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiSta
         .merge(super::node_contributions::route_assembly())
         .merge(super::roles::route_assembly())
         .merge(super::permissions::route_assembly())
-        .merge(frontstage_route_assembly())
+        .merge(super::frontstage::route_assembly())
         .merge(super::plugins::route_assembly())
         .merge(super::auth_center::route_assembly())
         .merge(super::system::route_assembly())
