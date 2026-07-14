@@ -2,16 +2,44 @@ use control_plane::flow::{
     AgentFlowTemplateResourceSnapshot, FlowService, ImportAgentFlowTemplateCommand,
     PreviewAgentFlowTemplateCommand, SaveFlowDraftCommand,
 };
-use domain::{ApplicationType, FlowChangeKind};
+use domain::{
+    ApplicationType, ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope,
+    ConsolePolicyGroup, FlowChangeKind, RoleConsoleGroupPolicy, RoleConsolePolicy,
+};
 use serde_json::json;
 use uuid::Uuid;
 
+fn applications_group() -> ConsolePolicyGroup {
+    ConsolePolicyGroup::settings_feature(access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID)
+        .expect("applications settings feature id must be valid")
+}
+
+fn application_policy(operations: Vec<ConsoleOperationPolicy>) -> RoleConsolePolicy {
+    RoleConsolePolicy::new(
+        Uuid::now_v7(),
+        vec![RoleConsoleGroupPolicy::custom(
+            applications_group(),
+            operations,
+        )],
+    )
+}
+
+fn application_operation(value: &str) -> ConsoleOperationId {
+    ConsoleOperationId::try_from(value).expect("applications operation id must be valid")
+}
+
 #[tokio::test]
 async fn get_or_create_editor_state_requires_visible_application() {
-    let service = FlowService::for_tests_with_permissions(vec![
-        "application.view.own",
-        "application.create.all",
-    ]);
+    let service = FlowService::for_tests_with_console_policies(vec![application_policy(vec![
+        ConsoleOperationPolicy::simple(
+            application_operation(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+            true,
+        ),
+        ConsoleOperationPolicy::row(
+            application_operation(access_control::APPLICATIONS_VIEW_OPERATION_ID),
+            ConsoleOperationRowScope::Own,
+        ),
+    ])]);
     let owner_id = Uuid::now_v7();
     let other_actor_id = Uuid::now_v7();
     let application = service
@@ -24,7 +52,9 @@ async fn get_or_create_editor_state_requires_visible_application() {
         .await
         .unwrap_err();
 
-    assert!(error.to_string().contains("permission_denied"));
+    assert!(error
+        .to_string()
+        .contains("resource not found: application"));
 }
 
 #[tokio::test]
@@ -442,6 +472,120 @@ async fn import_agent_flow_template_creates_application_and_rewrites_only_flow_i
         imported.orchestration.draft.document["graph"]["edges"][0]["id"],
         source_state.draft.document["graph"]["edges"][0]["id"]
     );
+}
+
+#[tokio::test]
+async fn ac_005_ac_007_template_export_and_restore_require_their_simple_grants_with_view_own() {
+    let actor_user_id = Uuid::now_v7();
+    let service = FlowService::for_tests_with_console_policies(vec![application_policy(vec![
+        ConsoleOperationPolicy::simple(
+            application_operation(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+            true,
+        ),
+        ConsoleOperationPolicy::row(
+            application_operation(access_control::APPLICATIONS_VIEW_OPERATION_ID),
+            ConsoleOperationRowScope::Own,
+        ),
+        ConsoleOperationPolicy::simple(
+            application_operation(
+                access_control::APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID,
+            ),
+            false,
+        ),
+        ConsoleOperationPolicy::simple(
+            application_operation(
+                access_control::APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID,
+            ),
+            false,
+        ),
+    ])]);
+    let application = service
+        .seed_application_for_actor(actor_user_id, "Restricted templates")
+        .await
+        .unwrap();
+    let state = service
+        .get_or_create_editor_state(actor_user_id, application.id)
+        .await
+        .unwrap();
+
+    let export_error = service
+        .export_agent_flow_template(actor_user_id, application.id)
+        .await
+        .unwrap_err();
+    let restore_error = service
+        .restore_version(actor_user_id, application.id, state.versions[0].id)
+        .await
+        .unwrap_err();
+
+    assert!(export_error.to_string().contains("permission_denied"));
+    assert!(restore_error.to_string().contains("permission_denied"));
+}
+
+#[tokio::test]
+async fn ac_005_ac_007_template_import_requires_its_simple_grant_and_application_create() {
+    let source_actor_id = Uuid::now_v7();
+    let source = FlowService::for_tests();
+    let source_application = source
+        .seed_application_for_actor(source_actor_id, "Source template")
+        .await
+        .unwrap();
+    let template = source
+        .export_agent_flow_template(source_actor_id, source_application.id)
+        .await
+        .unwrap();
+    let actor_user_id = Uuid::now_v7();
+
+    let missing_create =
+        FlowService::for_tests_with_console_policies(vec![application_policy(vec![
+            ConsoleOperationPolicy::simple(
+                application_operation(
+                    access_control::APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID,
+                ),
+                true,
+            ),
+        ])]);
+    let missing_create_error = match missing_create
+        .import_agent_flow_template(ImportAgentFlowTemplateCommand {
+            actor_user_id,
+            template: template.clone(),
+            name: None,
+            description: None,
+            resources: AgentFlowTemplateResourceSnapshot::default(),
+        })
+        .await
+    {
+        Ok(_) => panic!("template import without applications.create must be rejected"),
+        Err(error) => error,
+    };
+    assert!(missing_create_error
+        .to_string()
+        .contains("permission_denied"));
+
+    let allowed = FlowService::for_tests_with_console_policies(vec![application_policy(vec![
+        ConsoleOperationPolicy::simple(
+            application_operation(
+                access_control::APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID,
+            ),
+            true,
+        ),
+        ConsoleOperationPolicy::simple(
+            application_operation(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+            true,
+        ),
+    ])]);
+    let imported = allowed
+        .import_agent_flow_template(ImportAgentFlowTemplateCommand {
+            actor_user_id,
+            template,
+            name: Some("Imported template".to_string()),
+            description: None,
+            resources: AgentFlowTemplateResourceSnapshot::default(),
+        })
+        .await
+        .expect("template import must retain server-stamped application creation");
+
+    assert_eq!(imported.application.workspace_id, Uuid::nil());
+    assert_eq!(imported.application.created_by, actor_user_id);
 }
 
 #[tokio::test]

@@ -13,7 +13,7 @@ use axum::{
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use control_plane::{
-    application::ApplicationService,
+    application::{ApplicationNonCrudConsoleOperation, ApplicationService},
     errors::ControlPlaneError,
     orchestration_runtime::{
         debug_stream_events, fail_runtime_event_stream_if_missing_terminal,

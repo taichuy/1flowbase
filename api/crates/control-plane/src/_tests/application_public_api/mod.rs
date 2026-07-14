@@ -92,6 +92,13 @@ fn application_simple_operation(
     domain::ConsoleOperationPolicy::simple(application_operation_id(operation_id), enabled)
 }
 
+fn application_row_operation(
+    operation_id: &str,
+    scope: domain::ConsoleOperationRowScope,
+) -> domain::ConsoleOperationPolicy {
+    domain::ConsoleOperationPolicy::row(application_operation_id(operation_id), scope)
+}
+
 fn workflow_extension_mapping(slug: &str) -> ApplicationApiMappingConfig {
     ApplicationApiMappingConfig {
         input: ApplicationApiMappingInput {
@@ -1679,13 +1686,17 @@ async fn workflow_schedule_trigger_dispatch_skips_disabled_or_unpublished_applic
 }
 
 #[tokio::test]
-async fn ac_007_application_public_api_simple_operations_use_multi_role_allow_union_without_view() {
+async fn ac_005_ac_007_application_public_api_simple_operations_require_persisted_update_owner() {
     let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
         application_console_policy(vec![
             application_simple_operation(access_control::APPLICATIONS_PUBLISH_OPERATION_ID, false),
             application_simple_operation(
                 access_control::APPLICATIONS_API_SET_ENABLED_OPERATION_ID,
                 false,
+            ),
+            application_row_operation(
+                access_control::APPLICATIONS_UPDATE_OPERATION_ID,
+                domain::ConsoleOperationRowScope::Own,
             ),
         ]),
         application_console_policy(vec![
@@ -1696,7 +1707,8 @@ async fn ac_007_application_public_api_simple_operations_use_multi_role_allow_un
             ),
         ]),
     ]);
-    let application = harness.seed_application(actor_user_id(), "Support Bot");
+    let application = harness.seed_application(actor_user_id(), "Owned support bot");
+    let peer_application = harness.seed_application(other_user_id(), "Peer support bot");
     let service = ApplicationPublicationService::new(harness.repository());
 
     service
@@ -1707,7 +1719,7 @@ async fn ac_007_application_public_api_simple_operations_use_multi_role_allow_un
             api_enabled: true,
         })
         .await
-        .expect("publish simple operation should not require applications.view");
+        .expect("own application must retain publish access");
     service
         .set_api_enabled(SetApplicationApiEnabledCommand {
             actor_user_id: actor_user_id(),
@@ -1715,7 +1727,69 @@ async fn ac_007_application_public_api_simple_operations_use_multi_role_allow_un
             api_enabled: false,
         })
         .await
-        .expect("API status simple operation should not require applications.view");
+        .expect("own application must retain API-status access");
+
+    let publish_error = service
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: peer_application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .expect_err("update own must not publish a same-workspace peer application");
+    let status_error = service
+        .set_api_enabled(SetApplicationApiEnabledCommand {
+            actor_user_id: actor_user_id(),
+            application_id: peer_application.id,
+            api_enabled: true,
+        })
+        .await
+        .expect_err("update own must not change a same-workspace peer API status");
+
+    assert!(publish_error.to_string().contains("permission_denied"));
+    assert!(status_error.to_string().contains("permission_denied"));
+}
+
+#[tokio::test]
+async fn ac_005_ac_007_application_public_api_multi_role_union_retains_update_scope_all() {
+    let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
+        application_console_policy(vec![
+            application_simple_operation(access_control::APPLICATIONS_PUBLISH_OPERATION_ID, true),
+            application_simple_operation(
+                access_control::APPLICATIONS_API_SET_ENABLED_OPERATION_ID,
+                true,
+            ),
+            application_row_operation(
+                access_control::APPLICATIONS_UPDATE_OPERATION_ID,
+                domain::ConsoleOperationRowScope::Own,
+            ),
+        ]),
+        application_console_policy(vec![application_row_operation(
+            access_control::APPLICATIONS_UPDATE_OPERATION_ID,
+            domain::ConsoleOperationRowScope::ScopeAll,
+        )]),
+    ]);
+    let peer_application = harness.seed_application(other_user_id(), "Peer support bot");
+    let service = ApplicationPublicationService::new(harness.repository());
+
+    service
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: peer_application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .expect("multi-role scope_all must retain publish access");
+    service
+        .set_api_enabled(SetApplicationApiEnabledCommand {
+            actor_user_id: actor_user_id(),
+            application_id: peer_application.id,
+            api_enabled: false,
+        })
+        .await
+        .expect("multi-role scope_all must retain API-status access");
 }
 
 #[tokio::test]

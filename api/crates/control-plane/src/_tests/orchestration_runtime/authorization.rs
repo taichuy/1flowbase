@@ -27,7 +27,7 @@ fn run_policy(enabled: bool) -> domain::RoleConsolePolicy {
     )
 }
 
-fn legacy_view_policy() -> domain::RoleConsolePolicy {
+fn view_policy(scope: domain::ConsoleOperationRowScope) -> domain::RoleConsolePolicy {
     domain::RoleConsolePolicy::new(
         Uuid::now_v7(),
         vec![domain::RoleConsoleGroupPolicy::custom(
@@ -35,19 +35,24 @@ fn legacy_view_policy() -> domain::RoleConsolePolicy {
             vec![ConsoleOperationPolicy::row(
                 ConsoleOperationId::try_from(access_control::APPLICATIONS_VIEW_OPERATION_ID)
                     .expect("applications view operation id must be valid"),
-                domain::ConsoleOperationRowScope::ScopeAll,
+                scope,
             )],
         )],
     )
 }
 
 #[tokio::test]
-async fn ac_1271_run_simple_allows_debug_shell_without_legacy_view_permission() {
+async fn ac_005_ac_007_run_requires_simple_grant_and_persisted_view_owner() {
     let service = OrchestrationRuntimeService::for_tests_with_application_console_policies(
         Vec::new(),
-        vec![run_policy(false), run_policy(true)],
+        vec![
+            run_policy(false),
+            run_policy(true),
+            view_policy(domain::ConsoleOperationRowScope::Own),
+        ],
     );
-    let seeded = service.seed_application_with_flow("Simple run only").await;
+    let seeded = service.seed_application_with_flow("Owned run").await;
+    let peer = service.seed_application_with_flow("Peer run").await;
 
     let shell = service
         .open_flow_debug_run_shell(StartFlowDebugRunCommand {
@@ -58,16 +63,35 @@ async fn ac_1271_run_simple_allows_debug_shell_without_legacy_view_permission() 
             debug_session_id: None,
         })
         .await
-        .expect("applications.run must not require legacy application view");
+        .expect("run own must allow the persisted owner");
 
     assert_eq!(shell.status, domain::FlowRunStatus::Queued);
+
+    let error = service
+        .open_flow_debug_run_shell(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: peer.application_id,
+            input_payload: json!({ "node-start": { "query": "hello" } }),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .expect_err("view own must not run a same-workspace peer application");
+
+    assert!(matches!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::PermissionDenied("permission_denied"))
+    ));
 }
 
 #[tokio::test]
-async fn ac_1271_run_simple_allows_flow_and_node_debug_without_legacy_view_permission() {
+async fn ac_1271_run_simple_allows_flow_and_node_debug_with_view_own() {
     let service = OrchestrationRuntimeService::for_tests_with_application_console_policies(
         Vec::new(),
-        vec![run_policy(true)],
+        vec![
+            run_policy(true),
+            view_policy(domain::ConsoleOperationRowScope::Own),
+        ],
     );
     let seeded = service
         .seed_application_with_flow("Simple debug only")
@@ -82,7 +106,7 @@ async fn ac_1271_run_simple_allows_flow_and_node_debug_without_legacy_view_permi
             debug_session_id: None,
         })
         .await
-        .expect("flow debug must use applications.run independently");
+        .expect("flow debug must require applications.run with view own");
     assert_eq!(started.flow_run.status, domain::FlowRunStatus::Running);
 
     let preview = service
@@ -95,12 +119,12 @@ async fn ac_1271_run_simple_allows_flow_and_node_debug_without_legacy_view_permi
             debug_session_id: None,
         })
         .await
-        .expect("node debug must use applications.run independently");
+        .expect("node debug must require applications.run with view own");
     assert_eq!(preview.node_run.status, domain::NodeRunStatus::Succeeded);
 }
 
 #[tokio::test]
-async fn ac_1271_run_simple_allows_cancel_resume_and_callback_without_legacy_view_permission() {
+async fn ac_1271_run_simple_allows_cancel_resume_and_callback_with_view_own() {
     let service = OrchestrationRuntimeService::for_tests();
     let cancellable = service.seed_application_with_flow("Cancellable").await;
     let started = service
@@ -115,7 +139,10 @@ async fn ac_1271_run_simple_allows_cancel_resume_and_callback_without_legacy_vie
         .expect("seed cancellable run");
     let resumable = service.seed_waiting_human_run("Resumable").await;
     let callback = service.seed_waiting_callback_run("Callback").await;
-    service.replace_application_console_policies_for_tests(vec![run_policy(true)]);
+    service.replace_application_console_policies_for_tests(vec![
+        run_policy(true),
+        view_policy(domain::ConsoleOperationRowScope::Own),
+    ]);
 
     let cancelled = service
         .cancel_flow_run(CancelFlowRunCommand {
@@ -155,7 +182,10 @@ async fn ac_1271_run_simple_allows_cancel_resume_and_callback_without_legacy_vie
 async fn ac_1271_legacy_view_does_not_authorize_debug_shell_when_run_simple_is_disabled() {
     let service = OrchestrationRuntimeService::for_tests_with_application_console_policies(
         vec!["application.view.all", "application.create.all"],
-        vec![legacy_view_policy(), run_policy(false)],
+        vec![
+            view_policy(domain::ConsoleOperationRowScope::ScopeAll),
+            run_policy(false),
+        ],
     );
     let seeded = service.seed_application_with_flow("Legacy view only").await;
 
@@ -168,7 +198,7 @@ async fn ac_1271_legacy_view_does_not_authorize_debug_shell_when_run_simple_is_d
             debug_session_id: None,
         })
         .await
-        .expect_err("legacy application view must not authorize applications.run");
+        .expect_err("view row scope must not authorize applications.run without its simple grant");
 
     assert!(matches!(
         error.downcast_ref::<ControlPlaneError>(),
@@ -183,7 +213,7 @@ async fn ac_1271_disabled_run_is_rejected_before_run_task_checkpoint_or_node_loo
         .seed_application_with_flow("Denied runtime actions")
         .await;
     service.replace_application_console_policies_for_tests(vec![
-        legacy_view_policy(),
+        view_policy(domain::ConsoleOperationRowScope::ScopeAll),
         run_policy(false),
     ]);
 
@@ -238,7 +268,10 @@ async fn ac_1271_disabled_run_is_rejected_before_run_task_checkpoint_or_node_loo
 async fn ac_1271_revoked_run_is_rejected_before_preparing_existing_shell() {
     let service = OrchestrationRuntimeService::for_tests_with_application_console_policies(
         Vec::new(),
-        vec![run_policy(true)],
+        vec![
+            run_policy(true),
+            view_policy(domain::ConsoleOperationRowScope::Own),
+        ],
     );
     let seeded = service
         .seed_application_with_flow("Revoked before prepare")
@@ -256,7 +289,7 @@ async fn ac_1271_revoked_run_is_rejected_before_preparing_existing_shell() {
         .expect("run policy should allow opening the shell");
 
     service.replace_application_console_policies_for_tests(vec![
-        legacy_view_policy(),
+        view_policy(domain::ConsoleOperationRowScope::Own),
         run_policy(false),
     ]);
     let error = service

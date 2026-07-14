@@ -10,7 +10,11 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    application::{ApplicationService, InMemoryApplicationRepository},
+    application::{
+        ensure_application_non_crud_creation_operation,
+        ensure_existing_application_non_crud_console_operation, ApplicationNonCrudConsoleOperation,
+        ApplicationService, InMemoryApplicationRepository,
+    },
     errors::ControlPlaneError,
     ports::{
         ApplicationRepository, ApplicationVisibility, CreateApplicationInput,
@@ -129,13 +133,25 @@ where
         application_id: Uuid,
         version_id: Uuid,
     ) -> Result<domain::FlowEditorState> {
-        ApplicationService::new(self.repository.clone())
+        let application = ApplicationService::new(self.repository.clone())
             .get_application(actor_user_id, application_id)
             .await?;
         let actor = self
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .await?;
+            ensure_existing_application_non_crud_console_operation(
+                &actor,
+                &application,
+                &policies,
+                ApplicationNonCrudConsoleOperation::OrchestrationVersionRestore,
+            )?;
+        }
 
         self.repository
             .restore_version(
@@ -232,6 +248,18 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .await?;
+            ensure_existing_application_non_crud_console_operation(
+                &actor,
+                &application,
+                &policies,
+                ApplicationNonCrudConsoleOperation::OrchestrationTemplateExport,
+            )?;
+        }
         let flow_state = self
             .repository
             .get_or_create_editor_state(actor.current_workspace_id, application_id, actor_user_id)
@@ -265,6 +293,20 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor_user_id,
+                    actor.current_workspace_id,
+                )
+                .await?;
+            ensure_application_non_crud_creation_operation(
+                &actor,
+                &policies,
+                ApplicationNonCrudConsoleOperation::OrchestrationTemplateImport,
+            )?;
+        }
         let preview = agentflow_template::preview_agent_flow_template_package(
             command.template.clone(),
             &command.resources,
@@ -463,6 +505,13 @@ impl InMemoryFlowRepository {
     pub fn with_permissions(permissions: Vec<&str>) -> Self {
         Self {
             applications: InMemoryApplicationRepository::with_permissions(permissions),
+            inner: Arc::new(Mutex::new(InMemoryFlowRepositoryInner::default())),
+        }
+    }
+
+    pub fn with_console_policies(policies: Vec<domain::RoleConsolePolicy>) -> Self {
+        Self {
+            applications: InMemoryApplicationRepository::with_console_policies(policies),
             inner: Arc::new(Mutex::new(InMemoryFlowRepositoryInner::default())),
         }
     }
@@ -890,14 +939,23 @@ fn trim_versions(versions: &mut Vec<domain::FlowVersionRecord>) {
 
 impl FlowService<InMemoryFlowRepository> {
     pub fn for_tests() -> Self {
-        Self::new(InMemoryFlowRepository::with_permissions(vec![
-            "application.view.all",
-            "application.create.all",
-        ]))
+        Self::for_tests_with_console_policies(vec![domain::RoleConsolePolicy::new(
+            Uuid::now_v7(),
+            vec![domain::RoleConsoleGroupPolicy::full(
+                domain::ConsolePolicyGroup::settings_feature(
+                    access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID,
+                )
+                .expect("applications settings feature id must be valid"),
+            )],
+        )])
     }
 
     pub fn for_tests_with_permissions(permissions: Vec<&str>) -> Self {
         Self::new(InMemoryFlowRepository::with_permissions(permissions))
+    }
+
+    pub fn for_tests_with_console_policies(policies: Vec<domain::RoleConsolePolicy>) -> Self {
+        Self::new(InMemoryFlowRepository::with_console_policies(policies))
     }
 
     pub async fn seed_application_for_actor(

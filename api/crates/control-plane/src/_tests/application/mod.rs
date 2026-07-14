@@ -1,7 +1,7 @@
 use control_plane::application::{
-    ApplicationService, CreateApplicationCommand, CreateApplicationTagCommand,
-    DeleteApplicationCommand, ReplaceApplicationEnvironmentVariablesCommand,
-    UpdateApplicationCommand,
+    ApplicationNonCrudConsoleOperation, ApplicationService, CreateApplicationCommand,
+    CreateApplicationTagCommand, DeleteApplicationCommand,
+    ReplaceApplicationEnvironmentVariablesCommand, UpdateApplicationCommand,
 };
 use control_plane::ports::ApplicationEnvironmentVariableInput;
 use domain::ApplicationType;
@@ -303,6 +303,93 @@ async fn ac_006_console_policy_scope_all_cannot_cross_workspace() {
     assert!(delete_error
         .to_string()
         .contains("resource not found: application"));
+}
+
+#[tokio::test]
+async fn ac_005_ac_007_non_crud_operations_intersect_simple_grants_with_persisted_rows() {
+    let actor_user_id = Uuid::now_v7();
+    let service = ApplicationService::for_tests_with_console_policies(
+        Vec::new(),
+        vec![custom_policy(vec![
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(access_control::APPLICATIONS_API_SET_ENABLED_OPERATION_ID),
+                true,
+            ),
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(access_control::APPLICATIONS_PUBLISH_OPERATION_ID),
+                true,
+            ),
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(access_control::APPLICATIONS_RUN_OPERATION_ID),
+                true,
+            ),
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(access_control::APPLICATIONS_LOGS_EXPORT_OPERATION_ID),
+                true,
+            ),
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(access_control::APPLICATIONS_LOGS_IMPORT_OPERATION_ID),
+                true,
+            ),
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(
+                    access_control::APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID,
+                ),
+                true,
+            ),
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(
+                    access_control::APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID,
+                ),
+                true,
+            ),
+            domain::ConsoleOperationPolicy::row(
+                operation_id(access_control::APPLICATIONS_UPDATE_OPERATION_ID),
+                domain::ConsoleOperationRowScope::Own,
+            ),
+            domain::ConsoleOperationPolicy::row(
+                operation_id(access_control::APPLICATIONS_VIEW_OPERATION_ID),
+                domain::ConsoleOperationRowScope::Own,
+            ),
+        ])],
+    );
+    let mine = service.seed_application_for_actor(actor_user_id, "Owned application");
+    let peer = service.seed_foreign_application("Peer application");
+    let cross_workspace =
+        service.seed_application_in_workspace(Uuid::now_v7(), actor_user_id, "Foreign workspace");
+
+    for operation in [
+        ApplicationNonCrudConsoleOperation::ApiSetEnabled,
+        ApplicationNonCrudConsoleOperation::Publish,
+        ApplicationNonCrudConsoleOperation::Run,
+        ApplicationNonCrudConsoleOperation::LogsExport,
+        ApplicationNonCrudConsoleOperation::LogsImport,
+        ApplicationNonCrudConsoleOperation::OrchestrationTemplateExport,
+        ApplicationNonCrudConsoleOperation::OrchestrationVersionRestore,
+    ] {
+        service
+            .load_application_for_non_crud_console_operation(actor_user_id, mine.id, operation)
+            .await
+            .expect("own application must retain its non-CRUD operation");
+
+        let peer_error = service
+            .load_application_for_non_crud_console_operation(actor_user_id, peer.id, operation)
+            .await
+            .expect_err("own row scope must deny a same-workspace peer");
+        assert!(peer_error.to_string().contains("permission_denied"));
+
+        let cross_workspace_error = service
+            .load_application_for_non_crud_console_operation(
+                actor_user_id,
+                cross_workspace.id,
+                operation,
+            )
+            .await
+            .expect_err("non-CRUD operation must not cross the current workspace");
+        assert!(cross_workspace_error
+            .to_string()
+            .contains("resource not found: application"));
+    }
 }
 
 #[tokio::test]

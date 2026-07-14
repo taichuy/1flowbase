@@ -22,6 +22,13 @@ use crate::{
 };
 
 pub mod console_policy_migration;
+mod non_crud_console_access;
+
+pub use non_crud_console_access::ApplicationNonCrudConsoleOperation;
+pub(crate) use non_crud_console_access::{
+    ensure_application_non_crud_creation_operation,
+    ensure_existing_application_non_crud_console_operation,
+};
 
 pub struct CreateApplicationCommand {
     pub actor_user_id: Uuid,
@@ -407,6 +414,40 @@ where
         Ok(application)
     }
 
+    /// Loads a real application in the actor's current workspace and applies the operation's
+    /// `Simple` grant together with its fixed historic row prerequisite.
+    pub async fn load_application_for_non_crud_console_operation(
+        &self,
+        actor_user_id: Uuid,
+        application_id: Uuid,
+        operation: ApplicationNonCrudConsoleOperation,
+    ) -> Result<domain::ApplicationRecord> {
+        let actor = self
+            .repository
+            .load_actor_context_for_user(actor_user_id)
+            .await?;
+        let application = self
+            .repository
+            .get_application(actor.current_workspace_id, application_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+        let policies = if actor.is_root {
+            Vec::new()
+        } else {
+            self.repository
+                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .await?
+        };
+        ensure_existing_application_non_crud_console_operation(
+            &actor,
+            &application,
+            &policies,
+            operation,
+        )?;
+
+        Ok(application)
+    }
+
     pub async fn list_application_environment_variables(
         &self,
         actor_user_id: Uuid,
@@ -779,6 +820,16 @@ impl InMemoryApplicationRepository {
                 audit_events: Vec::new(),
             })),
         }
+    }
+
+    pub fn with_console_policies(policies: Vec<domain::RoleConsolePolicy>) -> Self {
+        let repository = Self::with_permissions(Vec::new());
+        repository
+            .inner
+            .lock()
+            .expect("in-memory app repo mutex poisoned")
+            .console_policies = policies;
+        repository
     }
 
     fn insert_application(&self, actor_user_id: Uuid, name: &str) -> domain::ApplicationRecord {

@@ -9,7 +9,9 @@ use super::mapping::{
     validate_application_api_mapping, ApplicationApiMappingConfig, ApplicationApiMappingOutput,
 };
 use crate::{
-    application::ensure_application_console_simple_operation,
+    application::{
+        ensure_existing_application_non_crud_console_operation, ApplicationNonCrudConsoleOperation,
+    },
     errors::ControlPlaneError,
     flow::FlowService,
     orchestration_runtime::inputs::{
@@ -144,9 +146,11 @@ where
                     actor.current_workspace_id,
                 )
                 .await?;
-            ensure_application_console_simple_operation(
+            ensure_existing_application_non_crud_console_operation(
+                &actor,
+                &application,
                 &policies,
-                access_control::APPLICATIONS_PUBLISH_OPERATION_ID,
+                ApplicationNonCrudConsoleOperation::Publish,
             )?;
         }
         let extension_slug = command.mapping.extension_slug().map(ToOwned::to_owned);
@@ -295,9 +299,11 @@ where
                     actor.current_workspace_id,
                 )
                 .await?;
-            ensure_application_console_simple_operation(
+            ensure_existing_application_non_crud_console_operation(
+                &actor,
+                &application,
                 &policies,
-                access_control::APPLICATIONS_API_SET_ENABLED_OPERATION_ID,
+                ApplicationNonCrudConsoleOperation::ApiSetEnabled,
             )?;
         }
 

@@ -80,7 +80,13 @@ pub async fn export_application_run_archive(
 ) -> Result<axum::response::Response, ApiError> {
     ensure_run_archive_version(query.archive_version)?;
     let context = require_session(&state, &headers).await?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
+    let application = ensure_application_non_crud_operation(
+        &state,
+        context.user.id,
+        id,
+        ApplicationNonCrudConsoleOperation::LogsExport,
+    )
+    .await?;
     let archive = build_run_archive_v1_document(
         state,
         context.actor.current_workspace_id,
@@ -124,7 +130,13 @@ pub async fn export_application_runs_archive(
     ensure_run_archive_version(body.archive_version)?;
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
+    let application = ensure_application_non_crud_operation(
+        &state,
+        context.user.id,
+        id,
+        ApplicationNonCrudConsoleOperation::LogsExport,
+    )
+    .await?;
     if body.run_ids.is_empty() {
         return Err(ControlPlaneError::InvalidInput("run_ids").into());
     }
@@ -194,7 +206,13 @@ pub async fn create_run_archive_upload_session(
 > {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
+    let application = ensure_application_non_crud_operation(
+        &state,
+        context.user.id,
+        id,
+        ApplicationNonCrudConsoleOperation::LogsImport,
+    )
+    .await?;
     if body.total_size_bytes <= 0 {
         return Err(ControlPlaneError::InvalidInput("total_size_bytes").into());
     }
@@ -280,7 +298,13 @@ pub async fn upload_run_archive_chunk(
 ) -> Result<Json<ApiSuccess<RunArchiveChunkUploadResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_non_crud_operation(
+        &state,
+        context.user.id,
+        id,
+        ApplicationNonCrudConsoleOperation::LogsImport,
+    )
+    .await?;
     if chunk_index < 0 || body.is_empty() {
         return Err(ControlPlaneError::InvalidInput("archive_chunk").into());
     }
@@ -377,7 +401,13 @@ pub async fn complete_run_archive_upload_session(
 ) -> Result<Json<ApiSuccess<RunArchiveImportJobResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
+    let application = ensure_application_non_crud_operation(
+        &state,
+        context.user.id,
+        id,
+        ApplicationNonCrudConsoleOperation::LogsImport,
+    )
+    .await?;
     let session = load_run_archive_upload_session(&state, id, session_id).await?;
     if session.status != "uploading" {
         return Err(ControlPlaneError::Conflict("archive_upload_session").into());
@@ -464,7 +494,13 @@ pub async fn get_run_archive_import_job(
     Path((id, job_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<RunArchiveImportJobResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_non_crud_operation(
+        &state,
+        context.user.id,
+        id,
+        ApplicationNonCrudConsoleOperation::LogsImport,
+    )
+    .await?;
     let job = load_run_archive_import_job(&state, id, job_id).await?;
 
     Ok(Json(ApiSuccess::new(

@@ -28,7 +28,13 @@ pub async fn export_application_run_trace_dump(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<axum::response::Response, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
+    let application = ensure_application_non_crud_operation(
+        &state,
+        context.user.id,
+        id,
+        ApplicationNonCrudConsoleOperation::LogsExport,
+    )
+    .await?;
     let exported_at = OffsetDateTime::now_utc();
     let document = build_application_run_trace_export_document(
         state,
@@ -71,7 +77,13 @@ pub async fn export_application_runs_zip(
 ) -> Result<axum::response::Response, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
+    let application = ensure_application_non_crud_operation(
+        &state,
+        context.user.id,
+        id,
+        ApplicationNonCrudConsoleOperation::LogsExport,
+    )
+    .await?;
     if body.run_ids.is_empty() {
         return Err(ControlPlaneError::InvalidInput("run_ids").into());
     }

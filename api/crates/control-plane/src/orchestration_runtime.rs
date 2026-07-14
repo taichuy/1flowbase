@@ -16,7 +16,9 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::{
-    application::ensure_application_console_simple_operation,
+    application::{
+        ensure_existing_application_non_crud_console_operation, ApplicationNonCrudConsoleOperation,
+    },
     audit::audit_log,
     capability_plugin_runtime::{CapabilityPluginRuntimePort, ExecuteCapabilityNodeInput},
     errors::ControlPlaneError,
@@ -445,9 +447,11 @@ where
                 .repository
                 .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
                 .await?;
-            ensure_application_console_simple_operation(
+            ensure_existing_application_non_crud_console_operation(
+                &actor,
+                &application,
                 &policies,
-                access_control::APPLICATIONS_RUN_OPERATION_ID,
+                ApplicationNonCrudConsoleOperation::Run,
             )?;
         }
 

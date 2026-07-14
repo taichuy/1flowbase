@@ -8,6 +8,17 @@ async fn ensure_application_visible(
         .await?)
 }
 
+async fn ensure_application_non_crud_operation(
+    state: &Arc<ApiState>,
+    actor_user_id: Uuid,
+    application_id: Uuid,
+    operation: ApplicationNonCrudConsoleOperation,
+) -> Result<domain::ApplicationRecord, ApiError> {
+    Ok(ApplicationService::new(state.store.clone())
+        .load_application_for_non_crud_console_operation(actor_user_id, application_id, operation)
+        .await?)
+}
+
 async fn load_application_in_current_workspace(
     state: &Arc<ApiState>,
     workspace_id: Uuid,
