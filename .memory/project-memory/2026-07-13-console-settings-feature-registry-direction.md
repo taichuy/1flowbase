@@ -14,8 +14,8 @@ match_when:
   - 调整 Settings API 权限或角色设置授权
   - 实现 HostExtension console surface 或注册 CLI
 created_at: 2026-07-13 16
-updated_at: 2026-07-14 11
-last_verified_at: 2026-07-14 11
+updated_at: 2026-07-14 12
+last_verified_at: 2026-07-14 12
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/1256
@@ -33,6 +33,7 @@ scope:
 - Issue #1256 阶段 1 registry foundation 已提交；用户进一步确认 `/api/console` 权限模块尚未稳定，旧接口允许按新 contract 重命名、拆分和删除。
 - Settings API ownership 按设置用例归属：例如成员页的角色选项和角色绑定属于成员设置能力，即使底层读取 role repository，也不要求另一个角色设置 feature 或 business action。
 - 用户在 2026-07-14 11 确认旧“路由页面”授权已无产品价值，要求直接完成最终切换；API 文档、API Key、系统运行、MCP 管理迁入 SettingsFeature，删除 `settings_route.visible.*` 运行时、隐含权限展开和角色页旧 tab。
+- 用户在 2026-07-14 12 确认角色权限页将 SettingsFeature 从“基础通用”移到独立“后台系统设置”Tab，并去掉“设置”资源根节点，让注册设置项直接作为树根展示；这只改变角色页信息架构，不改变 permission code、授权存储或后端注册 contract。
 
 ## 为什么这样做
 

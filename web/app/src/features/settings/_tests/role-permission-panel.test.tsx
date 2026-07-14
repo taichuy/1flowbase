@@ -271,7 +271,7 @@ describe('RolePermissionPanel', () => {
     );
   });
 
-  test('AC-005 shows registered SettingsFeature grants in the existing general tab', async () => {
+  test('AC-005 shows registered SettingsFeature grants as root nodes in the backend system settings tab', async () => {
     permissionsApi.fetchSettingsPermissions.mockResolvedValue([
       {
         code: 'settings_feature.access.system.roles',
@@ -307,15 +307,19 @@ describe('RolePermissionPanel', () => {
       '基础通用',
       '动态路由',
       '表-通用配置',
-      '表-单独配置'
+      '表-单独配置',
+      '后台系统设置'
     ]);
 
-    fireEvent.click(screen.getByRole('img', { name: 'caret-down' }));
+    fireEvent.click(
+      screen.getByRole('tab', { name: '后台系统设置' })
+    );
 
     const treeItems = screen
       .getAllByRole('treeitem')
       .map((item) => item.textContent);
-    expect(treeItems).toEqual(['设置', '用户管理', '权限管理']);
+    expect(treeItems).toEqual(['用户管理', '权限管理']);
+    expect(screen.queryByText('设置')).not.toBeInTheDocument();
     expect(screen.queryByText('settings_feature')).not.toBeInTheDocument();
   });
 

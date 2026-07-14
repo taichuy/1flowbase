@@ -74,6 +74,7 @@
     "multiple_selection_drop_down": "Multiple selection drop-down",
     "permission_role_permission": "Permission (role_permission)",
     "memory_watch_connection_failed": "Memory watch connection failed.",
+    "backend_system_settings": "Backend system settings",
     "system_management": "System management",
     "enum_options": "Enum options",
     "external_field_mapping_key": "External field mapping Key",

@@ -51,13 +51,18 @@ import { SettingsSectionSurface } from './SettingsSectionSurface';
 import { i18nText } from '../../../shared/i18n/text';
 import { RoleDataPolicySection } from './role-permissions/RoleDataPolicySection';
 
+const BACKEND_SYSTEM_SETTINGS_TAB = i18nText(
+  'settings',
+  'auto.backend_system_settings'
+);
+
 // 分类映射，根据要求
 const RESOURCE_MAP: Record<
   string,
   { tab: string; label: string; order: number }
 > = {
   settings_feature: {
-    tab: i18nText("settings", "auto.basic_configuration"),
+    tab: BACKEND_SYSTEM_SETTINGS_TAB,
     label: i18nText("settings", "auto.settings"),
     order: 0
   },
@@ -91,7 +96,13 @@ const RESOURCE_MAP: Record<
   }
 };
 
-const TAB_ORDER = [i18nText("settings", "auto.basic_configuration"), i18nText("settings", "auto.system_management"), i18nText("settings", "auto.agent_application"), i18nText("settings", "auto.others")];
+const TAB_ORDER = [
+  i18nText("settings", "auto.basic_configuration"),
+  i18nText("settings", "auto.system_management"),
+  BACKEND_SYSTEM_SETTINGS_TAB,
+  i18nText("settings", "auto.agent_application"),
+  i18nText("settings", "auto.others")
+];
 const ROLE_PERMISSION_GENERAL_TAB = i18nText("settings", "auto.basic_general");
 const ROLE_TABLE_GENERAL_TAB = i18nText("settings", "auto.table_general_configuration");
 const ROLE_TABLE_SINGLE_TAB = i18nText("settings", "auto.table_single_configuration");
@@ -247,10 +258,8 @@ export function RolePermissionPanel({
         })
         .sort((a, b) => a.order - b.order);
 
-      const treeData: TreeDataNode[] = resources.map((res) => ({
-        title: res.label,
-        key: `resource:${res.key}`,
-        children: [...res.permissions]
+      const treeData: TreeDataNode[] = resources.flatMap((res) => {
+        const permissionNodes = [...res.permissions]
           .sort(
             (left, right) =>
               (left.settings_feature?.order ?? 0) -
@@ -265,8 +274,18 @@ export function RolePermissionPanel({
               </span>
             ),
             key: p.code
-          }))
-      }));
+          }));
+
+        if (res.key === 'settings_feature') {
+          return permissionNodes;
+        }
+
+        return [{
+          title: res.label,
+          key: `resource:${res.key}`,
+          children: permissionNodes
+        }];
+      });
 
       const tabLeafKeys = resources.flatMap((res) =>
         res.permissions.map((p) => p.code)
@@ -482,12 +501,17 @@ export function RolePermissionPanel({
         }
       : null;
 
-    const [firstTab, ...restTabs] = regularTabs;
     const fallbackGeneralTab = {
       key: ROLE_PERMISSION_GENERAL_TAB,
       label: ROLE_PERMISSION_GENERAL_TAB,
       children: <div style={{ paddingBottom: 32 }} />
     };
+    const generalTab = regularTabs.find(
+      (tab) => tab.key === ROLE_PERMISSION_GENERAL_TAB
+    ) ?? fallbackGeneralTab;
+    const restTabs = regularTabs.filter(
+      (tab) => tab.key !== ROLE_PERMISSION_GENERAL_TAB
+    );
 
     const dynamicRouteTab = {
       key: 'dynamic-routes',
@@ -529,7 +553,7 @@ export function RolePermissionPanel({
     };
 
     return [
-      firstTab ?? fallbackGeneralTab,
+      generalTab,
       dynamicRouteTab,
       ...(defaultDataPolicyTab ? [defaultDataPolicyTab] : []),
       ...(singleModelPolicyTab ? [singleModelPolicyTab] : []),
