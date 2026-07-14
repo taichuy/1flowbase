@@ -19,7 +19,12 @@ use plugin_framework::{
     HostExtensionContributionManifest, HostExtensionDropinPolicy, HostExtensionDropinScan,
 };
 
+#[cfg(test)]
 use crate::app_state::ApiState;
+use crate::host_extensions::console::{
+    linked_host_console_route_sources, resolve_linked_host_extension_console_contribution,
+    ResolvedHostExtensionConsoleContribution,
+};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostExtensionStartupSummary {
@@ -31,40 +36,175 @@ pub struct HostExtensionStartupSummary {
     pub warnings: Vec<String>,
 }
 
-pub async fn load_host_extensions_at_startup(
-    state: &ApiState,
-) -> Result<HostExtensionStartupSummary> {
-    let detected = scan_host_extensions_from_dropins(state)?;
-    let pending = state.store.list_pending_restart_host_extensions().await?;
+pub(crate) struct PreparedHostExtensionsAtStartup {
+    pub(crate) contributions: Vec<ResolvedHostExtensionConsoleContribution>,
+    activation_candidates: Vec<domain::PluginInstallationRecord>,
+    pub(crate) summary: HostExtensionStartupSummary,
+}
+
+impl PreparedHostExtensionsAtStartup {
+    pub(crate) fn take_contributions(&mut self) -> Vec<ResolvedHostExtensionConsoleContribution> {
+        std::mem::take(&mut self.contributions)
+    }
+}
+
+pub(crate) async fn prepare_host_extensions_at_startup(
+    store: &storage_durable::MainDurableStore,
+    api_node_id: &str,
+    provider_install_root: &str,
+    host_extension_dropin_root: &str,
+    allow_unverified_filesystem_dropins: bool,
+) -> Result<PreparedHostExtensionsAtStartup> {
+    let detected = scan_host_extensions_from_dropins(
+        host_extension_dropin_root,
+        allow_unverified_filesystem_dropins,
+    )?;
+    let installations = store.list_installations().await?;
     let mut summary = HostExtensionStartupSummary {
         detected_dropin_count: detected.installations.len(),
-        pending_restart_count: pending.len(),
+        pending_restart_count: installations
+            .iter()
+            .filter(|installation| {
+                is_host_extension_installation(installation)
+                    && installation.desired_state == PluginDesiredState::PendingRestart
+            })
+            .count(),
         loaded_count: 0,
         failed_count: 0,
         skipped_count: 0,
         warnings: detected.warnings,
     };
+    let mut contributions = Vec::new();
+    let mut activation_candidates = Vec::new();
 
-    for installation in pending {
-        match activate_pending_restart_installation(state, installation.id).await? {
-            ActivationOutcome::Loaded => summary.loaded_count += 1,
-            ActivationOutcome::Failed => summary.failed_count += 1,
-            ActivationOutcome::Skipped => summary.skipped_count += 1,
+    for installation in installations.into_iter().filter(|installation| {
+        is_host_extension_installation(installation)
+            && matches!(
+                installation.desired_state,
+                PluginDesiredState::PendingRestart | PluginDesiredState::ActiveRequested
+            )
+    }) {
+        if installation.artifact_status != PluginArtifactStatus::Ready {
+            summary.skipped_count += 1;
+            continue;
         }
+
+        let local_installation = match ready_current_node_plugin_installation(
+            store,
+            api_node_id,
+            Path::new(provider_install_root),
+            installation.id,
+        )
+        .await
+        {
+            Ok(local_installation) => local_installation,
+            Err(error) if is_current_node_artifact_conflict(&error) => {
+                summary.skipped_count += 1;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+
+        let contribution = match validate_host_extension_installation(&local_installation) {
+            Ok(contribution) => contribution,
+            Err(error) => {
+                mark_host_extension_load_failed(store, api_node_id, &local_installation, &error)
+                    .await?;
+                summary.failed_count += 1;
+                continue;
+            }
+        };
+        let contribution = match resolve_linked_host_extension_console_contribution(
+            contribution,
+            linked_host_console_route_sources(),
+        ) {
+            Ok(contribution) => contribution,
+            Err(error) => {
+                mark_host_extension_load_failed(store, api_node_id, &local_installation, &error)
+                    .await?;
+                return Err(error);
+            }
+        };
+        contributions.push(contribution);
+        activation_candidates.push(local_installation);
     }
 
-    Ok(summary)
+    Ok(PreparedHostExtensionsAtStartup {
+        contributions,
+        activation_candidates,
+        summary,
+    })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActivationOutcome {
-    Loaded,
-    Failed,
-    Skipped,
+async fn mark_host_extension_load_failed(
+    store: &storage_durable::MainDurableStore,
+    api_node_id: &str,
+    installation: &domain::PluginInstallationRecord,
+    error: &anyhow::Error,
+) -> Result<()> {
+    mark_current_node_plugin_runtime_status(
+        store,
+        api_node_id,
+        installation,
+        PluginRuntimeStatus::LoadFailed,
+        Some(format!("{error:#}")),
+    )
+    .await?;
+    Ok(())
 }
 
-fn scan_host_extensions_from_dropins(state: &ApiState) -> Result<HostExtensionDropinScan> {
-    let dropin_root = Path::new(&state.host_extension_dropin_root);
+pub(crate) async fn activate_prepared_host_extensions(
+    store: &storage_durable::MainDurableStore,
+    api_node_id: &str,
+    mut prepared: PreparedHostExtensionsAtStartup,
+) -> Result<HostExtensionStartupSummary> {
+    for installation in prepared.activation_candidates {
+        let desired_state = PluginDesiredState::ActiveRequested;
+        store
+            .update_desired_state(&UpdatePluginDesiredStateInput {
+                installation_id: installation.id,
+                availability_status: derive_availability_status(
+                    desired_state,
+                    PluginArtifactStatus::Ready,
+                    PluginRuntimeStatus::Active,
+                ),
+                desired_state,
+            })
+            .await?;
+        mark_current_node_plugin_runtime_status(
+            store,
+            api_node_id,
+            &installation,
+            PluginRuntimeStatus::Active,
+            None,
+        )
+        .await?;
+        prepared.summary.loaded_count += 1;
+    }
+
+    Ok(prepared.summary)
+}
+
+#[cfg(test)]
+pub async fn load_host_extensions_at_startup(
+    state: &ApiState,
+) -> Result<HostExtensionStartupSummary> {
+    let prepared = prepare_host_extensions_at_startup(
+        &state.store,
+        &state.api_node_id,
+        &state.provider_install_root,
+        &state.host_extension_dropin_root,
+        state.allow_unverified_filesystem_dropins,
+    )
+    .await?;
+    activate_prepared_host_extensions(&state.store, &state.api_node_id, prepared).await
+}
+
+fn scan_host_extensions_from_dropins(
+    host_extension_dropin_root: &str,
+    allow_unverified_filesystem_dropins: bool,
+) -> Result<HostExtensionDropinScan> {
+    let dropin_root = Path::new(host_extension_dropin_root);
     if !dropin_root.exists() {
         return Ok(HostExtensionDropinScan {
             installations: Vec::new(),
@@ -81,86 +221,10 @@ fn scan_host_extensions_from_dropins(state: &ApiState) -> Result<HostExtensionDr
     scan_host_extension_dropins_with_policy(
         dropin_root,
         HostExtensionDropinPolicy {
-            allow_unverified_filesystem_dropins: state.allow_unverified_filesystem_dropins,
+            allow_unverified_filesystem_dropins,
         },
     )
     .map_err(anyhow::Error::from)
-}
-
-async fn activate_pending_restart_installation(
-    state: &ApiState,
-    installation_id: uuid::Uuid,
-) -> Result<ActivationOutcome> {
-    let installation = state
-        .store
-        .get_installation(installation_id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-    if !is_host_extension_installation(&installation) {
-        return Ok(ActivationOutcome::Skipped);
-    }
-    if installation.artifact_status != PluginArtifactStatus::Ready {
-        return Ok(ActivationOutcome::Skipped);
-    }
-
-    let local_installation = match ready_current_node_plugin_installation(
-        &state.store,
-        &state.api_node_id,
-        Path::new(&state.provider_install_root),
-        installation_id,
-    )
-    .await
-    {
-        Ok(local_installation) => local_installation,
-        Err(error) if is_current_node_artifact_conflict(&error) => {
-            return Ok(ActivationOutcome::Skipped);
-        }
-        Err(error) => return Err(error),
-    };
-
-    match validate_host_extension_installation(&local_installation).and_then(|contribution| {
-        state
-            .console_surface_registry
-            .register_host_extension_contribution(&contribution)
-            .map_err(anyhow::Error::from)?;
-        Ok(contribution)
-    }) {
-        Ok(_) => {
-            let desired_state = PluginDesiredState::ActiveRequested;
-            state
-                .store
-                .update_desired_state(&UpdatePluginDesiredStateInput {
-                    installation_id,
-                    availability_status: derive_availability_status(
-                        desired_state,
-                        PluginArtifactStatus::Ready,
-                        PluginRuntimeStatus::Active,
-                    ),
-                    desired_state,
-                })
-                .await?;
-            mark_current_node_plugin_runtime_status(
-                &state.store,
-                &state.api_node_id,
-                &local_installation,
-                PluginRuntimeStatus::Active,
-                None,
-            )
-            .await?;
-            Ok(ActivationOutcome::Loaded)
-        }
-        Err(error) => {
-            mark_current_node_plugin_runtime_status(
-                &state.store,
-                &state.api_node_id,
-                &local_installation,
-                PluginRuntimeStatus::LoadFailed,
-                Some(format!("{error:#}")),
-            )
-            .await?;
-            Ok(ActivationOutcome::Failed)
-        }
-    }
 }
 
 fn is_current_node_artifact_conflict(error: &anyhow::Error) -> bool {

@@ -26,10 +26,20 @@ settings_features:
       surface_key: file-security.settings
       path: /settings/file-security
       label_key: file-security.settings.label
+      description_key: file-security.settings.description
       order: 100
     api_routes:
       - method: PUT
         path: /api/console/settings/file-security
+console_locale_catalog:
+  texts:
+    - reference: file-security.settings.label
+      en_us: File security
+      zh_hans: 文件安全
+    - reference: file-security.settings.description
+      en_us: Manage file security settings
+      zh_hans: 管理文件安全设置
+  policy_groups: []
 routes: []
 workers: []
 migrations: []
@@ -169,11 +179,11 @@ fn rejects_unknown_host_extension_console_group_resource_action_and_i18n_ref() {
         .contains("console_operations[].authorization"));
 
     let unknown_i18n = host_extension_console_manifest().replace(
-        "  - file-security.console.operations.scan.label",
-        "  - other.console.operations.scan.label",
+        "    - reference: file-security.console.operations.scan.label",
+        "    - reference: other.console.operations.scan.label",
     );
     let error = parse_host_extension_contribution_manifest(&unknown_i18n).unwrap_err();
-    assert!(error.to_string().contains("console_i18n_refs"));
+    assert!(error.to_string().contains("console_locale_catalog"));
 }
 
 #[test]
@@ -259,11 +269,11 @@ console_resources:
     assert!(error.to_string().contains("console_operations[].routes"));
 
     let duplicate_i18n = host_extension_console_manifest().replace(
-        "console_i18n_refs:\n",
-        "console_i18n_refs:\n  - file-security.console.operations.scan.label\n",
+        "    - reference: file-security.console.operations.scan.label\n      en_us: Scan records\n      zh_hans: 扫描记录\n",
+        "    - reference: file-security.console.operations.scan.label\n      en_us: Scan records\n      zh_hans: 扫描记录\n    - reference: file-security.console.operations.scan.label\n      en_us: Scan records\n      zh_hans: 扫描记录\n",
     );
     let error = parse_host_extension_contribution_manifest(&duplicate_i18n).unwrap_err();
-    assert!(error.to_string().contains("console_i18n_refs"));
+    assert!(error.to_string().contains("console_locale_catalog"));
 }
 
 #[test]
@@ -845,13 +855,36 @@ migrations:
 fn host_extension_console_manifest() -> String {
     host_extension_manifest_with(
         r#"
-console_i18n_refs:
-  - file-security.console.operations.scan.label
-  - file-security.console.operations.scan.description
-  - file-security.console.resources.secured-files.label
-  - file-security.console.resources.secured-files.description
-  - file-security.console.resources.secured-files.actions.scan.label
-  - file-security.console.resources.secured-files.actions.scan.description
+console_locale_catalog:
+  texts:
+    - reference: file-security.console.operations.scan.label
+      en_us: Scan records
+      zh_hans: 扫描记录
+    - reference: file-security.console.operations.scan.description
+      en_us: Scan a secured file
+      zh_hans: 扫描受保护文件
+    - reference: file-security.console.resources.secured-files.label
+      en_us: Secured files
+      zh_hans: 受保护文件
+    - reference: file-security.console.resources.secured-files.description
+      en_us: Files protected by this HostExtension
+      zh_hans: 由此 HostExtension 保护的文件
+    - reference: file-security.console.resources.secured-files.actions.scan.label
+      en_us: Scan secured file
+      zh_hans: 扫描受保护文件
+    - reference: file-security.console.resources.secured-files.actions.scan.description
+      en_us: Start a secured file scan
+      zh_hans: 启动受保护文件扫描
+    - reference: file-security.console.policy-groups.security.label
+      en_us: File security
+      zh_hans: 文件安全
+    - reference: file-security.console.policy-groups.security.description
+      en_us: Manage file security operations
+      zh_hans: 管理文件安全操作
+  policy_groups:
+    - group_id: file-security.security
+      label_ref: file-security.console.policy-groups.security.label
+      description_ref: file-security.console.policy-groups.security.description
 console_operations:
   - operation_id: file-security.scan
     owner:

@@ -48,10 +48,14 @@ use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 
 use crate::{
-    app_state::{compile_core_settings_feature_registry, ApiState},
+    app_state::{compile_console_boot_plan, ApiState},
     config::{ApiConfig, ApiEnvironment},
-    console_surface_registry::ConsoleSurfaceRegistry,
-    host_extension_loader::load_host_extensions_at_startup,
+    host_extension_loader::{
+        activate_prepared_host_extensions, prepare_host_extensions_at_startup,
+    },
+    host_extensions::console::{
+        linked_host_console_route_sources, resolve_linked_host_extension_console_contribution,
+    },
     host_infrastructure::build_local_host_infrastructure_from_host_extensions,
     provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
     runtime_profile_client::{HostApiRuntimeProfileCollector, HttpPluginRunnerSystemClient},
@@ -137,15 +141,24 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
 }
 
 fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
+    console_router_with_assembly(
+        state,
+        include_openapi,
+        routes::console_route_assembly::migrated_core_console_route_assembly(),
+    )
+}
+
+fn console_router_with_assembly(
+    state: Arc<ApiState>,
+    include_openapi: bool,
+    console_route_assembly: routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
+) -> Router {
     let router = Router::new()
         .merge(routes::application_public_api::compatible_router())
         .nest("/api/agent/v1", routes::application_public_api::router())
         .nest("/api/ex", routes::application_public_api::ex::router())
         .nest("/api", routes::mcp_protocol::router())
-        .nest(
-            "/api/console",
-            routes::console_route_assembly::migrated_core_console_route_assembly().into_router(),
-        )
+        .nest("/api/console", console_route_assembly.into_router())
         .nest("/api/runtime", routes::runtime_models::router())
         .nest("/api/public/auth", routes::auth::router());
 
@@ -164,9 +177,25 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
 }
 
 pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
+    app_with_state_and_config_and_console_route_assembly(
+        state,
+        config,
+        routes::console_route_assembly::migrated_core_console_route_assembly(),
+    )
+}
+
+fn app_with_state_and_config_and_console_route_assembly(
+    state: Arc<ApiState>,
+    config: &ApiConfig,
+    console_route_assembly: routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
+) -> Router {
     let include_docs = config.env != ApiEnvironment::Production;
     base_router(include_docs, false)
-        .merge(console_router(state, include_docs))
+        .merge(console_router_with_assembly(
+            state,
+            include_docs,
+            console_route_assembly,
+        ))
         .layer(cors_layer(config))
         .layer(TraceLayer::new_for_http())
 }
@@ -189,12 +218,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
             &builtin_host_extensions,
         )?;
-    let console_surface_registry =
-        Arc::new(ConsoleSurfaceRegistry::from_host_extension_contributions(
-            builtin_host_extensions
-                .iter()
-                .map(|(_, contribution)| contribution),
-        )?);
     let infrastructure = Arc::new(build_local_host_infrastructure_from_host_extensions(
         &host_extension_registry,
     )?);
@@ -299,18 +322,61 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let resolved_official_mcp_bundle_source = config.resolve_official_mcp_bundle_source();
     let official_agent_flow_template_cache = infrastructure.cache_store();
     let trusted_public_keys = config.official_plugin_trusted_public_keys()?;
+    let official_plugin_source =
+        Arc::new(official_plugin_registry::ApiOfficialPluginRegistry::new(
+            resolved_official_source,
+            trusted_public_keys,
+        ));
+    let official_agent_flow_template_source = Arc::new(
+        official_agent_flow_templates::ApiOfficialAgentFlowTemplateRegistry::new(
+            resolved_official_agent_flow_template_source,
+            official_agent_flow_template_cache,
+        ),
+    );
+    let official_mcp_bundle_source =
+        Arc::new(official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
+            resolved_official_mcp_bundle_source,
+        ));
+    control_plane::plugin_management::PluginManagementService::new(
+        store.clone(),
+        ApiProviderRuntime::new(provider_runtime.clone()),
+        official_plugin_source.clone(),
+        config.provider_install_root.clone(),
+    )
+    .with_node_id(config.api_node_id.clone())
+    .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions)
+    .reconcile_all_installations()
+    .await?;
+    let mut prepared_host_extensions = prepare_host_extensions_at_startup(
+        &store,
+        &config.api_node_id,
+        &config.provider_install_root,
+        &config.host_extension_dropin_root,
+        config.allow_unverified_filesystem_dropins,
+    )
+    .await?;
+    let mut console_host_extensions = builtin_host_extensions
+        .iter()
+        .map(|(_, contribution)| {
+            resolve_linked_host_extension_console_contribution(
+                contribution.clone(),
+                linked_host_console_route_sources(),
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
+    console_host_extensions.extend(prepared_host_extensions.take_contributions());
+    let compiled_console_plan = compile_console_boot_plan(console_host_extensions)?;
+    activate_prepared_host_extensions(&store, &config.api_node_id, prepared_host_extensions)
+        .await?;
     let process_started_at = OffsetDateTime::now_utc();
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
-    let settings_feature_registry = compile_core_settings_feature_registry()?;
-    let console_operation_registry =
-        app_state::compile_core_console_operation_registry(&settings_feature_registry)?;
 
     let state = Arc::new(ApiState {
         store,
-        settings_feature_registry,
-        console_operation_registry,
+        settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),
+        console_operation_registry: compiled_console_plan.console_operation_registry.clone(),
         infrastructure,
-        console_surface_registry,
+        console_surface_registry: compiled_console_plan.console_surface_registry.clone(),
         file_storage_registry,
         runtime_engine,
         provider_runtime,
@@ -320,21 +386,9 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         plugin_runner_system: Arc::new(HttpPluginRunnerSystemClient::new(
             config.plugin_runner_internal_base_url.clone(),
         )),
-        official_plugin_source: Arc::new(official_plugin_registry::ApiOfficialPluginRegistry::new(
-            resolved_official_source,
-            trusted_public_keys,
-        )),
-        official_agent_flow_template_source: Arc::new(
-            official_agent_flow_templates::ApiOfficialAgentFlowTemplateRegistry::new(
-                resolved_official_agent_flow_template_source,
-                official_agent_flow_template_cache,
-            ),
-        ),
-        official_mcp_bundle_source: Arc::new(
-            official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
-                resolved_official_mcp_bundle_source,
-            ),
-        ),
+        official_plugin_source,
+        official_agent_flow_template_source,
+        official_mcp_bundle_source,
         api_node_id: config.api_node_id.clone(),
         provider_install_root: config.provider_install_root.clone(),
         provider_secret_master_key: config.provider_secret_master_key.clone(),
@@ -349,21 +403,14 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         session_ttl_days: config.session_ttl_days,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
-    control_plane::plugin_management::PluginManagementService::new(
-        state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.official_plugin_source.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_node_id(state.api_node_id.clone())
-    .with_allow_uploaded_host_extensions(state.allow_uploaded_host_extensions)
-    .reconcile_all_installations()
-    .await?;
-    load_host_extensions_at_startup(&state).await?;
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());
     crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
 
-    Ok(app_with_state_and_config(state, config))
+    Ok(app_with_state_and_config_and_console_route_assembly(
+        state,
+        config,
+        compiled_console_plan.route_assembly,
+    ))
 }
 
 fn api_workspace_root() -> Result<PathBuf> {

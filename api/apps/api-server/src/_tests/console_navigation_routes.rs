@@ -2,10 +2,13 @@ use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
     replace_role_permissions, test_api_state_with_database_url, test_app, test_config,
 };
+use std::sync::Arc;
+
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
+use plugin_framework::parse_host_extension_contribution_manifest;
 use serde_json::Value;
 use tower::ServiceExt;
 
@@ -150,11 +153,9 @@ async fn console_navigation_route_trims_limited_member_registry() {
 
 #[tokio::test]
 async fn console_navigation_route_includes_registered_host_extension_surfaces() {
-    let (state, _) = test_api_state_with_database_url().await;
-    state
-        .console_surface_registry
-        .register_host_extension_manifest(
-            r#"
+    let (base_state, _) = test_api_state_with_database_url().await;
+    let contribution = parse_host_extension_contribution_manifest(
+        r#"
 schema_version: 1flowbase.host-extension/v1
 extension_id: file-security
 version: 0.1.0
@@ -189,8 +190,17 @@ console_surfaces:
 workers: []
 migrations: []
 "#,
-        )
-        .unwrap();
+    )
+    .unwrap();
+    let state = Arc::new(crate::app_state::ApiState {
+        console_surface_registry: Arc::new(
+            crate::console_surface_registry::ConsoleSurfaceRegistry::from_host_extension_contributions(
+                [&contribution],
+            )
+            .unwrap(),
+        ),
+        ..(*base_state).clone()
+    });
     let app = crate::app_with_state_and_config(state, &test_config());
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let member_id = create_member(

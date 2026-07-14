@@ -2,7 +2,6 @@ use std::{
     collections::HashSet,
     error::Error,
     fmt::{Display, Formatter},
-    sync::RwLock,
 };
 
 use access_control::{
@@ -19,150 +18,67 @@ use plugin_framework::{
     HostExtensionContributionManifest,
 };
 
+/// Console navigation is compiled with the route and operation registries at boot. It has no
+/// runtime mutation path, so a navigation read cannot observe a different HostExtension set from
+/// the authorization registry that protects its API routes.
 #[derive(Debug)]
 pub struct ConsoleSurfaceRegistry {
-    state: RwLock<ConsoleSurfaceRegistryState>,
+    contributions: Vec<ConsoleNavigation>,
 }
 
 impl ConsoleSurfaceRegistry {
     pub fn from_host_extension_contributions<'a>(
         contributions: impl IntoIterator<Item = &'a HostExtensionContributionManifest>,
     ) -> Result<Self, ConsoleSurfaceRegistryError> {
-        let registry = Self::default();
+        let builtin = builtin_console_navigation();
+        let mut route_ids = builtin
+            .route_definitions
+            .iter()
+            .map(|route| route.route_id.clone())
+            .collect::<HashSet<_>>();
+        let mut paths = builtin
+            .route_definitions
+            .iter()
+            .map(|route| route.path.clone())
+            .collect::<HashSet<_>>();
+        let mut item_ids = builtin
+            .navigation_items
+            .iter()
+            .map(|item| item.item_id.clone())
+            .collect::<HashSet<_>>();
+        let mut binding_ids = builtin
+            .permission_bindings
+            .iter()
+            .map(|binding| binding.binding_id.clone())
+            .collect::<HashSet<_>>();
+        let mut compiled = Vec::new();
+
         for contribution in contributions {
-            registry.register_host_extension_contribution(contribution)?;
+            let navigation = host_extension_console_navigation(contribution);
+            validate_console_navigation(
+                &navigation,
+                &mut route_ids,
+                &mut paths,
+                &mut item_ids,
+                &mut binding_ids,
+            )?;
+            compiled.push(navigation);
         }
-        Ok(registry)
-    }
 
-    pub fn register_host_extension_contribution(
-        &self,
-        contribution: &HostExtensionContributionManifest,
-    ) -> Result<(), ConsoleSurfaceRegistryError> {
-        self.register_console_navigation(host_extension_console_navigation(contribution))
-    }
-
-    #[cfg(test)]
-    pub fn register_host_extension_manifest(
-        &self,
-        raw: &str,
-    ) -> Result<(), ConsoleSurfaceRegistryError> {
-        let contribution = plugin_framework::parse_host_extension_contribution_manifest(raw)
-            .map_err(|error| ConsoleSurfaceRegistryError::new(error.to_string()))?;
-        self.register_host_extension_contribution(&contribution)
+        Ok(Self {
+            contributions: compiled,
+        })
     }
 
     pub fn accessible_navigation(&self, actor: &ActorContext) -> ConsoleNavigation {
-        let contributions = self
-            .state
-            .read()
-            .expect("console surface registry lock must not be poisoned")
-            .contributions
-            .clone();
-
-        accessible_console_navigation_with_contributions(actor, &contributions)
-    }
-
-    fn register_console_navigation(
-        &self,
-        contribution: ConsoleNavigation,
-    ) -> Result<(), ConsoleSurfaceRegistryError> {
-        if contribution.route_definitions.is_empty()
-            && contribution.navigation_items.is_empty()
-            && contribution.permission_bindings.is_empty()
-        {
-            return Ok(());
-        }
-
-        let mut state = self
-            .state
-            .write()
-            .expect("console surface registry lock must not be poisoned");
-        let mut next_route_ids = state.route_ids.clone();
-        let mut next_paths = state.paths.clone();
-        let mut next_item_ids = state.item_ids.clone();
-        let mut next_binding_ids = state.binding_ids.clone();
-
-        for route in &contribution.route_definitions {
-            ensure_unique_insert(
-                &mut next_route_ids,
-                route.route_id.clone(),
-                "duplicate console route id",
-            )?;
-            ensure_unique_insert(
-                &mut next_paths,
-                route.path.clone(),
-                "duplicate console route path",
-            )?;
-        }
-        for item in &contribution.navigation_items {
-            ensure_unique_insert(
-                &mut next_item_ids,
-                item.item_id.clone(),
-                "duplicate console navigation item id",
-            )?;
-        }
-        for binding in &contribution.permission_bindings {
-            ensure_unique_insert(
-                &mut next_binding_ids,
-                binding.binding_id.clone(),
-                "duplicate console permission binding id",
-            )?;
-        }
-
-        state.route_ids = next_route_ids;
-        state.paths = next_paths;
-        state.item_ids = next_item_ids;
-        state.binding_ids = next_binding_ids;
-        state.contributions.push(contribution);
-
-        Ok(())
+        accessible_console_navigation_with_contributions(actor, &self.contributions)
     }
 }
 
 impl Default for ConsoleSurfaceRegistry {
     fn default() -> Self {
-        Self {
-            state: RwLock::new(ConsoleSurfaceRegistryState::from(
-                builtin_console_navigation(),
-            )),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct ConsoleSurfaceRegistryState {
-    contributions: Vec<ConsoleNavigation>,
-    route_ids: HashSet<String>,
-    item_ids: HashSet<String>,
-    binding_ids: HashSet<String>,
-    paths: HashSet<String>,
-}
-
-impl From<ConsoleNavigation> for ConsoleSurfaceRegistryState {
-    fn from(navigation: ConsoleNavigation) -> Self {
-        let mut route_ids = HashSet::new();
-        let mut paths = HashSet::new();
-        for route in navigation.route_definitions {
-            route_ids.insert(route.route_id);
-            paths.insert(route.path);
-        }
-
-        Self {
-            contributions: Vec::new(),
-            route_ids,
-            item_ids: navigation
-                .navigation_items
-                .into_iter()
-                .map(|item| item.item_id)
-                .collect(),
-            binding_ids: navigation
-                .permission_bindings
-                .into_iter()
-                .map(|binding| binding.binding_id)
-                .collect(),
-            paths,
-        }
+        Self::from_host_extension_contributions([])
+            .expect("builtin console navigation must have unique identifiers")
     }
 }
 
@@ -186,6 +102,38 @@ impl Display for ConsoleSurfaceRegistryError {
 }
 
 impl Error for ConsoleSurfaceRegistryError {}
+
+fn validate_console_navigation(
+    contribution: &ConsoleNavigation,
+    route_ids: &mut HashSet<String>,
+    paths: &mut HashSet<String>,
+    item_ids: &mut HashSet<String>,
+    binding_ids: &mut HashSet<String>,
+) -> Result<(), ConsoleSurfaceRegistryError> {
+    for route in &contribution.route_definitions {
+        ensure_unique_insert(
+            route_ids,
+            route.route_id.clone(),
+            "duplicate console route id",
+        )?;
+        ensure_unique_insert(paths, route.path.clone(), "duplicate console route path")?;
+    }
+    for item in &contribution.navigation_items {
+        ensure_unique_insert(
+            item_ids,
+            item.item_id.clone(),
+            "duplicate console navigation item id",
+        )?;
+    }
+    for binding in &contribution.permission_bindings {
+        ensure_unique_insert(
+            binding_ids,
+            binding.binding_id.clone(),
+            "duplicate console permission binding id",
+        )?;
+    }
+    Ok(())
+}
 
 fn ensure_unique_insert(
     seen: &mut HashSet<String>,

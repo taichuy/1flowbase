@@ -1,9 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use access_control::{
-    ConsoleAuthorization, ConsoleOperationRegistration, ConsolePolicyGroup, ResourceAccessAction,
-    ResourceAccessRegistration, SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
-    SettingsFeatureRegistration, SettingsFeatureRegistry,
+    ConsoleAuthorization, ConsoleLocaleCatalogContribution, ConsoleLocaleText,
+    ConsoleOperationRegistration, ConsoleOtherPolicyGroupDisplay, ConsolePolicyGroup,
+    ResourceAccessAction, ResourceAccessRegistration, SettingsFeatureLifecycle,
+    SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
 };
 use serde::Deserialize;
 
@@ -132,6 +133,31 @@ pub struct HostExtensionConsolePermissionBindingManifest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct HostExtensionConsoleLocaleTextManifest {
+    pub reference: String,
+    pub en_us: String,
+    pub zh_hans: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionConsoleOtherPolicyGroupDisplayManifest {
+    pub group_id: String,
+    pub label_ref: String,
+    pub description_ref: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionConsoleLocaleCatalogManifest {
+    #[serde(default)]
+    pub texts: Vec<HostExtensionConsoleLocaleTextManifest>,
+    #[serde(default)]
+    pub policy_groups: Vec<HostExtensionConsoleOtherPolicyGroupDisplayManifest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HostExtensionWorkerManifest {
     pub worker_id: String,
     pub queue: String,
@@ -166,7 +192,7 @@ pub struct HostExtensionContributionManifest {
     #[serde(default)]
     pub console_resources: Vec<ResourceAccessRegistration>,
     #[serde(default)]
-    pub console_i18n_refs: Vec<String>,
+    pub console_locale_catalog: HostExtensionConsoleLocaleCatalogManifest,
     #[serde(default)]
     pub console_surfaces: HostExtensionConsoleSurfacesManifest,
     pub workers: Vec<HostExtensionWorkerManifest>,
@@ -177,6 +203,7 @@ pub struct HostExtensionContributionManifest {
 pub struct HostExtensionConsoleContribution {
     pub operations: Vec<ConsoleOperationRegistration>,
     pub resources: Vec<ResourceAccessRegistration>,
+    pub locale_catalog: ConsoleLocaleCatalogContribution,
 }
 
 impl HostExtensionContributionManifest {
@@ -185,6 +212,34 @@ impl HostExtensionContributionManifest {
         Ok(HostExtensionConsoleContribution {
             operations: self.console_operations.clone(),
             resources: self.console_resources.clone(),
+            locale_catalog: ConsoleLocaleCatalogContribution {
+                owner: access_control::ConsoleOperationOwner {
+                    kind: SettingsFeatureOwnerKind::HostExtension,
+                    owner_id: self.extension_id.clone(),
+                    version: self.version.clone(),
+                },
+                lifecycle: SettingsFeatureLifecycle::Active,
+                texts: self
+                    .console_locale_catalog
+                    .texts
+                    .iter()
+                    .map(|text| ConsoleLocaleText {
+                        reference: text.reference.clone(),
+                        en_us: text.en_us.clone(),
+                        zh_hans: text.zh_hans.clone(),
+                    })
+                    .collect(),
+                policy_groups: self
+                    .console_locale_catalog
+                    .policy_groups
+                    .iter()
+                    .map(|group| ConsoleOtherPolicyGroupDisplay {
+                        group_id: group.group_id.clone(),
+                        label_ref: group.label_ref.clone(),
+                        description_ref: group.description_ref.clone(),
+                    })
+                    .collect(),
+            },
         })
     }
 }
@@ -287,23 +342,47 @@ fn validate_console_contributions(
     manifest: &HostExtensionContributionManifest,
 ) -> FrameworkResult<()> {
     let declared_i18n_refs = manifest
-        .console_i18n_refs
+        .console_locale_catalog
+        .texts
         .iter()
-        .cloned()
+        .map(|text| text.reference.clone())
         .collect::<BTreeSet<_>>();
-    if declared_i18n_refs.len() != manifest.console_i18n_refs.len() {
+    if declared_i18n_refs.len() != manifest.console_locale_catalog.texts.len() {
         return Err(PluginFrameworkError::invalid_provider_package(
-            "console_i18n_refs[] must be unique",
+            "console_locale_catalog.texts[].reference must be unique",
         ));
     }
-    for reference in &manifest.console_i18n_refs {
-        validate_i18n_ref(&manifest.extension_id, reference, "console_i18n_refs[]")?;
+    for text in &manifest.console_locale_catalog.texts {
+        validate_i18n_ref(
+            &manifest.extension_id,
+            &text.reference,
+            "console_locale_catalog.texts[].reference",
+        )?;
+        validate_non_empty(&text.en_us, "console_locale_catalog.texts[].en_us")?;
+        validate_non_empty(&text.zh_hans, "console_locale_catalog.texts[].zh_hans")?;
     }
 
     let mut operation_ids = BTreeSet::<String>::new();
     let mut resource_codes = BTreeSet::<String>::new();
     let mut route_owners = BTreeMap::<(String, String), String>::new();
     let mut referenced_i18n_refs = BTreeSet::<String>::new();
+
+    for feature in &manifest.settings_features {
+        validate_i18n_reference(
+            manifest,
+            &feature.console_surface.label_key,
+            "settings_features[].console_surface.label_key",
+            &declared_i18n_refs,
+            &mut referenced_i18n_refs,
+        )?;
+        validate_i18n_reference(
+            manifest,
+            &feature.console_surface.description_key,
+            "settings_features[].console_surface.description_key",
+            &declared_i18n_refs,
+            &mut referenced_i18n_refs,
+        )?;
+    }
 
     for operation in &manifest.console_operations {
         validate_console_operation(
@@ -354,13 +433,66 @@ fn validate_console_contributions(
         }
     }
 
+    let used_other_groups = manifest
+        .console_operations
+        .iter()
+        .filter_map(|operation| match &operation.policy_group {
+            ConsolePolicyGroup::Other(group_id) => Some(group_id.as_str()),
+            ConsolePolicyGroup::SettingsFeature(_) => None,
+        })
+        .collect::<BTreeSet<_>>();
+    let mut declared_other_groups = BTreeSet::new();
+    for group in &manifest.console_locale_catalog.policy_groups {
+        validate_non_empty(
+            &group.group_id,
+            "console_locale_catalog.policy_groups[].group_id",
+        )?;
+        if !is_extension_owned_group_id(&manifest.extension_id, &group.group_id) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "console_locale_catalog.policy_groups[].group_id must stay in the extension namespace",
+            ));
+        }
+        if !declared_other_groups.insert(group.group_id.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "console_locale_catalog.policy_groups[].group_id must be unique",
+            ));
+        }
+        if !used_other_groups.contains(group.group_id.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "console_locale_catalog.policy_groups[] contains an unreferenced group",
+            ));
+        }
+        validate_i18n_reference(
+            manifest,
+            &group.label_ref,
+            "console_locale_catalog.policy_groups[].label_ref",
+            &declared_i18n_refs,
+            &mut referenced_i18n_refs,
+        )?;
+        validate_i18n_reference(
+            manifest,
+            &group.description_ref,
+            "console_locale_catalog.policy_groups[].description_ref",
+            &declared_i18n_refs,
+            &mut referenced_i18n_refs,
+        )?;
+    }
+    if used_other_groups
+        .iter()
+        .any(|group_id| !declared_other_groups.contains(group_id))
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "console_operations[].policy_group is missing a locale catalog display",
+        ));
+    }
+
     if referenced_i18n_refs.len() != declared_i18n_refs.len()
         || declared_i18n_refs
             .iter()
             .any(|reference| !referenced_i18n_refs.contains(reference))
     {
         return Err(PluginFrameworkError::invalid_provider_package(
-            "console_i18n_refs[] contains an unused reference",
+            "console_locale_catalog.texts[] contains an unused reference",
         ));
     }
 

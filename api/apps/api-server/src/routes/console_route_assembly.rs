@@ -1,4 +1,4 @@
-use std::{convert::Infallible, sync::Arc};
+use std::{collections::BTreeSet, convert::Infallible, sync::Arc};
 
 use access_control::{
     ConsoleAuthorization, ConsoleOperationOwner, ConsoleOperationRegistration,
@@ -14,6 +14,7 @@ use axum::{
     routing::{get, patch, post, MethodRouter},
     Router,
 };
+use plugin_framework::HostExtensionContributionManifest;
 
 use super::core_console_i18n::core_console_locale_catalog_contribution;
 use super::core_console_operation_specs::{
@@ -394,9 +395,17 @@ fn routes_for_core_operation_spec(
     }
 }
 
-fn validate_explicit_core_operation_specs(
+fn validate_explicit_operation_specs(
     bindings: &[ConsoleRouteAssemblyBinding],
+    host_operation_ids: &BTreeSet<String>,
+    settings_features: &SettingsFeatureRegistry,
 ) -> anyhow::Result<()> {
+    let projected_settings_feature_operations = settings_features
+        .inventory()
+        .features
+        .iter()
+        .map(|feature| format!("settings_feature.access.{}", feature.feature_id))
+        .collect::<BTreeSet<_>>();
     for binding in bindings {
         let ConsoleRouteOwnership::ConsoleOperation(operation_id) = &binding.ownership else {
             continue;
@@ -404,9 +413,11 @@ fn validate_explicit_core_operation_specs(
         if !CORE_CONSOLE_OPERATION_SPECS
             .iter()
             .any(|spec| spec.operation_id == operation_id)
+            && !host_operation_ids.contains(operation_id)
+            && !projected_settings_feature_operations.contains(operation_id)
         {
             anyhow::bail!(
-                "no explicit Core operation specification for {operation_id}; register policy group, i18n refs, and authorization before mounting its route"
+                "no explicit Core or HostExtension operation specification for {operation_id}; register policy group, i18n refs, and authorization before mounting its route"
             );
         }
     }
@@ -417,15 +428,32 @@ pub fn compile_migrated_core_console_operation_registry(
     settings_features: &SettingsFeatureRegistry,
     bindings: &[ConsoleRouteAssemblyBinding],
 ) -> anyhow::Result<ConsoleOperationRegistry> {
+    compile_migrated_console_operation_registry(settings_features, bindings, &[])
+}
+
+pub(crate) fn compile_migrated_console_operation_registry(
+    settings_features: &SettingsFeatureRegistry,
+    bindings: &[ConsoleRouteAssemblyBinding],
+    host_contributions: &[HostExtensionContributionManifest],
+) -> anyhow::Result<ConsoleOperationRegistry> {
     validate_settings_feature_route_assembly(settings_features, bindings)?;
-    validate_explicit_core_operation_specs(bindings)?;
+    let host_console_contributions = host_contributions
+        .iter()
+        .map(HostExtensionContributionManifest::console_contribution)
+        .collect::<Result<Vec<_>, _>>()?;
+    let host_operation_ids = host_console_contributions
+        .iter()
+        .flat_map(|contribution| contribution.operations.iter())
+        .map(|operation| operation.operation_id.clone())
+        .collect::<BTreeSet<_>>();
+    validate_explicit_operation_specs(bindings, &host_operation_ids, settings_features)?;
 
     let core_owner = ConsoleOperationOwner {
         kind: SettingsFeatureOwnerKind::Core,
         owner_id: "boot-core".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     };
-    let registrations = CORE_CONSOLE_OPERATION_SPECS
+    let mut registrations = CORE_CONSOLE_OPERATION_SPECS
         .iter()
         .enumerate()
         .map(|(order, spec)| ConsoleOperationRegistration {
@@ -438,7 +466,8 @@ pub fn compile_migrated_core_console_operation_registry(
             order: order as i32,
             routes: routes_for_core_operation_spec(spec, bindings),
             authorization: authorization_for_spec(spec),
-        });
+        })
+        .collect::<Vec<_>>();
     let applications_resource = ResourceAccessRegistration {
         resource_code: APPLICATIONS_RESOURCE_CODE.to_string(),
         owner: core_owner.clone(),
@@ -485,11 +514,29 @@ pub fn compile_migrated_core_console_operation_registry(
             ),
         }],
     };
+    registrations.extend(
+        host_console_contributions
+            .iter()
+            .flat_map(|contribution| contribution.operations.iter().cloned()),
+    );
+    let mut resources = vec![applications_resource, data_source_instances_resource];
+    resources.extend(
+        host_console_contributions
+            .iter()
+            .flat_map(|contribution| contribution.resources.iter().cloned()),
+    );
+    let locale_contributions = std::iter::once(core_console_locale_catalog_contribution())
+        .chain(
+            host_console_contributions
+                .iter()
+                .map(|contribution| contribution.locale_catalog.clone()),
+        )
+        .collect::<Vec<_>>();
     let registry = ConsoleOperationRegistry::compile_with_locale_catalog(
         settings_features,
         registrations,
-        [applications_resource, data_source_instances_resource],
-        [core_console_locale_catalog_contribution()],
+        resources,
+        locale_contributions,
     )?;
     registry.validate_console_route_coverage(bindings.iter().cloned())?;
     Ok(registry)
