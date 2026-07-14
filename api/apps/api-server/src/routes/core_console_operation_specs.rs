@@ -175,6 +175,12 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "applications",
         "view",
     ),
+    other(
+        "agent_flow.data_model_options.list",
+        "other.agent-flow",
+        "console.operations.agent_flow.data_model_options.list.label",
+        "console.operations.agent_flow.data_model_options.list.description",
+    ),
     settings(
         "auth_center.authenticators.copy",
         "system.auth-center",
@@ -320,18 +326,6 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "system.files",
         "console.operations.file_tables.storage.bind.label",
         "console.operations.file_tables.storage.bind.description",
-    ),
-    other(
-        "files.content.download",
-        "other.files",
-        "console.operations.files.content.download.label",
-        "console.operations.files.content.download.description",
-    ),
-    other(
-        "files.upload",
-        "other.files",
-        "console.operations.files.upload.label",
-        "console.operations.files.upload.description",
     ),
     other(
         "frontend_blocks.view",
@@ -873,11 +867,17 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "console.operations.model_providers.main_instance.view.label",
         "console.operations.model_providers.main_instance.view.description",
     ),
-    settings(
+    other(
         "model_providers.options.view",
-        "system.model-providers",
+        "other.model-providers",
         "console.operations.model_providers.options.view.label",
         "console.operations.model_providers.options.view.description",
+    ),
+    settings(
+        "model_providers.settings_options.view",
+        "system.model-providers",
+        "console.operations.model_providers.settings_options.view.label",
+        "console.operations.model_providers.settings_options.view.description",
     ),
     settings(
         "model_providers.preview.view",
@@ -1126,6 +1126,12 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "console.operations.settings_feature.access.system.docs.description",
     ),
     settings(
+        "user_api_keys.manage",
+        "system.api-key-authentication",
+        "console.operations.user_api_keys.manage.label",
+        "console.operations.user_api_keys.manage.description",
+    ),
+    settings(
         "system.release_status.view",
         "system.system-runtime",
         "console.operations.system.release_status.view.label",
@@ -1142,17 +1148,5 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "other.workspace",
         "console.operations.workspace.update.label",
         "console.operations.workspace.update.description",
-    ),
-    other(
-        "workspace.view",
-        "other.workspace",
-        "console.operations.workspace.view.label",
-        "console.operations.workspace.view.description",
-    ),
-    other(
-        "workspaces.list",
-        "other.workspaces",
-        "console.operations.workspaces.list.label",
-        "console.operations.workspaces.list.description",
     ),
 ];

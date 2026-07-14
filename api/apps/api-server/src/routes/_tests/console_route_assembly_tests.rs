@@ -1141,17 +1141,17 @@ fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
     assert_eq!(
         route_bindings(&user_api_keys),
         vec![
-            ("GET", "/api/console/user-api-keys", "authenticated"),
-            ("POST", "/api/console/user-api-keys", "authenticated"),
+            ("GET", "/api/console/user-api-keys", "user_api_keys.manage"),
+            ("POST", "/api/console/user-api-keys", "user_api_keys.manage"),
             (
                 "GET",
                 "/api/console/user-api-keys/role-options",
-                "authenticated"
+                "user_api_keys.manage"
             ),
             (
                 "POST",
                 "/api/console/user-api-keys/:api_key_id/revoke",
-                "authenticated"
+                "user_api_keys.manage"
             ),
         ]
     );
@@ -1174,7 +1174,7 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
             (
                 "GET",
                 "/api/console/models/agent-flow-options",
-                "model_definitions.list"
+                "agent_flow.data_model_options.list"
             ),
             (
                 "GET",
@@ -1239,7 +1239,7 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
             (
                 "GET",
                 "/api/console/settings/model-providers/options",
-                "model_providers.options.view"
+                "model_providers.settings_options.view"
             ),
             (
                 "PATCH",

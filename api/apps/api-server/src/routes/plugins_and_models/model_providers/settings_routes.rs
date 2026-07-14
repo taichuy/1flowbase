@@ -66,7 +66,7 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/settings/model-providers/options",
             console_get(
                 list_settings_options,
-                ConsoleOperation("model_providers.options.view".to_string()),
+                ConsoleOperation("model_providers.settings_options.view".to_string()),
             ),
         )
         .route(

@@ -213,6 +213,122 @@ fn ac_009_core_compiled_catalog_resolves_every_active_display_reference_in_both_
     }
 }
 
+// AC-002 / AC-009: routes with distinct authorization meanings must not be collapsed before
+// legacy grants are mapped. The compiled inventory, rather than a URL heuristic, is the source
+// of truth for these classifications.
+#[test]
+fn ac_002_009_operation_semantics_are_explicit_before_legacy_mapping() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let assembly = migrated_core_console_route_assembly();
+    let registry =
+        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+
+    for (method, path) in [
+        ("GET", "/api/console/workspace"),
+        ("GET", "/api/console/workspaces"),
+        ("POST", "/api/console/files/upload"),
+        (
+            "GET",
+            "/api/console/files/:file_table_id/records/:record_id/content",
+        ),
+    ] {
+        let access = registry.access_for_console_route(method, path).unwrap();
+        assert_eq!(access.operation_id, "core.authenticated", "{method} {path}");
+        assert_eq!(access.authorization, &ConsoleAuthorization::Authenticated);
+    }
+
+    for (method, path) in [
+        ("GET", "/api/console/user-api-keys"),
+        ("POST", "/api/console/user-api-keys"),
+        ("GET", "/api/console/user-api-keys/role-options"),
+        ("POST", "/api/console/user-api-keys/:api_key_id/revoke"),
+    ] {
+        let access = registry.access_for_console_route(method, path).unwrap();
+        assert_eq!(
+            access.operation_id, "user_api_keys.manage",
+            "{method} {path}"
+        );
+        assert_eq!(access.authorization, &ConsoleAuthorization::Simple);
+        assert_eq!(
+            access.policy_group,
+            &ConsolePolicyGroup::SettingsFeature("system.api-key-authentication".to_string())
+        );
+    }
+
+    for (method, path, operation_id) in [
+        (
+            "GET",
+            "/api/console/settings/data-models/model-definitions",
+            "model_definitions.list",
+        ),
+        (
+            "GET",
+            "/api/console/models/agent-flow-options",
+            "agent_flow.data_model_options.list",
+        ),
+        (
+            "GET",
+            "/api/console/settings/model-providers/options",
+            "model_providers.settings_options.view",
+        ),
+        (
+            "GET",
+            "/api/console/model-providers/options",
+            "model_providers.options.view",
+        ),
+    ] {
+        assert_eq!(
+            registry
+                .access_for_console_route(method, path)
+                .unwrap()
+                .operation_id,
+            operation_id,
+            "{method} {path}"
+        );
+    }
+    assert_eq!(
+        registry
+            .access_for_console_route("GET", "/api/console/settings/data-models/model-definitions",)
+            .unwrap()
+            .policy_group,
+        &ConsolePolicyGroup::SettingsFeature("system.data-models".to_string())
+    );
+    assert_eq!(
+        registry
+            .access_for_console_route("GET", "/api/console/models/agent-flow-options")
+            .unwrap()
+            .policy_group,
+        &ConsolePolicyGroup::Other("other.agent-flow".to_string())
+    );
+    assert_eq!(
+        registry
+            .access_for_console_route("GET", "/api/console/settings/model-providers/options",)
+            .unwrap()
+            .policy_group,
+        &ConsolePolicyGroup::SettingsFeature("system.model-providers".to_string())
+    );
+    assert_eq!(
+        registry
+            .access_for_console_route("GET", "/api/console/model-providers/options")
+            .unwrap()
+            .policy_group,
+        &ConsolePolicyGroup::Other("other.model-providers".to_string())
+    );
+
+    for removed_operation_id in [
+        "workspace.view",
+        "workspaces.list",
+        "files.upload",
+        "files.content.download",
+    ] {
+        assert!(registry
+            .inventory()
+            .operations
+            .iter()
+            .all(|operation| operation.operation_id != removed_operation_id));
+    }
+}
+
 #[test]
 fn ac_013_role_console_policy_workers_have_explicit_metadata() {
     let settings = compile_core_settings_feature_registry().unwrap();

@@ -253,13 +253,23 @@ pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
     ),
     text!(
         "console.operations.model_providers.options.view.label",
-        "View model provider options",
-        "查看模型提供商选项"
+        "View application model provider options",
+        "查看应用可用的模型提供商选项"
     ),
     text!(
         "console.operations.model_providers.options.view.description",
-        "Allow users to view model provider options",
-        "允许查看模型提供商选项"
+        "Allow users to view model provider options used by applications",
+        "允许查看应用使用的模型提供商选项"
+    ),
+    text!(
+        "console.operations.model_providers.settings_options.view.label",
+        "View model provider settings options",
+        "查看模型提供商设置选项"
+    ),
+    text!(
+        "console.operations.model_providers.settings_options.view.description",
+        "Allow users to view options used to configure model providers",
+        "允许查看配置模型提供商使用的选项"
     ),
     text!(
         "console.operations.model_providers.preview.view.label",

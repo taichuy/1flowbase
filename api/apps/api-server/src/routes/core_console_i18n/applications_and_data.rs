@@ -2,6 +2,16 @@ use super::CoreConsoleLocaleText;
 
 pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
     text!(
+        "console.operations.agent_flow.data_model_options.list.label",
+        "View Agent Flow data model options",
+        "查看智能体流程数据模型选项"
+    ),
+    text!(
+        "console.operations.agent_flow.data_model_options.list.description",
+        "Allow users to list data model options used by Agent Flow",
+        "允许查看智能体流程使用的数据模型选项"
+    ),
+    text!(
         "console.operations.applications.api.set_enabled.label",
         "Enable application API",
         "启用应用 API"
@@ -290,26 +300,6 @@ pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
         "console.operations.file_tables.storage.bind.description",
         "Bind a file table to file storage",
         "将文件表绑定到文件存储"
-    ),
-    text!(
-        "console.operations.files.content.download.label",
-        "Download file content",
-        "下载文件内容"
-    ),
-    text!(
-        "console.operations.files.content.download.description",
-        "Download file content within the permitted scope",
-        "在允许的范围内下载文件内容"
-    ),
-    text!(
-        "console.operations.files.upload.label",
-        "Upload files",
-        "上传文件"
-    ),
-    text!(
-        "console.operations.files.upload.description",
-        "Upload files to the current workspace",
-        "向当前工作区上传文件"
     ),
     text!(
         "console.operations.model_definitions.advisor.view.label",

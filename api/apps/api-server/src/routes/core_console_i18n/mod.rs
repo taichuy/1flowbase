@@ -58,15 +58,14 @@ pub(crate) fn core_console_locale_catalog_contribution() -> ConsoleLocaleCatalog
 fn other_policy_group_displays() -> Vec<ConsoleOtherPolicyGroupDisplay> {
     [
         "core.authenticated",
+        "other.agent-flow",
         "other.data-sources",
-        "other.files",
         "other.frontend-blocks",
         "other.js-dependencies",
         "other.model-providers",
         "other.node-contributions",
         "other.plugins",
         "other.workspace",
-        "other.workspaces",
     ]
     .into_iter()
     .map(|group_id| ConsoleOtherPolicyGroupDisplay {

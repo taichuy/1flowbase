@@ -40,15 +40,9 @@ pub fn router() -> Router<Arc<ApiState>> {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+    use access_control::ConsoleRouteOwnership::Authenticated;
 
-    ConsoleRouteAssembly::new().route(
-        "/workspaces",
-        console_get(
-            list_workspaces,
-            ConsoleOperation("workspaces.list".to_string()),
-        ),
-    )
+    ConsoleRouteAssembly::new().route("/workspaces", console_get(list_workspaces, Authenticated))
 }
 
 #[utoipa::path(

@@ -42,15 +42,11 @@ pub fn router() -> Router<Arc<ApiState>> {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
 
     ConsoleRouteAssembly::new().route(
         "/workspace",
-        console_get(
-            get_workspace,
-            ConsoleOperation("workspace.view".to_string()),
-        )
-        .patch(
+        console_get(get_workspace, Authenticated).patch(
             patch_workspace,
             ConsoleOperation("workspace.update".to_string()),
         ),

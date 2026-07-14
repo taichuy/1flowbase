@@ -1,6 +1,5 @@
 use std::{collections::HashSet, sync::Arc};
 
-use access_control::{FILES_CONTENT_DOWNLOAD_OPERATION_ID, FILES_UPLOAD_OPERATION_ID};
 use axum::{
     body::Body,
     extract::{Multipart, Path, State},
@@ -82,22 +81,13 @@ pub fn router() -> Router<Arc<ApiState>> {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+    use access_control::ConsoleRouteOwnership::Authenticated;
 
     ConsoleRouteAssembly::new()
-        .route(
-            "/files/upload",
-            console_post(
-                upload_file,
-                ConsoleOperation(FILES_UPLOAD_OPERATION_ID.to_string()),
-            ),
-        )
+        .route("/files/upload", console_post(upload_file, Authenticated))
         .route(
             "/files/:file_table_id/records/:record_id/content",
-            console_get(
-                read_file_content,
-                ConsoleOperation(FILES_CONTENT_DOWNLOAD_OPERATION_ID.to_string()),
-            ),
+            console_get(read_file_content, Authenticated),
         )
 }
 

@@ -1,6 +1,5 @@
 use access_control::{
     ConsoleAuthorization, ConsolePolicyGroup, ConsoleRouteOwnership,
-    FILES_CONTENT_DOWNLOAD_OPERATION_ID, FILES_UPLOAD_OPERATION_ID,
     FILE_STORAGES_CREATE_OPERATION_ID, FILE_STORAGES_DELETE_OPERATION_ID,
     FILE_STORAGES_LIST_OPERATION_ID, FILE_STORAGES_UPDATE_OPERATION_ID,
     FILE_TABLES_CREATE_OPERATION_ID, FILE_TABLES_DELETE_OPERATION_ID,
@@ -25,13 +24,13 @@ fn file_owner_routes_compile_from_exact_assemblies() {
         .bindings()
         .iter()
         .map(|binding| {
-            let ConsoleRouteOwnership::ConsoleOperation(operation_id) = &binding.ownership else {
-                panic!("file owner routes must be configurable console operations");
-            };
             (
                 binding.route.method.as_str(),
                 binding.route.path.as_str(),
-                operation_id.as_str(),
+                match &binding.ownership {
+                    ConsoleRouteOwnership::Authenticated => "authenticated",
+                    ConsoleRouteOwnership::ConsoleOperation(operation_id) => operation_id.as_str(),
+                },
             )
         })
         .collect::<Vec<_>>();
@@ -39,15 +38,11 @@ fn file_owner_routes_compile_from_exact_assemblies() {
     assert_eq!(
         actual,
         vec![
-            (
-                "POST",
-                "/api/console/files/upload",
-                FILES_UPLOAD_OPERATION_ID,
-            ),
+            ("POST", "/api/console/files/upload", "authenticated",),
             (
                 "GET",
                 "/api/console/files/:file_table_id/records/:record_id/content",
-                FILES_CONTENT_DOWNLOAD_OPERATION_ID,
+                "authenticated",
             ),
             (
                 "GET",
@@ -94,7 +89,7 @@ fn file_owner_routes_compile_from_exact_assemblies() {
 }
 
 #[test]
-fn file_owner_routes_compile_stable_simple_operations_without_row_contract() {
+fn file_owner_routes_preserve_authenticated_data_acl_and_settings_operations() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
     let registry =
@@ -107,32 +102,26 @@ fn file_owner_routes_compile_stable_simple_operations_without_row_contract() {
                 .path
                 .starts_with("/api/console/settings/files/")
     }) {
-        let ConsoleRouteOwnership::ConsoleOperation(expected_operation_id) = &binding.ownership
-        else {
-            panic!("file owner routes must be configurable console operations");
-        };
         let access = registry
             .access_for_console_route(&binding.route.method, &binding.route.path)
             .unwrap();
-        assert_eq!(access.operation_id, expected_operation_id);
+        match &binding.ownership {
+            ConsoleRouteOwnership::Authenticated => {
+                assert_eq!(access.operation_id, "core.authenticated");
+                assert_eq!(access.authorization, &ConsoleAuthorization::Authenticated);
+            }
+            ConsoleRouteOwnership::ConsoleOperation(expected_operation_id) => {
+                assert_eq!(access.operation_id, expected_operation_id);
+            }
+        }
     }
 
-    for operation_id in [
-        FILES_UPLOAD_OPERATION_ID,
-        FILES_CONTENT_DOWNLOAD_OPERATION_ID,
-    ] {
-        let operation = registry
+    for removed_operation_id in ["files.upload", "files.content.download"] {
+        assert!(registry
             .inventory()
             .operations
             .iter()
-            .find(|operation| operation.operation_id == operation_id)
-            .unwrap();
-        assert_eq!(operation.authorization, ConsoleAuthorization::Simple);
-        assert_eq!(
-            operation.policy_group,
-            ConsolePolicyGroup::Other("other.files".to_string())
-        );
-        assert_eq!(operation.routes.len(), 1);
+            .all(|operation| operation.operation_id != removed_operation_id));
     }
 
     for operation_id in [

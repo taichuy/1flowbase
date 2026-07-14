@@ -102,6 +102,16 @@ pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
         "所有已登录用户可访问的后台路由",
     ),
     text!(
+        "console.policy_groups.other.other.agent-flow.label",
+        "Agent Flow",
+        "智能体流程",
+    ),
+    text!(
+        "console.policy_groups.other.other.agent-flow.description",
+        "Registered Agent Flow operations outside system settings",
+        "系统设置之外已注册的智能体流程操作",
+    ),
+    text!(
         "console.policy_groups.other.other.data-sources.label",
         "Data source utilities",
         "数据源工具",
@@ -110,16 +120,6 @@ pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
         "console.policy_groups.other.other.data-sources.description",
         "Registered data source operations outside system settings",
         "系统设置之外已注册的数据源操作",
-    ),
-    text!(
-        "console.policy_groups.other.other.files.label",
-        "File utilities",
-        "文件工具",
-    ),
-    text!(
-        "console.policy_groups.other.other.files.description",
-        "Registered file operations outside system settings",
-        "系统设置之外已注册的文件操作",
     ),
     text!(
         "console.policy_groups.other.other.frontend-blocks.label",
@@ -180,16 +180,6 @@ pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
         "console.policy_groups.other.other.workspace.description",
         "Registered operations for the current workspace",
         "当前工作区的已注册操作",
-    ),
-    text!(
-        "console.policy_groups.other.other.workspaces.label",
-        "Workspaces",
-        "工作区",
-    ),
-    text!(
-        "console.policy_groups.other.other.workspaces.description",
-        "Registered workspace selection operations",
-        "已注册的工作区选择操作",
     ),
     text!(
         "console.policy.group_modes.disabled.label",

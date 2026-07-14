@@ -372,6 +372,16 @@ pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
         "允许查看运行配置"
     ),
     text!(
+        "console.operations.user_api_keys.manage.label",
+        "Manage user API keys",
+        "管理用户 API Key"
+    ),
+    text!(
+        "console.operations.user_api_keys.manage.description",
+        "Allow users to list, create, and revoke their own API keys",
+        "允许用户查看、创建和撤销自己的 API Key"
+    ),
+    text!(
         "console.operations.workspace.update.label",
         "Update current workspace",
         "更新当前工作区"
@@ -380,25 +390,5 @@ pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
         "console.operations.workspace.update.description",
         "Allow users to update current workspace",
         "允许更新当前工作区"
-    ),
-    text!(
-        "console.operations.workspace.view.label",
-        "View current workspace",
-        "查看当前工作区"
-    ),
-    text!(
-        "console.operations.workspace.view.description",
-        "Allow users to view current workspace",
-        "允许查看当前工作区"
-    ),
-    text!(
-        "console.operations.workspaces.list.label",
-        "List workspaces",
-        "查看工作区"
-    ),
-    text!(
-        "console.operations.workspaces.list.description",
-        "Allow users to list workspaces",
-        "允许查看工作区"
     ),
 ];

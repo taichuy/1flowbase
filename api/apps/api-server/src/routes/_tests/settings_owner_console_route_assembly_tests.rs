@@ -10,13 +10,13 @@ fn assert_route_bindings<S>(
         .bindings()
         .iter()
         .map(|binding| {
-            let ConsoleRouteOwnership::ConsoleOperation(operation_id) = &binding.ownership else {
-                panic!("settings owner route must have explicit ConsoleOperation ownership");
-            };
             (
                 binding.route.method.as_str(),
                 binding.route.path.as_str(),
-                operation_id.as_str(),
+                match &binding.ownership {
+                    ConsoleRouteOwnership::Authenticated => "authenticated",
+                    ConsoleRouteOwnership::ConsoleOperation(operation_id) => operation_id.as_str(),
+                },
             )
         })
         .collect::<Vec<_>>();
@@ -135,7 +135,7 @@ fn ac_002_013_workspace_route_bindings_are_explicit_and_stable() {
     assert_route_bindings(
         &crate::routes::workspace::route_assembly(),
         &[
-            ("GET", "/api/console/workspace", "workspace.view"),
+            ("GET", "/api/console/workspace", "authenticated"),
             ("PATCH", "/api/console/workspace", "workspace.update"),
         ],
     );
@@ -145,7 +145,7 @@ fn ac_002_013_workspace_route_bindings_are_explicit_and_stable() {
 fn ac_002_013_workspaces_route_binding_is_explicit_and_stable() {
     assert_route_bindings(
         &crate::routes::workspaces::route_assembly(),
-        &[("GET", "/api/console/workspaces", "workspaces.list")],
+        &[("GET", "/api/console/workspaces", "authenticated")],
     );
 }
 

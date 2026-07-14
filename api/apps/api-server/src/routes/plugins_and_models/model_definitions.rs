@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use access_control::{
-    ConsoleRouteOwnership::ConsoleOperation, MODEL_DEFINITIONS_LIST_OPERATION_ID,
-};
+use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
@@ -270,7 +268,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         "/models/agent-flow-options",
         console_get(
             list_agent_flow_options,
-            ConsoleOperation(MODEL_DEFINITIONS_LIST_OPERATION_ID.to_string()),
+            ConsoleOperation("agent_flow.data_model_options.list".to_string()),
         ),
     )
 }

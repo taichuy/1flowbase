@@ -77,30 +77,32 @@ pub fn router() -> Router<Arc<ApiState>> {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
     ConsoleRouteAssembly::new()
         .route(
             "/user-api-keys",
             console_get(
                 list_user_api_keys,
-                access_control::ConsoleRouteOwnership::Authenticated,
+                ConsoleOperation("user_api_keys.manage".to_string()),
             )
             .post(
                 create_user_api_key,
-                access_control::ConsoleRouteOwnership::Authenticated,
+                ConsoleOperation("user_api_keys.manage".to_string()),
             ),
         )
         .route(
             "/user-api-keys/role-options",
             console_get(
                 list_user_api_key_role_options,
-                access_control::ConsoleRouteOwnership::Authenticated,
+                ConsoleOperation("user_api_keys.manage".to_string()),
             ),
         )
         .route(
             "/user-api-keys/:api_key_id/revoke",
             console_post(
                 revoke_user_api_key,
-                access_control::ConsoleRouteOwnership::Authenticated,
+                ConsoleOperation("user_api_keys.manage".to_string()),
             ),
         )
 }
