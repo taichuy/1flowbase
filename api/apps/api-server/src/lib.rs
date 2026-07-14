@@ -331,6 +331,9 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let process_started_at = OffsetDateTime::now_utc();
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
     let settings_feature_registry = compile_core_settings_feature_registry()?;
+    routes::console_route_assembly::validate_migrated_core_console_route_coverage(
+        &settings_feature_registry,
+    )?;
 
     let state = Arc::new(ApiState {
         store,

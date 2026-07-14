@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{extract::Query, extract::State, http::HeaderMap, routing::get, Json, Router};
+use axum::{extract::Query, extract::State, http::HeaderMap, Json, Router};
 use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
@@ -15,8 +15,11 @@ use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 
 use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
+    app_state::ApiState,
+    error_response::ApiError,
+    middleware::require_session::require_session,
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize)]
@@ -60,7 +63,19 @@ pub struct ApplicationManagementPageResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/settings/applications", get(list_application_management))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    ConsoleRouteAssembly::new().route(
+        "/settings/applications",
+        console_get(
+            list_application_management,
+            access_control::ConsoleRouteOwnership::ConsoleOperation(
+                access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION.to_string(),
+            ),
+        ),
+    )
 }
 
 #[utoipa::path(

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
-    routing::{get, post},
     Json, Router,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
@@ -20,6 +19,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -74,10 +74,25 @@ pub(crate) fn expired_session_cookie(cookie_name: &str, cookie_secure: bool) -> 
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/session", get(get_session).delete(delete_session))
-        .route("/session/actions/revoke-all", post(revoke_all_sessions))
-        .route("/session/actions/switch-workspace", post(switch_workspace))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::Authenticated;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/session",
+            console_get(get_session, Authenticated).delete(delete_session, Authenticated),
+        )
+        .route(
+            "/session/actions/revoke-all",
+            console_post(revoke_all_sessions, Authenticated),
+        )
+        .route(
+            "/session/actions/switch-workspace",
+            console_post(switch_workspace, Authenticated),
+        )
 }
 
 #[utoipa::path(

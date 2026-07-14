@@ -42,6 +42,20 @@ pub struct ConsoleRouteBinding {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "operation_id", rename_all = "snake_case")]
+pub enum ConsoleRouteOwnership {
+    Authenticated,
+    ConsoleOperation(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConsoleRouteAssemblyBinding {
+    pub route: ConsoleRouteBinding,
+    pub ownership: ConsoleRouteOwnership,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConsoleOperationRegistration {
     pub operation_id: String,
@@ -264,22 +278,79 @@ impl ConsoleOperationRegistry {
 
     pub fn validate_console_route_coverage(
         &self,
-        routes: impl IntoIterator<Item = ConsoleRouteBinding>,
+        routes: impl IntoIterator<Item = ConsoleRouteAssemblyBinding>,
     ) -> Result<(), ConsoleOperationRegistryError> {
         let mut missing = Vec::new();
-        for route in routes {
-            validate_route(&route)?;
-            let method = route.method.to_ascii_uppercase();
-            let shape = route_shape(&route.path);
-            if !self
-                .route_owners
-                .contains_key(&(method.clone(), shape.clone()))
+        let mut assembled_owners = BTreeMap::new();
+        for binding in routes {
+            validate_route(&binding.route)?;
+            let method = binding.route.method.to_ascii_uppercase();
+            let shape = route_shape(&binding.route.path);
+            let key = (method.clone(), shape);
+            if let Some(existing) = assembled_owners.insert(key.clone(), binding.ownership.clone())
             {
-                missing.push(format!("{method} {}", route.path));
+                return Err(ConsoleOperationRegistryError::new(format!(
+                    "duplicate assembled console route ownership {method} {} between {} and {}",
+                    binding.route.path,
+                    ownership_name(&existing),
+                    ownership_name(&binding.ownership),
+                )));
+            }
+
+            let Some(operation_id) = self.route_owners.get(&key) else {
+                missing.push(format!("{method} {}", binding.route.path));
+                continue;
+            };
+            let operation = self
+                .inventory
+                .operations
+                .binary_search_by(|operation| operation.operation_id.cmp(operation_id))
+                .ok()
+                .and_then(|index| self.inventory.operations.get(index))
+                .ok_or_else(|| {
+                    ConsoleOperationRegistryError::new(format!(
+                        "compiled operation {operation_id} is missing from inventory"
+                    ))
+                })?;
+            let ownership_matches = match &binding.ownership {
+                ConsoleRouteOwnership::Authenticated => {
+                    operation.authorization == ConsoleAuthorization::Authenticated
+                }
+                ConsoleRouteOwnership::ConsoleOperation(expected_operation_id) => {
+                    operation.operation_id == *expected_operation_id
+                        && operation.authorization != ConsoleAuthorization::Authenticated
+                }
+            };
+            if !ownership_matches {
+                return Err(ConsoleOperationRegistryError::new(format!(
+                    "assembled console route ownership mismatch {method} {}: expected {}, compiled {}",
+                    binding.route.path,
+                    ownership_name(&binding.ownership),
+                    operation.operation_id,
+                )));
             }
         }
         if missing.is_empty() {
-            Ok(())
+            let mut unmounted = self
+                .inventory
+                .operations
+                .iter()
+                .flat_map(|operation| operation.routes.iter())
+                .filter_map(|route| {
+                    let key = (route.method.to_ascii_uppercase(), route_shape(&route.path));
+                    (!assembled_owners.contains_key(&key))
+                        .then(|| format!("{} {}", route.method, route.path))
+                })
+                .collect::<Vec<_>>();
+            if unmounted.is_empty() {
+                Ok(())
+            } else {
+                unmounted.sort();
+                Err(ConsoleOperationRegistryError::new(format!(
+                    "compiled console route ownership is not mounted: {}",
+                    unmounted.join(", ")
+                )))
+            }
         } else {
             missing.sort();
             Err(ConsoleOperationRegistryError::new(format!(
@@ -604,7 +675,7 @@ fn normalize_route(mut route: ConsoleRouteBinding) -> ConsoleRouteBinding {
 fn route_shape(path: &str) -> String {
     path.split('/')
         .map(|segment| {
-            if segment.starts_with('{') && segment.ends_with('}') {
+            if segment.starts_with(':') || segment.starts_with('{') && segment.ends_with('}') {
                 "{}"
             } else {
                 segment
@@ -612,6 +683,13 @@ fn route_shape(path: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("/")
+}
+
+fn ownership_name(ownership: &ConsoleRouteOwnership) -> &str {
+    match ownership {
+        ConsoleRouteOwnership::Authenticated => "authenticated",
+        ConsoleRouteOwnership::ConsoleOperation(operation_id) => operation_id,
+    }
 }
 
 fn route_matches(template_shape: &str, request_path: &str) -> bool {

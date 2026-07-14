@@ -3,13 +3,16 @@ use std::sync::Arc;
 use access_control::{
     ConsoleNavigation, ConsoleNavigationItem, ConsolePermissionBinding, ConsoleRouteDefinition,
 };
-use axum::{extract::State, http::HeaderMap, routing::get, Json, Router};
+use axum::{extract::State, http::HeaderMap, Json, Router};
 use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
+    app_state::ApiState,
+    error_response::ApiError,
+    middleware::require_session::require_session,
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -46,7 +49,17 @@ pub struct ConsolePermissionBindingResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/navigation", get(get_console_navigation))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    ConsoleRouteAssembly::new().route(
+        "/navigation",
+        console_get(
+            get_console_navigation,
+            access_control::ConsoleRouteOwnership::Authenticated,
+        ),
+    )
 }
 
 #[utoipa::path(

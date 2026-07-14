@@ -1,6 +1,7 @@
 pub mod application_public_api;
 #[path = "applications/mod.rs"]
 mod applications_group;
+pub mod console_route_assembly;
 #[path = "files.rs"]
 pub mod files;
 #[path = "frontstage/mod.rs"]
@@ -27,3 +28,6 @@ pub use settings_group::{
     host_infrastructure, mcp_management, members, navigation, permissions, roles, system,
     workspace, workspaces,
 };
+
+#[cfg(test)]
+mod _tests;

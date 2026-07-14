@@ -11,8 +11,9 @@ pub use console_operations::{
     ConsoleAuthorization, ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry,
     ConsoleOperationOwner, ConsoleOperationRegistration, ConsoleOperationRegistry,
     ConsoleOperationRegistryDiff, ConsoleOperationRegistryError, ConsolePolicyGroup,
-    ConsolePolicyGroupChange, ConsoleRouteAccess, ConsoleRouteBinding, ResourceAccessAction,
-    ResourceAccessRegistration, ResourceAccessScopeKind,
+    ConsolePolicyGroupChange, ConsoleRouteAccess, ConsoleRouteAssemblyBinding, ConsoleRouteBinding,
+    ConsoleRouteOwnership, ResourceAccessAction, ResourceAccessRegistration,
+    ResourceAccessScopeKind,
 };
 pub use evaluator::ensure_permission;
 pub use navigation::{

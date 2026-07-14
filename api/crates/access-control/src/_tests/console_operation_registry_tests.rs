@@ -1,9 +1,10 @@
 use crate::{
     ConsoleAuthorization, ConsoleOperationOwner, ConsoleOperationRegistration,
-    ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteBinding, ResourceAccessAction,
-    ResourceAccessRegistration, ResourceAccessScopeKind, SettingsApiRoute,
-    SettingsFeatureConsoleSurface, SettingsFeatureLifecycle, SettingsFeatureOwner,
-    SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
+    ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteAssemblyBinding, ConsoleRouteBinding,
+    ConsoleRouteOwnership, ResourceAccessAction, ResourceAccessRegistration,
+    ResourceAccessScopeKind, SettingsApiRoute, SettingsFeatureConsoleSurface,
+    SettingsFeatureLifecycle, SettingsFeatureOwner, SettingsFeatureOwnerKind,
+    SettingsFeatureRegistration, SettingsFeatureRegistry,
 };
 
 fn owner(kind: SettingsFeatureOwnerKind, owner_id: &str) -> ConsoleOperationOwner {
@@ -41,6 +42,17 @@ fn route(method: &str, path: &str) -> ConsoleRouteBinding {
     ConsoleRouteBinding {
         method: method.to_string(),
         path: path.to_string(),
+    }
+}
+
+fn assembled_route(
+    method: &str,
+    path: &str,
+    ownership: ConsoleRouteOwnership,
+) -> ConsoleRouteAssemblyBinding {
+    ConsoleRouteAssemblyBinding {
+        route: route(method, path),
+        ownership,
     }
 }
 
@@ -237,10 +249,54 @@ fn ac_002_compile_and_runtime_fail_closed_for_invalid_or_unregistered_routes() {
         .to_string()
         .contains("unregistered console route"));
     assert!(registry
-        .validate_console_route_coverage([route("GET", "/api/console/unregistered",)])
+        .validate_console_route_coverage([assembled_route(
+            "GET",
+            "/api/console/unregistered",
+            ConsoleRouteOwnership::Authenticated,
+        )])
         .unwrap_err()
         .to_string()
         .contains("missing compiled ownership"));
+}
+
+#[test]
+fn ac_002_console_route_assembly_rejects_duplicate_ownership() {
+    let settings_registry = applications_settings_registry();
+    let registry = ConsoleOperationRegistry::compile(&settings_registry, [], []).unwrap();
+    let duplicate = registry
+        .validate_console_route_coverage([
+            assembled_route(
+                "GET",
+                "/api/console/settings/applications",
+                ConsoleRouteOwnership::ConsoleOperation(
+                    "settings_feature.access.system.applications".to_string(),
+                ),
+            ),
+            assembled_route(
+                "GET",
+                "/api/console/settings/applications",
+                ConsoleRouteOwnership::Authenticated,
+            ),
+        ])
+        .unwrap_err();
+
+    assert!(duplicate
+        .to_string()
+        .contains("duplicate assembled console route ownership"));
+}
+
+#[test]
+fn ac_002_console_route_assembly_rejects_unmounted_compiled_route() {
+    let settings_registry = applications_settings_registry();
+    let registry = ConsoleOperationRegistry::compile(&settings_registry, [], []).unwrap();
+    let unmounted = registry.validate_console_route_coverage([]).unwrap_err();
+
+    assert!(unmounted
+        .to_string()
+        .contains("compiled console route ownership is not mounted"));
+    assert!(unmounted
+        .to_string()
+        .contains("GET /api/console/settings/applications"));
 }
 
 #[test]

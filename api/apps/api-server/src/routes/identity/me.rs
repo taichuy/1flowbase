@@ -7,7 +7,6 @@ use argon2::{
 use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
-    routing::{get, patch, post},
     Json, Router,
 };
 use axum_extra::extract::cookie::CookieJar;
@@ -22,6 +21,9 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{
+        console_get, console_patch, console_post, ConsoleRouteAssembly,
+    },
     routes::session::expired_session_cookie,
 };
 
@@ -79,10 +81,22 @@ fn hash_password(password: &str) -> Result<String, ApiError> {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/me", get(get_me).patch(patch_me))
-        .route("/me/meta", patch(patch_me_meta))
-        .route("/me/actions/change-password", post(change_password))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::Authenticated;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/me",
+            console_get(get_me, Authenticated).patch(patch_me, Authenticated),
+        )
+        .route("/me/meta", console_patch(patch_me_meta, Authenticated))
+        .route(
+            "/me/actions/change-password",
+            console_post(change_password, Authenticated),
+        )
 }
 
 fn to_me_response(profile: control_plane::profile::MeProfile) -> MeResponse {
