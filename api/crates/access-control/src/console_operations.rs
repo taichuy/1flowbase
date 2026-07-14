@@ -13,6 +13,15 @@ use crate::{
 
 pub const CONSOLE_OPERATION_INVENTORY_SCHEMA_VERSION: &str =
     "1flowbase.console-operation-inventory/v1";
+pub const APPLICATIONS_RESOURCE_CODE: &str = "applications";
+pub const APPLICATIONS_CREATE_OPERATION_ID: &str = "applications.create";
+pub const APPLICATIONS_VIEW_OPERATION_ID: &str = "applications.view";
+pub const APPLICATIONS_UPDATE_OPERATION_ID: &str = "applications.update";
+pub const APPLICATIONS_DELETE_OPERATION_ID: &str = "applications.delete";
+pub const APPLICATIONS_CREATE_ACTION_CODE: &str = "create";
+pub const APPLICATIONS_VIEW_ACTION_CODE: &str = "view";
+pub const APPLICATIONS_UPDATE_ACTION_CODE: &str = "update";
+pub const APPLICATIONS_DELETE_ACTION_CODE: &str = "delete";
 
 pub type ConsoleOperationOwner = SettingsFeatureOwner;
 

@@ -13,7 +13,10 @@ pub use console_operations::{
     ConsoleOperationRegistryDiff, ConsoleOperationRegistryError, ConsolePolicyGroup,
     ConsolePolicyGroupChange, ConsoleRouteAccess, ConsoleRouteAssemblyBinding, ConsoleRouteBinding,
     ConsoleRouteOwnership, ResourceAccessAction, ResourceAccessRegistration,
-    ResourceAccessScopeKind,
+    ResourceAccessScopeKind, APPLICATIONS_CREATE_ACTION_CODE, APPLICATIONS_CREATE_OPERATION_ID,
+    APPLICATIONS_DELETE_ACTION_CODE, APPLICATIONS_DELETE_OPERATION_ID, APPLICATIONS_RESOURCE_CODE,
+    APPLICATIONS_UPDATE_ACTION_CODE, APPLICATIONS_UPDATE_OPERATION_ID,
+    APPLICATIONS_VIEW_ACTION_CODE, APPLICATIONS_VIEW_OPERATION_ID,
 };
 pub use evaluator::ensure_permission;
 pub use navigation::{

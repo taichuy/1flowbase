@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+use access_control::{
+    APPLICATIONS_CREATE_OPERATION_ID, APPLICATIONS_DELETE_OPERATION_ID,
+    APPLICATIONS_UPDATE_OPERATION_ID, APPLICATIONS_VIEW_OPERATION_ID,
+};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
@@ -28,6 +32,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -217,19 +222,11 @@ pub struct ApplicationDetailResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
+    // Remaining application catalog, tag, environment-variable, and JS-dependency routes stay on
+    // the original router until their own inventory stages classify their security semantics.
     Router::new()
         .route("/applications/catalog", get(get_application_catalog))
         .route("/applications/tags", post(create_application_tag))
-        .route(
-            "/applications",
-            get(list_applications).post(create_application),
-        )
-        .route(
-            "/applications/:id",
-            get(get_application)
-                .patch(patch_application)
-                .delete(delete_application),
-        )
         .route(
             "/applications/:id/environment-variables",
             get(list_application_environment_variables)
@@ -239,6 +236,39 @@ pub fn router() -> Router<Arc<ApiState>> {
             "/applications/:id/js-dependencies",
             get(list_application_js_dependency_selections)
                 .put(replace_application_js_dependency_selection),
+        )
+        .merge(route_assembly().into_router())
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/applications",
+            console_get(
+                list_applications,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .post(
+                create_application,
+                ConsoleOperation(APPLICATIONS_CREATE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:id",
+            console_get(
+                get_application,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .patch(
+                patch_application,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            )
+            .delete(
+                delete_application,
+                ConsoleOperation(APPLICATIONS_DELETE_OPERATION_ID.to_string()),
+            ),
         )
 }
 
