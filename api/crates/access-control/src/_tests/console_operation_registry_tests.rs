@@ -171,7 +171,49 @@ fn ac_001_core_and_host_extension_compile_one_operation_resource_route_inventory
 }
 
 #[test]
-fn ac_002_compile_and_runtime_fail_closed_for_invalid_or_unregistered_routes() {
+fn ac_002_console_route_assembly_literal_specificity_resolves_before_parameter_route() {
+    let settings_registry = applications_settings_registry();
+    let registry = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [
+            operation(
+                "applications.read",
+                ConsolePolicyGroup::Other("other.general".to_string()),
+                ConsoleAuthorization::Authenticated,
+                vec![route("GET", "/api/console/applications/{id}")],
+            ),
+            operation(
+                "applications.create",
+                ConsolePolicyGroup::Other("other.general".to_string()),
+                ConsoleAuthorization::Simple,
+                vec![route("GET", "/api/console/applications/catalog")],
+            ),
+        ],
+        [],
+    )
+    .expect("a literal route must be allowed to specialize a parameter route");
+
+    assert_eq!(
+        registry
+            .access_for_console_route("GET", "/api/console/applications/catalog")
+            .unwrap()
+            .operation_id,
+        "applications.create"
+    );
+    assert_eq!(
+        registry
+            .access_for_console_route(
+                "GET",
+                "/api/console/applications/00000000-0000-0000-0000-000000000001",
+            )
+            .unwrap()
+            .operation_id,
+        "applications.read"
+    );
+}
+
+#[test]
+fn ac_002_console_route_assembly_fails_closed_for_ambiguous_or_unregistered_routes() {
     let settings_registry = applications_settings_registry();
     let duplicate_templates = ConsoleOperationRegistry::compile(
         &settings_registry,
@@ -186,13 +228,36 @@ fn ac_002_compile_and_runtime_fail_closed_for_invalid_or_unregistered_routes() {
                 "applications.inspect",
                 ConsolePolicyGroup::Other("other.general".to_string()),
                 ConsoleAuthorization::Simple,
-                vec![route("GET", "/api/console/applications/special")],
+                vec![route("GET", "/api/console/applications/{application_id}")],
             ),
         ],
         [],
     )
     .unwrap_err();
     assert!(duplicate_templates
+        .to_string()
+        .contains("duplicate console route ownership"));
+
+    let crossing_specificity = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [
+            operation(
+                "applications.read-catalog",
+                ConsolePolicyGroup::Other("other.general".to_string()),
+                ConsoleAuthorization::Authenticated,
+                vec![route("GET", "/api/console/applications/{id}/catalog")],
+            ),
+            operation(
+                "applications.inspect-section",
+                ConsolePolicyGroup::Other("other.general".to_string()),
+                ConsoleAuthorization::Simple,
+                vec![route("GET", "/api/console/applications/special/{section}")],
+            ),
+        ],
+        [],
+    )
+    .unwrap_err();
+    assert!(crossing_specificity
         .to_string()
         .contains("duplicate console route ownership"));
 

@@ -248,10 +248,11 @@ impl ConsoleOperationRegistry {
         let operation_id = self
             .route_owners
             .iter()
-            .find_map(|((registered_method, registered_path), operation_id)| {
-                (registered_method == &method && route_matches(registered_path, path))
-                    .then_some(operation_id)
+            .filter(|((registered_method, registered_path), _)| {
+                registered_method == &method && route_matches(registered_path, path)
             })
+            .max_by_key(|((_, registered_path), _)| route_literal_specificity(registered_path))
+            .map(|(_, operation_id)| operation_id)
             .ok_or_else(|| {
                 ConsoleOperationRegistryError::new(format!(
                     "unregistered console route {method} {path}"
@@ -484,7 +485,8 @@ fn compile_operation(
     for route in &registration.routes {
         let key = (route.method.clone(), route_shape(&route.path));
         if let Some(existing) = route_owners.iter().find_map(|((method, shape), owner)| {
-            (method == &route.method && route_templates_overlap(shape, &key.1)).then_some(owner)
+            (method == &route.method && route_templates_are_ambiguous(shape, &key.1))
+                .then_some(owner)
         }) {
             return Err(ConsoleOperationRegistryError::new(format!(
                 "duplicate console route ownership {} {} between {existing} and {}",
@@ -724,6 +726,30 @@ fn route_templates_overlap(left: &str, right: &str) -> bool {
                 let left = *left;
                 left == right || left == "{}" || right == "{}"
             })
+}
+
+fn route_templates_are_ambiguous(left: &str, right: &str) -> bool {
+    if !route_templates_overlap(left, right) {
+        return false;
+    }
+
+    let mut left_is_more_specific = false;
+    let mut right_is_more_specific = false;
+    for (left, right) in left.split('/').zip(right.split('/')) {
+        match (left == "{}", right == "{}") {
+            (false, true) => left_is_more_specific = true,
+            (true, false) => right_is_more_specific = true,
+            (false, false) | (true, true) => {}
+        }
+    }
+
+    left_is_more_specific == right_is_more_specific
+}
+
+fn route_literal_specificity(path: &str) -> usize {
+    path.split('/')
+        .filter(|segment| !segment.is_empty() && *segment != "{}")
+        .count()
 }
 
 fn settings_feature_operation_id(feature_id: &str) -> String {

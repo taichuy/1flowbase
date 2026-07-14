@@ -7,7 +7,6 @@ use access_control::{
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, post},
     Json, Router,
 };
 use control_plane::{
@@ -32,7 +31,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -222,22 +221,7 @@ pub struct ApplicationDetailResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    // Remaining application catalog, tag, environment-variable, and JS-dependency routes stay on
-    // the original router until their own inventory stages classify their security semantics.
-    Router::new()
-        .route("/applications/catalog", get(get_application_catalog))
-        .route("/applications/tags", post(create_application_tag))
-        .route(
-            "/applications/:id/environment-variables",
-            get(list_application_environment_variables)
-                .put(replace_application_environment_variables),
-        )
-        .route(
-            "/applications/:id/js-dependencies",
-            get(list_application_js_dependency_selections)
-                .put(replace_application_js_dependency_selection),
-        )
-        .merge(route_assembly().into_router())
+    route_assembly().into_router()
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
@@ -268,6 +252,42 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             .delete(
                 delete_application,
                 ConsoleOperation(APPLICATIONS_DELETE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/catalog",
+            console_get(
+                get_application_catalog,
+                ConsoleOperation(APPLICATIONS_CREATE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/tags",
+            console_post(
+                create_application_tag,
+                ConsoleOperation(APPLICATIONS_CREATE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:id/environment-variables",
+            console_get(
+                list_application_environment_variables,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .put(
+                replace_application_environment_variables,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:id/js-dependencies",
+            console_get(
+                list_application_js_dependency_selections,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .put(
+                replace_application_js_dependency_selection,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
             ),
         )
 }

@@ -98,6 +98,16 @@ where
         self.methods.push(("POST", ownership));
         self
     }
+
+    pub fn put<H, T>(mut self, handler: H, ownership: ConsoleRouteOwnership) -> Self
+    where
+        H: Handler<T, S>,
+        T: 'static,
+    {
+        self.router = self.router.put(handler);
+        self.methods.push(("PUT", ownership));
+        self
+    }
 }
 
 pub struct ConsoleRouteAssembly<S> {

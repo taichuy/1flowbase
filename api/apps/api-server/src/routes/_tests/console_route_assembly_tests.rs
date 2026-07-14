@@ -87,7 +87,7 @@ fn migrated_real_core_console_route_assembly_has_compiled_coverage() {
 }
 
 #[test]
-fn applications_core_crud_routes_compile_exact_operations_and_resource_metadata() {
+fn applications_routes_compile_exact_operations_and_resource_metadata() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
     let registry =
@@ -97,13 +97,68 @@ fn applications_core_crud_routes_compile_exact_operations_and_resource_metadata(
         .iter()
         .filter(|binding| binding.route.path.starts_with("/api/console/applications"))
         .collect::<Vec<_>>();
-    assert_eq!(application_bindings.len(), 5);
-    assert!(application_bindings.iter().all(|binding| {
-        !binding.route.path.ends_with("/catalog")
-            && !binding.route.path.ends_with("/tags")
-            && !binding.route.path.contains("/environment-variables")
-            && !binding.route.path.contains("/js-dependencies")
-    }));
+    assert_eq!(
+        application_bindings
+            .iter()
+            .map(|binding| {
+                (
+                    binding.route.method.as_str(),
+                    binding.route.path.as_str(),
+                    match &binding.ownership {
+                        ConsoleRouteOwnership::ConsoleOperation(operation_id) => {
+                            operation_id.as_str()
+                        }
+                        ConsoleRouteOwnership::Authenticated => "authenticated",
+                    },
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            ("GET", "/api/console/applications", "applications.view"),
+            ("POST", "/api/console/applications", "applications.create"),
+            ("GET", "/api/console/applications/:id", "applications.view",),
+            (
+                "PATCH",
+                "/api/console/applications/:id",
+                "applications.update",
+            ),
+            (
+                "DELETE",
+                "/api/console/applications/:id",
+                "applications.delete",
+            ),
+            (
+                "GET",
+                "/api/console/applications/catalog",
+                "applications.create",
+            ),
+            (
+                "POST",
+                "/api/console/applications/tags",
+                "applications.create",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/environment-variables",
+                "applications.view",
+            ),
+            (
+                "PUT",
+                "/api/console/applications/:id/environment-variables",
+                "applications.update",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/js-dependencies",
+                "applications.view",
+            ),
+            (
+                "PUT",
+                "/api/console/applications/:id/js-dependencies",
+                "applications.update",
+            ),
+        ]
+    );
 
     let expected_routes = [
         ("GET", "/api/console/applications", "applications.view"),
@@ -122,6 +177,36 @@ fn applications_core_crud_routes_compile_exact_operations_and_resource_metadata(
             "DELETE",
             "/api/console/applications/00000000-0000-0000-0000-000000000001",
             "applications.delete",
+        ),
+        (
+            "GET",
+            "/api/console/applications/catalog",
+            "applications.create",
+        ),
+        (
+            "POST",
+            "/api/console/applications/tags",
+            "applications.create",
+        ),
+        (
+            "GET",
+            "/api/console/applications/00000000-0000-0000-0000-000000000001/environment-variables",
+            "applications.view",
+        ),
+        (
+            "PUT",
+            "/api/console/applications/00000000-0000-0000-0000-000000000001/environment-variables",
+            "applications.update",
+        ),
+        (
+            "GET",
+            "/api/console/applications/00000000-0000-0000-0000-000000000001/js-dependencies",
+            "applications.view",
+        ),
+        (
+            "PUT",
+            "/api/console/applications/00000000-0000-0000-0000-000000000001/js-dependencies",
+            "applications.update",
         ),
     ];
     for (method, path, operation_id) in expected_routes {
@@ -185,7 +270,7 @@ fn applications_core_crud_routes_compile_exact_operations_and_resource_metadata(
 }
 
 #[test]
-fn applications_core_crud_closed_set_rejects_duplicate_or_missing_binding() {
+fn applications_closed_set_rejects_duplicate_or_missing_binding() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
     let application_bindings = assembly
