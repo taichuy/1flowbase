@@ -2,6 +2,7 @@ pub mod application_public_api;
 #[path = "applications/mod.rs"]
 mod applications_group;
 pub mod console_route_assembly;
+pub(crate) mod core_console_i18n;
 pub(crate) mod core_console_operation_specs;
 #[path = "files.rs"]
 pub mod files;

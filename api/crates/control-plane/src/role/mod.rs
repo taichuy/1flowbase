@@ -1,9 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use access_control::{
-    ensure_permission, ConsoleAuthorization, ConsoleOperationCompiledInventory,
-    ConsoleOperationInventoryEntry, ConsolePolicyGroup as RegisteredConsolePolicyGroup,
-    ResourceAccessRegistration, ResourceAccessScopeKind, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION,
+    ensure_permission, ConsoleAuthorization, ConsoleLocaleCatalog,
+    ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry,
+    ConsolePolicyGroup as RegisteredConsolePolicyGroup, ResourceAccessRegistration,
+    ResourceAccessScopeKind, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION,
 };
 use anyhow::Result;
 use uuid::Uuid;
@@ -27,7 +28,8 @@ use console_policy_validation::{
 };
 pub use console_policy_validation::{
     ConsolePolicyAuthorization, ConsolePolicyCatalog, ConsolePolicyCatalogAction,
-    ConsolePolicyCatalogGroup, ConsolePolicyCatalogOperation, ConsolePolicyCatalogResource,
+    ConsolePolicyCatalogGroup, ConsolePolicyCatalogOperation, ConsolePolicyCatalogOption,
+    ConsolePolicyCatalogResource,
 };
 
 pub struct CreateRoleCommand {
@@ -94,555 +96,17 @@ pub enum ConsolePolicyOperationInput {
     Row { operation_id: String, scope: String },
 }
 
-const CONSOLE_POLICY_TRANSLATIONS: &[(&str, &str, &str)] = &[
-    ("auto.api_documentation", "API documentation", "API 文档"),
-    (
-        "auto.api_key_authentication",
-        "API key authentication",
-        "API Key 认证",
-    ),
-    ("auto.system_runtime", "System runtime", "系统运行"),
-    (
-        "auto.application_management",
-        "Application management",
-        "应用管理",
-    ),
-    ("auto.auth_center", "Authentication center", "认证中心"),
-    ("auto.data_source", "Data source", "数据源"),
-    ("auto.file_management", "File management", "文件管理"),
-    ("auto.infrastructure", "Infrastructure", "基础设施"),
-    ("auto.memory_observation", "Memory observation", "内存观测"),
-    ("auto.user_management", "User management", "用户管理"),
-    ("auto.model_providers", "Model providers", "模型提供商"),
-    ("auto.mcp_management", "MCP management", "MCP 管理"),
-    (
-        "auto.permission_management",
-        "Permission management",
-        "权限管理",
-    ),
-    (
-        "console.operations.applications.create.label",
-        "Create application",
-        "创建应用",
-    ),
-    (
-        "console.operations.applications.create.description",
-        "Create applications in the current workspace",
-        "在当前工作区创建应用",
-    ),
-    (
-        "console.operations.applications.view.label",
-        "View applications",
-        "查看应用",
-    ),
-    (
-        "console.operations.applications.view.description",
-        "Read applications within the permitted row scope",
-        "按允许的行范围读取应用",
-    ),
-    (
-        "console.operations.applications.update.label",
-        "Update applications",
-        "修改应用",
-    ),
-    (
-        "console.operations.applications.update.description",
-        "Update applications within the permitted row scope",
-        "按允许的行范围修改应用",
-    ),
-    (
-        "console.operations.applications.delete.label",
-        "Delete applications",
-        "删除应用",
-    ),
-    (
-        "console.operations.applications.delete.description",
-        "Delete applications within the permitted row scope",
-        "按允许的行范围删除应用",
-    ),
-    (
-        "console.operations.applications.publish.label",
-        "Publish applications",
-        "发布应用",
-    ),
-    (
-        "console.operations.applications.publish.description",
-        "Publish applications after domain validation",
-        "通过领域校验后发布应用",
-    ),
-    (
-        "console.operations.applications.api.set_enabled.label",
-        "Enable application API",
-        "启用应用 API",
-    ),
-    (
-        "console.operations.applications.api.set_enabled.description",
-        "Enable or disable the application API",
-        "启用或停用应用 API",
-    ),
-    (
-        "console.operations.applications.orchestration.template.export.label",
-        "Export orchestration template",
-        "导出编排模板",
-    ),
-    (
-        "console.operations.applications.orchestration.template.export.description",
-        "Export an application orchestration template",
-        "导出应用编排模板",
-    ),
-    (
-        "console.operations.applications.orchestration.template.import.label",
-        "Import orchestration template",
-        "导入编排模板",
-    ),
-    (
-        "console.operations.applications.orchestration.template.import.description",
-        "Import an application orchestration template",
-        "导入应用编排模板",
-    ),
-    (
-        "console.operations.applications.orchestration.version.restore.label",
-        "Restore orchestration version",
-        "恢复编排版本",
-    ),
-    (
-        "console.operations.applications.orchestration.version.restore.description",
-        "Restore an application orchestration version",
-        "恢复应用编排版本",
-    ),
-    (
-        "console.operations.applications.run.label",
-        "Run applications",
-        "运行应用",
-    ),
-    (
-        "console.operations.applications.run.description",
-        "Run an application after domain admission checks",
-        "通过领域准入校验后运行应用",
-    ),
-    (
-        "console.operations.applications.logs.export.label",
-        "Export application logs",
-        "导出应用日志",
-    ),
-    (
-        "console.operations.applications.logs.export.description",
-        "Export application runtime logs",
-        "导出应用运行日志",
-    ),
-    (
-        "console.operations.applications.logs.import.label",
-        "Import application logs",
-        "导入应用日志",
-    ),
-    (
-        "console.operations.applications.logs.import.description",
-        "Import application runtime logs",
-        "导入应用运行日志",
-    ),
-    (
-        "console.operations.data_sources.list.label",
-        "List data sources",
-        "查看数据源列表",
-    ),
-    (
-        "console.operations.data_sources.list.description",
-        "List data source definitions",
-        "查看数据源定义列表",
-    ),
-    (
-        "console.operations.data_sources.create.label",
-        "Create data source",
-        "创建数据源",
-    ),
-    (
-        "console.operations.data_sources.create.description",
-        "Create a data source definition",
-        "创建数据源定义",
-    ),
-    (
-        "console.operations.data_sources.defaults.update.label",
-        "Update data source defaults",
-        "修改数据源默认配置",
-    ),
-    (
-        "console.operations.data_sources.defaults.update.description",
-        "Update data source default configuration",
-        "修改数据源默认配置",
-    ),
-    (
-        "console.operations.data_sources.validate.label",
-        "Validate data source",
-        "校验数据源",
-    ),
-    (
-        "console.operations.data_sources.validate.description",
-        "Validate a data source connection",
-        "校验数据源连接",
-    ),
-    (
-        "console.operations.data_sources.discover.label",
-        "Discover data source schema",
-        "发现数据源结构",
-    ),
-    (
-        "console.operations.data_sources.discover.description",
-        "Discover the available data source schema",
-        "发现可用的数据源结构",
-    ),
-    (
-        "console.operations.data_sources.preview.label",
-        "Preview data source",
-        "预览数据源",
-    ),
-    (
-        "console.operations.data_sources.preview.description",
-        "Preview records from a data source",
-        "预览数据源记录",
-    ),
-    (
-        "console.operations.data_sources.map_to_model.label",
-        "Map data source to model",
-        "映射数据源到数据模型",
-    ),
-    (
-        "console.operations.data_sources.map_to_model.description",
-        "Map a data source schema to a data model",
-        "将数据源结构映射到数据模型",
-    ),
-    (
-        "console.operations.data_sources.view.label",
-        "View data source instances",
-        "查看数据源实例",
-    ),
-    (
-        "console.operations.data_sources.view.description",
-        "Read data source instances within the permitted row scope",
-        "按允许的行范围读取数据源实例",
-    ),
-    (
-        "console.operations.data_sources.secret.rotate.label",
-        "Rotate data source secret",
-        "轮换数据源密钥",
-    ),
-    (
-        "console.operations.data_sources.secret.rotate.description",
-        "Rotate a data source secret through the control plane",
-        "通过控制面轮换数据源密钥",
-    ),
-    (
-        "console.operations.model_definitions.list.label",
-        "List data models",
-        "查看数据模型列表",
-    ),
-    (
-        "console.operations.model_definitions.list.description",
-        "List data model definitions",
-        "查看数据模型定义列表",
-    ),
-    (
-        "console.operations.model_definitions.create.label",
-        "Create data model",
-        "创建数据模型",
-    ),
-    (
-        "console.operations.model_definitions.create.description",
-        "Create a data model definition",
-        "创建数据模型定义",
-    ),
-    (
-        "console.operations.model_definitions.update.label",
-        "Update data model",
-        "修改数据模型",
-    ),
-    (
-        "console.operations.model_definitions.update.description",
-        "Update a data model definition",
-        "修改数据模型定义",
-    ),
-    (
-        "console.operations.model_definitions.delete.label",
-        "Delete data model",
-        "删除数据模型",
-    ),
-    (
-        "console.operations.model_definitions.delete.description",
-        "Delete a data model definition",
-        "删除数据模型定义",
-    ),
-    (
-        "console.operations.model_definitions.advisor.view.label",
-        "View model advisor",
-        "查看模型顾问",
-    ),
-    (
-        "console.operations.model_definitions.advisor.view.description",
-        "View data model protection advice",
-        "查看数据模型保护建议",
-    ),
-    (
-        "console.operations.model_definitions.openapi.view.label",
-        "View model OpenAPI",
-        "查看数据模型 OpenAPI",
-    ),
-    (
-        "console.operations.model_definitions.openapi.view.description",
-        "View the data model OpenAPI contract",
-        "查看数据模型 OpenAPI 契约",
-    ),
-    (
-        "console.operations.model_fields.create.label",
-        "Create model field",
-        "创建模型字段",
-    ),
-    (
-        "console.operations.model_fields.create.description",
-        "Create a data model field",
-        "创建数据模型字段",
-    ),
-    (
-        "console.operations.model_fields.update.label",
-        "Update model field",
-        "修改模型字段",
-    ),
-    (
-        "console.operations.model_fields.update.description",
-        "Update a data model field",
-        "修改数据模型字段",
-    ),
-    (
-        "console.operations.model_fields.delete.label",
-        "Delete model field",
-        "删除模型字段",
-    ),
-    (
-        "console.operations.model_fields.delete.description",
-        "Delete a data model field",
-        "删除数据模型字段",
-    ),
-    (
-        "console.operations.model_scope_grants.list.label",
-        "List model scope grants",
-        "查看模型范围授权列表",
-    ),
-    (
-        "console.operations.model_scope_grants.list.description",
-        "List data model scope grants",
-        "查看数据模型范围授权列表",
-    ),
-    (
-        "console.operations.model_scope_grants.create.label",
-        "Create model scope grant",
-        "创建模型范围授权",
-    ),
-    (
-        "console.operations.model_scope_grants.create.description",
-        "Create a data model scope grant",
-        "创建数据模型范围授权",
-    ),
-    (
-        "console.operations.model_scope_grants.update.label",
-        "Update model scope grant",
-        "修改模型范围授权",
-    ),
-    (
-        "console.operations.model_scope_grants.update.description",
-        "Update a data model scope grant",
-        "修改数据模型范围授权",
-    ),
-    (
-        "console.operations.file_storages.list.label",
-        "List file storages",
-        "查看文件存储列表",
-    ),
-    (
-        "console.operations.file_storages.list.description",
-        "List configured file storages",
-        "查看已配置的文件存储列表",
-    ),
-    (
-        "console.operations.file_storages.create.label",
-        "Create file storage",
-        "创建文件存储",
-    ),
-    (
-        "console.operations.file_storages.create.description",
-        "Create a file storage configuration",
-        "创建文件存储配置",
-    ),
-    (
-        "console.operations.file_storages.update.label",
-        "Update file storage",
-        "修改文件存储",
-    ),
-    (
-        "console.operations.file_storages.update.description",
-        "Update a file storage configuration",
-        "修改文件存储配置",
-    ),
-    (
-        "console.operations.file_storages.delete.label",
-        "Delete file storage",
-        "删除文件存储",
-    ),
-    (
-        "console.operations.file_storages.delete.description",
-        "Delete a file storage configuration",
-        "删除文件存储配置",
-    ),
-    (
-        "console.operations.file_tables.list.label",
-        "List file tables",
-        "查看文件表列表",
-    ),
-    (
-        "console.operations.file_tables.list.description",
-        "List file tables",
-        "查看文件表列表",
-    ),
-    (
-        "console.operations.file_tables.create.label",
-        "Create file table",
-        "创建文件表",
-    ),
-    (
-        "console.operations.file_tables.create.description",
-        "Create a file table",
-        "创建文件表",
-    ),
-    (
-        "console.operations.file_tables.storage.bind.label",
-        "Bind file table storage",
-        "绑定文件表存储",
-    ),
-    (
-        "console.operations.file_tables.storage.bind.description",
-        "Bind a file table to file storage",
-        "将文件表绑定到文件存储",
-    ),
-    (
-        "console.operations.file_tables.delete.label",
-        "Delete file table",
-        "删除文件表",
-    ),
-    (
-        "console.operations.file_tables.delete.description",
-        "Delete a file table",
-        "删除文件表",
-    ),
-    (
-        "console.operations.files.upload.label",
-        "Upload files",
-        "上传文件",
-    ),
-    (
-        "console.operations.files.upload.description",
-        "Upload files to the current workspace",
-        "向当前工作区上传文件",
-    ),
-    (
-        "console.operations.files.content.download.label",
-        "Download file content",
-        "下载文件内容",
-    ),
-    (
-        "console.operations.files.content.download.description",
-        "Download file content within the permitted scope",
-        "在允许的范围内下载文件内容",
-    ),
-    (
-        "console.resources.applications.label",
-        "Applications",
-        "应用",
-    ),
-    (
-        "console.resources.applications.description",
-        "Application records in the current workspace",
-        "当前工作区中的应用记录",
-    ),
-    (
-        "console.resources.applications.actions.create.label",
-        "Create",
-        "创建",
-    ),
-    (
-        "console.resources.applications.actions.create.description",
-        "Create an application",
-        "创建应用",
-    ),
-    (
-        "console.resources.applications.actions.view.label",
-        "View",
-        "查看",
-    ),
-    (
-        "console.resources.applications.actions.view.description",
-        "View an application",
-        "查看应用",
-    ),
-    (
-        "console.resources.applications.actions.update.label",
-        "Update",
-        "修改",
-    ),
-    (
-        "console.resources.applications.actions.update.description",
-        "Update an application",
-        "修改应用",
-    ),
-    (
-        "console.resources.applications.actions.delete.label",
-        "Delete",
-        "删除",
-    ),
-    (
-        "console.resources.applications.actions.delete.description",
-        "Delete an application",
-        "删除应用",
-    ),
-    (
-        "console.resources.data_source_instances.label",
-        "Data source instances",
-        "数据源实例",
-    ),
-    (
-        "console.resources.data_source_instances.description",
-        "Configured data source instances in the current workspace",
-        "当前工作区中配置的数据源实例",
-    ),
-    (
-        "console.resources.data_source_instances.actions.view.label",
-        "View",
-        "查看",
-    ),
-    (
-        "console.resources.data_source_instances.actions.view.description",
-        "View a data source instance",
-        "查看数据源实例",
-    ),
-];
-
-fn localized_reference(reference: &str, locale: &str) -> Result<String, ControlPlaneError> {
-    let value = CONSOLE_POLICY_TRANSLATIONS
-        .iter()
-        .find(|(candidate, _, _)| *candidate == reference)
-        .map(|(_, english, simplified_chinese)| match locale {
-            "en_US" => *english,
-            "zh_Hans" => *simplified_chinese,
-            _ => "",
-        })
-        .filter(|value| !value.is_empty())
+fn localized_reference(
+    locale_catalog: &ConsoleLocaleCatalog,
+    reference: &str,
+    locale: &str,
+) -> Result<String, ControlPlaneError> {
+    locale_catalog
+        .text(locale, reference)
+        .map(str::to_string)
         .ok_or(ControlPlaneError::InvalidInput(
             "console_policy_translation",
-        ))?;
-    Ok(value.to_string())
-}
-
-fn localized_pair(locale: &str, english: &str, simplified_chinese: &str) -> String {
-    match locale {
-        "zh_Hans" => simplified_chinese.to_string(),
-        _ => english.to_string(),
-    }
+        ))
 }
 
 fn domain_console_policy_group(
@@ -668,96 +132,14 @@ fn console_policy_group_key(group: &domain::ConsolePolicyGroup) -> ConsolePolicy
 }
 
 fn console_policy_group_text(
-    group: &domain::ConsolePolicyGroup,
+    locale_catalog: &ConsoleLocaleCatalog,
+    group: &RegisteredConsolePolicyGroup,
     locale: &str,
 ) -> Result<(String, String), ControlPlaneError> {
-    let (label_ref, english_description, simplified_chinese_description) =
-        match (group.kind().as_str(), group.group_id().as_str()) {
-            ("settings_feature", "system.docs") => (
-                "auto.api_documentation",
-                "API documentation operations",
-                "API 文档操作",
-            ),
-            ("settings_feature", "system.api-key-authentication") => (
-                "auto.api_key_authentication",
-                "API key authentication operations",
-                "API Key 认证操作",
-            ),
-            ("settings_feature", "system.system-runtime") => (
-                "auto.system_runtime",
-                "System runtime operations",
-                "系统运行操作",
-            ),
-            ("settings_feature", "system.applications") => (
-                "auto.application_management",
-                "Application management operations",
-                "应用管理操作",
-            ),
-            ("settings_feature", "system.auth-center") => (
-                "auto.auth_center",
-                "Authentication center operations",
-                "认证中心操作",
-            ),
-            ("settings_feature", "system.data-models") => (
-                "auto.data_source",
-                "Data model and data source operations",
-                "数据模型与数据源操作",
-            ),
-            ("settings_feature", "system.files") => (
-                "auto.file_management",
-                "File management operations",
-                "文件管理操作",
-            ),
-            ("settings_feature", "system.host-infrastructure") => (
-                "auto.infrastructure",
-                "Host infrastructure operations",
-                "主机基础设施操作",
-            ),
-            ("settings_feature", "system.memory-observation") => (
-                "auto.memory_observation",
-                "Memory observation operations",
-                "内存观测操作",
-            ),
-            ("settings_feature", "system.members") => (
-                "auto.user_management",
-                "Member management operations",
-                "成员管理操作",
-            ),
-            ("settings_feature", "system.model-providers") => (
-                "auto.model_providers",
-                "Model provider operations",
-                "模型提供商操作",
-            ),
-            ("settings_feature", "system.mcp-management") => (
-                "auto.mcp_management",
-                "MCP management operations",
-                "MCP 管理操作",
-            ),
-            ("settings_feature", "system.roles") => (
-                "auto.permission_management",
-                "Role and permission operations",
-                "角色与权限操作",
-            ),
-            ("other", "other.data-sources") => (
-                "auto.data_source",
-                "Other data source operations",
-                "其他数据源操作",
-            ),
-            ("other", "other.files") => (
-                "auto.file_management",
-                "Other file operations",
-                "其他文件操作",
-            ),
-            _ => {
-                return Err(ControlPlaneError::InvalidInput(
-                    "console_policy_group_translation",
-                ))
-            }
-        };
-    Ok((
-        localized_reference(label_ref, locale)?,
-        localized_pair(locale, english_description, simplified_chinese_description),
-    ))
+    let display = locale_catalog
+        .policy_group_display(group, locale)
+        .map_err(|_| ControlPlaneError::InvalidInput("console_policy_group_translation"))?;
+    Ok((display.label, display.description))
 }
 
 fn compiled_console_policy_operations(
@@ -834,21 +216,16 @@ fn compiled_console_policy_operations(
 }
 
 fn operation_text(
+    locale_catalog: &ConsoleLocaleCatalog,
     operation: &ConsoleOperationInventoryEntry,
-    group: &domain::ConsolePolicyGroup,
     locale: &str,
 ) -> Result<(String, String), ControlPlaneError> {
-    let label = localized_reference(&operation.label_ref, locale)?;
+    let label = localized_reference(locale_catalog, &operation.label_ref, locale)?;
     let description = operation
         .description_ref
         .as_deref()
-        .map(|reference| localized_reference(reference, locale))
+        .map(|reference| localized_reference(locale_catalog, reference, locale))
         .transpose()?
-        .or_else(|| {
-            console_policy_group_text(group, locale)
-                .ok()
-                .map(|(_, description)| description)
-        })
         .ok_or(ControlPlaneError::InvalidInput(
             "console_policy_description",
         ))?;
@@ -857,31 +234,49 @@ fn operation_text(
 
 fn build_console_policy_catalog_for_locale(
     inventory: &ConsoleOperationCompiledInventory,
+    locale_catalog: &ConsoleLocaleCatalog,
     locale: &str,
 ) -> Result<ConsolePolicyCatalog, ControlPlaneError> {
     let operation_index = compiled_console_policy_operations(inventory)?;
+    let group_mode_options = locale_catalog
+        .group_mode_options(locale)
+        .map_err(|_| ControlPlaneError::InvalidInput("console_policy_translation"))?
+        .into_iter()
+        .map(|option| ConsolePolicyCatalogOption {
+            value: option.value,
+            label: option.label,
+            description: option.description,
+        })
+        .collect::<Vec<_>>();
+    let row_scope_options = locale_catalog
+        .row_scope_options(locale)
+        .map_err(|_| ControlPlaneError::InvalidInput("console_policy_translation"))?
+        .into_iter()
+        .map(|option| ConsolePolicyCatalogOption {
+            value: option.value,
+            label: option.label,
+            description: option.description,
+        })
+        .collect::<Vec<_>>();
     let mut groups = Vec::with_capacity(operation_index.len());
     for ((kind, group_id), operations) in operation_index {
-        let group = if kind == "settings_feature" {
-            domain::ConsolePolicyGroup::settings_feature(&group_id)
+        let registered_group = if kind == "settings_feature" {
+            RegisteredConsolePolicyGroup::SettingsFeature(group_id.clone())
         } else {
-            domain::ConsolePolicyGroup::other(&group_id)
-        }
-        .map_err(|_| ControlPlaneError::InvalidInput("console_policy_group"))?;
-        let (label, description) = console_policy_group_text(&group, locale)?;
+            RegisteredConsolePolicyGroup::Other(group_id.clone())
+        };
+        let group = domain_console_policy_group(&registered_group)?;
+        let (label, description) =
+            console_policy_group_text(locale_catalog, &registered_group, locale)?;
         let mut operation_views = inventory
             .operations
             .iter()
             .filter(|operation| {
-                domain_console_policy_group(&operation.policy_group)
-                    .map(|candidate| {
-                        console_policy_group_key(&candidate) == (kind.clone(), group_id.clone())
-                    })
-                    .unwrap_or(false)
+                operation.policy_group == registered_group
                     && !matches!(operation.authorization, ConsoleAuthorization::Authenticated)
             })
             .map(|operation| {
-                let (label, description) = operation_text(operation, &group, locale)?;
+                let (label, description) = operation_text(locale_catalog, operation, locale)?;
                 let operation_kind = operations
                     .get(&operation.operation_id)
                     .ok_or(ControlPlaneError::InvalidInput("console_policy_operation"))?;
@@ -900,11 +295,7 @@ fn build_console_policy_catalog_for_locale(
                 };
                 let allowed_row_scopes = match operation_kind {
                     CompiledConsolePolicyOperationKind::Simple => Vec::new(),
-                    CompiledConsolePolicyOperationKind::Row => vec![
-                        domain::ConsoleOperationRowScope::Disabled,
-                        domain::ConsoleOperationRowScope::Own,
-                        domain::ConsoleOperationRowScope::ScopeAll,
-                    ],
+                    CompiledConsolePolicyOperationKind::Row => row_scope_options.clone(),
                 };
                 Ok((
                     operation.order,
@@ -944,11 +335,11 @@ fn build_console_policy_catalog_for_locale(
         .resources
         .iter()
         .map(|resource| {
-            let label = localized_reference(&resource.label_ref, locale)?;
+            let label = localized_reference(locale_catalog, &resource.label_ref, locale)?;
             let description = resource
                 .description_ref
                 .as_deref()
-                .map(|reference| localized_reference(reference, locale))
+                .map(|reference| localized_reference(locale_catalog, reference, locale))
                 .transpose()?
                 .ok_or(ControlPlaneError::InvalidInput(
                     "console_policy_description",
@@ -957,11 +348,11 @@ fn build_console_policy_catalog_for_locale(
                 .actions
                 .iter()
                 .map(|action| {
-                    let label = localized_reference(&action.label_ref, locale)?;
+                    let label = localized_reference(locale_catalog, &action.label_ref, locale)?;
                     let description = action
                         .description_ref
                         .as_deref()
-                        .map(|reference| localized_reference(reference, locale))
+                        .map(|reference| localized_reference(locale_catalog, reference, locale))
                         .transpose()?
                         .ok_or(ControlPlaneError::InvalidInput(
                             "console_policy_description",
@@ -986,6 +377,7 @@ fn build_console_policy_catalog_for_locale(
     Ok(ConsolePolicyCatalog {
         schema_version: inventory.schema_version.to_string(),
         locale: locale.to_string(),
+        group_mode_options,
         groups,
         resources,
     })
@@ -994,10 +386,7 @@ fn build_console_policy_catalog_for_locale(
 fn validate_complete_console_policy_catalog(
     inventory: &ConsoleOperationCompiledInventory,
 ) -> Result<CompiledConsolePolicyOperationIndex, ControlPlaneError> {
-    let operation_index = compiled_console_policy_operations(inventory)?;
-    build_console_policy_catalog_for_locale(inventory, "en_US")?;
-    build_console_policy_catalog_for_locale(inventory, "zh_Hans")?;
-    Ok(operation_index)
+    compiled_console_policy_operations(inventory)
 }
 
 pub struct RoleFrontstageRoutesView {
@@ -1067,7 +456,15 @@ where
         ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         validate_complete_console_policy_catalog(inventory)?;
-        build_console_policy_catalog_for_locale(inventory, locale).map_err(Into::into)
+        let locale_catalog =
+            inventory
+                .locale_catalog
+                .as_ref()
+                .ok_or(ControlPlaneError::InvalidInput(
+                    "console_policy_locale_catalog",
+                ))?;
+        build_console_policy_catalog_for_locale(inventory, locale_catalog, locale)
+            .map_err(Into::into)
     }
 
     pub async fn get_console_policy(

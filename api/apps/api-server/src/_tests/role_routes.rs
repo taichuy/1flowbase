@@ -749,3 +749,79 @@ async fn legacy_role_permission_without_settings_feature_is_forbidden_on_roles_a
 
     assert_eq!(roles_response.status(), StatusCode::FORBIDDEN);
 }
+
+// AC-009: catalog display text and policy options come from the compiled backend locale source.
+#[tokio::test]
+async fn role_console_policy_catalog_returns_localized_display_and_option_objects() {
+    let app = test_app().await;
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/roles/console-policy-catalog?locale=zh_Hans")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let catalog = &payload["data"];
+    assert_eq!(catalog["locale"].as_str(), Some("zh_Hans"));
+    assert_eq!(
+        catalog["group_mode_options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|option| option["value"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["disabled", "full", "custom"]
+    );
+    assert!(catalog["group_mode_options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|option| option["label"]
+            .as_str()
+            .is_some_and(|label| !label.is_empty())
+            && option["description"]
+                .as_str()
+                .is_some_and(|description| !description.is_empty())));
+
+    let applications = catalog["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|group| group["group_id"].as_str() == Some("system.applications"))
+        .unwrap();
+    let view_operation = applications["operations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|operation| operation["operation_id"].as_str() == Some("applications.view"))
+        .unwrap();
+    assert_ne!(view_operation["label"].as_str(), Some("applications.view"));
+    assert_eq!(
+        view_operation["allowed_row_scopes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|option| option["value"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["disabled", "own", "scope_all"]
+    );
+    assert!(view_operation["allowed_row_scopes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|option| option["label"]
+            .as_str()
+            .is_some_and(|label| !label.is_empty())
+            && option["description"]
+                .as_str()
+                .is_some_and(|description| !description.is_empty())));
+}

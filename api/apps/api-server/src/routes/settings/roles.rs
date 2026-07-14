@@ -233,8 +233,16 @@ pub enum ConsoleRoleConsolePolicyOperationBody {
 pub struct ConsolePolicyCatalogResponse {
     pub schema_version: String,
     pub locale: String,
+    pub group_mode_options: Vec<ConsolePolicyCatalogOptionResponse>,
     pub groups: Vec<ConsolePolicyCatalogGroupResponse>,
     pub resources: Vec<ConsolePolicyCatalogResourceResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConsolePolicyCatalogOptionResponse {
+    pub value: String,
+    pub label: String,
+    pub description: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -252,7 +260,7 @@ pub struct ConsolePolicyCatalogOperationResponse {
     pub label: String,
     pub description: String,
     pub order: i32,
-    pub allowed_row_scopes: Vec<ConsolePolicyRowScopeBody>,
+    pub allowed_row_scopes: Vec<ConsolePolicyCatalogOptionResponse>,
     pub authorization: ConsolePolicyOperationAuthorizationResponse,
 }
 
@@ -360,6 +368,15 @@ fn to_console_policy_catalog_response(
     ConsolePolicyCatalogResponse {
         schema_version: catalog.schema_version,
         locale: catalog.locale,
+        group_mode_options: catalog
+            .group_mode_options
+            .into_iter()
+            .map(|option| ConsolePolicyCatalogOptionResponse {
+                value: option.value,
+                label: option.label,
+                description: option.description,
+            })
+            .collect(),
         groups: catalog
             .groups
             .into_iter()
@@ -379,7 +396,11 @@ fn to_console_policy_catalog_response(
                         allowed_row_scopes: operation
                             .allowed_row_scopes
                             .into_iter()
-                            .map(to_console_policy_row_scope_body)
+                            .map(|option| ConsolePolicyCatalogOptionResponse {
+                                value: option.value,
+                                label: option.label,
+                                description: option.description,
+                            })
                             .collect(),
                         authorization: match operation.authorization {
                             control_plane::role::ConsolePolicyAuthorization::Simple => {

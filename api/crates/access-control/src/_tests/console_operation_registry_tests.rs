@@ -1,10 +1,10 @@
 use crate::{
-    ConsoleAuthorization, ConsoleOperationOwner, ConsoleOperationRegistration,
-    ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteAssemblyBinding, ConsoleRouteBinding,
-    ConsoleRouteOwnership, ResourceAccessAction, ResourceAccessRegistration,
-    ResourceAccessScopeKind, SettingsApiRoute, SettingsFeatureConsoleSurface,
-    SettingsFeatureLifecycle, SettingsFeatureOwner, SettingsFeatureOwnerKind,
-    SettingsFeatureRegistration, SettingsFeatureRegistry,
+    ConsoleAuthorization, ConsoleLocaleCatalogContribution, ConsoleLocaleText,
+    ConsoleOperationOwner, ConsoleOperationRegistration, ConsoleOperationRegistry,
+    ConsolePolicyGroup, ConsoleRouteAssemblyBinding, ConsoleRouteBinding, ConsoleRouteOwnership,
+    ResourceAccessAction, ResourceAccessRegistration, ResourceAccessScopeKind, SettingsApiRoute,
+    SettingsFeatureConsoleSurface, SettingsFeatureLifecycle, SettingsFeatureOwner,
+    SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
 };
 
 fn owner(kind: SettingsFeatureOwnerKind, owner_id: &str) -> ConsoleOperationOwner {
@@ -29,6 +29,7 @@ fn settings_feature(feature_id: &str, method: &str, path: &str) -> SettingsFeatu
             surface_key: feature_id.to_string(),
             path: format!("/settings/{feature_id}"),
             label_key: format!("settings.{feature_id}.label"),
+            description_key: format!("settings.{feature_id}.description"),
             order: 100,
         },
         api_routes: vec![SettingsApiRoute {
@@ -75,6 +76,104 @@ fn operation(
     }
 }
 
+fn locale_text(reference: &str, en_us: &str, zh_hans: &str) -> ConsoleLocaleText {
+    ConsoleLocaleText {
+        reference: reference.to_string(),
+        en_us: en_us.to_string(),
+        zh_hans: zh_hans.to_string(),
+    }
+}
+
+fn complete_locale_catalog() -> ConsoleLocaleCatalogContribution {
+    ConsoleLocaleCatalogContribution {
+        owner: owner(SettingsFeatureOwnerKind::Core, "boot-core"),
+        lifecycle: SettingsFeatureLifecycle::Active,
+        texts: vec![
+            locale_text(
+                "settings.system.applications.label",
+                "Application management",
+                "应用管理",
+            ),
+            locale_text(
+                "settings.system.applications.description",
+                "Application management operations",
+                "应用管理操作",
+            ),
+            locale_text(
+                "console.operations.applications.create.label",
+                "Create application",
+                "创建应用",
+            ),
+            locale_text(
+                "console.operations.applications.create.description",
+                "Create an application in the current workspace",
+                "在当前工作区创建应用",
+            ),
+            locale_text(
+                "console.policy.group_modes.disabled.label",
+                "Disabled",
+                "关闭",
+            ),
+            locale_text(
+                "console.policy.group_modes.disabled.description",
+                "Do not grant operations in this group",
+                "不授予此组中的操作",
+            ),
+            locale_text(
+                "console.policy.group_modes.full.label",
+                "Full access",
+                "完全开放",
+            ),
+            locale_text(
+                "console.policy.group_modes.full.description",
+                "Grant every operation in this group",
+                "授予此组中的全部操作",
+            ),
+            locale_text(
+                "console.policy.group_modes.custom.label",
+                "Custom access",
+                "自定义",
+            ),
+            locale_text(
+                "console.policy.group_modes.custom.description",
+                "Choose operations and row scopes individually",
+                "逐项选择操作和行范围",
+            ),
+            locale_text(
+                "console.policy.row_scopes.disabled.label",
+                "Disabled",
+                "关闭",
+            ),
+            locale_text(
+                "console.policy.row_scopes.disabled.description",
+                "Do not grant this operation",
+                "不授予此操作",
+            ),
+            locale_text(
+                "console.policy.row_scopes.own.label",
+                "Own records",
+                "仅自己",
+            ),
+            locale_text(
+                "console.policy.row_scopes.own.description",
+                "Allow records created by the current user",
+                "允许当前用户创建的记录",
+            ),
+            locale_text(
+                "console.policy.row_scopes.scope_all.label",
+                "Current workspace",
+                "当前空间",
+            ),
+            locale_text(
+                "console.policy.row_scopes.scope_all.description",
+                "Allow records in the current workspace",
+                "允许当前工作区中的记录",
+            ),
+        ],
+        policy_groups: vec![],
+    }
+}
+
 fn applications_settings_registry() -> SettingsFeatureRegistry {
     SettingsFeatureRegistry::compile([settings_feature(
         "system.applications",
@@ -82,6 +181,70 @@ fn applications_settings_registry() -> SettingsFeatureRegistry {
         "/api/console/settings/applications",
     )])
     .expect("settings fixture must compile")
+}
+
+// AC-009: all display references must be compiled before a catalog can serve either locale.
+#[test]
+fn ac_009_compiled_locale_catalog_rejects_missing_empty_duplicate_and_unreferenced_references() {
+    let settings_registry = applications_settings_registry();
+    let registration = operation(
+        "applications.create",
+        ConsolePolicyGroup::SettingsFeature("system.applications".to_string()),
+        ConsoleAuthorization::Simple,
+        vec![route("POST", "/api/console/applications")],
+    );
+
+    let missing = ConsoleOperationRegistry::compile_with_locale_catalog(
+        &settings_registry,
+        [registration.clone()],
+        [],
+        [],
+    )
+    .expect_err("missing locale references must fail registry compilation");
+    assert!(missing.to_string().contains("missing locale reference"));
+
+    let mut empty = complete_locale_catalog();
+    empty.texts[0].zh_hans.clear();
+    let empty = ConsoleOperationRegistry::compile_with_locale_catalog(
+        &settings_registry,
+        [registration.clone()],
+        [],
+        [empty],
+    )
+    .expect_err("empty locale text must fail registry compilation");
+    assert!(empty.to_string().contains("empty locale text"));
+
+    let mut duplicate = complete_locale_catalog();
+    duplicate.texts.push(locale_text(
+        "console.operations.applications.create.label",
+        "Create application again",
+        "再次创建应用",
+    ));
+    let duplicate = ConsoleOperationRegistry::compile_with_locale_catalog(
+        &settings_registry,
+        [registration.clone()],
+        [],
+        [duplicate],
+    )
+    .expect_err("duplicate locale references must fail registry compilation");
+    assert!(duplicate.to_string().contains("duplicate locale reference"));
+
+    let mut unreferenced = complete_locale_catalog();
+    unreferenced.texts.push(locale_text(
+        "console.operations.unused.label",
+        "Unused operation",
+        "未使用操作",
+    ));
+    let unreferenced = ConsoleOperationRegistry::compile_with_locale_catalog(
+        &settings_registry,
+        [registration],
+        [],
+        [unreferenced],
+    )
+    .expect_err("unreferenced locale text must fail registry compilation");
+    assert!(unreferenced
+        .to_string()
+        .contains("unreferenced locale reference"));
 }
 
 #[test]

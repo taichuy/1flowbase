@@ -8,9 +8,11 @@ mod settings_features;
 
 pub use catalog::{builtin_role_templates, permission_catalog};
 pub use console_operations::{
-    ConsoleAuthorization, ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry,
-    ConsoleOperationOwner, ConsoleOperationRegistration, ConsoleOperationRegistry,
-    ConsoleOperationRegistryDiff, ConsoleOperationRegistryError, ConsolePolicyGroup,
+    ConsoleAuthorization, ConsoleLocaleCatalog, ConsoleLocaleCatalogContribution,
+    ConsoleLocaleText, ConsoleLocalizedDisplay, ConsoleLocalizedOption,
+    ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry, ConsoleOperationOwner,
+    ConsoleOperationRegistration, ConsoleOperationRegistry, ConsoleOperationRegistryDiff,
+    ConsoleOperationRegistryError, ConsoleOtherPolicyGroupDisplay, ConsolePolicyGroup,
     ConsolePolicyGroupChange, ConsoleRouteAccess, ConsoleRouteAssemblyBinding, ConsoleRouteBinding,
     ConsoleRouteOwnership, ResourceAccessAction, ResourceAccessRegistration,
     ResourceAccessScopeKind, APPLICATIONS_API_SET_ENABLED_OPERATION_ID,

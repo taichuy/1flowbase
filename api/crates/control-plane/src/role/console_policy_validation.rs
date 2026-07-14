@@ -13,8 +13,16 @@ use super::{ConsolePolicyGroupInput, ConsolePolicyOperationInput};
 pub struct ConsolePolicyCatalog {
     pub schema_version: String,
     pub locale: String,
+    pub group_mode_options: Vec<ConsolePolicyCatalogOption>,
     pub groups: Vec<ConsolePolicyCatalogGroup>,
     pub resources: Vec<ConsolePolicyCatalogResource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsolePolicyCatalogOption {
+    pub value: String,
+    pub label: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +40,7 @@ pub struct ConsolePolicyCatalogOperation {
     pub label: String,
     pub description: String,
     pub order: i32,
-    pub allowed_row_scopes: Vec<ConsoleOperationRowScope>,
+    pub allowed_row_scopes: Vec<ConsolePolicyCatalogOption>,
     pub authorization: ConsolePolicyAuthorization,
 }
 

@@ -76,6 +76,171 @@ pub enum ConsolePolicyGroup {
     Other(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleLocaleText {
+    pub reference: String,
+    pub en_us: String,
+    pub zh_hans: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleOtherPolicyGroupDisplay {
+    pub group_id: String,
+    pub label_ref: String,
+    pub description_ref: String,
+}
+
+/// A locale contribution is compiled at boot with the operation registry. HostExtension loading
+/// will provide contributions through this same value object once its runtime merge exists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleLocaleCatalogContribution {
+    pub owner: ConsoleOperationOwner,
+    pub lifecycle: SettingsFeatureLifecycle,
+    pub texts: Vec<ConsoleLocaleText>,
+    pub policy_groups: Vec<ConsoleOtherPolicyGroupDisplay>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleLocalizedDisplay {
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleLocalizedOption {
+    pub value: String,
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleLocaleCatalog {
+    texts: BTreeMap<String, ConsoleLocaleText>,
+    policy_group_displays: BTreeMap<(String, String), ConsoleCatalogTextReferences>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConsoleCatalogTextReferences {
+    label_ref: String,
+    description_ref: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ConsoleCatalogOptionSpec {
+    value: &'static str,
+    label_ref: &'static str,
+    description_ref: &'static str,
+}
+
+const CONSOLE_POLICY_GROUP_MODE_OPTIONS: &[ConsoleCatalogOptionSpec] = &[
+    ConsoleCatalogOptionSpec {
+        value: "disabled",
+        label_ref: "console.policy.group_modes.disabled.label",
+        description_ref: "console.policy.group_modes.disabled.description",
+    },
+    ConsoleCatalogOptionSpec {
+        value: "full",
+        label_ref: "console.policy.group_modes.full.label",
+        description_ref: "console.policy.group_modes.full.description",
+    },
+    ConsoleCatalogOptionSpec {
+        value: "custom",
+        label_ref: "console.policy.group_modes.custom.label",
+        description_ref: "console.policy.group_modes.custom.description",
+    },
+];
+
+const CONSOLE_POLICY_ROW_SCOPE_OPTIONS: &[ConsoleCatalogOptionSpec] = &[
+    ConsoleCatalogOptionSpec {
+        value: "disabled",
+        label_ref: "console.policy.row_scopes.disabled.label",
+        description_ref: "console.policy.row_scopes.disabled.description",
+    },
+    ConsoleCatalogOptionSpec {
+        value: "own",
+        label_ref: "console.policy.row_scopes.own.label",
+        description_ref: "console.policy.row_scopes.own.description",
+    },
+    ConsoleCatalogOptionSpec {
+        value: "scope_all",
+        label_ref: "console.policy.row_scopes.scope_all.label",
+        description_ref: "console.policy.row_scopes.scope_all.description",
+    },
+];
+
+impl ConsoleLocaleCatalog {
+    pub fn text(&self, locale: &str, reference: &str) -> Option<&str> {
+        self.texts.get(reference).and_then(|text| match locale {
+            "en_US" => Some(text.en_us.as_str()),
+            "zh_Hans" => Some(text.zh_hans.as_str()),
+            _ => None,
+        })
+    }
+
+    pub fn policy_group_display(
+        &self,
+        policy_group: &ConsolePolicyGroup,
+        locale: &str,
+    ) -> Result<ConsoleLocalizedDisplay, ConsoleOperationRegistryError> {
+        let key = console_policy_group_key(policy_group);
+        let references = self.policy_group_displays.get(&key).ok_or_else(|| {
+            ConsoleOperationRegistryError::new(format!(
+                "compiled locale catalog is missing policy group display {}.{}",
+                key.0, key.1
+            ))
+        })?;
+        Ok(ConsoleLocalizedDisplay {
+            label: self.required_text(locale, &references.label_ref)?,
+            description: self.required_text(locale, &references.description_ref)?,
+        })
+    }
+
+    pub fn group_mode_options(
+        &self,
+        locale: &str,
+    ) -> Result<Vec<ConsoleLocalizedOption>, ConsoleOperationRegistryError> {
+        self.localized_options(CONSOLE_POLICY_GROUP_MODE_OPTIONS, locale)
+    }
+
+    pub fn row_scope_options(
+        &self,
+        locale: &str,
+    ) -> Result<Vec<ConsoleLocalizedOption>, ConsoleOperationRegistryError> {
+        self.localized_options(CONSOLE_POLICY_ROW_SCOPE_OPTIONS, locale)
+    }
+
+    fn localized_options(
+        &self,
+        options: &[ConsoleCatalogOptionSpec],
+        locale: &str,
+    ) -> Result<Vec<ConsoleLocalizedOption>, ConsoleOperationRegistryError> {
+        options
+            .iter()
+            .map(|option| {
+                Ok(ConsoleLocalizedOption {
+                    value: option.value.to_string(),
+                    label: self.required_text(locale, option.label_ref)?,
+                    description: self.required_text(locale, option.description_ref)?,
+                })
+            })
+            .collect()
+    }
+
+    fn required_text(
+        &self,
+        locale: &str,
+        reference: &str,
+    ) -> Result<String, ConsoleOperationRegistryError> {
+        self.text(locale, reference)
+            .map(str::to_string)
+            .ok_or_else(|| {
+                ConsoleOperationRegistryError::new(format!(
+                    "compiled locale catalog is missing {locale} text for {reference}"
+                ))
+            })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ConsoleAuthorization {
@@ -170,6 +335,8 @@ pub struct ConsoleOperationCompiledInventory {
     pub schema_version: &'static str,
     pub operations: Vec<ConsoleOperationInventoryEntry>,
     pub resources: Vec<ResourceAccessRegistration>,
+    #[serde(skip)]
+    pub locale_catalog: Option<ConsoleLocaleCatalog>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -204,6 +371,29 @@ impl ConsoleOperationRegistry {
         settings_features: &SettingsFeatureRegistry,
         registrations: impl IntoIterator<Item = ConsoleOperationRegistration>,
         resources: impl IntoIterator<Item = ResourceAccessRegistration>,
+    ) -> Result<Self, ConsoleOperationRegistryError> {
+        Self::compile_internal(settings_features, registrations, resources, None)
+    }
+
+    pub fn compile_with_locale_catalog(
+        settings_features: &SettingsFeatureRegistry,
+        registrations: impl IntoIterator<Item = ConsoleOperationRegistration>,
+        resources: impl IntoIterator<Item = ResourceAccessRegistration>,
+        locale_contributions: impl IntoIterator<Item = ConsoleLocaleCatalogContribution>,
+    ) -> Result<Self, ConsoleOperationRegistryError> {
+        Self::compile_internal(
+            settings_features,
+            registrations,
+            resources,
+            Some(locale_contributions.into_iter().collect()),
+        )
+    }
+
+    fn compile_internal(
+        settings_features: &SettingsFeatureRegistry,
+        registrations: impl IntoIterator<Item = ConsoleOperationRegistration>,
+        resources: impl IntoIterator<Item = ResourceAccessRegistration>,
+        locale_contributions: Option<Vec<ConsoleLocaleCatalogContribution>>,
     ) -> Result<Self, ConsoleOperationRegistryError> {
         let settings_feature_ids = settings_features
             .inventory()
@@ -264,7 +454,7 @@ impl ConsoleOperationRegistry {
                 lifecycle: feature.lifecycle,
                 policy_group: ConsolePolicyGroup::SettingsFeature(feature.feature_id.clone()),
                 label_ref: feature.console_surface.label_key.clone(),
-                description_ref: None,
+                description_ref: Some(feature.console_surface.description_key.clone()),
                 order: feature.console_surface.order,
                 routes,
                 authorization: ConsoleAuthorization::Simple,
@@ -279,15 +469,25 @@ impl ConsoleOperationRegistry {
             compile_operation(registration, &mut operations, &mut route_owners)?;
         }
 
+        let mut inventory = ConsoleOperationCompiledInventory {
+            schema_version: CONSOLE_OPERATION_INVENTORY_SCHEMA_VERSION,
+            operations: operations
+                .into_values()
+                .map(ConsoleOperationInventoryEntry::from)
+                .collect(),
+            resources: compiled_resources.into_values().collect(),
+            locale_catalog: None,
+        };
+        if let Some(locale_contributions) = locale_contributions {
+            inventory.locale_catalog = Some(compile_console_locale_catalog(
+                settings_features,
+                &inventory,
+                locale_contributions,
+            )?);
+        }
+
         Ok(Self {
-            inventory: ConsoleOperationCompiledInventory {
-                schema_version: CONSOLE_OPERATION_INVENTORY_SCHEMA_VERSION,
-                operations: operations
-                    .into_values()
-                    .map(ConsoleOperationInventoryEntry::from)
-                    .collect(),
-                resources: compiled_resources.into_values().collect(),
-            },
+            inventory,
             route_owners,
         })
     }
@@ -561,6 +761,171 @@ fn compile_operation(
     Ok(())
 }
 
+fn compile_console_locale_catalog(
+    settings_features: &SettingsFeatureRegistry,
+    inventory: &ConsoleOperationCompiledInventory,
+    contributions: Vec<ConsoleLocaleCatalogContribution>,
+) -> Result<ConsoleLocaleCatalog, ConsoleOperationRegistryError> {
+    let mut texts = BTreeMap::new();
+    let mut declared_other_groups = BTreeMap::new();
+
+    for contribution in contributions {
+        validate_owner(&contribution.owner, "locale contribution owner")?;
+        if contribution.lifecycle == SettingsFeatureLifecycle::Inactive {
+            return Err(ConsoleOperationRegistryError::new(format!(
+                "inactive locale contribution {} cannot provide catalog text",
+                contribution.owner.owner_id
+            )));
+        }
+        for text in contribution.texts {
+            validate_non_empty(&text.reference, "locale reference")?;
+            if text.en_us.trim().is_empty() {
+                return Err(ConsoleOperationRegistryError::new(format!(
+                    "empty locale text en_US for {}",
+                    text.reference
+                )));
+            }
+            if text.zh_hans.trim().is_empty() {
+                return Err(ConsoleOperationRegistryError::new(format!(
+                    "empty locale text zh_Hans for {}",
+                    text.reference
+                )));
+            }
+            if texts.contains_key(&text.reference) {
+                return Err(ConsoleOperationRegistryError::new(format!(
+                    "duplicate locale reference {}",
+                    text.reference
+                )));
+            }
+            texts.insert(text.reference.clone(), text);
+        }
+        for group in contribution.policy_groups {
+            validate_non_empty(&group.group_id, "Other policy group display group_id")?;
+            validate_non_empty(&group.label_ref, "Other policy group display label_ref")?;
+            validate_non_empty(
+                &group.description_ref,
+                "Other policy group display description_ref",
+            )?;
+            let key = ("other".to_string(), group.group_id.clone());
+            let display = ConsoleCatalogTextReferences {
+                label_ref: group.label_ref,
+                description_ref: group.description_ref,
+            };
+            if declared_other_groups
+                .insert(key.clone(), (contribution.owner.clone(), display))
+                .is_some()
+            {
+                return Err(ConsoleOperationRegistryError::new(format!(
+                    "duplicate Other policy group display {}.{}",
+                    key.0, key.1
+                )));
+            }
+        }
+    }
+
+    let mut required_references = BTreeSet::new();
+    let mut policy_group_displays = BTreeMap::new();
+    for feature in &settings_features.inventory().features {
+        let key = ("settings_feature".to_string(), feature.feature_id.clone());
+        let display = ConsoleCatalogTextReferences {
+            label_ref: feature.console_surface.label_key.clone(),
+            description_ref: feature.console_surface.description_key.clone(),
+        };
+        required_references.insert(display.label_ref.clone());
+        required_references.insert(display.description_ref.clone());
+        policy_group_displays.insert(key, display);
+    }
+
+    let mut referenced_other_groups = BTreeSet::new();
+    for operation in &inventory.operations {
+        required_references.insert(operation.label_ref.clone());
+        let description_ref = operation.description_ref.as_ref().ok_or_else(|| {
+            ConsoleOperationRegistryError::new(format!(
+                "operation {} must provide a locale description reference",
+                operation.operation_id
+            ))
+        })?;
+        required_references.insert(description_ref.clone());
+
+        if let ConsolePolicyGroup::Other(group_id) = &operation.policy_group {
+            let key = ("other".to_string(), group_id.clone());
+            let (owner, display) = declared_other_groups.get(&key).ok_or_else(|| {
+                ConsoleOperationRegistryError::new(format!(
+                    "missing Other policy group display {}.{}",
+                    key.0, key.1
+                ))
+            })?;
+            if owner != &operation.owner {
+                return Err(ConsoleOperationRegistryError::new(format!(
+                    "Other policy group display {}.{} must use operation owner {}",
+                    key.0, key.1, operation.owner.owner_id
+                )));
+            }
+            required_references.insert(display.label_ref.clone());
+            required_references.insert(display.description_ref.clone());
+            policy_group_displays.insert(key.clone(), display.clone());
+            referenced_other_groups.insert(key);
+        }
+    }
+
+    for resource in &inventory.resources {
+        required_references.insert(resource.label_ref.clone());
+        let description_ref = resource.description_ref.as_ref().ok_or_else(|| {
+            ConsoleOperationRegistryError::new(format!(
+                "resource {} must provide a locale description reference",
+                resource.resource_code
+            ))
+        })?;
+        required_references.insert(description_ref.clone());
+        for action in &resource.actions {
+            required_references.insert(action.label_ref.clone());
+            let description_ref = action.description_ref.as_ref().ok_or_else(|| {
+                ConsoleOperationRegistryError::new(format!(
+                    "resource action {}.{} must provide a locale description reference",
+                    resource.resource_code, action.action_code
+                ))
+            })?;
+            required_references.insert(description_ref.clone());
+        }
+    }
+
+    for option in CONSOLE_POLICY_GROUP_MODE_OPTIONS
+        .iter()
+        .chain(CONSOLE_POLICY_ROW_SCOPE_OPTIONS)
+    {
+        required_references.insert(option.label_ref.to_string());
+        required_references.insert(option.description_ref.to_string());
+    }
+
+    for (key, _) in &declared_other_groups {
+        if !referenced_other_groups.contains(key) {
+            return Err(ConsoleOperationRegistryError::new(format!(
+                "unreferenced Other policy group display {}.{}",
+                key.0, key.1
+            )));
+        }
+    }
+    for reference in &required_references {
+        if !texts.contains_key(reference) {
+            return Err(ConsoleOperationRegistryError::new(format!(
+                "missing locale reference {reference}"
+            )));
+        }
+    }
+    for reference in texts.keys() {
+        if !required_references.contains(reference) {
+            return Err(ConsoleOperationRegistryError::new(format!(
+                "unreferenced locale reference {reference}"
+            )));
+        }
+    }
+
+    Ok(ConsoleLocaleCatalog {
+        texts,
+        policy_group_displays,
+    })
+}
+
 fn validate_operation(
     registration: &ConsoleOperationRegistration,
     settings_feature_ids: &BTreeSet<&str>,
@@ -816,6 +1181,15 @@ fn route_literal_specificity(path: &str) -> usize {
 
 fn settings_feature_operation_id(feature_id: &str) -> String {
     format!("settings_feature.access.{feature_id}")
+}
+
+fn console_policy_group_key(policy_group: &ConsolePolicyGroup) -> (String, String) {
+    match policy_group {
+        ConsolePolicyGroup::SettingsFeature(group_id) => {
+            ("settings_feature".to_string(), group_id.clone())
+        }
+        ConsolePolicyGroup::Other(group_id) => ("other".to_string(), group_id.clone()),
+    }
 }
 
 fn operation_map(

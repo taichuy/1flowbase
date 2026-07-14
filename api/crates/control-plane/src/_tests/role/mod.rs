@@ -1,7 +1,13 @@
+use std::collections::BTreeSet;
+
 use access_control::{
-    ConsoleAuthorization, ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry,
-    ConsoleOperationOwner, ConsolePolicyGroup, ResourceAccessAction, ResourceAccessRegistration,
-    ResourceAccessScopeKind, SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
+    ConsoleAuthorization, ConsoleLocaleCatalogContribution, ConsoleLocaleText,
+    ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry, ConsoleOperationOwner,
+    ConsoleOperationRegistration, ConsoleOperationRegistry, ConsoleOtherPolicyGroupDisplay,
+    ConsolePolicyGroup, ConsoleRouteBinding, ResourceAccessAction, ResourceAccessRegistration,
+    ResourceAccessScopeKind, SettingsApiRoute, SettingsFeatureConsoleSurface,
+    SettingsFeatureLifecycle, SettingsFeatureOwnerKind, SettingsFeatureRegistration,
+    SettingsFeatureRegistry,
 };
 
 use crate::_tests::support::MemoryRoleRepository;
@@ -26,7 +32,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
     let files = ConsolePolicyGroup::SettingsFeature("system.files".to_string());
     let other_files = ConsolePolicyGroup::Other("other.files".to_string());
 
-    ConsoleOperationCompiledInventory {
+    let legacy_inventory = ConsoleOperationCompiledInventory {
         schema_version: "1flowbase.console-operation-inventory/v1",
         operations: vec![
             ConsoleOperationInventoryEntry {
@@ -114,7 +120,179 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 },
             ],
         }],
+        locale_catalog: None,
+    };
+
+    let settings = SettingsFeatureRegistry::compile([
+        SettingsFeatureRegistration {
+            feature_id: "system.applications".to_string(),
+            owner: ConsoleOperationOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: "test".to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.applications".to_string(),
+                surface_key: "applications".to_string(),
+                path: "/settings/applications".to_string(),
+                label_key: "settings.system.applications.label".to_string(),
+                description_key: "settings.system.applications.description".to_string(),
+                order: 100,
+            },
+            api_routes: vec![SettingsApiRoute {
+                method: "POST".to_string(),
+                path: "/api/console/test/applications".to_string(),
+            }],
+        },
+        SettingsFeatureRegistration {
+            feature_id: "system.files".to_string(),
+            owner: ConsoleOperationOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: "test".to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.files".to_string(),
+                surface_key: "files".to_string(),
+                path: "/settings/files".to_string(),
+                label_key: "settings.system.files.label".to_string(),
+                description_key: "settings.system.files.description".to_string(),
+                order: 200,
+            },
+            api_routes: vec![SettingsApiRoute {
+                method: "POST".to_string(),
+                path: "/api/console/test/files/upload".to_string(),
+            }],
+        },
+    ])
+    .expect("test settings features must compile");
+    let operation_entries = legacy_inventory.operations;
+    let resources = legacy_inventory.resources;
+    let operation_routes = [
+        ("POST", "/api/console/test/applications"),
+        ("GET", "/api/console/test/applications/:id"),
+        ("POST", "/api/console/test/files/upload"),
+        ("GET", "/api/console/test/files/:id/content"),
+    ];
+    let registrations = operation_entries
+        .iter()
+        .cloned()
+        .zip(operation_routes)
+        .map(|(entry, (method, path))| ConsoleOperationRegistration {
+            operation_id: entry.operation_id,
+            owner: entry.owner,
+            lifecycle: entry.lifecycle,
+            policy_group: entry.policy_group,
+            label_ref: entry.label_ref,
+            description_ref: entry.description_ref,
+            order: entry.order,
+            routes: vec![ConsoleRouteBinding {
+                method: method.to_string(),
+                path: path.to_string(),
+            }],
+            authorization: entry.authorization,
+        })
+        .collect::<Vec<_>>();
+    let mut references = BTreeSet::new();
+    for feature in &settings.inventory().features {
+        references.insert(feature.console_surface.label_key.clone());
+        references.insert(feature.console_surface.description_key.clone());
     }
+    for operation in &operation_entries {
+        references.insert(operation.label_ref.clone());
+        references.insert(
+            operation
+                .description_ref
+                .clone()
+                .expect("test operation description ref"),
+        );
+    }
+    for resource in &resources {
+        references.insert(resource.label_ref.clone());
+        references.insert(
+            resource
+                .description_ref
+                .clone()
+                .expect("test resource description ref"),
+        );
+        for action in &resource.actions {
+            references.insert(action.label_ref.clone());
+            references.insert(
+                action
+                    .description_ref
+                    .clone()
+                    .expect("test resource action description ref"),
+            );
+        }
+    }
+    for reference in [
+        "console.policy.group_modes.disabled.label",
+        "console.policy.group_modes.disabled.description",
+        "console.policy.group_modes.full.label",
+        "console.policy.group_modes.full.description",
+        "console.policy.group_modes.custom.label",
+        "console.policy.group_modes.custom.description",
+        "console.policy.row_scopes.disabled.label",
+        "console.policy.row_scopes.disabled.description",
+        "console.policy.row_scopes.own.label",
+        "console.policy.row_scopes.own.description",
+        "console.policy.row_scopes.scope_all.label",
+        "console.policy.row_scopes.scope_all.description",
+        "console.policy_groups.other.other.files.label",
+        "console.policy_groups.other.other.files.description",
+    ] {
+        references.insert(reference.to_string());
+    }
+    let texts = references
+        .into_iter()
+        .map(|reference| {
+            let (en_us, zh_hans) = match reference.as_str() {
+                "console.operations.applications.create.label" => {
+                    ("Create application", "创建应用")
+                }
+                "console.operations.applications.view.label" => ("View applications", "查看应用"),
+                "console.resources.applications.actions.view.label" => ("View", "查看"),
+                "console.policy.row_scopes.own.label" => ("Own records", "仅自己"),
+                "console.policy.row_scopes.scope_all.label" => ("Current workspace", "当前空间"),
+                "console.policy.row_scopes.disabled.label" => ("Disabled", "关闭"),
+                "console.policy.group_modes.disabled.label" => ("Disabled", "关闭"),
+                "console.policy.group_modes.full.label" => ("Full access", "完全开放"),
+                "console.policy.group_modes.custom.label" => ("Custom access", "自定义"),
+                _ if reference.ends_with(".description") => ("Test description", "测试说明"),
+                _ => ("Test label", "测试标签"),
+            };
+            ConsoleLocaleText {
+                reference,
+                en_us: en_us.to_string(),
+                zh_hans: zh_hans.to_string(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    ConsoleOperationRegistry::compile_with_locale_catalog(
+        &settings,
+        registrations,
+        resources,
+        [ConsoleLocaleCatalogContribution {
+            owner: ConsoleOperationOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: "test".to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            texts,
+            policy_groups: vec![ConsoleOtherPolicyGroupDisplay {
+                group_id: "other.files".to_string(),
+                label_ref: "console.policy_groups.other.other.files.label".to_string(),
+                description_ref: "console.policy_groups.other.other.files.description".to_string(),
+            }],
+        }],
+    )
+    .expect("test locale catalog must compile")
+    .inventory()
+    .clone()
 }
 
 fn policy_group(
@@ -168,6 +346,16 @@ async fn role_service_console_policy_catalog_localizes_compiled_inventory() {
         "1flowbase.console-operation-inventory/v1"
     );
     assert_eq!(catalog.locale, "zh_Hans");
+    assert_eq!(
+        catalog
+            .group_mode_options
+            .iter()
+            .map(|option| option.value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["disabled", "full", "custom"]
+    );
+    assert_eq!(catalog.group_mode_options[2].label, "自定义");
+    assert!(!catalog.group_mode_options[2].description.is_empty());
     assert_eq!(catalog.groups.len(), 3);
     assert_eq!(catalog.groups[0].group_id, "system.applications");
     assert_eq!(catalog.groups[0].operations[0].label, "创建应用");
@@ -180,12 +368,16 @@ async fn role_service_console_policy_catalog_localizes_compiled_inventory() {
         "resource_action"
     );
     assert_eq!(
-        catalog.groups[0].operations[1].allowed_row_scopes,
-        vec![
-            domain::ConsoleOperationRowScope::Disabled,
-            domain::ConsoleOperationRowScope::Own,
-            domain::ConsoleOperationRowScope::ScopeAll,
-        ]
+        catalog.groups[0].operations[1]
+            .allowed_row_scopes
+            .iter()
+            .map(|option| option.value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["disabled", "own", "scope_all"]
+    );
+    assert_eq!(
+        catalog.groups[0].operations[1].allowed_row_scopes[1].label,
+        "仅自己"
     );
     assert_eq!(catalog.resources[0].resource_code, "applications");
     assert_eq!(catalog.resources[0].actions[1].label, "查看");

@@ -137,6 +137,83 @@ fn ac_003_every_compiled_core_operation_has_declared_non_empty_i18n_metadata() {
 }
 
 #[test]
+fn ac_009_core_compiled_catalog_resolves_every_active_display_reference_in_both_locales() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let assembly = migrated_core_console_route_assembly();
+    let registry =
+        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+    let catalog = registry
+        .inventory()
+        .locale_catalog
+        .as_ref()
+        .expect("Core registry must compile its locale catalog");
+
+    for locale in ["en_US", "zh_Hans"] {
+        for operation in &registry.inventory().operations {
+            assert!(catalog
+                .text(locale, &operation.label_ref)
+                .is_some_and(|text| !text.trim().is_empty()));
+            let description_ref = operation
+                .description_ref
+                .as_deref()
+                .expect("Core operation descriptions are compiled");
+            assert!(catalog
+                .text(locale, description_ref)
+                .is_some_and(|text| !text.trim().is_empty()));
+            assert_ne!(
+                catalog.text(locale, &operation.label_ref),
+                Some(operation.operation_id.as_str())
+            );
+            assert!(catalog
+                .policy_group_display(&operation.policy_group, locale)
+                .is_ok());
+        }
+        for resource in &registry.inventory().resources {
+            assert!(catalog
+                .text(locale, &resource.label_ref)
+                .is_some_and(|text| !text.trim().is_empty()));
+            let description_ref = resource
+                .description_ref
+                .as_deref()
+                .expect("Core resource descriptions are compiled");
+            assert!(catalog
+                .text(locale, description_ref)
+                .is_some_and(|text| !text.trim().is_empty()));
+            for action in &resource.actions {
+                assert!(catalog
+                    .text(locale, &action.label_ref)
+                    .is_some_and(|text| !text.trim().is_empty()));
+                let description_ref = action
+                    .description_ref
+                    .as_deref()
+                    .expect("Core resource action descriptions are compiled");
+                assert!(catalog
+                    .text(locale, description_ref)
+                    .is_some_and(|text| !text.trim().is_empty()));
+            }
+        }
+        assert_eq!(
+            catalog
+                .group_mode_options(locale)
+                .unwrap()
+                .into_iter()
+                .map(|option| option.value)
+                .collect::<Vec<_>>(),
+            vec!["disabled", "full", "custom"]
+        );
+        assert_eq!(
+            catalog
+                .row_scope_options(locale)
+                .unwrap()
+                .into_iter()
+                .map(|option| option.value)
+                .collect::<Vec<_>>(),
+            vec!["disabled", "own", "scope_all"]
+        );
+    }
+}
+
+#[test]
 fn ac_013_role_console_policy_workers_have_explicit_metadata() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();

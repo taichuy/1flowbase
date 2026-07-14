@@ -15,6 +15,7 @@ use axum::{
     Router,
 };
 
+use super::core_console_i18n::core_console_locale_catalog_contribution;
 use super::core_console_operation_specs::{
     CoreConsoleAuthorizationSpec, CoreConsoleOperationSpec, CoreConsolePolicyGroupSpec,
     CORE_CONSOLE_OPERATION_SPECS,
@@ -484,10 +485,11 @@ pub fn compile_migrated_core_console_operation_registry(
             ),
         }],
     };
-    let registry = ConsoleOperationRegistry::compile(
+    let registry = ConsoleOperationRegistry::compile_with_locale_catalog(
         settings_features,
         registrations,
         [applications_resource, data_source_instances_resource],
+        [core_console_locale_catalog_contribution()],
     )?;
     registry.validate_console_route_coverage(bindings.iter().cloned())?;
     Ok(registry)

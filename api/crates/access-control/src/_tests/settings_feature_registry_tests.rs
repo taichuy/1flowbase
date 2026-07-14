@@ -23,6 +23,7 @@ fn feature(
             surface_key: feature_id.to_string(),
             path: format!("/settings/{feature_id}"),
             label_key: format!("settings.{feature_id}"),
+            description_key: format!("settings.{feature_id}.description"),
             order: 100,
         },
         api_routes: api_routes
