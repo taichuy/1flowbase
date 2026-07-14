@@ -1,13 +1,16 @@
 use control_plane::mcp_management::{
     CreateMcpInstanceCommand, CreateMcpToolBindingCommand, CreateMcpToolCommand,
-    McpManagementService, RefreshMcpToolDescriptionCommand, UpdateMcpToolBindingCommand,
-    UpsertMcpGroupCommand,
+    McpManagementService, McpRemoteToolDefinition, McpUpstreamCredential,
+    RecordMcpUpstreamDiscoveryCommand, RefreshMcpToolDescriptionCommand,
+    SaveMcpUpstreamConnectionCommand, SaveMcpUpstreamCredentialCommand,
+    UpdateMcpToolBindingCommand, UpsertMcpGroupCommand,
 };
 use control_plane::ports::{
     CreateMemberInput, CreateWorkspaceRoleInput, MemberRepository, RoleRepository,
 };
 use sqlx::PgPool;
 use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 fn base_database_url() -> String {
@@ -129,6 +132,76 @@ fn des_id_required_input_mapping() -> serde_json::Value {
             }
         ]
     })
+}
+
+#[tokio::test]
+async fn issue_1246_ac_005_ac_008_ac_009_upstream_secret_and_import_are_safe_and_idempotent() {
+    let (store, _workspace, actor) = seed_store().await;
+    let service = McpManagementService::new(store);
+    let connection = service
+        .save_upstream_connection(SaveMcpUpstreamConnectionCommand {
+            actor_user_id: actor.id,
+            connection_id: None,
+            name: "Weather MCP".into(),
+            endpoint: "https://mcp.example.com/rpc".into(),
+            transport: domain::McpUpstreamTransport::StreamableHttp,
+            auth_type: domain::McpUpstreamAuthType::Bearer,
+            custom_header_name: None,
+            status: domain::McpUpstreamConnectionStatus::Enabled,
+        })
+        .await
+        .unwrap();
+    assert!(!connection.credentials_configured);
+    service
+        .save_upstream_credential(SaveMcpUpstreamCredentialCommand {
+            actor_user_id: actor.id,
+            connection_id: connection.id,
+            credential: McpUpstreamCredential::Bearer {
+                token: "secret-token".into(),
+            },
+            master_key: "test-master-key".into(),
+        })
+        .await
+        .unwrap();
+    let listed = service.list_upstream_connections(actor.id).await.unwrap();
+    assert!(listed[0].credentials_configured);
+
+    service.record_upstream_discovery(RecordMcpUpstreamDiscoveryCommand {
+        actor_user_id: actor.id,
+        connection_id: connection.id,
+        discovered_at: OffsetDateTime::now_utc(),
+        tools: vec![McpRemoteToolDefinition {
+            remote_tool_name: "weather.lookup".into(),
+            description: Some("Weather".into()),
+            input_schema: serde_json::json!({
+                "type":"object","properties":{"city":{"type":"string"}},"required":["city"]
+            }),
+            output_schema: serde_json::json!({"type":"object","properties":{"temperature":{"type":"number"}}}),
+            schema_hash: "schema-v1".into(),
+        }],
+    }).await.unwrap();
+    let names = vec!["weather.lookup".to_string()];
+    let first = service
+        .import_upstream_tools(actor.id, connection.id, &names)
+        .await
+        .unwrap();
+    let second = service
+        .import_upstream_tools(actor.id, connection.id, &names)
+        .await
+        .unwrap();
+    assert_eq!(first[0].id, second[0].id);
+    assert_eq!(first[0].status, domain::McpToolStatus::Draft);
+    assert_eq!(first[0].risk_level, domain::McpRiskLevel::High);
+    assert_eq!(
+        first[0].input_mapping,
+        serde_json::json!({
+            "mappings":[{"local_path":"city","remote_path":"city","required":true}]
+        })
+    );
+    assert!(matches!(first[0].execution_target,
+        domain::McpToolExecutionTarget::McpProxy { upstream_connection_id, ref remote_tool_name, .. }
+        if upstream_connection_id == connection.id && remote_tool_name == "weather.lookup"
+    ));
 }
 
 #[tokio::test]

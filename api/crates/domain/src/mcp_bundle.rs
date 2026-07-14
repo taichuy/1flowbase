@@ -1,14 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{McpInstanceStatus, McpRiskLevel, McpToolStatus};
+use crate::{McpInstanceStatus, McpRiskLevel, McpToolExecutionTarget, McpToolStatus};
 
-pub const MCP_BUNDLE_SCHEMA_VERSION: &str = "1flowbase.mcp.bundle/v1";
+pub const MCP_BUNDLE_SCHEMA_VERSION: &str = "1flowbase.mcp.bundle/v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum McpBundleFileKind {
     Tool,
     Instance,
+    Connection,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,13 +32,13 @@ pub struct McpBundleManifest {
     pub files: Vec<McpBundleFile>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct McpBundleTool {
     pub tool_id: String,
     pub name: String,
     pub short_description: String,
     pub full_description: String,
-    pub interface_id: String,
+    pub execution_target: McpToolExecutionTarget,
     #[serde(default)]
     pub parameter_schema_snapshot: serde_json::Value,
     #[serde(default)]
@@ -49,6 +50,59 @@ pub struct McpBundleTool {
     pub permission_code_snapshot: Option<String>,
     pub risk_level_snapshot: McpRiskLevel,
     pub status: McpToolStatus,
+}
+
+impl<'de> Deserialize<'de> for McpBundleTool {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wire {
+            tool_id: String,
+            name: String,
+            short_description: String,
+            full_description: String,
+            execution_target: Option<McpToolExecutionTarget>,
+            // @field-contract-compat source=mcp_bundle/v1 alias=interface_id remove_by=2027-07-14
+            interface_id: Option<String>,
+            #[serde(default)]
+            parameter_schema_snapshot: serde_json::Value,
+            #[serde(default)]
+            result_schema_snapshot: serde_json::Value,
+            #[serde(default)]
+            input_mapping: serde_json::Value,
+            #[serde(default)]
+            output_mapping: serde_json::Value,
+            permission_code_snapshot: Option<String>,
+            risk_level_snapshot: McpRiskLevel,
+            status: McpToolStatus,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        let execution_target = match (wire.execution_target, wire.interface_id) {
+            (Some(target), None) => target,
+            (None, Some(interface_id)) => McpToolExecutionTarget::InterfaceWrapper { interface_id },
+            _ => {
+                return Err(serde::de::Error::custom(
+                    "bundle tool requires one execution target",
+                ))
+            }
+        };
+        Ok(Self {
+            tool_id: wire.tool_id,
+            name: wire.name,
+            short_description: wire.short_description,
+            full_description: wire.full_description,
+            execution_target,
+            parameter_schema_snapshot: wire.parameter_schema_snapshot,
+            result_schema_snapshot: wire.result_schema_snapshot,
+            input_mapping: wire.input_mapping,
+            output_mapping: wire.output_mapping,
+            permission_code_snapshot: wire.permission_code_snapshot,
+            risk_level_snapshot: wire.risk_level_snapshot,
+            status: wire.status,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -92,11 +146,23 @@ pub struct McpBundleInstance {
     pub discovery_policy: McpBundleInstanceDiscoveryPolicy,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpBundleUpstreamConnection {
+    pub connection_id: uuid::Uuid,
+    pub name: String,
+    pub endpoint: String,
+    pub transport: crate::McpUpstreamTransport,
+    pub auth_type: crate::McpUpstreamAuthType,
+    pub custom_header_name: Option<String>,
+    pub status: crate::McpUpstreamConnectionStatus,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct McpBundlePackage {
     pub manifest: McpBundleManifest,
     pub tools: Vec<McpBundleTool>,
     pub instances: Vec<McpBundleInstance>,
+    pub connections: Vec<McpBundleUpstreamConnection>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,6 +188,7 @@ pub struct McpBundlePreview {
     pub version_status: McpBundleVersionStatus,
     pub tools: Vec<McpBundleItemReport>,
     pub instances: Vec<McpBundleItemReport>,
+    pub connections: Vec<McpBundleItemReport>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -132,4 +199,5 @@ pub struct McpBundleImportReport {
     pub status: String,
     pub tools: Vec<McpBundleItemReport>,
     pub instances: Vec<McpBundleItemReport>,
+    pub connections: Vec<McpBundleItemReport>,
 }

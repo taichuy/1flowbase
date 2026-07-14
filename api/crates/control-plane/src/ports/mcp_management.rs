@@ -44,7 +44,7 @@ pub struct CreateMcpToolInput {
     pub name: String,
     pub short_description: String,
     pub full_description: String,
-    pub interface_id: String,
+    pub execution_target: domain::McpToolExecutionTarget,
     pub parameter_schema: serde_json::Value,
     pub result_schema: serde_json::Value,
     pub input_mapping: serde_json::Value,
@@ -64,7 +64,7 @@ pub struct UpdateMcpToolInput {
     pub name: String,
     pub short_description: String,
     pub full_description: String,
-    pub interface_id: String,
+    pub execution_target: domain::McpToolExecutionTarget,
     pub parameter_schema: serde_json::Value,
     pub result_schema: serde_json::Value,
     pub input_mapping: serde_json::Value,
@@ -74,6 +74,55 @@ pub struct UpdateMcpToolInput {
     pub des_id: String,
     pub des_id_required: bool,
     pub status: domain::McpToolStatus,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateMcpUpstreamConnectionInput {
+    pub id: Uuid,
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub name: String,
+    pub endpoint: String,
+    pub transport: domain::McpUpstreamTransport,
+    pub auth_type: domain::McpUpstreamAuthType,
+    pub custom_header_name: Option<String>,
+    pub status: domain::McpUpstreamConnectionStatus,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateMcpUpstreamConnectionInput {
+    pub id: Uuid,
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub name: String,
+    pub endpoint: String,
+    pub transport: domain::McpUpstreamTransport,
+    pub auth_type: domain::McpUpstreamAuthType,
+    pub custom_header_name: Option<String>,
+    pub status: domain::McpUpstreamConnectionStatus,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpsertMcpUpstreamSecretInput {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub upstream_connection_id: Uuid,
+    pub plaintext_secret_json: serde_json::Value,
+    pub master_key: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpsertMcpUpstreamToolSourceInput {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub upstream_connection_id: Uuid,
+    pub remote_tool_name: String,
+    pub description: Option<String>,
+    pub input_schema: serde_json::Value,
+    pub output_schema: serde_json::Value,
+    pub schema_hash: String,
+    pub source_status: domain::McpUpstreamSourceStatus,
+    pub discovered_at: time::OffsetDateTime,
 }
 
 #[derive(Debug, Clone)]
@@ -180,6 +229,74 @@ pub trait McpManagementRepository: Send + Sync {
         workspace_id: Uuid,
         instance_record_id: Uuid,
     ) -> anyhow::Result<()>;
+
+    async fn list_mcp_upstream_connections(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::McpUpstreamConnectionRecord>>;
+    async fn get_mcp_upstream_connection(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+    ) -> anyhow::Result<Option<domain::McpUpstreamConnectionRecord>>;
+    async fn create_mcp_upstream_connection(
+        &self,
+        input: &CreateMcpUpstreamConnectionInput,
+    ) -> anyhow::Result<domain::McpUpstreamConnectionRecord>;
+    async fn update_mcp_upstream_connection(
+        &self,
+        input: &UpdateMcpUpstreamConnectionInput,
+    ) -> anyhow::Result<domain::McpUpstreamConnectionRecord>;
+    async fn delete_mcp_upstream_connection(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+    ) -> anyhow::Result<()>;
+    async fn get_mcp_upstream_secret(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+        master_key: &str,
+    ) -> anyhow::Result<Option<serde_json::Value>>;
+    async fn upsert_mcp_upstream_secret(
+        &self,
+        input: &UpsertMcpUpstreamSecretInput,
+    ) -> anyhow::Result<()>;
+    async fn delete_mcp_upstream_secret(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+    ) -> anyhow::Result<()>;
+    async fn record_mcp_upstream_connection_result(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+        connected_at: Option<time::OffsetDateTime>,
+        discovered_at: Option<time::OffsetDateTime>,
+        last_error: Option<&str>,
+    ) -> anyhow::Result<()>;
+    async fn list_mcp_upstream_tool_sources(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::McpUpstreamToolSourceRecord>>;
+    async fn upsert_mcp_upstream_tool_source(
+        &self,
+        input: &UpsertMcpUpstreamToolSourceInput,
+    ) -> anyhow::Result<domain::McpUpstreamToolSourceRecord>;
+    async fn mark_mcp_upstream_tool_sources_missing(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+        discovered_remote_tool_names: &[String],
+    ) -> anyhow::Result<()>;
+    async fn link_mcp_upstream_tool_source(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+        remote_tool_name: &str,
+        tool_record_id: Uuid,
+    ) -> anyhow::Result<domain::McpUpstreamToolSourceRecord>;
 
     async fn list_mcp_groups(
         &self,

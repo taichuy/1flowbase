@@ -13,8 +13,9 @@ use crate::{
     },
     ports::{
         CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
-        ImportMcpInstanceInput, McpManagementRepository, UpdateMcpInstanceDiscoveryPolicyInput,
-        UpsertMcpGroupInput,
+        CreateMcpUpstreamConnectionInput, ImportMcpInstanceInput, McpManagementRepository,
+        UpdateMcpInstanceDiscoveryPolicyInput, UpsertMcpGroupInput,
+        UpsertMcpUpstreamToolSourceInput,
     },
 };
 
@@ -89,6 +90,10 @@ where
             .repository
             .list_mcp_tools(actor.current_workspace_id)
             .await?;
+        let connections = self
+            .repository
+            .list_mcp_upstream_connections(actor.current_workspace_id)
+            .await?;
 
         let portable_tools = tools
             .into_iter()
@@ -97,7 +102,7 @@ where
                 name: tool.name,
                 short_description: tool.short_description,
                 full_description: tool.full_description,
-                interface_id: tool.interface_id,
+                execution_target: tool.execution_target,
                 parameter_schema_snapshot: tool.parameter_schema,
                 result_schema_snapshot: tool.result_schema,
                 input_mapping: tool.input_mapping,
@@ -167,6 +172,18 @@ where
             },
             tools: portable_tools,
             instances: portable_instances,
+            connections: connections
+                .into_iter()
+                .map(|connection| domain::McpBundleUpstreamConnection {
+                    connection_id: connection.id,
+                    name: connection.name,
+                    endpoint: connection.endpoint,
+                    transport: connection.transport,
+                    auth_type: connection.auth_type,
+                    custom_header_name: connection.custom_header_name,
+                    status: connection.status,
+                })
+                .collect(),
         })
     }
 
@@ -192,6 +209,13 @@ where
             .map(|instance| instance.instance_id)
             .collect::<BTreeSet<_>>();
         let interfaces = bindable_interfaces(command.interface_catalog);
+        let existing_connection_ids = self
+            .repository
+            .list_mcp_upstream_connections(actor.current_workspace_id)
+            .await?
+            .into_iter()
+            .map(|connection| connection.id)
+            .collect::<BTreeSet<_>>();
 
         let tools = command
             .package
@@ -200,10 +224,28 @@ where
             .map(|tool| {
                 if existing_tool_ids.contains(&tool.tool_id) {
                     item_report(&tool.tool_id, "skipped", Some("tool_id_conflict"))
-                } else if interfaces.contains_key(&tool.interface_id) {
-                    item_report(&tool.tool_id, "imported", None)
                 } else {
-                    item_report(&tool.tool_id, "unavailable", Some("interface_missing"))
+                    match &tool.execution_target {
+                        domain::McpToolExecutionTarget::InterfaceWrapper { interface_id }
+                            if interfaces.contains_key(interface_id) =>
+                        {
+                            item_report(&tool.tool_id, "imported", None)
+                        }
+                        domain::McpToolExecutionTarget::McpProxy {
+                            upstream_connection_id,
+                            ..
+                        } if existing_connection_ids.contains(upstream_connection_id)
+                            || command.package.connections.iter().any(|connection| {
+                                connection.connection_id == *upstream_connection_id
+                            }) =>
+                        {
+                            item_report(&tool.tool_id, "unavailable", Some("credentials_missing"))
+                        }
+                        domain::McpToolExecutionTarget::McpProxy { .. } => {
+                            item_report(&tool.tool_id, "unavailable", Some("connection_missing"))
+                        }
+                        _ => item_report(&tool.tool_id, "unavailable", Some("interface_missing")),
+                    }
                 }
             })
             .collect();
@@ -223,6 +265,26 @@ where
                 }
             })
             .collect();
+        let connections = command
+            .package
+            .connections
+            .iter()
+            .map(|connection| {
+                if existing_connection_ids.contains(&connection.connection_id) {
+                    item_report(
+                        &connection.connection_id.to_string(),
+                        "skipped",
+                        Some("connection_id_conflict"),
+                    )
+                } else {
+                    item_report(
+                        &connection.connection_id.to_string(),
+                        "unavailable",
+                        Some("credentials_missing"),
+                    )
+                }
+            })
+            .collect();
 
         Ok(domain::McpBundlePreview {
             version_status: compare_system_versions(
@@ -233,6 +295,7 @@ where
             current_system_version: command.current_system_version,
             tools,
             instances,
+            connections,
         })
     }
 
@@ -257,6 +320,53 @@ where
             .into_iter()
             .map(|instance| instance.instance_id)
             .collect::<BTreeSet<_>>();
+        let mut existing_connection_ids = self
+            .repository
+            .list_mcp_upstream_connections(actor.current_workspace_id)
+            .await?
+            .into_iter()
+            .map(|connection| connection.id)
+            .collect::<BTreeSet<_>>();
+        let mut connection_reports = Vec::with_capacity(command.package.connections.len());
+        for connection in &command.package.connections {
+            if existing_connection_ids.contains(&connection.connection_id) {
+                connection_reports.push(item_report(
+                    &connection.connection_id.to_string(),
+                    "skipped",
+                    Some("connection_id_conflict"),
+                ));
+                continue;
+            }
+            let result = self
+                .repository
+                .create_mcp_upstream_connection(&CreateMcpUpstreamConnectionInput {
+                    id: connection.connection_id,
+                    actor_user_id: command.actor_user_id,
+                    workspace_id: actor.current_workspace_id,
+                    name: connection.name.clone(),
+                    endpoint: connection.endpoint.clone(),
+                    transport: connection.transport,
+                    auth_type: connection.auth_type,
+                    custom_header_name: connection.custom_header_name.clone(),
+                    status: domain::McpUpstreamConnectionStatus::Disabled,
+                })
+                .await;
+            match result {
+                Ok(_) => {
+                    existing_connection_ids.insert(connection.connection_id);
+                    connection_reports.push(item_report(
+                        &connection.connection_id.to_string(),
+                        "unavailable",
+                        Some("credentials_missing"),
+                    ));
+                }
+                Err(_) => connection_reports.push(item_report(
+                    &connection.connection_id.to_string(),
+                    "failed",
+                    Some("connection_write_failed"),
+                )),
+            }
+        }
 
         let mut tool_reports = Vec::with_capacity(command.package.tools.len());
         for tool in &command.package.tools {
@@ -269,7 +379,12 @@ where
                 continue;
             }
 
-            let interface = interfaces.get(&tool.interface_id);
+            let interface = match &tool.execution_target {
+                domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
+                    interfaces.get(interface_id)
+                }
+                domain::McpToolExecutionTarget::McpProxy { .. } => None,
+            };
             let unavailable = interface.is_none();
             let (parameter_schema, result_schema, permission_code, risk_level, status) =
                 if let Some(interface) = interface {
@@ -297,7 +412,7 @@ where
                 name: tool.name.clone(),
                 short_description: tool.short_description.clone(),
                 full_description: tool.full_description.clone(),
-                interface_id: tool.interface_id.clone(),
+                execution_target: tool.execution_target.clone(),
                 parameter_schema,
                 result_schema,
                 input_mapping: tool.input_mapping.clone(),
@@ -310,9 +425,47 @@ where
             };
             match self.repository.create_mcp_tool(&input).await {
                 Ok(record) => {
+                    if let domain::McpToolExecutionTarget::McpProxy {
+                        upstream_connection_id,
+                        remote_tool_name,
+                        source_schema_hash,
+                    } = &tool.execution_target
+                    {
+                        let discovered_at = OffsetDateTime::now_utc();
+                        self.repository
+                            .upsert_mcp_upstream_tool_source(&UpsertMcpUpstreamToolSourceInput {
+                                id: Uuid::now_v7(),
+                                workspace_id: actor.current_workspace_id,
+                                upstream_connection_id: *upstream_connection_id,
+                                remote_tool_name: remote_tool_name.clone(),
+                                description: Some(tool.full_description.clone()),
+                                input_schema: tool.parameter_schema_snapshot.clone(),
+                                output_schema: tool.result_schema_snapshot.clone(),
+                                schema_hash: source_schema_hash.clone(),
+                                source_status: domain::McpUpstreamSourceStatus::NotImported,
+                                discovered_at,
+                            })
+                            .await?;
+                        self.repository
+                            .link_mcp_upstream_tool_source(
+                                actor.current_workspace_id,
+                                *upstream_connection_id,
+                                remote_tool_name,
+                                record.id,
+                            )
+                            .await?;
+                    }
                     tool_records.insert(tool.tool_id.clone(), record);
                     tool_reports.push(if unavailable {
-                        item_report(&tool.tool_id, "unavailable", Some("interface_missing"))
+                        let reason = if matches!(
+                            tool.execution_target,
+                            domain::McpToolExecutionTarget::McpProxy { .. }
+                        ) {
+                            "credentials_missing"
+                        } else {
+                            "interface_missing"
+                        };
+                        item_report(&tool.tool_id, "unavailable", Some(reason))
                     } else {
                         item_report(&tool.tool_id, "imported", None)
                     });
@@ -371,6 +524,7 @@ where
         let has_warnings = tool_reports
             .iter()
             .chain(instance_reports.iter())
+            .chain(connection_reports.iter())
             .any(|item| item.result != "imported");
         Ok(domain::McpBundleImportReport {
             version_status: compare_system_versions(
@@ -386,6 +540,7 @@ where
             },
             tools: tool_reports,
             instances: instance_reports,
+            connections: connection_reports,
         })
     }
 
@@ -486,7 +641,9 @@ fn bindable_interfaces(
 }
 
 fn validate_package(package: &domain::McpBundlePackage) -> Result<()> {
-    if package.manifest.schema_version != domain::MCP_BUNDLE_SCHEMA_VERSION {
+    if package.manifest.schema_version != domain::MCP_BUNDLE_SCHEMA_VERSION
+        && package.manifest.schema_version != "1flowbase.mcp.bundle/v1"
+    {
         return Err(ControlPlaneError::InvalidInput("schema_version").into());
     }
     validate_identifier(&package.manifest.organization, "organization")?;
@@ -496,7 +653,19 @@ fn validate_package(package: &domain::McpBundlePackage) -> Result<()> {
     let mut tool_ids = BTreeSet::new();
     for tool in &package.tools {
         validate_identifier(&tool.tool_id, "tool_id")?;
-        validate_identifier(&tool.interface_id, "interface_id")?;
+        match &tool.execution_target {
+            domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
+                validate_identifier(interface_id, "interface_id")?;
+            }
+            domain::McpToolExecutionTarget::McpProxy {
+                remote_tool_name,
+                source_schema_hash,
+                ..
+            } => {
+                validate_identifier(remote_tool_name, "remote_tool_name")?;
+                validate_identifier(source_schema_hash, "source_schema_hash")?;
+            }
+        }
         if !tool_ids.insert(tool.tool_id.as_str()) {
             return Err(ControlPlaneError::InvalidInput("duplicate_tool_id").into());
         }
@@ -523,6 +692,16 @@ fn validate_package(package: &domain::McpBundlePackage) -> Result<()> {
         for binding in &instance.bindings {
             validate_path(&binding.group_path)?;
             validate_identifier(&binding.tool_id, "tool_id")?;
+        }
+    }
+    let mut connection_ids = BTreeSet::new();
+    for connection in &package.connections {
+        if !connection_ids.insert(connection.connection_id) {
+            return Err(ControlPlaneError::InvalidInput("duplicate_connection_id").into());
+        }
+        validate_identifier(&connection.name, "connection_name")?;
+        if !connection.endpoint.starts_with("https://") {
+            return Err(ControlPlaneError::InvalidInput("endpoint").into());
         }
     }
     Ok(())

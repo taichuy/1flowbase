@@ -16,6 +16,7 @@ mod mcp_client_credential_routes;
 mod mcp_management_debug_execute_routes;
 mod mcp_management_routes;
 mod mcp_protocol_routes;
+mod mcp_upstream_routes;
 mod me_routes;
 mod member_routes;
 mod model_provider_icon_routes;

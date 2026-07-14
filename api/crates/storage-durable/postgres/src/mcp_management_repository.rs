@@ -4,9 +4,10 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         AuthRepository, CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
-        ImportMcpInstanceInput, McpManagementRepository, UpdateMcpInstanceDiscoveryPolicyInput,
-        UpdateMcpInstanceInput, UpdateMcpToolBindingInput, UpdateMcpToolInput,
-        UpsertMcpClientCredentialInput, UpsertMcpGroupInput,
+        CreateMcpUpstreamConnectionInput, ImportMcpInstanceInput, McpManagementRepository,
+        UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput, UpdateMcpToolBindingInput,
+        UpdateMcpToolInput, UpdateMcpUpstreamConnectionInput, UpsertMcpClientCredentialInput,
+        UpsertMcpGroupInput, UpsertMcpUpstreamSecretInput, UpsertMcpUpstreamToolSourceInput,
     },
 };
 use serde_json::json;
@@ -47,6 +48,77 @@ fn parse_risk_level(value: &str) -> Result<domain::McpRiskLevel> {
     }
 }
 
+fn parse_upstream_transport(value: &str) -> Result<domain::McpUpstreamTransport> {
+    match value {
+        "streamable_http" => Ok(domain::McpUpstreamTransport::StreamableHttp),
+        _ => anyhow::bail!("invalid MCP upstream transport"),
+    }
+}
+
+fn parse_upstream_auth_type(value: &str) -> Result<domain::McpUpstreamAuthType> {
+    match value {
+        "none" => Ok(domain::McpUpstreamAuthType::None),
+        "bearer" => Ok(domain::McpUpstreamAuthType::Bearer),
+        "custom_header" => Ok(domain::McpUpstreamAuthType::CustomHeader),
+        _ => anyhow::bail!("invalid MCP upstream auth type"),
+    }
+}
+
+fn parse_upstream_connection_status(value: &str) -> Result<domain::McpUpstreamConnectionStatus> {
+    match value {
+        "enabled" => Ok(domain::McpUpstreamConnectionStatus::Enabled),
+        "disabled" => Ok(domain::McpUpstreamConnectionStatus::Disabled),
+        _ => anyhow::bail!("invalid MCP upstream connection status"),
+    }
+}
+
+fn parse_upstream_source_status(value: &str) -> Result<domain::McpUpstreamSourceStatus> {
+    match value {
+        "not_imported" => Ok(domain::McpUpstreamSourceStatus::NotImported),
+        "imported" => Ok(domain::McpUpstreamSourceStatus::Imported),
+        "definition_changed" => Ok(domain::McpUpstreamSourceStatus::DefinitionChanged),
+        "remote_missing" => Ok(domain::McpUpstreamSourceStatus::RemoteMissing),
+        _ => anyhow::bail!("invalid MCP upstream source status"),
+    }
+}
+
+fn execution_target_kind(target: &domain::McpToolExecutionTarget) -> &'static str {
+    match target {
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. } => "interface_wrapper",
+        domain::McpToolExecutionTarget::McpProxy { .. } => "mcp_proxy",
+    }
+}
+
+fn execution_target_upstream_connection_id(
+    target: &domain::McpToolExecutionTarget,
+) -> Option<Uuid> {
+    match target {
+        domain::McpToolExecutionTarget::McpProxy {
+            upstream_connection_id,
+            ..
+        } => Some(*upstream_connection_id),
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. } => None,
+    }
+}
+
+fn execution_target_remote_tool_name(target: &domain::McpToolExecutionTarget) -> Option<&str> {
+    match target {
+        domain::McpToolExecutionTarget::McpProxy {
+            remote_tool_name, ..
+        } => Some(remote_tool_name),
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. } => None,
+    }
+}
+
+fn execution_target_source_schema_hash(target: &domain::McpToolExecutionTarget) -> Option<&str> {
+    match target {
+        domain::McpToolExecutionTarget::McpProxy {
+            source_schema_hash, ..
+        } => Some(source_schema_hash),
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. } => None,
+    }
+}
+
 fn map_instance(row: sqlx::postgres::PgRow) -> Result<domain::McpInstanceRecord> {
     Ok(domain::McpInstanceRecord {
         id: row.get("id"),
@@ -80,6 +152,17 @@ fn map_group(row: sqlx::postgres::PgRow) -> Result<domain::McpGroupRecord> {
 }
 
 fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolRecord> {
+    let execution_target = match row.get::<String, _>("execution_kind").as_str() {
+        "interface_wrapper" => domain::McpToolExecutionTarget::InterfaceWrapper {
+            interface_id: row.get("interface_id"),
+        },
+        "mcp_proxy" => domain::McpToolExecutionTarget::McpProxy {
+            upstream_connection_id: row.get("upstream_connection_id"),
+            remote_tool_name: row.get("remote_tool_name"),
+            source_schema_hash: row.get("source_schema_hash"),
+        },
+        _ => anyhow::bail!("invalid MCP tool execution kind"),
+    };
     Ok(domain::McpToolRecord {
         id: row.get("id"),
         workspace_id: row.get("workspace_id"),
@@ -87,7 +170,7 @@ fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolRecord> {
         name: row.get("name"),
         short_description: row.get("short_description"),
         full_description: row.get("full_description"),
-        interface_id: row.get("interface_id"),
+        execution_target,
         parameter_schema: row.get("parameter_schema"),
         result_schema: row.get("result_schema"),
         input_mapping: row.get("input_mapping"),
@@ -119,6 +202,47 @@ fn map_binding(row: sqlx::postgres::PgRow) -> Result<domain::McpToolBindingRecor
         updated_by: row.get("updated_by"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
+    })
+}
+
+fn map_upstream_connection(
+    row: sqlx::postgres::PgRow,
+) -> Result<domain::McpUpstreamConnectionRecord> {
+    Ok(domain::McpUpstreamConnectionRecord {
+        id: row.get("id"),
+        workspace_id: row.get("workspace_id"),
+        name: row.get("name"),
+        endpoint: row.get("endpoint"),
+        transport: parse_upstream_transport(row.get::<String, _>("transport").as_str())?,
+        auth_type: parse_upstream_auth_type(row.get::<String, _>("auth_type").as_str())?,
+        custom_header_name: row.get("custom_header_name"),
+        status: parse_upstream_connection_status(row.get::<String, _>("status").as_str())?,
+        credentials_configured: row.get("credentials_configured"),
+        last_connected_at: row.get("last_connected_at"),
+        last_discovered_at: row.get("last_discovered_at"),
+        last_error: row.get("last_error"),
+        created_by: row.get("created_by"),
+        updated_by: row.get("updated_by"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+fn map_upstream_source(row: sqlx::postgres::PgRow) -> Result<domain::McpUpstreamToolSourceRecord> {
+    Ok(domain::McpUpstreamToolSourceRecord {
+        id: row.get("id"),
+        workspace_id: row.get("workspace_id"),
+        upstream_connection_id: row.get("upstream_connection_id"),
+        remote_tool_name: row.get("remote_tool_name"),
+        description: row.get("description"),
+        input_schema: row.get("input_schema"),
+        output_schema: row.get("output_schema"),
+        schema_hash: row.get("schema_hash"),
+        source_status: parse_upstream_source_status(
+            row.get::<String, _>("source_status").as_str(),
+        )?,
+        imported_tool_id: row.get("imported_tool_id"),
+        discovered_at: row.get("discovered_at"),
     })
 }
 
@@ -260,6 +384,305 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(user_id)
         .bind(workspace_id)
         .bind(instance_record_id)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    async fn list_mcp_upstream_connections(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<Vec<domain::McpUpstreamConnectionRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select c.*,
+                   exists(select 1 from mcp_upstream_connection_secrets s
+                          where s.upstream_connection_id = c.id) as credentials_configured
+            from mcp_upstream_connections c
+            where c.workspace_id = $1
+            order by c.updated_at desc, c.id desc
+            "#,
+        )
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(map_upstream_connection).collect()
+    }
+
+    async fn get_mcp_upstream_connection(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+    ) -> Result<Option<domain::McpUpstreamConnectionRecord>> {
+        let row = sqlx::query(
+            r#"
+            select c.*,
+                   exists(select 1 from mcp_upstream_connection_secrets s
+                          where s.upstream_connection_id = c.id) as credentials_configured
+            from mcp_upstream_connections c
+            where c.workspace_id = $1 and c.id = $2
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(connection_id)
+        .fetch_optional(self.pool())
+        .await?;
+        row.map(map_upstream_connection).transpose()
+    }
+
+    async fn create_mcp_upstream_connection(
+        &self,
+        input: &CreateMcpUpstreamConnectionInput,
+    ) -> Result<domain::McpUpstreamConnectionRecord> {
+        sqlx::query(
+            r#"
+            insert into mcp_upstream_connections (
+                id, workspace_id, name, endpoint, transport, auth_type,
+                custom_header_name, status, created_by, updated_by
+            ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)
+            "#,
+        )
+        .bind(input.id)
+        .bind(input.workspace_id)
+        .bind(&input.name)
+        .bind(&input.endpoint)
+        .bind(input.transport.as_str())
+        .bind(input.auth_type.as_str())
+        .bind(&input.custom_header_name)
+        .bind(input.status.as_str())
+        .bind(input.actor_user_id)
+        .execute(self.pool())
+        .await?;
+        self.get_mcp_upstream_connection(input.workspace_id, input.id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("created MCP upstream connection is missing"))
+    }
+
+    async fn update_mcp_upstream_connection(
+        &self,
+        input: &UpdateMcpUpstreamConnectionInput,
+    ) -> Result<domain::McpUpstreamConnectionRecord> {
+        sqlx::query(
+            r#"
+            update mcp_upstream_connections
+            set name=$3, endpoint=$4, transport=$5, auth_type=$6,
+                custom_header_name=$7, status=$8, updated_by=$9, updated_at=now()
+            where workspace_id=$1 and id=$2
+            "#,
+        )
+        .bind(input.workspace_id)
+        .bind(input.id)
+        .bind(&input.name)
+        .bind(&input.endpoint)
+        .bind(input.transport.as_str())
+        .bind(input.auth_type.as_str())
+        .bind(&input.custom_header_name)
+        .bind(input.status.as_str())
+        .bind(input.actor_user_id)
+        .execute(self.pool())
+        .await?;
+        self.get_mcp_upstream_connection(input.workspace_id, input.id)
+            .await?
+            .ok_or_else(|| ControlPlaneError::NotFound("mcp_upstream_connection").into())
+    }
+
+    async fn delete_mcp_upstream_connection(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+    ) -> Result<()> {
+        sqlx::query("delete from mcp_upstream_connections where workspace_id=$1 and id=$2")
+            .bind(workspace_id)
+            .bind(connection_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
+    async fn get_mcp_upstream_secret(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+        master_key: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let encrypted: Option<serde_json::Value> = sqlx::query_scalar(
+            "select encrypted_secret_json from mcp_upstream_connection_secrets where workspace_id=$1 and upstream_connection_id=$2",
+        )
+        .bind(workspace_id)
+        .bind(connection_id)
+        .fetch_optional(self.pool())
+        .await?;
+        encrypted
+            .map(|value| decrypt_secret_json(&value, master_key))
+            .transpose()
+    }
+
+    async fn upsert_mcp_upstream_secret(&self, input: &UpsertMcpUpstreamSecretInput) -> Result<()> {
+        let encrypted = encrypt_secret_json(&input.plaintext_secret_json, &input.master_key)?;
+        sqlx::query(
+            r#"
+            insert into mcp_upstream_connection_secrets (
+                upstream_connection_id, workspace_id, encrypted_secret_json, updated_by
+            ) values ($1,$2,$3,$4)
+            on conflict (upstream_connection_id) do update
+            set encrypted_secret_json=excluded.encrypted_secret_json,
+                updated_by=excluded.updated_by, updated_at=now()
+            "#,
+        )
+        .bind(input.upstream_connection_id)
+        .bind(input.workspace_id)
+        .bind(encrypted)
+        .bind(input.actor_user_id)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    async fn delete_mcp_upstream_secret(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+    ) -> Result<()> {
+        sqlx::query("delete from mcp_upstream_connection_secrets where workspace_id=$1 and upstream_connection_id=$2")
+            .bind(workspace_id)
+            .bind(connection_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
+    async fn record_mcp_upstream_connection_result(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+        connected_at: Option<time::OffsetDateTime>,
+        discovered_at: Option<time::OffsetDateTime>,
+        last_error: Option<&str>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            update mcp_upstream_connections
+            set last_connected_at=coalesce($3,last_connected_at),
+                last_discovered_at=coalesce($4,last_discovered_at),
+                last_error=$5, updated_at=now()
+            where workspace_id=$1 and id=$2
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(connection_id)
+        .bind(connected_at)
+        .bind(discovered_at)
+        .bind(last_error)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    async fn list_mcp_upstream_tool_sources(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+    ) -> Result<Vec<domain::McpUpstreamToolSourceRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select s.*, t.tool_id as imported_tool_id
+            from mcp_upstream_tool_sources s
+            left join mcp_tools t on t.id=s.imported_tool_record_id
+            where s.workspace_id=$1 and s.upstream_connection_id=$2
+            order by s.remote_tool_name
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(connection_id)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(map_upstream_source).collect()
+    }
+
+    async fn upsert_mcp_upstream_tool_source(
+        &self,
+        input: &UpsertMcpUpstreamToolSourceInput,
+    ) -> Result<domain::McpUpstreamToolSourceRecord> {
+        sqlx::query(
+            r#"
+            insert into mcp_upstream_tool_sources (
+                id,workspace_id,upstream_connection_id,remote_tool_name,description,
+                input_schema,output_schema,schema_hash,source_status,discovered_at
+            ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            on conflict (upstream_connection_id,remote_tool_name) do update
+            set description=excluded.description,input_schema=excluded.input_schema,
+                output_schema=excluded.output_schema,schema_hash=excluded.schema_hash,
+                source_status=case
+                    when mcp_upstream_tool_sources.imported_tool_record_id is null then 'not_imported'
+                    when mcp_upstream_tool_sources.schema_hash=excluded.schema_hash then 'imported'
+                    else 'definition_changed'
+                end,
+                discovered_at=excluded.discovered_at,updated_at=now()
+            "#,
+        )
+        .bind(input.id)
+        .bind(input.workspace_id)
+        .bind(input.upstream_connection_id)
+        .bind(&input.remote_tool_name)
+        .bind(&input.description)
+        .bind(&input.input_schema)
+        .bind(&input.output_schema)
+        .bind(&input.schema_hash)
+        .bind(input.source_status.as_str())
+        .bind(input.discovered_at)
+        .execute(self.pool())
+        .await?;
+        self.list_mcp_upstream_tool_sources(input.workspace_id, input.upstream_connection_id)
+            .await?
+            .into_iter()
+            .find(|source| source.remote_tool_name == input.remote_tool_name)
+            .ok_or_else(|| anyhow::anyhow!("upserted MCP upstream source is missing"))
+    }
+
+    async fn link_mcp_upstream_tool_source(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+        remote_tool_name: &str,
+        tool_record_id: Uuid,
+    ) -> Result<domain::McpUpstreamToolSourceRecord> {
+        sqlx::query(
+            r#"
+            update mcp_upstream_tool_sources
+            set imported_tool_record_id=$4,source_status='imported',updated_at=now()
+            where workspace_id=$1 and upstream_connection_id=$2 and remote_tool_name=$3
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(connection_id)
+        .bind(remote_tool_name)
+        .bind(tool_record_id)
+        .execute(self.pool())
+        .await?;
+        self.list_mcp_upstream_tool_sources(workspace_id, connection_id)
+            .await?
+            .into_iter()
+            .find(|source| source.remote_tool_name == remote_tool_name)
+            .ok_or_else(|| ControlPlaneError::NotFound("mcp_upstream_tool_source").into())
+    }
+
+    async fn mark_mcp_upstream_tool_sources_missing(
+        &self,
+        workspace_id: Uuid,
+        connection_id: Uuid,
+        discovered_remote_tool_names: &[String],
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            update mcp_upstream_tool_sources
+            set source_status='remote_missing',updated_at=now()
+            where workspace_id=$1 and upstream_connection_id=$2
+              and not (remote_tool_name = any($3))
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(connection_id)
+        .bind(discovered_remote_tool_names)
         .execute(self.pool())
         .await?;
         Ok(())
@@ -667,6 +1090,10 @@ impl McpManagementRepository for PgControlPlaneStore {
                 short_description,
                 full_description,
                 interface_id,
+                execution_kind,
+                upstream_connection_id,
+                remote_tool_name,
+                source_schema_hash,
                 parameter_schema,
                 result_schema,
                 input_mapping,
@@ -681,7 +1108,7 @@ impl McpManagementRepository for PgControlPlaneStore {
             ) values (
                 $1, $2, $3, $4, $5, $6, $7, $8,
                 $9, $10, $11, $12, $13, $14, $15,
-                $16, $17, $17
+                $16, $17, $18, $19, $20, $21, $21
             )
             returning *
             "#,
@@ -692,7 +1119,13 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&input.name)
         .bind(&input.short_description)
         .bind(&input.full_description)
-        .bind(&input.interface_id)
+        .bind(input.execution_target.interface_id())
+        .bind(execution_target_kind(&input.execution_target))
+        .bind(execution_target_upstream_connection_id(
+            &input.execution_target,
+        ))
+        .bind(execution_target_remote_tool_name(&input.execution_target))
+        .bind(execution_target_source_schema_hash(&input.execution_target))
         .bind(&input.parameter_schema)
         .bind(&input.result_schema)
         .bind(&input.input_mapping)
@@ -718,17 +1151,21 @@ impl McpManagementRepository for PgControlPlaneStore {
                 short_description = $4,
                 full_description = $5,
                 interface_id = $6,
-                parameter_schema = $7,
-                result_schema = $8,
-                input_mapping = $9,
-                output_mapping = $10,
-                permission_code = $11,
-                risk_level = $12,
-                des_id = $13,
-                des_id_required = $14,
-                status = $15,
+                execution_kind = $7,
+                upstream_connection_id = $8,
+                remote_tool_name = $9,
+                source_schema_hash = $10,
+                parameter_schema = $11,
+                result_schema = $12,
+                input_mapping = $13,
+                output_mapping = $14,
+                permission_code = $15,
+                risk_level = $16,
+                des_id = $17,
+                des_id_required = $18,
+                status = $19,
                 revision = revision + 1,
-                updated_by = $16,
+                updated_by = $20,
                 updated_at = now()
             where workspace_id = $1 and tool_id = $2
             returning *
@@ -739,7 +1176,13 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&input.name)
         .bind(&input.short_description)
         .bind(&input.full_description)
-        .bind(&input.interface_id)
+        .bind(input.execution_target.interface_id())
+        .bind(execution_target_kind(&input.execution_target))
+        .bind(execution_target_upstream_connection_id(
+            &input.execution_target,
+        ))
+        .bind(execution_target_remote_tool_name(&input.execution_target))
+        .bind(execution_target_source_schema_hash(&input.execution_target))
         .bind(&input.parameter_schema)
         .bind(&input.result_schema)
         .bind(&input.input_mapping)

@@ -75,14 +75,17 @@ pub use js_dependency::{
 pub use mcp_bundle::{
     McpBundleFile, McpBundleFileKind, McpBundleGroup, McpBundleImportReport, McpBundleInstance,
     McpBundleInstanceDiscoveryPolicy, McpBundleItemReport, McpBundleManifest, McpBundlePackage,
-    McpBundlePreview, McpBundleTool, McpBundleToolBinding, McpBundleVersionStatus,
-    MCP_BUNDLE_SCHEMA_VERSION,
+    McpBundlePreview, McpBundleTool, McpBundleToolBinding, McpBundleUpstreamConnection,
+    McpBundleVersionStatus, MCP_BUNDLE_SCHEMA_VERSION,
 };
 pub use mcp_management::{
-    McpCatalogSnapshot, McpDescriptionCheckResult, McpExportPackage, McpGroupRecord,
-    McpInstanceDirectoryExportPackage, McpInstanceDiscoveryPolicyRecord, McpInstanceRecord,
-    McpInstanceStatus, McpInterfaceCatalogEntry, McpListItemKind, McpListItemSummary, McpRiskLevel,
-    McpToolBindingRecord, McpToolRecord, McpToolStatus,
+    McpCallToolResult, McpCatalogSnapshot, McpDescriptionCheckResult, McpExportPackage,
+    McpFieldMapping, McpGroupRecord, McpInstanceDirectoryExportPackage,
+    McpInstanceDiscoveryPolicyRecord, McpInstanceRecord, McpInstanceStatus,
+    McpInterfaceCatalogEntry, McpListItemKind, McpListItemSummary, McpRiskLevel,
+    McpToolAvailabilityStatus, McpToolBindingRecord, McpToolExecutionTarget, McpToolRecord,
+    McpToolStatus, McpUpstreamAuthType, McpUpstreamConnectionRecord, McpUpstreamConnectionStatus,
+    McpUpstreamSourceStatus, McpUpstreamToolSourceRecord, McpUpstreamTransport,
 };
 pub use model_provider::{
     ModelCatalogSyncRunRecord, ModelFailoverQueueItemRecord, ModelFailoverQueueSnapshotRecord,

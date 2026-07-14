@@ -292,6 +292,7 @@ fn parse_bundle_archive(bytes: &[u8]) -> Result<domain::McpBundlePackage, Contro
     let mut declared_paths = BTreeSet::new();
     let mut tools = Vec::new();
     let mut instances = Vec::new();
+    let mut connections = Vec::new();
     for file in &manifest.files {
         if !declared_paths.insert(file.path.as_str()) {
             return Err(ControlPlaneError::InvalidInput("mcp_bundle_files"));
@@ -316,6 +317,12 @@ fn parse_bundle_archive(bytes: &[u8]) -> Result<domain::McpBundlePackage, Contro
                         .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_instance"))?,
                 );
             }
+            domain::McpBundleFileKind::Connection if file.path.starts_with("connections/") => {
+                connections.push(
+                    serde_json::from_slice(content)
+                        .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_connection"))?,
+                );
+            }
             _ => return Err(ControlPlaneError::InvalidInput("mcp_bundle_file_kind")),
         }
     }
@@ -324,6 +331,7 @@ fn parse_bundle_archive(bytes: &[u8]) -> Result<domain::McpBundlePackage, Contro
         manifest,
         tools,
         instances,
+        connections,
     })
 }
 
@@ -342,6 +350,12 @@ fn build_bundle_archive(
         let content = serde_json::to_vec_pretty(instance)
             .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_instance"))?;
         files.push((path, content, domain::McpBundleFileKind::Instance));
+    }
+    for connection in &package.connections {
+        let path = bundle_file_path("connections", &connection.connection_id.to_string());
+        let content = serde_json::to_vec_pretty(connection)
+            .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_connection"))?;
+        files.push((path, content, domain::McpBundleFileKind::Connection));
     }
     package.manifest.files = files
         .iter()
