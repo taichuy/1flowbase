@@ -80,7 +80,7 @@ async fn health() -> Json<HealthResponse> {
     path = "/api/console/health",
     responses((status = 200, body = HealthResponse))
 )]
-async fn console_health() -> Json<HealthResponse> {
+pub(crate) async fn console_health() -> Json<HealthResponse> {
     health().await
 }
 
@@ -112,9 +112,7 @@ fn cors_layer(config: &ApiConfig) -> CorsLayer {
 }
 
 fn base_router(include_docs_ui: bool, static_openapi: bool) -> Router {
-    let router = Router::new()
-        .route("/health", get(health))
-        .route("/api/console/health", get(console_health));
+    let router = Router::new().route("/health", get(health));
 
     if include_docs_ui && static_openapi {
         router.merge(SwaggerUi::new("/docs").url("/openapi.json", openapi::ApiDoc::openapi()))

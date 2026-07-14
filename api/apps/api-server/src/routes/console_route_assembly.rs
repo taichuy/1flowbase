@@ -1,38 +1,13 @@
-use std::{collections::{BTreeMap, BTreeSet}, convert::Infallible, sync::Arc};
+use std::{convert::Infallible, sync::Arc};
 
 use access_control::{
     ConsoleAuthorization, ConsoleOperationOwner, ConsoleOperationRegistration,
     ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteAssemblyBinding, ConsoleRouteBinding,
     ConsoleRouteOwnership, ResourceAccessAction, ResourceAccessRegistration,
     ResourceAccessScopeKind, SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
-    SettingsFeatureRegistry,
-    APPLICATIONS_API_SET_ENABLED_OPERATION_ID, APPLICATIONS_CREATE_ACTION_CODE,
-    APPLICATIONS_CREATE_OPERATION_ID, APPLICATIONS_DELETE_ACTION_CODE,
-    APPLICATIONS_DELETE_OPERATION_ID, APPLICATIONS_LOGS_EXPORT_OPERATION_ID,
-    APPLICATIONS_LOGS_IMPORT_OPERATION_ID, APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID,
-    APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID,
-    APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID, APPLICATIONS_PUBLISH_OPERATION_ID,
-    APPLICATIONS_RESOURCE_CODE, APPLICATIONS_RUN_OPERATION_ID, APPLICATIONS_UPDATE_ACTION_CODE,
-    APPLICATIONS_UPDATE_OPERATION_ID, APPLICATIONS_VIEW_ACTION_CODE,
-    APPLICATIONS_VIEW_OPERATION_ID, DATA_SOURCES_CREATE_OPERATION_ID,
-    DATA_SOURCES_DEFAULTS_UPDATE_OPERATION_ID, DATA_SOURCES_DISCOVER_OPERATION_ID,
-    DATA_SOURCES_LIST_OPERATION_ID, DATA_SOURCES_MAP_TO_MODEL_OPERATION_ID,
-    DATA_SOURCES_PREVIEW_OPERATION_ID, DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
-    DATA_SOURCES_VALIDATE_OPERATION_ID, DATA_SOURCES_VIEW_ACTION_CODE,
-    DATA_SOURCES_VIEW_OPERATION_ID, DATA_SOURCE_INSTANCES_RESOURCE_CODE,
-    FILES_CONTENT_DOWNLOAD_OPERATION_ID, FILES_UPLOAD_OPERATION_ID,
-    FILE_STORAGES_CREATE_OPERATION_ID, FILE_STORAGES_DELETE_OPERATION_ID,
-    FILE_STORAGES_LIST_OPERATION_ID, FILE_STORAGES_UPDATE_OPERATION_ID,
-    FILE_TABLES_CREATE_OPERATION_ID, FILE_TABLES_DELETE_OPERATION_ID,
-    FILE_TABLES_LIST_OPERATION_ID, FILE_TABLES_STORAGE_BIND_OPERATION_ID,
-    MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID, MODEL_DEFINITIONS_CREATE_OPERATION_ID,
-    MODEL_DEFINITIONS_DELETE_OPERATION_ID, MODEL_DEFINITIONS_LIST_OPERATION_ID,
-    MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID, MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
-    MODEL_FIELDS_CREATE_OPERATION_ID, MODEL_FIELDS_DELETE_OPERATION_ID,
-    MODEL_FIELDS_UPDATE_OPERATION_ID, MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID,
-    MODEL_SCOPE_GRANTS_LIST_OPERATION_ID, MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID,
-    SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID, SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID,
-    SYSTEM_FILES_SETTINGS_FEATURE_ID,
+    SettingsFeatureRegistry, APPLICATIONS_CREATE_ACTION_CODE, APPLICATIONS_DELETE_ACTION_CODE,
+    APPLICATIONS_RESOURCE_CODE, APPLICATIONS_UPDATE_ACTION_CODE, APPLICATIONS_VIEW_ACTION_CODE,
+    DATA_SOURCES_VIEW_ACTION_CODE, DATA_SOURCE_INSTANCES_RESOURCE_CODE,
 };
 use axum::{
     handler::Handler,
@@ -40,9 +15,11 @@ use axum::{
     Router,
 };
 
+use super::core_console_operation_specs::{
+    CoreConsoleAuthorizationSpec, CoreConsoleOperationSpec, CoreConsolePolicyGroupSpec,
+    CORE_CONSOLE_OPERATION_SPECS,
+};
 use crate::app_state::ApiState;
-
-const CORE_AUTHENTICATED_OPERATION_ID: &str = "core.authenticated";
 
 pub struct ConsoleMethodRouter<S> {
     router: MethodRouter<S, Infallible>,
@@ -206,6 +183,12 @@ where
     }
 }
 
+fn console_health_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::Authenticated;
+
+    ConsoleRouteAssembly::new().route("/health", console_get(crate::console_health, Authenticated))
+}
+
 fn frontstage_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::Authenticated;
 
@@ -213,8 +196,14 @@ fn frontstage_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         ("GET", "/api/console/frontstage/:workspace_id/pages"),
         ("POST", "/api/console/frontstage/:workspace_id/pages"),
         ("POST", "/api/console/frontstage/:workspace_id/pages/groups"),
-        ("PATCH", "/api/console/frontstage/:workspace_id/pages/:page_id"),
-        ("DELETE", "/api/console/frontstage/:workspace_id/pages/:page_id"),
+        (
+            "PATCH",
+            "/api/console/frontstage/:workspace_id/pages/:page_id",
+        ),
+        (
+            "DELETE",
+            "/api/console/frontstage/:workspace_id/pages/:page_id",
+        ),
         (
             "POST",
             "/api/console/frontstage/:workspace_id/pages/:page_id/move",
@@ -278,6 +267,7 @@ fn frontstage_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
+        .merge(console_health_route_assembly())
         .merge(super::session::route_assembly())
         .merge(super::me::route_assembly())
         .merge(super::navigation::route_assembly())
@@ -336,7 +326,7 @@ fn route_templates_match(left: &str, right: &str) -> bool {
             left == &right
                 || ((left.starts_with(':') || left.starts_with('{'))
                     && (right.starts_with(':') || right.starts_with('{')))
-    })
+        })
 }
 
 fn validate_settings_feature_route_assembly(
@@ -361,67 +351,65 @@ fn validate_settings_feature_route_assembly(
     Ok(())
 }
 
-fn generic_operation_policy_group(
-    settings_features: &SettingsFeatureRegistry,
-    operation_id: &str,
-    routes: &[ConsoleRouteBinding],
-) -> anyhow::Result<ConsolePolicyGroup> {
-    if let Some(feature_id) = operation_id.strip_prefix("settings_feature.access.") {
-        let feature = settings_features
-            .inventory()
-            .features
+fn policy_group_for_spec(spec: &CoreConsoleOperationSpec) -> ConsolePolicyGroup {
+    match spec.policy_group {
+        CoreConsolePolicyGroupSpec::SettingsFeature(feature_id) => {
+            ConsolePolicyGroup::SettingsFeature(feature_id.to_string())
+        }
+        CoreConsolePolicyGroupSpec::Other(group_id) => {
+            ConsolePolicyGroup::Other(group_id.to_string())
+        }
+    }
+}
+
+fn authorization_for_spec(spec: &CoreConsoleOperationSpec) -> ConsoleAuthorization {
+    match spec.authorization {
+        CoreConsoleAuthorizationSpec::Authenticated => ConsoleAuthorization::Authenticated,
+        CoreConsoleAuthorizationSpec::Simple => ConsoleAuthorization::Simple,
+        CoreConsoleAuthorizationSpec::ResourceAction {
+            resource_code,
+            action_code,
+        } => ConsoleAuthorization::ResourceAction {
+            resource_code: resource_code.to_string(),
+            action_code: action_code.to_string(),
+        },
+    }
+}
+
+fn routes_for_core_operation_spec(
+    spec: &CoreConsoleOperationSpec,
+    bindings: &[ConsoleRouteAssemblyBinding],
+) -> Vec<ConsoleRouteBinding> {
+    match spec.authorization {
+        CoreConsoleAuthorizationSpec::Authenticated => bindings
             .iter()
-            .find(|feature| feature.feature_id == feature_id)
-            .ok_or_else(|| anyhow::anyhow!("settings feature operation owner is not registered: {operation_id}"))?;
-        if !routes.iter().any(|route| {
-            feature.api_routes.iter().any(|registered_route| {
-                registered_route.method.eq_ignore_ascii_case(&route.method)
-                    && route_templates_match(&route.path, &registered_route.path)
-            })
-        }) {
+            .filter(|binding| binding.ownership == ConsoleRouteOwnership::Authenticated)
+            .map(|binding| binding.route.clone())
+            .collect(),
+        CoreConsoleAuthorizationSpec::Simple
+        | CoreConsoleAuthorizationSpec::ResourceAction { .. } => {
+            routes_owned_by(bindings, spec.operation_id)
+        }
+    }
+}
+
+fn validate_explicit_core_operation_specs(
+    bindings: &[ConsoleRouteAssemblyBinding],
+) -> anyhow::Result<()> {
+    for binding in bindings {
+        let ConsoleRouteOwnership::ConsoleOperation(operation_id) = &binding.ownership else {
+            continue;
+        };
+        if !CORE_CONSOLE_OPERATION_SPECS
+            .iter()
+            .any(|spec| spec.operation_id == operation_id)
+        {
             anyhow::bail!(
-                "settings feature operation has no route in its feature registration: {operation_id}"
+                "no explicit Core operation specification for {operation_id}; register policy group, i18n refs, and authorization before mounting its route"
             );
         }
-        return Ok(ConsolePolicyGroup::SettingsFeature(feature_id.to_string()));
     }
-
-    let matching_features = settings_features
-        .inventory()
-        .features
-        .iter()
-        .filter(|feature| {
-            routes.iter().any(|route| {
-                feature.api_routes.iter().any(|registered_route| {
-                    registered_route.method.eq_ignore_ascii_case(&route.method)
-                        && route_templates_match(&route.path, &registered_route.path)
-                })
-            })
-        })
-        .map(|feature| feature.feature_id.as_str())
-        .collect::<BTreeSet<_>>();
-
-    match matching_features.len() {
-        0 => {
-            let namespace = operation_id
-                .split('.')
-                .next()
-                .filter(|namespace| !namespace.is_empty())
-                .unwrap_or("core")
-                .replace('_', "-");
-            Ok(ConsolePolicyGroup::Other(format!("other.{namespace}")))
-        }
-        1 => Ok(ConsolePolicyGroup::SettingsFeature(
-            matching_features
-                .iter()
-                .next()
-                .expect("one matching feature must have an id")
-                .to_string(),
-        )),
-        _ => anyhow::bail!(
-            "console operation has ambiguous SettingsFeature ownership: {operation_id}"
-        ),
-    }
+    Ok(())
 }
 
 pub fn compile_migrated_core_console_operation_registry(
@@ -429,319 +417,27 @@ pub fn compile_migrated_core_console_operation_registry(
     bindings: &[ConsoleRouteAssemblyBinding],
 ) -> anyhow::Result<ConsoleOperationRegistry> {
     validate_settings_feature_route_assembly(settings_features, bindings)?;
-    let authenticated_routes = bindings
-        .iter()
-        .filter(|binding| binding.ownership == ConsoleRouteOwnership::Authenticated)
-        .map(|binding| binding.route.clone())
-        .collect::<Vec<_>>();
+    validate_explicit_core_operation_specs(bindings)?;
+
     let core_owner = ConsoleOperationOwner {
         kind: SettingsFeatureOwnerKind::Core,
         owner_id: "boot-core".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     };
-    let authenticated_operation = ConsoleOperationRegistration {
-        operation_id: CORE_AUTHENTICATED_OPERATION_ID.to_string(),
-        owner: core_owner.clone(),
-        lifecycle: SettingsFeatureLifecycle::Active,
-        policy_group: ConsolePolicyGroup::Other("core.authenticated".to_string()),
-        label_ref: "console.operations.core_authenticated.label".to_string(),
-        description_ref: None,
-        order: 0,
-        routes: authenticated_routes,
-        authorization: ConsoleAuthorization::Authenticated,
-    };
-    let applications_operations = [
-        ConsoleOperationRegistration {
-            operation_id: APPLICATIONS_CREATE_OPERATION_ID.to_string(),
-            owner: core_owner.clone(),
-            lifecycle: SettingsFeatureLifecycle::Active,
-            policy_group: ConsolePolicyGroup::SettingsFeature(
-                SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID.to_string(),
-            ),
-            label_ref: "console.operations.applications.create.label".to_string(),
-            description_ref: Some("console.operations.applications.create.description".to_string()),
-            order: 100,
-            routes: routes_owned_by(bindings, APPLICATIONS_CREATE_OPERATION_ID),
-            authorization: ConsoleAuthorization::Simple,
-        },
-        ConsoleOperationRegistration {
-            operation_id: APPLICATIONS_VIEW_OPERATION_ID.to_string(),
-            owner: core_owner.clone(),
-            lifecycle: SettingsFeatureLifecycle::Active,
-            policy_group: ConsolePolicyGroup::SettingsFeature(
-                SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID.to_string(),
-            ),
-            label_ref: "console.operations.applications.view.label".to_string(),
-            description_ref: Some("console.operations.applications.view.description".to_string()),
-            order: 110,
-            routes: routes_owned_by(bindings, APPLICATIONS_VIEW_OPERATION_ID),
-            authorization: ConsoleAuthorization::ResourceAction {
-                resource_code: APPLICATIONS_RESOURCE_CODE.to_string(),
-                action_code: APPLICATIONS_VIEW_ACTION_CODE.to_string(),
-            },
-        },
-        ConsoleOperationRegistration {
-            operation_id: APPLICATIONS_UPDATE_OPERATION_ID.to_string(),
-            owner: core_owner.clone(),
-            lifecycle: SettingsFeatureLifecycle::Active,
-            policy_group: ConsolePolicyGroup::SettingsFeature(
-                SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID.to_string(),
-            ),
-            label_ref: "console.operations.applications.update.label".to_string(),
-            description_ref: Some("console.operations.applications.update.description".to_string()),
-            order: 120,
-            routes: routes_owned_by(bindings, APPLICATIONS_UPDATE_OPERATION_ID),
-            authorization: ConsoleAuthorization::ResourceAction {
-                resource_code: APPLICATIONS_RESOURCE_CODE.to_string(),
-                action_code: APPLICATIONS_UPDATE_ACTION_CODE.to_string(),
-            },
-        },
-        ConsoleOperationRegistration {
-            operation_id: APPLICATIONS_DELETE_OPERATION_ID.to_string(),
-            owner: core_owner.clone(),
-            lifecycle: SettingsFeatureLifecycle::Active,
-            policy_group: ConsolePolicyGroup::SettingsFeature(
-                SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID.to_string(),
-            ),
-            label_ref: "console.operations.applications.delete.label".to_string(),
-            description_ref: Some("console.operations.applications.delete.description".to_string()),
-            order: 130,
-            routes: routes_owned_by(bindings, APPLICATIONS_DELETE_OPERATION_ID),
-            authorization: ConsoleAuthorization::ResourceAction {
-                resource_code: APPLICATIONS_RESOURCE_CODE.to_string(),
-                action_code: APPLICATIONS_DELETE_ACTION_CODE.to_string(),
-            },
-        },
-    ];
-    let applications_simple_operations = [
-        (APPLICATIONS_PUBLISH_OPERATION_ID, 140),
-        (APPLICATIONS_API_SET_ENABLED_OPERATION_ID, 150),
-        (APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID, 160),
-        (APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID, 170),
-        (APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID, 180),
-        (APPLICATIONS_RUN_OPERATION_ID, 190),
-        (APPLICATIONS_LOGS_EXPORT_OPERATION_ID, 200),
-        (APPLICATIONS_LOGS_IMPORT_OPERATION_ID, 210),
-    ]
-    .into_iter()
-    .map(|(operation_id, order)| ConsoleOperationRegistration {
-        operation_id: operation_id.to_string(),
-        owner: core_owner.clone(),
-        lifecycle: SettingsFeatureLifecycle::Active,
-        policy_group: ConsolePolicyGroup::SettingsFeature(
-            SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID.to_string(),
-        ),
-        label_ref: format!("console.operations.{operation_id}.label"),
-        description_ref: Some(format!("console.operations.{operation_id}.description")),
-        order,
-        routes: routes_owned_by(bindings, operation_id),
-        authorization: ConsoleAuthorization::Simple,
-    });
-    let data_model_simple_operations = [
-        (DATA_SOURCES_LIST_OPERATION_ID, 300),
-        (DATA_SOURCES_CREATE_OPERATION_ID, 310),
-        (DATA_SOURCES_DEFAULTS_UPDATE_OPERATION_ID, 320),
-        (DATA_SOURCES_VALIDATE_OPERATION_ID, 330),
-        (DATA_SOURCES_DISCOVER_OPERATION_ID, 340),
-        (DATA_SOURCES_PREVIEW_OPERATION_ID, 350),
-        (DATA_SOURCES_MAP_TO_MODEL_OPERATION_ID, 360),
-        (MODEL_DEFINITIONS_LIST_OPERATION_ID, 370),
-        (MODEL_DEFINITIONS_CREATE_OPERATION_ID, 380),
-        (MODEL_DEFINITIONS_UPDATE_OPERATION_ID, 390),
-        (MODEL_DEFINITIONS_DELETE_OPERATION_ID, 400),
-        (MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID, 410),
-        (MODEL_FIELDS_CREATE_OPERATION_ID, 420),
-        (MODEL_FIELDS_UPDATE_OPERATION_ID, 430),
-        (MODEL_FIELDS_DELETE_OPERATION_ID, 440),
-        (MODEL_SCOPE_GRANTS_LIST_OPERATION_ID, 450),
-        (MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID, 460),
-        (MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID, 470),
-        (MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID, 480),
-    ]
-    .into_iter()
-    .map(|(operation_id, order)| ConsoleOperationRegistration {
-        operation_id: operation_id.to_string(),
-        owner: core_owner.clone(),
-        lifecycle: SettingsFeatureLifecycle::Active,
-        policy_group: ConsolePolicyGroup::SettingsFeature(
-            SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID.to_string(),
-        ),
-        label_ref: format!("console.operations.{operation_id}.label"),
-        description_ref: Some(format!("console.operations.{operation_id}.description")),
-        order,
-        routes: routes_owned_by(bindings, operation_id),
-        authorization: ConsoleAuthorization::Simple,
-    });
-    let data_sources_view_operation = ConsoleOperationRegistration {
-        operation_id: DATA_SOURCES_VIEW_OPERATION_ID.to_string(),
-        owner: core_owner.clone(),
-        lifecycle: SettingsFeatureLifecycle::Active,
-        policy_group: ConsolePolicyGroup::SettingsFeature(
-            SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID.to_string(),
-        ),
-        label_ref: "console.operations.data_sources.view.label".to_string(),
-        description_ref: Some("console.operations.data_sources.view.description".to_string()),
-        order: 490,
-        routes: routes_owned_by(bindings, DATA_SOURCES_VIEW_OPERATION_ID),
-        authorization: ConsoleAuthorization::ResourceAction {
-            resource_code: DATA_SOURCE_INSTANCES_RESOURCE_CODE.to_string(),
-            action_code: DATA_SOURCES_VIEW_ACTION_CODE.to_string(),
-        },
-    };
-    let data_source_secret_rotate_operation = ConsoleOperationRegistration {
-        operation_id: DATA_SOURCES_SECRET_ROTATE_OPERATION_ID.to_string(),
-        owner: core_owner.clone(),
-        lifecycle: SettingsFeatureLifecycle::Active,
-        policy_group: ConsolePolicyGroup::Other("other.data-sources".to_string()),
-        label_ref: "console.operations.data_sources.secret.rotate.label".to_string(),
-        description_ref: Some(
-            "console.operations.data_sources.secret.rotate.description".to_string(),
-        ),
-        order: 500,
-        routes: routes_owned_by(bindings, DATA_SOURCES_SECRET_ROTATE_OPERATION_ID),
-        authorization: ConsoleAuthorization::Simple,
-    };
-    let file_settings_simple_operations = [
-        (FILE_STORAGES_LIST_OPERATION_ID, 600),
-        (FILE_STORAGES_CREATE_OPERATION_ID, 610),
-        (FILE_STORAGES_UPDATE_OPERATION_ID, 620),
-        (FILE_STORAGES_DELETE_OPERATION_ID, 630),
-        (FILE_TABLES_LIST_OPERATION_ID, 640),
-        (FILE_TABLES_CREATE_OPERATION_ID, 650),
-        (FILE_TABLES_STORAGE_BIND_OPERATION_ID, 660),
-        (FILE_TABLES_DELETE_OPERATION_ID, 670),
-    ]
-    .into_iter()
-    .map(|(operation_id, order)| ConsoleOperationRegistration {
-        operation_id: operation_id.to_string(),
-        owner: core_owner.clone(),
-        lifecycle: SettingsFeatureLifecycle::Active,
-        policy_group: ConsolePolicyGroup::SettingsFeature(
-            SYSTEM_FILES_SETTINGS_FEATURE_ID.to_string(),
-        ),
-        label_ref: format!("console.operations.{operation_id}.label"),
-        description_ref: Some(format!("console.operations.{operation_id}.description")),
-        order,
-        routes: routes_owned_by(bindings, operation_id),
-        authorization: ConsoleAuthorization::Simple,
-    });
-    let file_other_simple_operations = [
-        (FILES_UPLOAD_OPERATION_ID, 680),
-        (FILES_CONTENT_DOWNLOAD_OPERATION_ID, 690),
-    ]
-    .into_iter()
-    .map(|(operation_id, order)| ConsoleOperationRegistration {
-        operation_id: operation_id.to_string(),
-        owner: core_owner.clone(),
-        lifecycle: SettingsFeatureLifecycle::Active,
-        policy_group: ConsolePolicyGroup::Other("other.files".to_string()),
-        label_ref: format!("console.operations.{operation_id}.label"),
-        description_ref: Some(format!("console.operations.{operation_id}.description")),
-        order,
-        routes: routes_owned_by(bindings, operation_id),
-        authorization: ConsoleAuthorization::Simple,
-    });
-    let known_operation_ids = BTreeSet::from([
-        CORE_AUTHENTICATED_OPERATION_ID,
-        APPLICATIONS_CREATE_OPERATION_ID,
-        APPLICATIONS_VIEW_OPERATION_ID,
-        APPLICATIONS_UPDATE_OPERATION_ID,
-        APPLICATIONS_DELETE_OPERATION_ID,
-        APPLICATIONS_PUBLISH_OPERATION_ID,
-        APPLICATIONS_API_SET_ENABLED_OPERATION_ID,
-        APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID,
-        APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID,
-        APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID,
-        APPLICATIONS_RUN_OPERATION_ID,
-        APPLICATIONS_LOGS_EXPORT_OPERATION_ID,
-        APPLICATIONS_LOGS_IMPORT_OPERATION_ID,
-        DATA_SOURCES_LIST_OPERATION_ID,
-        DATA_SOURCES_CREATE_OPERATION_ID,
-        DATA_SOURCES_DEFAULTS_UPDATE_OPERATION_ID,
-        DATA_SOURCES_VALIDATE_OPERATION_ID,
-        DATA_SOURCES_DISCOVER_OPERATION_ID,
-        DATA_SOURCES_PREVIEW_OPERATION_ID,
-        DATA_SOURCES_MAP_TO_MODEL_OPERATION_ID,
-        DATA_SOURCES_VIEW_OPERATION_ID,
-        DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
-        MODEL_DEFINITIONS_LIST_OPERATION_ID,
-        MODEL_DEFINITIONS_CREATE_OPERATION_ID,
-        MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
-        MODEL_DEFINITIONS_DELETE_OPERATION_ID,
-        MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID,
-        MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID,
-        MODEL_FIELDS_CREATE_OPERATION_ID,
-        MODEL_FIELDS_UPDATE_OPERATION_ID,
-        MODEL_FIELDS_DELETE_OPERATION_ID,
-        MODEL_SCOPE_GRANTS_LIST_OPERATION_ID,
-        MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID,
-        MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID,
-        FILES_UPLOAD_OPERATION_ID,
-        FILES_CONTENT_DOWNLOAD_OPERATION_ID,
-        FILE_STORAGES_LIST_OPERATION_ID,
-        FILE_STORAGES_CREATE_OPERATION_ID,
-        FILE_STORAGES_UPDATE_OPERATION_ID,
-        FILE_STORAGES_DELETE_OPERATION_ID,
-        FILE_TABLES_LIST_OPERATION_ID,
-        FILE_TABLES_CREATE_OPERATION_ID,
-        FILE_TABLES_STORAGE_BIND_OPERATION_ID,
-        FILE_TABLES_DELETE_OPERATION_ID,
-    ]);
-    let mut generic_operation_routes = BTreeMap::<String, Vec<ConsoleRouteBinding>>::new();
-    for binding in bindings {
-        let ConsoleRouteOwnership::ConsoleOperation(operation_id) = &binding.ownership else {
-            continue;
-        };
-        if known_operation_ids.contains(operation_id.as_str()) {
-            continue;
-        }
-        generic_operation_routes
-            .entry(operation_id.clone())
-            .or_default()
-            .push(binding.route.clone());
-    }
-    let generic_operations = generic_operation_routes
-        .into_iter()
+    let registrations = CORE_CONSOLE_OPERATION_SPECS
+        .iter()
         .enumerate()
-        .map(|(index, (operation_id, mut routes))| {
-            routes.sort();
-            let policy_group = generic_operation_policy_group(
-                settings_features,
-                &operation_id,
-                &routes,
-            )?;
-            let (label_ref, description_ref) = match &policy_group {
-                ConsolePolicyGroup::SettingsFeature(feature_id) => {
-                    let feature = settings_features
-                        .inventory()
-                        .features
-                        .iter()
-                        .find(|feature| feature.feature_id == *feature_id)
-                        .ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "compiled operation references missing SettingsFeature: {feature_id}"
-                            )
-                        })?;
-                    (feature.console_surface.label_key.clone(), None)
-                }
-                ConsolePolicyGroup::Other(_) => (
-                    format!("console.operations.{operation_id}.label"),
-                    Some(format!("console.operations.{operation_id}.description")),
-                ),
-            };
-            Ok(ConsoleOperationRegistration {
-                operation_id,
-                owner: core_owner.clone(),
-                lifecycle: SettingsFeatureLifecycle::Active,
-                policy_group,
-                label_ref,
-                description_ref,
-                order: 1_000 + index as i32,
-                routes,
-                authorization: ConsoleAuthorization::Simple,
-            })
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?;
+        .map(|(order, spec)| ConsoleOperationRegistration {
+            operation_id: spec.operation_id.to_string(),
+            owner: core_owner.clone(),
+            lifecycle: SettingsFeatureLifecycle::Active,
+            policy_group: policy_group_for_spec(spec),
+            label_ref: spec.label_ref.to_string(),
+            description_ref: Some(spec.description_ref.to_string()),
+            order: order as i32,
+            routes: routes_for_core_operation_spec(spec, bindings),
+            authorization: authorization_for_spec(spec),
+        });
     let applications_resource = ResourceAccessRegistration {
         resource_code: APPLICATIONS_RESOURCE_CODE.to_string(),
         owner: core_owner.clone(),
@@ -790,15 +486,7 @@ pub fn compile_migrated_core_console_operation_registry(
     };
     let registry = ConsoleOperationRegistry::compile(
         settings_features,
-        std::iter::once(authenticated_operation)
-            .chain(applications_operations)
-            .chain(applications_simple_operations)
-            .chain(data_model_simple_operations)
-            .chain(std::iter::once(data_sources_view_operation))
-            .chain(std::iter::once(data_source_secret_rotate_operation))
-            .chain(file_settings_simple_operations)
-            .chain(file_other_simple_operations)
-            .chain(generic_operations),
+        registrations,
         [applications_resource, data_source_instances_resource],
     )?;
     registry.validate_console_route_coverage(bindings.iter().cloned())?;
@@ -819,7 +507,9 @@ mod tests {
 
     use access_control::ConsoleRouteOwnership;
 
-    use super::{migrated_core_console_route_assembly, ConsoleRouteAssembly};
+    use super::{
+        console_health_route_assembly, migrated_core_console_route_assembly, ConsoleRouteAssembly,
+    };
 
     fn route_keys<S>(assembly: &ConsoleRouteAssembly<S>) -> BTreeSet<(String, String, String)>
     where
@@ -846,6 +536,7 @@ mod tests {
     #[test]
     fn migrated_assembly_contains_every_console_router_owner_assembly() {
         let expected = ConsoleRouteAssembly::new()
+            .merge(console_health_route_assembly())
             .merge(crate::routes::session::route_assembly())
             .merge(crate::routes::me::route_assembly())
             .merge(crate::routes::navigation::route_assembly())
