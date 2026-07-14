@@ -98,8 +98,8 @@ async fn runtime_model_routes_reject_role_data_policy_disabled_actions() {
 }
 
 #[tokio::test]
-async fn runtime_model_routes_intersect_role_policy_with_persisted_scope_all_grant_for_session_actors()
- {
+async fn runtime_model_routes_intersect_role_policy_with_persisted_scope_all_grant_for_session_actors(
+) {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let model_id = create_orders_model(&app, &root_cookie, &root_csrf).await;

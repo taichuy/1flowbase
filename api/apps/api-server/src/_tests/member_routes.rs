@@ -1,6 +1,6 @@
 use crate::_tests::support::{login_and_capture_cookie, test_app};
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use serde_json::json;
@@ -524,13 +524,11 @@ async fn delete_member_physically_removes_identity_records() {
             .unwrap(),
     )
     .unwrap();
-    assert!(
-        !list_payload["data"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|member| member["id"] == member_id)
-    );
+    assert!(!list_payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|member| member["id"] == member_id));
 
     let session_response = app
         .clone()

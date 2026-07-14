@@ -1,11 +1,11 @@
 use crate::_tests::support::{login_and_capture_cookie, test_app};
 use axum::{
-    Router,
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
+    Router,
 };
-use serde_json::{Value, json};
-use tokio::time::{Duration, timeout};
+use serde_json::{json, Value};
+use tokio::time::{timeout, Duration};
 use tower::ServiceExt;
 
 async fn response_json(response: axum::response::Response) -> Value {

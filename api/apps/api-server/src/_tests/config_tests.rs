@@ -1,7 +1,6 @@
 use api_server::{
-    DEFAULT_API_SERVER_ADDR,
     config::{ApiConfig, ApiEnvironment},
-    parse_bind_addr,
+    parse_bind_addr, DEFAULT_API_SERVER_ADDR,
 };
 use std::path::PathBuf;
 
@@ -95,11 +94,9 @@ fn api_config_rejects_invalid_database_pool_max_connections() {
     env.push(("API_DATABASE_POOL_MAX_CONNECTIONS", "0"));
     let error = ApiConfig::from_env_map(&env).unwrap_err();
 
-    assert!(
-        error
-            .to_string()
-            .contains("API_DATABASE_POOL_MAX_CONNECTIONS")
-    );
+    assert!(error
+        .to_string()
+        .contains("API_DATABASE_POOL_MAX_CONNECTIONS"));
 }
 
 #[test]
@@ -553,11 +550,9 @@ fn api_config_rejects_invalid_official_plugin_signature_required_override() {
     env.push(("API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED", "sometimes"));
     let error = ApiConfig::from_env_map(&env).unwrap_err();
 
-    assert!(
-        error
-            .to_string()
-            .contains("API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED")
-    );
+    assert!(error
+        .to_string()
+        .contains("API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED"));
 }
 
 #[test]

@@ -221,8 +221,8 @@ async fn startup_loader_scans_dropins_and_pending_restart_rows_before_serving() 
 }
 
 #[tokio::test]
-async fn startup_loader_does_not_use_another_node_host_extension_path_when_current_artifact_is_missing()
- {
+async fn startup_loader_does_not_use_another_node_host_extension_path_when_current_artifact_is_missing(
+) {
     let (base_state, _database_url) = test_api_state_with_database_url().await;
     let other_node_root =
         std::env::temp_dir().join(format!("host-extension-other-node-{}", Uuid::now_v7()));
@@ -302,13 +302,11 @@ async fn installed_host_extension_without_host_extension_yaml_becomes_load_faile
         artifact.artifact_status,
         PluginArtifactInstanceStatus::LoadFailed
     );
-    assert!(
-        artifact
-            .last_error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("host-extension.yaml")
-    );
+    assert!(artifact
+        .last_error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("host-extension.yaml"));
 
     let _ = fs::remove_dir_all(pending_root);
 }
@@ -359,13 +357,11 @@ migrations: []
     .unwrap()
     .expect("current node artifact should be recorded");
     assert_eq!(artifact.runtime_status, PluginRuntimeStatus::LoadFailed);
-    assert!(
-        artifact
-            .last_error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("schema_version")
-    );
+    assert!(artifact
+        .last_error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("schema_version"));
 
     let _ = fs::remove_dir_all(pending_root);
 }
@@ -398,13 +394,11 @@ async fn entry_file_existence_alone_is_insufficient() {
     .unwrap()
     .expect("current node artifact should be recorded");
     assert_eq!(artifact.runtime_status, PluginRuntimeStatus::LoadFailed);
-    assert!(
-        artifact
-            .last_error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("native library")
-    );
+    assert!(artifact
+        .last_error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("native library"));
 
     let _ = fs::remove_dir_all(pending_root);
 }

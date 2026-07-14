@@ -1,12 +1,10 @@
 use super::*;
 
 fn assert_no_model_level_api_exposure(payload: &serde_json::Value) {
-    assert!(
-        !payload["data"]
-            .as_object()
-            .expect("data response object")
-            .contains_key("api_exposure_status")
-    );
+    assert!(!payload["data"]
+        .as_object()
+        .expect("data response object")
+        .contains_key("api_exposure_status"));
 }
 
 #[tokio::test]
@@ -154,11 +152,9 @@ async fn create_model_route_rejects_invalid_status_without_creating_model() {
     )
     .unwrap();
     let models = listed["data"].as_array().unwrap();
-    assert!(
-        !models
-            .iter()
-            .any(|model| model["code"] == json!("invalid_status_orders"))
-    );
+    assert!(!models
+        .iter()
+        .any(|model| model["code"] == json!("invalid_status_orders")));
 }
 
 #[tokio::test]
@@ -224,12 +220,10 @@ async fn model_definition_routes_return_status_without_model_level_api_exposure(
         .find(|model| model["id"].as_str() == Some(&model_id))
         .unwrap();
     assert_eq!(ready["status"], json!("published"));
-    assert!(
-        !ready
-            .as_object()
-            .unwrap()
-            .contains_key("api_exposure_status")
-    );
+    assert!(!ready
+        .as_object()
+        .unwrap()
+        .contains_key("api_exposure_status"));
 }
 
 #[tokio::test]

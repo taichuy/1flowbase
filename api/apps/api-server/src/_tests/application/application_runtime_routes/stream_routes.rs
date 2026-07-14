@@ -58,13 +58,11 @@ async fn get_runtime_debug_stream_returns_trusted_parts() {
     assert_eq!(response.status(), StatusCode::OK);
     let payload: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert!(
-        payload["data"]["parts"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|part| part["trust_level"] == "host_fact")
-    );
+    assert!(payload["data"]["parts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|part| part["trust_level"] == "host_fact"));
 }
 
 #[tokio::test]
@@ -290,12 +288,10 @@ async fn get_debug_variable_snapshot_restores_latest_preview_inputs_and_outputs(
     assert!(document_hash.starts_with("sha256:"));
     let debug_session_id = payload["data"]["debug_session_id"].as_str().unwrap();
     assert_eq!(debug_session_id, "");
-    assert!(
-        payload["data"]["document_hash"]
-            .as_str()
-            .unwrap()
-            .starts_with("sha256:")
-    );
+    assert!(payload["data"]["document_hash"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
     assert_eq!(payload["data"]["snapshot_completeness"], "complete");
     assert_eq!(
         payload["data"]["latest_run_scope"],
@@ -385,16 +381,14 @@ async fn external_agent_opaque_boundary_keeps_external_trust_level() {
     assert_eq!(response.status(), StatusCode::OK);
     let payload: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert!(
-        payload["data"]["parts"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|part| {
-                part["trust_level"] == "external_opaque"
-                    && part["payload"]["event_type"] == "external_agent_opaque_boundary_marked"
-            })
-    );
+    assert!(payload["data"]["parts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|part| {
+            part["trust_level"] == "external_opaque"
+                && part["payload"]["event_type"] == "external_agent_opaque_boundary_marked"
+        }));
 }
 
 #[tokio::test]

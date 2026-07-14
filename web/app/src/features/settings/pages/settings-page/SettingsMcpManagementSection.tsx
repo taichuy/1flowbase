@@ -28,7 +28,6 @@ export function SettingsMcpManagementSection({
   if (catalogQuery.isLoading || interfaceQuery.isLoading) {
     return (
       <SettingsSectionSurface
-        title={i18nText('settings', 'auto.mcp_management')}
         heightMode="fill"
       >
         <Spin />
@@ -44,7 +43,6 @@ export function SettingsMcpManagementSection({
   ) {
     return (
       <SettingsSectionSurface
-        title={i18nText('settings', 'auto.mcp_management')}
         heightMode="fill"
       >
         <Alert
@@ -57,7 +55,6 @@ export function SettingsMcpManagementSection({
 
   return (
     <SettingsSectionSurface
-      title={i18nText('settings', 'auto.mcp_management')}
       heightMode="fill"
     >
       <McpManagementPanel

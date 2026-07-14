@@ -3,10 +3,10 @@ use crate::_tests::support::{
     replace_role_permissions, test_api_state_with_database_url, test_config,
 };
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::ServiceExt;
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -69,13 +69,11 @@ async fn host_infrastructure_cache_routes_reveal_and_clear_with_audit() {
         overview_payload["data"]["capabilities"]["reveal_value"],
         true
     );
-    assert!(
-        overview_payload["data"]["domains"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|domain| domain["domain_code"] == "application-logs")
-    );
+    assert!(overview_payload["data"]["domains"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|domain| domain["domain_code"] == "application-logs"));
 
     let entries_response = app
         .clone()
@@ -240,13 +238,11 @@ async fn host_infrastructure_cache_feature_redacts_lists_and_allows_explicit_rev
         .unwrap();
     assert_eq!(entries_response.status(), StatusCode::OK);
     let entries_payload = response_json(entries_response).await;
-    assert!(
-        entries_payload["data"]["entries"][0]
-            .as_object()
-            .unwrap()
-            .get("value")
-            .is_none()
-    );
+    assert!(entries_payload["data"]["entries"][0]
+        .as_object()
+        .unwrap()
+        .get("value")
+        .is_none());
 
     let reveal_response = app
         .clone()

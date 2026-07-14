@@ -2,10 +2,10 @@ use std::{fs, path::Path};
 
 use crate::_tests::support::{login_and_capture_cookie, test_app, write_provider_manifest_v2};
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::ServiceExt;
 
 fn create_provider_fixture(root: &Path) {

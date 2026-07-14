@@ -8,9 +8,9 @@ use crate::{
 };
 use async_trait::async_trait;
 use axum::{
-    Router,
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
+    Router,
 };
 use control_plane::{
     application_public_api::compat::openai::run_id_from_response_id,
@@ -22,10 +22,10 @@ use control_plane::{
         RuntimeEventSubscription, RuntimeEventTrimPolicy, UpdateFlowRunInput,
     },
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::time::{Duration, timeout};
+use tokio::time::{timeout, Duration};
 use tower::ServiceExt;
 
 struct DropTerminalRuntimeEventStream {

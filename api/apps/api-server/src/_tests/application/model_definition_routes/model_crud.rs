@@ -70,12 +70,10 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
     )
     .unwrap();
     assert_eq!(created["data"]["status"], json!("published"));
-    assert!(
-        !created["data"]
-            .as_object()
-            .unwrap()
-            .contains_key("api_exposure_status")
-    );
+    assert!(!created["data"]
+        .as_object()
+        .unwrap()
+        .contains_key("api_exposure_status"));
     assert_eq!(created["data"]["runtime_availability"], json!("available"));
     assert_eq!(created["data"]["builtin_kind"], serde_json::Value::Null);
     assert_eq!(created["data"]["capabilities"]["can_delete"], json!(true));

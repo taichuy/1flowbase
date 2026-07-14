@@ -134,11 +134,9 @@ async fn model_providers_feature_only_lists_catalog_and_redacted_instances() {
         instances_payload["data"][0]["status"].as_str(),
         Some("draft")
     );
-    assert!(
-        !instances_payload
-            .to_string()
-            .contains("feature-super-secret")
-    );
+    assert!(!instances_payload
+        .to_string()
+        .contains("feature-super-secret"));
 
     let reveal = app
         .clone()
@@ -384,13 +382,11 @@ async fn model_providers_settings_routes_do_not_take_over_business_consumers() {
         assert_eq!(response.status(), StatusCode::OK, "{path}");
         let payload: Value = response_json(response).await;
         if path.contains("official-catalog") {
-            assert!(
-                payload["data"]["entries"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|entry| entry["plugin_type"] == "model_provider")
-            );
+            assert!(payload["data"]["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|entry| entry["plugin_type"] == "model_provider"));
         }
     }
 

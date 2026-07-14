@@ -99,6 +99,9 @@ describe('ApplicationManagementPanel', () => {
     );
 
     expect(await screen.findByText('Daily Report')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: '应用管理' })
+    ).not.toBeInTheDocument();
     expect(screen.getByText('Generate a report every day')).toBeInTheDocument();
     expect(screen.getAllByText('Workflow')).toHaveLength(2);
     expect(screen.getByText('定时任务')).toBeInTheDocument();

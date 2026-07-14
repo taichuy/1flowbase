@@ -1,9 +1,9 @@
 use crate::_tests::support::{login_and_capture_cookie, test_app};
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::ServiceExt;
 
 #[tokio::test]
@@ -69,11 +69,9 @@ async fn application_routes_delete_application_and_remove_it_from_list() {
     assert_eq!(list.status(), StatusCode::OK);
     let list_body = to_bytes(list.into_body(), usize::MAX).await.unwrap();
     let list_payload: Value = serde_json::from_slice(&list_body).unwrap();
-    assert!(
-        list_payload["data"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|application| application["id"].as_str() != Some(&application_id))
-    );
+    assert!(list_payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|application| application["id"].as_str() != Some(&application_id)));
 }

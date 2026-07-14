@@ -643,7 +643,7 @@ export function RolePermissionPanel({
   ]);
 
   return (
-    <SettingsSectionSurface title={i18nText("settings", "auto.permission_management")} hideHeader heightMode="fill">
+    <SettingsSectionSurface heightMode="fill">
       <div
         style={{
           display: 'flex',

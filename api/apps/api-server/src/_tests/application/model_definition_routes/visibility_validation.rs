@@ -89,13 +89,11 @@ async fn model_definition_routes_require_data_models_feature() {
             .unwrap(),
     )
     .unwrap();
-    assert!(
-        allowed_payload["data"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|model| model["id"].as_str() == Some(&model_id))
-    );
+    assert!(allowed_payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|model| model["id"].as_str() == Some(&model_id)));
 
     let (blocked_cookie, _) = login_and_capture_cookie(&app, "blocked-1", "temp-pass").await;
     let blocked_response = app

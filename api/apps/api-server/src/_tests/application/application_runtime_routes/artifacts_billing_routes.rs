@@ -647,12 +647,10 @@ async fn application_runtime_routes_flow_output_offloads_answer_field_without_co
     assert_eq!(flow_output["answer"]["__runtime_debug_artifact"], true);
     assert_eq!(flow_output["answer"]["artifact_scope"], json!("field"));
     assert_eq!(flow_output["answer"]["field_path"], json!(["answer"]));
-    assert!(
-        flow_output["answer"]["preview"]
-            .as_str()
-            .expect("answer preview should be a string")
-            .contains("answer:")
-    );
+    assert!(flow_output["answer"]["preview"]
+        .as_str()
+        .expect("answer preview should be a string")
+        .contains("answer:"));
     let answer_artifact_ref = flow_output["answer"]["artifact_ref"]
         .as_str()
         .expect("answer artifact ref should exist");
@@ -784,12 +782,10 @@ async fn application_runtime_routes_waiting_run_detail_reads_persisted_llm_round
 
     let llm_rounds = llm_rounds.as_array().unwrap();
     assert!(!llm_rounds.is_empty());
-    assert!(
-        llm_rounds[0]["assistant"]["content"]
-            .as_str()
-            .unwrap()
-            .contains("请总结退款政策")
-    );
+    assert!(llm_rounds[0]["assistant"]["content"]
+        .as_str()
+        .unwrap()
+        .contains("请总结退款政策"));
 
     let detail =
         wait_for_run_detail(&app, &cookie, &application_id, run_id, &["waiting_human"]).await;

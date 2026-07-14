@@ -473,7 +473,7 @@ export function FileManagementPanel({
   ];
 
   return (
-    <SettingsSectionSurface title={i18nText("settings", "auto.file_management")} hideHeader heightMode="fill">
+    <SettingsSectionSurface heightMode="fill">
       <div className="file-management-panel">
         {managementTabs.length > 0 ? (
           <section className="fm-section fm-tabs-section">

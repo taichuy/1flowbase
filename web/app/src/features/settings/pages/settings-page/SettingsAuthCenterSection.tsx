@@ -591,8 +591,6 @@ export function SettingsAuthCenterSection() {
 
   return (
     <SettingsSectionSurface
-      title={i18nText('settings', 'auto.auth_center')}
-      hideHeader
       heightMode="fill"
     >
       {overviewQuery.isLoading ? <LoadingState compact /> : null}

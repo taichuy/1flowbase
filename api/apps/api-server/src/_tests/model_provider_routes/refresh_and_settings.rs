@@ -118,14 +118,12 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
             .get("404")
             .is_some()
     );
-    assert!(
-        paths
-            .get("/api/console/model-providers/{id}/balance")
-            .and_then(|path| path.get("get"))
-            .is_some()
-    );
-    let main_instance_operation = &paths["/api/console/settings/model-providers/providers/{provider_code}/main-instance"]
-        ["put"];
+    assert!(paths
+        .get("/api/console/model-providers/{id}/balance")
+        .and_then(|path| path.get("get"))
+        .is_some());
+    let main_instance_operation = &paths
+        ["/api/console/settings/model-providers/providers/{provider_code}/main-instance"]["put"];
     assert!(main_instance_operation["responses"].get("404").is_some());
     let request_schema_name = main_instance_operation["requestBody"]["content"]["application/json"]
         ["schema"]["$ref"]
@@ -137,34 +135,26 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         schemas[request_schema_name]["properties"]["auto_include_new_instances"]["type"].as_str(),
         Some("boolean")
     );
-    assert!(
-        schemas[request_schema_name]["properties"]
-            .get("model_distribution_rules")
-            .is_some()
-    );
-    assert!(
-        schemas[request_schema_name]
-            .get("properties")
-            .and_then(|properties| properties.get("routing_mode"))
-            .is_none()
-    );
+    assert!(schemas[request_schema_name]["properties"]
+        .get("model_distribution_rules")
+        .is_some());
+    assert!(schemas[request_schema_name]
+        .get("properties")
+        .and_then(|properties| properties.get("routing_mode"))
+        .is_none());
     assert_eq!(
         schemas["ModelProviderInstanceResponse"]["properties"]["included_in_main"]["type"].as_str(),
         Some("boolean")
     );
-    assert!(
-        schemas
-            .get("ModelProviderBalanceResponse")
-            .and_then(|schema| schema.get("properties"))
-            .and_then(|properties| properties.get("balance_infos"))
-            .is_some()
-    );
-    assert!(
-        schemas["ModelProviderInstanceResponse"]
-            .get("properties")
-            .and_then(|properties| properties.get("is_primary"))
-            .is_none()
-    );
+    assert!(schemas
+        .get("ModelProviderBalanceResponse")
+        .and_then(|schema| schema.get("properties"))
+        .and_then(|properties| properties.get("balance_infos"))
+        .is_some());
+    assert!(schemas["ModelProviderInstanceResponse"]
+        .get("properties")
+        .and_then(|properties| properties.get("is_primary"))
+        .is_none());
     assert_eq!(
         schemas["ModelProviderOptionResponse"]["properties"]["main_instance"]["$ref"]
             .as_str()
@@ -177,22 +167,18 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
             .and_then(|value| value.split('/').next_back()),
         Some("ModelProviderOptionGroupResponse")
     );
-    assert!(
-        schemas["ModelProviderOptionGroupResponse"]["properties"]
-            .get("distribution_rule")
-            .is_some()
-    );
+    assert!(schemas["ModelProviderOptionGroupResponse"]["properties"]
+        .get("distribution_rule")
+        .is_some());
     assert_eq!(
         schema_ref_name(&schemas["ModelProviderOptionResponse"]["properties"]["parameter_form"])
             .as_deref(),
         Some("PluginFormSchemaResponse")
     );
-    assert!(
-        schemas["ProviderModelDescriptorResponse"]
-            .get("properties")
-            .and_then(|properties| properties.get("parameter_form"))
-            .is_none()
-    );
+    assert!(schemas["ProviderModelDescriptorResponse"]
+        .get("properties")
+        .and_then(|properties| properties.get("parameter_form"))
+        .is_none());
     let override_schema =
         &schemas["ConfiguredModelResponse"]["properties"]["context_window_override_tokens"];
     assert!(
@@ -221,12 +207,10 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
                     .iter()
                     .any(|item| item["type"].as_str() == Some("boolean")))
     );
-    assert!(
-        schemas["ModelProviderOptionResponse"]
-            .get("properties")
-            .and_then(|properties| properties.get("effective_instance_id"))
-            .is_none()
-    );
+    assert!(schemas["ModelProviderOptionResponse"]
+        .get("properties")
+        .and_then(|properties| properties.get("effective_instance_id"))
+        .is_none());
 
     let get_main_instance = app
         .clone()
@@ -473,11 +457,9 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
             .len(),
         1
     );
-    assert!(
-        options_payload["data"]["providers"][0]
-            .get("effective_instance_id")
-            .is_none()
-    );
+    assert!(options_payload["data"]["providers"][0]
+        .get("effective_instance_id")
+        .is_none());
     assert_eq!(
         options_payload["data"]["providers"][0]["icon"].as_str(),
         Some("/api/console/model-providers/providers/fixture_provider/icon")

@@ -105,7 +105,6 @@ vi.mock('@scalar/api-reference-react', () => ({
 import { AppProviders } from '../../../app/AppProviders';
 import { AppRouterProvider } from '../../../app/router';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
-import { SettingsSectionSurface } from '../components/SettingsSectionSurface';
 
 const settingsRouteRecords = {
   docs: {
@@ -270,31 +269,6 @@ describe('settings section surface', () => {
     });
     fileManagementApi.fetchSettingsFileStorages.mockResolvedValue([]);
     fileManagementApi.fetchSettingsFileTables.mockResolvedValue([]);
-  });
-
-  test('hides the section hero header by default', () => {
-    render(
-      <SettingsSectionSurface title="Section title">
-        <div>Section body</div>
-      </SettingsSectionSurface>
-    );
-
-    expect(screen.getByText('Section body')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('heading', { name: 'Section title' })
-    ).not.toBeInTheDocument();
-  });
-
-  test('can still render the section hero header explicitly', () => {
-    render(
-      <SettingsSectionSurface title="Section title" hideHeader={false}>
-        <div>Section body</div>
-      </SettingsSectionSurface>
-    );
-
-    expect(
-      screen.getByRole('heading', { name: 'Section title' })
-    ).toBeInTheDocument();
   });
 
   test.each([

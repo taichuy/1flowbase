@@ -462,6 +462,12 @@ function getStyleBoundaryCommonResponse(
             surface_key: 'model-providers',
             path: '/settings/model-providers/providers',
             surface_kind: 'system'
+          },
+          {
+            route_id: 'settings.applications',
+            surface_key: 'applications',
+            path: '/settings/applications',
+            surface_kind: 'system'
           }
         ],
         navigation_items: [
@@ -496,6 +502,14 @@ function getStyleBoundaryCommonResponse(
             label_key: 'auto.model_providers',
             navigation_slot: 'settings',
             order: 1
+          },
+          {
+            item_id: 'applications',
+            route_id: 'settings.applications',
+            parent_item_id: 'settings',
+            label_key: 'auto.application_management',
+            navigation_slot: 'settings',
+            order: 2
           }
         ],
         permission_bindings: []
@@ -704,6 +718,60 @@ export function seedStyleBoundarySettingsFetch() {
           headers: { 'content-type': 'application/json' }
         }
       );
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/settings/applications'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          items: [
+            {
+              id: 'boundary-workflow',
+              application_type: 'workflow',
+              workflow_trigger_type: 'schedule',
+              name: 'Boundary Workflow',
+              description: 'Style boundary application',
+              icon: null,
+              icon_type: null,
+              icon_background: null,
+              created_by: 'user-1',
+              created_by_display_name: 'Root',
+              created_at: '2026-07-15T00:00:00Z',
+              updated_at: '2026-07-15T00:00:00Z',
+              tags: [{ id: 'tag-boundary', name: 'Boundary' }],
+              publication_status: 'published'
+            }
+          ],
+          total: 1,
+          page: 1,
+          page_size: 20
+        },
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/applications/catalog'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          types: [
+            { value: 'agent_flow', label: 'AgentFlow' },
+            { value: 'workflow', label: 'Workflow' }
+          ],
+          tags: [
+            {
+              id: 'tag-boundary',
+              name: 'Boundary',
+              application_count: 1
+            }
+          ]
+        },
+        meta: null
+      });
     }
 
     if (url.includes('/api/console/docs/categories/console/operations')) {

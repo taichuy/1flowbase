@@ -1,10 +1,10 @@
 use crate::_tests::support::{login_and_capture_cookie, test_app};
 use axum::{
-    Router,
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
+    Router,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::ServiceExt;
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -166,13 +166,11 @@ async fn application_api_docs_category_and_operation_specs_use_public_paths_only
     assert_eq!(spec.status(), StatusCode::OK);
     let spec_payload = response_json(spec).await;
     assert!(spec_payload["paths"].get("/v1/chat/completions").is_some());
-    assert!(
-        spec_payload["paths"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .all(|path| !path.contains("application_id"))
-    );
+    assert!(spec_payload["paths"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .all(|path| !path.contains("application_id")));
     assert_eq!(
         spec_payload["x-1flowbase-application"]["api_enabled"],
         json!(true)
@@ -238,8 +236,8 @@ async fn application_api_docs_list_models_and_streaming_contracts() {
         .unwrap();
     assert_eq!(models_spec.status(), StatusCode::OK);
     let models_payload = response_json(models_spec).await;
-    let model_list_response = &models_payload["paths"]["/v1/models"]["get"]["responses"]["200"]["content"]
-        ["application/json"]["schema"];
+    let model_list_response = &models_payload["paths"]["/v1/models"]["get"]["responses"]["200"]
+        ["content"]["application/json"]["schema"];
     assert_eq!(model_list_response["required"], json!(["object", "data"]));
     assert_eq!(
         model_list_response["properties"]["data"]["items"]["properties"]["id"]["type"],
@@ -261,8 +259,8 @@ async fn application_api_docs_list_models_and_streaming_contracts() {
         .unwrap();
     assert_eq!(native_spec.status(), StatusCode::OK);
     let native_payload = response_json(native_spec).await;
-    let native_streaming_schema = &native_payload["paths"]["/api/agent/v1/runs"]["post"]["responses"]
-        ["201"]["content"]["text/event-stream"]["schema"];
+    let native_streaming_schema = &native_payload["paths"]["/api/agent/v1/runs"]["post"]
+        ["responses"]["201"]["content"]["text/event-stream"]["schema"];
     assert_eq!(
         native_streaming_schema["x-1flowbase-heartbeat"],
         json!(true)
@@ -296,8 +294,8 @@ async fn application_api_docs_list_models_and_streaming_contracts() {
         .unwrap();
     assert_eq!(openai_spec.status(), StatusCode::OK);
     let openai_payload = response_json(openai_spec).await;
-    let openai_streaming_schema = &openai_payload["paths"]["/v1/chat/completions"]["post"]["responses"]
-        ["200"]["content"]["text/event-stream"]["schema"];
+    let openai_streaming_schema = &openai_payload["paths"]["/v1/chat/completions"]["post"]
+        ["responses"]["200"]["content"]["text/event-stream"]["schema"];
     assert_eq!(
         openai_streaming_schema["x-1flowbase-heartbeat"],
         json!({"interval_seconds": 10, "text": "heartbeat"})
@@ -323,8 +321,8 @@ async fn application_api_docs_list_models_and_streaming_contracts() {
     assert_eq!(responses_spec.status(), StatusCode::OK);
     let responses_payload = response_json(responses_spec).await;
     assert!(responses_payload["paths"].get("/v1/responses").is_some());
-    let responses_streaming_schema = &responses_payload["paths"]["/v1/responses"]["post"]["responses"]
-        ["200"]["content"]["text/event-stream"]["schema"];
+    let responses_streaming_schema = &responses_payload["paths"]["/v1/responses"]["post"]
+        ["responses"]["200"]["content"]["text/event-stream"]["schema"];
     assert_eq!(
         responses_streaming_schema["x-1flowbase-message-delta"],
         json!("response.output_text.delta")
@@ -501,8 +499,8 @@ async fn application_api_docs_operation_specs_include_request_parameters() {
         .unwrap();
     assert_eq!(openai_spec.status(), StatusCode::OK);
     let openai_payload = response_json(openai_spec).await;
-    let openai_body = &openai_payload["paths"]["/v1/chat/completions"]["post"]["requestBody"]["content"]
-        ["application/json"]["schema"];
+    let openai_body = &openai_payload["paths"]["/v1/chat/completions"]["post"]["requestBody"]
+        ["content"]["application/json"]["schema"];
     assert_eq!(openai_body["required"], json!(["model", "messages"]));
     assert_eq!(
         openai_body["properties"]["messages"]["items"]["required"],
@@ -515,16 +513,12 @@ async fn application_api_docs_operation_specs_include_request_parameters() {
     assert!(openai_body["properties"].get("tools").is_some());
     assert!(openai_body["properties"].get("tool_choice").is_some());
     assert!(openai_body["properties"].get("function_call").is_some());
-    assert!(
-        openai_body["properties"]["messages"]["items"]["properties"]
-            .get("tool_calls")
-            .is_some()
-    );
-    assert!(
-        openai_body["properties"]["messages"]["items"]["properties"]
-            .get("tool_call_id")
-            .is_some()
-    );
+    assert!(openai_body["properties"]["messages"]["items"]["properties"]
+        .get("tool_calls")
+        .is_some());
+    assert!(openai_body["properties"]["messages"]["items"]["properties"]
+        .get("tool_call_id")
+        .is_some());
 
     let anthropic_spec = app
         .clone()
@@ -541,8 +535,8 @@ async fn application_api_docs_operation_specs_include_request_parameters() {
         .unwrap();
     assert_eq!(anthropic_spec.status(), StatusCode::OK);
     let anthropic_payload = response_json(anthropic_spec).await;
-    let anthropic_body = &anthropic_payload["paths"]["/v1/messages"]["post"]["requestBody"]["content"]
-        ["application/json"]["schema"];
+    let anthropic_body = &anthropic_payload["paths"]["/v1/messages"]["post"]["requestBody"]
+        ["content"]["application/json"]["schema"];
     assert_eq!(anthropic_body["required"], json!(["model", "messages"]));
     assert_eq!(
         anthropic_body["properties"]["max_tokens"]["type"],
@@ -551,19 +545,17 @@ async fn application_api_docs_operation_specs_include_request_parameters() {
     assert!(anthropic_body["properties"].get("tools").is_some());
     assert!(anthropic_body["properties"].get("tool_choice").is_some());
     assert_eq!(
-        anthropic_body["properties"]["messages"]["items"]["properties"]["content"]["oneOf"][1]["items"]
-            ["properties"]["type"]["enum"],
+        anthropic_body["properties"]["messages"]["items"]["properties"]["content"]["oneOf"][1]
+            ["items"]["properties"]["type"]["enum"],
         json!(["text", "tool_use", "tool_result"])
     );
     assert_eq!(
         anthropic_body["properties"]["metadata"]["properties"]["expand_id"]["type"],
         json!("string")
     );
-    assert!(
-        anthropic_body["properties"]["metadata"]["properties"]
-            .get("user_id")
-            .is_none()
-    );
+    assert!(anthropic_body["properties"]["metadata"]["properties"]
+        .get("user_id")
+        .is_none());
 
     let get_run_spec = app
         .clone()
@@ -604,8 +596,8 @@ async fn application_api_docs_operation_specs_include_request_parameters() {
         .unwrap();
     assert_eq!(upload_file_spec.status(), StatusCode::OK);
     let upload_file_payload = response_json(upload_file_spec).await;
-    let upload_body = &upload_file_payload["paths"]["/api/agent/v1/files"]["post"]["requestBody"]["content"]
-        ["multipart/form-data"]["schema"];
+    let upload_body = &upload_file_payload["paths"]["/api/agent/v1/files"]["post"]["requestBody"]
+        ["content"]["multipart/form-data"]["schema"];
     assert_eq!(upload_body["required"], json!(["file_table_id", "file"]));
     assert_eq!(
         upload_body["properties"]["file_table_id"]["format"],
@@ -633,13 +625,14 @@ async fn application_api_docs_operation_specs_include_request_parameters() {
 
     let openai_post = &openai_payload["paths"]["/v1/chat/completions"]["post"];
     assert_eq!(
-        openai_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["choices"]
-            ["items"]["properties"]["message"]["properties"]["content"]["oneOf"][1]["type"],
+        openai_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+            ["choices"]["items"]["properties"]["message"]["properties"]["content"]["oneOf"][1]
+            ["type"],
         json!("null")
     );
     assert_eq!(
-        openai_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["choices"]
-            ["items"]["properties"]["finish_reason"]["enum"],
+        openai_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+            ["choices"]["items"]["properties"]["finish_reason"]["enum"],
         json!(["stop", "tool_calls"])
     );
     assert!(
@@ -649,36 +642,36 @@ async fn application_api_docs_operation_specs_include_request_parameters() {
             .is_some()
     );
     assert_eq!(
-        openai_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["choices"]
-            ["items"]["properties"]["message"]["properties"]["tool_calls"]["items"]["properties"]["type"]
-            ["enum"],
+        openai_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+            ["choices"]["items"]["properties"]["message"]["properties"]["tool_calls"]["items"]
+            ["properties"]["type"]["enum"],
         json!(["function"])
     );
     assert_eq!(
-        openai_post["responses"]["400"]["content"]["application/json"]["schema"]["properties"]["error"]
-            ["properties"]["message"]["type"],
+        openai_post["responses"]["400"]["content"]["application/json"]["schema"]["properties"]
+            ["error"]["properties"]["message"]["type"],
         json!("string")
     );
 
     let anthropic_post = &anthropic_payload["paths"]["/v1/messages"]["post"];
     assert_eq!(
-        anthropic_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["content"]
-            ["items"]["properties"]["type"]["enum"],
+        anthropic_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+            ["content"]["items"]["properties"]["type"]["enum"],
         json!(["text", "tool_use"])
     );
     assert_eq!(
-        anthropic_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["stop_reason"]
-            ["enum"],
+        anthropic_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+            ["stop_reason"]["enum"],
         json!(["end_turn", "tool_use"])
     );
     assert_eq!(
-        anthropic_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["content"]
-            ["items"]["properties"]["input"]["type"],
+        anthropic_post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+            ["content"]["items"]["properties"]["input"]["type"],
         json!("object")
     );
     assert_eq!(
-        anthropic_post["responses"]["400"]["content"]["application/json"]["schema"]["properties"]["error"]
-            ["properties"]["message"]["type"],
+        anthropic_post["responses"]["400"]["content"]["application/json"]["schema"]["properties"]
+            ["error"]["properties"]["message"]["type"],
         json!("string")
     );
 }
@@ -720,13 +713,13 @@ async fn application_api_docs_specs_follow_requested_locale() {
         json!("创建原生公开运行")
     );
     assert_eq!(
-        spec_payload["paths"]["/api/agent/v1/runs"]["post"]["requestBody"]["content"]["application/json"]
-            ["schema"]["properties"]["query"]["description"],
+        spec_payload["paths"]["/api/agent/v1/runs"]["post"]["requestBody"]["content"]
+            ["application/json"]["schema"]["properties"]["query"]["description"],
         json!("用户输入，会映射到当前应用发布配置中的 query target。")
     );
     assert_eq!(
-        spec_payload["paths"]["/api/agent/v1/runs"]["post"]["requestBody"]["content"]["application/json"]
-            ["schema"]["properties"]["title"]["description"],
+        spec_payload["paths"]["/api/agent/v1/runs"]["post"]["requestBody"]["content"]
+            ["application/json"]["schema"]["properties"]["title"]["description"],
         json!("运行标题。未传时默认使用用户输入，并截断到 255 个字符。")
     );
     assert_eq!(

@@ -4,7 +4,7 @@ use crate::_tests::support::{
     login_and_capture_cookie, test_api_state_with_database_url, test_config,
 };
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use control_plane::ports::{AuthRepository, PluginRepository, UpsertPluginInstallationInput};
@@ -12,7 +12,7 @@ use domain::{
     PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus,
     PluginVerificationStatus,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 

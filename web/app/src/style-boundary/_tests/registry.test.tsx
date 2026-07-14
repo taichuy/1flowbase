@@ -61,6 +61,7 @@ describe('style boundary registry', () => {
       'page.embedded-apps',
       'page.templates',
       'page.settings',
+      'page.settings-applications',
       'page.settings-mcp-management',
       'page.settings-docs',
       'page.me'
@@ -74,6 +75,7 @@ describe('style boundary registry', () => {
       'page.application-detail',
       'page.application-api',
       'page.settings',
+      'page.settings-applications',
       'page.settings-mcp-management',
       'page.settings-docs',
       'page.me'
@@ -82,16 +84,26 @@ describe('style boundary registry', () => {
       getSceneIdsForFiles([
         'web/app/src/shared/ui/scrollable-surface/ScrollableSurface.tsx'
       ])
-    ).toEqual(['page.settings', 'page.settings-mcp-management']);
+    ).toEqual([
+      'page.settings',
+      'page.settings-applications',
+      'page.settings-mcp-management'
+    ]);
     expect(
       getSceneIdsForFiles([
         'web/app/src/features/settings/components/settings-section-surface.css'
       ])
     ).toEqual([
       'page.settings',
+      'page.settings-applications',
       'page.settings-mcp-management',
       'page.settings-docs'
     ]);
+    expect(
+      getSceneIdsForFiles([
+        'web/app/src/features/settings/components/application-management/ApplicationManagementPanel.tsx'
+      ])
+    ).toEqual(['page.settings-applications']);
     expect(
       getSceneIdsForFiles(['web/app/src/features/me/pages/me-page.css'])
     ).toEqual(['page.me']);
@@ -241,6 +253,20 @@ describe('style boundary registry', () => {
       )
     ).toBeInTheDocument();
   }, 15000);
+
+  test('renders the settings applications scene with its management table', async () => {
+    const scene = getRuntimeScene('page.settings-applications');
+
+    render(
+      <AppProviders>
+        <StyleBoundaryHarness scene={scene} />
+      </AppProviders>
+    );
+
+    expect(await screen.findByText('Boundary Workflow')).toBeInTheDocument();
+    expect(screen.getByText('Style boundary application')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '应用' })).toBeInTheDocument();
+  }, 15_000);
 
   test('renders the settings mcp management scene and opens the directory editor', async () => {
     const scene = getRuntimeScene('page.settings-mcp-management');

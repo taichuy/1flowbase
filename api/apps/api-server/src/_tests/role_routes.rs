@@ -4,7 +4,7 @@ use crate::_tests::support::{
 };
 use access_control::ConsoleRouteOwnership;
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use serde_json::json;
@@ -781,18 +781,16 @@ async fn role_console_policy_catalog_returns_localized_display_and_option_object
             .collect::<Vec<_>>(),
         vec!["disabled", "full", "custom"]
     );
-    assert!(
-        catalog["group_mode_options"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|option| option["label"]
+    assert!(catalog["group_mode_options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|option| option["label"]
+            .as_str()
+            .is_some_and(|label| !label.is_empty())
+            && option["description"]
                 .as_str()
-                .is_some_and(|label| !label.is_empty())
-                && option["description"]
-                    .as_str()
-                    .is_some_and(|description| !description.is_empty()))
-    );
+                .is_some_and(|description| !description.is_empty())));
 
     let applications = catalog["groups"]
         .as_array()
@@ -816,16 +814,14 @@ async fn role_console_policy_catalog_returns_localized_display_and_option_object
             .collect::<Vec<_>>(),
         vec!["disabled", "own", "scope_all"]
     );
-    assert!(
-        view_operation["allowed_row_scopes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|option| option["label"]
+    assert!(view_operation["allowed_row_scopes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|option| option["label"]
+            .as_str()
+            .is_some_and(|label| !label.is_empty())
+            && option["description"]
                 .as_str()
-                .is_some_and(|label| !label.is_empty())
-                && option["description"]
-                    .as_str()
-                    .is_some_and(|description| !description.is_empty()))
-    );
+                .is_some_and(|description| !description.is_empty())));
 }

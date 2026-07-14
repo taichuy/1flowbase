@@ -1,10 +1,10 @@
 use crate::_tests::support::{login_and_capture_cookie, test_app};
 use api_server::app;
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use tower::ServiceExt;
 
 async fn openapi_paths() -> Map<String, Value> {

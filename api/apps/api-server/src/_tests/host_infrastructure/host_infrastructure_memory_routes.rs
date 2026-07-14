@@ -3,13 +3,13 @@ use crate::_tests::support::{
     replace_role_permissions, test_api_state_with_database_url, test_config,
 };
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use control_plane::ports::{
     RuntimeEventDurability, RuntimeEventPayload, RuntimeEventSource, RuntimeEventStreamPolicy,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -195,20 +195,16 @@ async fn host_infrastructure_memory_routes_list_categories_and_reveal_with_audit
             .unwrap()
             >= stats_payload["data"]["entry_count"].as_u64().unwrap()
     );
-    assert!(
-        stats_overview_payload["data"]["contracts"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|contract| contract["contract_code"] == "session-store")
-    );
-    assert!(
-        stats_overview_payload["data"]["contracts"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|contract| contract["inspection_path"] == json!([]))
-    );
+    assert!(stats_overview_payload["data"]["contracts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|contract| contract["contract_code"] == "session-store"));
+    assert!(stats_overview_payload["data"]["contracts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|contract| contract["inspection_path"] == json!([])));
 
     let entries_response = app
         .clone()
@@ -329,12 +325,10 @@ async fn host_infrastructure_memory_routes_page_tree_search_and_reveal_policy() 
     let first_entry = &entries_payload["data"]["entries"][0];
     assert_eq!(first_entry["contract_code"], "cache-store");
     assert_eq!(first_entry["inspection_path"][0], "application-logs");
-    assert!(
-        first_entry["entry_ref"]
-            .as_str()
-            .unwrap()
-            .starts_with("application-logs:run:")
-    );
+    assert!(first_entry["entry_ref"]
+        .as_str()
+        .unwrap()
+        .starts_with("application-logs:run:"));
     assert!(first_entry["metadata_size_bytes"].as_u64().unwrap() > 0);
     assert!(first_entry.as_object().unwrap().get("value").is_none());
     assert!(entries_payload["data"]["next_cursor"].as_str().is_some());
@@ -358,12 +352,10 @@ async fn host_infrastructure_memory_routes_page_tree_search_and_reveal_policy() 
         search_payload["data"]["entries"].as_array().unwrap().len(),
         1
     );
-    assert!(
-        search_payload["data"]["entries"][0]["entry_ref"]
-            .as_str()
-            .unwrap()
-            .ends_with("run:2")
-    );
+    assert!(search_payload["data"]["entries"][0]["entry_ref"]
+        .as_str()
+        .unwrap()
+        .ends_with("run:2"));
 
     let entry_ref = first_entry["entry_ref"].as_str().unwrap();
     let preview_response = app
@@ -484,13 +476,11 @@ async fn memory_observation_feature_redacts_lists_until_explicit_reveal() {
     let cache_entry_ref = entries_payload["data"]["entries"][0]["entry_ref"]
         .as_str()
         .unwrap();
-    assert!(
-        entries_payload["data"]["entries"][0]
-            .as_object()
-            .unwrap()
-            .get("value")
-            .is_none()
-    );
+    assert!(entries_payload["data"]["entries"][0]
+        .as_object()
+        .unwrap()
+        .get("value")
+        .is_none());
 
     let reveal_response = app
         .clone()

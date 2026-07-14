@@ -1,6 +1,6 @@
 use control_plane::ports::{
-    ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository,
-    PROVIDER_REQUEST_LOG_QUEUE, ProviderRequestLogTask,
+    ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository, ProviderRequestLogTask,
+    PROVIDER_REQUEST_LOG_QUEUE,
 };
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::{
     _tests::support::test_api_state_with_database_url,
     workers::provider_request_logs::{
-        ProviderRequestLogWorkerOutcome, consume_provider_request_log_batch,
+        consume_provider_request_log_batch, ProviderRequestLogWorkerOutcome,
     },
 };
 
@@ -136,19 +136,15 @@ async fn provider_request_log_worker_batches_valid_payloads_and_acks_each_task()
         }
     );
     assert_eq!(page.total_count, 2);
-    assert!(
-        page.items
-            .iter()
-            .any(|item| item.attempt_id == first.attempt_id)
-    );
-    assert!(
-        page.items
-            .iter()
-            .any(|item| item.attempt_id == second.attempt_id)
-    );
-    assert!(
-        entries
-            .iter()
-            .all(|entry| entry.key != first_task_id && entry.key != second_task_id)
-    );
+    assert!(page
+        .items
+        .iter()
+        .any(|item| item.attempt_id == first.attempt_id));
+    assert!(page
+        .items
+        .iter()
+        .any(|item| item.attempt_id == second.attempt_id));
+    assert!(entries
+        .iter()
+        .all(|entry| entry.key != first_task_id && entry.key != second_task_id));
 }

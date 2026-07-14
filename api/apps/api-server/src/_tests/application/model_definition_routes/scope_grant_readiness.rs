@@ -35,12 +35,10 @@ async fn model_definition_scope_grant_routes_do_not_return_model_level_api_expos
     .unwrap();
     let model_id = created["data"]["id"].as_str().unwrap().to_string();
     assert_eq!(created["data"]["status"], json!("published"));
-    assert!(
-        !created["data"]
-            .as_object()
-            .unwrap()
-            .contains_key("api_exposure_status")
-    );
+    assert!(!created["data"]
+        .as_object()
+        .unwrap()
+        .contains_key("api_exposure_status"));
 
     let create_grant_response = app
         .clone()
@@ -96,18 +94,16 @@ async fn model_definition_scope_grant_routes_do_not_return_model_level_api_expos
             .unwrap(),
     )
     .unwrap();
-    assert!(
-        list_grants_payload["data"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|grant| {
-                grant["id"].as_str() == Some(&grant_id)
-                    && grant["data_model_id"].as_str() == Some(&model_id)
-                    && grant["scope_kind"].as_str() == Some("system")
-                    && grant["permission_profile"].as_str() == Some("scope_all")
-            })
-    );
+    assert!(list_grants_payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|grant| {
+            grant["id"].as_str() == Some(&grant_id)
+                && grant["data_model_id"].as_str() == Some(&model_id)
+                && grant["scope_kind"].as_str() == Some("system")
+                && grant["permission_profile"].as_str() == Some("scope_all")
+        }));
 
     let list_models_response = app
         .clone()
@@ -135,12 +131,10 @@ async fn model_definition_scope_grant_routes_do_not_return_model_level_api_expos
         .find(|model| model["id"].as_str() == Some(&model_id))
         .unwrap();
     assert_eq!(model_payload["status"], json!("published"));
-    assert!(
-        !model_payload
-            .as_object()
-            .unwrap()
-            .contains_key("api_exposure_status")
-    );
+    assert!(!model_payload
+        .as_object()
+        .unwrap()
+        .contains_key("api_exposure_status"));
     assert_eq!(
         audit_event_count(&database_url, "state_model.scope_grant_created").await,
         2

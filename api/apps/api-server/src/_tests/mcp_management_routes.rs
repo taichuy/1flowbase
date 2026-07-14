@@ -1,9 +1,9 @@
 use crate::_tests::support::{login_and_capture_cookie, test_app};
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::ServiceExt;
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -231,11 +231,9 @@ async fn mcp_interface_capabilities_include_bindable_runtime_data_model_crud_ope
             .is_none(),
         "runtime list result_schema must not rename RuntimeListResponse.items to data"
     );
-    assert!(
-        list_entry["result_schema"]["properties"]
-            .get("total")
-            .is_some()
-    );
+    assert!(list_entry["result_schema"]["properties"]
+        .get("total")
+        .is_some());
     assert!(!entries.iter().any(|entry| {
         entry["path"]
             .as_str()
@@ -329,11 +327,9 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
         create_tool_payload["data"]["operation"].as_str(),
         Some("POST /api/runtime/models/mcp_tool_orders/create")
     );
-    assert!(
-        create_tool_payload["data"]
-            .get("usage_description")
-            .is_none()
-    );
+    assert!(create_tool_payload["data"]
+        .get("usage_description")
+        .is_none());
     assert!(create_tool_payload["data"].get("audit_policy").is_none());
 
     let update_tool_response = app
@@ -376,11 +372,9 @@ async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() 
         update_tool_payload["data"]["operation"].as_str(),
         Some("PATCH /api/runtime/models/mcp_tool_orders/update/{id}")
     );
-    assert!(
-        update_tool_payload["data"]
-            .get("usage_description")
-            .is_none()
-    );
+    assert!(update_tool_payload["data"]
+        .get("usage_description")
+        .is_none());
     assert!(update_tool_payload["data"].get("audit_policy").is_none());
 
     let catalog_response = app
@@ -572,22 +566,18 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
             .get("locale")
             .is_some()
     );
-    assert!(
-        runtime_profile_interface["parameter_descriptors"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|descriptor| descriptor["name"].as_str() == Some("locale")
-                && descriptor["parameter_type"].as_str() == Some("url")
-                && descriptor["required"].as_bool() == Some(false)
-                && descriptor["field_type"].as_str().is_some()
-                && descriptor["schema"].is_object())
-    );
-    assert!(
-        runtime_profile_interface["result_schema"]["properties"]
-            .get("topology")
-            .is_some()
-    );
+    assert!(runtime_profile_interface["parameter_descriptors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|descriptor| descriptor["name"].as_str() == Some("locale")
+            && descriptor["parameter_type"].as_str() == Some("url")
+            && descriptor["required"].as_bool() == Some(false)
+            && descriptor["field_type"].as_str().is_some()
+            && descriptor["schema"].is_object()));
+    assert!(runtime_profile_interface["result_schema"]["properties"]
+        .get("topology")
+        .is_some());
     let application_api_docs_interface = interface_payload["data"]
         .as_array()
         .unwrap()
@@ -604,38 +594,33 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         .iter()
         .find(|entry| entry["interface_id"].as_str() == Some("publish_application_api"))
         .expect("MCP interface catalog should expose publish application API");
-    assert!(
-        publish_application_api_interface["parameter_descriptors"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(
-                |descriptor| descriptor["name"].as_str() == Some("application_id")
-                    && descriptor["parameter_type"].as_str() == Some("url")
-                    && descriptor["required"].as_bool() == Some(true)
-            )
-    );
-    assert!(
-        publish_application_api_interface["parameter_descriptors"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(
-                |descriptor| descriptor["name"].as_str() == Some("mapping.input.query_target")
-                    && descriptor["parameter_type"].as_str() == Some("json_body")
-                    && descriptor["required"].as_bool() == Some(true)
-            )
-    );
-    assert!(
-        publish_application_api_interface["parameter_descriptors"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|descriptor| descriptor["name"].as_str()
-                == Some("mapping.output.answer_selector")
+    assert!(publish_application_api_interface["parameter_descriptors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |descriptor| descriptor["name"].as_str() == Some("application_id")
+                && descriptor["parameter_type"].as_str() == Some("url")
+                && descriptor["required"].as_bool() == Some(true)
+        ));
+    assert!(publish_application_api_interface["parameter_descriptors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |descriptor| descriptor["name"].as_str() == Some("mapping.input.query_target")
                 && descriptor["parameter_type"].as_str() == Some("json_body")
-                && descriptor["required"].as_bool() == Some(false))
-    );
+                && descriptor["required"].as_bool() == Some(true)
+        ));
+    assert!(publish_application_api_interface["parameter_descriptors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |descriptor| descriptor["name"].as_str() == Some("mapping.output.answer_selector")
+                && descriptor["parameter_type"].as_str() == Some("json_body")
+                && descriptor["required"].as_bool() == Some(false)
+        ));
 
     let create_tool_response = app
         .clone()
@@ -672,11 +657,9 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     let create_tool_payload = response_json(create_tool_response).await;
     let tool_id = create_tool_payload["data"]["tool_id"].as_str().unwrap();
     assert_eq!(tool_id, "runtime_profile");
-    assert!(
-        create_tool_payload["data"]
-            .get("usage_description")
-            .is_none()
-    );
+    assert!(create_tool_payload["data"]
+        .get("usage_description")
+        .is_none());
     let first_des_id = create_tool_payload["data"]["des_id"].as_str().unwrap();
     assert_eq!(first_des_id, "des12345");
     assert_eq!(
@@ -781,13 +764,11 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     assert_eq!(directory_export_response.status(), StatusCode::OK);
     let directory_export_payload = response_json(directory_export_response).await;
     assert!(directory_export_payload["data"].get("tools").is_none());
-    assert!(
-        directory_export_payload["data"]["groups"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|group| group["path"].as_str() == Some("/system"))
-    );
+    assert!(directory_export_payload["data"]["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|group| group["path"].as_str() == Some("/system")));
 
     let delete_group_response = app
         .clone()
@@ -1029,16 +1010,12 @@ async fn mcp_instance_discovery_policy_updates_validate_and_isolate_list_behavio
         json!("workspace_ops")
     );
     assert_eq!(update_payload["data"]["list_default_limit"], json!(1));
-    assert!(
-        update_payload["data"]
-            .get("get_include_mapping_summary")
-            .is_none()
-    );
-    assert!(
-        update_payload["data"]
-            .get("call_default_des_id_policy")
-            .is_none()
-    );
+    assert!(update_payload["data"]
+        .get("get_include_mapping_summary")
+        .is_none());
+    assert!(update_payload["data"]
+        .get("call_default_des_id_policy")
+        .is_none());
 
     let data_policy_response = app
         .clone()

@@ -375,8 +375,6 @@ export function SettingsModelProvidersSection({
     <>
       {modalContextHolder}
       <SettingsSectionSurface
-        title={i18nText('settings', 'auto.model_providers')}
-        hideHeader
         heightMode="fill"
         status={sectionStatus}
       >

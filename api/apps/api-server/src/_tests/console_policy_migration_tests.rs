@@ -4,8 +4,8 @@ use uuid::Uuid;
 use crate::{
     app_state::{compile_core_console_operation_registry, compile_core_settings_feature_registry},
     console_policy_migration::{
-        ConsolePolicyMigrationCommand, ConsolePolicyMigrationEvidenceReport,
         compile_core_console_policy_migration_plan, parse_command, write_evidence_report,
+        ConsolePolicyMigrationCommand, ConsolePolicyMigrationEvidenceReport,
     },
 };
 
@@ -20,23 +20,17 @@ fn ac_010_live_core_crosswalk_disposes_each_of_175_operations() {
         .expect("the audited Core crosswalk must compile against the live registry");
 
     assert_eq!(migration.dispositions().len(), 175);
-    assert!(
-        migration
-            .dispositions()
-            .iter()
-            .all(|disposition| disposition.operation_id() != "system_all")
-    );
-    assert!(
-        migration
-            .disposition("roles.console_policy.replace")
-            .is_some_and(|disposition| disposition.is_default_disabled_new_operation())
-    );
-    assert!(
-        migration
-            .disposition("data_sources.secret.rotate")
-            .is_some_and(|disposition| disposition
-                .has_legacy_grant("settings_feature.access.system.data-models"))
-    );
+    assert!(migration
+        .dispositions()
+        .iter()
+        .all(|disposition| disposition.operation_id() != "system_all"));
+    assert!(migration
+        .disposition("roles.console_policy.replace")
+        .is_some_and(|disposition| disposition.is_default_disabled_new_operation()));
+    assert!(migration
+        .disposition("data_sources.secret.rotate")
+        .is_some_and(|disposition| disposition
+            .has_legacy_grant("settings_feature.access.system.data-models")));
     assert!(registry.inventory().operations.iter().any(|operation| {
         operation.operation_id == "core.authenticated"
             && operation.authorization == ConsoleAuthorization::Authenticated
@@ -85,12 +79,10 @@ fn ac_010_new_role_console_policy_operations_are_default_disabled() {
         "roles.console_policy.view",
         "roles.console_policy.replace",
     ] {
-        assert!(
-            preview
-                .effective_after
-                .iter()
-                .all(|entry| entry.operation_id.as_str() != operation_id)
-        );
+        assert!(preview
+            .effective_after
+            .iter()
+            .all(|entry| entry.operation_id.as_str() != operation_id));
     }
 }
 
@@ -109,11 +101,9 @@ fn ac_010_group_or_operation_mapping_drift_hard_stops() {
     let error = compile_core_console_policy_migration_plan(&inventory)
         .expect_err("an operation group drift must not silently migrate grants");
 
-    assert!(
-        error
-            .to_string()
-            .contains("Core migration policy-group mismatch for data_sources.secret.rotate")
-    );
+    assert!(error
+        .to_string()
+        .contains("Core migration policy-group mismatch for data_sources.secret.rotate"));
 }
 
 #[test]
@@ -124,12 +114,10 @@ fn ac_010_dispositions_and_mappings_never_offer_system_all() {
     let serialized = serde_json::to_string(migration.dispositions()).unwrap();
 
     assert!(!serialized.contains("system_all"));
-    assert!(
-        migration
-            .legacy_mappings()
-            .iter()
-            .all(|mapping| !mapping.legacy_grant.contains("system_all"))
-    );
+    assert!(migration
+        .legacy_mappings()
+        .iter()
+        .all(|mapping| !mapping.legacy_grant.contains("system_all")));
 }
 
 #[test]
@@ -149,11 +137,9 @@ fn ac_010_active_host_operation_without_a_crosswalk_hard_stops() {
     let error = compile_core_console_policy_migration_plan(&inventory)
         .expect_err("a linked HostExtension needs explicit migration metadata");
 
-    assert!(
-        error
-            .to_string()
-            .contains("active HostExtension fixture-host@1.0.0 contributes workspace.update")
-    );
+    assert!(error
+        .to_string()
+        .contains("active HostExtension fixture-host@1.0.0 contributes workspace.update"));
 }
 
 #[test]
@@ -196,30 +182,22 @@ fn ac_010_cli_commands_and_static_evidence_are_deterministic() {
     assert!(serialized.contains(&first.mapping_fingerprint));
     assert!(serialized.contains("data_sources.secret.rotate"));
     assert!(!serialized.contains("system_all"));
-    assert!(
-        first.markdown().contains(
-            "Runtime marker enforcement and service cutover are intentionally out of scope"
-        )
-    );
-    assert!(
-        migration
-            .source()
-            .permission_resources
-            .iter()
-            .all(|resource| resource != "settings_route")
-    );
-    assert!(
-        migration
-            .legacy_mappings()
-            .iter()
-            .all(|mapping| !mapping.legacy_grant.starts_with("settings_route.visible."))
-    );
+    assert!(first
+        .markdown()
+        .contains("Runtime marker enforcement and service cutover are intentionally out of scope"));
+    assert!(migration
+        .source()
+        .permission_resources
+        .iter()
+        .all(|resource| resource != "settings_route"));
+    assert!(migration
+        .legacy_mappings()
+        .iter()
+        .all(|mapping| !mapping.legacy_grant.starts_with("settings_route.visible.")));
 
     let paths = write_evidence_report(&first).unwrap();
     assert_eq!(std::fs::read_to_string(paths.json).unwrap(), serialized);
-    assert!(
-        std::fs::read_to_string(paths.markdown)
-            .unwrap()
-            .contains("Actor five-probe matrices")
-    );
+    assert!(std::fs::read_to_string(paths.markdown)
+        .unwrap()
+        .contains("Actor five-probe matrices"));
 }

@@ -101,13 +101,11 @@ async fn local_infra_host_exposes_operation_contracts() {
         Some(serde_json::json!({ "cached": true }))
     );
 
-    assert!(
-        !registry
-            .distributed_lock()
-            .release("missing", "owner")
-            .await
-            .unwrap()
-    );
+    assert!(!registry
+        .distributed_lock()
+        .release("missing", "owner")
+        .await
+        .unwrap());
 
     let events = registry.event_bus();
     events

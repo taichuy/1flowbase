@@ -1,7 +1,7 @@
 use axum::{
-    Json, Router,
     http::{StatusCode, Uri},
     response::{IntoResponse, Response},
+    Json, Router,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};

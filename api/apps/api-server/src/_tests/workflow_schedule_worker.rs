@@ -5,7 +5,7 @@ use time::Duration;
 use crate::{
     _tests::support::test_api_state_with_database_url,
     workers::workflow_schedule::{
-        WorkflowScheduleWorkerOutcome, consume_one_workflow_schedule_run,
+        consume_one_workflow_schedule_run, WorkflowScheduleWorkerOutcome,
     },
 };
 

@@ -409,16 +409,12 @@ async fn application_runtime_routes_trace_tree_and_node_last_run_do_not_material
         trace_node_content_payload["data"]["payload"]["payload_index"]["node_run_count"],
         json!(1)
     );
-    assert!(
-        trace_node_content_payload["data"]["source_refs"]
-            .as_array()
-            .is_some_and(|items| !items.is_empty())
-    );
-    assert!(
-        trace_node_content_payload["data"]["detail_refs"]
-            .as_array()
-            .is_some_and(|items| !items.is_empty())
-    );
+    assert!(trace_node_content_payload["data"]["source_refs"]
+        .as_array()
+        .is_some_and(|items| !items.is_empty()));
+    assert!(trace_node_content_payload["data"]["detail_refs"]
+        .as_array()
+        .is_some_and(|items| !items.is_empty()));
 
     for uri in [
         trace_tree_uri,

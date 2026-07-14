@@ -1,7 +1,6 @@
 {
   "auto": {
     "application_management": "Application management",
-    "application_management_description": "Review, filter, and maintain applications in the current workspace.",
     "application_management_application": "Application",
     "application_management_type": "Application type",
     "application_management_trigger": "Trigger",
@@ -141,7 +140,6 @@
     "account_access_content": "The current account has no access to content.",
     "runtime_data_yet": "No runtime data yet",
     "back": "Return",
-    "data_source_description": "Manage default modeling states and Data Model access surfaces for built-in master data sources and external data sources.",
     "example_two_zero_two_six_zero_five_zero_seven_t": "For example 2026-05-07T12:00:00Z",
     "reset_password_temporary_password_needs_changed_immediately_user_logs": "Reset the password of {{value1}} to the default temporary password, which needs to be changed immediately after the user logs in.",
     "currently_model_supplier_instance": "There is currently no model supplier instance",
@@ -758,7 +756,6 @@
     "edit_tool_binding": "Edit Tool mount",
     "mount_path": "Mount path",
     "api_key_authentication": "API key",
-    "user_api_key_description": "Manage pat_ API Keys for the current user so requests can use the account role permissions.",
     "user_api_key_security_notice": "The full key is shown only after creation; the list only keeps key prefix, status, and usage time.",
     "create_api_key": "Add",
     "api_key_prefix": "Key prefix",

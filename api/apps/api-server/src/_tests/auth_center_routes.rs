@@ -4,7 +4,7 @@ use crate::_tests::support::{
     test_app_with_database_url,
 };
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use domain::AuthenticatorRecord;
@@ -93,22 +93,18 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     assert!(password_local.get("options").is_none());
     assert!(password_local.get("description").is_none());
     assert!(password_local.get("extension_config").is_none());
-    assert!(
-        password_local["config_schema"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|field| field["key"] != "name")
-    );
-    assert!(
-        password_local["config_schema"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|field| field["key"] == "description"
-                && field["control"] == "textarea"
-                && field["required"] == false)
-    );
+    assert!(password_local["config_schema"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|field| field["key"] != "name"));
+    assert!(password_local["config_schema"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field["key"] == "description"
+            && field["control"] == "textarea"
+            && field["required"] == false));
 
     let oidc = authenticators
         .iter()
@@ -309,13 +305,11 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
         .unwrap();
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(overview.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert!(
-        payload["data"]["authenticators"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|authenticator| authenticator["id"] != staff_backup_id)
-    );
+    assert!(payload["data"]["authenticators"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|authenticator| authenticator["id"] != staff_backup_id));
 }
 
 #[tokio::test]

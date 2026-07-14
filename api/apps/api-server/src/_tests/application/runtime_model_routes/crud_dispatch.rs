@@ -521,8 +521,8 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
 }
 
 #[tokio::test]
-async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unavailable_installations()
- {
+async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unavailable_installations(
+) {
     let cases = [
         (
             "instance_not_ready",

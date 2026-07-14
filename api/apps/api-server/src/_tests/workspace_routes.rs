@@ -2,10 +2,10 @@ use crate::_tests::support::{
     login_and_capture_cookie, seed_workspace, test_app_with_database_url,
 };
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::ServiceExt;
 
 async fn current_workspace_id(app: &axum::Router, cookie: &str) -> String {

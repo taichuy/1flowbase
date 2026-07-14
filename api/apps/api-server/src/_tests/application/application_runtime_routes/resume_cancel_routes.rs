@@ -181,11 +181,9 @@ async fn application_runtime_routes_cancel_waiting_flow_run() {
         cancel_payload["data"]["flow_run"]["status"].as_str(),
         Some("cancelled")
     );
-    assert!(
-        cancel_payload["data"]["events"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|event| event["event_type"].as_str() == Some("flow_run_cancelled"))
-    );
+    assert!(cancel_payload["data"]["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|event| event["event_type"].as_str() == Some("flow_run_cancelled")));
 }

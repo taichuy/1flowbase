@@ -302,10 +302,6 @@ export function PersonalAccessTokensPanel() {
 
   return (
     <SettingsSectionSurface
-      title={i18nText('settings', 'auto.api_key_authentication')}
-      description={i18nText('settings', 'auto.user_api_key_description')}
-      titleLevel={3}
-      hideHeader
       heightMode="fill"
       status={sectionStatus}
     >

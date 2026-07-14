@@ -8,7 +8,7 @@ use crate::_tests::support::{
     login_and_capture_cookie, test_api_state_with_database_url, test_config, write_test_executable,
 };
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use control_plane::ports::{CreatePluginAssignmentInput, UpsertPluginInstallationInput};
@@ -17,7 +17,7 @@ use domain::{
     PluginVerificationStatus,
 };
 use plugin_framework::compute_manifest_fingerprint;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::ServiceExt;
 
 struct TempDataSourcePackage {
@@ -408,11 +408,9 @@ async fn data_source_create_classifies_fields_by_schema_and_encrypts_secrets_at_
         payload["data"]["backend"]["config_json"]["client_id"],
         json!("public-from-secret-input")
     );
-    assert!(
-        payload["data"]["backend"]["config_json"]
-            .get("client_secret")
-            .is_none()
-    );
+    assert!(payload["data"]["backend"]["config_json"]
+        .get("client_secret")
+        .is_none());
     assert!(!payload.to_string().contains("secret-from-public-input"));
 
     let canonical_response = app
@@ -467,11 +465,9 @@ async fn data_source_create_classifies_fields_by_schema_and_encrypts_secrets_at_
         stored_secret["algorithm"],
         json!("aead_xchacha20poly1305_v1")
     );
-    assert!(
-        !stored_secret
-            .to_string()
-            .contains("secret-from-public-input")
-    );
+    assert!(!stored_secret
+        .to_string()
+        .contains("secret-from-public-input"));
 
     sqlx::query(
         "update data_source_secrets set encrypted_secret_json = $2 where data_source_instance_id = $1",
@@ -596,12 +592,10 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         create_payload["data"]["default_data_model_status"].as_str(),
         Some("published")
     );
-    assert!(
-        !create_payload["data"]
-            .as_object()
-            .unwrap()
-            .contains_key("default_api_exposure_status")
-    );
+    assert!(!create_payload["data"]
+        .as_object()
+        .unwrap()
+        .contains_key("default_api_exposure_status"));
     assert!(!create_payload.to_string().contains("route-header-secret"));
     assert!(!create_payload.to_string().contains("route-secret-echo"));
     assert_eq!(
@@ -645,12 +639,10 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         "secret_ref",
         "secret_version",
     ] {
-        assert!(
-            !main_source["backend"]
-                .as_object()
-                .unwrap()
-                .contains_key(forbidden_field)
-        );
+        assert!(!main_source["backend"]
+            .as_object()
+            .unwrap()
+            .contains_key(forbidden_field));
     }
     assert!(listed_sources.iter().any(|source| {
         source["id"].as_str() == Some(&instance_id)
@@ -694,12 +686,10 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         main_source_defaults_payload["data"]["default_data_model_status"].as_str(),
         Some("draft")
     );
-    assert!(
-        !main_source_defaults_payload["data"]
-            .as_object()
-            .unwrap()
-            .contains_key("default_api_exposure_status")
-    );
+    assert!(!main_source_defaults_payload["data"]
+        .as_object()
+        .unwrap()
+        .contains_key("default_api_exposure_status"));
 
     let update_defaults = app
         .clone()
@@ -730,12 +720,10 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         defaults_payload["data"]["default_data_model_status"].as_str(),
         Some("draft")
     );
-    assert!(
-        !defaults_payload["data"]
-            .as_object()
-            .unwrap()
-            .contains_key("default_api_exposure_status")
-    );
+    assert!(!defaults_payload["data"]
+        .as_object()
+        .unwrap()
+        .contains_key("default_api_exposure_status"));
 
     let validate = app
         .clone()
@@ -768,11 +756,9 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         validate_payload["data"]["output"]["authorization"].as_str(),
         Some("Bearer ***")
     );
-    assert!(
-        validate_payload["data"]
-            .as_object()
-            .is_some_and(|data| !data.contains_key("catalog"))
-    );
+    assert!(validate_payload["data"]
+        .as_object()
+        .is_some_and(|data| !data.contains_key("catalog")));
 
     let discover = app
         .clone()
@@ -902,11 +888,9 @@ async fn ac_001_003_data_source_routes_unify_main_and_runtime_extension_sources(
         rotate_payload["data"]["backend"]["secret_version"].as_i64(),
         Some(2)
     );
-    assert!(
-        rotate_payload["data"]["backend"]["secret_ref"]
-            .as_str()
-            .is_some()
-    );
+    assert!(rotate_payload["data"]["backend"]["secret_ref"]
+        .as_str()
+        .is_some());
     assert!(!rotate_payload.to_string().contains("rotated-route-secret"));
 
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();

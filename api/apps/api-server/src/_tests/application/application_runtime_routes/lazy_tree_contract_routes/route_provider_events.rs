@@ -175,11 +175,13 @@ async fn application_runtime_routes_trace_node_content_offloads_route_provider_e
     )
     .await;
     assert_eq!(
-        targeted_branch_content["data"]["payload"]["debug_payload"]["provider_events"]["__runtime_debug_artifact"],
+        targeted_branch_content["data"]["payload"]["debug_payload"]["provider_events"]
+            ["__runtime_debug_artifact"],
         json!(true)
     );
     assert_eq!(
-        targeted_branch_content["data"]["payload"]["debug_payload"]["provider_events"]["field_path"],
+        targeted_branch_content["data"]["payload"]["debug_payload"]["provider_events"]
+            ["field_path"],
         json!(["debug_payload", "provider_events"])
     );
     assert_eq!(

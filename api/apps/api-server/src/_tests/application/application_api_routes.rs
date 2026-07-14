@@ -3,11 +3,11 @@ use crate::_tests::support::{
     replace_role_permissions, test_app, test_app_with_database_url,
 };
 use axum::{
-    Router,
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
+    Router,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -219,12 +219,10 @@ async fn application_api_key_routes_create_list_hide_token_filter_and_revoke() {
 
     assert_eq!(duplicate_create.status(), StatusCode::CREATED);
     let duplicate_payload = response_json(duplicate_create).await;
-    assert!(
-        duplicate_payload["data"]["token"]
-            .as_str()
-            .unwrap()
-            .starts_with("sk-")
-    );
+    assert!(duplicate_payload["data"]["token"]
+        .as_str()
+        .unwrap()
+        .starts_with("sk-"));
     assert_eq!(
         duplicate_payload["data"]["token"].as_str().unwrap().len(),
         56
@@ -250,11 +248,9 @@ async fn application_api_key_routes_create_list_hide_token_filter_and_revoke() {
     assert!(listed_keys.iter().any(
         |key| key["token_prefix"].as_str() == Some(token_prefix) && key.get("token").is_none()
     ));
-    assert!(
-        listed_keys
-            .iter()
-            .all(|key| key["name"].as_str() == Some("Server key"))
-    );
+    assert!(listed_keys
+        .iter()
+        .all(|key| key["name"].as_str() == Some("Server key")));
 
     let (member_cookie, _) =
         create_member_with_permissions(&app, &root_cookie, &root_csrf, &["application.view.all"])
@@ -742,8 +738,8 @@ async fn application_api_publication_routes_publish_and_patch_api_enabled_state(
 }
 
 #[tokio::test]
-async fn application_public_api_js_dependency_snapshot_is_empty_without_selection_on_publish_response()
- {
+async fn application_public_api_js_dependency_snapshot_is_empty_without_selection_on_publish_response(
+) {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let application_id =

@@ -200,7 +200,7 @@ export function SystemRuntimePanel() {
   /* ── loading ── */
   if (runtimeQuery.isLoading) {
     return (
-      <SettingsSectionSurface title={i18nText("settings", "auto.system_runtime")} hideHeader heightMode="fill">
+      <SettingsSectionSurface heightMode="fill">
         <Flex justify="center" style={{ padding: '64px 0' }}>
           <Spin />
         </Flex>
@@ -211,7 +211,7 @@ export function SystemRuntimePanel() {
   /* ── error ── */
   if (runtimeQuery.isError) {
     return (
-      <SettingsSectionSurface title={i18nText("settings", "auto.system_runtime")} hideHeader heightMode="fill">
+      <SettingsSectionSurface heightMode="fill">
         <Alert
           type="error"
           showIcon
@@ -229,7 +229,7 @@ export function SystemRuntimePanel() {
   /* ── no data ── */
   if (!profile) {
     return (
-      <SettingsSectionSurface title={i18nText("settings", "auto.system_runtime")} hideHeader heightMode="fill">
+      <SettingsSectionSurface heightMode="fill">
         <Empty description={i18nText("settings", "auto.runtime_data_yet")} />
       </SettingsSectionSurface>
     );
@@ -253,7 +253,7 @@ export function SystemRuntimePanel() {
 
   /* ── render ── */
   return (
-    <SettingsSectionSurface title={i18nText("settings", "auto.system_runtime")} hideHeader heightMode="fill">
+    <SettingsSectionSurface heightMode="fill">
       {/* ════════════════════════════════════════════════
          部署概览
          ════════════════════════════════════════════════ */}

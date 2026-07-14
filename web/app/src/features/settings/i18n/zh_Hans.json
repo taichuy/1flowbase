@@ -1,7 +1,6 @@
 {
   "auto": {
     "application_management": "应用管理",
-    "application_management_description": "集中查看、筛选和维护当前工作区内的应用。",
     "application_management_application": "应用",
     "application_management_type": "应用类型",
     "application_management_trigger": "触发方式",
@@ -141,7 +140,6 @@
     "account_access_content": "当前账号暂无可访问内容",
     "runtime_data_yet": "暂无运行时数据",
     "back": "返回",
-    "data_source_description": "管理内建主数据源和外部数据源的默认建模状态与 Data Model 访问面。",
     "example_two_zero_two_six_zero_five_zero_seven_t": "例如 2026-05-07T12:00:00Z",
     "reset_password_temporary_password_needs_changed_immediately_user_logs": "将 {{value1}} 的密码重置为默认临时密码，用户登录后需立即修改。",
     "currently_model_supplier_instance": "暂无模型供应商实例",
@@ -758,7 +756,6 @@
     "edit_tool_binding": "编辑 Tool 挂载",
     "mount_path": "挂载路径",
     "api_key_authentication": "API key",
-    "user_api_key_description": "管理当前用户的 pat_ API Key，用于按账号角色权限调用控制台和运行时接口。",
     "user_api_key_security_notice": "完整 key 只会在添加后显示一次；列表只保留 key 前缀、状态和使用时间。",
     "create_api_key": "添加",
     "api_key_prefix": "key 前缀",

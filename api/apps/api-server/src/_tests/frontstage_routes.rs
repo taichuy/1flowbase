@@ -6,11 +6,11 @@ use crate::_tests::support::{
 };
 use access_control::ConsoleRouteOwnership;
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use serde_json::Value;
 use serde_json::json;
+use serde_json::Value;
 use tower::ServiceExt;
 
 #[test]
@@ -82,12 +82,10 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
             ),
         ])
     );
-    assert!(
-        assembly
-            .bindings()
-            .iter()
-            .all(|binding| { binding.ownership == ConsoleRouteOwnership::Authenticated })
-    );
+    assert!(assembly
+        .bindings()
+        .iter()
+        .all(|binding| { binding.ownership == ConsoleRouteOwnership::Authenticated }));
 }
 
 async fn current_workspace_id(app: &axum::Router, cookie: &str) -> String {

@@ -1,7 +1,7 @@
 use axum::{
-    Json, Router,
     http::{StatusCode, Uri},
     response::{IntoResponse, Response},
+    Json, Router,
 };
 use control_plane::ports::OfficialPluginSourcePort;
 use plugin_framework::RuntimeTarget;
@@ -9,8 +9,8 @@ use serde_json::json;
 
 use crate::config::ResolvedOfficialPluginSourceConfig;
 use crate::official_plugin_registry::{
-    ApiOfficialPluginRegistry, OfficialRegistryArtifact, OfficialRegistryEntry,
-    OfficialRegistryI18nSummary, rewrite_github_raw_url, select_artifact_for_host,
+    rewrite_github_raw_url, select_artifact_for_host, ApiOfficialPluginRegistry,
+    OfficialRegistryArtifact, OfficialRegistryEntry, OfficialRegistryI18nSummary,
 };
 
 const RAW_REGISTRY_URL: &str = "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/official-registry.json";

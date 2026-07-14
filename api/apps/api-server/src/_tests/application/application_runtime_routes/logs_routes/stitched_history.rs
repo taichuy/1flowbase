@@ -225,31 +225,21 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         "lazy trace tree should expose stitched nodes as expandable summaries, not full stitched detail"
     );
     let root_nodes = data["nodes"].as_array().unwrap();
-    assert!(
-        root_nodes
-            .iter()
-            .any(|node| node["flow_run_id"] == json!(run_c_id))
-    );
-    assert!(
-        root_nodes
-            .iter()
-            .all(|node| node["flow_run_id"] != json!(run_a_id))
-    );
-    assert!(
-        root_nodes
-            .iter()
-            .all(|node| node["flow_run_id"] != json!(run_b_id))
-    );
-    assert!(
-        root_nodes
-            .iter()
-            .all(|node| node.get("input_payload").is_none())
-    );
-    assert!(
-        root_nodes
-            .iter()
-            .all(|node| node.get("debug_payload").is_none())
-    );
+    assert!(root_nodes
+        .iter()
+        .any(|node| node["flow_run_id"] == json!(run_c_id)));
+    assert!(root_nodes
+        .iter()
+        .all(|node| node["flow_run_id"] != json!(run_a_id)));
+    assert!(root_nodes
+        .iter()
+        .all(|node| node["flow_run_id"] != json!(run_b_id)));
+    assert!(root_nodes
+        .iter()
+        .all(|node| node.get("input_payload").is_none()));
+    assert!(root_nodes
+        .iter()
+        .all(|node| node.get("debug_payload").is_none()));
 
     let llm_root = root_nodes
         .iter()
@@ -260,11 +250,9 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         })
         .expect("current llm root should be present");
     let llm_root_id = llm_root["trace_node_id"].as_str().unwrap();
-    assert!(
-        root_nodes
-            .iter()
-            .all(|node| node["node_kind"] != json!("stitched_context"))
-    );
+    assert!(root_nodes
+        .iter()
+        .all(|node| node["node_kind"] != json!("stitched_context")));
 
     let llm_children = app
         .clone()
@@ -314,16 +302,12 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         .as_array()
         .unwrap();
     assert_eq!(stitched_runs.len(), 2);
-    assert!(
-        stitched_runs
-            .iter()
-            .all(|node| node["node_kind"] == json!("stitched_run"))
-    );
-    assert!(
-        stitched_runs
-            .iter()
-            .all(|node| node["has_content"] == json!(false))
-    );
+    assert!(stitched_runs
+        .iter()
+        .all(|node| node["node_kind"] == json!("stitched_run")));
+    assert!(stitched_runs
+        .iter()
+        .all(|node| node["has_content"] == json!(false)));
     let run_a_trace_node_id = stitched_runs[0]["trace_node_id"].as_str().unwrap();
 
     let run_a_node_content = app

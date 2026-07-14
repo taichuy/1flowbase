@@ -9,7 +9,6 @@ import type { SettingsSectionKey } from '../../lib/settings-sections';
 import { SettingsAuthCenterSection } from './SettingsAuthCenterSection';
 import { SettingsDataModelsSection } from './SettingsDataModelsSection';
 import { SettingsFilesSection } from './SettingsFilesSection';
-import { i18nText } from '../../../../shared/i18n/text';
 
 const ApiDocsPanel = lazy(() =>
   import('../../components/ApiDocsPanel').then((module) => ({
@@ -137,8 +136,6 @@ export function SettingsSectionBody({
       return (
         <SettingsSectionBoundary>
           <SettingsSectionSurface
-            title={i18nText('settings', 'auto.memory_observation')}
-            hideHeader
             heightMode="fill"
           >
             <HostInfrastructureMemoryObservationPanel

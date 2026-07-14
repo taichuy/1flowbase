@@ -174,6 +174,10 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/model-providers');
   },
+  'page.settings-applications': () => {
+    seedStyleBoundarySettingsFetch();
+    return renderRouterScene('/settings/applications');
+  },
   'page.settings-mcp-management': () => {
     seedStyleBoundarySettingsFetch();
     return <SettingsMcpManagementStyleBoundaryScene />;

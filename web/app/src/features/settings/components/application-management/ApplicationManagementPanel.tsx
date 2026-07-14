@@ -453,12 +453,6 @@ export function ApplicationManagementPanel() {
 
   return (
     <SettingsSectionSurface
-      title={i18nText('settings', 'auto.application_management')}
-      description={i18nText(
-        'settings',
-        'auto.application_management_description'
-      )}
-      hideHeader={false}
       heightMode="fill"
       toolbar={
         <Flex justify="space-between" gap={12} wrap>

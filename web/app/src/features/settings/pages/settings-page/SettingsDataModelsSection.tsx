@@ -505,9 +505,6 @@ export function SettingsDataModelsSection({
 
   return (
     <SettingsSectionSurface
-      title={i18nText("settings", "auto.data_source")}
-      description={i18nText("settings", "auto.data_source_description")}
-      hideHeader={true}
       heightMode="fill"
       status={
         errorMessage ? (

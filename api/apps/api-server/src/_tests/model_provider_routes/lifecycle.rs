@@ -133,16 +133,12 @@ async fn model_provider_routes_mask_secret_until_reveal_and_keep_ready_options()
         validate_payload["data"]["instance"]["included_in_main"].as_bool(),
         Some(true)
     );
-    assert!(
-        validate_payload["data"]["instance"]
-            .get("is_primary")
-            .is_none()
-    );
-    assert!(
-        validate_payload["data"]["instance"]
-            .get("validation_model_id")
-            .is_none()
-    );
+    assert!(validate_payload["data"]["instance"]
+        .get("is_primary")
+        .is_none());
+    assert!(validate_payload["data"]["instance"]
+        .get("validation_model_id")
+        .is_none());
     assert_eq!(
         validate_payload["data"]["output"]["sanitized"]["api_key"].as_str(),
         Some("***")

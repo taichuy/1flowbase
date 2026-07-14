@@ -539,7 +539,7 @@ export function MemberManagementPanel({
   );
 
   return (
-    <SettingsSectionSurface title={i18nText("settings", "auto.user_management")} hideHeader heightMode="fill">
+    <SettingsSectionSurface heightMode="fill">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {canManageMembers ? (
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

@@ -1,9 +1,9 @@
 use crate::_tests::support::{login_and_capture_cookie, test_app, test_app_with_database_url};
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::ServiceExt;
 
 async fn create_member(
@@ -336,12 +336,10 @@ async fn docs_routes_allow_root_and_granted_members() {
         .await
         .unwrap();
     let catalog_payload: Value = serde_json::from_slice(&catalog_body).unwrap();
-    assert!(
-        !catalog_payload["data"]["categories"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
+    assert!(!catalog_payload["data"]["categories"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 
     let category_response = app
         .clone()
@@ -601,11 +599,9 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         .cloned()
         .expect("dynamic data model api category should exist");
     assert_eq!(dynamic_category["label"], json!("Data Model APIs"));
-    assert!(
-        dynamic_category["operation_count"]
-            .as_u64()
-            .is_some_and(|count| count >= 5)
-    );
+    assert!(dynamic_category["operation_count"]
+        .as_u64()
+        .is_some_and(|count| count >= 5));
 
     let operations_response = app
         .clone()
@@ -689,11 +685,9 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         category_spec["paths"]["/api/runtime/models/docs_ready_orders/delete/{id}"]["delete"]
             .is_object()
     );
-    assert!(
-        category_spec["paths"]
-            .get("/api/runtime/models/docs_hidden_orders/list")
-            .is_none()
-    );
+    assert!(category_spec["paths"]
+        .get("/api/runtime/models/docs_hidden_orders/list")
+        .is_none());
 
     let hidden_model_spec_response = app
         .clone()
@@ -742,21 +736,15 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
     assert!(
         operation_spec["paths"]["/api/runtime/models/docs_ready_orders/list"]["get"].is_object()
     );
-    assert!(
-        operation_spec["x-data-model"]
-            .get("api_exposure_status")
-            .is_none()
-    );
-    assert!(
-        operation_spec["paths"]
-            .get("/api/runtime/models/{model_code}/list")
-            .is_none()
-    );
-    assert!(
-        operation_spec["paths"]
-            .get("/api/runtime/models/docs_ready_orders/create")
-            .is_none()
-    );
+    assert!(operation_spec["x-data-model"]
+        .get("api_exposure_status")
+        .is_none());
+    assert!(operation_spec["paths"]
+        .get("/api/runtime/models/{model_code}/list")
+        .is_none());
+    assert!(operation_spec["paths"]
+        .get("/api/runtime/models/docs_ready_orders/create")
+        .is_none());
     let create_operation = operations
         .iter()
         .find(|operation| {
@@ -820,7 +808,8 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         json!("date-time")
     );
     assert_eq!(
-        create_spec["components"]["schemas"]["DocsReadyOrdersRecord"]["properties"]["created_at"]["format"],
+        create_spec["components"]["schemas"]["DocsReadyOrdersRecord"]["properties"]["created_at"]
+            ["format"],
         json!("date-time")
     );
 
@@ -852,8 +841,9 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
             .unwrap(),
     )
     .unwrap();
-    let update_body_schema = &update_spec["paths"]["/api/runtime/models/docs_ready_orders/update/{id}"]
-        ["patch"]["requestBody"]["content"]["application/json"]["schema"];
+    let update_body_schema = &update_spec["paths"]
+        ["/api/runtime/models/docs_ready_orders/update/{id}"]["patch"]["requestBody"]["content"]
+        ["application/json"]["schema"];
     assert_eq!(
         update_body_schema["$ref"],
         json!("#/components/schemas/DocsReadyOrdersRecordUpdateInput")
