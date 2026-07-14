@@ -80,6 +80,20 @@ async fn roles_feature_only_completes_role_crud_and_permission_configuration() {
         .unwrap()
         .iter()
         .any(|permission| permission["code"] == "application.view.own"));
+    let roles_feature = permission_options["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|permission| permission["code"] == ROLES_FEATURE_PERMISSION)
+        .unwrap();
+    assert_eq!(
+        roles_feature["settings_feature"],
+        json!({
+            "feature_id": "system.roles",
+            "label_key": "auto.permission_management",
+            "order": 1300
+        })
+    );
 
     let data_model_options_response = app
         .clone()

@@ -56,6 +56,11 @@ const RESOURCE_MAP: Record<
   string,
   { tab: string; label: string; order: number }
 > = {
+  settings_feature: {
+    tab: i18nText("settings", "auto.basic_configuration"),
+    label: i18nText("settings", "auto.settings"),
+    order: 0
+  },
   role_permission: {
     tab: i18nText("settings", "auto.basic_configuration"),
     label: i18nText("settings", "auto.permission_role_permission"),
@@ -251,10 +256,22 @@ export function RolePermissionPanel({
       const treeData: TreeDataNode[] = resources.map((res) => ({
         title: res.label,
         key: `resource:${res.key}`,
-        children: res.permissions.map((p) => ({
-          title: <span title={p.code}>{p.name}</span>,
-          key: p.code
-        }))
+        children: [...res.permissions]
+          .sort(
+            (left, right) =>
+              (left.settings_feature?.order ?? 0) -
+              (right.settings_feature?.order ?? 0)
+          )
+          .map((p) => ({
+            title: (
+              <span title={p.code}>
+                {p.settings_feature
+                  ? i18nText('settings', p.settings_feature.label_key)
+                  : p.name}
+              </span>
+            ),
+            key: p.code
+          }))
       }));
 
       const tabLeafKeys = resources.flatMap((res) =>

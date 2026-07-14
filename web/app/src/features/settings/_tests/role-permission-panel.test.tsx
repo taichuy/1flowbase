@@ -271,6 +271,54 @@ describe('RolePermissionPanel', () => {
     );
   });
 
+  test('AC-005 shows registered SettingsFeature grants in the existing general tab', async () => {
+    permissionsApi.fetchSettingsPermissions.mockResolvedValue([
+      {
+        code: 'settings_feature.access.system.roles',
+        resource: 'settings_feature',
+        action: 'access',
+        scope: 'system.roles',
+        name: 'settings_feature:access:system.roles',
+        settings_feature: {
+          feature_id: 'system.roles',
+          label_key: 'auto.permission_management',
+          order: 800
+        }
+      },
+      {
+        code: 'settings_feature.access.system.members',
+        resource: 'settings_feature',
+        action: 'access',
+        scope: 'system.members',
+        name: 'settings_feature:access:system.members',
+        settings_feature: {
+          feature_id: 'system.members',
+          label_key: 'auto.user_management',
+          order: 600
+        }
+      }
+    ]);
+
+    renderPanel();
+
+    const generalTab = await screen.findByRole('tab', { name: '基础通用' });
+    expect(generalTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      '基础通用',
+      '动态路由',
+      '表-通用配置',
+      '表-单独配置'
+    ]);
+
+    fireEvent.click(screen.getByRole('img', { name: 'caret-down' }));
+
+    const treeItems = screen
+      .getAllByRole('treeitem')
+      .map((item) => item.textContent);
+    expect(treeItems).toEqual(['设置', '用户管理', '权限管理']);
+    expect(screen.queryByText('settings_feature')).not.toBeInTheDocument();
+  });
+
   test('dynamic route group selects descendants without persisting the group id', async () => {
     renderPanel();
 

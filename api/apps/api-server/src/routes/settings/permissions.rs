@@ -17,6 +17,15 @@ pub struct PermissionResponse {
     pub action: String,
     pub scope: String,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings_feature: Option<SettingsFeaturePermissionResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SettingsFeaturePermissionResponse {
+    pub feature_id: String,
+    pub label_key: String,
+    pub order: i32,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -37,12 +46,27 @@ pub async fn list_permissions(
         .list_permission_options(context.user.id)
         .await?
         .into_iter()
-        .map(|permission| PermissionResponse {
-            code: permission.code,
-            resource: permission.resource,
-            action: permission.action,
-            scope: permission.scope,
-            name: permission.name,
+        .map(|permission| {
+            let settings_feature = state
+                .settings_feature_registry
+                .inventory()
+                .features
+                .iter()
+                .find(|feature| feature.permission_code == permission.code)
+                .map(|feature| SettingsFeaturePermissionResponse {
+                    feature_id: feature.feature_id.clone(),
+                    label_key: feature.console_surface.label_key.clone(),
+                    order: feature.console_surface.order,
+                });
+
+            PermissionResponse {
+                code: permission.code,
+                resource: permission.resource,
+                action: permission.action,
+                scope: permission.scope,
+                name: permission.name,
+                settings_feature,
+            }
         })
         .collect::<Vec<_>>();
 
