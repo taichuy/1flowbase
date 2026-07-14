@@ -12,6 +12,8 @@ use crate::{
     },
 };
 
+pub mod console_policy_migration;
+
 pub struct CreateRoleCommand {
     pub actor_user_id: Uuid,
     pub code: String,

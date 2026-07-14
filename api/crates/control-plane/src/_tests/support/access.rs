@@ -176,6 +176,7 @@ pub struct MemoryRoleRepository {
     roles: Arc<RwLock<Vec<RoleTemplate>>>,
     audit_events: Arc<RwLock<Vec<String>>>,
     touched_workspaces: Arc<RwLock<Vec<Uuid>>>,
+    console_policies: Arc<RwLock<std::collections::BTreeMap<String, domain::RoleConsolePolicy>>>,
 }
 
 impl Default for MemoryRoleRepository {
@@ -185,6 +186,7 @@ impl Default for MemoryRoleRepository {
             roles: Arc::new(RwLock::new(Vec::new())),
             audit_events: Arc::new(RwLock::new(Vec::new())),
             touched_workspaces: Arc::new(RwLock::new(Vec::new())),
+            console_policies: Arc::new(RwLock::new(std::collections::BTreeMap::new())),
         }
     }
 }
@@ -328,6 +330,35 @@ impl RoleRepository for MemoryRoleRepository {
             .find(|role| role.code == role_code)
             .map(|role| role.permissions.clone())
             .unwrap_or_default())
+    }
+
+    async fn get_role_console_policy(
+        &self,
+        _workspace_id: Uuid,
+        role_code: &str,
+    ) -> Result<domain::RoleConsolePolicy> {
+        self.console_policies
+            .read()
+            .await
+            .get(role_code)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("role console policy not found"))
+    }
+
+    async fn replace_role_console_policy(
+        &self,
+        input: &crate::ports::ReplaceRoleConsolePolicyInput,
+    ) -> Result<domain::RoleConsolePolicy> {
+        self.touched_workspaces
+            .write()
+            .await
+            .push(input.workspace_id);
+        let policy = domain::RoleConsolePolicy::new(Uuid::now_v7(), input.groups.clone());
+        self.console_policies
+            .write()
+            .await
+            .insert(input.role_code.clone(), policy.clone());
+        Ok(policy)
     }
 
     async fn get_role_data_policy(

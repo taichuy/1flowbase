@@ -398,6 +398,14 @@ pub struct RoleDataPolicyView {
     pub model_policies: Vec<domain::RoleDataModelPolicyRecord>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ReplaceRoleConsolePolicyInput {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub role_code: String,
+    pub groups: Vec<domain::RoleConsoleGroupPolicy>,
+}
+
 #[async_trait]
 pub trait MemberRepository: Send + Sync {
     async fn load_actor_context_for_user(
@@ -457,6 +465,15 @@ pub trait RoleRepository: Send + Sync {
         workspace_id: Uuid,
         role_code: &str,
     ) -> anyhow::Result<Vec<String>>;
+    async fn get_role_console_policy(
+        &self,
+        workspace_id: Uuid,
+        role_code: &str,
+    ) -> anyhow::Result<domain::RoleConsolePolicy>;
+    async fn replace_role_console_policy(
+        &self,
+        input: &ReplaceRoleConsolePolicyInput,
+    ) -> anyhow::Result<domain::RoleConsolePolicy>;
     async fn get_role_data_policy(
         &self,
         workspace_id: Uuid,

@@ -5,6 +5,7 @@ pub mod audit;
 pub mod auth;
 pub mod base;
 pub mod builtin_data_model;
+pub mod console_policy;
 pub mod data_source;
 pub mod file_management;
 pub mod flow;
@@ -45,6 +46,11 @@ pub use builtin_data_model::{
     data_model_field_capabilities, BuiltinDataModelContract, BuiltinDataModelFieldContract,
     BuiltinDataModelKind, DataModelCapabilities, DataModelFieldCapabilities,
     DataModelFieldOwnership, DataModelRecordCapabilities,
+};
+pub use console_policy::{
+    ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup,
+    ConsolePolicyGroupId, ConsolePolicyGroupKind, ConsolePolicyIdentifierError, ConsolePolicyMode,
+    RoleConsoleGroupPolicy, RoleConsolePolicy,
 };
 pub use data_source::{
     data_source_secret_ref, DataSourceCatalogCacheRecord, DataSourceCatalogRefreshStatus,
