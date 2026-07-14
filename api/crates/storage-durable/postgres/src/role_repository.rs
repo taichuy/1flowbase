@@ -6,10 +6,15 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         AuthRepository, CreateWorkspaceRoleInput, ReplaceRoleConsolePolicyInput,
-        ReplaceRoleDataPolicyInput, RoleConsolePolicyMigrationGrantInventory,
+        ReplaceRoleDataPolicyInput, RoleConsolePolicyMigrationCutoverMarker,
+        RoleConsolePolicyMigrationCutoverState, RoleConsolePolicyMigrationGrantInventory,
         RoleConsolePolicyMigrationRehearsalInput, RoleConsolePolicyMigrationRepository,
         RoleConsolePolicyMigrationSource, RoleDataPolicyDefaultsInput, RoleRepository,
         UpdateWorkspaceRoleInput,
+    },
+    role::console_policy_migration::{
+        validate_console_policy_migration_actor_previews, ConsolePolicyMigrationActorPreview,
+        ConsolePolicyMigrationActorRoleBinding,
     },
 };
 use domain::{ActorContext, AuditLogRecord, RoleScopeKind};
@@ -326,6 +331,47 @@ async fn role_console_policy_migration_source_snapshot(
     .bind(role_ids)
     .fetch_one(&mut **tx)
     .await?)
+}
+
+async fn role_console_policy_migration_actor_bindings(
+    tx: &mut Transaction<'_, Postgres>,
+    role_ids: &[Uuid],
+) -> Result<Vec<ConsolePolicyMigrationActorRoleBinding>> {
+    let rows = sqlx::query(
+        r#"
+        select binding.user_id as actor_user_id,
+               array_agg(binding.role_id order by binding.role_id) as role_ids
+        from user_role_bindings binding
+        where binding.role_id = any($1::uuid[])
+        group by binding.user_id
+        order by binding.user_id
+        "#,
+    )
+    .bind(role_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ConsolePolicyMigrationActorRoleBinding {
+            actor_user_id: row.get("actor_user_id"),
+            role_ids: row.get("role_ids"),
+        })
+        .collect())
+}
+
+fn actor_bindings_from_previews(
+    actor_previews: &[ConsolePolicyMigrationActorPreview],
+) -> Result<Vec<ConsolePolicyMigrationActorRoleBinding>> {
+    let bindings = actor_previews
+        .iter()
+        .map(|preview| (preview.binding.actor_user_id, preview.binding.clone()))
+        .collect::<BTreeMap<_, _>>();
+    if bindings.len() != actor_previews.len() {
+        return Err(
+            ControlPlaneError::InvalidInput("console_policy_migration_actor_binding").into(),
+        );
+    }
+    Ok(bindings.into_values().collect())
 }
 
 #[async_trait]
@@ -790,8 +836,8 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         let source = normalized_migration_source(&input.source)?;
         for value in [
             &input.source_contract,
-            &input.catalog_fingerprint,
-            &input.mapping_fingerprint,
+            input.plan.catalog_fingerprint(),
+            input.plan.mapping_fingerprint(),
         ] {
             if value.is_empty() || value.trim() != value {
                 return Err(
@@ -819,6 +865,12 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
             )
             .into());
         }
+        validate_console_policy_migration_actor_previews(
+            &input.plan,
+            &input.previews,
+            &input.actor_previews,
+        )
+        .map_err(|_| ControlPlaneError::InvalidInput("console_policy_migration_actor_preview"))?;
 
         let mut tx = self.pool().begin().await?;
         sqlx::query("select pg_advisory_xact_lock(hashtext('role_console_policy_migration'))")
@@ -847,8 +899,30 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
                 ControlPlaneError::Conflict("console_policy_migration_source_drift").into(),
             );
         }
+        for inventory in &inventories {
+            let expected = input
+                .plan
+                .project_legacy_role(inventory.role_id, &inventory.source_grants)
+                .map_err(|_| ControlPlaneError::InvalidInput("console_policy_migration_mapping"))?;
+            if preview_by_role
+                .get(&inventory.role_id)
+                .is_none_or(|preview| *preview != &expected)
+            {
+                return Err(
+                    ControlPlaneError::Conflict("console_policy_migration_preview_drift").into(),
+                );
+            }
+        }
 
         let role_ids = preview_by_role.keys().copied().collect::<Vec<_>>();
+        let source_actor_bindings =
+            role_console_policy_migration_actor_bindings(&mut tx, &role_ids).await?;
+        if actor_bindings_from_previews(&input.actor_previews)? != source_actor_bindings {
+            return Err(ControlPlaneError::Conflict(
+                "console_policy_migration_actor_binding_drift",
+            )
+            .into());
+        }
         let source_snapshot =
             role_console_policy_migration_source_snapshot(&mut tx, &source, &role_ids).await?;
         sqlx::query(
@@ -862,10 +936,28 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         )
         .bind(input.run_id)
         .bind(&input.source_contract)
-        .bind(&input.catalog_fingerprint)
-        .bind(&input.mapping_fingerprint)
+        .bind(input.plan.catalog_fingerprint())
+        .bind(input.plan.mapping_fingerprint())
         .bind(serde_json::to_value(&source)?)
         .bind(source_snapshot)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            insert into role_console_policy_migration_run_artifacts (
+              run_id, catalog_fingerprint, mapping_fingerprint,
+              compiled_catalog, legacy_mappings, actor_role_bindings
+            )
+            values ($1, $2, $3, $4, $5, $6)
+            "#,
+        )
+        .bind(input.run_id)
+        .bind(input.plan.catalog_fingerprint())
+        .bind(input.plan.mapping_fingerprint())
+        .bind(serde_json::to_value(input.plan.catalog())?)
+        .bind(serde_json::to_value(input.plan.mappings())?)
+        .bind(serde_json::to_value(&source_actor_bindings)?)
         .execute(&mut *tx)
         .await?;
 
@@ -888,6 +980,26 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
             .bind(serde_json::to_value(&preview.source_grants)?)
             .bind(serde_json::to_value(&preview.policy)?)
             .bind(serde_json::to_value(&preview.authorization_delta)?)
+            .bind(serde_json::to_value(&preview.effective_before)?)
+            .bind(serde_json::to_value(&preview.effective_after)?)
+            .bind(serde_json::to_value(&preview.effective_delta)?)
+            .execute(&mut *tx)
+            .await?;
+        }
+        for preview in &input.actor_previews {
+            sqlx::query(
+                r#"
+                insert into role_console_policy_migration_actor_previews (
+                  run_id, actor_user_id, role_ids, probes,
+                  effective_before, effective_after, effective_delta, status
+                )
+                values ($1, $2, $3, $4, $5, $6, $7, 'previewed')
+                "#,
+            )
+            .bind(input.run_id)
+            .bind(preview.binding.actor_user_id)
+            .bind(serde_json::to_value(&preview.binding.role_ids)?)
+            .bind(serde_json::to_value(&preview.probes)?)
             .bind(serde_json::to_value(&preview.effective_before)?)
             .bind(serde_json::to_value(&preview.effective_after)?)
             .bind(serde_json::to_value(&preview.effective_delta)?)
@@ -932,8 +1044,8 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         .ok_or(ControlPlaneError::NotFound("console_policy_migration_run"))?;
         if run.get::<String, _>("status") != "previewed"
             || run.get::<String, _>("source_contract") != input.source_contract
-            || run.get::<String, _>("catalog_fingerprint") != input.catalog_fingerprint
-            || run.get::<String, _>("mapping_fingerprint") != input.mapping_fingerprint
+            || run.get::<String, _>("catalog_fingerprint") != input.plan.catalog_fingerprint()
+            || run.get::<String, _>("mapping_fingerprint") != input.plan.mapping_fingerprint()
         {
             return Err(ControlPlaneError::Conflict("console_policy_migration_revision").into());
         }
@@ -951,13 +1063,56 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         if preview_by_role.len() != input.previews.len() {
             return Err(ControlPlaneError::InvalidInput("console_policy_migration_preview").into());
         }
+        validate_console_policy_migration_actor_previews(
+            &input.plan,
+            &input.previews,
+            &input.actor_previews,
+        )
+        .map_err(|_| ControlPlaneError::InvalidInput("console_policy_migration_actor_preview"))?;
         let role_ids = preview_by_role.keys().copied().collect::<Vec<_>>();
+        let source_actor_bindings =
+            role_console_policy_migration_actor_bindings(&mut tx, &role_ids).await?;
+        if actor_bindings_from_previews(&input.actor_previews)? != source_actor_bindings {
+            return Err(ControlPlaneError::Conflict(
+                "console_policy_migration_actor_binding_drift",
+            )
+            .into());
+        }
         let current_source_snapshot =
             role_console_policy_migration_source_snapshot(&mut tx, &stored_source, &role_ids)
                 .await?;
         if current_source_snapshot != run.get::<Value, _>("source_snapshot") {
             return Err(
                 ControlPlaneError::Conflict("console_policy_migration_source_drift").into(),
+            );
+        }
+
+        let artifacts = sqlx::query(
+            r#"
+            select catalog_fingerprint, mapping_fingerprint, compiled_catalog,
+                   legacy_mappings, actor_role_bindings
+            from role_console_policy_migration_run_artifacts
+            where run_id = $1
+            for update
+            "#,
+        )
+        .bind(input.run_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(ControlPlaneError::Conflict(
+            "console_policy_migration_artifact",
+        ))?;
+        if artifacts.get::<String, _>("catalog_fingerprint") != input.plan.catalog_fingerprint()
+            || artifacts.get::<String, _>("mapping_fingerprint") != input.plan.mapping_fingerprint()
+            || artifacts.get::<Value, _>("compiled_catalog")
+                != serde_json::to_value(input.plan.catalog()).unwrap_or(Value::Null)
+            || artifacts.get::<Value, _>("legacy_mappings")
+                != serde_json::to_value(input.plan.mappings()).unwrap_or(Value::Null)
+            || artifacts.get::<Value, _>("actor_role_bindings")
+                != serde_json::to_value(&source_actor_bindings).unwrap_or(Value::Null)
+        {
+            return Err(
+                ControlPlaneError::Conflict("console_policy_migration_artifact_drift").into(),
             );
         }
 
@@ -999,6 +1154,51 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
             );
         }
 
+        let actor_preview_by_actor = input
+            .actor_previews
+            .iter()
+            .map(|preview| (preview.binding.actor_user_id, preview))
+            .collect::<BTreeMap<_, _>>();
+        let actor_ledger_rows = sqlx::query(
+            r#"
+            select actor_user_id, role_ids, probes, effective_before, effective_after, effective_delta
+            from role_console_policy_migration_actor_previews
+            where run_id = $1
+            order by actor_user_id
+            "#,
+        )
+        .bind(input.run_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        if actor_ledger_rows.len() != actor_preview_by_actor.len()
+            || actor_ledger_rows.iter().any(|row| {
+                let actor_user_id: Uuid = row.get("actor_user_id");
+                actor_preview_by_actor
+                    .get(&actor_user_id)
+                    .is_none_or(|preview| {
+                        row.get::<Value, _>("role_ids")
+                            != serde_json::to_value(&preview.binding.role_ids)
+                                .unwrap_or(Value::Null)
+                            || row.get::<Value, _>("probes")
+                                != serde_json::to_value(&preview.probes).unwrap_or(Value::Null)
+                            || row.get::<Value, _>("effective_before")
+                                != serde_json::to_value(&preview.effective_before)
+                                    .unwrap_or(Value::Null)
+                            || row.get::<Value, _>("effective_after")
+                                != serde_json::to_value(&preview.effective_after)
+                                    .unwrap_or(Value::Null)
+                            || row.get::<Value, _>("effective_delta")
+                                != serde_json::to_value(&preview.effective_delta)
+                                    .unwrap_or(Value::Null)
+                    })
+            })
+        {
+            return Err(ControlPlaneError::Conflict(
+                "console_policy_migration_actor_preview_drift",
+            )
+            .into());
+        }
+
         sqlx::query("select set_config('oneflow.role_console_policy_migration_run_id', $1, true)")
             .bind(input.run_id.to_string())
             .execute(&mut *tx)
@@ -1014,6 +1214,35 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         .bind(input.run_id)
         .execute(&mut *tx)
         .await?;
+        let cutover_marker: String = sqlx::query_scalar(
+            "select marker from role_console_policy_migration_cutover_state where singleton for update",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if cutover_marker != "legacy" {
+            return Err(
+                ControlPlaneError::Conflict("console_policy_migration_cutover_state").into(),
+            );
+        }
+        let cutover_update = sqlx::query(
+            r#"
+            update role_console_policy_migration_cutover_state
+            set marker = 'fenced', run_id = $1,
+                catalog_fingerprint = $2, mapping_fingerprint = $3,
+                updated_at = now()
+            where singleton and marker = 'legacy'
+            "#,
+        )
+        .bind(input.run_id)
+        .bind(input.plan.catalog_fingerprint())
+        .bind(input.plan.mapping_fingerprint())
+        .execute(&mut *tx)
+        .await?;
+        if cutover_update.rows_affected() != 1 {
+            return Err(
+                ControlPlaneError::Conflict("console_policy_migration_cutover_state").into(),
+            );
+        }
         sqlx::query(
             r#"
             insert into role_console_group_policy_snapshots (
@@ -1067,6 +1296,16 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         .bind(input.run_id)
         .execute(&mut *tx)
         .await?;
+        sqlx::query(
+            r#"
+            update role_console_policy_migration_actor_previews
+            set status = 'applied', applied_at = now()
+            where run_id = $1
+            "#,
+        )
+        .bind(input.run_id)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -1093,7 +1332,8 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
 
         let run = sqlx::query(
             r#"
-            select source_filter, source_snapshot, status, cutover_marker, write_fenced
+            select source_filter, source_snapshot, status, cutover_marker, write_fenced,
+                   catalog_fingerprint, mapping_fingerprint
             from role_console_policy_migration_runs
             where id = $1
             for update
@@ -1117,6 +1357,27 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         if fenced_run_id != Some(run_id) {
             return Err(ControlPlaneError::Conflict("console_policy_migration_fence_owner").into());
         }
+        let cutover = sqlx::query(
+            r#"
+            select marker, run_id, catalog_fingerprint, mapping_fingerprint
+            from role_console_policy_migration_cutover_state
+            where singleton
+            for update
+            "#,
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if cutover.get::<String, _>("marker") != "fenced"
+            || cutover.get::<Option<Uuid>, _>("run_id") != Some(run_id)
+            || cutover.get::<Option<String>, _>("catalog_fingerprint")
+                != Some(run.get::<String, _>("catalog_fingerprint"))
+            || cutover.get::<Option<String>, _>("mapping_fingerprint")
+                != Some(run.get::<String, _>("mapping_fingerprint"))
+        {
+            return Err(
+                ControlPlaneError::Conflict("console_policy_migration_cutover_state").into(),
+            );
+        }
 
         let role_ids = sqlx::query_scalar::<_, Uuid>(
             "select role_id from role_console_policy_migration_role_previews where run_id = $1 order by role_id",
@@ -1138,6 +1399,28 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
             return Err(
                 ControlPlaneError::Conflict("console_policy_migration_preview_state").into(),
             );
+        }
+        let actor_preview_count: i64 = sqlx::query_scalar(
+            "select count(*) from role_console_policy_migration_actor_previews where run_id = $1",
+        )
+        .bind(run_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let applied_actor_preview_count: i64 = sqlx::query_scalar(
+            r#"
+            select count(*)
+            from role_console_policy_migration_actor_previews
+            where run_id = $1 and status = 'applied'
+            "#,
+        )
+        .bind(run_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if actor_preview_count != applied_actor_preview_count {
+            return Err(ControlPlaneError::Conflict(
+                "console_policy_migration_actor_preview_state",
+            )
+            .into());
         }
 
         let source: RoleConsolePolicyMigrationSource =
@@ -1168,6 +1451,24 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         if result.rows_affected() != 1 {
             return Err(ControlPlaneError::Conflict("console_policy_migration_state").into());
         }
+        let cutover_result = sqlx::query(
+            r#"
+            update role_console_policy_migration_cutover_state
+            set marker = 'console_policy', updated_at = now()
+            where singleton and marker = 'fenced' and run_id = $1
+              and catalog_fingerprint = $2 and mapping_fingerprint = $3
+            "#,
+        )
+        .bind(run_id)
+        .bind(run.get::<String, _>("catalog_fingerprint"))
+        .bind(run.get::<String, _>("mapping_fingerprint"))
+        .execute(&mut *tx)
+        .await?;
+        if cutover_result.rows_affected() != 1 {
+            return Err(
+                ControlPlaneError::Conflict("console_policy_migration_cutover_state").into(),
+            );
+        }
         tx.commit().await?;
         Ok(())
     }
@@ -1193,7 +1494,7 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         .await?;
         let run = sqlx::query(
             r#"
-            select source_filter, source_snapshot, status
+            select source_filter, source_snapshot, status, catalog_fingerprint, mapping_fingerprint
             from role_console_policy_migration_runs
             where id = $1
             for update
@@ -1205,6 +1506,27 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         .ok_or(ControlPlaneError::NotFound("console_policy_migration_run"))?;
         if run.get::<String, _>("status") != "applied_fenced" {
             return Err(ControlPlaneError::Conflict("console_policy_migration_state").into());
+        }
+        let cutover = sqlx::query(
+            r#"
+            select marker, run_id, catalog_fingerprint, mapping_fingerprint
+            from role_console_policy_migration_cutover_state
+            where singleton
+            for update
+            "#,
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if cutover.get::<String, _>("marker") != "fenced"
+            || cutover.get::<Option<Uuid>, _>("run_id") != Some(run_id)
+            || cutover.get::<Option<String>, _>("catalog_fingerprint")
+                != Some(run.get::<String, _>("catalog_fingerprint"))
+            || cutover.get::<Option<String>, _>("mapping_fingerprint")
+                != Some(run.get::<String, _>("mapping_fingerprint"))
+        {
+            return Err(
+                ControlPlaneError::Conflict("console_policy_migration_cutover_state").into(),
+            );
         }
         let source: RoleConsolePolicyMigrationSource =
             serde_json::from_value(run.get("source_filter"))?;
@@ -1316,6 +1638,12 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         .execute(&mut *tx)
         .await?;
         sqlx::query(
+            "update role_console_policy_migration_actor_previews set status = 'rolled_back' where run_id = $1",
+        )
+        .bind(run_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
             r#"
             update role_console_policy_migration_runs
             set status = 'rolled_back', cutover_marker = 'legacy',
@@ -1326,7 +1654,61 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         .bind(run_id)
         .execute(&mut *tx)
         .await?;
+        let cutover_result = sqlx::query(
+            r#"
+            update role_console_policy_migration_cutover_state
+            set marker = 'legacy', run_id = null,
+                catalog_fingerprint = null, mapping_fingerprint = null,
+                updated_at = now()
+            where singleton and marker = 'fenced' and run_id = $1
+              and catalog_fingerprint = $2 and mapping_fingerprint = $3
+            "#,
+        )
+        .bind(run_id)
+        .bind(run.get::<String, _>("catalog_fingerprint"))
+        .bind(run.get::<String, _>("mapping_fingerprint"))
+        .execute(&mut *tx)
+        .await?;
+        if cutover_result.rows_affected() != 1 {
+            return Err(
+                ControlPlaneError::Conflict("console_policy_migration_cutover_state").into(),
+            );
+        }
         tx.commit().await?;
         Ok(())
+    }
+
+    async fn role_console_policy_migration_cutover_state(
+        &self,
+    ) -> Result<RoleConsolePolicyMigrationCutoverState> {
+        let row = sqlx::query(
+            r#"
+            select marker, run_id, catalog_fingerprint, mapping_fingerprint
+            from role_console_policy_migration_cutover_state
+            where singleton
+            "#,
+        )
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(ControlPlaneError::NotFound(
+            "console_policy_migration_cutover_state",
+        ))?;
+        let marker = match row.get::<String, _>("marker").as_str() {
+            "legacy" => RoleConsolePolicyMigrationCutoverMarker::Legacy,
+            "fenced" => RoleConsolePolicyMigrationCutoverMarker::Fenced,
+            "console_policy" => RoleConsolePolicyMigrationCutoverMarker::ConsolePolicy,
+            _ => {
+                return Err(ControlPlaneError::InvalidInput(
+                    "console_policy_migration_cutover_state",
+                )
+                .into())
+            }
+        };
+        Ok(RoleConsolePolicyMigrationCutoverState {
+            marker,
+            run_id: row.get("run_id"),
+            catalog_fingerprint: row.get("catalog_fingerprint"),
+            mapping_fingerprint: row.get("mapping_fingerprint"),
+        })
     }
 }

@@ -4,9 +4,17 @@ use control_plane::application::console_policy_migration::{
 };
 use control_plane::ports::{
     CreateWorkspaceRoleInput, ReplaceRoleConsolePolicyInput,
-    RoleConsolePolicyMigrationRehearsalInput, RoleConsolePolicyMigrationRepository, RoleRepository,
+    RoleConsolePolicyMigrationCutoverMarker, RoleConsolePolicyMigrationRehearsalInput,
+    RoleConsolePolicyMigrationRepository, RoleConsolePolicyMigrationSource, RoleRepository,
 };
-use control_plane::role::console_policy_migration::project_legacy_role_console_policy;
+use control_plane::role::console_policy_migration::{
+    compile_console_policy_migration_plan_from_catalog,
+    preview_console_policy_migration_actor_authorizations, project_legacy_role_console_policy,
+    CompiledConsolePolicyCatalog, CompiledConsolePolicyGroup, ConsolePolicyMigrationActorProbeSet,
+    ConsolePolicyMigrationActorRoleBinding, ConsolePolicyMigrationLegacyGrantMapping,
+    ConsolePolicyMigrationLegacyGrantProjection, ConsolePolicyMigrationProbe,
+    ConsolePolicyMigrationProbeKind,
+};
 use domain::{
     ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup,
     RoleConsoleGroupPolicy,
@@ -130,6 +138,19 @@ async fn applications_migration_input(
     store: &PgControlPlaneStore,
 ) -> RoleConsolePolicyMigrationRehearsalInput {
     let source = applications_legacy_console_policy_source();
+    let plan = compile_console_policy_migration_plan_from_catalog(
+        applications_console_policy_catalog(),
+        &applications_legacy_console_grant_mappings()
+            .into_iter()
+            .map(|mapping| ConsolePolicyMigrationLegacyGrantMapping {
+                legacy_grant: mapping.legacy_grant,
+                projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(
+                    mapping.operations,
+                ),
+            })
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
     let inventories = store
         .list_role_console_policy_migration_grants(&source)
         .await
@@ -137,23 +158,409 @@ async fn applications_migration_input(
     let previews = inventories
         .iter()
         .map(|inventory| {
-            project_legacy_role_console_policy(
-                inventory.role_id,
-                &inventory.source_grants,
-                &applications_console_policy_catalog(),
-                &applications_legacy_console_grant_mappings(),
-            )
-            .unwrap()
+            plan.project_legacy_role(inventory.role_id, &inventory.source_grants)
+                .unwrap()
         })
         .collect();
     RoleConsolePolicyMigrationRehearsalInput {
         run_id: Uuid::now_v7(),
         source_contract: "applications-legacy/v1".into(),
-        catalog_fingerprint: "applications-crud+settings-feature/v1".into(),
-        mapping_fingerprint: "applications-known-grants/v1".into(),
         source,
+        plan,
         previews,
+        actor_previews: vec![],
     }
+}
+
+fn synthetic_migration_plan(
+) -> control_plane::role::console_policy_migration::CompiledConsolePolicyMigrationPlan {
+    compile_console_policy_migration_plan_from_catalog(
+        CompiledConsolePolicyCatalog {
+            complete: true,
+            groups: vec![CompiledConsolePolicyGroup {
+                group: ConsolePolicyGroup::other("migration").unwrap(),
+                full_operations: vec![
+                    ConsoleOperationPolicy::simple(
+                        ConsoleOperationId::try_from("console.simple").unwrap(),
+                        true,
+                    ),
+                    ConsoleOperationPolicy::simple(
+                        ConsoleOperationId::try_from("console.create").unwrap(),
+                        true,
+                    ),
+                    ConsoleOperationPolicy::row(
+                        ConsoleOperationId::try_from("console.records.view").unwrap(),
+                        ConsoleOperationRowScope::ScopeAll,
+                    ),
+                ],
+            }],
+        },
+        &[
+            ConsolePolicyMigrationLegacyGrantMapping {
+                legacy_grant: "legacy.simple".into(),
+                projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(vec![
+                    ConsoleOperationPolicy::simple(
+                        ConsoleOperationId::try_from("console.simple").unwrap(),
+                        true,
+                    ),
+                ]),
+            },
+            ConsolePolicyMigrationLegacyGrantMapping {
+                legacy_grant: "legacy.create".into(),
+                projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(vec![
+                    ConsoleOperationPolicy::simple(
+                        ConsoleOperationId::try_from("console.create").unwrap(),
+                        true,
+                    ),
+                ]),
+            },
+            ConsolePolicyMigrationLegacyGrantMapping {
+                legacy_grant: "legacy.records.view.own".into(),
+                projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(vec![
+                    ConsoleOperationPolicy::row(
+                        ConsoleOperationId::try_from("console.records.view").unwrap(),
+                        ConsoleOperationRowScope::Own,
+                    ),
+                ]),
+            },
+            ConsolePolicyMigrationLegacyGrantMapping {
+                legacy_grant: "legacy.records.view.all".into(),
+                projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(vec![
+                    ConsoleOperationPolicy::row(
+                        ConsoleOperationId::try_from("console.records.view").unwrap(),
+                        ConsoleOperationRowScope::ScopeAll,
+                    ),
+                ]),
+            },
+            ConsolePolicyMigrationLegacyGrantMapping {
+                legacy_grant: "legacy.stale.non_console".into(),
+                projection: ConsolePolicyMigrationLegacyGrantProjection::NoProjection {
+                    evidence: "legacy permission is outside the console contract".into(),
+                },
+            },
+        ],
+    )
+    .expect("synthetic complete catalog must compile")
+}
+
+async fn grant_legacy_migration_permissions(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    role_code: &str,
+    permission_codes: &[&str],
+) {
+    let role_id: Uuid =
+        sqlx::query_scalar("select id from roles where workspace_id = $1 and code = $2")
+            .bind(workspace_id)
+            .bind(role_code)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    for code in permission_codes {
+        sqlx::query(
+            r#"
+            insert into permission_definitions (
+              id, scope_id, resource, action, scope, code, name, introduction
+            )
+            values ($1, $2, 'migration', 'legacy', 'workspace', $3, $3, '')
+            on conflict (code) do nothing
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(domain::SYSTEM_SCOPE_ID)
+        .bind(code)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"
+            insert into role_permissions (id, role_id, permission_id, scope_id)
+            select $1, $2, id, $3 from permission_definitions where code = $4
+            on conflict (role_id, permission_id) do nothing
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(role_id)
+        .bind(workspace_id)
+        .bind(code)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    }
+}
+
+async fn bind_synthetic_migration_actor(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    actor_user_id: Uuid,
+    role_ids: &[Uuid],
+) {
+    let account = format!("migration-{}", actor_user_id.simple());
+    sqlx::query(
+        r#"
+        insert into users (id, account, email, password_hash, name, nickname, status)
+        values ($1, $2, $3, 'hash', 'Migration actor', 'Migration actor', 'active')
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(&account)
+    .bind(format!("{account}@example.test"))
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into workspace_memberships (id, workspace_id, user_id, introduction) values ($1, $2, $3, '')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(actor_user_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    for role_id in role_ids {
+        sqlx::query(
+            "insert into user_role_bindings (id, user_id, role_id, scope_id) values ($1, $2, $3, $4)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(actor_user_id)
+        .bind(role_id)
+        .bind(workspace_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn ac_010_ac_011_migration_artifacts_bind_multi_role_probe_union_to_singleton_cutover_state()
+{
+    let (store, workspace_id, actor_user_id) = role_store().await;
+    RoleRepository::create_team_role(
+        &store,
+        &CreateWorkspaceRoleInput {
+            actor_user_id,
+            workspace_id,
+            code: "viewer".into(),
+            name: "Viewer".into(),
+            introduction: String::new(),
+            auto_grant_new_permissions: false,
+            is_default_member_role: false,
+        },
+    )
+    .await
+    .unwrap();
+    grant_legacy_migration_permissions(
+        &store,
+        workspace_id,
+        "operator",
+        &[
+            "legacy.simple",
+            "legacy.records.view.own",
+            "legacy.stale.non_console",
+        ],
+    )
+    .await;
+    grant_legacy_migration_permissions(
+        &store,
+        workspace_id,
+        "viewer",
+        &["legacy.create", "legacy.records.view.all"],
+    )
+    .await;
+
+    let source = RoleConsolePolicyMigrationSource {
+        permission_resources: vec!["migration".into()],
+        exact_permission_codes: vec![],
+    };
+    let inventories = store
+        .list_role_console_policy_migration_grants(&source)
+        .await
+        .unwrap();
+    let plan = synthetic_migration_plan();
+    let previews = inventories
+        .iter()
+        .map(|inventory| {
+            plan.project_legacy_role(inventory.role_id, &inventory.source_grants)
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let operator_role_id = inventories
+        .iter()
+        .find(|inventory| inventory.role_code == "operator")
+        .unwrap()
+        .role_id;
+    let viewer_role_id = inventories
+        .iter()
+        .find(|inventory| inventory.role_code == "viewer")
+        .unwrap()
+        .role_id;
+    let matrix_actor_id = Uuid::now_v7();
+    bind_synthetic_migration_actor(
+        &store,
+        workspace_id,
+        matrix_actor_id,
+        &[operator_role_id, viewer_role_id],
+    )
+    .await;
+    let actor_previews = preview_console_policy_migration_actor_authorizations(
+        &plan,
+        &[ConsolePolicyMigrationActorProbeSet {
+            binding: ConsolePolicyMigrationActorRoleBinding {
+                actor_user_id: matrix_actor_id,
+                role_ids: vec![viewer_role_id, operator_role_id],
+            },
+            probes: vec![
+                ConsolePolicyMigrationProbe {
+                    operation_id: ConsoleOperationId::try_from("console.simple").unwrap(),
+                    kind: ConsolePolicyMigrationProbeKind::Simple,
+                },
+                ConsolePolicyMigrationProbe {
+                    operation_id: ConsoleOperationId::try_from("console.create").unwrap(),
+                    kind: ConsolePolicyMigrationProbeKind::Create,
+                },
+                ConsolePolicyMigrationProbe {
+                    operation_id: ConsoleOperationId::try_from("console.records.view").unwrap(),
+                    kind: ConsolePolicyMigrationProbeKind::OwnRow,
+                },
+                ConsolePolicyMigrationProbe {
+                    operation_id: ConsoleOperationId::try_from("console.records.view").unwrap(),
+                    kind: ConsolePolicyMigrationProbeKind::SameScopeOther,
+                },
+                ConsolePolicyMigrationProbe {
+                    operation_id: ConsoleOperationId::try_from("console.records.view").unwrap(),
+                    kind: ConsolePolicyMigrationProbeKind::CrossScope,
+                },
+            ],
+        }],
+        &previews,
+    )
+    .unwrap();
+    let input = RoleConsolePolicyMigrationRehearsalInput {
+        run_id: Uuid::now_v7(),
+        source_contract: "synthetic-legacy/v1".into(),
+        source,
+        plan,
+        previews,
+        actor_previews,
+    };
+
+    store
+        .rehearse_role_console_policy_migration(&input)
+        .await
+        .unwrap();
+    let persisted_artifacts: (String, String, String) = sqlx::query_as(
+        r#"
+        select catalog_fingerprint, mapping_fingerprint, actor_role_bindings::text
+        from role_console_policy_migration_run_artifacts
+        where run_id = $1
+        "#,
+    )
+    .bind(input.run_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(persisted_artifacts.0, input.plan.catalog_fingerprint());
+    assert_eq!(persisted_artifacts.1, input.plan.mapping_fingerprint());
+    assert!(persisted_artifacts.2.contains(&matrix_actor_id.to_string()));
+
+    let mut mismatched = input.clone();
+    mismatched.plan = compile_console_policy_migration_plan_from_catalog(
+        input.plan.catalog().clone(),
+        &[ConsolePolicyMigrationLegacyGrantMapping {
+            legacy_grant: "legacy.simple".into(),
+            projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(vec![
+                ConsoleOperationPolicy::simple(
+                    ConsoleOperationId::try_from("console.simple").unwrap(),
+                    true,
+                ),
+            ]),
+        }],
+    )
+    .unwrap();
+    assert!(store
+        .apply_role_console_policy_migration(&mismatched, actor_user_id)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("console_policy_migration_revision"));
+
+    store
+        .apply_role_console_policy_migration(&input, actor_user_id)
+        .await
+        .unwrap();
+    let fenced = store
+        .role_console_policy_migration_cutover_state()
+        .await
+        .unwrap();
+    assert_eq!(
+        fenced.marker,
+        RoleConsolePolicyMigrationCutoverMarker::Fenced
+    );
+    assert_eq!(fenced.run_id, Some(input.run_id));
+    assert_eq!(
+        fenced.catalog_fingerprint.as_deref(),
+        Some(input.plan.catalog_fingerprint())
+    );
+    assert_eq!(
+        fenced.mapping_fingerprint.as_deref(),
+        Some(input.plan.mapping_fingerprint())
+    );
+
+    store
+        .rollback_role_console_policy_migration(input.run_id, actor_user_id)
+        .await
+        .unwrap();
+    let legacy = store
+        .role_console_policy_migration_cutover_state()
+        .await
+        .unwrap();
+    assert_eq!(
+        legacy.marker,
+        RoleConsolePolicyMigrationCutoverMarker::Legacy
+    );
+    assert_eq!(legacy.run_id, None);
+    assert!(
+        sqlx::query_scalar::<_, i64>(
+            "select count(*) from role_console_policy_migration_run_artifacts where run_id = $1",
+        )
+        .bind(input.run_id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap()
+            == 1
+    );
+
+    let mut finalized_input = input.clone();
+    finalized_input.run_id = Uuid::now_v7();
+    store
+        .rehearse_role_console_policy_migration(&finalized_input)
+        .await
+        .unwrap();
+    store
+        .apply_role_console_policy_migration(&finalized_input, actor_user_id)
+        .await
+        .unwrap();
+    store
+        .finalize_role_console_policy_migration(finalized_input.run_id, actor_user_id)
+        .await
+        .unwrap();
+    let finalized = store
+        .role_console_policy_migration_cutover_state()
+        .await
+        .unwrap();
+    assert_eq!(
+        finalized.marker,
+        RoleConsolePolicyMigrationCutoverMarker::ConsolePolicy
+    );
+    assert_eq!(finalized.run_id, Some(finalized_input.run_id));
+    assert_eq!(
+        finalized.catalog_fingerprint.as_deref(),
+        Some(finalized_input.plan.catalog_fingerprint())
+    );
+    assert_eq!(
+        finalized.mapping_fingerprint.as_deref(),
+        Some(finalized_input.plan.mapping_fingerprint())
+    );
 }
 
 #[tokio::test]

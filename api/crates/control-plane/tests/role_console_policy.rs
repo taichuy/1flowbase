@@ -1,5 +1,11 @@
 use std::collections::BTreeSet;
 
+use access_control::{
+    ConsoleAuthorization, ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry,
+    ConsolePolicyGroup as RegisteredConsolePolicyGroup, ResourceAccessAction,
+    ResourceAccessRegistration, ResourceAccessScopeKind, SettingsFeatureLifecycle,
+    SettingsFeatureOwner, SettingsFeatureOwnerKind,
+};
 use domain::{
     ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup,
     ConsolePolicyMode,
@@ -10,8 +16,11 @@ use control_plane::application::console_policy_migration::{
     applications_console_policy_catalog, applications_legacy_console_grant_mappings,
 };
 use control_plane::role::console_policy_migration::{
+    compile_console_policy_migration_plan, preview_console_policy_migration_actor_authorizations,
     project_legacy_role_console_policy, CompiledConsolePolicyCatalog, CompiledConsolePolicyGroup,
-    LegacyConsoleGrantMapping,
+    ConsolePolicyMigrationActorProbeSet, ConsolePolicyMigrationActorRoleBinding,
+    ConsolePolicyMigrationLegacyGrantMapping, ConsolePolicyMigrationLegacyGrantProjection,
+    ConsolePolicyMigrationProbe, ConsolePolicyMigrationProbeKind, LegacyConsoleGrantMapping,
 };
 
 fn operation_id(value: &str) -> ConsoleOperationId {
@@ -59,6 +68,227 @@ fn mappings() -> Vec<LegacyConsoleGrantMapping> {
             operations: vec![row("applications.view", ConsoleOperationRowScope::Own)],
         },
     ]
+}
+
+fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInventory {
+    let owner = SettingsFeatureOwner {
+        kind: SettingsFeatureOwnerKind::Core,
+        owner_id: "migration-test".into(),
+        version: "v1".into(),
+    };
+    let mut operations = vec![
+        ConsoleOperationInventoryEntry {
+            operation_id: "console.simple".into(),
+            owner: owner.clone(),
+            lifecycle: SettingsFeatureLifecycle::Active,
+            policy_group: RegisteredConsolePolicyGroup::Other("migration".into()),
+            label_ref: "console.simple.label".into(),
+            description_ref: Some("console.simple.description".into()),
+            order: 10,
+            routes: vec![],
+            authorization: ConsoleAuthorization::Simple,
+        },
+        ConsoleOperationInventoryEntry {
+            operation_id: "console.create".into(),
+            owner: owner.clone(),
+            lifecycle: SettingsFeatureLifecycle::Active,
+            policy_group: RegisteredConsolePolicyGroup::Other("migration".into()),
+            label_ref: "console.create.label".into(),
+            description_ref: Some("console.create.description".into()),
+            order: 20,
+            routes: vec![],
+            authorization: ConsoleAuthorization::Simple,
+        },
+        ConsoleOperationInventoryEntry {
+            operation_id: "console.records.view".into(),
+            owner: owner.clone(),
+            lifecycle: SettingsFeatureLifecycle::Active,
+            policy_group: RegisteredConsolePolicyGroup::Other("migration".into()),
+            label_ref: "console.records.view.label".into(),
+            description_ref: Some("console.records.view.description".into()),
+            order: 30,
+            routes: vec![],
+            authorization: ConsoleAuthorization::ResourceAction {
+                resource_code: "records".into(),
+                action_code: "view".into(),
+            },
+        },
+    ];
+    if reverse {
+        operations.reverse();
+    }
+
+    ConsoleOperationCompiledInventory {
+        schema_version: "test.console-policy-migration/v1",
+        operations,
+        resources: vec![ResourceAccessRegistration {
+            resource_code: "records".into(),
+            owner,
+            lifecycle: SettingsFeatureLifecycle::Active,
+            scope_kind: ResourceAccessScopeKind::Workspace,
+            identity_field: "id".into(),
+            scope_field: Some("scope_id".into()),
+            owner_field: Some("created_by".into()),
+            label_ref: "records.label".into(),
+            description_ref: Some("records.description".into()),
+            actions: vec![ResourceAccessAction {
+                action_code: "view".into(),
+                label_ref: "records.view.label".into(),
+                description_ref: Some("records.view.description".into()),
+            }],
+        }],
+        locale_catalog: None,
+    }
+}
+
+fn synthetic_mappings() -> Vec<ConsolePolicyMigrationLegacyGrantMapping> {
+    vec![
+        ConsolePolicyMigrationLegacyGrantMapping {
+            legacy_grant: "legacy.simple".into(),
+            projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(vec![simple(
+                "console.simple",
+            )]),
+        },
+        ConsolePolicyMigrationLegacyGrantMapping {
+            legacy_grant: "legacy.create".into(),
+            projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(vec![simple(
+                "console.create",
+            )]),
+        },
+        ConsolePolicyMigrationLegacyGrantMapping {
+            legacy_grant: "legacy.records.view.own".into(),
+            projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(vec![row(
+                "console.records.view",
+                ConsoleOperationRowScope::Own,
+            )]),
+        },
+        ConsolePolicyMigrationLegacyGrantMapping {
+            legacy_grant: "legacy.records.view.all".into(),
+            projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(vec![row(
+                "console.records.view",
+                ConsoleOperationRowScope::ScopeAll,
+            )]),
+        },
+        ConsolePolicyMigrationLegacyGrantMapping {
+            legacy_grant: "legacy.stale.non_console".into(),
+            projection: ConsolePolicyMigrationLegacyGrantProjection::NoProjection {
+                evidence: "legacy route has no console operation owner".into(),
+            },
+        },
+    ]
+}
+
+#[test]
+fn ac_010_compiled_migration_plan_fingerprints_and_unions_actor_roles() {
+    let mappings = synthetic_mappings();
+    let plan =
+        compile_console_policy_migration_plan(&synthetic_compiled_inventory(false), &mappings)
+            .expect(
+                "a complete compiled inventory and explicit mappings must form a migration plan",
+            );
+    let mut reversed_mappings = mappings.clone();
+    reversed_mappings.reverse();
+    let reordered = compile_console_policy_migration_plan(
+        &synthetic_compiled_inventory(true),
+        &reversed_mappings,
+    )
+    .expect("canonical fingerprints must not depend on input order");
+    assert_eq!(plan.catalog_fingerprint(), reordered.catalog_fingerprint());
+    assert_eq!(plan.mapping_fingerprint(), reordered.mapping_fingerprint());
+
+    let own_role_id = Uuid::now_v7();
+    let scope_role_id = Uuid::now_v7();
+    let own_role = plan
+        .project_legacy_role(
+            own_role_id,
+            &[
+                "legacy.simple".into(),
+                "legacy.records.view.own".into(),
+                "legacy.stale.non_console".into(),
+            ],
+        )
+        .expect("known own-row grants must project");
+    let scope_role = plan
+        .project_legacy_role(
+            scope_role_id,
+            &["legacy.create".into(), "legacy.records.view.all".into()],
+        )
+        .expect("known scope grants must project");
+    let actor_user_id = Uuid::now_v7();
+    let actor_previews = preview_console_policy_migration_actor_authorizations(
+        &plan,
+        &[ConsolePolicyMigrationActorProbeSet {
+            binding: ConsolePolicyMigrationActorRoleBinding {
+                actor_user_id,
+                role_ids: vec![scope_role_id, own_role_id],
+            },
+            probes: vec![
+                ConsolePolicyMigrationProbe {
+                    operation_id: operation_id("console.simple"),
+                    kind: ConsolePolicyMigrationProbeKind::Simple,
+                },
+                ConsolePolicyMigrationProbe {
+                    operation_id: operation_id("console.create"),
+                    kind: ConsolePolicyMigrationProbeKind::Create,
+                },
+                ConsolePolicyMigrationProbe {
+                    operation_id: operation_id("console.records.view"),
+                    kind: ConsolePolicyMigrationProbeKind::OwnRow,
+                },
+                ConsolePolicyMigrationProbe {
+                    operation_id: operation_id("console.records.view"),
+                    kind: ConsolePolicyMigrationProbeKind::SameScopeOther,
+                },
+                ConsolePolicyMigrationProbe {
+                    operation_id: operation_id("console.records.view"),
+                    kind: ConsolePolicyMigrationProbeKind::CrossScope,
+                },
+            ],
+        }],
+        &[own_role, scope_role],
+    )
+    .expect("multi-role allow union must be deterministic");
+
+    let preview = &actor_previews[0];
+    assert_eq!(preview.binding.actor_user_id, actor_user_id);
+    assert_eq!(preview.binding.role_ids, vec![own_role_id, scope_role_id]);
+    assert_eq!(preview.effective_before, preview.effective_after);
+    assert!(preview.effective_delta.is_empty());
+    assert!(preview.effective_before.iter().any(|result| {
+        result.probe.kind == ConsolePolicyMigrationProbeKind::Simple && result.allowed
+    }));
+    assert!(preview.effective_before.iter().any(|result| {
+        result.probe.kind == ConsolePolicyMigrationProbeKind::Create && result.allowed
+    }));
+    assert!(preview.effective_before.iter().any(|result| {
+        result.probe.kind == ConsolePolicyMigrationProbeKind::OwnRow && result.allowed
+    }));
+    assert!(preview.effective_before.iter().any(|result| {
+        result.probe.kind == ConsolePolicyMigrationProbeKind::SameScopeOther && result.allowed
+    }));
+    assert!(preview.effective_before.iter().any(|result| {
+        result.probe.kind == ConsolePolicyMigrationProbeKind::CrossScope && !result.allowed
+    }));
+
+    let mut ambiguous = synthetic_mappings();
+    ambiguous.push(ConsolePolicyMigrationLegacyGrantMapping {
+        legacy_grant: "legacy.simple".into(),
+        projection: ConsolePolicyMigrationLegacyGrantProjection::Operations(vec![simple(
+            "console.simple",
+        )]),
+    });
+    assert!(compile_console_policy_migration_plan(
+        &synthetic_compiled_inventory(false),
+        &ambiguous
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("ambiguous legacy mapping"));
+    assert!(plan
+        .project_legacy_role(own_role_id, &["legacy.unknown".into()])
+        .unwrap_err()
+        .to_string()
+        .contains("unknown legacy grant"));
 }
 
 #[test]

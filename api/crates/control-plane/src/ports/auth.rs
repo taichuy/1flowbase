@@ -424,10 +424,26 @@ pub struct RoleConsolePolicyMigrationGrantInventory {
 pub struct RoleConsolePolicyMigrationRehearsalInput {
     pub run_id: Uuid,
     pub source_contract: String,
-    pub catalog_fingerprint: String,
-    pub mapping_fingerprint: String,
     pub source: RoleConsolePolicyMigrationSource,
+    pub plan: crate::role::console_policy_migration::CompiledConsolePolicyMigrationPlan,
     pub previews: Vec<crate::role::console_policy_migration::ConsolePolicyMigrationPreview>,
+    pub actor_previews:
+        Vec<crate::role::console_policy_migration::ConsolePolicyMigrationActorPreview>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoleConsolePolicyMigrationCutoverMarker {
+    Legacy,
+    Fenced,
+    ConsolePolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoleConsolePolicyMigrationCutoverState {
+    pub marker: RoleConsolePolicyMigrationCutoverMarker,
+    pub run_id: Option<Uuid>,
+    pub catalog_fingerprint: Option<String>,
+    pub mapping_fingerprint: Option<String>,
 }
 
 #[async_trait]
@@ -455,6 +471,9 @@ pub trait RoleConsolePolicyMigrationRepository: Send + Sync {
         run_id: Uuid,
         actor_user_id: Uuid,
     ) -> anyhow::Result<()>;
+    async fn role_console_policy_migration_cutover_state(
+        &self,
+    ) -> anyhow::Result<RoleConsolePolicyMigrationCutoverState>;
 }
 
 #[async_trait]
