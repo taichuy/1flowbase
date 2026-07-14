@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    future::Future,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
@@ -16,6 +17,7 @@ const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DISCOVERY_PAGES: usize = 64;
 const MAX_DISCOVERY_TOOLS: usize = 10_000;
 const MAX_DISCOVERY_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+const DNS_LOOKUP_DEADLINE: Duration = Duration::from_secs(5);
 const DISCOVERY_DEADLINE: Duration = Duration::from_secs(60);
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
 
@@ -56,6 +58,10 @@ pub enum McpUpstreamClientError {
     InvalidEndpoint,
     #[error("upstream address is not public")]
     UnsafeAddress,
+    #[error("upstream DNS lookup timed out")]
+    DnsLookupTimeout,
+    #[error("upstream DNS lookup failed")]
+    DnsLookupFailed,
     #[error("invalid upstream authentication")]
     InvalidAuthentication,
     #[error("upstream response exceeded size budget")]
@@ -228,6 +234,39 @@ impl McpStreamableHttpClient {
         Self::connect_with_policy(connection, None, McpEgressPolicy::TestLoopbackHttp).await
     }
 
+    pub async fn connect_and_discover(
+        connection: &domain::McpUpstreamConnectionRecord,
+        secret: Option<&Value>,
+    ) -> Result<McpDiscoveryResult, McpUpstreamClientError> {
+        Self::complete_discovery_within(Self::connect(connection, secret), DISCOVERY_DEADLINE)
+            .await
+            .map(|(_, discovery)| discovery)
+    }
+
+    #[cfg(test)]
+    async fn connect_and_discover_test_loopback(
+        connection: &domain::McpUpstreamConnectionRecord,
+    ) -> Result<(Self, McpDiscoveryResult), McpUpstreamClientError> {
+        Self::complete_discovery_within(Self::connect_test_loopback(connection), DISCOVERY_DEADLINE)
+            .await
+    }
+
+    async fn complete_discovery_within<F>(
+        connect: F,
+        deadline: Duration,
+    ) -> Result<(Self, McpDiscoveryResult), McpUpstreamClientError>
+    where
+        F: Future<Output = Result<Self, McpUpstreamClientError>>,
+    {
+        tokio::time::timeout(deadline, async {
+            let client = connect.await?;
+            let discovery = client.discover_tools_within_budget().await?;
+            Ok((client, discovery))
+        })
+        .await
+        .map_err(|_| McpUpstreamClientError::DiscoveryBudgetExceeded("deadline"))?
+    }
+
     async fn connect_with_policy(
         connection: &domain::McpUpstreamConnectionRecord,
         secret: Option<&Value>,
@@ -249,10 +288,15 @@ impl McpStreamableHttpClient {
         let port = endpoint
             .port_or_known_default()
             .ok_or(McpUpstreamClientError::InvalidEndpoint)?;
-        let addresses = tokio::net::lookup_host((host, port))
-            .await
-            .map_err(|error| McpUpstreamClientError::Request(error.to_string()))?
-            .collect::<Vec<_>>();
+        let addresses = Self::resolve_addresses_within(
+            async {
+                tokio::net::lookup_host((host, port))
+                    .await
+                    .map(|addresses| addresses.collect::<Vec<_>>())
+            },
+            DNS_LOOKUP_DEADLINE,
+        )
+        .await?;
         let addresses_allowed = match policy {
             McpEgressPolicy::PublicHttps => addresses.iter().all(|address| public_ip(address.ip())),
             #[cfg(test)]
@@ -280,6 +324,19 @@ impl McpStreamableHttpClient {
             endpoint,
             authentication_headers,
         })
+    }
+
+    async fn resolve_addresses_within<F>(
+        lookup: F,
+        deadline: Duration,
+    ) -> Result<Vec<SocketAddr>, McpUpstreamClientError>
+    where
+        F: Future<Output = std::io::Result<Vec<SocketAddr>>>,
+    {
+        tokio::time::timeout(deadline, lookup)
+            .await
+            .map_err(|_| McpUpstreamClientError::DnsLookupTimeout)?
+            .map_err(|_| McpUpstreamClientError::DnsLookupFailed)
     }
 
     pub async fn initialize(&self) -> Result<McpUpstreamServerInfo, McpUpstreamClientError> {
@@ -320,12 +377,6 @@ impl McpStreamableHttpClient {
             protocol_version,
             session_id: response.session_id,
         })
-    }
-
-    pub async fn discover_tools(&self) -> Result<McpDiscoveryResult, McpUpstreamClientError> {
-        tokio::time::timeout(DISCOVERY_DEADLINE, self.discover_tools_within_budget())
-            .await
-            .map_err(|_| McpUpstreamClientError::DiscoveryBudgetExceeded("deadline"))?
     }
 
     async fn discover_tools_within_budget(
@@ -844,18 +895,52 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
         });
-        let client = McpStreamableHttpClient::connect_test_loopback(&loopback_connection(format!(
-            "http://{address}/mcp"
-        )))
+        let result = tokio::time::timeout(
+            Duration::from_millis(500),
+            McpStreamableHttpClient::connect_and_discover_test_loopback(&loopback_connection(
+                format!("http://{address}/mcp"),
+            )),
+        )
         .await
-        .unwrap();
-
-        let error = tokio::time::timeout(Duration::from_millis(500), client.discover_tools())
-            .await
-            .expect("repeated cursor must fail closed before the test deadline")
-            .expect_err("repeated cursor must be rejected");
+        .expect("repeated cursor must fail closed before the test deadline");
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("repeated cursor must be rejected"),
+        };
         assert!(error.to_string().contains("repeated cursor"));
         server.abort();
+    }
+
+    #[tokio::test]
+    async fn issue_1246_ac_006_dns_lookup_times_out_at_the_resolver_boundary() {
+        let lookup = std::future::pending::<std::io::Result<Vec<SocketAddr>>>();
+
+        let error =
+            McpStreamableHttpClient::resolve_addresses_within(lookup, Duration::from_millis(10))
+                .await
+                .expect_err("a stalled DNS lookup must fail closed");
+
+        assert!(matches!(error, McpUpstreamClientError::DnsLookupTimeout));
+        assert_eq!(error.to_string(), "upstream DNS lookup timed out");
+    }
+
+    #[tokio::test]
+    async fn issue_1246_ac_006_discovery_deadline_includes_the_connect_future() {
+        let connect =
+            std::future::pending::<Result<McpStreamableHttpClient, McpUpstreamClientError>>();
+
+        let result =
+            McpStreamableHttpClient::complete_discovery_within(connect, Duration::from_millis(10))
+                .await;
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("the discovery deadline must include the connection phase"),
+        };
+
+        assert!(matches!(
+            error,
+            McpUpstreamClientError::DiscoveryBudgetExceeded("deadline")
+        ));
     }
 
     #[test]
@@ -895,13 +980,11 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
         });
-        let client = McpStreamableHttpClient::connect_test_loopback(&loopback_connection(format!(
-            "http://{address}/mcp"
-        )))
+        let (client, discovery) = McpStreamableHttpClient::connect_and_discover_test_loopback(
+            &loopback_connection(format!("http://{address}/mcp")),
+        )
         .await
         .unwrap();
-
-        let discovery = client.discover_tools().await.unwrap();
         assert_eq!(discovery.server.name.as_deref(), Some("stub-mcp"));
         assert_eq!(
             discovery

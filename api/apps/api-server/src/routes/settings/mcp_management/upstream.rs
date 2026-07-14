@@ -344,14 +344,11 @@ pub async fn discover_tools(
             &state.provider_secret_master_key,
         )
         .await?;
-    let client = McpStreamableHttpClient::connect(&connection, secret.as_ref())
+    let discovery = McpStreamableHttpClient::connect_and_discover(&connection, secret.as_ref())
         .await
         .map_err(|_| {
-            control_plane::errors::ControlPlaneError::UpstreamUnavailable("mcp_connection")
+            control_plane::errors::ControlPlaneError::UpstreamUnavailable("mcp_discovery")
         })?;
-    let discovery = client.discover_tools().await.map_err(|_| {
-        control_plane::errors::ControlPlaneError::UpstreamUnavailable("mcp_discovery")
-    })?;
     let discovered_at = OffsetDateTime::now_utc();
     let sources = service
         .record_upstream_discovery(RecordMcpUpstreamDiscoveryCommand {
