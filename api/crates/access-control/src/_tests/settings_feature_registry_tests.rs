@@ -274,8 +274,50 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
             ("GET", "/api/console/system/runtime-profile"),
         ]
     );
-    assert!(routes("system.mcp-management").contains(&("GET", "/api/console/mcp/catalog")));
-    assert!(routes("system.mcp-management").contains(&("POST", "/api/console/mcp/instances")));
+    let mcp_routes = routes("system.mcp-management");
+    assert!(mcp_routes.contains(&("GET", "/api/console/mcp/catalog")));
+    assert!(mcp_routes.contains(&("POST", "/api/console/mcp/instances")));
+    for route in [
+        ("GET", "/api/console/mcp/upstream-connections"),
+        ("POST", "/api/console/mcp/upstream-connections"),
+        (
+            "PUT",
+            "/api/console/mcp/upstream-connections/{connection_id}",
+        ),
+        (
+            "DELETE",
+            "/api/console/mcp/upstream-connections/{connection_id}",
+        ),
+        (
+            "PUT",
+            "/api/console/mcp/upstream-connections/{connection_id}/credentials",
+        ),
+        (
+            "DELETE",
+            "/api/console/mcp/upstream-connections/{connection_id}/credentials",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/upstream-connections/{connection_id}/test",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/upstream-connections/{connection_id}/discover",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/upstream-connections/{connection_id}/imports",
+        ),
+        ("POST", "/api/console/mcp/tools/{tool_id}/debug"),
+    ] {
+        assert!(mcp_routes.contains(&route), "missing MCP route {route:?}");
+        assert_eq!(
+            registry.access_rule(route.0, route.1),
+            Some(&AccessRule::SettingsFeature(
+                "system.mcp-management".to_string()
+            ))
+        );
+    }
     assert_eq!(
         routes("system.files"),
         vec![

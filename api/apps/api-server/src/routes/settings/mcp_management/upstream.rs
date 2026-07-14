@@ -416,7 +416,7 @@ pub async fn import_tools(
         responses.push(to_tool_response_with_operation(
             record,
             operation,
-            availability.as_str(),
+            availability,
         ));
     }
     Ok(Json(ApiSuccess::new(responses)))

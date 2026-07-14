@@ -1,5 +1,9 @@
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, expectTypeOf, test, vi } from 'vitest';
 import * as transport from '../transport';
+import type {
+  ConsoleMcpTool,
+  ConsoleMcpToolAvailabilityStatus
+} from '../console-mcp-management';
 
 import {
   createConsoleMcpInstance,
@@ -33,6 +37,12 @@ import {
 } from '../console-mcp-management';
 
 describe('console-mcp-management client', () => {
+  test('AC-016 keeps availability_status as the exact public DTO union', () => {
+    expectTypeOf<
+      ConsoleMcpTool['availability_status']
+    >().toEqualTypeOf<ConsoleMcpToolAvailabilityStatus>();
+  });
+
   vi.spyOn(transport, 'apiFetch').mockImplementation(
     async (input) => input as never
   );

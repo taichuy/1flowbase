@@ -682,6 +682,37 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("POST", "/api/console/mcp/bundles/export"),
                 ("POST", "/api/console/mcp/bundles/preview-upload"),
                 ("POST", "/api/console/mcp/bundles/import-upload"),
+                ("GET", "/api/console/mcp/upstream-connections"),
+                ("POST", "/api/console/mcp/upstream-connections"),
+                (
+                    "PUT",
+                    "/api/console/mcp/upstream-connections/{connection_id}",
+                ),
+                (
+                    "DELETE",
+                    "/api/console/mcp/upstream-connections/{connection_id}",
+                ),
+                (
+                    "PUT",
+                    "/api/console/mcp/upstream-connections/{connection_id}/credentials",
+                ),
+                (
+                    "DELETE",
+                    "/api/console/mcp/upstream-connections/{connection_id}/credentials",
+                ),
+                (
+                    "POST",
+                    "/api/console/mcp/upstream-connections/{connection_id}/test",
+                ),
+                (
+                    "POST",
+                    "/api/console/mcp/upstream-connections/{connection_id}/discover",
+                ),
+                (
+                    "POST",
+                    "/api/console/mcp/upstream-connections/{connection_id}/imports",
+                ),
+                ("POST", "/api/console/mcp/tools/{tool_id}/debug"),
             ]),
         },
         SettingsFeatureRegistration {

@@ -1627,7 +1627,7 @@ describe('McpManagementPanel', () => {
     );
   });
 
-  test('AC-002 AC-011 AC-014 configures an MCP proxy without HTTP mapping fields', async () => {
+  test('AC-002 AC-009 AC-010 AC-011 AC-014 edits the local MCP proxy contract without HTTP mapping fields', async () => {
     mcpManagementApi.executeSettingsMcpProxyToolDebug.mockResolvedValue({
       local_arguments: { request: { query: 'status' } },
       remote_arguments: { query: { text: 'status' } },
@@ -1659,8 +1659,23 @@ describe('McpManagementPanel', () => {
     expect(
       within(dialog).queryByRole('combobox', { name: 'operation' })
     ).not.toBeInTheDocument();
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'risk_level' })
+    );
+    await selectAntdOption('medium');
 
     clickSegmentedOption(dialog, 'input_mapping');
+    expect(within(dialog).getByText('parameter_schema')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
+    fireEvent.change(await within(dialog).findByLabelText('JSON Schema 内容'), {
+      target: {
+        value: JSON.stringify({
+          type: 'object',
+          properties: { local_query: { type: 'string' } },
+          required: ['local_query']
+        })
+      }
+    });
     expect(within(dialog).getByLabelText('local_path 1')).toHaveValue(
       'request.query'
     );
@@ -1669,6 +1684,18 @@ describe('McpManagementPanel', () => {
     );
     expect(within(dialog).queryByText('URL')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('JSON 请求体')).not.toBeInTheDocument();
+
+    clickSegmentedOption(dialog, 'output_mapping');
+    expect(within(dialog).getByText('result_schema')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
+    fireEvent.change(await within(dialog).findByLabelText('JSON Schema 内容'), {
+      target: {
+        value: JSON.stringify({
+          type: 'object',
+          properties: { local_title: { type: 'string' } }
+        })
+      }
+    });
 
     clickSegmentedOption(dialog, 'debug');
     fireEvent.change(within(dialog).getByLabelText('request.query'), {
@@ -1712,7 +1739,17 @@ describe('McpManagementPanel', () => {
                 required: true
               }
             ]
-          }
+          },
+          parameter_schema: {
+            type: 'object',
+            properties: { local_query: { type: 'string' } },
+            required: ['local_query']
+          },
+          result_schema: {
+            type: 'object',
+            properties: { local_title: { type: 'string' } }
+          },
+          risk_level: 'medium'
         }),
         expect.any(String)
       );

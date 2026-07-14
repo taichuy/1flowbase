@@ -102,9 +102,33 @@ pub struct McpToolResponse {
     pub des_id: String,
     pub des_id_required: bool,
     pub status: String,
-    pub availability_status: String,
+    pub availability_status: McpToolAvailabilityStatusDto,
     pub availability_reason: Option<String>,
     pub revision: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum McpToolAvailabilityStatusDto {
+    Available,
+    InterfaceMissing,
+    UpstreamDisabled,
+    CredentialsMissing,
+    UpstreamToolMissing,
+    MappingInvalid,
+}
+
+impl From<domain::McpToolAvailabilityStatus> for McpToolAvailabilityStatusDto {
+    fn from(status: domain::McpToolAvailabilityStatus) -> Self {
+        match status {
+            domain::McpToolAvailabilityStatus::Available => Self::Available,
+            domain::McpToolAvailabilityStatus::InterfaceMissing => Self::InterfaceMissing,
+            domain::McpToolAvailabilityStatus::UpstreamDisabled => Self::UpstreamDisabled,
+            domain::McpToolAvailabilityStatus::CredentialsMissing => Self::CredentialsMissing,
+            domain::McpToolAvailabilityStatus::UpstreamToolMissing => Self::UpstreamToolMissing,
+            domain::McpToolAvailabilityStatus::MappingInvalid => Self::MappingInvalid,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -729,7 +753,7 @@ pub async fn create_mcp_tool(
         Json(ApiSuccess::new(to_tool_response_with_operation(
             record,
             operation,
-            "available",
+            domain::McpToolAvailabilityStatus::Available,
         ))),
     ))
 }
@@ -775,7 +799,7 @@ pub async fn update_mcp_tool(
             Ok(Json(ApiSuccess::new(to_tool_response_with_operation(
                 record,
                 operation,
-                "available",
+                domain::McpToolAvailabilityStatus::Available,
             ))))
         }
         McpToolExecutionTargetDto::McpProxy { .. } => {
@@ -2005,9 +2029,9 @@ fn to_tool_response(
         domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
             let available_operation = operations.get(interface_id).cloned();
             let availability_status = if available_operation.is_some() {
-                "available"
+                domain::McpToolAvailabilityStatus::Available
             } else {
-                "interface_missing"
+                domain::McpToolAvailabilityStatus::InterfaceMissing
             };
             (
                 available_operation.unwrap_or_else(|| interface_id.clone()),
@@ -2016,7 +2040,10 @@ fn to_tool_response(
         }
         domain::McpToolExecutionTarget::McpProxy {
             remote_tool_name, ..
-        } => (format!("MCP tools/call {remote_tool_name}"), "available"),
+        } => (
+            format!("MCP tools/call {remote_tool_name}"),
+            domain::McpToolAvailabilityStatus::Available,
+        ),
     };
 
     to_tool_response_with_operation(record, operation, availability_status)
@@ -2056,7 +2083,7 @@ async fn to_tool_response_for_actor(
         Ok(to_tool_response_with_operation(
             record,
             operation,
-            availability.as_str(),
+            availability,
         ))
     } else {
         Ok(to_tool_response(record, operations))
@@ -2066,7 +2093,7 @@ async fn to_tool_response_for_actor(
 pub(super) fn to_tool_response_with_operation(
     record: domain::McpToolRecord,
     operation: String,
-    availability_status: &str,
+    availability_status: domain::McpToolAvailabilityStatus,
 ) -> McpToolResponse {
     McpToolResponse {
         id: record.id.to_string(),
@@ -2100,8 +2127,8 @@ pub(super) fn to_tool_response_with_operation(
         des_id_required: record.des_id_required,
         status: record.status.as_str().into(),
         availability_status: availability_status.into(),
-        availability_reason: (availability_status != "available")
-            .then(|| availability_status.to_string()),
+        availability_reason: (availability_status != domain::McpToolAvailabilityStatus::Available)
+            .then(|| availability_status.as_str().to_string()),
         revision: record.revision,
     }
 }

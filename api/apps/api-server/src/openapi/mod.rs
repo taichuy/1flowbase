@@ -508,6 +508,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::mcp_management::McpInstanceDiscoveryPolicyResponse,
         crate::routes::mcp_management::McpToolBindingResponse,
         crate::routes::mcp_management::McpToolResponse,
+        crate::routes::mcp_management::McpToolAvailabilityStatusDto,
         crate::routes::mcp_management::UpdateMcpInstanceDiscoveryPolicyBody,
         crate::routes::mcp_management::UpdateMcpToolBindingBody,
         crate::routes::mcp_management::UpdateMcpToolBody,

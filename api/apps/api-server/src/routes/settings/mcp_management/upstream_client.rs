@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
@@ -12,6 +13,10 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+const MAX_DISCOVERY_PAGES: usize = 64;
+const MAX_DISCOVERY_TOOLS: usize = 10_000;
+const MAX_DISCOVERY_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+const DISCOVERY_DEADLINE: Duration = Duration::from_secs(60);
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
 
 #[derive(Debug, Clone)]
@@ -55,12 +60,65 @@ pub enum McpUpstreamClientError {
     InvalidAuthentication,
     #[error("upstream response exceeded size budget")]
     ResponseTooLarge,
+    #[error("upstream discovery exceeded {0} budget")]
+    DiscoveryBudgetExceeded(&'static str),
+    #[error("upstream discovery returned a repeated cursor")]
+    RepeatedCursor,
     #[error("upstream response was not JSON")]
     NonJsonResponse,
     #[error("upstream protocol error: {0}")]
     Protocol(String),
     #[error("upstream request failed: {0}")]
     Request(String),
+}
+
+#[derive(Default)]
+struct McpDiscoveryBudget {
+    pages: usize,
+    tools: usize,
+    response_bytes: usize,
+    cursors: HashSet<String>,
+}
+
+impl McpDiscoveryBudget {
+    fn observe_page(
+        &mut self,
+        tool_count: usize,
+        response_bytes: usize,
+        next_cursor: Option<&str>,
+    ) -> Result<(), McpUpstreamClientError> {
+        self.pages = self
+            .pages
+            .checked_add(1)
+            .ok_or(McpUpstreamClientError::DiscoveryBudgetExceeded("page"))?;
+        if self.pages > MAX_DISCOVERY_PAGES {
+            return Err(McpUpstreamClientError::DiscoveryBudgetExceeded("page"));
+        }
+
+        self.tools = self
+            .tools
+            .checked_add(tool_count)
+            .ok_or(McpUpstreamClientError::DiscoveryBudgetExceeded("tool"))?;
+        if self.tools > MAX_DISCOVERY_TOOLS {
+            return Err(McpUpstreamClientError::DiscoveryBudgetExceeded("tool"));
+        }
+
+        self.response_bytes = self.response_bytes.checked_add(response_bytes).ok_or(
+            McpUpstreamClientError::DiscoveryBudgetExceeded("aggregate response bytes"),
+        )?;
+        if self.response_bytes > MAX_DISCOVERY_RESPONSE_BYTES {
+            return Err(McpUpstreamClientError::DiscoveryBudgetExceeded(
+                "aggregate response bytes",
+            ));
+        }
+
+        if let Some(cursor) = next_cursor {
+            if !self.cursors.insert(cursor.to_string()) {
+                return Err(McpUpstreamClientError::RepeatedCursor);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -265,6 +323,14 @@ impl McpStreamableHttpClient {
     }
 
     pub async fn discover_tools(&self) -> Result<McpDiscoveryResult, McpUpstreamClientError> {
+        tokio::time::timeout(DISCOVERY_DEADLINE, self.discover_tools_within_budget())
+            .await
+            .map_err(|_| McpUpstreamClientError::DiscoveryBudgetExceeded("deadline"))?
+    }
+
+    async fn discover_tools_within_budget(
+        &self,
+    ) -> Result<McpDiscoveryResult, McpUpstreamClientError> {
         let server = self.initialize().await?;
         self.post_notification(
             json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
@@ -273,6 +339,7 @@ impl McpStreamableHttpClient {
         .await?;
         let mut cursor: Option<String> = None;
         let mut tools = Vec::new();
+        let mut budget = McpDiscoveryBudget::default();
         loop {
             let params = cursor
                 .as_ref()
@@ -290,6 +357,11 @@ impl McpStreamableHttpClient {
                 .get("tools")
                 .and_then(Value::as_array)
                 .ok_or_else(|| McpUpstreamClientError::Protocol("missing tools".into()))?;
+            let next_cursor = result
+                .get("nextCursor")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            budget.observe_page(page.len(), response.response_bytes, next_cursor.as_deref())?;
             for tool in page {
                 let name = tool.get("name").and_then(Value::as_str).ok_or_else(|| {
                     McpUpstreamClientError::Protocol("tool name is missing".into())
@@ -316,10 +388,7 @@ impl McpStreamableHttpClient {
                     schema_hash,
                 });
             }
-            cursor = result
-                .get("nextCursor")
-                .and_then(Value::as_str)
-                .map(str::to_string);
+            cursor = next_cursor;
             if cursor.is_none() {
                 break;
             }
@@ -396,9 +465,14 @@ impl McpStreamableHttpClient {
             .and_then(|value| value.to_str().ok())
             .map(str::to_string);
         let bytes = bounded_body(response).await?;
+        let response_bytes = bytes.len();
         let body =
             serde_json::from_slice(&bytes).map_err(|_| McpUpstreamClientError::NonJsonResponse)?;
-        Ok(RpcResponse { body, session_id })
+        Ok(RpcResponse {
+            body,
+            session_id,
+            response_bytes,
+        })
     }
 
     async fn send(
@@ -425,6 +499,7 @@ impl McpStreamableHttpClient {
 struct RpcResponse {
     body: Value,
     session_id: Option<String>,
+    response_bytes: usize,
 }
 
 fn authentication_headers(
@@ -575,6 +650,7 @@ mod tests {
     struct StubState {
         methods: Arc<Mutex<Vec<String>>>,
         session_headers: Arc<Mutex<Vec<Option<String>>>>,
+        repeat_cursor: bool,
     }
 
     async fn mcp_stub(
@@ -624,6 +700,18 @@ mod tests {
                 (StatusCode::ACCEPTED, response_headers, Json(json!({})))
             }
             "tools/list" => {
+                if state.repeat_cursor {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    return (
+                        StatusCode::OK,
+                        response_headers,
+                        Json(json!({
+                            "jsonrpc":"2.0","id":"list","result":{
+                                "tools":[],"nextCursor":"repeat-page"
+                            }
+                        })),
+                    );
+                }
                 let cursor = body.pointer("/params/cursor").and_then(Value::as_str);
                 let result = if cursor.is_none() {
                     json!({"tools":[{"name":"weather.lookup","description":"Weather","inputSchema":{"type":"object","properties":{"city":{"type":"string"}}},"outputSchema":{"type":"object"}}],"nextCursor":"page-2"})
@@ -715,6 +803,59 @@ mod tests {
             error.to_string(),
             "upstream protocol error: tool failed; data={\"reason\":\"quota\"}"
         );
+    }
+
+    #[test]
+    fn issue_1246_ac_006_discovery_budget_rejects_pages_tools_and_aggregate_bytes() {
+        let mut page_budget = McpDiscoveryBudget::default();
+        for page in 0..MAX_DISCOVERY_PAGES {
+            page_budget
+                .observe_page(0, 0, Some(&format!("page-{page}")))
+                .unwrap();
+        }
+        assert!(page_budget.observe_page(0, 0, None).is_err());
+
+        let mut tool_budget = McpDiscoveryBudget::default();
+        assert!(tool_budget
+            .observe_page(MAX_DISCOVERY_TOOLS + 1, 0, None)
+            .is_err());
+
+        let mut byte_budget = McpDiscoveryBudget::default();
+        let full_pages = MAX_DISCOVERY_RESPONSE_BYTES / MAX_RESPONSE_BYTES;
+        for page in 0..full_pages {
+            byte_budget
+                .observe_page(0, MAX_RESPONSE_BYTES, Some(&format!("bytes-{page}")))
+                .unwrap();
+        }
+        assert!(byte_budget.observe_page(0, 1, None).is_err());
+    }
+
+    #[tokio::test]
+    async fn issue_1246_ac_006_discovery_rejects_repeated_cursor_before_deadline() {
+        let state = StubState {
+            repeat_cursor: true,
+            ..StubState::default()
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route("/mcp", post(mcp_stub))
+            .with_state(state);
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let client = McpStreamableHttpClient::connect_test_loopback(&loopback_connection(format!(
+            "http://{address}/mcp"
+        )))
+        .await
+        .unwrap();
+
+        let error = tokio::time::timeout(Duration::from_millis(500), client.discover_tools())
+            .await
+            .expect("repeated cursor must fail closed before the test deadline")
+            .expect_err("repeated cursor must be rejected");
+        assert!(error.to_string().contains("repeated cursor"));
+        server.abort();
     }
 
     #[test]

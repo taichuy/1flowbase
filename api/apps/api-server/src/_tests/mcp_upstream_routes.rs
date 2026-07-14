@@ -14,6 +14,37 @@ async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
 
+#[tokio::test]
+async fn issue_1246_ac_016_openapi_exposes_typed_tool_availability_enum() {
+    let response = crate::app()
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let openapi = response_json(response).await;
+    assert_eq!(
+        openapi["components"]["schemas"]["McpToolAvailabilityStatusDto"]["enum"],
+        json!([
+            "available",
+            "interface_missing",
+            "upstream_disabled",
+            "credentials_missing",
+            "upstream_tool_missing",
+            "mapping_invalid"
+        ])
+    );
+    assert_eq!(
+        openapi["components"]["schemas"]["McpToolResponse"]["properties"]["availability_status"]
+            ["$ref"],
+        json!("#/components/schemas/McpToolAvailabilityStatusDto")
+    );
+}
+
 fn connection_body() -> Value {
     json!({
         "name":"Weather MCP",

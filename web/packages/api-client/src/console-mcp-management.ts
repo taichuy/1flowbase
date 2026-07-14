@@ -45,6 +45,14 @@ export type ConsoleMcpToolExecutionTarget =
   | ConsoleMcpInterfaceWrapperExecutionTarget
   | ConsoleMcpProxyExecutionTarget;
 
+export type ConsoleMcpToolAvailabilityStatus =
+  | 'available'
+  | 'interface_missing'
+  | 'upstream_disabled'
+  | 'credentials_missing'
+  | 'upstream_tool_missing'
+  | 'mapping_invalid';
+
 export interface ConsoleMcpProxyInputMappingEntry {
   local_path: string;
   remote_path: string;
@@ -83,7 +91,7 @@ export interface ConsoleMcpTool {
   des_id: string;
   des_id_required: boolean;
   status: string;
-  availability_status: string;
+  availability_status: ConsoleMcpToolAvailabilityStatus;
   availability_reason: string | null;
   revision: number;
 }
