@@ -157,10 +157,12 @@ async fn application_runtime_routes_trace_tree_groups_repeated_llm_node_runs_at_
     assert_eq!(root_nodes[0]["status"], json!("waiting_callback"));
     let trace_node_id = root_nodes[0]["trace_node_id"].as_str().unwrap();
     Uuid::parse_str(trace_node_id).expect("trace_node_id is deterministic UUID");
-    assert!(root_nodes[0]["stable_locator"]
-        .as_str()
-        .unwrap()
-        .contains("/node_group:"));
+    assert!(
+        root_nodes[0]["stable_locator"]
+            .as_str()
+            .unwrap()
+            .contains("/node_group:")
+    );
 
     let content = app
         .clone()

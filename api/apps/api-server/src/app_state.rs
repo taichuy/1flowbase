@@ -12,8 +12,8 @@ use crate::{
     console_surface_registry::ConsoleSurfaceRegistry,
     host_extensions::console::ResolvedHostExtensionConsoleContribution,
     routes::console_route_assembly::{
-        compile_migrated_console_operation_registry, migrated_core_console_route_assembly,
-        ConsoleRouteAssembly,
+        ConsoleRouteAssembly, compile_migrated_console_operation_registry,
+        migrated_core_console_route_assembly,
     },
 };
 use crate::{

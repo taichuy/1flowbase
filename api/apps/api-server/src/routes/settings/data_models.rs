@@ -18,7 +18,7 @@ use axum::Router;
 use crate::{
     app_state::ApiState,
     routes::{
-        console_route_assembly::{console_get, console_patch, console_post, ConsoleRouteAssembly},
+        console_route_assembly::{ConsoleRouteAssembly, console_get, console_patch, console_post},
         data_sources, docs, model_definitions,
     },
 };

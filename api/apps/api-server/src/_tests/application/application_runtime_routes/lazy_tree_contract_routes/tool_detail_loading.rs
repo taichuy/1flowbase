@@ -1,8 +1,8 @@
 use super::*;
 
 #[tokio::test]
-async fn application_runtime_routes_trace_node_content_excludes_tool_index_and_keeps_lazy_tool_detail(
-) {
+async fn application_runtime_routes_trace_node_content_excludes_tool_index_and_keeps_lazy_tool_detail()
+ {
     let (state, _) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

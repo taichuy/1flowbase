@@ -6,25 +6,25 @@ use access_control::{
     APPLICATIONS_VIEW_OPERATION_ID,
 };
 use axum::{
+    Json, Router,
     extract::{Path, Query, RawQuery, State},
     http::{HeaderMap, StatusCode},
     response::sse::{Event, KeepAlive, Sse},
-    Json, Router,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use control_plane::{
     application::{ApplicationNonCrudConsoleOperation, ApplicationService},
     errors::ControlPlaneError,
     orchestration_runtime::{
-        debug_stream_events, fail_runtime_event_stream_if_missing_terminal,
-        spawn_runtime_debug_event_persister,
+        CancelFlowRunCommand, CompleteCallbackTaskCommand, ContinueFlowDebugRunCommand,
+        OrchestrationRuntimeService, PrepareFlowDebugRunCommand, ResumeFlowRunCommand,
+        StartFlowDebugRunCommand, StartNodeDebugPreviewCommand, debug_stream_events,
+        fail_runtime_event_stream_if_missing_terminal, spawn_runtime_debug_event_persister,
         trace_projection::{
-            build_application_run_trace_projection, merge_trace_node_run_detail,
-            projection_status_needs_lazy_rebuild, APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+            APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
+            merge_trace_node_run_detail, projection_status_needs_lazy_rebuild,
         },
-        wait_for_runtime_debug_event_persister, CancelFlowRunCommand, CompleteCallbackTaskCommand,
-        ContinueFlowDebugRunCommand, OrchestrationRuntimeService, PrepareFlowDebugRunCommand,
-        ResumeFlowRunCommand, StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
+        wait_for_runtime_debug_event_persister,
     },
     ports::{
         ApplicationRepository, ApplicationRunTraceChildrenCursor,
@@ -37,7 +37,7 @@ use control_plane::{
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use storage_durable::MainDurableStore;
-use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
+use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tracing::error;
@@ -51,9 +51,9 @@ use crate::{
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::console_route_assembly::{
-        console_get, console_post, console_put, ConsoleRouteAssembly,
+        ConsoleRouteAssembly, console_get, console_post, console_put,
     },
-    runtime_activity::{scope_application_activity, ApplicationActivityKind},
+    runtime_activity::{ApplicationActivityKind, scope_application_activity},
 };
 
 use super::debug_run_stream;
@@ -67,14 +67,14 @@ mod runtime_debug_artifacts;
 pub use debug_variable_cache::{
     delete_debug_variable_cache_entries, upsert_debug_variable_cache_entry,
 };
-pub use debug_variable_snapshot::{get_debug_variable_snapshot, DebugVariableSnapshotResponse};
+pub use debug_variable_snapshot::{DebugVariableSnapshotResponse, get_debug_variable_snapshot};
 use runtime_debug_artifacts::{
-    application_run_model, application_run_query, count_llm_tool_callback_trace_items,
+    RuntimeDebugArtifactPreviewRequest, application_run_model, application_run_query,
+    count_llm_tool_callback_trace_items,
     enrich_application_run_detail_visible_internal_llm_route_traces,
     enrich_node_last_run_visible_internal_llm_route_traces, load_runtime_debug_artifact_json_value,
     load_runtime_debug_artifact_response, offload_application_run_detail_artifacts,
     offload_trace_node_content_artifacts, offload_trace_node_run_detail_artifacts,
-    RuntimeDebugArtifactPreviewRequest,
 };
 
 pub(super) const APPLICATION_RUN_LOG_DEFAULT_TIME_RANGE_DAYS: i64 = 7;

@@ -649,15 +649,21 @@ async fn application_runtime_routes_logs_archive_returns_v1_manifest_and_restore
     assert!(archive["source"]["workspace_id"].is_string());
     assert!(archive["source"]["exported_by_user_id"].is_string());
     assert!(archive["exported_at"].is_string());
-    assert!(archive["manifest"]["content_sha256"]
-        .as_str()
-        .is_some_and(|value| value.starts_with("sha256:")));
-    assert!(archive["manifest"]["checksum"]
-        .as_str()
-        .is_some_and(|value| value.starts_with("sha256:")));
-    assert!(archive["content_digest"]
-        .as_str()
-        .is_some_and(|value| value.starts_with("sha256:")));
+    assert!(
+        archive["manifest"]["content_sha256"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert!(
+        archive["manifest"]["checksum"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert!(
+        archive["content_digest"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
     assert_eq!(
         archive["content_digest"], archive["manifest"]["content_sha256"],
         "root content_digest must match manifest content_sha256"
@@ -670,20 +676,26 @@ async fn application_runtime_routes_logs_archive_returns_v1_manifest_and_restore
         archive["manifest"]["entries"][0]["source_run_id"],
         json!(run_id)
     );
-    assert!(archive["manifest"]["entries"][0]["content_sha256"]
-        .as_str()
-        .is_some_and(|value| value.starts_with("sha256:")));
-    assert!(archive["manifest"]["entries"][0]["content_digest"]
-        .as_str()
-        .is_some_and(|value| value.starts_with("sha256:")));
+    assert!(
+        archive["manifest"]["entries"][0]["content_sha256"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert!(
+        archive["manifest"]["entries"][0]["content_digest"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
 
     let entries = archive["entries"].as_array().unwrap();
     assert_eq!(entries.len(), 1);
     let entry = &entries[0];
     assert_eq!(entry["source_run_id"], json!(run_id));
-    assert!(entry["content_digest"]
-        .as_str()
-        .is_some_and(|value| value.starts_with("sha256:")));
+    assert!(
+        entry["content_digest"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
     assert_eq!(
         entry["content_digest"], archive["manifest"]["entries"][0]["content_digest"],
         "entry content_digest must match manifest entry content_digest"
@@ -695,9 +707,11 @@ async fn application_runtime_routes_logs_archive_returns_v1_manifest_and_restore
     );
     assert!(entry["flow_run_fact"]["debug_session_id"].is_string());
     assert!(entry["compiled_plan"].is_object());
-    assert!(entry["node_runs"]
-        .as_array()
-        .is_some_and(|items| !items.is_empty()));
+    assert!(
+        entry["node_runs"]
+            .as_array()
+            .is_some_and(|items| !items.is_empty())
+    );
     assert!(entry["events"].as_array().is_some());
     assert!(entry["checkpoints"].as_array().is_some());
     assert!(entry["callback_tasks"].as_array().is_some());
@@ -706,12 +720,16 @@ async fn application_runtime_routes_logs_archive_returns_v1_manifest_and_restore
     assert!(entry["context_projections"].as_array().is_some());
     assert!(entry["model_failover_attempts"].as_array().is_some());
     assert!(entry["capability_invocations"].as_array().is_some());
-    assert!(entry["runtime_events"]
-        .as_array()
-        .is_some_and(|items| !items.is_empty()));
-    assert!(entry["usage_ledger"]
-        .as_array()
-        .is_some_and(|items| !items.is_empty()));
+    assert!(
+        entry["runtime_events"]
+            .as_array()
+            .is_some_and(|items| !items.is_empty())
+    );
+    assert!(
+        entry["usage_ledger"]
+            .as_array()
+            .is_some_and(|items| !items.is_empty())
+    );
     assert!(entry["usage_ledger"][0]["id"].is_string());
     assert!(entry["usage_ledger"][0]["usage_status"].is_string());
     assert!(entry["usage_ledger"][0]["raw_usage"].is_object());

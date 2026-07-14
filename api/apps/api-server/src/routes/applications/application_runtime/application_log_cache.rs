@@ -1,11 +1,11 @@
 use control_plane::ports::CacheStore;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use time::Duration;
 use tracing::warn;
 use uuid::Uuid;
 
 use super::{
-    ApplicationRunsQuery, FlowRunSummaryPageResponse, APPLICATION_RUN_LOG_DEFAULT_TIME_RANGE_DAYS,
+    APPLICATION_RUN_LOG_DEFAULT_TIME_RANGE_DAYS, ApplicationRunsQuery, FlowRunSummaryPageResponse,
 };
 
 fn time_range_segment(query: &ApplicationRunsQuery) -> String {

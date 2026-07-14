@@ -4,8 +4,8 @@ use crate::_tests::support::{
 };
 use crate::app_with_state_and_config;
 use axum::{
-    body::{to_bytes, Body},
-    http::{header, Request, StatusCode},
+    body::{Body, to_bytes},
+    http::{Request, StatusCode, header},
 };
 use control_plane::ports::{AuthRepository, SessionStore};
 use domain::SessionRecord;
@@ -245,10 +245,12 @@ async fn expired_memory_session_is_rejected_by_require_session() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    assert!(state
-        .session_store
-        .get(&session_id)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        state
+            .session_store
+            .get(&session_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }

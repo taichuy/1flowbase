@@ -2,12 +2,12 @@ use std::{fs, path::Path};
 
 use crate::_tests::support::{write_provider_manifest_v2, write_provider_runtime_script};
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
 use ed25519_dalek::{Signer, SigningKey};
-use flate2::{write::GzEncoder, Compression};
-use serde_json::{json, Value};
+use flate2::{Compression, write::GzEncoder};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tar::Builder;
 use tower::ServiceExt;

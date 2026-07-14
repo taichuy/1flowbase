@@ -4,7 +4,7 @@ mod local_runtime_event_stream;
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use control_plane::ports::SessionStore;
 
 pub use contracts::{

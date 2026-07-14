@@ -116,9 +116,11 @@ async fn request_log_maintenance_routes_enforce_csrf_permission_and_openapi_cont
     assert_eq!(clear_payload["data"]["deleted_count"], 0);
     assert_eq!(clear_payload["data"]["has_more"], false);
     assert!(clear_payload["data"]["continuation_token"].is_string());
-    assert!(clear_payload["data"]
-        .get("snapshot_created_before")
-        .is_none());
+    assert!(
+        clear_payload["data"]
+            .get("snapshot_created_before")
+            .is_none()
+    );
 
     let openapi = openapi_payload().await;
     assert!(
@@ -177,9 +179,11 @@ async fn clear_request_log_continuation_is_opaque_tamper_proof_and_workspace_bou
         .as_str()
         .expect("opaque continuation token")
         .to_string();
-    assert!(initial_payload["data"]
-        .get("snapshot_created_before")
-        .is_none());
+    assert!(
+        initial_payload["data"]
+            .get("snapshot_created_before")
+            .is_none()
+    );
 
     let retry = post_clear(
         &app,

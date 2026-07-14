@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{
-        header::{ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_TYPE, COOKIE},
         HeaderMap, HeaderName, Method, Request, StatusCode,
+        header::{ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_TYPE, COOKIE},
     },
     response::Response,
 };
@@ -143,7 +143,7 @@ fn build_interface_arguments(
             _ if mapping.required => {
                 return Err(
                     control_plane::errors::ControlPlaneError::InvalidInput("mcp_arguments").into(),
-                )
+                );
             }
             _ => continue,
         };

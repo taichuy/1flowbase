@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    Json, Router,
 };
 use control_plane::mcp_management::{
     McpManagementService, McpRemoteToolDefinition, McpUpstreamCredential,
@@ -21,14 +21,13 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
-        console_get, console_post, console_put, ConsoleRouteAssembly,
+        ConsoleRouteAssembly, console_get, console_post, console_put,
     },
 };
 
 use super::{
-    to_tool_response_with_operation,
-    upstream_client::{execute_proxy_call, McpStreamableHttpClient},
-    McpToolResponse,
+    McpToolResponse, to_tool_response_with_operation,
+    upstream_client::{McpStreamableHttpClient, execute_proxy_call},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -531,7 +530,7 @@ fn connection_command(
     let transport = match body.transport.as_str() {
         "streamable_http" => domain::McpUpstreamTransport::StreamableHttp,
         _ => {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput("transport").into())
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput("transport").into());
         }
     };
     let auth_type = match body.auth_type.as_str() {
@@ -539,7 +538,7 @@ fn connection_command(
         "bearer" => domain::McpUpstreamAuthType::Bearer,
         "custom_header" => domain::McpUpstreamAuthType::CustomHeader,
         _ => {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput("auth_type").into())
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput("auth_type").into());
         }
     };
     let status = match body.status.as_str() {

@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    Json, Router,
 };
 use control_plane::model_definition::{
     AddModelFieldCommand, BatchDeleteModelDefinitionsCommand, CreateModelDefinitionCommand,
@@ -13,7 +13,7 @@ use control_plane::model_definition::{
     UpdateModelFieldCommand, UpdateScopeDataModelGrantCommand,
 };
 use control_plane::resource_crud::{
-    parse_resource_filter, ResourceBatchSelection, ResourceCrudDescriptor,
+    ResourceBatchSelection, ResourceCrudDescriptor, parse_resource_filter,
 };
 use control_plane::runtime_registry_sync::ModelDefinitionMutationService;
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::{
-        console_route_assembly::{console_get, ConsoleRouteAssembly},
+        console_route_assembly::{ConsoleRouteAssembly, console_get},
         helpers,
     },
     runtime_registry_sync::ApiRuntimeRegistrySync,

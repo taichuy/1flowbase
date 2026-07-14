@@ -11,8 +11,8 @@ pub(crate) mod tool_callback_ids;
 use std::sync::Arc;
 
 use axum::{
-    routing::{get, post},
     Router,
+    routing::{get, post},
 };
 
 use crate::app_state::ApiState;

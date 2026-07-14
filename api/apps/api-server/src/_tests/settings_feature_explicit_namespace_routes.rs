@@ -3,11 +3,11 @@ use crate::_tests::support::{
     replace_role_permissions, seed_workspace, test_api_state_with_database_url, test_config,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
 use domain::PermissionDefinition;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 
 const AUTH_CENTER_FEATURE: &str = "settings_feature.access.system.auth-center";

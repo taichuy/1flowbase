@@ -1,7 +1,7 @@
 use axum::{
+    Json, Router,
     http::{StatusCode, Uri},
     response::{IntoResponse, Response},
-    Json, Router,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -13,12 +13,9 @@ use crate::official_agent_flow_templates::{
     ApiOfficialAgentFlowTemplateRegistry, OfficialAgentFlowTemplateSourcePort,
 };
 
-const RAW_INDEX_URL: &str =
-    "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/index.json";
-const RAW_PAGE_URL: &str =
-    "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/pages/1.json";
-const RAW_TEMPLATE_URL: &str =
-    "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/workflows/multimodal-mount-test/template.json";
+const RAW_INDEX_URL: &str = "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/index.json";
+const RAW_PAGE_URL: &str = "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/pages/1.json";
+const RAW_TEMPLATE_URL: &str = "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/workflows/multimodal-mount-test/template.json";
 
 #[tokio::test]
 async fn official_agent_flow_template_registry_uses_proxy_and_verifies_template_hash() {

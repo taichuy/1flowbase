@@ -5,11 +5,11 @@ use axum::http::StatusCode;
 use plugin_framework::parse_host_extension_contribution_manifest;
 
 use crate::{
-    app_state::{compile_console_boot_plan, ApiState},
+    app_state::{ApiState, compile_console_boot_plan},
     host_extensions::console::{
-        resolve_linked_host_extension_console_contribution, LinkedHostConsoleRouteSource,
+        LinkedHostConsoleRouteSource, resolve_linked_host_extension_console_contribution,
     },
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
 };
 
 #[test]
@@ -70,9 +70,11 @@ fn ac_002_unlinked_host_console_contribution_fails_before_route_registration() {
         .err()
         .expect("a HostExtension console contract must have an exact linked route source");
 
-    assert!(error
-        .to_string()
-        .contains("has no linked console route source"));
+    assert!(
+        error
+            .to_string()
+            .contains("has no linked console route source")
+    );
 }
 
 #[test]
@@ -95,9 +97,11 @@ fn ac_002_duplicate_host_settings_feature_cannot_compile_a_console_plan() {
         .err()
         .expect("duplicate HostExtension feature must reject the whole boot plan");
 
-    assert!(error
-        .to_string()
-        .contains("duplicate feature_id fixture-host.settings"));
+    assert!(
+        error
+            .to_string()
+            .contains("duplicate feature_id fixture-host.settings")
+    );
 }
 
 fn fixture_host_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {

@@ -82,11 +82,13 @@ fn anthropic_response_filters_internal_visible_llm_tool_calls() {
         payload["content"][0]["text"],
         json!("visible internal LLM output")
     );
-    assert!(payload["content"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|block| block["type"] != json!("tool_use")));
+    assert!(
+        payload["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|block| block["type"] != json!("tool_use"))
+    );
 }
 
 #[test]

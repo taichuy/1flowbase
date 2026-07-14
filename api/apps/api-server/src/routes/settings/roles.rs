@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    Json, Router,
 };
 use control_plane::model_definition::ModelDefinitionService;
 use control_plane::ports::{RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput};
@@ -22,7 +22,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_patch, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get, console_patch},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]

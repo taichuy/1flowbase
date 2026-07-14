@@ -5,10 +5,10 @@ use crate::_tests::support::{
     write_provider_runtime_script,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
 
@@ -285,9 +285,11 @@ async fn model_provider_icon_routes_serve_installed_provider_icon_and_normalize_
         Some("image/svg+xml")
     );
     let icon_body = to_bytes(icon.into_body(), usize::MAX).await.unwrap();
-    assert!(String::from_utf8(icon_body.to_vec())
-        .unwrap()
-        .contains("<svg"));
+    assert!(
+        String::from_utf8(icon_body.to_vec())
+            .unwrap()
+            .contains("<svg")
+    );
 }
 
 #[tokio::test]
@@ -350,9 +352,11 @@ async fn model_provider_icon_routes_read_assets_directory_icon_when_manifest_use
         Some("image/svg+xml")
     );
     let icon_body = to_bytes(icon.into_body(), usize::MAX).await.unwrap();
-    assert!(String::from_utf8(icon_body.to_vec())
-        .unwrap()
-        .contains("<svg"));
+    assert!(
+        String::from_utf8(icon_body.to_vec())
+            .unwrap()
+            .contains("<svg")
+    );
 }
 
 #[tokio::test]
@@ -391,7 +395,9 @@ async fn model_provider_icon_routes_fall_back_to_manifest_icon_when_metadata_is_
         Some("image/svg+xml")
     );
     let icon_body = to_bytes(icon.into_body(), usize::MAX).await.unwrap();
-    assert!(String::from_utf8(icon_body.to_vec())
-        .unwrap()
-        .contains("<svg"));
+    assert!(
+        String::from_utf8(icon_body.to_vec())
+            .unwrap()
+            .contains("<svg")
+    );
 }

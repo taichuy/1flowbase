@@ -19,10 +19,12 @@ fn anthropic_waiting_callback_maps_to_tool_use_block() {
     assert_eq!(blocks[0]["type"], json!("tool_use"));
     assert_eq!(blocks[0]["name"], json!("lookup_weather"));
     assert_eq!(blocks[0]["input"]["city"], json!("Hangzhou"));
-    assert!(blocks[0]["id"]
-        .as_str()
-        .expect("tool_use id should be encoded")
-        .contains("toolu_weather"));
+    assert!(
+        blocks[0]["id"]
+            .as_str()
+            .expect("tool_use id should be encoded")
+            .contains("toolu_weather")
+    );
 }
 
 #[tokio::test]

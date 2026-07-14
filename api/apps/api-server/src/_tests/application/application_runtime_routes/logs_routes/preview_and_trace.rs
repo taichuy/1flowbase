@@ -338,16 +338,18 @@ async fn application_runtime_routes_start_node_preview_and_query_logs() {
         scoped_node_run_payload["data"]["node_run"]["node_id"].as_str(),
         Some("node-llm")
     );
-    assert!(scoped_node_run_payload["data"]["events"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|event| event["node_run_id"].as_str()
-            == Some(
-                scoped_node_run_payload["data"]["node_run"]["id"]
-                    .as_str()
-                    .unwrap()
-            )));
+    assert!(
+        scoped_node_run_payload["data"]["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|event| event["node_run_id"].as_str()
+                == Some(
+                    scoped_node_run_payload["data"]["node_run"]["id"]
+                        .as_str()
+                        .unwrap()
+                ))
+    );
 
     let last_run = app
         .clone()

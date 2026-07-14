@@ -7,8 +7,8 @@ use access_control::{
 use crate::{
     app_state::compile_core_settings_feature_registry,
     routes::console_route_assembly::{
-        compile_migrated_core_console_operation_registry, migrated_core_console_route_assembly,
-        ConsoleRouteAssembly,
+        ConsoleRouteAssembly, compile_migrated_core_console_operation_registry,
+        migrated_core_console_route_assembly,
     },
 };
 
@@ -58,9 +58,11 @@ fn console_route_assembly_unclassified_route_fails_coverage() {
         )])
         .unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("missing compiled ownership: GET /api/console/session"));
+    assert!(
+        error
+            .to_string()
+            .contains("missing compiled ownership: GET /api/console/session")
+    );
 }
 
 #[test]
@@ -84,9 +86,11 @@ fn console_route_assembly_duplicate_ownership_fails_coverage() {
         ])
         .unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("duplicate assembled console route ownership"));
+    assert!(
+        error
+            .to_string()
+            .contains("duplicate assembled console route ownership")
+    );
 }
 
 #[test]
@@ -321,9 +325,11 @@ fn applications_closed_set_rejects_duplicate_or_missing_binding() {
         .cloned()
         .collect::<Vec<_>>();
     let error = compile_migrated_core_console_operation_registry(&settings, &missing).unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("operation applications.delete must own at least one console route"));
+    assert!(
+        error
+            .to_string()
+            .contains("operation applications.delete must own at least one console route")
+    );
 }
 
 #[test]
@@ -839,10 +845,12 @@ fn data_model_docs_and_data_source_routes_compile_exact_operations() {
             ),
         ]
     );
-    assert!(assembly
-        .bindings()
-        .iter()
-        .all(|binding| { binding.ownership != ConsoleRouteOwnership::Authenticated }));
+    assert!(
+        assembly
+            .bindings()
+            .iter()
+            .all(|binding| { binding.ownership != ConsoleRouteOwnership::Authenticated })
+    );
 
     let settings = compile_core_settings_feature_registry().unwrap();
     let migrated = migrated_core_console_route_assembly();
@@ -933,20 +941,76 @@ fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
     assert_eq!(
         route_bindings(&host),
         vec![
-            ("GET", "/api/console/settings/host-infrastructure/memory", "host_infrastructure.memory.view"),
-            ("GET", "/api/console/settings/host-infrastructure/memory/stats", "host_infrastructure.memory.view"),
-            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries", "host_infrastructure.memory.view"),
-            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/stats", "host_infrastructure.memory.view"),
-            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries/search", "host_infrastructure.memory.view"),
-            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/tree", "host_infrastructure.memory.view"),
-            ("POST", "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries/reveal", "host_infrastructure.memory.reveal"),
-            ("GET", "/api/console/settings/host-infrastructure/cache", "host_infrastructure.cache.view"),
-            ("GET", "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries", "host_infrastructure.cache.view"),
-            ("POST", "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries/reveal", "host_infrastructure.cache.reveal"),
-            ("POST", "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries/clear", "host_infrastructure.cache.entry.clear"),
-            ("POST", "/api/console/settings/host-infrastructure/cache/domains/:domain_code/clear", "host_infrastructure.cache.domain.clear"),
-            ("GET", "/api/console/settings/host-infrastructure/providers", "host_infrastructure.providers.view"),
-            ("PUT", "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config", "host_infrastructure.providers.configure"),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory",
+                "host_infrastructure.memory.view"
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory/stats",
+                "host_infrastructure.memory.view"
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries",
+                "host_infrastructure.memory.view"
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/stats",
+                "host_infrastructure.memory.view"
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries/search",
+                "host_infrastructure.memory.view"
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/tree",
+                "host_infrastructure.memory.view"
+            ),
+            (
+                "POST",
+                "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries/reveal",
+                "host_infrastructure.memory.reveal"
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/cache",
+                "host_infrastructure.cache.view"
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries",
+                "host_infrastructure.cache.view"
+            ),
+            (
+                "POST",
+                "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries/reveal",
+                "host_infrastructure.cache.reveal"
+            ),
+            (
+                "POST",
+                "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries/clear",
+                "host_infrastructure.cache.entry.clear"
+            ),
+            (
+                "POST",
+                "/api/console/settings/host-infrastructure/cache/domains/:domain_code/clear",
+                "host_infrastructure.cache.domain.clear"
+            ),
+            (
+                "GET",
+                "/api/console/settings/host-infrastructure/providers",
+                "host_infrastructure.providers.view"
+            ),
+            (
+                "PUT",
+                "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
+                "host_infrastructure.providers.configure"
+            ),
         ]
     );
     assert_eq!(
@@ -1169,8 +1233,16 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
     assert_eq!(
         route_bindings(&assembly),
         vec![
-            ("GET", "/api/console/frontend-blocks", "frontend_blocks.view"),
-            ("GET", "/api/console/js-dependencies", "js_dependencies.view"),
+            (
+                "GET",
+                "/api/console/frontend-blocks",
+                "frontend_blocks.view"
+            ),
+            (
+                "GET",
+                "/api/console/js-dependencies",
+                "js_dependencies.view"
+            ),
             (
                 "GET",
                 "/api/console/models/agent-flow-options",
@@ -1276,8 +1348,16 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
                 "/api/console/node-contributions",
                 "node_contributions.view"
             ),
-            ("GET", "/api/console/plugins/catalog", "plugins.catalog.view"),
-            ("GET", "/api/console/plugins/families", "plugins.families.view"),
+            (
+                "GET",
+                "/api/console/plugins/catalog",
+                "plugins.catalog.view"
+            ),
+            (
+                "GET",
+                "/api/console/plugins/families",
+                "plugins.families.view"
+            ),
             (
                 "POST",
                 "/api/console/plugins/families/:provider_code/upgrade-latest",

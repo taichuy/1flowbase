@@ -3,11 +3,11 @@ use crate::_tests::support::{
     replace_role_permissions, seed_workspace, test_app_with_database_url,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
 use domain::PermissionDefinition;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 
 const MEMBERS_FEATURE_PERMISSION: &str = "settings_feature.access.system.members";
@@ -101,11 +101,13 @@ async fn members_feature_only_lists_role_options_and_replaces_member_roles_withi
         .expect("current-scope role should be assignable");
     assert_eq!(assignable["name"], "assignable");
     assert_eq!(assignable.as_object().unwrap().len(), 2);
-    assert!(!options["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|role| role["code"] == "root"));
+    assert!(
+        !options["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|role| role["code"] == "root")
+    );
 
     let replace_response = app
         .clone()

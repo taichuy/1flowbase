@@ -3,12 +3,12 @@ use crate::_tests::support::{
     replace_role_permissions, test_app, test_app_with_database_url,
 };
 use axum::{
-    body::{to_bytes, Body},
-    http::{header, Request, StatusCode},
+    body::{Body, to_bytes},
+    http::{Request, StatusCode, header},
 };
 use serde_json::json;
 use sqlx::PgPool;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -533,9 +533,11 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
     assert!(staff.get("config_schema").is_none());
     assert!(staff.get("config_values").is_none());
     assert!(staff.get("extension_config").is_none());
-    assert!(!serde_json::to_string(staff)
-        .unwrap()
-        .contains("do-not-leak"));
+    assert!(
+        !serde_json::to_string(staff)
+            .unwrap()
+            .contains("do-not-leak")
+    );
 }
 
 #[tokio::test]
@@ -755,10 +757,12 @@ async fn public_auth_sign_in_handles_cors_preflight() {
         response.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN),
         Some(&header::HeaderValue::from_static("http://127.0.0.1:3100"))
     );
-    assert!(response
-        .headers()
-        .get(header::ACCESS_CONTROL_ALLOW_METHODS)
-        .is_some());
+    assert!(
+        response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_METHODS)
+            .is_some()
+    );
 }
 
 #[tokio::test]

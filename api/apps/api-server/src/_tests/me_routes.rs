@@ -1,6 +1,6 @@
 use crate::_tests::support::{login_and_capture_cookie, test_app};
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
 use serde_json::json;
@@ -177,8 +177,7 @@ async fn patch_me_meta_route_merges_user_preferences_and_returns_them_on_me() {
     )
     .unwrap();
     assert_eq!(
-        first_payload["data"]["meta"]["ui"]["data_tables"]["applications.logs.runs"]
-            ["visibleColumnKeys"],
+        first_payload["data"]["meta"]["ui"]["data_tables"]["applications.logs.runs"]["visibleColumnKeys"],
         json!(["title", "status"])
     );
 
@@ -220,13 +219,11 @@ async fn patch_me_meta_route_merges_user_preferences_and_returns_them_on_me() {
     )
     .unwrap();
     assert_eq!(
-        second_payload["data"]["meta"]["ui"]["data_tables"]["applications.logs.runs"]
-            ["visibleColumnKeys"],
+        second_payload["data"]["meta"]["ui"]["data_tables"]["applications.logs.runs"]["visibleColumnKeys"],
         json!(["title", "status"])
     );
     assert_eq!(
-        second_payload["data"]["meta"]["ui"]["data_tables"]["applications.logs.runs"]
-            ["columnWidths"],
+        second_payload["data"]["meta"]["ui"]["data_tables"]["applications.logs.runs"]["columnWidths"],
         json!({
             "title": 320,
             "status": 180
@@ -250,8 +247,7 @@ async fn patch_me_meta_route_merges_user_preferences_and_returns_them_on_me() {
         serde_json::from_slice(&to_bytes(me_response.into_body(), usize::MAX).await.unwrap())
             .unwrap();
     assert_eq!(
-        me_payload["data"]["meta"]["ui"]["data_tables"]["applications.logs.runs"]["columnWidths"]
-            ["status"],
+        me_payload["data"]["meta"]["ui"]["data_tables"]["applications.logs.runs"]["columnWidths"]["status"],
         json!(180)
     );
 }

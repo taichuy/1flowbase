@@ -220,10 +220,9 @@ async fn test_state_with_runtime_profile_state(
         .expect("local test infrastructure must provide runtime event stream");
     let settings_feature_registry = crate::app_state::compile_core_settings_feature_registry()
         .expect("core settings feature registry should compile");
-    let console_operation_registry = crate::app_state::compile_core_console_operation_registry(
-        &settings_feature_registry,
-    )
-    .expect("core console operation registry should compile");
+    let console_operation_registry =
+        crate::app_state::compile_core_console_operation_registry(&settings_feature_registry)
+            .expect("core console operation registry should compile");
 
     (
         Arc::new(ApiState {

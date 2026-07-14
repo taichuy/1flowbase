@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
-    extract::{Multipart, Path, Query, State},
-    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
-    routing::{delete, get, post},
     Json, Router,
+    extract::{Multipart, Path, Query, State},
+    http::{HeaderMap, StatusCode, header::ACCEPT_LANGUAGE},
+    routing::{delete, get, post},
 };
 use control_plane::plugin_management::{
     AssignPluginCommand, DeletePluginFamilyCommand, EnablePluginCommand,
@@ -34,7 +34,7 @@ use crate::{
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::{
-        console_route_assembly::{console_delete, console_get, console_post, ConsoleRouteAssembly},
+        console_route_assembly::{ConsoleRouteAssembly, console_delete, console_get, console_post},
         system::LocaleMetaResponse,
     },
 };

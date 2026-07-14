@@ -5,9 +5,9 @@ use access_control::{
     APPLICATIONS_UPDATE_OPERATION_ID, APPLICATIONS_VIEW_OPERATION_ID,
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    Json, Router,
 };
 use control_plane::{
     application::{
@@ -31,7 +31,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]

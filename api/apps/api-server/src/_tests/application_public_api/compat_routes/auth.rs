@@ -66,9 +66,11 @@ async fn assert_run_creation_route_uses_last_used_cache(
     header_value: String,
     body: Value,
 ) {
-    assert!(application_api_key_last_used_at(state, api_key_id)
-        .await
-        .is_none());
+    assert!(
+        application_api_key_last_used_at(state, api_key_id)
+            .await
+            .is_none()
+    );
 
     let first = post_json(app, uri, (header_name, header_value.clone()), body.clone()).await;
     assert_eq!(first.status(), StatusCode::OK);

@@ -5,10 +5,10 @@ use access_control::{
     APPLICATIONS_UPDATE_OPERATION_ID, APPLICATIONS_VIEW_OPERATION_ID,
 };
 use axum::{
-    extract::{Path, Query, State},
-    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
-    response::IntoResponse,
     Json, Router,
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode, header::ACCEPT_LANGUAGE},
+    response::IntoResponse,
 };
 use control_plane::{
     application::ApplicationService,
@@ -38,26 +38,26 @@ use control_plane::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
     application_public_docs::{
-        build_application_public_docs_catalog, build_application_public_docs_category_operations,
+        ApplicationPublicDocsContext, build_application_public_docs_catalog,
+        build_application_public_docs_category_operations,
         build_application_public_docs_category_spec, build_application_public_docs_operation_spec,
-        ApplicationPublicDocsContext,
     },
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_docs::{
-        filter_category_operations, paginate_category_operations, DocsCatalog,
-        DocsCatalogCategoryOperationsPage, DOCS_OPERATIONS_PAGE_SIZE,
+        DOCS_OPERATIONS_PAGE_SIZE, DocsCatalog, DocsCatalogCategoryOperationsPage,
+        filter_category_operations, paginate_category_operations,
     },
     response::ApiSuccess,
     routes::console_route_assembly::{
-        console_delete, console_get, console_patch, console_post, ConsoleRouteAssembly,
+        ConsoleRouteAssembly, console_delete, console_get, console_patch, console_post,
     },
 };
 

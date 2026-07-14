@@ -3,10 +3,10 @@ use crate::_tests::support::{
     replace_role_permissions, test_app,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 
 const ROLES_FEATURE_PERMISSION: &str = "settings_feature.access.system.roles";
@@ -75,11 +75,13 @@ async fn roles_feature_only_completes_role_crud_and_permission_configuration() {
         .unwrap();
     assert_eq!(permission_options_response.status(), StatusCode::OK);
     let permission_options = response_json(permission_options_response).await;
-    assert!(permission_options["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|permission| permission["code"] == "application.view.own"));
+    assert!(
+        permission_options["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|permission| permission["code"] == "application.view.own")
+    );
     let roles_feature = permission_options["data"]
         .as_array()
         .unwrap()

@@ -5,10 +5,10 @@ use crate::_tests::support::{
     write_test_executable,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 
 fn create_split_delta_provider_fixture(root: &Path) {

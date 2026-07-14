@@ -3,7 +3,7 @@ use std::sync::Arc;
 use access_control::{
     ConsoleNavigation, ConsoleNavigationItem, ConsolePermissionBinding, ConsoleRouteDefinition,
 };
-use axum::{extract::State, http::HeaderMap, Json, Router};
+use axum::{Json, Router, extract::State, http::HeaderMap};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -12,7 +12,7 @@ use crate::{
     error_response::ApiError,
     middleware::require_session::require_session,
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
 };
 
 #[derive(Debug, Serialize, ToSchema)]

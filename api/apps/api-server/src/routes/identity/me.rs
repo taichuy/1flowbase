@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use argon2::{
-    password_hash::{PasswordHasher, SaltString},
     Argon2,
+    password_hash::{PasswordHasher, SaltString},
 };
 use axum::{
+    Json, Router,
     extract::State,
     http::{HeaderMap, StatusCode},
-    Json, Router,
 };
 use axum_extra::extract::cookie::CookieJar;
 use control_plane::profile::{ProfileService, UpdateMeCommand, UpdateMeMetaCommand};
@@ -22,7 +22,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
-        console_get, console_patch, console_post, ConsoleRouteAssembly,
+        ConsoleRouteAssembly, console_get, console_patch, console_post,
     },
     routes::session::expired_session_cookie,
 };

@@ -5,7 +5,7 @@ use crate::_tests::support::{
 use std::sync::Arc;
 
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
 use plugin_framework::parse_host_extension_contribution_manifest;

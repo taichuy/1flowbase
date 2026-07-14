@@ -1,24 +1,24 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     routing::post,
-    Json, Router,
 };
 use control_plane::mcp_management::McpManagementService;
 use domain::mcp_management::{McpInstanceStatus, McpToolStatus};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::mcp_management::upstream_client::{
-    map_proxy_arguments, map_proxy_result, McpStreamableHttpClient,
+    McpStreamableHttpClient, map_proxy_arguments, map_proxy_result,
 };
-use super::mcp_management::{bindable_mcp_interface, McpDebugExecuteBody, McpDebugResponseMode};
+use super::mcp_management::{McpDebugExecuteBody, McpDebugResponseMode, bindable_mcp_interface};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::{require_session, RequestCredential},
+    middleware::require_session::{RequestCredential, require_session},
 };
 
 #[derive(Deserialize)]
@@ -83,7 +83,7 @@ async fn handle_mcp_request(
                     result: None,
                     error: None,
                 }),
-            ))
+            ));
         }
         "tools/list" => json!({"tools": meta_tools()}),
         "tools/call" => {
@@ -194,7 +194,7 @@ async fn handle_mcp_request(
                                         request.id,
                                         -32603,
                                         "Tool execution failed",
-                                    ))
+                                    ));
                                 }
                             }
                         }
@@ -237,7 +237,7 @@ async fn handle_mcp_request(
                                             -32602,
                                             "Invalid tool arguments",
                                             json!({"reason":error.to_string()}),
-                                        ))
+                                        ));
                                     }
                                 };
                             let client = match McpStreamableHttpClient::connect(
@@ -253,7 +253,7 @@ async fn handle_mcp_request(
                                         -32603,
                                         "Upstream MCP connection failed",
                                         json!({"reason":error.to_string()}),
-                                    ))
+                                    ));
                                 }
                             };
                             let upstream =
@@ -265,7 +265,7 @@ async fn handle_mcp_request(
                                             -32603,
                                             "Upstream MCP tools/call failed",
                                             json!({"reason":error.to_string()}),
-                                        ))
+                                        ));
                                     }
                                 };
                             let mapped = match map_proxy_result(&upstream, &tool.output_mapping) {
@@ -276,7 +276,7 @@ async fn handle_mcp_request(
                                         -32603,
                                         "Tool result mapping failed",
                                         json!({"reason":error.to_string()}),
-                                    ))
+                                    ));
                                 }
                             };
                             match serde_json::to_value(mapped) {
@@ -287,7 +287,7 @@ async fn handle_mcp_request(
                                         -32603,
                                         "Tool result serialization failed",
                                         json!({"reason":error.to_string()}),
-                                    ))
+                                    ));
                                 }
                             }
                         }

@@ -5,11 +5,11 @@ use std::{
 };
 
 use axum::{
+    Json,
     body::Body,
     extract::{Multipart, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::Response,
-    Json,
 };
 use control_plane::{
     errors::ControlPlaneError,
@@ -18,14 +18,14 @@ use control_plane::{
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
+use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
 };
 
 const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;

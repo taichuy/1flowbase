@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use access_control::{
-    ensure_permission, SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
-    SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION,
+    SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
+    SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION, ensure_permission,
 };
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
-    Json, Router,
 };
 use control_plane::{
     audit::audit_log,
@@ -38,7 +38,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
-        console_get, console_post, console_put, ConsoleRouteAssembly,
+        ConsoleRouteAssembly, console_get, console_post, console_put,
     },
 };
 

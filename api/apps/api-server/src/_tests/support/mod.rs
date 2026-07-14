@@ -6,14 +6,14 @@ mod plugins;
 use std::{fs, io::Write, path::Path, sync::Arc};
 
 use argon2::{
-    password_hash::{PasswordHasher, SaltString},
     Argon2,
+    password_hash::{PasswordHasher, SaltString},
 };
 use async_trait::async_trait;
 use axum::{
-    body::{to_bytes, Body},
-    http::{Request, StatusCode},
     Router,
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
 };
 use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
 use control_plane::ports::{
@@ -22,8 +22,8 @@ use control_plane::ports::{
     OfficialPluginSourcePort,
 };
 use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
-use ed25519_dalek::{pkcs8::EncodePublicKey, SigningKey};
-use flate2::{write::GzEncoder, Compression};
+use ed25519_dalek::{SigningKey, pkcs8::EncodePublicKey};
+use flate2::{Compression, write::GzEncoder};
 use runtime_profile::{RuntimeCpu, RuntimeMemory, RuntimePlatform, RuntimeProfile};
 use serde_json::json;
 use sha2::{Digest, Sha256};

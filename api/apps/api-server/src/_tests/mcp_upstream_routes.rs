@@ -3,10 +3,10 @@ use crate::_tests::support::{
     test_app_with_runtime_profile_error,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -39,8 +39,7 @@ async fn issue_1246_ac_016_openapi_exposes_typed_tool_availability_enum() {
         ])
     );
     assert_eq!(
-        openapi["components"]["schemas"]["McpToolResponse"]["properties"]["availability_status"]
-            ["$ref"],
+        openapi["components"]["schemas"]["McpToolResponse"]["properties"]["availability_status"]["$ref"],
         json!("#/components/schemas/McpToolAvailabilityStatusDto")
     );
 }

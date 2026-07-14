@@ -3,10 +3,10 @@ use crate::_tests::support::{
     replace_role_permissions, test_app,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -725,9 +725,11 @@ async fn mcp_debug_execute_is_not_a_bindable_interface_capability() {
         .unwrap();
     assert_eq!(bindable_response.status(), StatusCode::OK);
     let bindable_payload = response_json(bindable_response).await;
-    assert!(!bindable_payload["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|entry| entry["path"] == json!("/api/console/mcp/debug/execute")));
+    assert!(
+        !bindable_payload["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["path"] == json!("/api/console/mcp/debug/execute"))
+    );
 }

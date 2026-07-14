@@ -1,6 +1,6 @@
 use control_plane::application_public_api::publications::ApplicationPublicationVersionRecord;
 use domain::ApplicationRecord;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::openapi_docs::{
     DocsCatalog, DocsCatalogCategory, DocsCatalogCategoryOperations, DocsCatalogOperation,
@@ -338,10 +338,9 @@ impl DocTextResolver {
             ("application_public_api.native.create_run.request.metadata", DocsLocale::ZhHans) => {
                 "调用方元数据，会随公开运行持久化。"
             }
-            (
-                "application_public_api.anthropic.message.request.metadata",
-                DocsLocale::ZhHans,
-            ) => "附加元数据。metadata.expand_id 会映射为公开运行的外部用户标识。",
+            ("application_public_api.anthropic.message.request.metadata", DocsLocale::ZhHans) => {
+                "附加元数据。metadata.expand_id 会映射为公开运行的外部用户标识。"
+            }
             (
                 "application_public_api.native.resume_run.request.callback_task_id",
                 DocsLocale::ZhHans,
@@ -357,10 +356,7 @@ impl DocTextResolver {
                 "application_public_api.openai.chat_completion.request.stream",
                 DocsLocale::ZhHans,
             )
-            | (
-                "application_public_api.openai.response.request.stream",
-                DocsLocale::ZhHans,
-            )
+            | ("application_public_api.openai.response.request.stream", DocsLocale::ZhHans)
             | ("application_public_api.anthropic.message.request.stream", DocsLocale::ZhHans) => {
                 "true 会将请求映射为流式响应模式。"
             }
@@ -407,10 +403,9 @@ impl DocTextResolver {
             ("application_public_api.native.create_run.request.metadata", DocsLocale::EnUs) => {
                 "Caller metadata persisted with the public run."
             }
-            (
-                "application_public_api.anthropic.message.request.metadata",
-                DocsLocale::EnUs,
-            ) => "Additional metadata. metadata.expand_id maps to the public run external user id.",
+            ("application_public_api.anthropic.message.request.metadata", DocsLocale::EnUs) => {
+                "Additional metadata. metadata.expand_id maps to the public run external user id."
+            }
             (
                 "application_public_api.native.resume_run.request.callback_task_id",
                 DocsLocale::EnUs,

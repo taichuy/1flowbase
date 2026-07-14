@@ -2,14 +2,14 @@ use crate::_tests::support::{
     login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config,
 };
 use axum::{
-    body::{to_bytes, Body},
-    http::{Request, StatusCode},
     Router,
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
 };
 use control_plane::ports::{
     CreateCallbackTaskInput, CreateNodeRunInput, OrchestrationRuntimeRepository, UpdateFlowRunInput,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use time::OffsetDateTime;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -319,9 +319,11 @@ async fn native_run_route_accepts_any_string_model_and_preserves_metadata_withou
         payload["data"]["node_input_payload"]["node-start"]["priority"],
         json!("high")
     );
-    assert!(payload["data"]["node_input_payload"]["node-start"]
-        .get("model")
-        .is_none());
+    assert!(
+        payload["data"]["node_input_payload"]["node-start"]
+            .get("model")
+            .is_none()
+    );
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
@@ -12,10 +12,8 @@ const GITHUB_LATEST_RELEASE_URL: &str =
     "https://api.github.com/repos/taichuy/1flowbase/releases/latest";
 const GITHUB_CONTRIBUTORS_URL: &str = "https://github.com/taichuy/1flowbase/graphs/contributors";
 const RELEASE_STATUS_CACHE_SECONDS: i64 = 60;
-const DOCKER_SHELL_UPGRADE_COMMAND: &str =
-    "curl -fsSL https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/shell/docker-deploy.sh | sh";
-const DOCKER_POWERSHELL_UPGRADE_COMMAND: &str =
-    "irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex";
+const DOCKER_SHELL_UPGRADE_COMMAND: &str = "curl -fsSL https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/shell/docker-deploy.sh | sh";
+const DOCKER_POWERSHELL_UPGRADE_COMMAND: &str = "irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex";
 
 #[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct ConsoleReleaseInfoResponse {
@@ -242,10 +240,12 @@ mod tests {
             release_status.contributors_url,
             "https://github.com/taichuy/1flowbase/graphs/contributors"
         );
-        assert!(release_status
-            .upgrade_commands
-            .shell
-            .contains("scripts/shell/docker-deploy.sh"));
+        assert!(
+            release_status
+                .upgrade_commands
+                .shell
+                .contains("scripts/shell/docker-deploy.sh")
+        );
     }
 
     #[test]

@@ -2,10 +2,10 @@ use std::path::Path;
 
 use crate::_tests::support::{login_and_capture_cookie, test_app};
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use super::support::{
@@ -181,9 +181,11 @@ async fn plugin_routes_install_enable_assign_and_query_tasks() {
         catalog_payload["data"]["entries"][0]["label_key"],
         "plugin.label"
     );
-    assert!(catalog_payload["data"]["entries"][0]
-        .get("display_name")
-        .is_none());
+    assert!(
+        catalog_payload["data"]["entries"][0]
+            .get("display_name")
+            .is_none()
+    );
     assert!(
         catalog_payload["data"]["i18n_catalog"]["plugin.fixture_provider"]["en_US"].is_object()
     );

@@ -5,17 +5,17 @@ use std::{
 };
 
 use access_control::{
-    accessible_console_navigation_with_contributions, builtin_console_navigation,
     ConsoleNavigation, ConsoleNavigationItem, ConsoleNavigationSlot, ConsolePermissionBinding,
     ConsolePermissionRequirement, ConsoleRouteDefinition, ConsoleSurfaceKind,
+    accessible_console_navigation_with_contributions, builtin_console_navigation,
 };
 use domain::ActorContext;
 use plugin_framework::{
+    HostExtensionContributionManifest,
     host_extension_contribution::{
         HostExtensionConsoleNavigationSlot, HostExtensionConsolePermissionRequirement,
         HostExtensionConsoleSurfaceKind,
     },
-    HostExtensionContributionManifest,
 };
 
 /// Console navigation is compiled with the route and operation registries at boot. It has no

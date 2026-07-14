@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    Json, Router,
 };
 use control_plane::frontstage::{
     CreateFrontstageGroupCommand, CreateFrontstagePageCommand, CreateFrontstagePageTabCommand,
@@ -28,7 +28,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
-        console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
+        ConsoleRouteAssembly, console_get, console_patch, console_post, console_put,
     },
 };
 

@@ -1,11 +1,11 @@
 use control_plane::{
     application_public_api::{
         native::{
-            answer_segments_from_text, answer_segments_from_value, answer_segments_value,
-            AnswerProjectionSegment, AnswerProjectionSegmentKind, NativeRunResult, NativeRunStatus,
-            ANSWER_SEGMENTS_KEY,
+            ANSWER_SEGMENTS_KEY, AnswerProjectionSegment, AnswerProjectionSegmentKind,
+            NativeRunResult, NativeRunStatus, answer_segments_from_text,
+            answer_segments_from_value, answer_segments_value,
         },
-        run_service::{native_result_from_run_detail, ApplicationPublishedRunControlRepository},
+        run_service::{ApplicationPublishedRunControlRepository, native_result_from_run_detail},
     },
     orchestration_runtime::{
         debug_artifacts::is_runtime_debug_artifact_preview, debug_stream_events,
@@ -15,7 +15,7 @@ use control_plane::{
         RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventSource,
     },
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -637,8 +637,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        split_terminal_answer_deltas, terminal_answer_deltas_from_payload,
-        terminal_runtime_event_from_native_run, TerminalAnswerDeltaKind,
+        TerminalAnswerDeltaKind, split_terminal_answer_deltas, terminal_answer_deltas_from_payload,
+        terminal_runtime_event_from_native_run,
     };
 
     fn native_run(status: NativeRunStatus) -> NativeRunResult {

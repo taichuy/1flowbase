@@ -206,8 +206,8 @@ async fn openai_responses_rejects_previous_response_from_another_api_key() {
 }
 
 #[tokio::test]
-async fn openai_responses_rejects_function_call_output_when_previous_response_mismatches_callback_run(
-) {
+async fn openai_responses_rejects_function_call_output_when_previous_response_mismatches_callback_run()
+ {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Responses Callback Binding App").await;
 

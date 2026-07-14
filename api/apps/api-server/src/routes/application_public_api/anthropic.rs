@@ -1,11 +1,11 @@
 use std::{collections::HashSet, sync::Arc};
 
 use axum::{
+    Json,
     body::Bytes,
     extract::State,
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    Json,
 };
 use control_plane::application_public_api::{
     api_keys::ApplicationApiKeyService,
@@ -14,12 +14,12 @@ use control_plane::application_public_api::{
         PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
     client_protocol_envelope::{
-        capture_client_protocol_envelope, merge_anthropic_messages_envelopes,
-        ClientProtocolIngressPolicy,
+        ClientProtocolIngressPolicy, capture_client_protocol_envelope,
+        merge_anthropic_messages_envelopes,
     },
     compat::anthropic::{
-        anthropic_content_is_tool_result_only, map_messages_request,
-        sanitize_anthropic_compat_assistant_text, AnthropicCompatError,
+        AnthropicCompatError, anthropic_content_is_tool_result_only, map_messages_request,
+        sanitize_anthropic_compat_assistant_text,
     },
     native::{
         ApplicationNativeRunService, CreateNativeRunCommand, GetNativeRunCommand, NativeRunRequest,
@@ -32,7 +32,7 @@ use control_plane::application_public_api::{
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
 use plugin_framework::provider_contract::ClientProtocolEnvelope;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use utoipa::ToSchema;
 use uuid::Uuid;
 

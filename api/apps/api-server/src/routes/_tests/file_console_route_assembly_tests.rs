@@ -117,11 +117,13 @@ fn file_owner_routes_preserve_authenticated_data_acl_and_settings_operations() {
     }
 
     for removed_operation_id in ["files.upload", "files.content.download"] {
-        assert!(registry
-            .inventory()
-            .operations
-            .iter()
-            .all(|operation| operation.operation_id != removed_operation_id));
+        assert!(
+            registry
+                .inventory()
+                .operations
+                .iter()
+                .all(|operation| operation.operation_id != removed_operation_id)
+        );
     }
 
     for operation_id in [
@@ -148,11 +150,13 @@ fn file_owner_routes_preserve_authenticated_data_acl_and_settings_operations() {
         assert_eq!(operation.routes.len(), 1);
     }
 
-    assert!(registry
-        .inventory()
-        .operations
-        .iter()
-        .all(|operation| operation.operation_id != "settings_feature.access.system.files"));
+    assert!(
+        registry
+            .inventory()
+            .operations
+            .iter()
+            .all(|operation| operation.operation_id != "settings_feature.access.system.files")
+    );
     let partially_migrated_feature = registry
         .inventory()
         .operations

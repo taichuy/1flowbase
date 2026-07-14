@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
-    extract::{Path, Query, State},
-    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
     Json, Router,
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode, header::ACCEPT_LANGUAGE},
 };
 use control_plane::model_provider::{
     ClearModelProviderRequestLogsBatchCommand, ClearModelProviderRequestLogsContinuation,
@@ -36,7 +36,7 @@ use crate::{
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::{
-        console_route_assembly::{console_get, ConsoleRouteAssembly},
+        console_route_assembly::{ConsoleRouteAssembly, console_get},
         system::LocaleMetaResponse,
     },
 };
@@ -1480,7 +1480,7 @@ pub async fn list_options(
 #[cfg(test)]
 mod request_log_response_tests {
     use super::*;
-    use time::{macros::datetime, Duration};
+    use time::{Duration, macros::datetime};
 
     #[test]
     fn request_log_response_uses_persisted_duration_fields() {

@@ -53,23 +53,30 @@ fn builtin_manifests_load_from_plugin_workspace() {
         local_infra.1.bootstrap_phase,
         HostExtensionBootstrapPhase::PreState
     );
-    assert!(local_infra
-        .1
-        .infrastructure_providers
-        .iter()
-        .any(|provider| provider.contract == "storage-ephemeral"
-            && provider.provider_code == "local"));
-    assert!(local_infra
-        .1
-        .infrastructure_providers
-        .iter()
-        .any(|provider| provider.contract == "session-store" && provider.provider_code == "local"));
-    assert!(local_infra
-        .1
-        .infrastructure_providers
-        .iter()
-        .any(|provider| provider.contract == "runtime-event-stream"
-            && provider.provider_code == "local"));
+    assert!(
+        local_infra
+            .1
+            .infrastructure_providers
+            .iter()
+            .any(|provider| provider.contract == "storage-ephemeral"
+                && provider.provider_code == "local")
+    );
+    assert!(
+        local_infra
+            .1
+            .infrastructure_providers
+            .iter()
+            .any(|provider| provider.contract == "session-store"
+                && provider.provider_code == "local")
+    );
+    assert!(
+        local_infra
+            .1
+            .infrastructure_providers
+            .iter()
+            .any(|provider| provider.contract == "runtime-event-stream"
+                && provider.provider_code == "local")
+    );
 }
 
 #[test]

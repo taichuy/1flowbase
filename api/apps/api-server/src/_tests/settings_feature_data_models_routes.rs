@@ -3,7 +3,7 @@ use crate::_tests::support::{
     replace_role_permissions, seed_workspace, test_app_with_database_url,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
 use serde_json::Value;

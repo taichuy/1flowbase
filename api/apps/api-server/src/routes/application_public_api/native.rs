@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use axum::{
+    Json,
     body::Bytes,
     extract::{Multipart, Path, State},
     http::{HeaderMap, StatusCode},
     response::{
-        sse::{KeepAlive, Sse},
         IntoResponse, Response,
+        sse::{KeepAlive, Sse},
     },
-    Json,
 };
 use control_plane::{
     application_public_api::{
@@ -18,8 +18,8 @@ use control_plane::{
             PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
         },
         model_catalog::{
-            extract_agent_model_catalog_from_start_node, AgentModelCapabilities,
-            AgentModelDescriptor, AgentModelReasoning,
+            AgentModelCapabilities, AgentModelDescriptor, AgentModelReasoning,
+            extract_agent_model_catalog_from_start_node,
         },
         native::{
             ApplicationNativeRunService, CancelNativeRunCommand, CreateNativeRunCommand,
@@ -30,12 +30,12 @@ use control_plane::{
     },
     file_management::{FileUploadService, UploadFileCommand},
     orchestration_runtime::{
-        debug_stream_events, OrchestrationRuntimeService, StartPublishedFlowRunCommand,
+        OrchestrationRuntimeService, StartPublishedFlowRunCommand, debug_stream_events,
     },
     ports::AuthRepository,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tracing::error;
@@ -47,7 +47,7 @@ use crate::{
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::{application_public_api::sse, files::UploadedFileResponse},
-    runtime_activity::{scope_application_activity, ApplicationActivityKind},
+    runtime_activity::{ApplicationActivityKind, scope_application_activity},
 };
 
 pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {

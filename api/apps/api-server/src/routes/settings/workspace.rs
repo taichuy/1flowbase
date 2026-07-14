@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{extract::State, http::HeaderMap, Json, Router};
+use axum::{Json, Router, extract::State, http::HeaderMap};
 use control_plane::workspace::{UpdateWorkspaceCommand, WorkspaceService};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -10,7 +10,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]

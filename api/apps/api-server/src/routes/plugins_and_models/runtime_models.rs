@@ -5,10 +5,10 @@ use std::{
 };
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{delete, get, patch, post},
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -19,7 +19,7 @@ use crate::{
     error_response::ApiError,
     middleware::{
         require_csrf::require_csrf,
-        require_session::{require_session, RequestContext},
+        require_session::{RequestContext, require_session},
     },
     response::ApiSuccess,
 };

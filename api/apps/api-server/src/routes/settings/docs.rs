@@ -4,9 +4,9 @@ use access_control::{
     ConsoleRouteOwnership::ConsoleOperation, SYSTEM_DOCS_SETTINGS_FEATURE_PERMISSION,
 };
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
-    Json, Router,
 };
 use control_plane::errors::ControlPlaneError;
 use serde::{Deserialize, Serialize};
@@ -19,11 +19,11 @@ use crate::{
     error_response::ApiError,
     middleware::require_session::require_session,
     openapi_docs::{
-        filter_category_operations, paginate_category_operations, DocsCatalog,
-        DocsCatalogCategoryOperationsPage, DOCS_OPERATIONS_PAGE_SIZE,
+        DOCS_OPERATIONS_PAGE_SIZE, DocsCatalog, DocsCatalogCategoryOperationsPage,
+        filter_category_operations, paginate_category_operations,
     },
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
     runtime_data_model_docs,
 };
 

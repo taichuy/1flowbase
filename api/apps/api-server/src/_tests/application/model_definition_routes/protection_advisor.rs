@@ -292,17 +292,20 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
         json!("bearer")
     );
     assert_eq!(docs["x-data-model"]["status"], json!("published"));
-    assert!(docs["x-scope-permission-note"]
-        .as_str()
-        .unwrap()
-        .contains("scope grant"));
-    assert!(docs["x-external-source-safety-limits"]
-        .as_str()
-        .unwrap()
-        .contains("scope filter"));
+    assert!(
+        docs["x-scope-permission-note"]
+            .as_str()
+            .unwrap()
+            .contains("scope grant")
+    );
+    assert!(
+        docs["x-external-source-safety-limits"]
+            .as_str()
+            .unwrap()
+            .contains("scope filter")
+    );
     assert_eq!(
-        docs["paths"]["/api/runtime/models/advisor_doc_orders/list"]["get"]["parameters"][0]
-            ["name"],
+        docs["paths"]["/api/runtime/models/advisor_doc_orders/list"]["get"]["parameters"][0]["name"],
         json!("filter")
     );
     assert!(

@@ -1,7 +1,7 @@
 use axum::{
+    Json, Router,
     http::{StatusCode, Uri},
     response::{IntoResponse, Response},
-    Json, Router,
 };
 use control_plane::ports::OfficialPluginSourcePort;
 use plugin_framework::RuntimeTarget;
@@ -9,12 +9,11 @@ use serde_json::json;
 
 use crate::config::ResolvedOfficialPluginSourceConfig;
 use crate::official_plugin_registry::{
-    rewrite_github_raw_url, select_artifact_for_host, ApiOfficialPluginRegistry,
-    OfficialRegistryArtifact, OfficialRegistryEntry, OfficialRegistryI18nSummary,
+    ApiOfficialPluginRegistry, OfficialRegistryArtifact, OfficialRegistryEntry,
+    OfficialRegistryI18nSummary, rewrite_github_raw_url, select_artifact_for_host,
 };
 
-const RAW_REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/official-registry.json";
+const RAW_REGISTRY_URL: &str = "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/official-registry.json";
 const RAW_ICON_URL: &str = "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/runtime-extensions/model-providers/openai_compatible/_assets/icon.svg";
 const RAW_PACKAGE_URL: &str = "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/dist/openai-compatible.1flowbasepkg";
 

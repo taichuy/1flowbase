@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::routes::console_route_assembly::{
-    console_get, console_patch, console_post, ConsoleRouteAssembly,
+    ConsoleRouteAssembly, console_get, console_patch, console_post,
 };
 
 pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {

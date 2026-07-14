@@ -3,10 +3,10 @@ use crate::_tests::support::{
     replace_role_permissions, seed_workspace, test_app, test_app_with_database_url,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -203,16 +203,20 @@ async fn settings_feature_files_route_keeps_storage_root_boundary() {
         .unwrap();
     assert_eq!(tables.status(), StatusCode::OK);
     let tables = response_json(tables).await;
-    assert!(tables["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|table| table["id"] == current_table_id));
-    assert!(!tables["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|table| table["id"] == outside_table_id.to_string()));
+    assert!(
+        tables["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|table| table["id"] == current_table_id)
+    );
+    assert!(
+        !tables["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|table| table["id"] == outside_table_id.to_string())
+    );
 
     let storages = app
         .clone()
@@ -1096,9 +1100,11 @@ async fn file_management_settings_routes_allow_root_to_update_and_delete_storage
         .as_array()
         .cloned()
         .unwrap_or_default();
-    assert!(table_records
-        .iter()
-        .all(|record| record["id"].as_str() != Some(file_table_id.as_str())));
+    assert!(
+        table_records
+            .iter()
+            .all(|record| record["id"].as_str() != Some(file_table_id.as_str()))
+    );
 
     let delete_storage_response = app
         .clone()
@@ -1133,12 +1139,16 @@ async fn file_management_settings_routes_allow_root_to_update_and_delete_storage
         .as_array()
         .cloned()
         .unwrap_or_default();
-    assert!(storage_records
-        .iter()
-        .any(|record| record["id"].as_str() == Some(default_storage_id)));
-    assert!(storage_records
-        .iter()
-        .all(|record| record["id"].as_str() != Some(storage_id.as_str())));
+    assert!(
+        storage_records
+            .iter()
+            .any(|record| record["id"].as_str() == Some(default_storage_id))
+    );
+    assert!(
+        storage_records
+            .iter()
+            .all(|record| record["id"].as_str() != Some(storage_id.as_str()))
+    );
 
     let _ = std::fs::remove_dir_all(storage_root);
 }

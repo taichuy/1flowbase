@@ -7,12 +7,12 @@ use crate::{
     app_state::ApiState,
 };
 use axum::{
-    body::{to_bytes, Body},
-    http::{Request, StatusCode},
     Router,
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
-use tokio::time::{sleep, Duration};
+use serde_json::{Value, json};
+use tokio::time::{Duration, sleep};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -559,9 +559,11 @@ async fn workflow_extension_sync_route_returns_accepted_when_run_waits_for_human
 
     assert_eq!(response.status(), StatusCode::ACCEPTED);
     let payload = response_json(response).await;
-    assert!(payload["run_id"]
-        .as_str()
-        .is_some_and(|run_id| uuid::Uuid::parse_str(run_id).is_ok()));
+    assert!(
+        payload["run_id"]
+            .as_str()
+            .is_some_and(|run_id| uuid::Uuid::parse_str(run_id).is_ok())
+    );
     assert_eq!(payload["status"], json!("waiting_human"));
 }
 
@@ -597,9 +599,11 @@ async fn workflow_extension_async_route_returns_accepted_run_status() {
 
     assert_eq!(response.status(), StatusCode::ACCEPTED);
     let payload = response_json(response).await;
-    assert!(payload["run_id"]
-        .as_str()
-        .is_some_and(|run_id| uuid::Uuid::parse_str(run_id).is_ok()));
+    assert!(
+        payload["run_id"]
+            .as_str()
+            .is_some_and(|run_id| uuid::Uuid::parse_str(run_id).is_ok())
+    );
     assert_eq!(payload["status"], json!("queued"));
     let run_id = Uuid::parse_str(payload["run_id"].as_str().unwrap()).unwrap();
     let output_payload = wait_for_flow_run_status(state.as_ref(), run_id, "succeeded").await;
@@ -794,18 +798,18 @@ async fn workflow_extension_openapi_registers_concrete_slug_operation() {
     assert_eq!(operation["parameters"][0]["in"], json!("path"));
     assert_eq!(operation["parameters"][1]["in"], json!("query"));
     assert_eq!(
-        operation["requestBody"]["content"]["application/x-www-form-urlencoded"]["schema"]
-            ["properties"]["priority"]["type"],
+        operation["requestBody"]["content"]["application/x-www-form-urlencoded"]["schema"]["properties"]
+            ["priority"]["type"],
         json!("string")
     );
     assert_eq!(
-        operation["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["ticket_kind"]["type"],
+        operation["requestBody"]["content"]["application/json"]["schema"]["properties"]["ticket_kind"]
+            ["type"],
         json!("string")
     );
     assert_eq!(
-        operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
-            ["ticket_id"]["type"],
+        operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["ticket_id"]
+            ["type"],
         json!("string")
     );
 }
@@ -977,9 +981,11 @@ async fn workflow_extension_openapi_excludes_schedule_trigger_applications() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
-    assert!(payload["paths"]
-        .as_object()
-        .unwrap()
-        .get("/api/ex/schedule-typed-docs")
-        .is_none());
+    assert!(
+        payload["paths"]
+            .as_object()
+            .unwrap()
+            .get("/api/ex/schedule-typed-docs")
+            .is_none()
+    );
 }

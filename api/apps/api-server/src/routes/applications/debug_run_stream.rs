@@ -370,7 +370,7 @@ mod tests {
     };
     use serde_json::json;
     use time::OffsetDateTime;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     use crate::host_infrastructure::LocalRuntimeEventStream;
 

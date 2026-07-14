@@ -1054,9 +1054,9 @@ fn required_action_not_supported_anthropic_sse() -> Vec<Result<Event, Infallible
 
 mod anthropic_stream;
 
+pub(super) use anthropic_stream::AnthropicStreamMapper;
 #[cfg(test)]
 pub(super) use anthropic_stream::anthropic_delta_payload;
-pub(super) use anthropic_stream::AnthropicStreamMapper;
 
 fn runtime_error_message(payload: &Value) -> String {
     payload

@@ -6,7 +6,7 @@ use std::{
 use axum::{
     body::Body,
     extract::{Path, State},
-    http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
     response::Response,
 };
 

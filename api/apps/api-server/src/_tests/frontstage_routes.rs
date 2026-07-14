@@ -6,11 +6,11 @@ use crate::_tests::support::{
 };
 use access_control::ConsoleRouteOwnership;
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use tower::ServiceExt;
 
 #[test]
@@ -27,10 +27,7 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
         BTreeSet::from([
             ("GET", "/api/console/frontstage/:workspace_id/pages"),
             ("POST", "/api/console/frontstage/:workspace_id/pages"),
-            (
-                "POST",
-                "/api/console/frontstage/:workspace_id/pages/groups",
-            ),
+            ("POST", "/api/console/frontstage/:workspace_id/pages/groups",),
             (
                 "PATCH",
                 "/api/console/frontstage/:workspace_id/pages/:page_id",
@@ -85,10 +82,12 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
             ),
         ])
     );
-    assert!(assembly
-        .bindings()
-        .iter()
-        .all(|binding| { binding.ownership == ConsoleRouteOwnership::Authenticated }));
+    assert!(
+        assembly
+            .bindings()
+            .iter()
+            .all(|binding| { binding.ownership == ConsoleRouteOwnership::Authenticated })
+    );
 }
 
 async fn current_workspace_id(app: &axum::Router, cookie: &str) -> String {

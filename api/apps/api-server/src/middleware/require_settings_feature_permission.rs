@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use access_control::{
-    ConsoleAuthorization, ConsoleOperationRegistry, ConsoleRouteAccess, ConsolePolicyGroup,
+    ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteAccess,
 };
 use axum::{body::Body, extract::State, http::Request, middleware::Next, response::Response};
 use control_plane::{errors::ControlPlaneError, ports::ApplicationRepository};
 use domain::{
-    effective_console_row_scope, effective_console_simple_operation, ActorContext,
-    ConsoleOperationId, ConsoleOperationRowScope, RoleConsolePolicy,
+    ActorContext, ConsoleOperationId, ConsoleOperationRowScope, RoleConsolePolicy,
+    effective_console_row_scope, effective_console_simple_operation,
 };
 
 use crate::{
@@ -83,8 +83,7 @@ pub async fn require_settings_feature_permission(
     )
     .map_err(ControlPlaneError::PermissionDenied)?;
 
-    if matches!(access.authorization, ConsoleAuthorization::Authenticated)
-        || context.actor.is_root
+    if matches!(access.authorization, ConsoleAuthorization::Authenticated) || context.actor.is_root
     {
         return Ok(next.run(request).await);
     }
@@ -109,11 +108,14 @@ mod tests {
 
     use access_control::{
         ConsoleAuthorization, ConsoleOperationOwner, ConsoleOperationRegistration,
-        ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteBinding,
-        ResourceAccessAction, ResourceAccessRegistration, ResourceAccessScopeKind,
-        SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
+        ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteBinding, ResourceAccessAction,
+        ResourceAccessRegistration, ResourceAccessScopeKind, SettingsFeatureLifecycle,
+        SettingsFeatureOwnerKind,
     };
-    use axum::{body::Body, http::{Request, StatusCode}};
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
     use domain::{
         ActorContext, ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope,
         RoleConsoleGroupPolicy, RoleConsolePolicy,
@@ -227,12 +229,8 @@ mod tests {
                 .unwrap_err(),
             "console_route_unregistered"
         );
-        let access = compiled_console_route_access(
-            &registry,
-            "GET",
-            "/api/console/test/simple",
-        )
-        .unwrap();
+        let access =
+            compiled_console_route_access(&registry, "GET", "/api/console/test/simple").unwrap();
         assert!(authorize_compiled_console_access(&access, &root, &[]));
     }
 
@@ -245,17 +243,17 @@ mod tests {
             "member",
             ["middleware.simple".to_string()],
         );
-        let access = compiled_console_route_access(&registry, "GET", "/api/console/test/simple")
-            .unwrap();
+        let access =
+            compiled_console_route_access(&registry, "GET", "/api/console/test/simple").unwrap();
 
         assert!(!authorize_compiled_console_access(&access, &actor, &[]));
         assert!(authorize_compiled_console_access(
             &access,
             &actor,
             &[policy(ConsoleOperationPolicy::simple(
-                    ConsoleOperationId::try_from("middleware.simple").unwrap(),
-                    true,
-                ))]
+                ConsoleOperationId::try_from("middleware.simple").unwrap(),
+                true,
+            ))]
         ));
     }
 
@@ -263,25 +261,25 @@ mod tests {
     fn resource_action_requires_row_scope_and_does_not_filter_rows() {
         let registry = test_registry();
         let actor = ActorContext::scoped(Uuid::now_v7(), Uuid::now_v7(), "member", []);
-        let access = compiled_console_route_access(&registry, "GET", "/api/console/test/row/row-1")
-            .unwrap();
+        let access =
+            compiled_console_route_access(&registry, "GET", "/api/console/test/row/row-1").unwrap();
 
         assert!(!authorize_compiled_console_access(&access, &actor, &[]));
         assert!(!authorize_compiled_console_access(
             &access,
             &actor,
             &[policy(ConsoleOperationPolicy::simple(
-                    ConsoleOperationId::try_from("middleware.row").unwrap(),
-                    true,
-                ))]
+                ConsoleOperationId::try_from("middleware.row").unwrap(),
+                true,
+            ))]
         ));
         assert!(authorize_compiled_console_access(
             &access,
             &actor,
             &[policy(ConsoleOperationPolicy::row(
-                    ConsoleOperationId::try_from("middleware.row").unwrap(),
-                    ConsoleOperationRowScope::Own,
-                ))]
+                ConsoleOperationId::try_from("middleware.row").unwrap(),
+                ConsoleOperationRowScope::Own,
+            ))]
         ));
     }
 
@@ -289,12 +287,9 @@ mod tests {
     fn authenticated_operation_requires_session_but_not_role_policy() {
         let registry = test_registry();
         let actor = ActorContext::scoped(Uuid::now_v7(), Uuid::now_v7(), "member", []);
-        let access = compiled_console_route_access(
-            &registry,
-            "GET",
-            "/api/console/test/authenticated",
-        )
-        .unwrap();
+        let access =
+            compiled_console_route_access(&registry, "GET", "/api/console/test/authenticated")
+                .unwrap();
 
         assert_eq!(access.authorization, &ConsoleAuthorization::Authenticated);
         assert!(authorize_compiled_console_access(&access, &actor, &[]));
@@ -304,24 +299,16 @@ mod tests {
     async fn unregistered_mounted_console_route_returns_403_for_root_session() {
         let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
         let empty_registry = Arc::new(
-            ConsoleOperationRegistry::compile(
-                &base_state.settings_feature_registry,
-                [],
-                [],
-            )
-            .unwrap(),
+            ConsoleOperationRegistry::compile(&base_state.settings_feature_registry, [], [])
+                .unwrap(),
         );
         let state = Arc::new(crate::app_state::ApiState {
             console_operation_registry: empty_registry,
             ..(*base_state).clone()
         });
         let app = crate::app_with_state_and_config(state, &crate::_tests::support::test_config());
-        let (cookie, _) = crate::_tests::support::login_and_capture_cookie(
-            &app,
-            "root",
-            "change-me",
-        )
-        .await;
+        let (cookie, _) =
+            crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
 
         let response = app
             .oneshot(

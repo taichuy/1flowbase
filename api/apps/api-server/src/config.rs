@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use axum::http::HeaderValue;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};

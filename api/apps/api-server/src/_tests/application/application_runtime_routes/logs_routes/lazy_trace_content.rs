@@ -167,11 +167,13 @@ async fn application_runtime_routes_log_trace_tree_loads_summary_children_and_co
     )
     .await
     .expect("root trace node should advertise an events detail ref");
-    assert!(events_detail_payload["data"]["payload"]["events"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|event| event["node_run_id"] == json!(node_run_id.to_string())));
+    assert!(
+        events_detail_payload["data"]["payload"]["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|event| event["node_run_id"] == json!(node_run_id.to_string()))
+    );
 }
 
 #[tokio::test]
@@ -261,10 +263,12 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
         list_payload["data"]["items"][0]["compatibility_mode"].as_str(),
         Some("native-v1")
     );
-    assert!(!list_payload["data"]["items"][0]
-        .as_object()
-        .unwrap()
-        .contains_key("protocol"));
+    assert!(
+        !list_payload["data"]["items"][0]
+            .as_object()
+            .unwrap()
+            .contains_key("protocol")
+    );
     assert_eq!(
         list_payload["data"]["items"][0]["correlation"]["external_user"].as_str(),
         Some("customer-42")
@@ -309,10 +313,12 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
         trace_tree_payload["data"]["run"]["compatibility_mode"].as_str(),
         Some("native-v1")
     );
-    assert!(!trace_tree_payload["data"]["run"]
-        .as_object()
-        .unwrap()
-        .contains_key("protocol"));
+    assert!(
+        !trace_tree_payload["data"]["run"]
+            .as_object()
+            .unwrap()
+            .contains_key("protocol")
+    );
     assert_eq!(
         trace_tree_payload["data"]["run"]["correlation"]["external_user"].as_str(),
         Some("customer-42")

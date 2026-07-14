@@ -3,10 +3,10 @@ use crate::_tests::support::{
     replace_role_permissions, test_app,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -92,9 +92,11 @@ async fn ac_004_005_application_management_route_filters_pages_and_returns_backe
     assert_eq!(items[0]["application_type"], json!("workflow"));
     assert_eq!(items[0]["workflow_trigger_type"], json!("schedule"));
     assert_eq!(items[0]["publication_status"], json!("unpublished"));
-    assert!(items[0]["created_by_display_name"]
-        .as_str()
-        .is_some_and(|value| !value.is_empty()));
+    assert!(
+        items[0]["created_by_display_name"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
     assert!(items[0]["created_at"].as_str().is_some());
     assert!(items[0]["updated_at"].as_str().is_some());
 }
@@ -185,9 +187,11 @@ async fn ac_002_008_own_viewer_keeps_workbench_access_without_settings_managemen
         .unwrap();
     assert_eq!(navigation.status(), StatusCode::OK);
     let navigation = response_json(navigation).await;
-    assert!(navigation["data"]["navigation_items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|item| item["route_id"] != "settings.applications"));
+    assert!(
+        navigation["data"]["navigation_items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["route_id"] != "settings.applications")
+    );
 }

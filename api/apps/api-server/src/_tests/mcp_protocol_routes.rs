@@ -1,8 +1,8 @@
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use crate::_tests::support::{login_and_capture_cookie, test_app};
@@ -77,9 +77,11 @@ fn assert_meta_tools(payload: &Value) {
             .collect::<Vec<_>>(),
         vec!["mcp.list", "mcp.get", "mcp.call"]
     );
-    assert!(tools
-        .iter()
-        .all(|tool| tool["inputSchema"]["type"] == json!("object")));
+    assert!(
+        tools
+            .iter()
+            .all(|tool| tool["inputSchema"]["type"] == json!("object"))
+    );
 }
 
 #[tokio::test]
@@ -204,11 +206,13 @@ async fn mcp_tools_list_always_returns_three_meta_tools() {
     )
     .await;
     assert_meta_tools(&bound_instance_payload);
-    assert!(bound_instance_payload["result"]["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|tool| tool["name"] != json!("runtime_profile")));
+    assert!(
+        bound_instance_payload["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|tool| tool["name"] != json!("runtime_profile"))
+    );
 }
 
 #[tokio::test]

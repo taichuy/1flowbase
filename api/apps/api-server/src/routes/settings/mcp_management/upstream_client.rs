@@ -7,10 +7,10 @@ use std::{
 
 use futures_util::StreamExt;
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE},
     Client, Url,
+    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
@@ -689,11 +689,11 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use axum::{
+        Json, Router,
         extract::State,
         http::{HeaderMap as AxumHeaderMap, StatusCode},
         response::IntoResponse,
         routing::post,
-        Json, Router,
     };
     use time::OffsetDateTime;
 
@@ -867,9 +867,11 @@ mod tests {
         assert!(page_budget.observe_page(0, 0, None).is_err());
 
         let mut tool_budget = McpDiscoveryBudget::default();
-        assert!(tool_budget
-            .observe_page(MAX_DISCOVERY_TOOLS + 1, 0, None)
-            .is_err());
+        assert!(
+            tool_budget
+                .observe_page(MAX_DISCOVERY_TOOLS + 1, 0, None)
+                .is_err()
+        );
 
         let mut byte_budget = McpDiscoveryBudget::default();
         let full_pages = MAX_DISCOVERY_RESPONSE_BYTES / MAX_RESPONSE_BYTES;
@@ -969,8 +971,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issue_1246_ac_007_ac_012_ac_013_ac_014_streamable_http_session_pagination_call_and_trace(
-    ) {
+    async fn issue_1246_ac_007_ac_012_ac_013_ac_014_streamable_http_session_pagination_call_and_trace()
+     {
         let state = StubState::default();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
