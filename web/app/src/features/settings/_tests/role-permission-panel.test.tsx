@@ -271,7 +271,7 @@ describe('RolePermissionPanel', () => {
     );
   });
 
-  test('AC-005 shows registered SettingsFeature grants as root nodes in the backend system settings tab', async () => {
+  test('AC-005 manages registered SettingsFeature grants with table checkboxes', async () => {
     permissionsApi.fetchSettingsPermissions.mockResolvedValue([
       {
         code: 'settings_feature.access.system.roles',
@@ -298,6 +298,10 @@ describe('RolePermissionPanel', () => {
         }
       }
     ]);
+    rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
+      role_code: 'member',
+      permission_codes: ['settings_feature.access.system.roles']
+    });
 
     renderPanel();
 
@@ -315,11 +319,36 @@ describe('RolePermissionPanel', () => {
       screen.getByRole('tab', { name: '后台系统设置' })
     );
 
-    const treeItems = screen
-      .getAllByRole('treeitem')
-      .map((item) => item.textContent);
-    expect(treeItems).toEqual(['用户管理', '权限管理']);
-    expect(screen.queryByText('设置')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '后台设置' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '开放权限' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('checkbox', { name: '开放 权限管理 权限' })
+    ).toBeChecked();
+    const membersCheckbox = screen.getByRole('checkbox', {
+      name: '开放 用户管理 权限'
+    });
+    expect(membersCheckbox).not.toBeChecked();
+
+    fireEvent.click(membersCheckbox);
+
+    await waitFor(() => {
+      expect(rolesApi.replaceSettingsRolePermissions).toHaveBeenCalledWith(
+        'member',
+        {
+          permission_codes: [
+            'settings_feature.access.system.roles',
+            'settings_feature.access.system.members'
+          ]
+        },
+        'csrf-123'
+      );
+    });
+
+    expect(screen.queryByRole('tree')).not.toBeInTheDocument();
     expect(screen.queryByText('settings_feature')).not.toBeInTheDocument();
   });
 

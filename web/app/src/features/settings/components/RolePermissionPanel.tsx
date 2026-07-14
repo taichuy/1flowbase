@@ -9,6 +9,7 @@ import {
   Modal,
   Popconfirm,
   Space,
+  Table,
   Tabs,
   Tag,
   Tree,
@@ -290,12 +291,20 @@ export function RolePermissionPanel({
       const tabLeafKeys = resources.flatMap((res) =>
         res.permissions.map((p) => p.code)
       );
+      const permissions = resources
+        .flatMap((res) => res.permissions)
+        .sort(
+          (left, right) =>
+            (left.settings_feature?.order ?? 0) -
+            (right.settings_feature?.order ?? 0)
+        );
 
       return {
         key: tabName,
         label: tabName,
         treeData,
-        tabLeafKeys
+        tabLeafKeys,
+        permissions
       };
     });
   }, [permissionsQuery.data]);
@@ -429,6 +438,69 @@ export function RolePermissionPanel({
   };
 
   const permissionTabItems = useMemo(() => {
+    const renderBackendSettingsTable = (
+      tab: (typeof tabsData)[number]
+    ) => (
+      <Table<SettingsPermission>
+        rowKey="code"
+        pagination={false}
+        dataSource={tab.permissions}
+        columns={[
+          {
+            title: i18nText('settings', 'auto.backend_setting'),
+            key: 'backend-setting',
+            render: (_, permission) => (
+              <span title={permission.code}>
+                {permission.settings_feature
+                  ? i18nText(
+                      'settings',
+                      permission.settings_feature.label_key
+                    )
+                  : permission.name}
+              </span>
+            )
+          },
+          {
+            title: i18nText('settings', 'auto.grant_access'),
+            key: 'grant-access',
+            width: 160,
+            align: 'center',
+            render: (_, permission) => {
+              const settingLabel = permission.settings_feature
+                ? i18nText(
+                    'settings',
+                    permission.settings_feature.label_key
+                  )
+                : permission.name;
+
+              return (
+                <Checkbox
+                  aria-label={i18nText(
+                    'settings',
+                    'auto.grant_backend_setting_access',
+                    { value1: settingLabel }
+                  )}
+                  disabled={!canManageRoles || !selectedRole?.is_editable}
+                  checked={localCheckedCodes.includes(permission.code)}
+                  onChange={(event) => {
+                    const newCodes = event.target.checked
+                      ? Array.from(
+                          new Set([...localCheckedCodes, permission.code])
+                        )
+                      : localCheckedCodes.filter(
+                          (code) => code !== permission.code
+                        );
+                    setLocalCheckedCodes(newCodes);
+                    replacePermissionsMutation.mutate(newCodes);
+                  }}
+                />
+              );
+            }
+          }
+        ]}
+      />
+    );
+
     const renderPermissionTree = (tab: (typeof tabsData)[number]) => (
       <div style={{ paddingBottom: 32 }}>
         <Tree
@@ -468,7 +540,10 @@ export function RolePermissionPanel({
         tab.label === i18nText("settings", "auto.basic_configuration")
           ? ROLE_PERMISSION_GENERAL_TAB
           : tab.label,
-      children: renderPermissionTree(tab)
+      children:
+        tab.key === BACKEND_SYSTEM_SETTINGS_TAB
+          ? renderBackendSettingsTable(tab)
+          : renderPermissionTree(tab)
     }));
 
     const defaultDataPolicyTab = selectedRole
