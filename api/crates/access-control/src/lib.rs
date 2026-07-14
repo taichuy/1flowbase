@@ -1,11 +1,19 @@
 extern crate self as access_control;
 
 mod catalog;
+mod console_operations;
 mod evaluator;
 mod navigation;
 mod settings_features;
 
 pub use catalog::{builtin_role_templates, permission_catalog};
+pub use console_operations::{
+    ConsoleAuthorization, ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry,
+    ConsoleOperationOwner, ConsoleOperationRegistration, ConsoleOperationRegistry,
+    ConsoleOperationRegistryDiff, ConsoleOperationRegistryError, ConsolePolicyGroup,
+    ConsolePolicyGroupChange, ConsoleRouteAccess, ConsoleRouteBinding, ResourceAccessAction,
+    ResourceAccessRegistration, ResourceAccessScopeKind,
+};
 pub use evaluator::ensure_permission;
 pub use navigation::{
     accessible_console_navigation, accessible_console_navigation_with_contributions,
