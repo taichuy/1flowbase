@@ -35,6 +35,7 @@ struct ApplicationPublicApiTestRepositoryInner {
         HashMap<(Uuid, Uuid, String, String), conversations::ApplicationPublicConversationRecord>,
     run_conversations: HashMap<Uuid, Uuid>,
     actor_permissions: Vec<String>,
+    console_policies: Vec<domain::RoleConsolePolicy>,
     mappings: HashMap<Uuid, mapping::ApplicationApiMappingConfig>,
     editor_states: HashMap<Uuid, domain::FlowEditorState>,
     compiled_plans: HashMap<Uuid, domain::CompiledPlanRecord>,
@@ -67,12 +68,21 @@ pub struct ApplicationPublicApiTestRepository {
 
 impl ApplicationPublicApiTestRepository {
     fn with_permissions(permissions: Vec<&str>) -> Self {
+        Self::with_access(permissions, Vec::new())
+    }
+
+    fn with_access(
+        permissions: Vec<&str>,
+        console_policies: Vec<domain::RoleConsolePolicy>,
+    ) -> Self {
         let repository = Self::default();
-        repository
+        let mut inner = repository
             .inner
             .lock()
-            .expect("application public api test repo mutex poisoned")
-            .actor_permissions = permissions.into_iter().map(str::to_string).collect();
+            .expect("application public api test repo mutex poisoned");
+        inner.actor_permissions = permissions.into_iter().map(str::to_string).collect();
+        inner.console_policies = console_policies;
+        drop(inner);
         repository
     }
 
@@ -98,10 +108,25 @@ impl ApplicationPublicApiTestRepository {
         name: &str,
         application_type: domain::ApplicationType,
     ) -> domain::ApplicationRecord {
+        self.seed_application_with_type_in_workspace(
+            TEST_WORKSPACE_ID,
+            actor_user_id,
+            name,
+            application_type,
+        )
+    }
+
+    fn seed_application_with_type_in_workspace(
+        &self,
+        workspace_id: Uuid,
+        actor_user_id: Uuid,
+        name: &str,
+        application_type: domain::ApplicationType,
+    ) -> domain::ApplicationRecord {
         let subject_kind = application_type.as_str().to_string();
         let application = domain::ApplicationRecord {
             id: Uuid::now_v7(),
-            workspace_id: TEST_WORKSPACE_ID,
+            workspace_id,
             application_type,
             workflow_trigger_type: match application_type {
                 domain::ApplicationType::AgentFlow => None,
@@ -189,18 +214,37 @@ pub struct ApplicationPublicApiTestHarness {
 
 impl ApplicationPublicApiTestHarness {
     pub fn new() -> Self {
+        let applications_group = domain::ConsolePolicyGroup::settings_feature(
+            access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID,
+        )
+        .expect("applications settings feature id must be valid");
         Self {
-            repository: ApplicationPublicApiTestRepository::with_permissions(vec![
-                "state_model.manage.all",
-                "application.view.all",
-                "application.edit.all",
-            ]),
+            repository: ApplicationPublicApiTestRepository::with_access(
+                vec![
+                    "state_model.manage.all",
+                    "application.view.all",
+                    "application.edit.all",
+                ],
+                vec![domain::RoleConsolePolicy::new(
+                    Uuid::now_v7(),
+                    vec![domain::RoleConsoleGroupPolicy::full(applications_group)],
+                )],
+            ),
         }
     }
 
     pub fn new_with_permissions(permissions: Vec<&str>) -> Self {
         Self {
             repository: ApplicationPublicApiTestRepository::with_permissions(permissions),
+        }
+    }
+
+    pub fn new_with_console_policies(console_policies: Vec<domain::RoleConsolePolicy>) -> Self {
+        Self {
+            repository: ApplicationPublicApiTestRepository::with_access(
+                vec!["state_model.manage.all"],
+                console_policies,
+            ),
         }
     }
 
@@ -214,6 +258,20 @@ impl ApplicationPublicApiTestHarness {
 
     pub fn seed_application(&self, actor_user_id: Uuid, name: &str) -> domain::ApplicationRecord {
         self.repository.seed_application(actor_user_id, name)
+    }
+
+    pub fn seed_application_in_workspace(
+        &self,
+        workspace_id: Uuid,
+        actor_user_id: Uuid,
+        name: &str,
+    ) -> domain::ApplicationRecord {
+        self.repository.seed_application_with_type_in_workspace(
+            workspace_id,
+            actor_user_id,
+            name,
+            domain::ApplicationType::AgentFlow,
+        )
     }
 
     pub fn seed_workflow_application(

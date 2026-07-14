@@ -608,7 +608,7 @@ pub(crate) fn ensure_application_console_row_scope(
     }
 }
 
-fn ensure_application_console_simple_operation(
+pub(crate) fn ensure_application_console_simple_operation(
     policies: &[domain::RoleConsolePolicy],
     operation_id: &str,
 ) -> Result<(), ControlPlaneError> {

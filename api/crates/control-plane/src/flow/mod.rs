@@ -172,6 +172,51 @@ where
             .await
     }
 
+    pub(crate) async fn freeze_current_draft_for_publication(
+        &self,
+        actor: &domain::ActorContext,
+        application: &domain::ApplicationRecord,
+    ) -> Result<domain::FlowEditorState> {
+        if application.workspace_id != actor.current_workspace_id {
+            return Err(ControlPlaneError::NotFound("application").into());
+        }
+
+        let editor_state = self
+            .repository
+            .get_or_create_editor_state(application.workspace_id, application.id, actor.user_id)
+            .await?;
+        validate_flow_draft_document(&editor_state.draft.document)?;
+        let frozen_state = self
+            .repository
+            .save_draft(
+                application.workspace_id,
+                application.id,
+                actor.user_id,
+                editor_state.draft.document.clone(),
+                domain::FlowChangeKind::Logical,
+                "Publish application public API",
+            )
+            .await?;
+        let version_id = frozen_state
+            .versions
+            .iter()
+            .max_by_key(|version| version.sequence)
+            .map(|version| version.id)
+            .ok_or(ControlPlaneError::NotFound("flow_version"))?;
+
+        self.repository
+            .update_version_metadata(
+                application.workspace_id,
+                application.id,
+                actor.user_id,
+                version_id,
+                Some("Published application public API".to_string()),
+                Some(false),
+                None,
+            )
+            .await
+    }
+
     pub async fn export_agent_flow_template(
         &self,
         actor_user_id: Uuid,

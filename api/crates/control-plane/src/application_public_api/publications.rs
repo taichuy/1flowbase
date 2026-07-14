@@ -9,9 +9,9 @@ use super::mapping::{
     validate_application_api_mapping, ApplicationApiMappingConfig, ApplicationApiMappingOutput,
 };
 use crate::{
-    application_public_api::ensure_application_edit_permission,
+    application::ensure_application_console_simple_operation,
     errors::ControlPlaneError,
-    flow::{FlowService, SaveFlowDraftCommand, UpdateFlowVersionMetadataCommand},
+    flow::FlowService,
     orchestration_runtime::inputs::{
         build_compiled_plan_input, flow_document_hash, flow_document_schema_version,
     },
@@ -136,7 +136,19 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-        ensure_application_edit_permission(&actor, &application)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor_user_id,
+                    actor.current_workspace_id,
+                )
+                .await?;
+            ensure_application_console_simple_operation(
+                &policies,
+                access_control::APPLICATIONS_PUBLISH_OPERATION_ID,
+            )?;
+        }
         let extension_slug = command.mapping.extension_slug().map(ToOwned::to_owned);
         if let Some(slug) = extension_slug.as_deref() {
             if let Some(existing_publication) = self
@@ -167,35 +179,10 @@ where
             .collect::<Vec<_>>();
 
         let flow_service = FlowService::new(self.repository.clone());
-        let editor_state = flow_service
-            .get_or_create_editor_state(command.actor_user_id, application.id)
-            .await?;
-        let frozen_state = flow_service
-            .save_draft(SaveFlowDraftCommand {
-                actor_user_id: command.actor_user_id,
-                application_id: application.id,
-                document: editor_state.draft.document.clone(),
-                change_kind: domain::FlowChangeKind::Logical,
-                summary: "Publish application public API".to_string(),
-            })
-            .await?;
-        let flow_version = latest_flow_version(&frozen_state)?;
         let publication_state = flow_service
-            .update_version_metadata(UpdateFlowVersionMetadataCommand {
-                actor_user_id: command.actor_user_id,
-                application_id: application.id,
-                version_id: flow_version.id,
-                summary: Some("Published application public API".to_string()),
-                summary_is_custom: Some(false),
-                is_user_protected: None,
-            })
+            .freeze_current_draft_for_publication(&actor, &application)
             .await?;
-        let publication_version = publication_state
-            .versions
-            .iter()
-            .find(|version| version.id == flow_version.id)
-            .cloned()
-            .ok_or(ControlPlaneError::NotFound("flow_version"))?;
+        let publication_version = latest_flow_version(&publication_state)?;
         let document = publication_state.draft.document.clone();
         let compile_context = self
             .repository
@@ -300,7 +287,19 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-        ensure_application_edit_permission(&actor, &application)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor_user_id,
+                    actor.current_workspace_id,
+                )
+                .await?;
+            ensure_application_console_simple_operation(
+                &policies,
+                access_control::APPLICATIONS_API_SET_ENABLED_OPERATION_ID,
+            )?;
+        }
 
         self.repository
             .set_application_api_enabled(&SetApplicationApiEnabledInput {

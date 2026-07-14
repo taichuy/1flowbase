@@ -14,7 +14,12 @@ impl ApplicationRepository for ApplicationPublicApiTestRepository {
         _actor_user_id: Uuid,
         _workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>> {
-        anyhow::bail!("console policies are not available in public API test repository")
+        Ok(self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .console_policies
+            .clone())
     }
 
     async fn list_applications(

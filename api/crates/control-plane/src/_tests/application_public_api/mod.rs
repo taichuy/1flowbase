@@ -16,7 +16,7 @@ use control_plane::{
         },
         publications::{
             ApplicationPublicationService, LoadActiveApplicationPublicationCommand,
-            PublishApplicationCommand,
+            PublishApplicationCommand, SetApplicationApiEnabledCommand,
         },
         workflow_extension::{
             CreateWorkflowExtensionRunCommand, WorkflowExtensionRequestParameters,
@@ -60,6 +60,36 @@ fn other_user_id() -> Uuid {
 
 fn root_user_id() -> Uuid {
     Uuid::from_u128(0x33333333333333333333333333333333)
+}
+
+fn applications_console_group() -> domain::ConsolePolicyGroup {
+    domain::ConsolePolicyGroup::settings_feature(
+        access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID,
+    )
+    .expect("applications settings feature id must be valid")
+}
+
+fn application_operation_id(value: &str) -> domain::ConsoleOperationId {
+    domain::ConsoleOperationId::try_from(value).expect("application operation id must be valid")
+}
+
+fn application_console_policy(
+    operations: Vec<domain::ConsoleOperationPolicy>,
+) -> domain::RoleConsolePolicy {
+    domain::RoleConsolePolicy::new(
+        Uuid::now_v7(),
+        vec![domain::RoleConsoleGroupPolicy::custom(
+            applications_console_group(),
+            operations,
+        )],
+    )
+}
+
+fn application_simple_operation(
+    operation_id: &str,
+    enabled: bool,
+) -> domain::ConsoleOperationPolicy {
+    domain::ConsoleOperationPolicy::simple(application_operation_id(operation_id), enabled)
 }
 
 fn workflow_extension_mapping(slug: &str) -> ApplicationApiMappingConfig {
@@ -1649,13 +1679,55 @@ async fn workflow_schedule_trigger_dispatch_skips_disabled_or_unpublished_applic
 }
 
 #[tokio::test]
-async fn application_public_api_publish_requires_application_edit_permission() {
-    let harness =
-        ApplicationPublicApiTestHarness::new_with_permissions(vec!["application.view.all"]);
+async fn ac_007_application_public_api_simple_operations_use_multi_role_allow_union_without_view() {
+    let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
+        application_console_policy(vec![
+            application_simple_operation(access_control::APPLICATIONS_PUBLISH_OPERATION_ID, false),
+            application_simple_operation(
+                access_control::APPLICATIONS_API_SET_ENABLED_OPERATION_ID,
+                false,
+            ),
+        ]),
+        application_console_policy(vec![
+            application_simple_operation(access_control::APPLICATIONS_PUBLISH_OPERATION_ID, true),
+            application_simple_operation(
+                access_control::APPLICATIONS_API_SET_ENABLED_OPERATION_ID,
+                true,
+            ),
+        ]),
+    ]);
     let application = harness.seed_application(actor_user_id(), "Support Bot");
     let service = ApplicationPublicationService::new(harness.repository());
 
-    let error = service
+    service
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .expect("publish simple operation should not require applications.view");
+    service
+        .set_api_enabled(SetApplicationApiEnabledCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            api_enabled: false,
+        })
+        .await
+        .expect("API status simple operation should not require applications.view");
+}
+
+#[tokio::test]
+async fn ac_007_application_public_api_simple_operations_do_not_read_legacy_edit_grants() {
+    let harness = ApplicationPublicApiTestHarness::new_with_permissions(vec![
+        "application.view.all",
+        "application.edit.all",
+    ]);
+    let application = harness.seed_application(actor_user_id(), "Legacy only");
+    let service = ApplicationPublicationService::new(harness.repository());
+
+    let publish_error = service
         .publish_active_version(PublishApplicationCommand {
             actor_user_id: actor_user_id(),
             application_id: application.id,
@@ -1664,8 +1736,163 @@ async fn application_public_api_publish_requires_application_edit_permission() {
         })
         .await
         .unwrap_err();
+    let status_error = service
+        .set_api_enabled(SetApplicationApiEnabledCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            api_enabled: true,
+        })
+        .await
+        .unwrap_err();
 
-    assert!(error.to_string().contains("permission_denied"));
+    assert!(publish_error.to_string().contains("permission_denied"));
+    assert!(status_error.to_string().contains("permission_denied"));
+}
+
+#[tokio::test]
+async fn ac_007_application_public_api_simple_operations_default_deny_and_honor_disabled() {
+    let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
+        application_console_policy(vec![
+            application_simple_operation(access_control::APPLICATIONS_PUBLISH_OPERATION_ID, true),
+            application_simple_operation(
+                access_control::APPLICATIONS_API_SET_ENABLED_OPERATION_ID,
+                false,
+            ),
+        ]),
+    ]);
+    let application = harness.seed_application(actor_user_id(), "Disabled status");
+    let service = ApplicationPublicationService::new(harness.repository());
+
+    let status_error = service
+        .set_api_enabled(SetApplicationApiEnabledCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            api_enabled: true,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(status_error.to_string().contains("permission_denied"));
+}
+
+#[tokio::test]
+async fn ac_006_application_public_api_simple_operations_cannot_cross_workspace() {
+    let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
+        application_console_policy(vec![
+            application_simple_operation(access_control::APPLICATIONS_PUBLISH_OPERATION_ID, true),
+            application_simple_operation(
+                access_control::APPLICATIONS_API_SET_ENABLED_OPERATION_ID,
+                true,
+            ),
+        ]),
+    ]);
+    let application =
+        harness.seed_application_in_workspace(Uuid::now_v7(), actor_user_id(), "Other workspace");
+    let service = ApplicationPublicationService::new(harness.repository());
+
+    let publish_error = service
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap_err();
+    let status_error = service
+        .set_api_enabled(SetApplicationApiEnabledCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            api_enabled: true,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(publish_error
+        .to_string()
+        .contains("resource not found: application"));
+    assert!(status_error
+        .to_string()
+        .contains("resource not found: application"));
+}
+
+#[tokio::test]
+async fn ac_006_application_public_api_root_bypasses_policy_but_not_workspace() {
+    let harness = ApplicationPublicApiTestHarness::new_with_console_policies(Vec::new());
+    let current = harness.seed_application(root_user_id(), "Root current workspace");
+    let foreign = harness.seed_application_in_workspace(
+        Uuid::now_v7(),
+        root_user_id(),
+        "Root other workspace",
+    );
+    let service = ApplicationPublicationService::new(harness.repository());
+
+    service
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: root_user_id(),
+            application_id: current.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    service
+        .set_api_enabled(SetApplicationApiEnabledCommand {
+            actor_user_id: root_user_id(),
+            application_id: current.id,
+            api_enabled: false,
+        })
+        .await
+        .unwrap();
+
+    for error in [
+        service
+            .publish_active_version(PublishApplicationCommand {
+                actor_user_id: root_user_id(),
+                application_id: foreign.id,
+                mapping: ApplicationApiMappingConfig::default_native(),
+                api_enabled: true,
+            })
+            .await
+            .unwrap_err(),
+        service
+            .set_api_enabled(SetApplicationApiEnabledCommand {
+                actor_user_id: root_user_id(),
+                application_id: foreign.id,
+                api_enabled: true,
+            })
+            .await
+            .unwrap_err(),
+    ] {
+        assert!(error
+            .to_string()
+            .contains("resource not found: application"));
+    }
+}
+
+#[tokio::test]
+async fn ac_007_publish_operation_does_not_bypass_mapping_domain_validation() {
+    let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
+        application_console_policy(vec![application_simple_operation(
+            access_control::APPLICATIONS_PUBLISH_OPERATION_ID,
+            true,
+        )]),
+    ]);
+    let application = harness.seed_application(actor_user_id(), "Invalid mapping");
+    let mut mapping = ApplicationApiMappingConfig::default_native();
+    mapping.input.query_target.clear();
+
+    let error = ApplicationPublicationService::new(harness.repository())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping,
+            api_enabled: true,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("invalid input: query_target"));
 }
 
 #[tokio::test]
