@@ -25,6 +25,7 @@ mod model_provider_routes;
 mod plugin_routes;
 mod provider_request_log_worker;
 mod provider_runtime;
+mod role_catalog_full_profile_routes;
 mod role_routes;
 mod route_docs;
 mod runtime_event_stream;

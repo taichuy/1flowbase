@@ -16,16 +16,22 @@ use crate::ports::{
     RoleRepository,
 };
 use crate::role::{
-    ConsolePolicyGroupInput, ConsolePolicyOperationInput, CreateRoleCommand, DeleteRoleCommand,
-    ReplaceRoleConsolePolicyCommand, ReplaceRoleDataPolicyCommand, ReplaceRolePermissionsCommand,
-    RoleService, UpdateRoleCommand,
+    ConsolePolicyCatalogFullProfile, ConsolePolicyGroupInput, ConsolePolicyOperationInput,
+    CreateRoleCommand, DeleteRoleCommand, ReplaceRoleConsolePolicyCommand,
+    ReplaceRoleDataPolicyCommand, ReplaceRolePermissionsCommand, RoleService, UpdateRoleCommand,
 };
+use domain::ConsoleOperationRowScope;
 use uuid::Uuid;
 
 fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
     let owner = ConsoleOperationOwner {
         kind: SettingsFeatureOwnerKind::Core,
         owner_id: "boot-core".to_string(),
+        version: "test".to_string(),
+    };
+    let host_owner = ConsoleOperationOwner {
+        kind: SettingsFeatureOwnerKind::HostExtension,
+        owner_id: "test-host".to_string(),
         version: "test".to_string(),
     };
     let applications = ConsolePolicyGroup::SettingsFeature("system.applications".to_string());
@@ -68,7 +74,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 operation_id: "files.upload".to_string(),
                 owner: owner.clone(),
                 lifecycle: SettingsFeatureLifecycle::Active,
-                policy_group: files,
+                policy_group: files.clone(),
                 label_ref: "console.operations.files.upload.label".to_string(),
                 description_ref: Some("console.operations.files.upload.description".to_string()),
                 order: 200,
@@ -85,6 +91,17 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                     "console.operations.files.content.download.description".to_string(),
                 ),
                 order: 210,
+                routes: vec![],
+                authorization: ConsoleAuthorization::Simple,
+            },
+            ConsoleOperationInventoryEntry {
+                operation_id: "test-host.inspect".to_string(),
+                owner: host_owner,
+                lifecycle: SettingsFeatureLifecycle::Active,
+                policy_group: files,
+                label_ref: "console.operations.files.upload.label".to_string(),
+                description_ref: Some("console.operations.files.upload.description".to_string()),
+                order: 205,
                 routes: vec![],
                 authorization: ConsoleAuthorization::Simple,
             },
@@ -175,6 +192,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
         ("GET", "/api/console/test/applications/:id"),
         ("POST", "/api/console/test/files/upload"),
         ("GET", "/api/console/test/files/:id/content"),
+        ("GET", "/api/console/test/host-inspect"),
     ];
     let registrations = operation_entries
         .iter()
@@ -384,6 +402,59 @@ async fn role_service_console_policy_catalog_localizes_compiled_inventory() {
     assert!(!catalog.groups[0].operations[0]
         .label
         .contains("applications.create"));
+}
+
+// AC-004: the catalog gives clients the compiled full profile; clients must not infer it from
+// localized scope options or the operation authorization shape.
+#[tokio::test]
+async fn role_service_console_policy_catalog_exposes_compiled_full_profiles() {
+    let repository = MemoryRoleRepository::default();
+    let service = RoleService::new(repository.clone());
+
+    let catalog = service
+        .get_console_policy_catalog(
+            repository.root_user_id(),
+            &console_policy_inventory(),
+            "en_US",
+        )
+        .await
+        .unwrap();
+    let applications = catalog
+        .groups
+        .iter()
+        .find(|group| group.group_id == "system.applications")
+        .expect("compiled catalog must contain the applications policy group");
+    let create = applications
+        .operations
+        .iter()
+        .find(|operation| operation.operation_id == "applications.create")
+        .expect("compiled catalog must contain the simple create operation");
+    let view = applications
+        .operations
+        .iter()
+        .find(|operation| operation.operation_id == "applications.view")
+        .expect("compiled catalog must contain the resource-action view operation");
+    let host_operation = catalog
+        .groups
+        .iter()
+        .flat_map(|group| &group.operations)
+        .find(|operation| operation.operation_id == "test-host.inspect")
+        .expect("compiled catalog must contain the active HostExtension operation");
+
+    assert_eq!(
+        create.full_profile,
+        ConsolePolicyCatalogFullProfile::Simple { enabled: true }
+    );
+    assert_eq!(
+        view.full_profile,
+        ConsolePolicyCatalogFullProfile::Row {
+            scope: ConsoleOperationRowScope::ScopeAll,
+        }
+    );
+    assert_eq!(
+        host_operation.full_profile,
+        ConsolePolicyCatalogFullProfile::Simple { enabled: true }
+    );
 }
 
 #[tokio::test]

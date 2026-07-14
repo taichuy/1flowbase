@@ -4,7 +4,7 @@ use access_control::{
     ensure_permission, ConsoleAuthorization, ConsoleLocaleCatalog,
     ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry,
     ConsolePolicyGroup as RegisteredConsolePolicyGroup, ResourceAccessRegistration,
-    ResourceAccessScopeKind, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION,
+    ResourceAccessScopeKind, SettingsFeatureLifecycle, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION,
 };
 use anyhow::Result;
 use uuid::Uuid;
@@ -24,12 +24,12 @@ mod console_policy_validation;
 
 use console_policy_validation::{
     complete_stored_console_policy, role_console_policy_groups_from_input,
-    CompiledConsolePolicyOperationIndex, CompiledConsolePolicyOperationKind, ConsolePolicyGroupKey,
+    CompiledConsolePolicyOperationIndex, ConsolePolicyGroupKey,
 };
 pub use console_policy_validation::{
     ConsolePolicyAuthorization, ConsolePolicyCatalog, ConsolePolicyCatalogAction,
-    ConsolePolicyCatalogGroup, ConsolePolicyCatalogOperation, ConsolePolicyCatalogOption,
-    ConsolePolicyCatalogResource,
+    ConsolePolicyCatalogFullProfile, ConsolePolicyCatalogGroup, ConsolePolicyCatalogOperation,
+    ConsolePolicyCatalogOption, ConsolePolicyCatalogResource,
 };
 
 pub struct CreateRoleCommand {
@@ -147,6 +147,11 @@ fn compiled_console_policy_operations(
 ) -> Result<CompiledConsolePolicyOperationIndex, ControlPlaneError> {
     let mut resources = BTreeMap::<String, &ResourceAccessRegistration>::new();
     for resource in &inventory.resources {
+        if resource.lifecycle != SettingsFeatureLifecycle::Active {
+            return Err(ControlPlaneError::InvalidInput(
+                "console_policy_resource_inactive",
+            ));
+        }
         if resources
             .insert(resource.resource_code.clone(), resource)
             .is_some()
@@ -167,11 +172,18 @@ fn compiled_console_policy_operations(
 
     let mut groups = BTreeMap::new();
     for operation in &inventory.operations {
+        if operation.lifecycle != SettingsFeatureLifecycle::Active {
+            return Err(ControlPlaneError::InvalidInput(
+                "console_policy_operation_inactive",
+            ));
+        }
         let group = domain_console_policy_group(&operation.policy_group)?;
         let group_key = console_policy_group_key(&group);
-        let Some(operation_kind) = (match &operation.authorization {
+        let Some(full_profile) = (match &operation.authorization {
             ConsoleAuthorization::Authenticated => None,
-            ConsoleAuthorization::Simple => Some(CompiledConsolePolicyOperationKind::Simple),
+            ConsoleAuthorization::Simple => {
+                Some(ConsolePolicyCatalogFullProfile::Simple { enabled: true })
+            }
             ConsoleAuthorization::ResourceAction {
                 resource_code,
                 action_code,
@@ -194,7 +206,9 @@ fn compiled_console_policy_operations(
                 {
                     return Err(ControlPlaneError::InvalidInput("console_policy_action"));
                 }
-                Some(CompiledConsolePolicyOperationKind::Row)
+                Some(ConsolePolicyCatalogFullProfile::Row {
+                    scope: domain::ConsoleOperationRowScope::ScopeAll,
+                })
             }
         }) else {
             continue;
@@ -204,7 +218,7 @@ fn compiled_console_policy_operations(
         }
         let operations = groups.entry(group_key).or_insert_with(BTreeMap::new);
         if operations
-            .insert(operation.operation_id.clone(), operation_kind)
+            .insert(operation.operation_id.clone(), full_profile)
             .is_some()
         {
             return Err(ControlPlaneError::InvalidInput(
@@ -277,7 +291,7 @@ fn build_console_policy_catalog_for_locale(
             })
             .map(|operation| {
                 let (label, description) = operation_text(locale_catalog, operation, locale)?;
-                let operation_kind = operations
+                let full_profile = operations
                     .get(&operation.operation_id)
                     .ok_or(ControlPlaneError::InvalidInput("console_policy_operation"))?;
                 let authorization = match &operation.authorization {
@@ -293,9 +307,9 @@ fn build_console_policy_catalog_for_locale(
                         return Err(ControlPlaneError::InvalidInput("console_policy_type"));
                     }
                 };
-                let allowed_row_scopes = match operation_kind {
-                    CompiledConsolePolicyOperationKind::Simple => Vec::new(),
-                    CompiledConsolePolicyOperationKind::Row => row_scope_options.clone(),
+                let allowed_row_scopes = match full_profile {
+                    ConsolePolicyCatalogFullProfile::Simple { .. } => Vec::new(),
+                    ConsolePolicyCatalogFullProfile::Row { .. } => row_scope_options.clone(),
                 };
                 Ok((
                     operation.order,
@@ -305,6 +319,7 @@ fn build_console_policy_catalog_for_locale(
                         label,
                         description,
                         order: operation.order,
+                        full_profile: full_profile.clone(),
                         allowed_row_scopes,
                         authorization,
                     },

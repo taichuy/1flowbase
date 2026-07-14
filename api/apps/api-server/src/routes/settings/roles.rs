@@ -260,8 +260,16 @@ pub struct ConsolePolicyCatalogOperationResponse {
     pub label: String,
     pub description: String,
     pub order: i32,
+    pub full_profile: ConsolePolicyCatalogOperationFullProfileResponse,
     pub allowed_row_scopes: Vec<ConsolePolicyCatalogOptionResponse>,
     pub authorization: ConsolePolicyOperationAuthorizationResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ConsolePolicyCatalogOperationFullProfileResponse {
+    Simple { enabled: bool },
+    Row { scope: ConsolePolicyRowScopeBody },
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -393,6 +401,18 @@ fn to_console_policy_catalog_response(
                         label: operation.label,
                         description: operation.description,
                         order: operation.order,
+                        full_profile: match operation.full_profile {
+                            control_plane::role::ConsolePolicyCatalogFullProfile::Simple {
+                                enabled,
+                            } => {
+                                ConsolePolicyCatalogOperationFullProfileResponse::Simple { enabled }
+                            }
+                            control_plane::role::ConsolePolicyCatalogFullProfile::Row { scope } => {
+                                ConsolePolicyCatalogOperationFullProfileResponse::Row {
+                                    scope: to_console_policy_row_scope_body(scope),
+                                }
+                            }
+                        },
                         allowed_row_scopes: operation
                             .allowed_row_scopes
                             .into_iter()
