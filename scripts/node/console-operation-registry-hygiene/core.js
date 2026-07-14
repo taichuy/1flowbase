@@ -953,7 +953,7 @@ function evaluateSourceSafety(sourceFiles, findings) {
 
   const middleware = sourceFiles?.consoleMiddleware;
   if (middleware?.source) {
-    if (/legacy[_\s-]*(?:permission|grant)|legacy_permission_code|permission_code\s*\(/iu.test(middleware.source)) {
+    if (/legacy[_\s-]*permission[_\s-]*(?:code|grant)\b|permission_code\s*\(/iu.test(middleware.source)) {
       addSourceWarning(
         findings,
         'runtime-legacy-permission-fallback',
