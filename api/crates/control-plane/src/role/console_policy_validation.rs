@@ -40,8 +40,19 @@ pub struct ConsolePolicyCatalogOperation {
     pub label: String,
     pub description: String,
     pub order: i32,
+    pub full_profile: ConsolePolicyCatalogFullProfile,
     pub allowed_row_scopes: Vec<ConsolePolicyCatalogOption>,
     pub authorization: ConsolePolicyAuthorization,
+}
+
+/// The locale-independent policy materialized when a group is set to `full`.
+///
+/// This is deliberately separate from the localized options catalog so API clients cannot infer
+/// the full semantics from presentation metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConsolePolicyCatalogFullProfile {
+    Simple { enabled: bool },
+    Row { scope: ConsoleOperationRowScope },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,13 +90,7 @@ pub struct ConsolePolicyCatalogAction {
 
 pub(super) type ConsolePolicyGroupKey = (String, String);
 pub(super) type CompiledConsolePolicyOperationIndex =
-    BTreeMap<ConsolePolicyGroupKey, BTreeMap<String, CompiledConsolePolicyOperationKind>>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum CompiledConsolePolicyOperationKind {
-    Simple,
-    Row,
-}
+    BTreeMap<ConsolePolicyGroupKey, BTreeMap<String, ConsolePolicyCatalogFullProfile>>;
 
 pub(super) fn role_console_policy_groups_from_input(
     inputs: &[ConsolePolicyGroupInput],
@@ -220,7 +225,7 @@ fn group_key(group: &ConsolePolicyGroup) -> ConsolePolicyGroupKey {
 
 fn custom_operations_from_input(
     inputs: &[ConsolePolicyOperationInput],
-    expected_operations: &BTreeMap<String, CompiledConsolePolicyOperationKind>,
+    expected_operations: &BTreeMap<String, ConsolePolicyCatalogFullProfile>,
 ) -> Result<Vec<ConsoleOperationPolicy>, ControlPlaneError> {
     let mut seen_operations = BTreeSet::new();
     let mut operations = Vec::with_capacity(inputs.len());
@@ -235,20 +240,20 @@ fn custom_operations_from_input(
                 "console_policy_operation_duplicate",
             ));
         }
-        let expected_kind = expected_operations
+        let expected_profile = expected_operations
             .get(operation_id_value)
             .ok_or(ControlPlaneError::InvalidInput("console_policy_operation"))?;
         let operation_id = ConsoleOperationId::try_from(operation_id_value.as_str())
             .map_err(|_| ControlPlaneError::InvalidInput("console_policy_operation"))?;
 
-        let operation = match (input, expected_kind) {
+        let operation = match (input, expected_profile) {
             (
                 ConsolePolicyOperationInput::Simple { enabled, .. },
-                CompiledConsolePolicyOperationKind::Simple,
+                ConsolePolicyCatalogFullProfile::Simple { .. },
             ) => ConsoleOperationPolicy::simple(operation_id, *enabled),
             (
                 ConsolePolicyOperationInput::Row { scope, .. },
-                CompiledConsolePolicyOperationKind::Row,
+                ConsolePolicyCatalogFullProfile::Row { .. },
             ) => {
                 let scope = ConsoleOperationRowScope::parse(scope)
                     .ok_or(ControlPlaneError::InvalidInput("console_policy_scope"))?;
@@ -256,11 +261,11 @@ fn custom_operations_from_input(
             }
             (
                 ConsolePolicyOperationInput::Simple { .. },
-                CompiledConsolePolicyOperationKind::Row,
+                ConsolePolicyCatalogFullProfile::Row { .. },
             )
             | (
                 ConsolePolicyOperationInput::Row { .. },
-                CompiledConsolePolicyOperationKind::Simple,
+                ConsolePolicyCatalogFullProfile::Simple { .. },
             ) => {
                 return Err(ControlPlaneError::InvalidInput(
                     "console_policy_operation_type",
@@ -275,7 +280,7 @@ fn custom_operations_from_input(
 
 fn validate_custom_operations(
     operations: &[ConsoleOperationPolicy],
-    expected_operations: &BTreeMap<String, CompiledConsolePolicyOperationKind>,
+    expected_operations: &BTreeMap<String, ConsolePolicyCatalogFullProfile>,
 ) -> Result<(), ControlPlaneError> {
     let mut seen_operations = BTreeSet::new();
     for operation in operations {
@@ -285,14 +290,19 @@ fn validate_custom_operations(
                 "console_policy_operation_duplicate",
             ));
         }
-        let expected_kind = expected_operations
+        let expected_profile = expected_operations
             .get(operation_id)
             .ok_or(ControlPlaneError::InvalidInput("console_policy_operation"))?;
-        let actual_kind = match operation {
-            ConsoleOperationPolicy::Simple { .. } => CompiledConsolePolicyOperationKind::Simple,
-            ConsoleOperationPolicy::Row { .. } => CompiledConsolePolicyOperationKind::Row,
-        };
-        if actual_kind != *expected_kind {
+        if !matches!(
+            (operation, expected_profile),
+            (
+                ConsoleOperationPolicy::Simple { .. },
+                ConsolePolicyCatalogFullProfile::Simple { .. }
+            ) | (
+                ConsoleOperationPolicy::Row { .. },
+                ConsolePolicyCatalogFullProfile::Row { .. }
+            )
+        ) {
             return Err(ControlPlaneError::InvalidInput(
                 "console_policy_operation_type",
             ));
