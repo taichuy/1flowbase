@@ -1,51 +1,112 @@
 use super::*;
 
-pub(super) fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/settings/model-providers/catalog", get(list_catalog))
+use crate::routes::console_route_assembly::{
+    console_get, console_patch, console_post, ConsoleRouteAssembly,
+};
+
+pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/settings/model-providers/catalog",
+            console_get(
+                list_catalog,
+                ConsoleOperation("model_providers.catalog.view".to_string()),
+            ),
+        )
         .route(
             "/settings/model-providers/request-logs",
-            get(list_request_logs).delete(delete_selected_request_logs),
+            console_get(
+                list_request_logs,
+                ConsoleOperation("model_providers.request_logs.view".to_string()),
+            )
+            .delete(
+                delete_selected_request_logs,
+                ConsoleOperation("model_providers.request_logs.delete".to_string()),
+            ),
         )
         .route(
             "/settings/model-providers/request-logs/clear",
-            post(clear_request_logs_batch),
+            console_post(
+                clear_request_logs_batch,
+                ConsoleOperation("model_providers.request_logs.clear".to_string()),
+            ),
         )
         .route(
             "/settings/model-providers/instances",
-            get(list_instances).post(create_instance),
+            console_get(
+                list_instances,
+                ConsoleOperation("model_providers.instances.view".to_string()),
+            )
+            .post(
+                create_instance,
+                ConsoleOperation("model_providers.instances.create".to_string()),
+            ),
         )
         .route(
             "/settings/model-providers/providers/:provider_code/main-instance",
-            get(get_main_instance).put(update_main_instance),
+            console_get(
+                get_main_instance,
+                ConsoleOperation("model_providers.main_instance.view".to_string()),
+            )
+            .put(
+                update_main_instance,
+                ConsoleOperation("model_providers.main_instance.update".to_string()),
+            ),
         )
         .route(
             "/settings/model-providers/preview-models",
-            post(preview_models),
+            console_post(
+                preview_models,
+                ConsoleOperation("model_providers.preview.view".to_string()),
+            ),
         )
         .route(
             "/settings/model-providers/options",
-            get(list_settings_options),
+            console_get(
+                list_settings_options,
+                ConsoleOperation("model_providers.options.view".to_string()),
+            ),
         )
         .route(
             "/settings/model-providers/instances/:id",
-            patch(update_instance).delete(delete_instance),
+            console_patch(
+                update_instance,
+                ConsoleOperation("model_providers.instances.update".to_string()),
+            )
+            .delete(
+                delete_instance,
+                ConsoleOperation("model_providers.instances.delete".to_string()),
+            ),
         )
         .route(
             "/settings/model-providers/instances/:id/validate",
-            post(validate_instance),
+            console_post(
+                validate_instance,
+                ConsoleOperation("model_providers.instances.validate".to_string()),
+            ),
         )
         .route(
             "/settings/model-providers/instances/:id/secrets/reveal",
-            post(reveal_secret),
+            console_post(
+                reveal_secret,
+                ConsoleOperation("model_providers.instances.secrets.reveal".to_string()),
+            ),
         )
         .route(
             "/settings/model-providers/instances/:id/models",
-            get(list_models),
+            console_get(
+                list_models,
+                ConsoleOperation("model_providers.instances.models.view".to_string()),
+            ),
         )
         .route(
             "/settings/model-providers/instances/:id/models/refresh",
-            post(refresh_models),
+            console_post(
+                refresh_models,
+                ConsoleOperation("model_providers.instances.models.refresh".to_string()),
+            ),
         )
 }
 

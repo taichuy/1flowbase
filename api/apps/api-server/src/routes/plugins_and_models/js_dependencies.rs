@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
-use axum::{extract::State, http::HeaderMap, routing::get, Json, Router};
+use axum::{extract::State, http::HeaderMap, Json, Router};
 use control_plane::js_dependency::{JsDependencyService, ListWorkspaceJsDependenciesQuery};
 use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
+    app_state::ApiState,
+    error_response::ApiError,
+    middleware::require_session::require_session,
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -33,7 +36,19 @@ pub struct JsDependencyCatalogEntryResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/js-dependencies", get(list_js_dependencies))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new().route(
+        "/js-dependencies",
+        console_get(
+            list_js_dependencies,
+            ConsoleOperation("js_dependencies.view".to_string()),
+        ),
+    )
 }
 
 fn to_response(entry: domain::JsDependencyRegistryEntry) -> JsDependencyCatalogEntryResponse {

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use axum::{
     extract::{Query, State},
     http::HeaderMap,
-    routing::get,
     Json, Router,
 };
 use control_plane::{
@@ -15,8 +14,11 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
+    app_state::ApiState,
+    error_response::ApiError,
+    middleware::require_session::require_session,
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, IntoParams, Clone, ToSchema)]
@@ -58,7 +60,19 @@ pub struct NodeContributionResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/node-contributions", get(list_node_contributions))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new().route(
+        "/node-contributions",
+        console_get(
+            list_node_contributions,
+            ConsoleOperation("node_contributions.view".to_string()),
+        ),
+    )
 }
 
 fn to_response(entry: domain::NodeContributionRegistryEntry) -> NodeContributionResponse {

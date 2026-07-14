@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{extract::State, http::HeaderMap, routing::get, Json, Router};
+use axum::{extract::State, http::HeaderMap, Json, Router};
 use control_plane::frontend_block_catalog::{
     FrontendBlockCatalogService, ListFrontendBlockCatalogQuery,
 };
@@ -8,8 +8,11 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
+    app_state::ApiState,
+    error_response::ApiError,
+    middleware::require_session::require_session,
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -52,7 +55,19 @@ pub struct FrontendBlockCatalogResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/frontend-blocks", get(list_frontend_blocks))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new().route(
+        "/frontend-blocks",
+        console_get(
+            list_frontend_blocks,
+            ConsoleOperation("frontend_blocks.view".to_string()),
+        ),
+    )
 }
 
 fn to_response(entry: domain::FrontendBlockCatalogEntry) -> FrontendBlockCatalogResponse {

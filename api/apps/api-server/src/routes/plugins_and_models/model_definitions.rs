@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
+use access_control::{
+    ConsoleRouteOwnership::ConsoleOperation, MODEL_DEFINITIONS_LIST_OPERATION_ID,
+};
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::get,
     Json, Router,
 };
 use control_plane::model_definition::{
@@ -26,7 +28,10 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::helpers,
+    routes::{
+        console_route_assembly::{console_get, ConsoleRouteAssembly},
+        helpers,
+    },
     runtime_registry_sync::ApiRuntimeRegistrySync,
 };
 
@@ -257,7 +262,17 @@ pub struct DataModelAdvisorFindingResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/models/agent-flow-options", get(list_agent_flow_options))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    ConsoleRouteAssembly::new().route(
+        "/models/agent-flow-options",
+        console_get(
+            list_agent_flow_options,
+            ConsoleOperation(MODEL_DEFINITIONS_LIST_OPERATION_ID.to_string()),
+        ),
+    )
 }
 
 fn empty_json_object() -> serde_json::Value {

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{Path, Query, State},
     http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
-    routing::{get, patch, post},
     Json, Router,
 };
 use control_plane::model_provider::{
@@ -35,11 +35,14 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
-    routes::system::LocaleMetaResponse,
+    routes::{
+        console_route_assembly::{console_get, ConsoleRouteAssembly},
+        system::LocaleMetaResponse,
+    },
 };
 
 mod clear_request_log_continuation;
-mod icons;
+pub(crate) mod icons;
 pub(crate) mod settings_routes;
 
 use settings_routes::settings_service;
@@ -449,14 +452,33 @@ pub struct ClearModelProviderRequestLogsResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    ConsoleRouteAssembly::new()
         .route(
             "/model-providers/providers/:provider_code/icon",
-            get(icons::read_provider_icon),
+            console_get(
+                icons::read_provider_icon,
+                ConsoleOperation("model_providers.icons.view".to_string()),
+            ),
         )
-        .route("/model-providers/options", get(list_options))
-        .route("/model-providers/:id/balance", get(get_balance))
-        .merge(settings_routes::router())
+        .route(
+            "/model-providers/options",
+            console_get(
+                list_options,
+                ConsoleOperation("model_providers.options.view".to_string()),
+            ),
+        )
+        .route(
+            "/model-providers/:id/balance",
+            console_get(
+                get_balance,
+                ConsoleOperation("model_providers.balance.view".to_string()),
+            ),
+        )
+        .merge(settings_routes::route_assembly())
 }
 
 fn service(state: &ApiState) -> ModelProviderService<MainDurableStore, ApiProviderRuntime> {

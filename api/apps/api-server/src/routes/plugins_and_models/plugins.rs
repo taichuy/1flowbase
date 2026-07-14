@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{Multipart, Path, Query, State},
     http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
@@ -32,7 +33,10 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
-    routes::system::LocaleMetaResponse,
+    routes::{
+        console_route_assembly::{console_delete, console_get, console_post, ConsoleRouteAssembly},
+        system::LocaleMetaResponse,
+    },
 };
 
 const DEFAULT_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 20;
@@ -288,39 +292,190 @@ struct InstallPluginActionInput {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/plugins/catalog", get(list_catalog))
-        .route("/plugins/families", get(list_families))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    ConsoleRouteAssembly::new()
+        .route(
+            "/plugins/catalog",
+            console_get(
+                list_catalog,
+                ConsoleOperation("plugins.catalog.view".to_string()),
+            ),
+        )
+        .route(
+            "/plugins/families",
+            console_get(
+                list_families,
+                ConsoleOperation("plugins.families.view".to_string()),
+            ),
+        )
         .route(
             "/plugins/families/:provider_code/upgrade-latest",
-            post(upgrade_latest),
+            console_post(
+                upgrade_latest,
+                ConsoleOperation("plugins.families.upgrade".to_string()),
+            ),
         )
         .route(
             "/plugins/families/:provider_code/switch-version",
-            post(switch_version),
+            console_post(
+                switch_version,
+                ConsoleOperation("plugins.families.switch".to_string()),
+            ),
         )
-        .route("/plugins/families/:provider_code", delete(delete_family))
-        .route("/plugins/official-catalog", get(list_official_catalog))
-        .route("/plugins/install-upload", post(install_uploaded_plugin))
-        .route("/plugins/install", post(install_plugin))
-        .route("/plugins/install-official", post(install_official_plugin))
+        .route(
+            "/plugins/families/:provider_code",
+            console_delete(
+                delete_family,
+                ConsoleOperation("plugins.families.delete".to_string()),
+            ),
+        )
+        .route(
+            "/plugins/official-catalog",
+            console_get(
+                list_official_catalog,
+                ConsoleOperation("plugins.official_catalog.view".to_string()),
+            ),
+        )
+        .route(
+            "/plugins/install-upload",
+            console_post(
+                install_uploaded_plugin,
+                ConsoleOperation("plugins.install.upload".to_string()),
+            ),
+        )
+        .route(
+            "/plugins/install",
+            console_post(
+                install_plugin,
+                ConsoleOperation("plugins.install".to_string()),
+            ),
+        )
+        .route(
+            "/plugins/install-official",
+            console_post(
+                install_official_plugin,
+                ConsoleOperation("plugins.install.official".to_string()),
+            ),
+        )
         .route(
             "/plugins/:installation_id/catalog-projection/refresh",
-            post(refresh_catalog_projection),
+            console_post(
+                refresh_catalog_projection,
+                ConsoleOperation("plugins.catalog_projection.refresh".to_string()),
+            ),
         )
         .route(
             "/plugins/:installation_id/artifact/refresh",
-            post(refresh_current_node_artifact),
+            console_post(
+                refresh_current_node_artifact,
+                ConsoleOperation("plugins.artifact.refresh".to_string()),
+            ),
         )
         .route(
             "/plugins/:installation_id/artifact/install-current-node",
-            post(install_current_node_artifact),
+            console_post(
+                install_current_node_artifact,
+                ConsoleOperation("plugins.artifact.install".to_string()),
+            ),
         )
-        .route("/plugins/:installation_id/enable", post(enable_plugin))
-        .route("/plugins/:installation_id/assign", post(assign_plugin))
-        .route("/plugins/tasks", get(list_tasks))
-        .route("/plugins/tasks/:task_id", get(get_task))
-        .merge(settings_routes::router())
+        .route(
+            "/plugins/:installation_id/enable",
+            console_post(
+                enable_plugin,
+                ConsoleOperation("plugins.enable".to_string()),
+            ),
+        )
+        .route(
+            "/plugins/:installation_id/assign",
+            console_post(
+                assign_plugin,
+                ConsoleOperation("plugins.assign".to_string()),
+            ),
+        )
+        .route(
+            "/plugins/tasks",
+            console_get(
+                list_tasks,
+                ConsoleOperation("plugins.tasks.view".to_string()),
+            ),
+        )
+        .route(
+            "/plugins/tasks/:task_id",
+            console_get(get_task, ConsoleOperation("plugins.tasks.view".to_string())),
+        )
+        .route(
+            "/settings/model-providers/plugins/families",
+            console_get(
+                settings_routes::list_families,
+                ConsoleOperation("model_provider_plugins.families.view".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/plugins/official-catalog",
+            console_get(
+                settings_routes::list_official_catalog,
+                ConsoleOperation("model_provider_plugins.official_catalog.view".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/plugins/install-official",
+            console_post(
+                settings_routes::install_official_plugin,
+                ConsoleOperation("model_provider_plugins.install.official".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/plugins/install-upload",
+            console_post(
+                settings_routes::install_uploaded_plugin,
+                ConsoleOperation("model_provider_plugins.install.upload".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/plugins/:installation_id/artifact/refresh",
+            console_post(
+                settings_routes::refresh_current_node_artifact,
+                ConsoleOperation("model_provider_plugins.artifact.refresh".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/plugins/:installation_id/artifact/install-current-node",
+            console_post(
+                settings_routes::install_current_node_artifact,
+                ConsoleOperation("model_provider_plugins.artifact.install".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/plugins/families/:provider_code/upgrade-latest",
+            console_post(
+                settings_routes::upgrade_latest,
+                ConsoleOperation("model_provider_plugins.families.upgrade".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/plugins/families/:provider_code/switch-version",
+            console_post(
+                settings_routes::switch_version,
+                ConsoleOperation("model_provider_plugins.families.switch".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/plugins/families/:provider_code",
+            console_delete(
+                settings_routes::delete_family,
+                ConsoleOperation("model_provider_plugins.families.delete".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/plugins/tasks/:task_id",
+            console_get(
+                settings_routes::get_task,
+                ConsoleOperation("model_provider_plugins.tasks.view".to_string()),
+            ),
+        )
 }
 
 pub(crate) mod settings_routes;
