@@ -297,11 +297,7 @@ fn validate_console_contributions(
         ));
     }
     for reference in &manifest.console_i18n_refs {
-        validate_i18n_ref(
-            &manifest.extension_id,
-            reference,
-            "console_i18n_refs[]",
-        )?;
+        validate_i18n_ref(&manifest.extension_id, reference, "console_i18n_refs[]")?;
     }
 
     let mut operation_ids = BTreeSet::<String>::new();
@@ -444,10 +440,7 @@ fn validate_console_resource(
         &format!("{field}.resource_code"),
     )?;
     validate_active_lifecycle(resource.lifecycle, &format!("{field}.lifecycle"))?;
-    validate_non_empty(
-        &resource.identity_field,
-        &format!("{field}.identity_field"),
-    )?;
+    validate_non_empty(&resource.identity_field, &format!("{field}.identity_field"))?;
     validate_optional_non_empty(
         resource.scope_field.as_deref(),
         &format!("{field}.scope_field"),
@@ -615,9 +608,12 @@ fn validate_console_route(
     let shape = console_route_shape(&route.path);
     let key = (method.clone(), shape.clone());
     if route_owners.contains_key(&key)
-        || route_owners.iter().any(|((existing_method, existing_shape), _)| {
-            existing_method == &method && console_route_templates_are_ambiguous(existing_shape, &shape)
-        })
+        || route_owners
+            .iter()
+            .any(|((existing_method, existing_shape), _)| {
+                existing_method == &method
+                    && console_route_templates_are_ambiguous(existing_shape, &shape)
+            })
     {
         return Err(PluginFrameworkError::invalid_provider_package(format!(
             "{field}.routes contains duplicate or ambiguous ownership"
@@ -627,11 +623,7 @@ fn validate_console_route(
     Ok(())
 }
 
-fn validate_i18n_ref(
-    extension_id: &str,
-    reference: &str,
-    field: &str,
-) -> FrameworkResult<()> {
+fn validate_i18n_ref(extension_id: &str, reference: &str, field: &str) -> FrameworkResult<()> {
     validate_non_empty(reference, field)?;
     validate_extension_owned_id(extension_id, reference, field)
 }

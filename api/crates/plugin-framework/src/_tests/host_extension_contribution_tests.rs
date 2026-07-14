@@ -105,20 +105,15 @@ fn rejects_host_extension_console_operation_outside_extension_namespace() {
 
 #[test]
 fn rejects_host_extension_console_owner_and_version_mismatch() {
-    let owner_mismatch = host_extension_console_manifest().replace(
-        "owner_id: file-security",
-        "owner_id: other-extension",
-    );
+    let owner_mismatch = host_extension_console_manifest()
+        .replace("owner_id: file-security", "owner_id: other-extension");
     let error = parse_host_extension_contribution_manifest(&owner_mismatch).unwrap_err();
     assert!(error
         .to_string()
         .contains("console_operations[].owner.owner_id"));
 
-    let version_mismatch = host_extension_console_manifest().replacen(
-        "version: 0.1.0",
-        "version: 0.2.0",
-        1,
-    );
+    let version_mismatch =
+        host_extension_console_manifest().replacen("version: 0.1.0", "version: 0.2.0", 1);
     let error = parse_host_extension_contribution_manifest(&version_mismatch).unwrap_err();
     assert!(error
         .to_string()
@@ -149,7 +144,9 @@ fn rejects_unknown_host_extension_console_group_resource_action_and_i18n_ref() {
         "    policy_group: !settings_feature missing.feature",
     );
     let error = parse_host_extension_contribution_manifest(&unknown_group).unwrap_err();
-    assert!(error.to_string().contains("console_operations[].policy_group"));
+    assert!(error
+        .to_string()
+        .contains("console_operations[].policy_group"));
 
     let unknown_resource = host_extension_console_manifest().replacen(
         "      resource_code: file-security.secured-files",
