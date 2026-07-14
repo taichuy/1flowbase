@@ -3,7 +3,10 @@ use anyhow::Result;
 use uuid::Uuid;
 
 use crate::{
-    application::{ensure_application_edit_permission, resolve_application_visibility},
+    application::{
+        effective_application_row_scope, ensure_application_console_row_scope,
+        resolve_application_console_visibility,
+    },
     errors::ControlPlaneError,
     ports::{
         ApplicationJsDependencySelectionRepository, ApplicationRepository, ApplicationVisibility,
@@ -81,18 +84,28 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        let visibility = resolve_application_visibility(&actor)?;
+        let visibility = if actor.is_root {
+            ApplicationVisibility::All
+        } else {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .await?;
+            resolve_application_console_visibility(
+                &policies,
+                access_control::APPLICATIONS_VIEW_OPERATION_ID,
+            )?
+        };
         let application = self
             .repository
-            .get_application(actor.current_workspace_id, application_id)
+            .get_application_for_visibility(
+                actor.current_workspace_id,
+                application_id,
+                actor_user_id,
+                visibility,
+            )
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-
-        if matches!(visibility, ApplicationVisibility::Own)
-            && application.created_by != actor_user_id
-        {
-            return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
-        }
 
         self.repository
             .list_application_js_dependency_selections(actor.current_workspace_id, application.id)
@@ -113,7 +126,23 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
 
-        ensure_application_edit_permission(&actor, &application)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor_user_id,
+                    actor.current_workspace_id,
+                )
+                .await?;
+            ensure_application_console_row_scope(
+                &actor,
+                &application,
+                effective_application_row_scope(
+                    &policies,
+                    access_control::APPLICATIONS_UPDATE_OPERATION_ID,
+                ),
+            )?;
+        }
 
         let catalog_entry = self
             .repository

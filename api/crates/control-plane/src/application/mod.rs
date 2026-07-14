@@ -305,10 +305,23 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        let visibility = resolve_application_visibility(&actor)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .await?;
+            ensure_application_console_simple_operation(
+                &policies,
+                access_control::APPLICATIONS_CREATE_OPERATION_ID,
+            )?;
+        }
 
         self.repository
-            .list_application_tags(actor.current_workspace_id, actor_user_id, visibility)
+            .list_application_tags(
+                actor.current_workspace_id,
+                actor_user_id,
+                ApplicationVisibility::All,
+            )
             .await
     }
 
@@ -321,8 +334,18 @@ where
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
 
-        if !can_manage_application_metadata(&actor) {
-            return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor_user_id,
+                    actor.current_workspace_id,
+                )
+                .await?;
+            ensure_application_console_simple_operation(
+                &policies,
+                access_control::APPLICATIONS_CREATE_OPERATION_ID,
+            )?;
         }
 
         let tag = self
@@ -415,8 +438,23 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-
-        ensure_application_edit_permission(&actor, &application)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor_user_id,
+                    actor.current_workspace_id,
+                )
+                .await?;
+            ensure_application_console_row_scope(
+                &actor,
+                &application,
+                effective_application_row_scope(
+                    &policies,
+                    access_control::APPLICATIONS_UPDATE_OPERATION_ID,
+                ),
+            )?;
+        }
 
         let variables = normalize_environment_variables(command.variables)?;
         let replaced = self
@@ -453,18 +491,28 @@ where
         actor_user_id: Uuid,
         application_id: Uuid,
     ) -> Result<domain::ApplicationRecord> {
-        let visibility = resolve_application_visibility(actor)?;
+        let visibility = if actor.is_root {
+            ApplicationVisibility::All
+        } else {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .await?;
+            resolve_application_console_visibility(
+                &policies,
+                access_control::APPLICATIONS_VIEW_OPERATION_ID,
+            )?
+        };
         let application = self
             .repository
-            .get_application(actor.current_workspace_id, application_id)
+            .get_application_for_visibility(
+                actor.current_workspace_id,
+                application_id,
+                actor_user_id,
+                visibility,
+            )
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-
-        if matches!(visibility, ApplicationVisibility::Own)
-            && application.created_by != actor_user_id
-        {
-            return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
-        }
 
         Ok(application)
     }
@@ -517,20 +565,6 @@ fn validate_application_management_filter(
     }
 }
 
-pub(crate) fn resolve_application_visibility(
-    actor: &domain::ActorContext,
-) -> Result<ApplicationVisibility, ControlPlaneError> {
-    if actor.is_root || actor.has_permission("application.view.all") {
-        return Ok(ApplicationVisibility::All);
-    }
-
-    if actor.has_permission("application.view.own") {
-        return Ok(ApplicationVisibility::Own);
-    }
-
-    Err(ControlPlaneError::PermissionDenied("permission_denied"))
-}
-
 fn applications_console_group() -> domain::ConsolePolicyGroup {
     domain::ConsolePolicyGroup::settings_feature(
         access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID,
@@ -538,7 +572,7 @@ fn applications_console_group() -> domain::ConsolePolicyGroup {
     .expect("compiled applications settings feature id must be valid")
 }
 
-fn effective_application_row_scope(
+pub(crate) fn effective_application_row_scope(
     policies: &[domain::RoleConsolePolicy],
     operation_id: &str,
 ) -> domain::ConsoleOperationRowScope {
@@ -547,7 +581,7 @@ fn effective_application_row_scope(
     domain::effective_console_row_scope(policies, &applications_console_group(), &operation_id)
 }
 
-fn resolve_application_console_visibility(
+pub(crate) fn resolve_application_console_visibility(
     policies: &[domain::RoleConsolePolicy],
     operation_id: &str,
 ) -> Result<ApplicationVisibility, ControlPlaneError> {
@@ -560,7 +594,7 @@ fn resolve_application_console_visibility(
     }
 }
 
-fn ensure_application_console_row_scope(
+pub(crate) fn ensure_application_console_row_scope(
     actor: &domain::ActorContext,
     application: &domain::ApplicationRecord,
     scope: domain::ConsoleOperationRowScope,
@@ -574,26 +608,21 @@ fn ensure_application_console_row_scope(
     }
 }
 
-pub(crate) fn ensure_application_edit_permission(
-    actor: &domain::ActorContext,
-    application: &domain::ApplicationRecord,
+fn ensure_application_console_simple_operation(
+    policies: &[domain::RoleConsolePolicy],
+    operation_id: &str,
 ) -> Result<(), ControlPlaneError> {
-    if actor.is_root || actor.has_permission("application.edit.all") {
-        return Ok(());
+    let operation_id = domain::ConsoleOperationId::try_from(operation_id)
+        .expect("compiled applications simple operation id must be valid");
+    if domain::effective_console_simple_operation(
+        policies,
+        &applications_console_group(),
+        &operation_id,
+    ) {
+        Ok(())
+    } else {
+        Err(ControlPlaneError::PermissionDenied("permission_denied"))
     }
-
-    if actor.has_permission("application.edit.own") && application.created_by == actor.user_id {
-        return Ok(());
-    }
-
-    Err(ControlPlaneError::PermissionDenied("permission_denied"))
-}
-
-fn can_manage_application_metadata(actor: &domain::ActorContext) -> bool {
-    actor.is_root
-        || actor.has_permission("application.edit.all")
-        || actor.has_permission("application.edit.own")
-        || actor.has_permission("application.create.all")
 }
 
 fn normalize_required_text(value: &str, field: &'static str) -> Result<String, ControlPlaneError> {

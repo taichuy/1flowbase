@@ -1,7 +1,9 @@
 use control_plane::application::{
     ApplicationService, CreateApplicationCommand, CreateApplicationTagCommand,
-    DeleteApplicationCommand, UpdateApplicationCommand,
+    DeleteApplicationCommand, ReplaceApplicationEnvironmentVariablesCommand,
+    UpdateApplicationCommand,
 };
+use control_plane::ports::ApplicationEnvironmentVariableInput;
 use domain::ApplicationType;
 use uuid::Uuid;
 
@@ -37,6 +39,15 @@ fn create_command(actor_user_id: Uuid, name: &str) -> CreateApplicationCommand {
         icon: None,
         icon_type: None,
         icon_background: None,
+    }
+}
+
+fn environment_variable(name: &str) -> ApplicationEnvironmentVariableInput {
+    ApplicationEnvironmentVariableInput {
+        name: name.into(),
+        value_type: "string".into(),
+        value: serde_json::json!("value"),
+        description: String::new(),
     }
 }
 
@@ -292,6 +303,209 @@ async fn ac_006_console_policy_scope_all_cannot_cross_workspace() {
     assert!(delete_error
         .to_string()
         .contains("resource not found: application"));
+}
+
+#[tokio::test]
+async fn ac_005_application_catalog_and_tags_use_create_policy_without_legacy_fallback() {
+    let actor_user_id = Uuid::nil();
+    let allowed = ApplicationService::for_tests_with_console_policies(
+        Vec::new(),
+        vec![custom_policy(vec![domain::ConsoleOperationPolicy::simple(
+            operation_id(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+            true,
+        )])],
+    );
+
+    let tag = allowed
+        .create_application_tag(CreateApplicationTagCommand {
+            actor_user_id,
+            name: "Allowed tag".into(),
+        })
+        .await
+        .unwrap();
+    let catalog = allowed.list_application_tags(actor_user_id).await.unwrap();
+    assert_eq!(catalog[0].id, tag.id);
+
+    let legacy_only = ApplicationService::for_tests_with_console_policies(
+        vec![
+            "application.create.all",
+            "application.view.all",
+            "application.edit.all",
+        ],
+        Vec::new(),
+    );
+    assert!(legacy_only
+        .list_application_tags(actor_user_id)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("permission_denied"));
+    assert!(legacy_only
+        .create_application_tag(CreateApplicationTagCommand {
+            actor_user_id,
+            name: "Blocked legacy tag".into(),
+        })
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("permission_denied"));
+}
+
+#[tokio::test]
+async fn ac_005_application_environment_variables_enforce_real_owner_and_workspace() {
+    let actor_user_id = Uuid::nil();
+    let service = ApplicationService::for_tests_with_console_policies(
+        vec!["application.view.all", "application.edit.all"],
+        vec![custom_policy(vec![
+            domain::ConsoleOperationPolicy::row(
+                operation_id(access_control::APPLICATIONS_VIEW_OPERATION_ID),
+                domain::ConsoleOperationRowScope::Own,
+            ),
+            domain::ConsoleOperationPolicy::row(
+                operation_id(access_control::APPLICATIONS_UPDATE_OPERATION_ID),
+                domain::ConsoleOperationRowScope::Own,
+            ),
+        ])],
+    );
+    let mine = service.seed_application_for_actor(actor_user_id, "Mine");
+    let other = service.seed_foreign_application("Other owner");
+    let cross_workspace =
+        service.seed_application_in_workspace(Uuid::now_v7(), actor_user_id, "Other workspace");
+
+    service
+        .replace_application_environment_variables(ReplaceApplicationEnvironmentVariablesCommand {
+            actor_user_id,
+            application_id: mine.id,
+            variables: vec![environment_variable("OwnValue")],
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        service
+            .list_application_environment_variables(actor_user_id, mine.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    for application_id in [other.id] {
+        assert!(service
+            .list_application_environment_variables(actor_user_id, application_id)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("resource not found: application"));
+        assert!(service
+            .replace_application_environment_variables(
+                ReplaceApplicationEnvironmentVariablesCommand {
+                    actor_user_id,
+                    application_id,
+                    variables: vec![environment_variable("BlockedValue")],
+                },
+            )
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("permission_denied"));
+    }
+
+    for result in [
+        service
+            .list_application_environment_variables(actor_user_id, cross_workspace.id)
+            .await
+            .map(|_| ()),
+        service
+            .replace_application_environment_variables(
+                ReplaceApplicationEnvironmentVariablesCommand {
+                    actor_user_id,
+                    application_id: cross_workspace.id,
+                    variables: vec![environment_variable("SpoofedScope")],
+                },
+            )
+            .await
+            .map(|_| ()),
+    ] {
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("resource not found: application"));
+    }
+}
+
+#[tokio::test]
+async fn ac_005_application_environment_variables_scope_all_disabled_and_root_behave_consistently()
+{
+    let actor_user_id = Uuid::nil();
+    let scope_all = ApplicationService::for_tests_with_console_policies(
+        Vec::new(),
+        vec![custom_policy(vec![
+            domain::ConsoleOperationPolicy::row(
+                operation_id(access_control::APPLICATIONS_VIEW_OPERATION_ID),
+                domain::ConsoleOperationRowScope::ScopeAll,
+            ),
+            domain::ConsoleOperationPolicy::row(
+                operation_id(access_control::APPLICATIONS_UPDATE_OPERATION_ID),
+                domain::ConsoleOperationRowScope::ScopeAll,
+            ),
+        ])],
+    );
+    let other = scope_all.seed_foreign_application("Other owner");
+    scope_all
+        .replace_application_environment_variables(ReplaceApplicationEnvironmentVariablesCommand {
+            actor_user_id,
+            application_id: other.id,
+            variables: vec![environment_variable("ScopeAllValue")],
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        scope_all
+            .list_application_environment_variables(actor_user_id, other.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let disabled = ApplicationService::for_tests_with_console_policies(
+        vec!["application.view.all", "application.edit.all"],
+        Vec::new(),
+    );
+    let disabled_application = disabled.seed_application_for_actor(actor_user_id, "Disabled");
+    assert!(disabled
+        .list_application_environment_variables(actor_user_id, disabled_application.id)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("permission_denied"));
+    assert!(disabled
+        .replace_application_environment_variables(ReplaceApplicationEnvironmentVariablesCommand {
+            actor_user_id,
+            application_id: disabled_application.id,
+            variables: vec![environment_variable("DisabledValue")],
+        },)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("permission_denied"));
+
+    let root = ApplicationService::for_tests_as_root();
+    let root_application = root.seed_foreign_application("Root bypass");
+    root.replace_application_environment_variables(ReplaceApplicationEnvironmentVariablesCommand {
+        actor_user_id,
+        application_id: root_application.id,
+        variables: vec![environment_variable("RootValue")],
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        root.list_application_environment_variables(actor_user_id, root_application.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 #[tokio::test]
