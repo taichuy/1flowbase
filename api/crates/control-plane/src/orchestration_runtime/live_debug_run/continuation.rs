@@ -17,8 +17,8 @@ use crate::{
 };
 
 use super::super::{
-    data_model_runtime, debug_stream_events, CancelFlowRunCommand, ContinueFlowDebugRunCommand,
-    LiveProviderStreamEventSender, OrchestrationRuntimeService,
+    data_model_runtime, debug_stream_events, ApplicationRunContext, CancelFlowRunCommand,
+    ContinueFlowDebugRunCommand, LiveProviderStreamEventSender, OrchestrationRuntimeService,
 };
 use super::super::{
     debug_variable_cache::{persist_debug_variable_cache_entries, public_node_variable_cache},
@@ -128,6 +128,7 @@ where
 pub(super) async fn cancel_flow_run<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: CancelFlowRunCommand,
+    _context: &ApplicationRunContext,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::ApplicationRepository
@@ -145,16 +146,6 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    let actor = crate::ports::ApplicationRepository::load_actor_context_for_user(
-        &service.repository,
-        command.actor_user_id,
-    )
-    .await?;
-    service
-        .repository
-        .get_application(actor.current_workspace_id, command.application_id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("application"))?;
     let flow_run = service
         .repository
         .get_flow_run(command.application_id, command.flow_run_id)

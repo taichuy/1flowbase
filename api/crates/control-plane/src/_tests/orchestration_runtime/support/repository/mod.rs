@@ -3,6 +3,9 @@ use super::*;
 
 #[derive(Default)]
 struct InMemoryOrchestrationRuntimeState {
+    console_policies: Vec<domain::RoleConsolePolicy>,
+    actor_is_root: bool,
+    actor_workspace_id: Uuid,
     compiled_plans_by_id: HashMap<Uuid, domain::CompiledPlanRecord>,
     pub(super) flow_runs_by_id: HashMap<Uuid, domain::FlowRunRecord>,
     node_runs_by_id: HashMap<Uuid, domain::NodeRunRecord>,
@@ -76,15 +79,46 @@ impl InMemoryOrchestrationRuntimeRepository {
     }
 
     pub(crate) fn with_permissions(permissions: Vec<&str>) -> Self {
-        Self::with_permissions_and_data_model_scope_grant(permissions, true)
+        Self::with_permissions_and_console_policies(
+            permissions,
+            Self::full_application_console_policies(),
+        )
+    }
+
+    fn full_application_console_policies() -> Vec<domain::RoleConsolePolicy> {
+        vec![domain::RoleConsolePolicy::new(
+            Uuid::now_v7(),
+            vec![domain::RoleConsoleGroupPolicy::full(
+                domain::ConsolePolicyGroup::settings_feature(
+                    access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID,
+                )
+                .expect("applications settings feature id must be valid"),
+            )],
+        )]
+    }
+
+    pub(crate) fn with_permissions_and_console_policies(
+        permissions: Vec<&str>,
+        console_policies: Vec<domain::RoleConsolePolicy>,
+    ) -> Self {
+        Self::with_permissions_console_policies_and_data_model_scope_grant(
+            permissions,
+            console_policies,
+            true,
+        )
     }
 
     pub(crate) fn with_permissions_without_data_model_scope_grant(permissions: Vec<&str>) -> Self {
-        Self::with_permissions_and_data_model_scope_grant(permissions, false)
+        Self::with_permissions_console_policies_and_data_model_scope_grant(
+            permissions,
+            Self::full_application_console_policies(),
+            false,
+        )
     }
 
-    fn with_permissions_and_data_model_scope_grant(
+    fn with_permissions_console_policies_and_data_model_scope_grant(
         permissions: Vec<&str>,
+        console_policies: Vec<domain::RoleConsolePolicy>,
         include_data_model_scope_grant: bool,
     ) -> Self {
         let flow = InMemoryFlowRepository::with_permissions(permissions);
@@ -264,6 +298,9 @@ impl InMemoryOrchestrationRuntimeRepository {
         Self {
             flow,
             inner: Arc::new(Mutex::new(InMemoryOrchestrationRuntimeState {
+                console_policies,
+                actor_is_root: false,
+                actor_workspace_id: workspace_id,
                 installations_by_id: HashMap::from([
                     (installation_id, installation),
                     (capability_installation_id, capability_installation),
@@ -356,6 +393,46 @@ impl InMemoryOrchestrationRuntimeRepository {
             },
         )
         .await
+    }
+
+    pub(super) async fn seed_application_in_workspace_for_actor(
+        &self,
+        workspace_id: Uuid,
+        actor_user_id: Uuid,
+        name: &str,
+    ) -> Result<domain::ApplicationRecord> {
+        ApplicationRepository::create_application(
+            &self.flow,
+            &CreateApplicationInput {
+                actor_user_id,
+                workspace_id,
+                application_type: domain::ApplicationType::AgentFlow,
+                workflow_trigger_type: None,
+                workflow_trigger_config: None,
+                name: name.to_string(),
+                description: String::new(),
+                icon: None,
+                icon_type: None,
+                icon_background: None,
+            },
+        )
+        .await
+    }
+
+    pub(crate) fn replace_console_policies(
+        &self,
+        console_policies: Vec<domain::RoleConsolePolicy>,
+    ) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .console_policies = console_policies;
+    }
+
+    pub(crate) fn configure_root_actor(&self, workspace_id: Uuid) {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        inner.actor_is_root = true;
+        inner.actor_workspace_id = workspace_id;
     }
 
     pub(crate) fn default_provider_instance_id(&self) -> Uuid {

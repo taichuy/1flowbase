@@ -4,8 +4,6 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    errors::ControlPlaneError,
-    flow::FlowService,
     flow_run_title::display_flow_run_title,
     ports::{
         AppendBillingSessionInput, AppendCostLedgerInput, AppendCreditLedgerInput,
@@ -18,13 +16,15 @@ use super::super::{
     compile_context::ensure_compiled_plan_runnable,
     debug_stream_events, freeze_failover_queue_routes,
     inputs::{build_compiled_plan_input, flow_document_hash, flow_document_schema_version},
-    OrchestrationRuntimeService, PrepareFlowDebugRunCommand, StartFlowDebugRunCommand,
+    ApplicationRunContext, OrchestrationRuntimeService, PrepareFlowDebugRunCommand,
+    StartFlowDebugRunCommand,
 };
 use super::{append_runtime_event, emit_flow_failed_and_close, fail_flow_run, load_run_detail};
 
 pub(super) async fn start_flow_debug_run<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: StartFlowDebugRunCommand,
+    context: &ApplicationRunContext,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::ApplicationRepository
@@ -48,7 +48,7 @@ where
     let input_payload = command.input_payload.clone();
     let document_snapshot = command.document_snapshot.clone();
     let debug_session_id = command.debug_session_id.clone().unwrap_or_default();
-    let shell = open_flow_debug_run_shell(service, command).await?;
+    let shell = open_flow_debug_run_shell(service, command, context).await?;
 
     prepare_flow_debug_run_from_shell(
         service,
@@ -60,6 +60,7 @@ where
             document_snapshot,
             debug_session_id,
         },
+        context,
     )
     .await
 }
@@ -112,6 +113,7 @@ fn user_input_payload(input_payload: &Value) -> Value {
 pub(super) async fn open_flow_debug_run_shell<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: StartFlowDebugRunCommand,
+    context: &ApplicationRunContext,
 ) -> Result<domain::FlowRunRecord>
 where
     R: crate::ports::ApplicationRepository
@@ -125,22 +127,20 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    let actor = crate::ports::ApplicationRepository::load_actor_context_for_user(
-        &service.repository,
-        command.actor_user_id,
-    )
-    .await?;
-    let editor_state = FlowService::new(service.repository.clone())
-        .get_or_create_editor_state(command.actor_user_id, command.application_id)
-        .await?;
-    let application = service
+    let editor_state = service
         .repository
-        .get_application(actor.current_workspace_id, command.application_id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("application"))?;
+        .get_or_create_editor_state(
+            context.actor.current_workspace_id,
+            context.application.id,
+            context.actor.user_id,
+        )
+        .await?;
     let environment_variables = service
         .repository
-        .list_application_environment_variables(application.workspace_id, application.id)
+        .list_application_environment_variables(
+            context.application.workspace_id,
+            context.application.id,
+        )
         .await?;
     let debug_document = command
         .document_snapshot
@@ -166,7 +166,7 @@ where
             input_payload: freeze_run_input_environment(
                 command.input_payload,
                 &environment_variables,
-                &application,
+                &context.application,
             ),
             started_at: OffsetDateTime::now_utc(),
             api_key_id: None,
@@ -213,6 +213,7 @@ fn application_environment_variable_payload(
 pub(super) async fn prepare_flow_debug_run_from_shell<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: PrepareFlowDebugRunCommand,
+    context: &ApplicationRunContext,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::ApplicationRepository
@@ -231,25 +232,21 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    let actor = crate::ports::ApplicationRepository::load_actor_context_for_user(
-        &service.repository,
-        command.actor_user_id,
-    )
-    .await?;
     let flow_run = service
         .repository
         .get_flow_run(command.application_id, command.flow_run_id)
         .await?
         .ok_or_else(shell_mismatch_error)?;
-    let editor_state = FlowService::new(service.repository.clone())
-        .get_or_create_editor_state(command.actor_user_id, command.application_id)
+    let editor_state = service
+        .repository
+        .get_or_create_editor_state(
+            context.actor.current_workspace_id,
+            context.application.id,
+            context.actor.user_id,
+        )
         .await?;
     validate_flow_debug_run_shell(&flow_run, &command, &editor_state)?;
-    let application = service
-        .repository
-        .get_application(actor.current_workspace_id, command.application_id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("application"))?;
+    let application = &context.application;
     let debug_document = command
         .document_snapshot
         .as_ref()

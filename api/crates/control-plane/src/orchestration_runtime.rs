@@ -16,10 +16,10 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::{
+    application::ensure_application_console_simple_operation,
     audit::audit_log,
     capability_plugin_runtime::{CapabilityPluginRuntimePort, ExecuteCapabilityNodeInput},
     errors::ControlPlaneError,
-    flow::FlowService,
     model_provider::failover_queue::{freeze_queue_items, FailoverQueueSnapshotItem},
     plugin_lifecycle::reconcile_installation_snapshot,
     plugin_management::ready_current_node_plugin_installation,
@@ -281,6 +281,11 @@ pub struct OrchestrationRuntimeService<R, H> {
     provider_install_root: Option<PathBuf>,
 }
 
+pub(super) struct ApplicationRunContext {
+    pub(super) actor: domain::ActorContext,
+    pub(super) application: domain::ApplicationRecord,
+}
+
 impl<R, H> OrchestrationRuntimeService<R, H>
 where
     R: ApplicationRepository
@@ -422,6 +427,33 @@ where
         .await
     }
 
+    async fn load_application_run_context(
+        &self,
+        actor_user_id: Uuid,
+        application_id: Uuid,
+    ) -> Result<ApplicationRunContext> {
+        let actor =
+            ApplicationRepository::load_actor_context_for_user(&self.repository, actor_user_id)
+                .await?;
+        let application = self
+            .repository
+            .get_application(actor.current_workspace_id, application_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .await?;
+            ensure_application_console_simple_operation(
+                &policies,
+                access_control::APPLICATIONS_RUN_OPERATION_ID,
+            )?;
+        }
+
+        Ok(ApplicationRunContext { actor, application })
+    }
+
     pub async fn start_node_debug_preview(
         &self,
         command: StartNodeDebugPreviewCommand,
@@ -429,19 +461,18 @@ where
     where
         R: ApplicationJsDependencySelectionRepository + crate::ports::FileManagementRepository,
     {
-        let actor = ApplicationRepository::load_actor_context_for_user(
-            &self.repository,
-            command.actor_user_id,
-        )
-        .await?;
-        let editor_state = FlowService::new(self.repository.clone())
-            .get_or_create_editor_state(command.actor_user_id, command.application_id)
+        let context = self
+            .load_application_run_context(command.actor_user_id, command.application_id)
             .await?;
-        let application = self
+        let editor_state = self
             .repository
-            .get_application(actor.current_workspace_id, command.application_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("application"))?;
+            .get_or_create_editor_state(
+                context.actor.current_workspace_id,
+                context.application.id,
+                context.actor.user_id,
+            )
+            .await?;
+        let ApplicationRunContext { actor, application } = context;
         let compile_context = self
             .build_compile_context(application.workspace_id, application.id)
             .await?;
@@ -461,7 +492,7 @@ where
         ensure_compiled_plan_runnable_for_node(&compiled_plan, &command.node_id)?;
         let invoker = self.runtime_invoker(application.workspace_id);
         let started_at = OffsetDateTime::now_utc();
-        let http_file_persister = self.http_response_file_persister(actor.clone());
+        let http_file_persister = self.http_response_file_persister(actor);
         let preview = orchestration_runtime::preview_executor::run_node_preview_with_http_file_persister_and_counter_store(
             &compiled_plan,
             &command.node_id,
@@ -571,14 +602,20 @@ where
     where
         R: ApplicationJsDependencySelectionRepository,
     {
-        live_debug_run::start_flow_debug_run(self, command).await
+        let context = self
+            .load_application_run_context(command.actor_user_id, command.application_id)
+            .await?;
+        live_debug_run::start_flow_debug_run(self, command, &context).await
     }
 
     pub async fn open_flow_debug_run_shell(
         &self,
         command: StartFlowDebugRunCommand,
     ) -> Result<domain::FlowRunRecord> {
-        live_debug_run::open_flow_debug_run_shell(self, command).await
+        let context = self
+            .load_application_run_context(command.actor_user_id, command.application_id)
+            .await?;
+        live_debug_run::open_flow_debug_run_shell(self, command, &context).await
     }
 
     pub async fn prepare_flow_debug_run_from_shell(
@@ -588,7 +625,10 @@ where
     where
         R: ApplicationJsDependencySelectionRepository,
     {
-        live_debug_run::prepare_flow_debug_run_from_shell(self, command).await
+        let context = self
+            .load_application_run_context(command.actor_user_id, command.application_id)
+            .await?;
+        live_debug_run::prepare_flow_debug_run_from_shell(self, command, &context).await
     }
 
     pub async fn continue_flow_debug_run(
@@ -740,18 +780,19 @@ where
         &self,
         command: CancelFlowRunCommand,
     ) -> Result<domain::ApplicationRunDetail> {
-        live_debug_run::cancel_flow_run(self, command).await
+        let context = self
+            .load_application_run_context(command.actor_user_id, command.application_id)
+            .await?;
+        live_debug_run::cancel_flow_run(self, command, &context).await
     }
 
     pub async fn resume_flow_run(
         &self,
         command: ResumeFlowRunCommand,
     ) -> Result<domain::ApplicationRunDetail> {
-        let actor = ApplicationRepository::load_actor_context_for_user(
-            &self.repository,
-            command.actor_user_id,
-        )
-        .await?;
+        let context = self
+            .load_application_run_context(command.actor_user_id, command.application_id)
+            .await?;
         let flow_run = self
             .repository
             .get_flow_run(command.application_id, command.flow_run_id)
@@ -767,11 +808,7 @@ where
             .get_application_run_detail(command.application_id, command.flow_run_id)
             .await?
             .ok_or_else(|| anyhow!("flow run detail not found"))?;
-        let application = self
-            .repository
-            .get_application(actor.current_workspace_id, command.application_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("application"))?;
+        let application = context.application;
         let compiled_plan_id = flow_run
             .compiled_plan_id
             .ok_or_else(|| anyhow!("flow run compiled plan is not attached"))?;
@@ -843,11 +880,10 @@ where
         mut command: CompleteCallbackTaskCommand,
     ) -> Result<domain::ApplicationRunDetail> {
         command.response_payload = escape_json_nul_characters(command.response_payload);
-        let actor = ApplicationRepository::load_actor_context_for_user(
-            &self.repository,
-            command.actor_user_id,
-        )
-        .await?;
+        let context = self
+            .load_application_run_context(command.actor_user_id, command.application_id)
+            .await?;
+        let ApplicationRunContext { actor, application } = context;
         let pending_callback_task = self
             .repository
             .get_callback_task(command.callback_task_id)
@@ -872,11 +908,6 @@ where
             .get_application_run_detail(command.application_id, pending_callback_task.flow_run_id)
             .await?
             .ok_or_else(|| anyhow!("flow run not found for callback task"))?;
-        let application = self
-            .repository
-            .get_application(actor.current_workspace_id, command.application_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("application"))?;
         let checkpoint = detail
             .checkpoints
             .iter()

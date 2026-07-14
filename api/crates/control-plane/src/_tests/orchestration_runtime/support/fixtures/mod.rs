@@ -38,6 +38,34 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         )
     }
 
+    pub fn for_tests_with_application_console_policies(
+        permissions: Vec<&str>,
+        console_policies: Vec<domain::RoleConsolePolicy>,
+    ) -> Self {
+        let repository =
+            InMemoryOrchestrationRuntimeRepository::with_permissions_and_console_policies(
+                permissions,
+                console_policies,
+            );
+        Self::new(
+            repository,
+            InMemoryProviderRuntime::default(),
+            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
+            "test-master-key",
+        )
+    }
+
+    pub fn for_tests_as_root_in_workspace(workspace_id: Uuid) -> Self {
+        let repository = InMemoryOrchestrationRuntimeRepository::with_permissions(Vec::new());
+        repository.configure_root_actor(workspace_id);
+        Self::new(
+            repository,
+            InMemoryProviderRuntime::default(),
+            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
+            "test-master-key",
+        )
+    }
+
     pub fn for_tests_with_file_storage() -> Self {
         let repository = InMemoryOrchestrationRuntimeRepository::with_permissions(vec![
             "application.view.all",
@@ -220,6 +248,25 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             flow_id: editor_state.flow.id,
             source_provider_instance_id: self.repository.default_provider_instance_id(),
         }
+    }
+
+    pub async fn seed_application_in_workspace_for_tests(
+        &self,
+        workspace_id: Uuid,
+        actor_user_id: Uuid,
+        name: &str,
+    ) -> domain::ApplicationRecord {
+        self.repository
+            .seed_application_in_workspace_for_actor(workspace_id, actor_user_id, name)
+            .await
+            .expect("seed application in workspace should succeed")
+    }
+
+    pub fn replace_application_console_policies_for_tests(
+        &self,
+        console_policies: Vec<domain::RoleConsolePolicy>,
+    ) {
+        self.repository.replace_console_policies(console_policies);
     }
 
     pub async fn seed_workflow_application_with_flow(

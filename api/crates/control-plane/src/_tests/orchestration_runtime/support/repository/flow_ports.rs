@@ -63,7 +63,20 @@ impl ApplicationRepository for InMemoryOrchestrationRuntimeRepository {
         &self,
         actor_user_id: Uuid,
     ) -> Result<domain::ActorContext> {
-        ApplicationRepository::load_actor_context_for_user(&self.flow, actor_user_id).await
+        let (actor_is_root, workspace_id) = {
+            let inner = self.inner.lock().expect("runtime repo mutex poisoned");
+            (inner.actor_is_root, inner.actor_workspace_id)
+        };
+        if actor_is_root {
+            Ok(domain::ActorContext::root_in_scope(
+                actor_user_id,
+                Uuid::nil(),
+                workspace_id,
+                "root",
+            ))
+        } else {
+            ApplicationRepository::load_actor_context_for_user(&self.flow, actor_user_id).await
+        }
     }
 
     async fn load_role_console_policies_for_user(
@@ -71,7 +84,12 @@ impl ApplicationRepository for InMemoryOrchestrationRuntimeRepository {
         _actor_user_id: Uuid,
         _workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>> {
-        anyhow::bail!("console policies are not available in runtime test repository")
+        Ok(self
+            .inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .console_policies
+            .clone())
     }
 
     async fn list_applications(

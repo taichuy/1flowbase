@@ -8,8 +8,9 @@ mod runtime_events;
 use anyhow::Result;
 
 use super::{
-    CancelFlowRunCommand, ContinueFlowDebugRunCommand, LiveProviderStreamEventSender,
-    OrchestrationRuntimeService, PrepareFlowDebugRunCommand, StartFlowDebugRunCommand,
+    ApplicationRunContext, CancelFlowRunCommand, ContinueFlowDebugRunCommand,
+    LiveProviderStreamEventSender, OrchestrationRuntimeService, PrepareFlowDebugRunCommand,
+    StartFlowDebugRunCommand,
 };
 use observability::{persist_llm_context_observability, run_live_event_persister};
 use plan::{first_output_key, next_node_index};
@@ -22,6 +23,7 @@ use runtime_events::{
 pub(super) async fn start_flow_debug_run<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: StartFlowDebugRunCommand,
+    context: &ApplicationRunContext,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::ApplicationRepository
@@ -40,12 +42,13 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    preparation::start_flow_debug_run(service, command).await
+    preparation::start_flow_debug_run(service, command, context).await
 }
 
 pub(super) async fn open_flow_debug_run_shell<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: StartFlowDebugRunCommand,
+    context: &ApplicationRunContext,
 ) -> Result<domain::FlowRunRecord>
 where
     R: crate::ports::ApplicationRepository
@@ -59,12 +62,13 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    preparation::open_flow_debug_run_shell(service, command).await
+    preparation::open_flow_debug_run_shell(service, command, context).await
 }
 
 pub(super) async fn prepare_flow_debug_run_from_shell<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: PrepareFlowDebugRunCommand,
+    context: &ApplicationRunContext,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::ApplicationRepository
@@ -83,7 +87,7 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    preparation::prepare_flow_debug_run_from_shell(service, command).await
+    preparation::prepare_flow_debug_run_from_shell(service, command, context).await
 }
 
 pub(super) async fn continue_flow_debug_run<R, H>(
@@ -143,6 +147,7 @@ where
 pub(super) async fn cancel_flow_run<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: CancelFlowRunCommand,
+    context: &ApplicationRunContext,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::ApplicationRepository
@@ -160,5 +165,5 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    continuation::cancel_flow_run(service, command).await
+    continuation::cancel_flow_run(service, command, context).await
 }

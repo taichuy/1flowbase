@@ -8,6 +8,18 @@ async fn ensure_application_visible(
         .await?)
 }
 
+async fn load_application_in_current_workspace(
+    state: &Arc<ApiState>,
+    workspace_id: Uuid,
+    application_id: Uuid,
+) -> Result<domain::ApplicationRecord, ApiError> {
+    state
+        .store
+        .get_application(workspace_id, application_id)
+        .await?
+        .ok_or_else(|| ControlPlaneError::NotFound("application").into())
+}
+
 fn parse_runtime_event_cursor(run_id: Uuid, event_id: &str) -> Option<i64> {
     if let Ok(sequence) = event_id.parse::<i64>() {
         return Some(sequence);
@@ -66,7 +78,6 @@ pub async fn start_flow_debug_run(
         .start(id, ApplicationActivityKind::HttpRequest);
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
 
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
@@ -74,7 +85,10 @@ pub async fn start_flow_debug_run(
         state.runtime_engine.clone(),
         state.provider_secret_master_key.clone(),
     )
-    .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
+    .with_node_artifact_context(
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+    )
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue());
@@ -87,6 +101,9 @@ pub async fn start_flow_debug_run(
             debug_session_id: body.debug_session_id,
         })
         .await?;
+    let application =
+        load_application_in_current_workspace(&state, context.actor.current_workspace_id, id)
+            .await?;
     let flow_run_id = detail.flow_run.id;
     let workspace_id = context.actor.current_workspace_id;
     let background_state = state.clone();
@@ -107,7 +124,7 @@ pub async fn start_flow_debug_run(
         )
         .with_file_storage_registry(background_state.file_storage_registry.clone())
         .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
-    .with_provider_request_log_queue(background_state.infrastructure.task_queue());
+        .with_provider_request_log_queue(background_state.infrastructure.task_queue());
         let continue_result = scope_application_activity(
             id,
             background_service.continue_flow_debug_run(ContinueFlowDebugRunCommand {
@@ -175,7 +192,10 @@ pub async fn start_flow_debug_run_stream(
         state.runtime_engine.clone(),
         state.provider_secret_master_key.clone(),
     )
-    .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
+    .with_node_artifact_context(
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+    )
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue());
@@ -236,7 +256,7 @@ pub async fn start_flow_debug_run_stream(
         )
         .with_file_storage_registry(background_state.file_storage_registry.clone())
         .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
-    .with_provider_request_log_queue(background_state.infrastructure.task_queue())
+        .with_provider_request_log_queue(background_state.infrastructure.task_queue())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         let prepare_result = scope_application_activity(
             id,
@@ -418,7 +438,6 @@ pub async fn cancel_flow_run(
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
 
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
@@ -426,7 +445,10 @@ pub async fn cancel_flow_run(
         state.runtime_engine.clone(),
         state.provider_secret_master_key.clone(),
     )
-    .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
+    .with_node_artifact_context(
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+    )
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
@@ -439,6 +461,9 @@ pub async fn cancel_flow_run(
             flow_run_id: run_id,
         })
         .await?;
+    let application =
+        load_application_in_current_workspace(&state, context.actor.current_workspace_id, id)
+            .await?;
     let detail = offload_application_run_detail_artifacts(
         state.clone(),
         context.actor.current_workspace_id,
@@ -480,7 +505,6 @@ pub async fn resume_flow_run(
         .start(id, ApplicationActivityKind::HttpRequest);
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
 
     let checkpoint_id = Uuid::parse_str(&body.checkpoint_id)
         .map_err(|_| ControlPlaneError::InvalidInput("checkpoint_id"))?;
@@ -492,10 +516,13 @@ pub async fn resume_flow_run(
             state.runtime_engine.clone(),
             state.provider_secret_master_key.clone(),
         )
-        .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
+        .with_node_artifact_context(
+            state.api_node_id.clone(),
+            state.provider_install_root.clone(),
+        )
         .with_file_storage_registry(state.file_storage_registry.clone())
         .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
+        .with_provider_request_log_queue(state.infrastructure.task_queue())
         .resume_flow_run(ResumeFlowRunCommand {
             actor_user_id: context.user.id,
             application_id: id,
@@ -505,6 +532,9 @@ pub async fn resume_flow_run(
         }),
     )
     .await?;
+    let application =
+        load_application_in_current_workspace(&state, context.actor.current_workspace_id, id)
+            .await?;
     let detail = offload_application_run_detail_artifacts(
         state.clone(),
         context.actor.current_workspace_id,
@@ -546,7 +576,6 @@ pub async fn complete_callback_task(
         .start(id, ApplicationActivityKind::HttpRequest);
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
 
     let detail = scope_application_activity(
         id,
@@ -556,10 +585,13 @@ pub async fn complete_callback_task(
             state.runtime_engine.clone(),
             state.provider_secret_master_key.clone(),
         )
-        .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
+        .with_node_artifact_context(
+            state.api_node_id.clone(),
+            state.provider_install_root.clone(),
+        )
         .with_file_storage_registry(state.file_storage_registry.clone())
         .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
+        .with_provider_request_log_queue(state.infrastructure.task_queue())
         .complete_callback_task(CompleteCallbackTaskCommand {
             actor_user_id: context.user.id,
             application_id: id,
@@ -568,6 +600,9 @@ pub async fn complete_callback_task(
         }),
     )
     .await?;
+    let application =
+        load_application_in_current_workspace(&state, context.actor.current_workspace_id, id)
+            .await?;
     let detail = offload_application_run_detail_artifacts(
         state.clone(),
         context.actor.current_workspace_id,
@@ -618,10 +653,13 @@ pub async fn start_node_debug_preview(
             state.runtime_engine.clone(),
             state.provider_secret_master_key.clone(),
         )
-        .with_node_artifact_context(state.api_node_id.clone(), state.provider_install_root.clone())
+        .with_node_artifact_context(
+            state.api_node_id.clone(),
+            state.provider_install_root.clone(),
+        )
         .with_file_storage_registry(state.file_storage_registry.clone())
         .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
+        .with_provider_request_log_queue(state.infrastructure.task_queue())
         .start_node_debug_preview(StartNodeDebugPreviewCommand {
             actor_user_id: context.user.id,
             application_id: id,
@@ -738,7 +776,7 @@ pub async fn resolve_runtime_debug_artifacts(
         });
     }
 
-    Ok(Json(ApiSuccess::new(ResolveRuntimeDebugArtifactsResponse {
-        artifacts,
-    })))
+    Ok(Json(ApiSuccess::new(
+        ResolveRuntimeDebugArtifactsResponse { artifacts },
+    )))
 }
