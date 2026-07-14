@@ -7,7 +7,6 @@ use argon2::{
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, patch, post, put},
     Json, Router,
 };
 use control_plane::member::{
@@ -25,6 +24,9 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{
+        console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
+    },
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -143,20 +145,66 @@ fn to_member_response(user: domain::UserRecord) -> MemberResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/settings/members", get(list_members).post(create_member))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/settings/members",
+            console_get(list_members, ConsoleOperation("members.list".to_string())).post(
+                create_member,
+                ConsoleOperation("members.create".to_string()),
+            ),
+        )
         .route(
             "/settings/members/role-options",
-            get(list_member_role_options),
+            console_get(
+                list_member_role_options,
+                ConsoleOperation("members.role_options.list".to_string()),
+            ),
         )
         .route(
             "/settings/members/:id",
-            patch(update_member).delete(delete_member),
+            console_patch(
+                update_member,
+                ConsoleOperation("members.update".to_string()),
+            )
+            .delete(
+                delete_member,
+                ConsoleOperation("members.delete".to_string()),
+            ),
         )
-        .route("/settings/members/:id/disable", post(disable_member))
-        .route("/settings/members/:id/enable", post(enable_member))
-        .route("/settings/members/:id/reset-password", post(reset_member))
-        .route("/settings/members/:id/roles", put(replace_member_roles))
+        .route(
+            "/settings/members/:id/disable",
+            console_post(
+                disable_member,
+                ConsoleOperation("members.disable".to_string()),
+            ),
+        )
+        .route(
+            "/settings/members/:id/enable",
+            console_post(
+                enable_member,
+                ConsoleOperation("members.enable".to_string()),
+            ),
+        )
+        .route(
+            "/settings/members/:id/reset-password",
+            console_post(
+                reset_member,
+                ConsoleOperation("members.password.reset".to_string()),
+            ),
+        )
+        .route(
+            "/settings/members/:id/roles",
+            console_put(
+                replace_member_roles,
+                ConsoleOperation("members.roles.replace".to_string()),
+            ),
+        )
 }
 
 #[utoipa::path(

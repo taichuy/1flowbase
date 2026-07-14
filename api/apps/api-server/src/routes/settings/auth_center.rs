@@ -3,7 +3,6 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::{delete, get, post, put},
     Json, Router,
 };
 use control_plane::auth::settings::{
@@ -16,8 +15,14 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_csrf::require_csrf,
-    middleware::require_session::require_session, response::ApiSuccess,
+    app_state::ApiState,
+    error_response::ApiError,
+    middleware::require_csrf::require_csrf,
+    middleware::require_session::require_session,
+    response::ApiSuccess,
+    routes::console_route_assembly::{
+        console_delete, console_get, console_post, console_put, ConsoleRouteAssembly,
+    },
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
@@ -82,34 +87,61 @@ pub struct UpdateAuthCenterAuthenticatorConfigBody {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
         .route(
             "/settings/auth-center/overview",
-            get(get_auth_center_overview),
+            console_get(
+                get_auth_center_overview,
+                ConsoleOperation("auth_center.overview.view".to_string()),
+            ),
         )
         .route(
             "/settings/auth-center/authenticators",
-            post(create_auth_center_authenticator),
+            console_post(
+                create_auth_center_authenticator,
+                ConsoleOperation("auth_center.authenticators.create".to_string()),
+            ),
         )
         .route(
             "/settings/auth-center/authenticators/order",
-            put(reorder_auth_center_authenticators),
+            console_put(
+                reorder_auth_center_authenticators,
+                ConsoleOperation("auth_center.authenticators.order".to_string()),
+            ),
         )
         .route(
             "/settings/auth-center/authenticators/:id/actions/enable",
-            post(enable_auth_center_authenticator),
+            console_post(
+                enable_auth_center_authenticator,
+                ConsoleOperation("auth_center.authenticators.enable".to_string()),
+            ),
         )
         .route(
             "/settings/auth-center/authenticators/:id/copy",
-            post(copy_auth_center_authenticator),
+            console_post(
+                copy_auth_center_authenticator,
+                ConsoleOperation("auth_center.authenticators.copy".to_string()),
+            ),
         )
         .route(
             "/settings/auth-center/authenticators/:id/config",
-            put(update_auth_center_authenticator_config),
+            console_put(
+                update_auth_center_authenticator_config,
+                ConsoleOperation("auth_center.authenticators.update".to_string()),
+            ),
         )
         .route(
             "/settings/auth-center/authenticators/:id",
-            delete(delete_auth_center_authenticator),
+            console_delete(
+                delete_auth_center_authenticator,
+                ConsoleOperation("auth_center.authenticators.delete".to_string()),
+            ),
         )
 }
 

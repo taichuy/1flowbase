@@ -3,7 +3,6 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, patch},
     Json, Router,
 };
 use control_plane::model_definition::ModelDefinitionService;
@@ -22,6 +21,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, console_patch, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -146,27 +146,62 @@ fn to_role_response(role: domain::RoleTemplate) -> RoleResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/settings/roles", get(list_roles).post(create_role))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/settings/roles",
+            console_get(list_roles, ConsoleOperation("roles.list".to_string()))
+                .post(create_role, ConsoleOperation("roles.create".to_string())),
+        )
         .route(
             "/settings/roles/data-model-options",
-            get(list_data_model_options),
+            console_get(
+                list_data_model_options,
+                ConsoleOperation("roles.data_model_options.list".to_string()),
+            ),
         )
         .route(
             "/settings/roles/:id",
-            patch(update_role).delete(delete_role),
+            console_patch(update_role, ConsoleOperation("roles.update".to_string()))
+                .delete(delete_role, ConsoleOperation("roles.delete".to_string())),
         )
         .route(
             "/settings/roles/:id/permissions",
-            get(get_role_permissions).put(replace_role_permissions),
+            console_get(
+                get_role_permissions,
+                ConsoleOperation("roles.permissions.view".to_string()),
+            )
+            .put(
+                replace_role_permissions,
+                ConsoleOperation("roles.permissions.replace".to_string()),
+            ),
         )
         .route(
             "/settings/roles/:id/frontstage-routes",
-            get(get_role_frontstage_routes).put(replace_role_frontstage_routes),
+            console_get(
+                get_role_frontstage_routes,
+                ConsoleOperation("roles.frontstage_routes.view".to_string()),
+            )
+            .put(
+                replace_role_frontstage_routes,
+                ConsoleOperation("roles.frontstage_routes.replace".to_string()),
+            ),
         )
         .route(
             "/settings/roles/:id/data-policy",
-            get(get_role_data_policy).put(replace_role_data_policy),
+            console_get(
+                get_role_data_policy,
+                ConsoleOperation("roles.data_policy.view".to_string()),
+            )
+            .put(
+                replace_role_data_policy,
+                ConsoleOperation("roles.data_policy.replace".to_string()),
+            ),
         )
 }
 

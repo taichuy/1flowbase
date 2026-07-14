@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{extract::State, http::HeaderMap, routing::get, Json, Router};
+use axum::{extract::State, http::HeaderMap, Json, Router};
 use control_plane::workspace::{UpdateWorkspaceCommand, WorkspaceService};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -10,6 +10,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -37,7 +38,23 @@ fn to_workspace_response(workspace: domain::WorkspaceRecord) -> WorkspaceRespons
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/workspace", get(get_workspace).patch(patch_workspace))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new().route(
+        "/workspace",
+        console_get(
+            get_workspace,
+            ConsoleOperation("workspace.view".to_string()),
+        )
+        .patch(
+            patch_workspace,
+            ConsoleOperation("workspace.update".to_string()),
+        ),
+    )
 }
 
 #[utoipa::path(

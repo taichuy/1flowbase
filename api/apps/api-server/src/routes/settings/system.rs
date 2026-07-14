@@ -3,7 +3,6 @@ use std::sync::Arc;
 use axum::{
     extract::{Query, State},
     http::{header::ACCEPT_LANGUAGE, HeaderMap},
-    routing::get,
     Json, Router,
 };
 use control_plane::system_runtime::SystemRuntimeService;
@@ -12,8 +11,11 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
+    app_state::ApiState,
+    error_response::ApiError,
+    middleware::require_session::require_session,
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 pub use super::release_status::{
@@ -116,9 +118,27 @@ pub struct SystemRuntimeProfileResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/system/runtime-profile", get(get_runtime_profile))
-        .route("/system/release-status", get(get_release_status))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/system/runtime-profile",
+            console_get(
+                get_runtime_profile,
+                ConsoleOperation("system.runtime_profile.view".to_string()),
+            ),
+        )
+        .route(
+            "/system/release-status",
+            console_get(
+                get_release_status,
+                ConsoleOperation("system.release_status.view".to_string()),
+            ),
+        )
 }
 
 #[utoipa::path(
