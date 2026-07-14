@@ -15,6 +15,7 @@ import {
 import { McpInstancesTab } from './McpInstancesTab';
 import { McpToolsTab } from './McpToolsTab';
 import { McpBundleActions } from './bundle/McpBundleActions';
+import { ThirdPartyMcpTab } from './upstream/ThirdPartyMcpTab';
 import './mcp-management-panel.css';
 
 export function McpManagementPanel({
@@ -67,6 +68,16 @@ export function McpManagementPanel({
               canManage={canManage}
               catalog={catalog}
               interfaceCapabilities={interfaceCapabilities}
+            />
+          )
+        },
+        {
+          key: 'third-party',
+          label: i18nText('settings', 'auto.mcp_third_party'),
+          children: (
+            <ThirdPartyMcpTab
+              canManage={canManage}
+              onImported={() => updateMcpManagementTabQuery('tools')}
             />
           )
         }

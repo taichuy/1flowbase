@@ -2,11 +2,16 @@ import {
   createConsoleMcpInstance,
   createConsoleMcpTool,
   createConsoleMcpToolBinding,
+  createConsoleMcpUpstreamConnection,
   deleteConsoleMcpClientCredential,
   deleteConsoleMcpGroup,
   deleteConsoleMcpInstance,
   deleteConsoleMcpTool,
   deleteConsoleMcpToolBinding,
+  deleteConsoleMcpUpstreamConnection,
+  deleteConsoleMcpUpstreamConnectionCredentials,
+  discoverConsoleMcpUpstreamConnection,
+  executeConsoleMcpProxyToolDebug,
   executeConsoleMcpToolDebug,
   exportConsoleMcpBundle,
   exportConsoleMcpCatalog,
@@ -16,28 +21,37 @@ import {
   fetchConsoleMcpClientCredential,
   fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
+  fetchConsoleMcpUpstreamConnections,
   importConsoleMcpBundle,
   importConsoleOfficialMcpBundle,
+  importConsoleMcpUpstreamTools,
   moveConsoleMcpGroup,
   previewConsoleMcpBundle,
   previewConsoleOfficialMcpBundle,
   refreshConsoleMcpToolDescription,
   saveConsoleMcpClientCredential,
+  saveConsoleMcpUpstreamConnectionCredentials,
+  testConsoleMcpUpstreamConnection,
   updateConsoleMcpInstance,
   updateConsoleMcpInstanceDiscoveryPolicy,
   updateConsoleMcpTool,
   updateConsoleMcpToolBinding,
+  updateConsoleMcpUpstreamConnection,
   upsertConsoleMcpGroup,
   type ConsoleMcpCatalog,
   type ConsoleMcpInterfaceCapability,
   type ConsoleOfficialMcpBundleBody,
   type ConsoleMcpToolDebugExecuteResponse,
+  type ExecuteConsoleMcpProxyToolDebugBody,
   type ExecuteConsoleMcpToolDebugBody,
   type ExportConsoleMcpBundleBody,
   type SaveConsoleMcpGroupBody,
   type SaveConsoleMcpInstanceBody,
   type SaveConsoleMcpToolBindingBody,
   type SaveConsoleMcpToolBody,
+  type SaveConsoleMcpUpstreamConnectionBody,
+  type SaveConsoleMcpUpstreamConnectionCredentialsBody,
+  type ImportConsoleMcpUpstreamToolsBody,
   type UpdateConsoleMcpInstanceDiscoveryPolicyBody,
   type UpdateConsoleMcpToolBody
 } from '@1flowbase/api-client';
@@ -74,12 +88,93 @@ export const settingsOfficialMcpBundlesQueryKey = [
   'official-bundles'
 ] as const;
 
+export const settingsMcpUpstreamConnectionsQueryKey = [
+  'settings',
+  'mcp-management',
+  'upstream-connections'
+] as const;
+
 export function fetchSettingsMcpCatalog() {
   return fetchConsoleMcpCatalog();
 }
 
 export function fetchSettingsMcpInterfaceCapabilities() {
   return fetchConsoleMcpInterfaceCapabilities({ bindable_only: false });
+}
+
+export function fetchSettingsMcpUpstreamConnections() {
+  return fetchConsoleMcpUpstreamConnections();
+}
+
+export function createSettingsMcpUpstreamConnection(
+  body: SaveConsoleMcpUpstreamConnectionBody,
+  csrfToken: string
+) {
+  return createConsoleMcpUpstreamConnection(body, csrfToken);
+}
+
+export function updateSettingsMcpUpstreamConnection(
+  connectionId: string,
+  body: SaveConsoleMcpUpstreamConnectionBody,
+  csrfToken: string
+) {
+  return updateConsoleMcpUpstreamConnection(connectionId, body, csrfToken);
+}
+
+export function deleteSettingsMcpUpstreamConnection(
+  connectionId: string,
+  csrfToken: string
+) {
+  return deleteConsoleMcpUpstreamConnection(connectionId, csrfToken);
+}
+
+export function saveSettingsMcpUpstreamConnectionCredentials(
+  connectionId: string,
+  body: SaveConsoleMcpUpstreamConnectionCredentialsBody,
+  csrfToken: string
+) {
+  return saveConsoleMcpUpstreamConnectionCredentials(
+    connectionId,
+    body,
+    csrfToken
+  );
+}
+
+export function deleteSettingsMcpUpstreamConnectionCredentials(
+  connectionId: string,
+  csrfToken: string
+) {
+  return deleteConsoleMcpUpstreamConnectionCredentials(connectionId, csrfToken);
+}
+
+export function testSettingsMcpUpstreamConnection(
+  connectionId: string,
+  csrfToken: string
+) {
+  return testConsoleMcpUpstreamConnection(connectionId, csrfToken);
+}
+
+export function discoverSettingsMcpUpstreamConnection(
+  connectionId: string,
+  csrfToken: string
+) {
+  return discoverConsoleMcpUpstreamConnection(connectionId, csrfToken);
+}
+
+export function importSettingsMcpUpstreamTools(
+  connectionId: string,
+  body: ImportConsoleMcpUpstreamToolsBody,
+  csrfToken: string
+) {
+  return importConsoleMcpUpstreamTools(connectionId, body, csrfToken);
+}
+
+export function executeSettingsMcpProxyToolDebug(
+  toolId: string,
+  body: ExecuteConsoleMcpProxyToolDebugBody,
+  csrfToken: string
+) {
+  return executeConsoleMcpProxyToolDebug(toolId, body, csrfToken);
 }
 
 export function fetchSettingsMcpInstanceDiscoveryPolicy(instanceId: string) {

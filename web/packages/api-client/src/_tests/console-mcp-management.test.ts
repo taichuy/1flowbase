@@ -268,7 +268,10 @@ describe('console-mcp-management client', () => {
             name: 'Get Runtime',
             short_description: 'Runtime profile',
             full_description: 'Read runtime profile',
-            interface_id: 'get_runtime_profile',
+            execution_target: {
+              kind: 'interface_wrapper',
+              interface_id: 'get_runtime_profile'
+            },
             parameter_schema: {},
             result_schema: {},
             input_mapping: {},
@@ -295,7 +298,10 @@ describe('console-mcp-management client', () => {
             des_id: 'des12345',
             short_description: 'Runtime profile',
             full_description: 'Read runtime profile',
-            interface_id: 'get_runtime_profile',
+            execution_target: {
+              kind: 'interface_wrapper',
+              interface_id: 'get_runtime_profile'
+            },
             parameter_schema: {},
             result_schema: {},
             input_mapping: {},

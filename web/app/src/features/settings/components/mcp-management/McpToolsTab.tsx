@@ -36,6 +36,8 @@ import {
 import type {
   ConsoleMcpCatalog,
   ConsoleMcpInterfaceCapability,
+  ConsoleMcpProxyInputMapping,
+  ConsoleMcpProxyOutputMapping,
   ConsoleMcpTool,
   SaveConsoleMcpToolBody
 } from '@1flowbase/api-client';
@@ -44,6 +46,7 @@ import {
   createSettingsMcpTool,
   deleteSettingsMcpTool,
   executeSettingsMcpToolDebug,
+  executeSettingsMcpProxyToolDebug,
   exportSettingsMcpCatalog,
   refreshSettingsMcpToolDescription,
   settingsMcpCatalogQueryKey,
@@ -72,6 +75,11 @@ import {
 } from './mcp-input-mapping-model';
 import { McpInputMappingEditor } from './McpInputMappingEditor';
 import { McpToolDebugPanel } from './McpToolDebugPanel';
+import {
+  McpProxyMappingEditor,
+  mcpProxyMappingIsValid
+} from './proxy/McpProxyMappingEditor';
+import { McpProxyToolDebugPanel } from './proxy/McpProxyToolDebugPanel';
 import { initialMcpToolsState, mcpToolsReducer } from './mcp-management-state';
 import {
   downloadMcpExportPackage,
@@ -85,9 +93,13 @@ type ToolFormValues = {
   name: string;
   short_description: string;
   full_description: string;
-  interface_id: string;
-  input_mapping: McpInputMappingValue;
-  output_mapping: Record<string, unknown>;
+  execution_target_kind: 'interface_wrapper' | 'mcp_proxy';
+  interface_id?: string;
+  upstream_connection_id?: string;
+  remote_tool_name?: string;
+  source_schema_hash?: string;
+  input_mapping: McpInputMappingValue | ConsoleMcpProxyInputMapping;
+  output_mapping: Record<string, unknown> | ConsoleMcpProxyOutputMapping;
   status: string;
 };
 const TOOL_FORM_STEPS = [
@@ -119,6 +131,18 @@ function schemaRecord(value: unknown): Record<string, unknown> {
 
 function interfaceOptionLabel(entry: ConsoleMcpInterfaceCapability) {
   return `${entry.method} ${entry.path}`;
+}
+
+function toolTypeLabel(tool: ConsoleMcpTool) {
+  return tool.execution_target.kind === 'mcp_proxy'
+    ? i18nText('settingsMcpManagement', 'auto.tool_type_mcp_proxy')
+    : i18nText('settingsMcpManagement', 'auto.tool_type_interface_wrapper');
+}
+
+function toolSourceLabel(tool: ConsoleMcpTool) {
+  return tool.execution_target.kind === 'mcp_proxy'
+    ? `${tool.execution_target.upstream_connection_id} / ${tool.execution_target.remote_tool_name}`
+    : tool.execution_target.interface_id;
 }
 
 function SelectedInterfaceOperationTitle({
@@ -196,6 +220,7 @@ export function McpToolsTab({
     editingTool,
     step,
     keyword,
+    executionTargetKind,
     interfaceId,
     riskLevel,
     status,
@@ -220,6 +245,11 @@ export function McpToolsTab({
   const setKeyword = useCallback(
     (value: SetStateAction<string>) =>
       dispatchToolsState({ type: 'setKeyword', value }),
+    []
+  );
+  const setExecutionTargetKind = useCallback(
+    (value: SetStateAction<string | undefined>) =>
+      dispatchToolsState({ type: 'setExecutionTargetKind', value }),
     []
   );
   const setInterfaceId = useCallback(
@@ -255,12 +285,12 @@ export function McpToolsTab({
     0
   );
   const setInputMappingValue = useCallback(
-    (mapping: McpInputMappingValue) =>
+    (mapping: ToolFormValues['input_mapping']) =>
       form.setFieldValue('input_mapping', mapping),
     [form]
   );
   const setOutputMappingValue = useCallback(
-    (schema: Record<string, unknown>) =>
+    (schema: ToolFormValues['output_mapping']) =>
       form.setFieldValue('output_mapping', schema),
     [form]
   );
@@ -293,14 +323,20 @@ export function McpToolsTab({
         width: 240,
         ellipsis: true,
         render: (_, record) =>
-          record.operation?.trim() ? record.operation : record.interface_id
+          record.operation?.trim() ? record.operation : toolSourceLabel(record)
       },
       {
-        key: 'interface_id',
-        title: 'interface_id',
-        dataIndex: 'interface_id',
+        key: 'execution_target_kind',
+        title: i18nText('settingsMcpManagement', 'auto.tool_type'),
+        width: 130,
+        render: (_, record) => <Tag>{toolTypeLabel(record)}</Tag>
+      },
+      {
+        key: 'execution_source',
+        title: i18nText('settingsMcpManagement', 'auto.execution_source'),
         width: 260,
-        ellipsis: true
+        ellipsis: true,
+        render: (_, record) => toolSourceLabel(record)
       },
       {
         key: 'risk_level',
@@ -337,43 +373,65 @@ export function McpToolsTab({
       if (!outputMappingValidRef.current) {
         throw new Error('output_mapping JSON');
       }
-      const selectedInterface = interfaceCapabilities.find(
-        (entry) => entry.interface_id === values.interface_id
-      );
-      const inputMapping = normalizeInputMapping(
-        form.getFieldValue('input_mapping')
-      );
-      const outputMapping = schemaRecord(form.getFieldValue('output_mapping'));
-      const body: SaveConsoleMcpToolBody = {
+      const common = {
         tool_id: editingTool ? editingTool.tool_id : values.tool_id,
         des_id: values.des_id,
         name: values.name,
         short_description: values.short_description,
         full_description: values.full_description,
-        interface_id: values.interface_id,
-        parameter_schema: selectedInterface?.parameter_schema ?? {},
-        result_schema: selectedInterface?.result_schema ?? {},
-        input_mapping: inputMapping,
-        output_mapping: outputMapping,
-        permission_code: selectedInterface?.permission_code ?? null,
-        risk_level: selectedInterface?.risk_level ?? 'medium',
         status: values.status
       };
-      if (editingTool) {
-        const updateBody = {
-          name: body.name,
-          des_id: body.des_id,
-          short_description: body.short_description,
-          full_description: body.full_description,
-          interface_id: body.interface_id,
-          parameter_schema: body.parameter_schema,
-          result_schema: body.result_schema,
-          input_mapping: body.input_mapping,
-          output_mapping: body.output_mapping,
-          permission_code: body.permission_code,
-          risk_level: body.risk_level,
-          status: body.status
+      let body: SaveConsoleMcpToolBody;
+      if (editingTool?.execution_target.kind === 'mcp_proxy') {
+        const inputMapping = form.getFieldValue(
+          'input_mapping'
+        ) as ConsoleMcpProxyInputMapping;
+        const outputMapping = form.getFieldValue(
+          'output_mapping'
+        ) as ConsoleMcpProxyOutputMapping;
+        if (
+          !mcpProxyMappingIsValid(inputMapping) ||
+          !mcpProxyMappingIsValid(outputMapping)
+        ) {
+          throw new Error(
+            i18nText('settingsMcpManagement', 'auto.proxy_path_invalid')
+          );
+        }
+        body = {
+          ...common,
+          execution_target: editingTool.execution_target,
+          parameter_schema: editingTool.parameter_schema,
+          result_schema: editingTool.result_schema,
+          input_mapping: inputMapping,
+          output_mapping: outputMapping,
+          permission_code: editingTool.permission_code,
+          risk_level: editingTool.risk_level
         };
+      } else {
+        const selectedInterface = interfaceCapabilities.find(
+          (entry) => entry.interface_id === values.interface_id
+        );
+        if (!selectedInterface || !values.interface_id) {
+          throw new Error('operation is required');
+        }
+        body = {
+          ...common,
+          execution_target: {
+            kind: 'interface_wrapper',
+            interface_id: values.interface_id
+          },
+          parameter_schema: selectedInterface.parameter_schema,
+          result_schema: selectedInterface.result_schema,
+          input_mapping: normalizeInputMapping(
+            form.getFieldValue('input_mapping')
+          ),
+          output_mapping: schemaRecord(form.getFieldValue('output_mapping')),
+          permission_code: selectedInterface.permission_code,
+          risk_level: selectedInterface.risk_level
+        };
+      }
+      if (editingTool) {
+        const { tool_id: _toolId, ...updateBody } = body;
         return updateSettingsMcpTool(
           editingTool.tool_id,
           updateBody,
@@ -476,11 +534,16 @@ export function McpToolsTab({
     });
   }
   const filteredTools = catalog.tools.filter((tool) => {
+    const source = toolSourceLabel(tool);
     const text =
-      `${tool.name} ${tool.tool_id} ${tool.operation} ${tool.interface_id}`.toLowerCase();
+      `${tool.name} ${tool.tool_id} ${tool.operation} ${source}`.toLowerCase();
     return (
       (!keyword || text.includes(keyword.toLowerCase())) &&
-      (!interfaceId || tool.interface_id === interfaceId) &&
+      (!executionTargetKind ||
+        tool.execution_target.kind === executionTargetKind) &&
+      (!interfaceId ||
+        (tool.execution_target.kind === 'interface_wrapper' &&
+          tool.execution_target.interface_id === interfaceId)) &&
       (!riskLevel || tool.risk_level === riskLevel) &&
       (!status || tool.status === status) &&
       (desIdRequired === undefined || tool.des_id_required === desIdRequired)
@@ -518,16 +581,36 @@ export function McpToolsTab({
                   short_description: record.short_description,
                   full_description: record.full_description,
                   des_id: record.des_id,
-                  interface_id: record.interface_id,
+                  execution_target_kind: record.execution_target.kind,
+                  interface_id:
+                    record.execution_target.kind === 'interface_wrapper'
+                      ? record.execution_target.interface_id
+                      : undefined,
+                  upstream_connection_id:
+                    record.execution_target.kind === 'mcp_proxy'
+                      ? record.execution_target.upstream_connection_id
+                      : undefined,
+                  remote_tool_name:
+                    record.execution_target.kind === 'mcp_proxy'
+                      ? record.execution_target.remote_tool_name
+                      : undefined,
+                  source_schema_hash:
+                    record.execution_target.kind === 'mcp_proxy'
+                      ? record.execution_target.source_schema_hash
+                      : undefined,
                   status: record.status
                 });
                 form.setFieldValue(
                   'input_mapping',
-                  normalizeInputMapping(record.input_mapping)
+                  record.execution_target.kind === 'mcp_proxy'
+                    ? record.input_mapping
+                    : normalizeInputMapping(record.input_mapping)
                 );
                 form.setFieldValue(
                   'output_mapping',
-                  schemaRecord(record.output_mapping)
+                  record.execution_target.kind === 'mcp_proxy'
+                    ? record.output_mapping
+                    : schemaRecord(record.output_mapping)
                 );
                 bumpSchemaEditorRevision();
                 setModalOpen(true);
@@ -584,6 +667,29 @@ export function McpToolsTab({
             placeholder="keyword / tool_id / operation"
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
+          />
+          <Select
+            allowClear
+            aria-label={i18nText('settingsMcpManagement', 'auto.tool_type')}
+            placeholder={i18nText('settingsMcpManagement', 'auto.tool_type')}
+            value={executionTargetKind}
+            options={[
+              {
+                label: i18nText(
+                  'settingsMcpManagement',
+                  'auto.tool_type_interface_wrapper'
+                ),
+                value: 'interface_wrapper'
+              },
+              {
+                label: i18nText(
+                  'settingsMcpManagement',
+                  'auto.tool_type_mcp_proxy'
+                ),
+                value: 'mcp_proxy'
+              }
+            ]}
+            onChange={setExecutionTargetKind}
           />
           <Select
             allowClear
@@ -658,6 +764,7 @@ export function McpToolsTab({
                 short_description: '',
                 full_description: '',
                 des_id: buildRandomToolIdSeed(),
+                execution_target_kind: 'interface_wrapper',
                 interface_id: undefined,
                 status: 'draft'
               });
@@ -851,121 +958,275 @@ export function McpToolsTab({
             </Form.Item>
           </div>
           <div hidden={step !== 'interface'}>
-            <Form.Item
-              name="interface_id"
-              label="operation"
-              rules={[{ required: true }]}
-            >
-              <Select
-                showSearch
-                optionFilterProp="label"
-                options={interfaceCapabilities.map((entry) => ({
-                  label: `${interfaceOptionLabel(entry)} - ${entry.interface_id}${
-                    entry.bindable ? '' : ` (${entry.disabled_reason})`
-                  }`,
-                  value: entry.interface_id,
-                  disabled: !entry.bindable
-                }))}
-              />
-            </Form.Item>
-            <Form.Item
-              noStyle
-              shouldUpdate={(previous, current) =>
-                previous.interface_id !== current.interface_id
-              }
-            >
-              {({ getFieldValue }) => {
-                const selectedInterface = interfaceCapabilities.find(
-                  (entry) =>
-                    entry.interface_id === getFieldValue('interface_id')
-                );
+            {editingTool?.execution_target.kind === 'mcp_proxy' ? (
+              <Descriptions bordered size="small" column={1}>
+                <Descriptions.Item
+                  label={i18nText(
+                    'settingsMcpManagement',
+                    'auto.upstream_connection_id'
+                  )}
+                >
+                  {editingTool.execution_target.upstream_connection_id}
+                </Descriptions.Item>
+                <Descriptions.Item
+                  label={i18nText(
+                    'settingsMcpManagement',
+                    'auto.upstream_remote_tool_name'
+                  )}
+                >
+                  {editingTool.execution_target.remote_tool_name}
+                </Descriptions.Item>
+                <Descriptions.Item label="source_schema_hash">
+                  {editingTool.execution_target.source_schema_hash}
+                </Descriptions.Item>
+              </Descriptions>
+            ) : (
+              <>
+                <Form.Item
+                  name="interface_id"
+                  label="operation"
+                  rules={[{ required: true }]}
+                >
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    options={interfaceCapabilities.map((entry) => ({
+                      label: `${interfaceOptionLabel(entry)} - ${entry.interface_id}${
+                        entry.bindable ? '' : ` (${entry.disabled_reason})`
+                      }`,
+                      value: entry.interface_id,
+                      disabled: !entry.bindable
+                    }))}
+                  />
+                </Form.Item>
+                <Form.Item
+                  noStyle
+                  shouldUpdate={(previous, current) =>
+                    previous.interface_id !== current.interface_id
+                  }
+                >
+                  {({ getFieldValue }) => {
+                    const selectedInterface = interfaceCapabilities.find(
+                      (entry) =>
+                        entry.interface_id === getFieldValue('interface_id')
+                    );
 
-                if (!selectedInterface) {
-                  return null;
-                }
+                    if (!selectedInterface) {
+                      return null;
+                    }
 
-                return (
-                  <Descriptions bordered size="small" column={1}>
-                    <Descriptions.Item label="operation">
-                      {interfaceOptionLabel(selectedInterface)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="operationId">
-                      {selectedInterface.interface_id}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="risk_level">
-                      {selectedInterface.risk_level}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="permission_code">
-                      {selectedInterface.permission_code ?? '-'}
-                    </Descriptions.Item>
-                  </Descriptions>
-                );
-              }}
-            </Form.Item>
+                    return (
+                      <Descriptions bordered size="small" column={1}>
+                        <Descriptions.Item label="operation">
+                          {interfaceOptionLabel(selectedInterface)}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="operationId">
+                          {selectedInterface.interface_id}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="risk_level">
+                          {selectedInterface.risk_level}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="permission_code">
+                          {selectedInterface.permission_code ?? '-'}
+                        </Descriptions.Item>
+                      </Descriptions>
+                    );
+                  }}
+                </Form.Item>
+              </>
+            )}
           </div>
           {step === 'input' ? (
             <div>
-              <Form.Item
-                noStyle
-                shouldUpdate={(previous, current) =>
-                  previous.interface_id !== current.interface_id ||
-                  previous.input_mapping !== current.input_mapping
-                }
-              >
-                {({ getFieldValue }) => {
-                  const selectedInterface = interfaceCapabilities.find(
-                    (entry) =>
-                      entry.interface_id === getFieldValue('interface_id')
-                  );
-
-                  return (
-                    <Flex justify="space-between" align="center" gap={12}>
-                      <SelectedInterfaceOperationTitle
-                        selectedInterface={selectedInterface}
-                      />
-                      <Button
-                        disabled={!selectedInterface}
-                        onClick={() =>
-                          applyInterfaceToMapping(
-                            'input_mapping',
-                            selectedInterface
-                          )
-                        }
-                      >
-                        {i18nText(
-                          'settings',
-                          'auto.mcp_get_interface_parameters'
-                        )}
-                      </Button>
-                    </Flex>
-                  );
-                }}
-              </Form.Item>
-              <Form.Item
-                noStyle
-                shouldUpdate={(previous, current) =>
-                  previous.input_mapping !== current.input_mapping
-                }
-              >
-                {({ getFieldValue }) => (
-                  <div className="mcp-management__input-mapping-editor">
-                    <McpInputMappingEditor
-                      resetKey={`input:${schemaEditorRevision}`}
-                      value={getFieldValue('input_mapping')}
+              {editingTool?.execution_target.kind === 'mcp_proxy' ? (
+                <Form.Item
+                  noStyle
+                  shouldUpdate={(previous, current) =>
+                    previous.input_mapping !== current.input_mapping
+                  }
+                >
+                  {({ getFieldValue }) => (
+                    <McpProxyMappingEditor
+                      direction="input"
+                      value={
+                        getFieldValue(
+                          'input_mapping'
+                        ) as ConsoleMcpProxyInputMapping
+                      }
                       onChange={setInputMappingValue}
                       onValidityChange={setInputMappingValidity}
                     />
-                  </div>
-                )}
-              </Form.Item>
+                  )}
+                </Form.Item>
+              ) : (
+                <>
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(previous, current) =>
+                      previous.interface_id !== current.interface_id ||
+                      previous.input_mapping !== current.input_mapping
+                    }
+                  >
+                    {({ getFieldValue }) => {
+                      const selectedInterface = interfaceCapabilities.find(
+                        (entry) =>
+                          entry.interface_id === getFieldValue('interface_id')
+                      );
+
+                      return (
+                        <Flex justify="space-between" align="center" gap={12}>
+                          <SelectedInterfaceOperationTitle
+                            selectedInterface={selectedInterface}
+                          />
+                          <Button
+                            disabled={!selectedInterface}
+                            onClick={() =>
+                              applyInterfaceToMapping(
+                                'input_mapping',
+                                selectedInterface
+                              )
+                            }
+                          >
+                            {i18nText(
+                              'settings',
+                              'auto.mcp_get_interface_parameters'
+                            )}
+                          </Button>
+                        </Flex>
+                      );
+                    }}
+                  </Form.Item>
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(previous, current) =>
+                      previous.input_mapping !== current.input_mapping
+                    }
+                  >
+                    {({ getFieldValue }) => (
+                      <div className="mcp-management__input-mapping-editor">
+                        <McpInputMappingEditor
+                          resetKey={`input:${schemaEditorRevision}`}
+                          value={getFieldValue('input_mapping')}
+                          onChange={setInputMappingValue}
+                          onValidityChange={setInputMappingValidity}
+                        />
+                      </div>
+                    )}
+                  </Form.Item>
+                </>
+              )}
             </div>
           ) : null}
           {step === 'output' ? (
             <div>
+              {editingTool?.execution_target.kind === 'mcp_proxy' ? (
+                <Form.Item
+                  noStyle
+                  shouldUpdate={(previous, current) =>
+                    previous.output_mapping !== current.output_mapping
+                  }
+                >
+                  {({ getFieldValue }) => (
+                    <McpProxyMappingEditor
+                      direction="output"
+                      value={
+                        getFieldValue(
+                          'output_mapping'
+                        ) as ConsoleMcpProxyOutputMapping
+                      }
+                      onChange={setOutputMappingValue}
+                      onValidityChange={setOutputMappingValidity}
+                    />
+                  )}
+                </Form.Item>
+              ) : (
+                <>
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(previous, current) =>
+                      previous.interface_id !== current.interface_id ||
+                      previous.output_mapping !== current.output_mapping
+                    }
+                  >
+                    {({ getFieldValue }) => {
+                      const selectedInterface = interfaceCapabilities.find(
+                        (entry) =>
+                          entry.interface_id === getFieldValue('interface_id')
+                      );
+
+                      return (
+                        <Flex justify="space-between" align="center" gap={12}>
+                          <SelectedInterfaceOperationTitle
+                            selectedInterface={selectedInterface}
+                          />
+                          <Button
+                            disabled={!selectedInterface}
+                            onClick={() =>
+                              applyInterfaceToMapping(
+                                'output_mapping',
+                                selectedInterface
+                              )
+                            }
+                          >
+                            {i18nText(
+                              'settings',
+                              'auto.mcp_get_interface_result'
+                            )}
+                          </Button>
+                        </Flex>
+                      );
+                    }}
+                  </Form.Item>
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(previous, current) =>
+                      previous.output_mapping !== current.output_mapping
+                    }
+                  >
+                    {({ getFieldValue }) => (
+                      <div className="mcp-management__schema-editor">
+                        <JsonSchemaInlineEditor
+                          fallbackRootType="object"
+                          resetKey={`output:${schemaEditorRevision}`}
+                          schema={schemaRecord(getFieldValue('output_mapping'))}
+                          structureMode="fields"
+                          onChange={setOutputMappingValue}
+                          onValidityChange={setOutputMappingValidity}
+                        />
+                      </div>
+                    )}
+                  </Form.Item>
+                </>
+              )}
+            </div>
+          ) : null}
+          {step === 'debug' ? (
+            editingTool?.execution_target.kind === 'mcp_proxy' ? (
+              <Form.Item
+                noStyle
+                shouldUpdate={(previous, current) =>
+                  previous.input_mapping !== current.input_mapping
+                }
+              >
+                {({ getFieldValue }) => (
+                  <McpProxyToolDebugPanel
+                    toolId={editingTool.tool_id}
+                    csrfToken={csrfToken}
+                    inputMapping={
+                      getFieldValue(
+                        'input_mapping'
+                      ) as ConsoleMcpProxyInputMapping
+                    }
+                    executeDebug={executeSettingsMcpProxyToolDebug}
+                  />
+                )}
+              </Form.Item>
+            ) : (
               <Form.Item
                 noStyle
                 shouldUpdate={(previous, current) =>
                   previous.interface_id !== current.interface_id ||
+                  previous.input_mapping !== current.input_mapping ||
                   previous.output_mapping !== current.output_mapping
                 }
               >
@@ -976,81 +1237,26 @@ export function McpToolsTab({
                   );
 
                   return (
-                    <Flex justify="space-between" align="center" gap={12}>
-                      <SelectedInterfaceOperationTitle
-                        selectedInterface={selectedInterface}
-                      />
-                      <Button
-                        disabled={!selectedInterface}
-                        onClick={() =>
-                          applyInterfaceToMapping(
-                            'output_mapping',
-                            selectedInterface
-                          )
+                    <div>
+                      <McpToolDebugPanel
+                        csrfToken={csrfToken}
+                        executeDebug={executeSettingsMcpToolDebug}
+                        interfaceId={getFieldValue('interface_id')}
+                        inputMapping={getFieldValue('input_mapping')}
+                        operationLabel={
+                          selectedInterface
+                            ? interfaceOptionLabel(selectedInterface)
+                            : null
                         }
-                      >
-                        {i18nText('settings', 'auto.mcp_get_interface_result')}
-                      </Button>
-                    </Flex>
+                        outputMapping={schemaRecord(
+                          getFieldValue('output_mapping')
+                        )}
+                      />
+                    </div>
                   );
                 }}
               </Form.Item>
-              <Form.Item
-                noStyle
-                shouldUpdate={(previous, current) =>
-                  previous.output_mapping !== current.output_mapping
-                }
-              >
-                {({ getFieldValue }) => (
-                  <div className="mcp-management__schema-editor">
-                    <JsonSchemaInlineEditor
-                      fallbackRootType="object"
-                      resetKey={`output:${schemaEditorRevision}`}
-                      schema={schemaRecord(getFieldValue('output_mapping'))}
-                      structureMode="fields"
-                      onChange={setOutputMappingValue}
-                      onValidityChange={setOutputMappingValidity}
-                    />
-                  </div>
-                )}
-              </Form.Item>
-            </div>
-          ) : null}
-          {step === 'debug' ? (
-            <Form.Item
-              noStyle
-              shouldUpdate={(previous, current) =>
-                previous.interface_id !== current.interface_id ||
-                previous.input_mapping !== current.input_mapping ||
-                previous.output_mapping !== current.output_mapping
-              }
-            >
-              {({ getFieldValue }) => {
-                const selectedInterface = interfaceCapabilities.find(
-                  (entry) =>
-                    entry.interface_id === getFieldValue('interface_id')
-                );
-
-                return (
-                  <div>
-                    <McpToolDebugPanel
-                      csrfToken={csrfToken}
-                      executeDebug={executeSettingsMcpToolDebug}
-                      interfaceId={getFieldValue('interface_id')}
-                      inputMapping={getFieldValue('input_mapping')}
-                      operationLabel={
-                        selectedInterface
-                          ? interfaceOptionLabel(selectedInterface)
-                          : null
-                      }
-                      outputMapping={schemaRecord(
-                        getFieldValue('output_mapping')
-                      )}
-                    />
-                  </div>
-                );
-              }}
-            </Form.Item>
+            )
           ) : null}
         </Form>
       </FixedHeightModal>
