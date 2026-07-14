@@ -4,6 +4,7 @@ mod auth_center_routes;
 mod auth_routes;
 mod config_tests;
 mod console_navigation_routes;
+mod console_policy_migration_tests;
 mod data_sources_routes;
 mod error_response_tests;
 mod file_management_routes;

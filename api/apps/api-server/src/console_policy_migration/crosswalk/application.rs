@@ -1,0 +1,178 @@
+use super::{LegacyGrantMappingSpec, legacy_mapping};
+
+pub(super) const APPLICATION_SIMPLE_OPERATIONS: &[&str] = &[
+    "applications.api.set_enabled",
+    "applications.create",
+    "applications.logs.export",
+    "applications.logs.import",
+    "applications.orchestration.template.export",
+    "applications.orchestration.template.import",
+    "applications.orchestration.version.restore",
+    "applications.publish",
+    "applications.run",
+    "settings_feature.access.system.applications",
+];
+
+pub(super) const DATA_MODEL_SIMPLE_OPERATIONS: &[&str] = &[
+    "data_sources.create",
+    "data_sources.defaults.update",
+    "data_sources.discover",
+    "data_sources.list",
+    "data_sources.map_to_model",
+    "data_sources.preview",
+    "data_sources.secret.rotate",
+    "data_sources.validate",
+    "model_definitions.advisor.view",
+    "model_definitions.create",
+    "model_definitions.delete",
+    "model_definitions.list",
+    "model_definitions.openapi.view",
+    "model_definitions.update",
+    "model_fields.create",
+    "model_fields.delete",
+    "model_fields.update",
+    "model_scope_grants.create",
+    "model_scope_grants.list",
+    "model_scope_grants.update",
+    "settings_feature.access.system.data-models",
+];
+
+pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
+    legacy_mapping(
+        "application.create.all",
+        &[
+            "applications.create",
+            "applications.orchestration.template.import",
+        ],
+        &[],
+        &[],
+    ),
+    legacy_mapping(
+        "application.create.own",
+        &[
+            "applications.create",
+            "applications.orchestration.template.import",
+        ],
+        &[],
+        &[],
+    ),
+    legacy_mapping(
+        "application.view.own",
+        &[
+            "applications.logs.export",
+            "applications.logs.import",
+            "applications.orchestration.template.export",
+            "applications.orchestration.version.restore",
+        ],
+        &["applications.view"],
+        &[],
+    ),
+    legacy_mapping(
+        "application.view.all",
+        &[
+            "applications.logs.export",
+            "applications.logs.import",
+            "applications.orchestration.template.export",
+            "applications.orchestration.version.restore",
+        ],
+        &[],
+        &["applications.view"],
+    ),
+    legacy_mapping(
+        "application.edit.own",
+        &["applications.api.set_enabled", "applications.publish"],
+        &["applications.update"],
+        &[],
+    ),
+    legacy_mapping(
+        "application.edit.all",
+        &["applications.api.set_enabled", "applications.publish"],
+        &[],
+        &["applications.update"],
+    ),
+    legacy_mapping("application.delete.own", &[], &["applications.delete"], &[]),
+    legacy_mapping("application.delete.all", &[], &[], &["applications.delete"]),
+    // #96ecab5d1 made these intersections explicit: a historical `use` grant must carry both
+    // the new simple operation and its historic view-row prerequisite.
+    legacy_mapping(
+        "application.use.own",
+        &["applications.run"],
+        &["applications.view"],
+        &[],
+    ),
+    legacy_mapping(
+        "application.use.all",
+        &["applications.run"],
+        &[],
+        &["applications.view"],
+    ),
+    legacy_mapping(
+        "external_data_source.view.all",
+        &["data_sources.list"],
+        &[],
+        &["data_sources.view"],
+    ),
+    legacy_mapping(
+        "external_data_source.view.own",
+        &[],
+        &["data_sources.view"],
+        &[],
+    ),
+    legacy_mapping(
+        "external_data_source.create.all",
+        &["data_sources.create"],
+        &[],
+        &[],
+    ),
+    legacy_mapping(
+        "external_data_source.configure.all",
+        &[
+            "data_sources.defaults.update",
+            "data_sources.discover",
+            "data_sources.map_to_model",
+            "data_sources.preview",
+            "data_sources.secret.rotate",
+            "data_sources.validate",
+        ],
+        &[],
+        &[],
+    ),
+    legacy_mapping(
+        "state_model.view.all",
+        &[
+            "agent_flow.data_model_options.list",
+            "model_definitions.advisor.view",
+            "model_definitions.list",
+            "model_definitions.openapi.view",
+            "model_scope_grants.list",
+        ],
+        &[],
+        &[],
+    ),
+    legacy_mapping(
+        "state_model.create.all",
+        &[
+            "model_definitions.create",
+            "model_fields.create",
+            "model_scope_grants.create",
+        ],
+        &[],
+        &[],
+    ),
+    legacy_mapping(
+        "state_model.edit.all",
+        &[
+            "model_definitions.update",
+            "model_fields.update",
+            "model_scope_grants.update",
+        ],
+        &[],
+        &[],
+    ),
+    legacy_mapping(
+        "state_model.delete.all",
+        &["model_definitions.delete", "model_fields.delete"],
+        &[],
+        &[],
+    ),
+];
