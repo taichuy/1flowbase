@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
+use access_control::{
+    FILE_TABLES_CREATE_OPERATION_ID, FILE_TABLES_DELETE_OPERATION_ID,
+    FILE_TABLES_LIST_OPERATION_ID, FILE_TABLES_STORAGE_BIND_OPERATION_ID,
+};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::{delete, get, put},
     Json, Router,
 };
 use control_plane::file_management::{
@@ -20,6 +23,9 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{
+        console_delete, console_get, console_put, ConsoleRouteAssembly,
+    },
     runtime_registry_sync::ApiRuntimeRegistrySync,
 };
 
@@ -75,15 +81,37 @@ fn to_response(result: FileTableWithStorageTitle) -> FileTableResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
         .route(
             "/settings/files/tables",
-            get(list_file_tables).post(create_file_table),
+            console_get(
+                list_file_tables,
+                ConsoleOperation(FILE_TABLES_LIST_OPERATION_ID.to_string()),
+            )
+            .post(
+                create_file_table,
+                ConsoleOperation(FILE_TABLES_CREATE_OPERATION_ID.to_string()),
+            ),
         )
-        .route("/settings/files/tables/:id", delete(delete_file_table))
+        .route(
+            "/settings/files/tables/:id",
+            console_delete(
+                delete_file_table,
+                ConsoleOperation(FILE_TABLES_DELETE_OPERATION_ID.to_string()),
+            ),
+        )
         .route(
             "/settings/files/tables/:id/binding",
-            put(bind_file_table_storage),
+            console_put(
+                bind_file_table_storage,
+                ConsoleOperation(FILE_TABLES_STORAGE_BIND_OPERATION_ID.to_string()),
+            ),
         )
 }
 

@@ -1,11 +1,11 @@
 use std::{collections::HashSet, sync::Arc};
 
+use access_control::{FILES_CONTENT_DOWNLOAD_OPERATION_ID, FILES_UPLOAD_OPERATION_ID};
 use axum::{
     body::Body,
     extract::{Multipart, Path, State},
     http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
     response::Response,
-    routing::{get, post},
     Json, Router,
 };
 use control_plane::ports::{FileManagementRepository, ModelDefinitionRepository};
@@ -22,6 +22,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -77,11 +78,26 @@ struct UploadFileActionInput {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/files/upload", post(upload_file))
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/files/upload",
+            console_post(
+                upload_file,
+                ConsoleOperation(FILES_UPLOAD_OPERATION_ID.to_string()),
+            ),
+        )
         .route(
             "/files/:file_table_id/records/:record_id/content",
-            get(read_file_content),
+            console_get(
+                read_file_content,
+                ConsoleOperation(FILES_CONTENT_DOWNLOAD_OPERATION_ID.to_string()),
+            ),
         )
 }
 

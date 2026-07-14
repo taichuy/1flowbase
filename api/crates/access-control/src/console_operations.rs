@@ -56,6 +56,16 @@ pub const MODEL_FIELDS_DELETE_OPERATION_ID: &str = "model_fields.delete";
 pub const MODEL_SCOPE_GRANTS_LIST_OPERATION_ID: &str = "model_scope_grants.list";
 pub const MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID: &str = "model_scope_grants.create";
 pub const MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID: &str = "model_scope_grants.update";
+pub const FILES_UPLOAD_OPERATION_ID: &str = "files.upload";
+pub const FILES_CONTENT_DOWNLOAD_OPERATION_ID: &str = "files.content.download";
+pub const FILE_STORAGES_LIST_OPERATION_ID: &str = "file_storages.list";
+pub const FILE_STORAGES_CREATE_OPERATION_ID: &str = "file_storages.create";
+pub const FILE_STORAGES_UPDATE_OPERATION_ID: &str = "file_storages.update";
+pub const FILE_STORAGES_DELETE_OPERATION_ID: &str = "file_storages.delete";
+pub const FILE_TABLES_LIST_OPERATION_ID: &str = "file_tables.list";
+pub const FILE_TABLES_CREATE_OPERATION_ID: &str = "file_tables.create";
+pub const FILE_TABLES_STORAGE_BIND_OPERATION_ID: &str = "file_tables.storage.bind";
+pub const FILE_TABLES_DELETE_OPERATION_ID: &str = "file_tables.delete";
 
 pub type ConsoleOperationOwner = SettingsFeatureOwner;
 
@@ -219,9 +229,35 @@ impl ConsoleOperationRegistry {
             compiled_resources.insert(resource.resource_code.clone(), resource);
         }
 
+        let registrations = registrations.into_iter().collect::<Vec<_>>();
+        for registration in &registrations {
+            validate_operation(registration, &settings_feature_ids, &compiled_resources)?;
+        }
+        let explicit_operation_routes = registrations
+            .iter()
+            .flat_map(|registration| registration.routes.iter())
+            .map(|route| (route.method.to_ascii_uppercase(), route_shape(&route.path)))
+            .collect::<BTreeSet<_>>();
+
         // Settings API ownership stays in the #1256 registry. This projection gives the
-        // unified inventory an operation identity without creating another route table.
+        // unified inventory an operation identity without creating another route table. Stable
+        // operation registrations replace their legacy feature-level route ownership atomically.
         for feature in &settings_features.inventory().features {
+            let routes = feature
+                .api_routes
+                .iter()
+                .filter(|route| {
+                    !explicit_operation_routes
+                        .contains(&(route.method.to_ascii_uppercase(), route_shape(&route.path)))
+                })
+                .map(|route| ConsoleRouteBinding {
+                    method: route.method.clone(),
+                    path: route.path.clone(),
+                })
+                .collect::<Vec<_>>();
+            if routes.is_empty() {
+                continue;
+            }
             let operation = ConsoleOperationRegistration {
                 operation_id: settings_feature_operation_id(&feature.feature_id),
                 owner: feature.owner.clone(),
@@ -230,14 +266,7 @@ impl ConsoleOperationRegistry {
                 label_ref: feature.console_surface.label_key.clone(),
                 description_ref: None,
                 order: feature.console_surface.order,
-                routes: feature
-                    .api_routes
-                    .iter()
-                    .map(|route| ConsoleRouteBinding {
-                        method: route.method.clone(),
-                        path: route.path.clone(),
-                    })
-                    .collect(),
+                routes,
                 authorization: ConsoleAuthorization::Simple,
             };
             for route in &operation.routes {
@@ -247,7 +276,6 @@ impl ConsoleOperationRegistry {
         }
 
         for registration in registrations {
-            validate_operation(&registration, &settings_feature_ids, &compiled_resources)?;
             compile_operation(registration, &mut operations, &mut route_owners)?;
         }
 

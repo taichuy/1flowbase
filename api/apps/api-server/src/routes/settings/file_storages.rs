@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
+use access_control::{
+    FILE_STORAGES_CREATE_OPERATION_ID, FILE_STORAGES_DELETE_OPERATION_ID,
+    FILE_STORAGES_LIST_OPERATION_ID, FILE_STORAGES_UPDATE_OPERATION_ID,
+};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::get,
     Json, Router,
 };
 use control_plane::file_management::{
@@ -19,6 +22,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
+    routes::console_route_assembly::{console_get, console_put, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -86,14 +90,34 @@ fn to_response(record: domain::FileStorageRecord) -> FileStorageResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
         .route(
             "/settings/files/storages",
-            get(list_file_storages).post(create_file_storage),
+            console_get(
+                list_file_storages,
+                ConsoleOperation(FILE_STORAGES_LIST_OPERATION_ID.to_string()),
+            )
+            .post(
+                create_file_storage,
+                ConsoleOperation(FILE_STORAGES_CREATE_OPERATION_ID.to_string()),
+            ),
         )
         .route(
             "/settings/files/storages/:id",
-            axum::routing::put(update_file_storage).delete(delete_file_storage),
+            console_put(
+                update_file_storage,
+                ConsoleOperation(FILE_STORAGES_UPDATE_OPERATION_ID.to_string()),
+            )
+            .delete(
+                delete_file_storage,
+                ConsoleOperation(FILE_STORAGES_DELETE_OPERATION_ID.to_string()),
+            ),
         )
 }
 

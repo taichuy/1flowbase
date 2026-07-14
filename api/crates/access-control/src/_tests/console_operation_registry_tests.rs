@@ -85,6 +85,58 @@ fn applications_settings_registry() -> SettingsFeatureRegistry {
 }
 
 #[test]
+fn explicit_operation_claim_only_removes_its_route_from_legacy_feature_projection() {
+    let mut feature = settings_feature(
+        "system.files",
+        "GET",
+        "/api/console/settings/files/storages",
+    );
+    feature.api_routes.push(SettingsApiRoute {
+        method: "POST".to_string(),
+        path: "/api/console/settings/files/storages".to_string(),
+    });
+    let settings_registry =
+        SettingsFeatureRegistry::compile([feature]).expect("settings fixture must compile");
+
+    let registry = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [operation(
+            "file_storages.create",
+            ConsolePolicyGroup::SettingsFeature("system.files".to_string()),
+            ConsoleAuthorization::Simple,
+            vec![route("POST", "/api/console/settings/files/storages")],
+        )],
+        [],
+    )
+    .expect("partial stable operation claim must compile");
+
+    let legacy = registry
+        .inventory()
+        .operations
+        .iter()
+        .find(|operation| operation.operation_id == "settings_feature.access.system.files")
+        .expect("unclaimed legacy route must remain projected");
+    assert_eq!(
+        legacy.routes,
+        vec![route("GET", "/api/console/settings/files/storages")]
+    );
+    assert_eq!(
+        registry
+            .access_for_console_route("POST", "/api/console/settings/files/storages")
+            .unwrap()
+            .operation_id,
+        "file_storages.create"
+    );
+    assert_eq!(
+        registry
+            .access_for_console_route("GET", "/api/console/settings/files/storages")
+            .unwrap()
+            .operation_id,
+        "settings_feature.access.system.files"
+    );
+}
+
+#[test]
 fn ac_001_core_and_host_extension_compile_one_operation_resource_route_inventory() {
     let settings_registry = applications_settings_registry();
     let mut host_scan = operation(

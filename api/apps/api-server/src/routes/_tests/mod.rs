@@ -1,1 +1,2 @@
 mod console_route_assembly_tests;
+mod file_console_route_assembly_tests;
