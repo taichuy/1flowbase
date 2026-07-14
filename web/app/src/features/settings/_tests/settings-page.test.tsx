@@ -801,7 +801,7 @@ describe('SettingsPage', () => {
       settingsConsoleNavigation(['data-models', 'members'])
     );
     authenticateWithPermissions([
-      'api_reference.view.all',
+      'settings_feature.access.system.docs',
       'user.view.all'
     ]);
     renderApp('/settings');
@@ -820,7 +820,7 @@ describe('SettingsPage', () => {
       settingsConsoleNavigation(['data-models', 'members'])
     );
     authenticateWithPermissions([
-      'api_reference.view.all',
+      'settings_feature.access.system.docs',
       'user.view.all'
     ]);
 
@@ -840,7 +840,7 @@ describe('SettingsPage', () => {
       new Error('registry unavailable')
     );
     authenticateWithPermissions([
-      'api_reference.view.all'
+      'settings_feature.access.system.docs'
     ]);
 
     renderApp('/settings/docs');
@@ -859,7 +859,7 @@ describe('SettingsPage', () => {
       new Promise(() => undefined)
     );
     authenticateWithPermissions([
-      'api_reference.view.all'
+      'settings_feature.access.system.docs'
     ]);
 
     renderApp('/settings/docs');
@@ -1548,9 +1548,9 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument();
   });
 
-  test('shows 系统运行 when system_runtime.view.all is present', async () => {
+  test('shows 系统运行 when its SettingsFeature is present', async () => {
     authenticateWithPermissions([
-      'system_runtime.view.all'
+      'settings_feature.access.system.system-runtime'
     ]);
 
     renderApp('/settings/system-runtime');

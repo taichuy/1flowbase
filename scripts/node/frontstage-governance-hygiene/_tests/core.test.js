@@ -151,28 +151,18 @@ alter table frontstage_page_visibility_rules
 
   writeFile(
     repoRoot,
-    'api/crates/access-control/src/settings_routes.rs',
+    'api/crates/access-control/src/settings_features.rs',
     healthy
-      ? `const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
-  SettingsRouteSpec {
-    route_id: "settings.docs",
-    surface_key: "docs",
+      ? `SettingsFeatureRegistration {
+  console_surface: SettingsFeatureConsoleSurface {
     path: "/settings/docs",
-    label_key: "auto.api_documentation",
-    visibility_permission_code: "settings_route.visible.settings.docs",
-    api_scopes: DOCS_API_SCOPES,
   },
-];`
-      : `const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
-  SettingsRouteSpec {
-    route_id: "settings.frontstage-page",
-    surface_key: "frontstage-page",
+}`
+      : `SettingsFeatureRegistration {
+  console_surface: SettingsFeatureConsoleSurface {
     path: "/frontstage/pages/$pageId",
-    label_key: "auto.frontstage_page",
-    visibility_permission_code: "settings_route.visible.settings.frontstage-page",
-    api_scopes: FRONTSTAGE_API_SCOPES,
   },
-];`
+}`
   );
 
   writeFile(

@@ -750,6 +750,8 @@ where
         if actor.is_root
             || actor.has_permission("mcp_management.view.all")
             || actor.has_permission("mcp_management.manage.all")
+            || actor
+                .has_permission(access_control::SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_PERMISSION)
         {
             return Ok(actor);
         }
@@ -764,7 +766,11 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        if actor.is_root || actor.has_permission("mcp_management.manage.all") {
+        if actor.is_root
+            || actor.has_permission("mcp_management.manage.all")
+            || actor
+                .has_permission(access_control::SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_PERMISSION)
+        {
             return Ok(actor);
         }
         Err(ControlPlaneError::PermissionDenied("permission_denied").into())

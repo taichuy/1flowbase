@@ -187,7 +187,7 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
     router
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
-            middleware::require_settings_route_permission::require_settings_route_permission,
+            middleware::require_settings_feature_permission::require_settings_feature_permission,
         ))
         .with_state(state)
 }

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use access_control::ensure_permission;
 use axum::{
     extract::{Path, Query, State},
     http::HeaderMap,
@@ -103,8 +102,6 @@ pub async fn get_docs_catalog(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<DocsCatalog>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_permission(&context.actor, "api_reference.view.all")
-        .map_err(ControlPlaneError::PermissionDenied)?;
 
     let mut catalog = state.api_docs.catalog().clone();
     let models = runtime_data_model_docs::ready_models(&state, context.user.id).await?;
@@ -122,8 +119,6 @@ pub async fn get_category_operations(
     Path(category_id): Path<String>,
 ) -> Result<Json<ApiSuccess<DocsCatalogCategoryOperationsPage>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_permission(&context.actor, "api_reference.view.all")
-        .map_err(ControlPlaneError::PermissionDenied)?;
 
     if category_id == runtime_data_model_docs::DATA_MODEL_DOCS_CATEGORY_ID {
         let models = runtime_data_model_docs::ready_models(&state, context.user.id).await?;
@@ -158,8 +153,6 @@ pub async fn get_category_openapi(
     Path(category_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_permission(&context.actor, "api_reference.view.all")
-        .map_err(ControlPlaneError::PermissionDenied)?;
 
     if category_id == runtime_data_model_docs::DATA_MODEL_DOCS_CATEGORY_ID {
         let models = runtime_data_model_docs::ready_models(&state, context.user.id).await?;
@@ -186,8 +179,6 @@ pub async fn get_operation_openapi(
     Path(operation_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_permission(&context.actor, "api_reference.view.all")
-        .map_err(ControlPlaneError::PermissionDenied)?;
 
     if let Some((model_id, kind)) = parse_data_model_docs_operation_id(&operation_id)? {
         let Some(model) =
@@ -221,8 +212,6 @@ pub async fn get_data_model_openapi(
     Path(model_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_permission(&context.actor, "api_reference.view.all")
-        .map_err(ControlPlaneError::PermissionDenied)?;
 
     let model_id =
         Uuid::parse_str(&model_id).map_err(|_| ControlPlaneError::InvalidInput("model_id"))?;

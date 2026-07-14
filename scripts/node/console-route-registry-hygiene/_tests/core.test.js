@@ -23,45 +23,32 @@ function createFixtureRepo() {
 
   writeFile(
     repoRoot,
-    'api/crates/access-control/src/settings_routes.rs',
-    `const DOCS_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
-    scope_id: "console.docs",
-    path: "/api/console/docs/",
-    path_match: SettingsRouteApiPathMatch::Prefix,
-    methods: SettingsRouteApiMethods::ReadOnly,
-}];
+    'api/crates/access-control/src/settings_features.rs',
+    `pub const SYSTEM_DOCS_SETTINGS_FEATURE_ID: &str = "system.docs";
+pub const SYSTEM_RUNTIME_SETTINGS_FEATURE_ID: &str = "system.system-runtime";
 
-const SYSTEM_RUNTIME_API_SCOPES: &[SettingsRouteApiScope] = &[SettingsRouteApiScope {
-    scope_id: "console.system",
-    path: "/api/console/system/",
-    path_match: SettingsRouteApiPathMatch::Prefix,
-    methods: SettingsRouteApiMethods::ReadOnly,
-}];
-
-const SETTINGS_ROUTE_SPECS: &[SettingsRouteSpec] = &[
-    SettingsRouteSpec {
+pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
+  vec![
+    SettingsFeatureRegistration {
+        feature_id: SYSTEM_DOCS_SETTINGS_FEATURE_ID.to_string(),
         route_id: "settings.docs",
         surface_key: "docs",
         path: "/settings/docs",
         label_key: "auto.api_documentation",
         order: 100,
-        visibility_permission_code: "settings_route.visible.settings.docs",
-        legacy_visibility: SettingsRouteLegacyVisibility::Authenticated,
-        implied_permissions: &[],
-        api_scopes: DOCS_API_SCOPES,
+        api_routes: settings_api_routes(&[("GET", "/api/console/docs/catalog")]),
     },
-    SettingsRouteSpec {
+    SettingsFeatureRegistration {
+        feature_id: SYSTEM_RUNTIME_SETTINGS_FEATURE_ID.to_string(),
         route_id: "settings.system-runtime",
         surface_key: "system-runtime",
         path: "/settings/system-runtime",
         label_key: "auto.system_runtime",
         order: 200,
-        visibility_permission_code: "settings_route.visible.settings.system-runtime",
-        legacy_visibility: SettingsRouteLegacyVisibility::Authenticated,
-        implied_permissions: &[],
-        api_scopes: SYSTEM_RUNTIME_API_SCOPES,
+        api_routes: settings_api_routes(&[("GET", "/api/console/system/runtime-profile")]),
     },
-];`
+  ]
+}`
   );
 
   writeFile(
@@ -114,24 +101,21 @@ export function fetchSettingsSystemRuntimeProfile() {
 
   writeFile(
     repoRoot,
-    'api/apps/api-server/src/middleware/require_settings_route_permission.rs',
-    `use access_control::settings_route_permissions_for_console_request;
-
-fn verify(context: Context, required_permissions: Vec<String>) -> bool {
-  required_permissions
-    .iter()
-    .any(|permission_code| context.actor.has_permission(permission_code))
+    'api/apps/api-server/src/middleware/require_settings_feature_permission.rs',
+    `fn verify(state: State, context: Context, method: &str, path: &str) -> bool {
+  let _rule = state.settings_feature_registry.access_rule(method, path);
+  context.actor.has_permission(&permission_code)
 }`
   );
 
   writeFile(
     repoRoot,
     'api/apps/api-server/src/lib.rs',
-    `use crate::middleware::require_settings_route_permission;
+    `use crate::middleware::require_settings_feature_permission;
 use axum::middleware::from_fn_with_state;
 
 fn console_router() {
-  let _middleware = from_fn_with_state(state.clone(), require_settings_route_permission);
+  let _middleware = from_fn_with_state(state.clone(), require_settings_feature_permission);
 }`
   );
 

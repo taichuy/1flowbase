@@ -241,6 +241,42 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
         vec![("GET", "/api/console/settings/applications")]
     );
     assert_eq!(
+        routes("system.docs"),
+        vec![
+            ("GET", "/api/console/docs/catalog"),
+            (
+                "GET",
+                "/api/console/docs/categories/{category_id}/openapi.json",
+            ),
+            (
+                "GET",
+                "/api/console/docs/categories/{category_id}/operations",
+            ),
+            (
+                "GET",
+                "/api/console/docs/operations/{operation_id}/openapi.json",
+            ),
+        ]
+    );
+    assert_eq!(
+        routes("system.api-key-authentication"),
+        vec![
+            ("GET", "/api/console/user-api-keys"),
+            ("GET", "/api/console/user-api-keys/role-options"),
+            ("POST", "/api/console/user-api-keys"),
+            ("POST", "/api/console/user-api-keys/{api_key_id}/revoke",),
+        ]
+    );
+    assert_eq!(
+        routes("system.system-runtime"),
+        vec![
+            ("GET", "/api/console/system/release-status"),
+            ("GET", "/api/console/system/runtime-profile"),
+        ]
+    );
+    assert!(routes("system.mcp-management").contains(&("GET", "/api/console/mcp/catalog")));
+    assert!(routes("system.mcp-management").contains(&("POST", "/api/console/mcp/instances")));
+    assert_eq!(
         routes("system.files"),
         vec![
             ("DELETE", "/api/console/settings/files/storages/{id}"),

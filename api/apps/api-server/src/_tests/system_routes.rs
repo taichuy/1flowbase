@@ -8,7 +8,7 @@ async fn runtime_profile_merges_same_host_services() {
     let (app, cookie) = test_app_with_runtime_profiles(
         sample_api_profile("host_same"),
         Some(sample_runner_profile("host_same")),
-        &["system_runtime.view.all"],
+        &["settings_feature.access.system.system-runtime"],
         Some("zh_Hans"),
     )
     .await;
@@ -33,7 +33,9 @@ async fn runtime_profile_merges_same_host_services() {
 
 #[tokio::test]
 async fn runtime_profile_reports_runner_unreachable_without_failing_request() {
-    let (app, cookie) = test_app_with_runtime_profile_error(&["system_runtime.view.all"]).await;
+    let (app, cookie) =
+        test_app_with_runtime_profile_error(&["settings_feature.access.system.system-runtime"])
+            .await;
 
     let payload = get_json(&app, "/api/console/system/runtime-profile", &cookie).await;
     assert_eq!(

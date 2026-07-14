@@ -10,7 +10,7 @@ const BACKEND_SETTINGS_ROUTES_FILE = path.join(
   'crates',
   'access-control',
   'src',
-  'settings_routes.rs'
+  'settings_features.rs'
 );
 const FRONTEND_SETTINGS_SECTIONS_FILE = path.join(
   'web',
@@ -35,7 +35,7 @@ const SETTINGS_MIDDLEWARE_FILE = path.join(
   'api-server',
   'src',
   'middleware',
-  'require_settings_route_permission.rs'
+  'require_settings_feature_permission.rs'
 );
 const API_SERVER_LIB_FILE = path.join(
   'api',
@@ -56,6 +56,7 @@ const SECTION_API_MODULES = {
   'data-models': ['data-models.ts'],
   'mcp-management': ['mcp-management.ts'],
   'model-providers': ['model-providers.ts', 'plugins.ts'],
+  applications: ['application-management.ts'],
   members: ['members.ts', 'roles.ts'],
   roles: ['permissions.ts', 'roles.ts'],
 };
@@ -97,77 +98,52 @@ function parseQuotedStrings(source) {
   ));
 }
 
-function parseApiScopeConstants(source) {
-  const scopesByConst = new Map();
-  const pattern = /const\s+([A-Z0-9_]+):\s*&\[\s*SettingsRouteApiScope\s*\]\s*=\s*&\[(.*?)\];/gs;
-
-  for (const match of source.matchAll(pattern)) {
-    const scopes = [];
-    const scopePattern = /SettingsRouteApiScope\s*\{(.*?)\}/gs;
-
-    for (const scopeMatch of match[2].matchAll(scopePattern)) {
-      const body = scopeMatch[1];
-      const scopeId = body.match(/scope_id:\s*"([^"]+)"/)?.[1] ?? null;
-      const scopePath = body.match(/path:\s*"([^"]+)"/)?.[1] ?? null;
-
-      if (scopeId && scopePath) {
-        scopes.push({ scopeId, path: scopePath });
-      }
-    }
-
-    scopesByConst.set(match[1], scopes);
-  }
-
-  return scopesByConst;
-}
-
-function extractSettingsRouteSpecsBody(source) {
-  const match = source.match(
-    /const\s+SETTINGS_ROUTE_SPECS:\s*&\[\s*SettingsRouteSpec\s*\]\s*=\s*&\[(.*?)\];/s
-  );
-
-  if (!match) {
-    throw new Error('Unable to locate SETTINGS_ROUTE_SPECS in settings_routes.rs');
-  }
-
-  return match[1];
-}
-
 function parseBackendSettingsRoutes(source) {
-  const apiScopes = parseApiScopeConstants(source);
-  const specsBody = extractSettingsRouteSpecsBody(source);
+  const featureIds = new Map(
+    Array.from(
+      source.matchAll(/pub const\s+([A-Z0-9_]+_ID):\s*&str\s*=\s*"([^"]+)";/gu),
+      (match) => [match[1], match[2]]
+    )
+  );
   const routes = [];
-  const specPattern = /SettingsRouteSpec\s*\{(.*?)\}\s*,/gs;
+  const blocks = source.split('SettingsFeatureRegistration {').slice(1);
 
-  for (const match of specsBody.matchAll(specPattern)) {
-    const body = match[1];
+  for (const body of blocks) {
+    const featureIdConst = body.match(/feature_id:\s*([A-Z0-9_]+_ID)\.to_string\(\)/u)?.[1] ?? null;
+    if (!featureIdConst || !featureIds.has(featureIdConst)) {
+      continue;
+    }
+    const featureId = featureIds.get(featureIdConst);
     const routeId = body.match(/route_id:\s*"([^"]+)"/)?.[1] ?? null;
     const surfaceKey = body.match(/surface_key:\s*"([^"]+)"/)?.[1] ?? null;
     const routePath = body.match(/path:\s*"([^"]+)"/)?.[1] ?? null;
     const labelKey = body.match(/label_key:\s*"([^"]+)"/)?.[1] ?? null;
-    const visibilityPermissionCode =
-      body.match(/visibility_permission_code:\s*"([^"]+)"/)?.[1] ?? null;
-    const apiScopesConst = body.match(/api_scopes:\s*([A-Z0-9_]+)/)?.[1] ?? null;
+    const apiRoutesBody = body.match(/api_routes:\s*settings_api_routes\(&\[(.*?)\]\)/su)?.[1] ?? '';
+    const apiRoutes = Array.from(
+      apiRoutesBody.matchAll(/\(\s*"([A-Z]+)"\s*,\s*"([^"]+)"\s*,?\s*\)/gu),
+      (match) => ({ method: match[1], path: match[2] })
+    );
 
     if (
-      !routeId
+      !featureId
+      || !routeId
       || !surfaceKey
       || !routePath
       || !labelKey
-      || !visibilityPermissionCode
     ) {
       throw new Error(
-        'Unable to parse a SettingsRouteSpec entry from settings_routes.rs'
+        'Unable to parse a SettingsFeatureRegistration entry from settings_features.rs'
       );
     }
 
     routes.push({
+      featureId,
       routeId,
       surfaceKey,
       path: routePath,
       labelKey,
-      visibilityPermissionCode,
-      apiScopes: apiScopesConst ? (apiScopes.get(apiScopesConst) ?? []) : [],
+      permissionCode: `settings_feature.access.${featureId}`,
+      apiRoutes,
     });
   }
 
@@ -279,15 +255,15 @@ function collectSettingsMiddlewareState(
   return {
     middlewarePath,
     apiServerLibPath,
-    helperImported: /settings_route_permissions_for_console_request/u.test(
+    registryLookup: /settings_feature_registry\.access_rule/u.test(
       middlewareSource
     ),
     actorPermissionCheck:
-      /\.any\(\s*\|permission_code\|\s*context\.actor\.has_permission\(permission_code\)\s*\)/u.test(
+      /context\.actor\.has_permission\(&permission_code\)/u.test(
         middlewareSource
       ),
     mountedOnConsoleRouter:
-      /require_settings_route_permission/u.test(apiServerLibSource)
+      /require_settings_feature_permission/u.test(apiServerLibSource)
       && /from_fn_with_state/u.test(apiServerLibSource),
   };
 }
@@ -345,7 +321,7 @@ function evaluateConsoleRouteRegistryHygiene({ inventory }) {
   const seenRouteIds = new Set();
   const seenSurfaceKeys = new Set();
   const seenPaths = new Set();
-  const seenVisibilityCodes = new Set();
+  const seenFeatureIds = new Set();
 
   for (const route of inventory.backendRoutes) {
     if (!route.routeId.startsWith('settings.')) {
@@ -355,6 +331,17 @@ function evaluateConsoleRouteRegistryHygiene({ inventory }) {
         file: BACKEND_SETTINGS_ROUTES_FILE,
         message: `settings route_id "${route.routeId}" must start with "settings."`,
       }));
+    }
+
+    if (seenFeatureIds.has(route.featureId)) {
+      findings.push(createFinding({
+        rule: 'settings-feature-id-duplicate',
+        sectionKey: route.surfaceKey,
+        file: BACKEND_SETTINGS_ROUTES_FILE,
+        message: `duplicate settings feature_id "${route.featureId}" found in backend registry`,
+      }));
+    } else {
+      seenFeatureIds.add(route.featureId);
     }
 
     if (!route.path.startsWith('/settings/')) {
@@ -399,38 +386,13 @@ function evaluateConsoleRouteRegistryHygiene({ inventory }) {
       seenPaths.add(route.path);
     }
 
-    if (seenVisibilityCodes.has(route.visibilityPermissionCode)) {
+    if (route.apiRoutes.length === 0) {
       findings.push(createFinding({
-        rule: 'settings-route-visibility-code-duplicate',
+        rule: 'settings-feature-api-route-missing',
         sectionKey: route.surfaceKey,
         file: BACKEND_SETTINGS_ROUTES_FILE,
         message:
-          `duplicate settings visibility permission "${route.visibilityPermissionCode}" `
-          + 'found in backend registry',
-      }));
-    } else {
-      seenVisibilityCodes.add(route.visibilityPermissionCode);
-    }
-
-    const expectedVisibilityCode = `settings_route.visible.${route.routeId}`;
-    if (route.visibilityPermissionCode !== expectedVisibilityCode) {
-      findings.push(createFinding({
-        rule: 'settings-route-visibility-code-convention',
-        sectionKey: route.surfaceKey,
-        file: BACKEND_SETTINGS_ROUTES_FILE,
-        message:
-          `visibility permission "${route.visibilityPermissionCode}" should match `
-          + `"${expectedVisibilityCode}"`,
-      }));
-    }
-
-    if (route.apiScopes.length === 0) {
-      findings.push(createFinding({
-        rule: 'settings-route-api-scope-missing',
-        sectionKey: route.surfaceKey,
-        file: BACKEND_SETTINGS_ROUTES_FILE,
-        message:
-          `settings route "${route.surfaceKey}" must declare at least one owned API scope`,
+          `settings feature "${route.featureId}" must declare at least one owned API route`,
       }));
     }
   }
@@ -557,13 +519,13 @@ function evaluateConsoleRouteRegistryHygiene({ inventory }) {
     }
   }
 
-  if (!inventory.middlewareState.helperImported) {
+  if (!inventory.middlewareState.registryLookup) {
     findings.push(createFinding({
-      rule: 'settings-route-middleware-helper-missing',
+      rule: 'settings-feature-middleware-registry-lookup-missing',
       sectionKey: 'console-middleware',
       file: inventory.middlewareState.middlewarePath,
       message:
-        'settings route middleware must resolve required permissions via settings_route_permissions_for_console_request',
+        'settings feature middleware must resolve ownership through the compiled registry',
     }));
   }
 
@@ -573,7 +535,7 @@ function evaluateConsoleRouteRegistryHygiene({ inventory }) {
       sectionKey: 'console-middleware',
       file: inventory.middlewareState.middlewarePath,
       message:
-        'settings route middleware must require at least one matching settings route visibility permission',
+        'settings feature middleware must require the compiled feature permission',
     }));
   }
 
@@ -583,7 +545,7 @@ function evaluateConsoleRouteRegistryHygiene({ inventory }) {
       sectionKey: 'console-router',
       file: inventory.middlewareState.apiServerLibPath,
       message:
-        'console router must mount require_settings_route_permission so bound settings APIs are gated server-side',
+        'console router must mount require_settings_feature_permission so bound settings APIs are gated server-side',
     }));
   }
 
@@ -693,8 +655,8 @@ function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
     'Usage: node scripts/node/tooling.js console-route-registry-hygiene '
       + '[--max-findings <n>]\n'
-      + 'Checks backend settings route specs, frontend settings registration, '
-      + 'settings API modules, and console middleware gating.\n'
+      + 'Checks backend SettingsFeature registrations, frontend settings registration, '
+      + 'settings API modules, and compiled-registry middleware gating.\n'
   );
 }
 

@@ -14,8 +14,8 @@ match_when:
   - 调整 Settings API 权限或角色设置授权
   - 实现 HostExtension console surface 或注册 CLI
 created_at: 2026-07-13 16
-updated_at: 2026-07-13 23
-last_verified_at: 2026-07-13 23
+updated_at: 2026-07-14 11
+last_verified_at: 2026-07-14 11
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/1256
@@ -32,6 +32,7 @@ scope:
 - 用户确认当前团队尚未正式使用该功能，但已发布开源项目的外部部署可能存在历史授权；必须迁移旧 permission/grant rows，运行时切换后不保留双读、legacy alias 或 fallback。
 - Issue #1256 阶段 1 registry foundation 已提交；用户进一步确认 `/api/console` 权限模块尚未稳定，旧接口允许按新 contract 重命名、拆分和删除。
 - Settings API ownership 按设置用例归属：例如成员页的角色选项和角色绑定属于成员设置能力，即使底层读取 role repository，也不要求另一个角色设置 feature 或 business action。
+- 用户在 2026-07-14 11 确认旧“路由页面”授权已无产品价值，要求直接完成最终切换；API 文档、API Key、系统运行、MCP 管理迁入 SettingsFeature，删除 `settings_route.visible.*` 运行时、隐含权限展开和角色页旧 tab。
 
 ## 为什么这样做
 
@@ -44,4 +45,4 @@ scope:
 
 ## 截止日期
 
-- 未指定；下一步是更新 Issue / ADR 后恢复 TDD，实现 API cutover、历史 grant 迁移、CLI、前端与独立 QA。
+- 2026-07-14 已完成剩余四个 Core 设置项的 API cutover、历史 grant 迁移和前端旧 tab 删除；CLI/CI 的后续演进仍以 Issue #1256 的独立验收点为准。

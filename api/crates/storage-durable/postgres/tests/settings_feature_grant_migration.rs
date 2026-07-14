@@ -29,6 +29,18 @@ const DATA_MODELS_FEATURE: &str = "settings_feature.access.system.data-models";
 const MODEL_PROVIDERS_SETTINGS_MIGRATION_VERSION: i64 = 20260714190000;
 const MODEL_PROVIDERS_VISIBILITY: &str = "settings_route.visible.settings.model-providers";
 const MODEL_PROVIDERS_FEATURE: &str = "settings_feature.access.system.model-providers";
+// Final cutover removes every remaining settings_route definition.
+const FINAL_SETTINGS_MIGRATION_VERSION: i64 = 20260714213000;
+const DOCS_VISIBILITY: &str = "settings_route.visible.settings.docs";
+const API_KEY_AUTHENTICATION_VISIBILITY: &str =
+    "settings_route.visible.settings.api-key-authentication";
+const SYSTEM_RUNTIME_VISIBILITY: &str = "settings_route.visible.settings.system-runtime";
+const MCP_MANAGEMENT_VISIBILITY: &str = "settings_route.visible.settings.mcp-management";
+const DOCS_FEATURE: &str = "settings_feature.access.system.docs";
+const API_KEY_AUTHENTICATION_FEATURE: &str =
+    "settings_feature.access.system.api-key-authentication";
+const SYSTEM_RUNTIME_FEATURE: &str = "settings_feature.access.system.system-runtime";
+const MCP_MANAGEMENT_FEATURE: &str = "settings_feature.access.system.mcp-management";
 const MODEL_PROVIDER_ALL_PERMISSIONS: &[&str] = &[
     "state_model.view.all",
     "state_model.view.own",
@@ -210,6 +222,27 @@ fn before_model_providers_settings_feature_migrator() -> Migrator {
 async fn model_providers_settings_historical_pool() -> PgPool {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     before_model_providers_settings_feature_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    pool
+}
+
+fn before_final_settings_feature_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < FINAL_SETTINGS_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+async fn final_settings_historical_pool() -> PgPool {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    before_final_settings_feature_migrator()
         .run(&pool)
         .await
         .unwrap();
@@ -467,6 +500,46 @@ async fn seed_model_providers_settings_historical_permissions(pool: &PgPool) {
             code.trim_start_matches("settings_route.visible."),
         )
         .await;
+    }
+}
+
+async fn seed_final_settings_historical_permissions(pool: &PgPool) {
+    for (code, resource, action, scope) in [
+        (
+            DOCS_VISIBILITY,
+            "settings_route",
+            "visible",
+            "settings.docs",
+        ),
+        (
+            API_KEY_AUTHENTICATION_VISIBILITY,
+            "settings_route",
+            "visible",
+            "settings.api-key-authentication",
+        ),
+        (
+            SYSTEM_RUNTIME_VISIBILITY,
+            "settings_route",
+            "visible",
+            "settings.system-runtime",
+        ),
+        (
+            MCP_MANAGEMENT_VISIBILITY,
+            "settings_route",
+            "visible",
+            "settings.mcp-management",
+        ),
+        ("api_reference.view.all", "api_reference", "view", "all"),
+        ("system_runtime.view.all", "system_runtime", "view", "all"),
+        ("mcp_management.view.all", "mcp_management", "view", "all"),
+        (
+            "mcp_management.manage.all",
+            "mcp_management",
+            "manage",
+            "all",
+        ),
+    ] {
+        insert_permission(pool, code, resource, action, scope).await;
     }
 }
 
@@ -1094,4 +1167,74 @@ async fn model_providers_settings_migration_rolls_back_when_legacy_cleanup_fails
             .await
             .unwrap();
     assert_eq!(new_definition_count, 0);
+}
+
+#[tokio::test]
+async fn final_settings_migration_reconciles_all_remaining_legacy_grants() {
+    let pool = final_settings_historical_pool().await;
+    let store = PgControlPlaneStore::new(pool.clone());
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "Final settings migration")
+        .await
+        .unwrap();
+    seed_final_settings_historical_permissions(&pool).await;
+
+    let docs_role = insert_role(&pool, workspace.id, "legacy_docs").await;
+    let api_key_role = insert_role(&pool, workspace.id, "legacy_api_key").await;
+    let system_runtime_role = insert_role(&pool, workspace.id, "legacy_system_runtime").await;
+    let mcp_role = insert_role(&pool, workspace.id, "legacy_mcp").await;
+    grant(&pool, docs_role, workspace.id, DOCS_VISIBILITY).await;
+    grant(
+        &pool,
+        api_key_role,
+        workspace.id,
+        API_KEY_AUTHENTICATION_VISIBILITY,
+    )
+    .await;
+    grant(
+        &pool,
+        system_runtime_role,
+        workspace.id,
+        SYSTEM_RUNTIME_VISIBILITY,
+    )
+    .await;
+    grant(&pool, mcp_role, workspace.id, MCP_MANAGEMENT_VISIBILITY).await;
+
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+    assert_eq!(
+        permission_codes(&pool, docs_role).await,
+        BTreeSet::from([
+            DOCS_FEATURE.to_string(),
+            "api_reference.view.all".to_string(),
+        ])
+    );
+    assert_eq!(
+        permission_codes(&pool, api_key_role).await,
+        BTreeSet::from([API_KEY_AUTHENTICATION_FEATURE.to_string()])
+    );
+    assert_eq!(
+        permission_codes(&pool, system_runtime_role).await,
+        BTreeSet::from([
+            SYSTEM_RUNTIME_FEATURE.to_string(),
+            "system_runtime.view.all".to_string(),
+        ])
+    );
+    assert_eq!(
+        permission_codes(&pool, mcp_role).await,
+        BTreeSet::from([
+            MCP_MANAGEMENT_FEATURE.to_string(),
+            "mcp_management.manage.all".to_string(),
+            "mcp_management.view.all".to_string(),
+        ])
+    );
+
+    let legacy_definition_count: i64 = sqlx::query_scalar(
+        "select count(*) from permission_definitions where code like 'settings_route.visible.%'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(legacy_definition_count, 0);
 }

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use domain::ActorContext;
 use serde::Serialize;
 
-use crate::{core_settings_feature_registrations, settings_route_specs};
+use crate::core_settings_feature_registrations;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -163,29 +163,6 @@ pub fn builtin_console_navigation() -> ConsoleNavigation {
         .iter()
         .map(|spec| permission_binding(*spec))
         .collect::<Vec<_>>();
-
-    for spec in settings_route_specs() {
-        route_definitions.push(ConsoleRouteDefinition {
-            route_id: spec.route_id.to_string(),
-            surface_key: spec.surface_key.to_string(),
-            path: spec.path.to_string(),
-            surface_kind: ConsoleSurfaceKind::System,
-        });
-        navigation_items.push(ConsoleNavigationItem {
-            item_id: spec.route_id.to_string(),
-            route_id: spec.route_id.to_string(),
-            parent_item_id: Some("settings".to_string()),
-            label_key: spec.label_key.to_string(),
-            navigation_slot: ConsoleNavigationSlot::Settings,
-            order: spec.order,
-        });
-        permission_bindings.push(ConsolePermissionBinding {
-            binding_id: format!("{}.access", spec.route_id),
-            route_id: spec.route_id.to_string(),
-            permission_codes: vec![spec.visibility_permission_code.to_string()],
-            requirement: ConsolePermissionRequirement::AnyPermission,
-        });
-    }
 
     for registration in core_settings_feature_registrations() {
         let permission_code = registration.permission_code();

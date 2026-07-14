@@ -609,16 +609,22 @@ async fn settings_roles_feature_grants_roles_api_without_legacy_role_permission(
         &app,
         &root_cookie,
         &root_csrf,
-        "settings-route-role-member",
+        "settings-feature-role-member",
         "temp-pass",
     )
     .await;
-    create_role(&app, &root_cookie, &root_csrf, "settings_route_roles_only").await;
+    create_role(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "settings_feature_roles_only",
+    )
+    .await;
     replace_role_permissions(
         &app,
         &root_cookie,
         &root_csrf,
-        "settings_route_roles_only",
+        "settings_feature_roles_only",
         &["settings_feature.access.system.roles"],
     )
     .await;
@@ -627,11 +633,11 @@ async fn settings_roles_feature_grants_roles_api_without_legacy_role_permission(
         &root_cookie,
         &root_csrf,
         &member_id,
-        &["settings_route_roles_only"],
+        &["settings_feature_roles_only"],
     )
     .await;
     let (member_cookie, _) =
-        login_and_capture_cookie(&app, "settings-route-role-member", "temp-pass").await;
+        login_and_capture_cookie(&app, "settings-feature-role-member", "temp-pass").await;
 
     let roles_response = app
         .clone()
@@ -650,7 +656,7 @@ async fn settings_roles_feature_grants_roles_api_without_legacy_role_permission(
 }
 
 #[tokio::test]
-async fn legacy_role_permission_without_settings_route_permission_is_forbidden_on_roles_api() {
+async fn legacy_role_permission_without_settings_feature_is_forbidden_on_roles_api() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let member_id = create_member(

@@ -32,26 +32,26 @@ fn permission_catalog_seeds_migrated_settings_feature_codes() {
         .map(|permission| permission.code)
         .collect::<Vec<_>>();
 
-    assert!(codes.contains(&"settings_route.visible.settings.api-key-authentication".to_string()));
     assert!(codes.contains(&"settings_feature.access.system.roles".to_string()));
     assert!(codes.contains(&"settings_feature.access.system.members".to_string()));
     for feature in [
+        "docs",
+        "api-key-authentication",
         "auth-center",
+        "system-runtime",
         "host-infrastructure",
         "memory-observation",
         "applications",
         "files",
         "data-models",
+        "mcp-management",
         "model-providers",
     ] {
         assert!(codes.contains(&format!("settings_feature.access.system.{feature}")));
-        assert!(!codes.contains(&format!("settings_route.visible.settings.{feature}")));
     }
-    assert!(!codes.contains(&"settings_route.visible.settings.roles".to_string()));
-    assert!(!codes.contains(&"settings_route.visible.settings.members".to_string()));
-    assert!(!codes.contains(&"settings_route.visible.settings.files".to_string()));
-    assert!(!codes.contains(&"settings_route.visible.settings.data-models".to_string()));
-    assert!(!codes.contains(&"settings_route.visible.settings.model-providers".to_string()));
+    assert!(!codes
+        .iter()
+        .any(|code| code.starts_with("settings_route.visible.")));
 }
 
 #[test]
@@ -83,13 +83,13 @@ fn member_role_includes_frontstage_design_permission_by_default() {
 }
 
 #[test]
-fn member_role_keeps_api_key_authentication_settings_route_permission_by_default() {
+fn member_role_keeps_api_key_authentication_settings_feature_by_default() {
     let templates = builtin_role_templates();
     let member = templates.iter().find(|role| role.code == "member").unwrap();
 
     assert!(member
         .permissions
-        .contains(&"settings_route.visible.settings.api-key-authentication".to_string()));
+        .contains(&"settings_feature.access.system.api-key-authentication".to_string()));
     assert!(!member
         .permissions
         .contains(&"settings_feature.access.system.roles".to_string()));

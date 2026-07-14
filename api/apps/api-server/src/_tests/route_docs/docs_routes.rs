@@ -405,7 +405,7 @@ async fn docs_routes_allow_root_and_granted_members() {
         &root_cookie,
         &root_csrf,
         "docs_viewer",
-        &["api_reference.view.all"],
+        &["settings_feature.access.system.docs"],
     )
     .await;
     replace_member_roles(&app, &root_cookie, &root_csrf, &member_id, &["docs_viewer"]).await;

@@ -556,7 +556,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     );
     assert_eq!(
         runtime_profile_interface["permission_code"].as_str(),
-        Some("system_runtime.view.all")
+        Some("settings_feature.access.system.system-runtime")
     );
     assert_eq!(runtime_profile_interface["bindable"].as_bool(), Some(true));
     assert!(
@@ -666,7 +666,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     );
     assert_eq!(
         create_tool_payload["data"]["permission_code"].as_str(),
-        Some("system_runtime.view.all")
+        Some("settings_feature.access.system.system-runtime")
     );
     assert_eq!(
         create_tool_payload["data"]["risk_level"].as_str(),

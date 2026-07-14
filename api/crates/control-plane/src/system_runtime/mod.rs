@@ -27,7 +27,10 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        if !actor.has_permission("system_runtime.view.all") {
+        if !actor.has_permission("system_runtime.view.all")
+            && !actor
+                .has_permission(access_control::SYSTEM_SYSTEM_RUNTIME_SETTINGS_FEATURE_PERMISSION)
+        {
             return Err(ControlPlaneError::PermissionDenied("system_runtime.view.all").into());
         }
 

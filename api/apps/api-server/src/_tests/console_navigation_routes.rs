@@ -235,23 +235,29 @@ migrations: []
 }
 
 #[tokio::test]
-async fn console_navigation_route_uses_settings_route_visibility_permissions() {
+async fn console_navigation_route_uses_settings_feature_permissions() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let member_id = create_member(
         &app,
         &root_cookie,
         &root_csrf,
-        "settings-route-member",
+        "settings-feature-member",
         "temp-pass",
     )
     .await;
-    create_role(&app, &root_cookie, &root_csrf, "settings_route_roles_only").await;
+    create_role(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "settings_feature_roles_only",
+    )
+    .await;
     replace_role_permissions(
         &app,
         &root_cookie,
         &root_csrf,
-        "settings_route_roles_only",
+        "settings_feature_roles_only",
         &["settings_feature.access.system.roles"],
     )
     .await;
@@ -260,11 +266,11 @@ async fn console_navigation_route_uses_settings_route_visibility_permissions() {
         &root_cookie,
         &root_csrf,
         &member_id,
-        &["settings_route_roles_only"],
+        &["settings_feature_roles_only"],
     )
     .await;
     let (member_cookie, _) =
-        login_and_capture_cookie(&app, "settings-route-member", "temp-pass").await;
+        login_and_capture_cookie(&app, "settings-feature-member", "temp-pass").await;
 
     let (status, payload) = get_console_navigation(&app, &member_cookie).await;
 

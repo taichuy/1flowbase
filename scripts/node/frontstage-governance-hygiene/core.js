@@ -33,7 +33,7 @@ const BACKEND_SETTINGS_ROUTES_FILE = path.join(
   'crates',
   'access-control',
   'src',
-  'settings_routes.rs'
+  'settings_features.rs'
 );
 const FRONTEND_SETTINGS_SECTIONS_FILE = path.join(
   'web',
@@ -283,20 +283,17 @@ function extractRustMethodBody(source, methodName) {
   return source.slice(openingBraceIndex + 1, closingBraceIndex);
 }
 
-function extractSettingsRouteSpecsBody(source) {
-  const match = source.match(
-    /const\s+SETTINGS_ROUTE_SPECS:\s*&\[\s*SettingsRouteSpec\s*\]\s*=\s*&\[(.*?)\];/su
-  );
-  return match?.[1] ?? null;
-}
-
 function parseBackendSettingsRoutePaths(source) {
-  const specsBody = extractSettingsRouteSpecsBody(source);
-  if (!specsBody) {
+  const paths = Array.from(
+    source.matchAll(
+      /console_surface:\s*SettingsFeatureConsoleSurface\s*\{.*?\bpath:\s*"([^"]+)"/gsu
+    ),
+    (match) => match[1]
+  );
+  if (paths.length === 0) {
     return null;
   }
-
-  return Array.from(specsBody.matchAll(/\bpath:\s*"([^"]+)"/gu), (match) => match[1]);
+  return paths;
 }
 
 function extractFrontendSettingsSectionsBody(source) {

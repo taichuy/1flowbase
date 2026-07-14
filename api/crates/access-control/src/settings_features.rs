@@ -11,12 +11,17 @@ pub const SETTINGS_FEATURE_INVENTORY_SCHEMA_VERSION: &str =
 pub const SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID: &str = "system.applications";
 pub const SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.applications";
+pub const SYSTEM_API_KEY_AUTHENTICATION_SETTINGS_FEATURE_ID: &str = "system.api-key-authentication";
+pub const SYSTEM_API_KEY_AUTHENTICATION_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.api-key-authentication";
 pub const SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID: &str = "system.auth-center";
 pub const SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.auth-center";
 pub const SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID: &str = "system.data-models";
 pub const SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.data-models";
+pub const SYSTEM_DOCS_SETTINGS_FEATURE_ID: &str = "system.docs";
+pub const SYSTEM_DOCS_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.access.system.docs";
 pub const SYSTEM_FILES_SETTINGS_FEATURE_ID: &str = "system.files";
 pub const SYSTEM_FILES_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.access.system.files";
 pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_ID: &str = "system.host-infrastructure";
@@ -28,11 +33,17 @@ pub const SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION: &str =
 pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_ID: &str = "system.members";
 pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.members";
+pub const SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_ID: &str = "system.mcp-management";
+pub const SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.mcp-management";
 pub const SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_ID: &str = "system.model-providers";
 pub const SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.model-providers";
 pub const SYSTEM_ROLES_SETTINGS_FEATURE_ID: &str = "system.roles";
 pub const SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.access.system.roles";
+pub const SYSTEM_SYSTEM_RUNTIME_SETTINGS_FEATURE_ID: &str = "system.system-runtime";
+pub const SYSTEM_SYSTEM_RUNTIME_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.system-runtime";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -91,6 +102,82 @@ impl SettingsFeatureRegistration {
 
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_DOCS_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.docs".to_string(),
+                surface_key: "docs".to_string(),
+                path: "/settings/docs".to_string(),
+                label_key: "auto.api_documentation".to_string(),
+                order: 100,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/docs/catalog"),
+                (
+                    "GET",
+                    "/api/console/docs/categories/{category_id}/operations",
+                ),
+                (
+                    "GET",
+                    "/api/console/docs/categories/{category_id}/openapi.json",
+                ),
+                (
+                    "GET",
+                    "/api/console/docs/operations/{operation_id}/openapi.json",
+                ),
+            ]),
+        },
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_API_KEY_AUTHENTICATION_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.api-key-authentication".to_string(),
+                surface_key: "api-key-authentication".to_string(),
+                path: "/settings/api-key-authentication".to_string(),
+                label_key: "auto.api_key_authentication".to_string(),
+                order: 200,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/user-api-keys"),
+                ("POST", "/api/console/user-api-keys"),
+                ("GET", "/api/console/user-api-keys/role-options"),
+                (
+                    "POST",
+                    "/api/console/user-api-keys/{api_key_id}/revoke",
+                ),
+            ]),
+        },
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_SYSTEM_RUNTIME_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.system-runtime".to_string(),
+                surface_key: "system-runtime".to_string(),
+                path: "/settings/system-runtime".to_string(),
+                label_key: "auto.system_runtime".to_string(),
+                order: 400,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/system/runtime-profile"),
+                ("GET", "/api/console/system/release-status"),
+            ]),
+        },
         SettingsFeatureRegistration {
             feature_id: SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
@@ -513,6 +600,91 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            feature_id: SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.mcp-management".to_string(),
+                surface_key: "mcp-management".to_string(),
+                path: "/settings/mcp-management".to_string(),
+                label_key: "auto.mcp_management".to_string(),
+                order: 1100,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/mcp/catalog"),
+                ("GET", "/api/console/mcp/interface-capabilities"),
+                ("GET", "/api/console/mcp/list"),
+                ("GET", "/api/console/mcp/export"),
+                ("GET", "/api/console/mcp/instances"),
+                ("POST", "/api/console/mcp/instances"),
+                ("GET", "/api/console/mcp/instances/export"),
+                ("PUT", "/api/console/mcp/instances/{instance_id}"),
+                ("DELETE", "/api/console/mcp/instances/{instance_id}"),
+                (
+                    "GET",
+                    "/api/console/mcp/instances/{instance_id}/client-credential",
+                ),
+                (
+                    "PUT",
+                    "/api/console/mcp/instances/{instance_id}/client-credential",
+                ),
+                (
+                    "DELETE",
+                    "/api/console/mcp/instances/{instance_id}/client-credential",
+                ),
+                (
+                    "POST",
+                    "/api/console/mcp/instances/{instance_id}/groups",
+                ),
+                (
+                    "DELETE",
+                    "/api/console/mcp/instances/{instance_id}/groups",
+                ),
+                (
+                    "POST",
+                    "/api/console/mcp/instances/{instance_id}/groups/move",
+                ),
+                (
+                    "POST",
+                    "/api/console/mcp/instances/{instance_id}/tool-bindings",
+                ),
+                ("PUT", "/api/console/mcp/tool-bindings/{binding_id}"),
+                ("DELETE", "/api/console/mcp/tool-bindings/{binding_id}"),
+                ("GET", "/api/console/mcp/tools"),
+                ("POST", "/api/console/mcp/tools"),
+                ("GET", "/api/console/mcp/tools/{tool_id}"),
+                ("PUT", "/api/console/mcp/tools/{tool_id}"),
+                ("DELETE", "/api/console/mcp/tools/{tool_id}"),
+                (
+                    "POST",
+                    "/api/console/mcp/tools/{tool_id}/description/refresh",
+                ),
+                (
+                    "POST",
+                    "/api/console/mcp/tools/{tool_id}/description-check",
+                ),
+                ("POST", "/api/console/mcp/debug/execute"),
+                (
+                    "GET",
+                    "/api/console/mcp/instances/{instance_id}/discovery-policy",
+                ),
+                (
+                    "PUT",
+                    "/api/console/mcp/instances/{instance_id}/discovery-policy",
+                ),
+                ("GET", "/api/console/mcp/bundles/official"),
+                ("POST", "/api/console/mcp/bundles/preview-official"),
+                ("POST", "/api/console/mcp/bundles/import-official"),
+                ("POST", "/api/console/mcp/bundles/export"),
+                ("POST", "/api/console/mcp/bundles/preview-upload"),
+                ("POST", "/api/console/mcp/bundles/import-upload"),
+            ]),
+        },
+        SettingsFeatureRegistration {
             feature_id: SYSTEM_ROLES_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -672,14 +844,14 @@ impl SettingsFeatureRegistry {
                 self.access_rules
                     .iter()
                     .find_map(|((route_method, route_path), rule)| {
-                        (route_method == &method && settings_route_matches(route_path, path))
+                        (route_method == &method && settings_api_route_matches(route_path, path))
                             .then_some(rule)
                     })
             })
     }
 }
 
-fn settings_route_matches(route_template: &str, request_path: &str) -> bool {
+fn settings_api_route_matches(route_template: &str, request_path: &str) -> bool {
     let template_segments = route_template.split('/').collect::<Vec<_>>();
     let request_segments = request_path.split('/').collect::<Vec<_>>();
     template_segments.len() == request_segments.len()

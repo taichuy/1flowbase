@@ -53,7 +53,8 @@ export function SettingsPage({
   const canManageHostInfrastructure =
     isRoot || permissionSet.has('plugin_config.configure.all');
   const canManageMcpManagement =
-    isRoot || permissionSet.has('mcp_management.manage.all');
+    isRoot ||
+    permissionSet.has('settings_feature.access.system.mcp-management');
   const sectionAccess = useMemo(
     () => ({
       isRoot,

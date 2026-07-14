@@ -83,12 +83,6 @@ const RESOURCE_MAP: Record<
   },
   state_model: { tab: i18nText("settings", "auto.system_management"), label: i18nText("settings", "auto.model_supplier_state_model"), order: 4 },
 
-  settings_route: {
-    tab: i18nText("settings", "auto.routing_page"),
-    label: i18nText("settings", "auto.settings_page_settings_route"),
-    order: 2
-  },
-
   flow: { tab: i18nText("settings", "auto.agent_application"), label: i18nText("settings", "auto.workflow"), order: 1 },
   publish_endpoint: {
     tab: i18nText("settings", "auto.agent_application"),
@@ -97,7 +91,7 @@ const RESOURCE_MAP: Record<
   }
 };
 
-const TAB_ORDER = [i18nText("settings", "auto.basic_configuration"), i18nText("settings", "auto.system_management"), i18nText("settings", "auto.routing_page"), i18nText("settings", "auto.agent_application"), i18nText("settings", "auto.others")];
+const TAB_ORDER = [i18nText("settings", "auto.basic_configuration"), i18nText("settings", "auto.system_management"), i18nText("settings", "auto.agent_application"), i18nText("settings", "auto.others")];
 const ROLE_PERMISSION_GENERAL_TAB = i18nText("settings", "auto.basic_general");
 const ROLE_TABLE_GENERAL_TAB = i18nText("settings", "auto.table_general_configuration");
 const ROLE_TABLE_SINGLE_TAB = i18nText("settings", "auto.table_single_configuration");

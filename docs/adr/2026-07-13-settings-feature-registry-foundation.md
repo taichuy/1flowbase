@@ -1,6 +1,6 @@
 # ADR: SettingsFeature 注册与授权基础
 
-- 状态：Accepted（阶段 1 foundation）
+- 状态：Accepted（生产授权切换完成）
 - 日期：2026-07-13
 - 关联 Issue：[GitHub Issue #1256](https://github.com/taichuy/1flowbase/issues/1256)
 - 替代关系：仓库当前没有可核对的同主题 ADR；本文不引用历史 `docs/superpowers` 计划或规格。
@@ -9,7 +9,7 @@
 
 现有 `SettingsRouteSpec` 把 console surface、`settings_route.visible.*`、隐式业务权限扩张与路径 scope 混在一起，请求中未命中 scope 时还会继续放行。Core 与 HostExtension 也没有共同的 Settings API ownership contract，无法生成可重复验证的编译清单。
 
-阶段 1 只冻结后端注册基础，不切换生产授权链。PostgreSQL 历史 grant 迁移、完整 Core route assembly、请求 middleware、CLI、前端和质量门禁由后续阶段完成。
+初始阶段先冻结后端注册基础，随后完成 PostgreSQL 历史 grant 迁移、Core route assembly、请求 middleware、前端角色授权和质量门禁切换。
 
 ## Decision
 
@@ -32,7 +32,7 @@ SettingsFeatureRegistration
 
 设置专用 API 使用真实变体 `AccessRule::SettingsFeature(feature_id)`。`Public`、`Authenticated` 与普通业务 `Action { resource, action }` 保持独立；不得用空 action、bool、页面 URL 推断或 `AnyFeature` 表达差异。
 
-阶段 1 仅编译 access rule，不接入 api-server middleware。后续 route assembly 必须显式声明 Settings API；`/api/console/settings/**` 未注册 route 必须 403，普通 console business API 继续执行 `Action` 语义。
+api-server middleware 只消费编译后的 access rule。route assembly 必须显式声明 Settings API；`/api/console/settings/**` 未注册 route 必须 403，普通 console business API 继续执行 `Action` 语义。
 
 ### Settings use-case ownership
 
@@ -59,18 +59,12 @@ Core owner 固定由 Boot Core 激活；HostExtension owner 的 active/inactive 
 
 ## Migration and cutover boundary
 
-PostgreSQL 历史迁移属于阶段 2。切换运行时前必须从所有受支持旧 schema/fixture 确定性迁移 `settings_route.visible.*` 及其 implied business permissions，并逐角色证明 `effective_before(role) Δ effective_after(role) = ∅`。
-
-在上述证据完成前：
-
-- 不删除现有数据库 grant 读取与迁移信息；
-- 不让新 middleware 成为生产唯一授权链；
-- 不保留永久双读、legacy alias 或 allow-by-default fallback 作为上线方案。
+PostgreSQL 历史迁移从所有受支持旧 schema/fixture 确定性迁移 `settings_route.visible.*` 及其 implied business permissions，并逐角色验证有效授权。迁移完成后删除旧 definitions/grants；运行时不再读取旧 grant、不再展开 implied permissions，也不保留双读、legacy alias 或 allow-by-default fallback。
 
 若任一旧 grant 无法确定映射、任一 Settings API 无法唯一归属，或解决方案需要 `AnyFeature` / 扩大业务权限 contract，立即停止切换并回到 Issue 对齐。
 
 ## Consequences
 
-- 阶段 1 可独立验证 contract、稳定 inventory 与 fail-closed 编译规则。
-- AC-001/AC-002 获得 foundation 级单元证据，但完整 Core boot/route integration 仍未结算。
-- AC-003、AC-011 以及 PostgreSQL migration、middleware cutover 均明确未完成，不能由本 ADR 或本阶段 commit 声称通过。
+- SettingsFeature contract、稳定 inventory 与 fail-closed 编译规则成为唯一设置授权基础。
+- Core boot/route integration、单 feature 授权正反例和 PostgreSQL migration fixture 提供切换证据。
+- `settings_route.visible.*`、旧 middleware 分支和角色页“路由页面”分类已退出运行时。

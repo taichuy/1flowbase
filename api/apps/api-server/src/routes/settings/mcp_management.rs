@@ -1610,18 +1610,23 @@ fn operation_permission_code(method: &str, path: &str) -> Option<String> {
         return permission_code(access_control::SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION);
     }
     if path.starts_with("/api/console/docs/") {
-        return permission_code("api_reference.view.all");
+        return permission_code(access_control::SYSTEM_DOCS_SETTINGS_FEATURE_PERMISSION);
+    }
+    if path.starts_with("/api/console/user-api-keys") {
+        return permission_code(
+            access_control::SYSTEM_API_KEY_AUTHENTICATION_SETTINGS_FEATURE_PERMISSION,
+        );
     }
     if path.starts_with("/api/console/system/runtime-profile")
         || path.starts_with("/api/console/system/release-status")
     {
-        return permission_code("system_runtime.view.all");
+        return permission_code(access_control::SYSTEM_SYSTEM_RUNTIME_SETTINGS_FEATURE_PERMISSION);
     }
     if path.starts_with("/api/console/workspace") || path.starts_with("/api/console/workspaces") {
         return view_or_configure_permission(method, "workspace");
     }
     if path.starts_with("/api/console/mcp/") {
-        return read_or_manage_permission(method, "mcp_management");
+        return permission_code(access_control::SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_PERMISSION);
     }
     if path.starts_with("/api/console/file-storages") {
         return read_or_manage_permission(method, "file_storage");

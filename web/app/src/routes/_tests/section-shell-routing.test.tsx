@@ -348,7 +348,7 @@ describe('section shell routing', () => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['api-key-authentication', 'roles'])
       );
-      authenticateWithPermissions(['settings_route.visible.settings.roles']);
+      authenticateWithPermissions(['settings_feature.access.system.roles']);
 
       renderApp('/settings/docs');
 
@@ -369,7 +369,7 @@ describe('section shell routing', () => {
         settingsConsoleNavigation(['api-key-authentication', 'data-models'])
       );
       authenticateWithPermissions([
-        'settings_route.visible.settings.data-models'
+        'settings_feature.access.system.data-models'
       ]);
 
       renderApp('/settings/docs');
@@ -390,7 +390,7 @@ describe('section shell routing', () => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['api-key-authentication', 'files'])
       );
-      authenticateWithPermissions(['settings_route.visible.settings.files']);
+      authenticateWithPermissions(['settings_feature.access.system.files']);
 
       renderApp('/settings/docs');
 

@@ -14,6 +14,11 @@ const AUTH_CENTER_FEATURE: &str = "settings_feature.access.system.auth-center";
 const HOST_INFRASTRUCTURE_FEATURE: &str = "settings_feature.access.system.host-infrastructure";
 const MEMORY_OBSERVATION_FEATURE: &str = "settings_feature.access.system.memory-observation";
 const APPLICATIONS_FEATURE: &str = "settings_feature.access.system.applications";
+const DOCS_FEATURE: &str = "settings_feature.access.system.docs";
+const API_KEY_AUTHENTICATION_FEATURE: &str =
+    "settings_feature.access.system.api-key-authentication";
+const SYSTEM_RUNTIME_FEATURE: &str = "settings_feature.access.system.system-runtime";
+const MCP_MANAGEMENT_FEATURE: &str = "settings_feature.access.system.mcp-management";
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
@@ -69,6 +74,13 @@ async fn register_feature_permissions(database_url: &str) {
         (HOST_INFRASTRUCTURE_FEATURE, "system.host-infrastructure"),
         (MEMORY_OBSERVATION_FEATURE, "system.memory-observation"),
         (APPLICATIONS_FEATURE, "system.applications"),
+        (DOCS_FEATURE, "system.docs"),
+        (
+            API_KEY_AUTHENTICATION_FEATURE,
+            "system.api-key-authentication",
+        ),
+        (SYSTEM_RUNTIME_FEATURE, "system.system-runtime"),
+        (MCP_MANAGEMENT_FEATURE, "system.mcp-management"),
     ]
     .into_iter()
     .map(|(code, scope)| PermissionDefinition {
@@ -83,6 +95,54 @@ async fn register_feature_permissions(database_url: &str) {
         .upsert_permission_catalog(&definitions)
         .await
         .expect("settings feature permissions should be seeded");
+}
+
+// AC-003/AC-006/AC-011: the final four legacy settings surfaces accept only
+// their SettingsFeature grant and no longer depend on settings_route grants.
+#[tokio::test]
+async fn final_settings_features_authorize_representative_routes() {
+    let (state, database_url) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    register_feature_permissions(&database_url).await;
+
+    for (username, permission, path) in [
+        (
+            "docs-feature-actor",
+            DOCS_FEATURE,
+            "/api/console/docs/catalog",
+        ),
+        (
+            "api-key-feature-actor",
+            API_KEY_AUTHENTICATION_FEATURE,
+            "/api/console/user-api-keys",
+        ),
+        (
+            "system-runtime-feature-actor",
+            SYSTEM_RUNTIME_FEATURE,
+            "/api/console/system/runtime-profile",
+        ),
+        (
+            "mcp-management-feature-actor",
+            MCP_MANAGEMENT_FEATURE,
+            "/api/console/mcp/catalog",
+        ),
+    ] {
+        let (cookie, _) =
+            create_feature_actor(&app, &root_cookie, &root_csrf, username, permission).await;
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header("cookie", cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+    }
 }
 
 async fn create_feature_actor(
