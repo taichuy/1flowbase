@@ -660,6 +660,35 @@ function loadVerifyRuntimeConfig({
   return resolveRuntimeConfig(config, availableParallelism);
 }
 
+function main(argv = [], deps = {}) {
+  if (argv.length !== 1 || argv[0] !== "cargo-jobs") {
+    throw new Error(
+      "Usage: node scripts/node/testing/verify-runtime.js cargo-jobs",
+    );
+  }
+
+  const repoRoot = deps.repoRoot ?? path.resolve(__dirname, "../../..");
+  const runtimeConfig = loadVerifyRuntimeConfig({
+    repoRoot,
+    env: deps.env ?? process.env,
+    availableParallelism:
+      deps.availableParallelism ?? getAvailableParallelism(),
+  });
+  const writeStdout = deps.writeStdout ?? ((text) => process.stdout.write(text));
+
+  writeStdout(`${runtimeConfig.backend.cargoJobs}\n`);
+  return 0;
+}
+
+if (require.main === module) {
+  try {
+    process.exitCode = main(process.argv.slice(2));
+  } catch (error) {
+    process.stderr.write(`[1flowbase-verify-runtime] ${error.message}\n`);
+    process.exitCode = 1;
+  }
+}
+
 module.exports = {
   HEAVY_VERIFY_LOCK_DIR,
   LOCAL_VERIFY_CONFIG_FILE,
@@ -668,6 +697,7 @@ module.exports = {
   getAvailableParallelism,
   isCiEnvironment,
   loadVerifyRuntimeConfig,
+  main,
   readHeavyVerifyLockOwner,
   withHeavyVerifyLock,
 };

@@ -78,6 +78,7 @@ Rust 后端开发完成前，必须逐项回答：
 后端 Rust 改动先按当前任务选择最小结果验证：
 
 - Dev Acceptance 默认优先运行相关 crate / module 的 targeted test，以及能证明 API / 状态 / repository 行为的最小 integration test。
+- 同一 worktree 同时只启动一条 Cargo 命令，避免 package cache / artifact lock 竞争；该命令内部默认读取机器逻辑 CPU 的一半并行编译，不固定为单任务或常量 job 数。仓库包装命令会自动读取；直接运行定向命令时使用 `CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo ...`。
 - workspace 级 `fmt` / `clippy` / `test` / `deny` 属于 PR / beta / Project Health 级质量门禁，不是当前本地开发分支默认收尾动作。
 - 如果本地确实需要提前运行 workspace 级门禁，必须在对齐 / L3 issue / handoff 阶段说明证据收益、成本和不可延后的原因；实现期临时发现时默认标为未验证并交给 beta / CI，除非缺少该证据会影响继续实现安全性或当前任务完成判断。
 

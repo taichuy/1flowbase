@@ -75,6 +75,14 @@ cargo test --workspace
 ```
 
 实际并发参数由 `scripts/node/testing/verify-runtime.js` 的运行时配置控制。
+默认编译 job 数为机器逻辑 CPU 的一半；同一 worktree 仍只运行一条 Cargo 命令。直接运行定向测试时复用同一配置，不写死 job 数：
+
+```bash
+CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" \
+  cargo test -p control-plane <test-filter> --lib -- --test-threads=1
+```
+
+只有本机确需限流时，才在 `.1flowbase.verify.local.json` 覆盖 `backend.cargoJobs`。
 
 ### `node scripts/node/cli/test-contracts.js`
 
