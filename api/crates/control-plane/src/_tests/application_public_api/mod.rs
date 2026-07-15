@@ -1919,6 +1919,92 @@ async fn ac_006_application_public_api_root_bypasses_policy_but_not_workspace() 
 }
 
 #[tokio::test]
+async fn ac_1281_application_api_helpers_use_persisted_console_row_scope() {
+    let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
+        application_console_policy(vec![
+            application_row_operation(
+                access_control::APPLICATIONS_VIEW_OPERATION_ID,
+                domain::ConsoleOperationRowScope::ScopeAll,
+            ),
+            application_row_operation(
+                access_control::APPLICATIONS_UPDATE_OPERATION_ID,
+                domain::ConsoleOperationRowScope::ScopeAll,
+            ),
+        ]),
+    ]);
+    let application = harness.seed_application(other_user_id(), "Peer helper application");
+    let workflow = harness.seed_workflow_application(other_user_id(), "Peer scheduled workflow");
+    let repository = harness.repository();
+
+    let created_key = ApplicationApiKeyService::new(repository.clone())
+        .create_api_key(CreateApplicationApiKeyCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            name: "Policy key".into(),
+            expires_at: None,
+        })
+        .await;
+    let mapping = ApplicationApiMappingService::new(repository.clone())
+        .get_mapping(GetApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+        })
+        .await;
+    let schedule = WorkflowScheduleTriggerService::new(repository)
+        .get_trigger(GetWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: workflow.id,
+        })
+        .await;
+
+    assert!(
+        created_key.is_ok(),
+        "API-key owner must use applications.update"
+    );
+    assert!(mapping.is_ok(), "mapping owner must use applications.view");
+    assert!(
+        schedule.is_ok(),
+        "schedule owner must use applications.view"
+    );
+}
+
+#[tokio::test]
+async fn ac_1281_application_api_helpers_reject_legacy_only_grants() {
+    let harness = ApplicationPublicApiTestHarness::new_with_permissions(vec![
+        "application.view.all",
+        "application.edit.all",
+    ]);
+    let application = harness.seed_application(other_user_id(), "Legacy helper application");
+    let workflow = harness.seed_workflow_application(other_user_id(), "Legacy scheduled workflow");
+    let repository = harness.repository();
+
+    let created_key = ApplicationApiKeyService::new(repository.clone())
+        .create_api_key(CreateApplicationApiKeyCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            name: "Legacy key".into(),
+            expires_at: None,
+        })
+        .await;
+    let mapping = ApplicationApiMappingService::new(repository.clone())
+        .get_mapping(GetApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+        })
+        .await;
+    let schedule = WorkflowScheduleTriggerService::new(repository)
+        .get_trigger(GetWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: workflow.id,
+        })
+        .await;
+
+    assert!(created_key.is_err());
+    assert!(mapping.is_err());
+    assert!(schedule.is_err());
+}
+
+#[tokio::test]
 async fn ac_007_publish_operation_does_not_bypass_mapping_domain_validation() {
     let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
         application_console_policy(vec![application_simple_operation(

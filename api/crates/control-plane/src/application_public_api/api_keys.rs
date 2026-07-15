@@ -114,7 +114,7 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-        ensure_application_edit_permission(&actor, &application)?;
+        ensure_application_edit_permission(&self.repository, &actor, &application).await?;
 
         let key_id = Uuid::now_v7();
         let (token_prefix, token) = generate_application_api_key_token(key_id);
@@ -147,14 +147,12 @@ where
         let actor =
             AuthRepository::load_actor_context_for_user(&self.repository, command.actor_user_id)
                 .await?;
-        self.repository
+        let application = self
+            .repository
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
-            .ok_or(ControlPlaneError::NotFound("application"))
-            .and_then(|application| {
-                ensure_application_view_permission(&actor, &application)?;
-                Ok(application)
-            })?;
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+        ensure_application_view_permission(&self.repository, &actor, &application).await?;
 
         self.repository
             .list_application_api_keys(command.application_id, command.actor_user_id)
@@ -165,14 +163,12 @@ where
         let actor =
             AuthRepository::load_actor_context_for_user(&self.repository, command.actor_user_id)
                 .await?;
-        self.repository
+        let application = self
+            .repository
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
-            .ok_or(ControlPlaneError::NotFound("application"))
-            .and_then(|application| {
-                ensure_application_edit_permission(&actor, &application)?;
-                Ok(application)
-            })?;
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+        ensure_application_edit_permission(&self.repository, &actor, &application).await?;
 
         self.repository
             .revoke_application_api_key(

@@ -13,36 +13,56 @@ pub mod workflow_extension;
 pub mod workflow_schedule;
 pub mod workflow_start_http_inputs;
 
-use crate::errors::ControlPlaneError;
+use crate::{
+    application::{effective_application_row_scope, ensure_application_console_row_scope},
+    ports::ApplicationRepository,
+};
 
-pub(crate) fn ensure_application_view_permission(
+pub(crate) async fn ensure_application_view_permission<R>(
+    repository: &R,
     actor: &domain::ActorContext,
     application: &domain::ApplicationRecord,
-) -> std::result::Result<(), ControlPlaneError> {
-    if actor.is_root || actor.has_permission("application.view.all") {
+) -> anyhow::Result<()>
+where
+    R: ApplicationRepository,
+{
+    if actor.is_root {
         return Ok(());
     }
-
-    if actor.has_permission("application.view.own") && application.created_by == actor.user_id {
-        return Ok(());
-    }
-
-    Err(ControlPlaneError::PermissionDenied("permission_denied"))
+    let policies = repository
+        .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+        .await?;
+    ensure_application_console_row_scope(
+        actor,
+        application,
+        effective_application_row_scope(&policies, access_control::APPLICATIONS_VIEW_OPERATION_ID),
+    )
+    .map_err(Into::into)
 }
 
-pub(crate) fn ensure_application_edit_permission(
+pub(crate) async fn ensure_application_edit_permission<R>(
+    repository: &R,
     actor: &domain::ActorContext,
     application: &domain::ApplicationRecord,
-) -> std::result::Result<(), ControlPlaneError> {
-    if actor.is_root || actor.has_permission("application.edit.all") {
+) -> anyhow::Result<()>
+where
+    R: ApplicationRepository,
+{
+    if actor.is_root {
         return Ok(());
     }
-
-    if actor.has_permission("application.edit.own") && application.created_by == actor.user_id {
-        return Ok(());
-    }
-
-    Err(ControlPlaneError::PermissionDenied("permission_denied"))
+    let policies = repository
+        .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+        .await?;
+    ensure_application_console_row_scope(
+        actor,
+        application,
+        effective_application_row_scope(
+            &policies,
+            access_control::APPLICATIONS_UPDATE_OPERATION_ID,
+        ),
+    )
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

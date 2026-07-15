@@ -51,7 +51,7 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-        ensure_application_view_permission(&actor, &application)?;
+        ensure_application_view_permission(&self.repository, &actor, &application).await?;
 
         Ok(self
             .repository
@@ -74,7 +74,7 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-        ensure_application_edit_permission(&actor, &application)?;
+        ensure_application_edit_permission(&self.repository, &actor, &application).await?;
         if let Some(slug) = command.mapping.extension_slug() {
             if let Some(existing_application_id) = self
                 .repository

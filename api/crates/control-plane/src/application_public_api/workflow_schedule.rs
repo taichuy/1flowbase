@@ -99,7 +99,7 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-        ensure_application_view_permission(&actor, &application)?;
+        ensure_application_view_permission(&self.repository, &actor, &application).await?;
         if application.application_type != domain::ApplicationType::Workflow {
             return Err(ControlPlaneError::InvalidInput("application_type").into());
         }
@@ -124,7 +124,7 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
-        ensure_application_edit_permission(&actor, &application)?;
+        ensure_application_edit_permission(&self.repository, &actor, &application).await?;
         if application.application_type != domain::ApplicationType::Workflow {
             return Err(ControlPlaneError::InvalidInput("application_type").into());
         }
