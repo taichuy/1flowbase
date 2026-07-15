@@ -4,8 +4,14 @@ use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
+    frontend_block_catalog::{FrontendBlockCatalogService, ListFrontendBlockCatalogQuery},
+    js_dependency::{JsDependencyService, ListWorkspaceJsDependenciesQuery},
     node_contribution::{ListNodeContributionsQuery, NodeContributionService},
-    ports::{AuthRepository, NodeContributionRepository, RoleConsolePolicyReader},
+    ports::{
+        AuthRepository, FrontendBlockCatalogRepository, JsDependencyRepository,
+        NodeContributionRepository, ReplaceInstallationFrontendBlocksInput,
+        ReplaceInstallationJsDependenciesInput, RoleConsolePolicyReader,
+    },
 };
 use domain::{ActorContext, NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 use tokio::sync::RwLock;
@@ -29,9 +35,9 @@ impl MemoryNodeContributionRepository {
         }
     }
 
-    fn with_console_operation(mut self, operation_id: &str) -> Self {
-        let group = domain::ConsolePolicyGroup::other("other.node-contributions")
-            .expect("node contribution policy group must be valid");
+    fn with_console_operation(mut self, group_id: &str, operation_id: &str) -> Self {
+        let group = domain::ConsolePolicyGroup::other(group_id)
+            .expect("plugin catalog policy group must be valid");
         self.console_policies = vec![domain::RoleConsolePolicy::new(
             Uuid::now_v7(),
             vec![domain::RoleConsoleGroupPolicy::custom(
@@ -160,6 +166,40 @@ impl RoleConsolePolicyReader for MemoryNodeContributionRepository {
     }
 }
 
+#[async_trait]
+impl FrontendBlockCatalogRepository for MemoryNodeContributionRepository {
+    async fn replace_installation_frontend_blocks(
+        &self,
+        _input: &ReplaceInstallationFrontendBlocksInput,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn list_workspace_frontend_blocks(
+        &self,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
+        Ok(Vec::new())
+    }
+}
+
+#[async_trait]
+impl JsDependencyRepository for MemoryNodeContributionRepository {
+    async fn replace_installation_js_dependencies(
+        &self,
+        _input: &ReplaceInstallationJsDependenciesInput,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn list_workspace_js_dependencies(
+        &self,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::JsDependencyRegistryEntry>> {
+        Ok(Vec::new())
+    }
+}
+
 fn sample_entry(
     contribution_code: &str,
     status: NodeContributionDependencyStatus,
@@ -208,7 +248,7 @@ async fn node_contribution_service_lists_workspace_entries() {
             NodeContributionDependencyStatus::Ready,
         )],
     )
-    .with_console_operation("node_contributions.view");
+    .with_console_operation("other.node-contributions", "node_contributions.view");
     let service = NodeContributionService::new(repository);
 
     let view = service
@@ -258,7 +298,7 @@ async fn ac_1281_node_contributions_policy_only_allows_without_legacy_grant() {
             NodeContributionDependencyStatus::Ready,
         )],
     )
-    .with_console_operation("node_contributions.view");
+    .with_console_operation("other.node-contributions", "node_contributions.view");
 
     let view = NodeContributionService::new(repository)
         .list_node_contributions(ListNodeContributionsQuery {
@@ -292,4 +332,70 @@ async fn ac_1281_node_contributions_legacy_only_does_not_authorize() {
         error.downcast_ref::<ControlPlaneError>(),
         Some(ControlPlaneError::PermissionDenied(_))
     ));
+}
+
+#[tokio::test]
+async fn ac_1281_frontend_blocks_policy_only_allows_without_legacy_grant() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryNodeContributionRepository::new(
+        actor_with_permissions(workspace_id, &[]),
+        Vec::new(),
+    )
+    .with_console_operation("other.frontend-blocks", "frontend_blocks.view");
+
+    FrontendBlockCatalogService::new(repository)
+        .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+            actor_user_id: Uuid::now_v7(),
+        })
+        .await
+        .expect("the frontend block operation must authorize the catalog owner");
+}
+
+#[tokio::test]
+async fn ac_1281_frontend_blocks_legacy_only_does_not_authorize() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryNodeContributionRepository::new(
+        actor_with_permissions(workspace_id, &["plugin_config.view.all"]),
+        Vec::new(),
+    );
+
+    assert!(FrontendBlockCatalogService::new(repository)
+        .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+            actor_user_id: Uuid::now_v7(),
+        })
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn ac_1281_js_dependencies_policy_only_allows_without_legacy_grant() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryNodeContributionRepository::new(
+        actor_with_permissions(workspace_id, &[]),
+        Vec::new(),
+    )
+    .with_console_operation("other.js-dependencies", "js_dependencies.view");
+
+    JsDependencyService::new(repository)
+        .list_workspace_js_dependencies(ListWorkspaceJsDependenciesQuery {
+            actor_user_id: Uuid::now_v7(),
+        })
+        .await
+        .expect("the JavaScript dependency operation must authorize the catalog owner");
+}
+
+#[tokio::test]
+async fn ac_1281_js_dependencies_legacy_only_does_not_authorize() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryNodeContributionRepository::new(
+        actor_with_permissions(workspace_id, &["plugin_config.view.all"]),
+        Vec::new(),
+    );
+
+    assert!(JsDependencyService::new(repository)
+        .list_workspace_js_dependencies(ListWorkspaceJsDependenciesQuery {
+            actor_user_id: Uuid::now_v7(),
+        })
+        .await
+        .is_err());
 }

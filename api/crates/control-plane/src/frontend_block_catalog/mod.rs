@@ -1,11 +1,12 @@
-use access_control::ensure_permission;
 use anyhow::Result;
 use uuid::Uuid;
 
 use crate::{
     errors::ControlPlaneError,
-    ports::{AuthRepository, FrontendBlockCatalogRepository},
+    ports::{AuthRepository, FrontendBlockCatalogRepository, RoleConsolePolicyReader},
 };
+
+const FRONTEND_BLOCKS_VIEW_OPERATION_ID: &str = "frontend_blocks.view";
 
 pub struct ListFrontendBlockCatalogQuery {
     pub actor_user_id: Uuid,
@@ -22,7 +23,7 @@ pub struct FrontendBlockCatalogService<R> {
 
 impl<R> FrontendBlockCatalogService<R>
 where
-    R: AuthRepository + FrontendBlockCatalogRepository,
+    R: AuthRepository + FrontendBlockCatalogRepository + RoleConsolePolicyReader,
 {
     pub fn new(repository: R) -> Self {
         Self { repository }
@@ -36,8 +37,20 @@ where
             .repository
             .load_actor_context_for_user(query.actor_user_id)
             .await?;
-        ensure_permission(&actor, "plugin_config.view.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+                .await?;
+            let group = domain::ConsolePolicyGroup::other("other.frontend-blocks")
+                .expect("compiled frontend block policy group must be valid");
+            let operation_id =
+                domain::ConsoleOperationId::try_from(FRONTEND_BLOCKS_VIEW_OPERATION_ID)
+                    .expect("compiled frontend block operation id must be valid");
+            if !domain::effective_console_simple_operation(&policies, &group, &operation_id) {
+                return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+            }
+        }
 
         Ok(FrontendBlockCatalogView {
             entries: self

@@ -1,4 +1,3 @@
-use access_control::ensure_permission;
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -11,8 +10,11 @@ use crate::{
     ports::{
         ApplicationJsDependencySelectionRepository, ApplicationRepository, ApplicationVisibility,
         AuthRepository, JsDependencyRepository, ReplaceApplicationJsDependencySelectionInput,
+        RoleConsolePolicyReader,
     },
 };
+
+const JS_DEPENDENCIES_VIEW_OPERATION_ID: &str = "js_dependencies.view";
 
 pub struct ListWorkspaceJsDependenciesQuery {
     pub actor_user_id: Uuid,
@@ -41,7 +43,7 @@ pub struct ApplicationJsDependencyService<R> {
 
 impl<R> JsDependencyService<R>
 where
-    R: AuthRepository + JsDependencyRepository,
+    R: AuthRepository + JsDependencyRepository + RoleConsolePolicyReader,
 {
     pub fn new(repository: R) -> Self {
         Self { repository }
@@ -55,8 +57,20 @@ where
             .repository
             .load_actor_context_for_user(query.actor_user_id)
             .await?;
-        ensure_permission(&actor, "plugin_config.view.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+                .await?;
+            let group = domain::ConsolePolicyGroup::other("other.js-dependencies")
+                .expect("compiled JavaScript dependency policy group must be valid");
+            let operation_id =
+                domain::ConsoleOperationId::try_from(JS_DEPENDENCIES_VIEW_OPERATION_ID)
+                    .expect("compiled JavaScript dependency operation id must be valid");
+            if !domain::effective_console_simple_operation(&policies, &group, &operation_id) {
+                return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+            }
+        }
 
         Ok(JsDependencyCatalogView {
             entries: self
