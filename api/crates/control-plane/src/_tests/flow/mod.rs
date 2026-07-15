@@ -1,7 +1,8 @@
 use control_plane::flow::{
     AgentFlowTemplateResourceSnapshot, FlowService, ImportAgentFlowTemplateCommand,
-    PreviewAgentFlowTemplateCommand, SaveFlowDraftCommand,
+    InMemoryFlowRepository, PreviewAgentFlowTemplateCommand, SaveFlowDraftCommand,
 };
+use control_plane::ports::FlowRepository;
 use domain::{
     ApplicationType, ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope,
     ConsolePolicyGroup, FlowChangeKind, RoleConsoleGroupPolicy, RoleConsolePolicy,
@@ -234,17 +235,28 @@ async fn save_draft_rejects_invalid_visible_internal_llm_tool_identifiers() {
 }
 
 #[tokio::test]
-async fn export_agent_flow_template_omits_secret_fields_and_collects_dependencies() {
+async fn ac_007_template_export_without_crud_omits_secrets_and_collects_dependencies() {
     let owner_id = Uuid::now_v7();
-    let service = FlowService::for_tests();
-    let application = service
+    let repository = InMemoryFlowRepository::with_console_policies(vec![application_policy(vec![
+        ConsoleOperationPolicy::simple(
+            application_operation(
+                access_control::APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID,
+            ),
+            true,
+        ),
+    ])]);
+    let application = repository
         .seed_application_for_actor(owner_id, "Support Agent")
         .await
         .unwrap();
-    let initial = service
-        .get_or_create_editor_state(owner_id, application.id)
-        .await
-        .unwrap();
+    let initial = FlowRepository::get_or_create_editor_state(
+        &repository,
+        Uuid::nil(),
+        application.id,
+        owner_id,
+    )
+    .await
+    .unwrap();
     let mut document = initial.draft.document.clone();
     document["graph"]["nodes"][1]["config"]["model_provider"] = json!({
         "provider_code": "fixture_provider",
@@ -253,18 +265,19 @@ async fn export_agent_flow_template_omits_secret_fields_and_collects_dependencie
         "api_key": "sk-should-not-leak"
     });
 
-    service
-        .save_draft(SaveFlowDraftCommand {
-            actor_user_id: owner_id,
-            application_id: application.id,
-            document,
-            change_kind: FlowChangeKind::Logical,
-            summary: "bind model".into(),
-        })
-        .await
-        .unwrap();
+    FlowRepository::save_draft(
+        &repository,
+        Uuid::nil(),
+        application.id,
+        owner_id,
+        document,
+        FlowChangeKind::Logical,
+        "bind model",
+    )
+    .await
+    .unwrap();
 
-    let template = service
+    let template = FlowService::new(repository)
         .export_agent_flow_template(owner_id, application.id)
         .await
         .unwrap();
@@ -475,54 +488,48 @@ async fn import_agent_flow_template_creates_application_and_rewrites_only_flow_i
 }
 
 #[tokio::test]
-async fn ac_005_ac_007_template_export_and_restore_require_their_simple_grants_with_view_own() {
+async fn ac_007_template_export_and_restore_are_independent_from_crud() {
     let actor_user_id = Uuid::now_v7();
-    let service = FlowService::for_tests_with_console_policies(vec![application_policy(vec![
-        ConsoleOperationPolicy::simple(
-            application_operation(access_control::APPLICATIONS_CREATE_OPERATION_ID),
-            true,
-        ),
-        ConsoleOperationPolicy::row(
-            application_operation(access_control::APPLICATIONS_VIEW_OPERATION_ID),
-            ConsoleOperationRowScope::Own,
-        ),
+    let repository = InMemoryFlowRepository::with_console_policies(vec![application_policy(vec![
         ConsoleOperationPolicy::simple(
             application_operation(
                 access_control::APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID,
             ),
-            false,
+            true,
         ),
         ConsoleOperationPolicy::simple(
             application_operation(
                 access_control::APPLICATIONS_ORCHESTRATION_VERSION_RESTORE_OPERATION_ID,
             ),
-            false,
+            true,
         ),
     ])]);
-    let application = service
+    let application = repository
         .seed_application_for_actor(actor_user_id, "Restricted templates")
         .await
         .unwrap();
-    let state = service
-        .get_or_create_editor_state(actor_user_id, application.id)
-        .await
-        .unwrap();
+    let state = FlowRepository::get_or_create_editor_state(
+        &repository,
+        Uuid::nil(),
+        application.id,
+        actor_user_id,
+    )
+    .await
+    .unwrap();
+    let service = FlowService::new(repository);
 
-    let export_error = service
+    service
         .export_agent_flow_template(actor_user_id, application.id)
         .await
-        .unwrap_err();
-    let restore_error = service
+        .expect("template export must not require applications.view");
+    service
         .restore_version(actor_user_id, application.id, state.versions[0].id)
         .await
-        .unwrap_err();
-
-    assert!(export_error.to_string().contains("permission_denied"));
-    assert!(restore_error.to_string().contains("permission_denied"));
+        .expect("version restore must not require applications.view");
 }
 
 #[tokio::test]
-async fn ac_005_ac_007_template_import_requires_its_simple_grant_and_application_create() {
+async fn ac_007_template_import_is_independent_from_create_and_keeps_creation_audit() {
     let source_actor_id = Uuid::now_v7();
     let source = FlowService::for_tests();
     let source_application = source
@@ -535,41 +542,11 @@ async fn ac_005_ac_007_template_import_requires_its_simple_grant_and_application
         .unwrap();
     let actor_user_id = Uuid::now_v7();
 
-    let missing_create =
-        FlowService::for_tests_with_console_policies(vec![application_policy(vec![
-            ConsoleOperationPolicy::simple(
-                application_operation(
-                    access_control::APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID,
-                ),
-                true,
-            ),
-        ])]);
-    let missing_create_error = match missing_create
-        .import_agent_flow_template(ImportAgentFlowTemplateCommand {
-            actor_user_id,
-            template: template.clone(),
-            name: None,
-            description: None,
-            resources: AgentFlowTemplateResourceSnapshot::default(),
-        })
-        .await
-    {
-        Ok(_) => panic!("template import without applications.create must be rejected"),
-        Err(error) => error,
-    };
-    assert!(missing_create_error
-        .to_string()
-        .contains("permission_denied"));
-
     let allowed = FlowService::for_tests_with_console_policies(vec![application_policy(vec![
         ConsoleOperationPolicy::simple(
             application_operation(
                 access_control::APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID,
             ),
-            true,
-        ),
-        ConsoleOperationPolicy::simple(
-            application_operation(access_control::APPLICATIONS_CREATE_OPERATION_ID),
             true,
         ),
     ])]);
@@ -582,10 +559,13 @@ async fn ac_005_ac_007_template_import_requires_its_simple_grant_and_application
             resources: AgentFlowTemplateResourceSnapshot::default(),
         })
         .await
-        .expect("template import must retain server-stamped application creation");
+        .expect("template import must not require applications.create");
 
     assert_eq!(imported.application.workspace_id, Uuid::nil());
     assert_eq!(imported.application.created_by, actor_user_id);
+    assert!(allowed
+        .audit_events_for_tests()
+        .contains(&"application.created".to_string()));
 }
 
 #[tokio::test]

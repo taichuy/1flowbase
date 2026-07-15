@@ -168,6 +168,26 @@ where
             }
         }
 
+        self.create_application_record(&actor, command).await
+    }
+
+    pub(crate) async fn create_application_from_authorized_template_import(
+        &self,
+        actor: &domain::ActorContext,
+        command: CreateApplicationCommand,
+    ) -> Result<domain::ApplicationRecord> {
+        if actor.user_id != command.actor_user_id {
+            return Err(ControlPlaneError::InvalidInput("actor_user_id").into());
+        }
+
+        self.create_application_record(actor, command).await
+    }
+
+    async fn create_application_record(
+        &self,
+        actor: &domain::ActorContext,
+        command: CreateApplicationCommand,
+    ) -> Result<domain::ApplicationRecord> {
         let created = self
             .repository
             .create_application(&CreateApplicationInput {
@@ -425,8 +445,8 @@ where
         Ok(application)
     }
 
-    /// Loads a real application in the actor's current workspace and applies the operation's
-    /// `Simple` grant together with its fixed historic row prerequisite.
+    /// Loads a real application in the actor's current workspace and applies its independent
+    /// non-CRUD `Simple` grant.
     pub async fn load_application_for_non_crud_console_operation(
         &self,
         actor_user_id: Uuid,

@@ -133,13 +133,15 @@ where
         application_id: Uuid,
         version_id: Uuid,
     ) -> Result<domain::FlowEditorState> {
-        let application = ApplicationService::new(self.repository.clone())
-            .get_application(actor_user_id, application_id)
-            .await?;
         let actor = self
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
+        let application = self
+            .repository
+            .get_application(actor.current_workspace_id, application_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application"))?;
         if !actor.is_root {
             let policies = self
                 .repository
@@ -238,16 +240,18 @@ where
         actor_user_id: Uuid,
         application_id: Uuid,
     ) -> Result<AgentFlowTemplatePackage> {
-        let application = ApplicationService::new(self.repository.clone())
-            .get_application(actor_user_id, application_id)
-            .await?;
-        if application.application_type != domain::ApplicationType::AgentFlow {
-            return Err(ControlPlaneError::InvalidInput("application_type").into());
-        }
         let actor = self
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
+        let application = self
+            .repository
+            .get_application(actor.current_workspace_id, application_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+        if application.application_type != domain::ApplicationType::AgentFlow {
+            return Err(ControlPlaneError::InvalidInput("application_type").into());
+        }
         if !actor.is_root {
             let policies = self
                 .repository
@@ -319,17 +323,20 @@ where
             .description
             .unwrap_or_else(|| preview.application.description.clone());
         let application = ApplicationService::new(self.repository.clone())
-            .create_application(crate::application::CreateApplicationCommand {
-                workflow_trigger_config: None,
-                actor_user_id: command.actor_user_id,
-                application_type: domain::ApplicationType::AgentFlow,
-                workflow_trigger_type: None,
-                name: application_name,
-                description: application_description,
-                icon: preview.application.icon.clone(),
-                icon_type: preview.application.icon_type.clone(),
-                icon_background: preview.application.icon_background.clone(),
-            })
+            .create_application_from_authorized_template_import(
+                &actor,
+                crate::application::CreateApplicationCommand {
+                    workflow_trigger_config: None,
+                    actor_user_id: command.actor_user_id,
+                    application_type: domain::ApplicationType::AgentFlow,
+                    workflow_trigger_type: None,
+                    name: application_name,
+                    description: application_description,
+                    icon: preview.application.icon.clone(),
+                    icon_type: preview.application.icon_type.clone(),
+                    icon_background: preview.application.icon_background.clone(),
+                },
+            )
             .await?;
         let bootstrapped = self
             .repository
@@ -537,6 +544,10 @@ impl InMemoryFlowRepository {
             },
         )
         .await
+    }
+
+    pub fn audit_events(&self) -> Vec<String> {
+        ApplicationService::new(self.applications.clone()).audit_events()
     }
 }
 
@@ -956,6 +967,10 @@ impl FlowService<InMemoryFlowRepository> {
 
     pub fn for_tests_with_console_policies(policies: Vec<domain::RoleConsolePolicy>) -> Self {
         Self::new(InMemoryFlowRepository::with_console_policies(policies))
+    }
+
+    pub fn audit_events_for_tests(&self) -> Vec<String> {
+        self.repository.audit_events()
     }
 
     pub async fn seed_application_for_actor(

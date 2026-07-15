@@ -348,7 +348,7 @@ async fn ac_006_console_policy_scope_all_cannot_cross_workspace() {
 }
 
 #[tokio::test]
-async fn ac_005_ac_007_non_crud_operations_intersect_simple_grants_with_persisted_rows() {
+async fn ac_006_ac_007_non_crud_operations_ignore_crud_scope_but_keep_workspace_boundary() {
     let actor_user_id = Uuid::now_v7();
     let service = ApplicationService::for_tests_with_console_policies(
         Vec::new(),
@@ -385,14 +385,6 @@ async fn ac_005_ac_007_non_crud_operations_intersect_simple_grants_with_persiste
                 ),
                 true,
             ),
-            domain::ConsoleOperationPolicy::row(
-                operation_id(access_control::APPLICATIONS_UPDATE_OPERATION_ID),
-                domain::ConsoleOperationRowScope::Own,
-            ),
-            domain::ConsoleOperationPolicy::row(
-                operation_id(access_control::APPLICATIONS_VIEW_OPERATION_ID),
-                domain::ConsoleOperationRowScope::Own,
-            ),
         ])],
     );
     let mine = service.seed_application_for_actor(actor_user_id, "Owned application");
@@ -412,13 +404,12 @@ async fn ac_005_ac_007_non_crud_operations_intersect_simple_grants_with_persiste
         service
             .load_application_for_non_crud_console_operation(actor_user_id, mine.id, operation)
             .await
-            .expect("own application must retain its non-CRUD operation");
+            .expect("non-CRUD operation must allow an existing same-workspace application");
 
-        let peer_error = service
+        service
             .load_application_for_non_crud_console_operation(actor_user_id, peer.id, operation)
             .await
-            .expect_err("own row scope must deny a same-workspace peer");
-        assert!(peer_error.to_string().contains("permission_denied"));
+            .expect("non-CRUD operation must not depend on CRUD owner scope");
 
         let cross_workspace_error = service
             .load_application_for_non_crud_console_operation(

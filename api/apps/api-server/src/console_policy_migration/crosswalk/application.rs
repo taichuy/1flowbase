@@ -92,8 +92,9 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
     ),
     legacy_mapping("application.delete.own", &[], &["applications.delete"], &[]),
     legacy_mapping("application.delete.all", &[], &[], &["applications.delete"]),
-    // #96ecab5d1 made these intersections explicit: a historical `use` grant must carry both
-    // the new simple operation and its historic view-row prerequisite.
+    // One legacy grant can project to multiple independent policies. `applications.run` does
+    // not require `applications.view` at runtime; both are emitted only to preserve the legacy
+    // role's effective capabilities during migration.
     legacy_mapping(
         "application.use.own",
         &["applications.run"],

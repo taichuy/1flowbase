@@ -42,17 +42,15 @@ fn view_policy(scope: domain::ConsoleOperationRowScope) -> domain::RoleConsolePo
 }
 
 #[tokio::test]
-async fn ac_005_ac_007_run_requires_simple_grant_and_persisted_view_owner() {
+async fn ac_007_run_simple_allows_same_workspace_application_without_view() {
     let service = OrchestrationRuntimeService::for_tests_with_application_console_policies(
         Vec::new(),
-        vec![
-            run_policy(false),
-            run_policy(true),
-            view_policy(domain::ConsoleOperationRowScope::Own),
-        ],
+        vec![run_policy(false), run_policy(true)],
     );
-    let seeded = service.seed_application_with_flow("Owned run").await;
-    let peer = service.seed_application_with_flow("Peer run").await;
+    let seeded = service.seed_application_with_flow("Simple run only").await;
+    let same_workspace = service
+        .seed_application_with_flow("Same workspace run")
+        .await;
 
     let shell = service
         .open_flow_debug_run_shell(StartFlowDebugRunCommand {
@@ -63,35 +61,29 @@ async fn ac_005_ac_007_run_requires_simple_grant_and_persisted_view_owner() {
             debug_session_id: None,
         })
         .await
-        .expect("run own must allow the persisted owner");
+        .expect("applications.run must not require applications.view");
 
     assert_eq!(shell.status, domain::FlowRunStatus::Queued);
 
-    let error = service
+    let same_workspace_shell = service
         .open_flow_debug_run_shell(StartFlowDebugRunCommand {
             actor_user_id: seeded.actor_user_id,
-            application_id: peer.application_id,
+            application_id: same_workspace.application_id,
             input_payload: json!({ "node-start": { "query": "hello" } }),
             document_snapshot: None,
             debug_session_id: None,
         })
         .await
-        .expect_err("view own must not run a same-workspace peer application");
+        .expect("applications.run must not depend on the application's creator");
 
-    assert!(matches!(
-        error.downcast_ref::<ControlPlaneError>(),
-        Some(ControlPlaneError::PermissionDenied("permission_denied"))
-    ));
+    assert_eq!(same_workspace_shell.status, domain::FlowRunStatus::Queued);
 }
 
 #[tokio::test]
-async fn ac_1271_run_simple_allows_flow_and_node_debug_with_view_own() {
+async fn ac_007_run_simple_allows_flow_and_node_debug_without_view() {
     let service = OrchestrationRuntimeService::for_tests_with_application_console_policies(
         Vec::new(),
-        vec![
-            run_policy(true),
-            view_policy(domain::ConsoleOperationRowScope::Own),
-        ],
+        vec![run_policy(true)],
     );
     let seeded = service
         .seed_application_with_flow("Simple debug only")
@@ -106,7 +98,7 @@ async fn ac_1271_run_simple_allows_flow_and_node_debug_with_view_own() {
             debug_session_id: None,
         })
         .await
-        .expect("flow debug must require applications.run with view own");
+        .expect("flow debug must use applications.run independently");
     assert_eq!(started.flow_run.status, domain::FlowRunStatus::Running);
 
     let preview = service
@@ -119,12 +111,12 @@ async fn ac_1271_run_simple_allows_flow_and_node_debug_with_view_own() {
             debug_session_id: None,
         })
         .await
-        .expect("node debug must require applications.run with view own");
+        .expect("node debug must use applications.run independently");
     assert_eq!(preview.node_run.status, domain::NodeRunStatus::Succeeded);
 }
 
 #[tokio::test]
-async fn ac_1271_run_simple_allows_cancel_resume_and_callback_with_view_own() {
+async fn ac_007_run_simple_allows_cancel_resume_and_callback_without_view() {
     let service = OrchestrationRuntimeService::for_tests();
     let cancellable = service.seed_application_with_flow("Cancellable").await;
     let started = service
@@ -139,10 +131,7 @@ async fn ac_1271_run_simple_allows_cancel_resume_and_callback_with_view_own() {
         .expect("seed cancellable run");
     let resumable = service.seed_waiting_human_run("Resumable").await;
     let callback = service.seed_waiting_callback_run("Callback").await;
-    service.replace_application_console_policies_for_tests(vec![
-        run_policy(true),
-        view_policy(domain::ConsoleOperationRowScope::Own),
-    ]);
+    service.replace_application_console_policies_for_tests(vec![run_policy(true)]);
 
     let cancelled = service
         .cancel_flow_run(CancelFlowRunCommand {
@@ -268,10 +257,7 @@ async fn ac_1271_disabled_run_is_rejected_before_run_task_checkpoint_or_node_loo
 async fn ac_1271_revoked_run_is_rejected_before_preparing_existing_shell() {
     let service = OrchestrationRuntimeService::for_tests_with_application_console_policies(
         Vec::new(),
-        vec![
-            run_policy(true),
-            view_policy(domain::ConsoleOperationRowScope::Own),
-        ],
+        vec![run_policy(true)],
     );
     let seeded = service
         .seed_application_with_flow("Revoked before prepare")

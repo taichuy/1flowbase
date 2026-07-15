@@ -1686,17 +1686,13 @@ async fn workflow_schedule_trigger_dispatch_skips_disabled_or_unpublished_applic
 }
 
 #[tokio::test]
-async fn ac_005_ac_007_application_public_api_simple_operations_require_persisted_update_owner() {
+async fn ac_007_application_public_api_simple_operations_are_independent_from_crud() {
     let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
         application_console_policy(vec![
             application_simple_operation(access_control::APPLICATIONS_PUBLISH_OPERATION_ID, false),
             application_simple_operation(
                 access_control::APPLICATIONS_API_SET_ENABLED_OPERATION_ID,
                 false,
-            ),
-            application_row_operation(
-                access_control::APPLICATIONS_UPDATE_OPERATION_ID,
-                domain::ConsoleOperationRowScope::Own,
             ),
         ]),
         application_console_policy(vec![
@@ -1707,8 +1703,7 @@ async fn ac_005_ac_007_application_public_api_simple_operations_require_persiste
             ),
         ]),
     ]);
-    let application = harness.seed_application(actor_user_id(), "Owned support bot");
-    let peer_application = harness.seed_application(other_user_id(), "Peer support bot");
+    let application = harness.seed_application(other_user_id(), "Same-workspace support bot");
     let service = ApplicationPublicationService::new(harness.repository());
 
     service
@@ -1719,7 +1714,7 @@ async fn ac_005_ac_007_application_public_api_simple_operations_require_persiste
             api_enabled: true,
         })
         .await
-        .expect("own application must retain publish access");
+        .expect("publish simple operation must not require applications.update");
     service
         .set_api_enabled(SetApplicationApiEnabledCommand {
             actor_user_id: actor_user_id(),
@@ -1727,32 +1722,11 @@ async fn ac_005_ac_007_application_public_api_simple_operations_require_persiste
             api_enabled: false,
         })
         .await
-        .expect("own application must retain API-status access");
-
-    let publish_error = service
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: peer_application.id,
-            mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: true,
-        })
-        .await
-        .expect_err("update own must not publish a same-workspace peer application");
-    let status_error = service
-        .set_api_enabled(SetApplicationApiEnabledCommand {
-            actor_user_id: actor_user_id(),
-            application_id: peer_application.id,
-            api_enabled: true,
-        })
-        .await
-        .expect_err("update own must not change a same-workspace peer API status");
-
-    assert!(publish_error.to_string().contains("permission_denied"));
-    assert!(status_error.to_string().contains("permission_denied"));
+        .expect("API-status simple operation must not require applications.update");
 }
 
 #[tokio::test]
-async fn ac_005_ac_007_application_public_api_multi_role_union_retains_update_scope_all() {
+async fn ac_007_application_public_api_crud_scope_changes_do_not_disable_simple_operations() {
     let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
         application_console_policy(vec![
             application_simple_operation(access_control::APPLICATIONS_PUBLISH_OPERATION_ID, true),
@@ -1781,7 +1755,7 @@ async fn ac_005_ac_007_application_public_api_multi_role_union_retains_update_sc
             api_enabled: true,
         })
         .await
-        .expect("multi-role scope_all must retain publish access");
+        .expect("publish grant must remain independent from update scope");
     service
         .set_api_enabled(SetApplicationApiEnabledCommand {
             actor_user_id: actor_user_id(),
@@ -1789,7 +1763,7 @@ async fn ac_005_ac_007_application_public_api_multi_role_union_retains_update_sc
             api_enabled: false,
         })
         .await
-        .expect("multi-role scope_all must retain API-status access");
+        .expect("API-status grant must remain independent from update scope");
 }
 
 #[tokio::test]

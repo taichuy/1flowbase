@@ -95,6 +95,8 @@ console policy 使用专用窄 scope：
 
 operation grant 只决定“该 actor 是否可执行语义操作”。workspace/system、tenant、owner、row、field、secret、资源状态、事务、审计、CSRF 与 session 不变量继续由各领域 owner 强制执行，operation grant 不得放宽它们。
 
+simple operation 与 CRUD policy 是并列授权维度，不互为前置条件。历史 `application.edit.*`、`application.view.*` 或 `application.use.*` 在 migration crosswalk 中可以同时投影出 simple 与 CRUD policy，以保持旧角色的有效能力；该共同投影不表示新运行时执行 publish/run/export/import/restore/enable 时还要读取 `applications.create/view/update`。运行时先用 actor 当前 workspace 加载真实资源，再校验目标 simple operation，后续状态、secret 与审计仍走原领域入口。
+
 ### Route fail-closed
 
 所有 `/api/console/*` route 在编译后必须恰好属于以下一种：
