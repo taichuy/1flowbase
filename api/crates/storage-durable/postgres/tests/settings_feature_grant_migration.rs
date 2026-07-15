@@ -580,7 +580,10 @@ async fn migration_reconciles_members_and_roles_grants_without_touching_other_fe
         ])
     );
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    before_explicit_settings_feature_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
 
     assert_eq!(
         permission_codes(&pool, members_role).await,
@@ -1089,7 +1092,10 @@ async fn migration_reconciles_model_providers_grants_and_preserves_remaining_fou
         grant(&pool, untouched_role, workspace.id, code).await;
     }
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    before_final_settings_feature_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
 
     let mut expected = MODEL_PROVIDER_ALL_PERMISSIONS
         .iter()
