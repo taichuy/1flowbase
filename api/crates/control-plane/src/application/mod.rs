@@ -3,7 +3,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use access_control::ensure_permission;
 use anyhow::Result;
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -116,11 +115,23 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(
-            &actor,
-            access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
-        )
-        .map_err(ControlPlaneError::PermissionDenied)?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .await?;
+            let operation_id = domain::ConsoleOperationId::try_from(
+                access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
+            )
+            .expect("compiled applications management operation id must be valid");
+            if !domain::effective_console_simple_operation(
+                &policies,
+                &applications_console_group(),
+                &operation_id,
+            ) {
+                return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+            }
+        }
         validate_application_management_filter(&query.filter)?;
 
         self.repository
@@ -1298,6 +1309,22 @@ impl ApplicationRepository for InMemoryApplicationRepository {
             .audit_events
             .push(event.event_code.clone());
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ApplicationManagementRepository for InMemoryApplicationRepository {
+    async fn list_application_management(
+        &self,
+        _workspace_id: Uuid,
+        query: &ApplicationManagementQuery,
+    ) -> Result<ApplicationManagementPage> {
+        Ok(ApplicationManagementPage {
+            items: Vec::new(),
+            total: 0,
+            page: query.page,
+            page_size: query.page_size,
+        })
     }
 }
 

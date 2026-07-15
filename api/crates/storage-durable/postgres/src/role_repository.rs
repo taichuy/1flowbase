@@ -9,8 +9,8 @@ use control_plane::{
         ReplaceRoleDataPolicyInput, RoleConsolePolicyMigrationCutoverMarker,
         RoleConsolePolicyMigrationCutoverState, RoleConsolePolicyMigrationGrantInventory,
         RoleConsolePolicyMigrationRehearsalInput, RoleConsolePolicyMigrationRepository,
-        RoleConsolePolicyMigrationSource, RoleDataPolicyDefaultsInput, RoleRepository,
-        UpdateWorkspaceRoleInput,
+        RoleConsolePolicyMigrationSource, RoleConsolePolicyReader, RoleDataPolicyDefaultsInput,
+        RoleRepository, UpdateWorkspaceRoleInput,
     },
     role::console_policy_migration::{
         validate_console_policy_migration_actor_previews, ConsolePolicyMigrationActorPreview,
@@ -372,6 +372,36 @@ fn actor_bindings_from_previews(
         );
     }
     Ok(bindings.into_values().collect())
+}
+
+#[async_trait]
+impl RoleConsolePolicyReader for PgControlPlaneStore {
+    async fn load_role_console_policies_for_user(
+        &self,
+        user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        let role_ids: Vec<Uuid> = sqlx::query_scalar(
+            r#"
+            select role.id
+            from user_role_bindings binding
+            join roles role on role.id = binding.role_id
+            where binding.user_id = $1
+              and (role.scope_kind = 'system' or role.workspace_id = $2)
+            order by role.scope_kind asc, role.code asc, role.id asc
+            "#,
+        )
+        .bind(user_id)
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        let mut policies = Vec::with_capacity(role_ids.len());
+        for role_id in role_ids {
+            policies.push(role_console_policy_by_id(self.pool(), role_id).await?);
+        }
+        Ok(policies)
+    }
 }
 
 #[async_trait]

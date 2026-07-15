@@ -477,6 +477,15 @@ pub trait RoleConsolePolicyMigrationRepository: Send + Sync {
 }
 
 #[async_trait]
+pub trait RoleConsolePolicyReader: Send + Sync {
+    async fn load_role_console_policies_for_user(
+        &self,
+        user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>>;
+}
+
+#[async_trait]
 pub trait MemberRepository: Send + Sync {
     async fn load_actor_context_for_user(
         &self,
