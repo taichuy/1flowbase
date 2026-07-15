@@ -4,11 +4,12 @@ use access_control::{
     ConsoleRouteOwnership::ConsoleOperation, SYSTEM_DOCS_SETTINGS_FEATURE_PERMISSION,
 };
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
+    Json, Router,
 };
 use control_plane::errors::ControlPlaneError;
+use control_plane::model_definition::ModelDefinitionService;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
@@ -19,11 +20,11 @@ use crate::{
     error_response::ApiError,
     middleware::require_session::require_session,
     openapi_docs::{
-        DOCS_OPERATIONS_PAGE_SIZE, DocsCatalog, DocsCatalogCategoryOperationsPage,
-        filter_category_operations, paginate_category_operations,
+        filter_category_operations, paginate_category_operations, DocsCatalog,
+        DocsCatalogCategoryOperationsPage, DOCS_OPERATIONS_PAGE_SIZE,
     },
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
     runtime_data_model_docs,
 };
 
@@ -237,11 +238,17 @@ pub async fn get_data_model_openapi(
 
     let model_id =
         Uuid::parse_str(&model_id).map_err(|_| ControlPlaneError::InvalidInput("model_id"))?;
-    let Some(model) =
-        runtime_data_model_docs::ready_model(&state, context.user.id, model_id).await?
-    else {
+    let model = ModelDefinitionService::for_console_operation(
+        state.store.clone(),
+        domain::ConsolePolicyGroup::settings_feature("system.data-models")
+            .expect("compiled data-model settings group must be valid"),
+        access_control::MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID,
+    )
+    .get_model(context.user.id, model_id)
+    .await?;
+    if model.status != domain::DataModelStatus::Published {
         return Err(ControlPlaneError::NotFound("model_id").into());
-    };
+    }
 
     Ok(Json(runtime_data_model_docs::build_model_openapi(&model)))
 }

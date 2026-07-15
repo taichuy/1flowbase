@@ -6,7 +6,7 @@ use crate::{
         DeleteModelDefinitionCommand, DeleteModelFieldCommand, ModelDefinitionService,
         UpdateModelDefinitionCommand, UpdateModelDefinitionStatusCommand, UpdateModelFieldCommand,
     },
-    ports::{ModelDefinitionRepository, RuntimeRegistrySync},
+    ports::{ModelDefinitionRepository, RoleConsolePolicyReader, RuntimeRegistrySync},
 };
 
 pub struct ModelDefinitionMutationService<R, S> {
@@ -26,9 +26,21 @@ where
         }
     }
 
-    pub fn for_data_model_settings(repository: R, sync: S) -> Self {
+    pub fn for_console_operation(
+        repository: R,
+        sync: S,
+        group: domain::ConsolePolicyGroup,
+        operation_id: &'static str,
+    ) -> Self
+    where
+        R: RoleConsolePolicyReader + Clone + 'static,
+    {
         Self {
-            model_definitions: ModelDefinitionService::for_data_model_settings(repository),
+            model_definitions: ModelDefinitionService::for_console_operation(
+                repository,
+                group,
+                operation_id,
+            ),
             sync,
         }
     }

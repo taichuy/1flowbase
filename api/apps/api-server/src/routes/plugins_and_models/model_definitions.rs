@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
+    Json, Router,
 };
 use control_plane::model_definition::{
     AddModelFieldCommand, BatchDeleteModelDefinitionsCommand, CreateModelDefinitionCommand,
@@ -13,7 +13,7 @@ use control_plane::model_definition::{
     UpdateModelFieldCommand, UpdateScopeDataModelGrantCommand,
 };
 use control_plane::resource_crud::{
-    ResourceBatchSelection, ResourceCrudDescriptor, parse_resource_filter,
+    parse_resource_filter, ResourceBatchSelection, ResourceCrudDescriptor,
 };
 use control_plane::runtime_registry_sync::ModelDefinitionMutationService;
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::{
-        console_route_assembly::{ConsoleRouteAssembly, console_get},
+        console_route_assembly::{console_get, ConsoleRouteAssembly},
         helpers,
     },
     runtime_registry_sync::ApiRuntimeRegistrySync,
@@ -513,10 +513,26 @@ fn parse_field_kind(raw: &str) -> Result<domain::ModelFieldKind, ApiError> {
 
 fn mutation_service(
     state: &ApiState,
+    operation_id: &'static str,
 ) -> ModelDefinitionMutationService<MainDurableStore, ApiRuntimeRegistrySync> {
-    ModelDefinitionMutationService::for_data_model_settings(
+    ModelDefinitionMutationService::for_console_operation(
         state.store.clone(),
         ApiRuntimeRegistrySync::new(state.store.clone(), state.runtime_engine.registry().clone()),
+        domain::ConsolePolicyGroup::settings_feature("system.data-models")
+            .expect("compiled data-model settings group must be valid"),
+        operation_id,
+    )
+}
+
+fn settings_service(
+    state: &ApiState,
+    operation_id: &'static str,
+) -> ModelDefinitionService<MainDurableStore> {
+    ModelDefinitionService::for_console_operation(
+        state.store.clone(),
+        domain::ConsolePolicyGroup::settings_feature("system.data-models")
+            .expect("compiled data-model settings group must be valid"),
+        operation_id,
     )
 }
 
@@ -531,7 +547,7 @@ pub async fn list_models(
     Query(query): Query<ListModelsQuery>,
 ) -> Result<helpers::ApiJson<Vec<ModelDefinitionResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let mut models = ModelDefinitionService::for_data_model_settings(state.store.clone())
+    let mut models = settings_service(&state, access_control::MODEL_DEFINITIONS_LIST_OPERATION_ID)
         .list_models(context.user.id)
         .await?;
     if let Some(data_source_id) = query.data_source_id.as_deref() {
@@ -569,9 +585,14 @@ pub async fn list_agent_flow_options(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<AgentFlowDataModelOptionResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let models = ModelDefinitionService::new(state.store.clone())
-        .list_models(context.user.id)
-        .await?;
+    let models = ModelDefinitionService::for_console_operation(
+        state.store.clone(),
+        domain::ConsolePolicyGroup::other("other.agent-flow")
+            .expect("compiled agent-flow policy group must be valid"),
+        "agent_flow.data_model_options.list",
+    )
+    .list_models(context.user.id)
+    .await?;
 
     Ok(Json(ApiSuccess::new(
         models
@@ -597,7 +618,10 @@ pub async fn create_model(
     let scope_kind = parse_scope_kind(&body.scope_kind)?;
     let requested_status = body.status.as_deref().map(parse_model_status).transpose()?;
 
-    let mutation_service = mutation_service(&state);
+    let mutation_service = mutation_service(
+        &state,
+        access_control::MODEL_DEFINITIONS_CREATE_OPERATION_ID,
+    );
     let model = mutation_service
         .create_model(CreateModelDefinitionCommand {
             actor_user_id: context.user.id,
@@ -629,9 +653,12 @@ pub async fn get_advisor_findings(
     Path(model_id): Path<String>,
 ) -> Result<Json<ApiSuccess<Vec<DataModelAdvisorFindingResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let findings = ModelDefinitionService::for_data_model_settings(state.store.clone())
-        .advisor_findings(context.user.id, helpers::parse_uuid(&model_id, "model_id")?)
-        .await?;
+    let findings = settings_service(
+        &state,
+        access_control::MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID,
+    )
+    .advisor_findings(context.user.id, helpers::parse_uuid(&model_id, "model_id")?)
+    .await?;
 
     Ok(Json(ApiSuccess::new(
         findings
@@ -653,7 +680,7 @@ pub async fn list_scope_grants(
     Path(model_id): Path<String>,
 ) -> Result<Json<ApiSuccess<Vec<ScopeGrantResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let grants = ModelDefinitionService::for_data_model_settings(state.store.clone())
+    let grants = settings_service(&state, access_control::MODEL_SCOPE_GRANTS_LIST_OPERATION_ID)
         .list_scope_grants(context.user.id, helpers::parse_uuid(&model_id, "model_id")?)
         .await?;
 
@@ -680,12 +707,18 @@ pub async fn update_model(
 
     let model_id = helpers::parse_uuid(&model_id, "model_id")?;
     let requested_status = body.status.as_deref().map(parse_model_status).transpose()?;
-    let mutation_service = mutation_service(&state);
+    let mutation_service = mutation_service(
+        &state,
+        access_control::MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
+    );
     let mut model = None;
     if body.title.is_some() || body.external_table_id.is_some() {
-        let current_model = ModelDefinitionService::for_data_model_settings(state.store.clone())
-            .get_model(context.user.id, model_id)
-            .await?;
+        let current_model = settings_service(
+            &state,
+            access_control::MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
+        )
+        .get_model(context.user.id, model_id)
+        .await?;
         let title = match body.title {
             Some(title) => title,
             None => current_model.title,
@@ -737,13 +770,16 @@ pub async fn delete_model(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    mutation_service(&state)
-        .delete_model(DeleteModelDefinitionCommand {
-            actor_user_id: context.user.id,
-            model_id: helpers::parse_uuid(&model_id, "model_id")?,
-            confirmed: query.confirmed.unwrap_or(false),
-        })
-        .await?;
+    mutation_service(
+        &state,
+        access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID,
+    )
+    .delete_model(DeleteModelDefinitionCommand {
+        actor_user_id: context.user.id,
+        model_id: helpers::parse_uuid(&model_id, "model_id")?,
+        confirmed: query.confirmed.unwrap_or(false),
+    })
+    .await?;
 
     Ok(Json(ApiSuccess::new(
         serde_json::json!({ "deleted": true }),
@@ -764,9 +800,12 @@ pub async fn batch_delete_models(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    let models = ModelDefinitionService::for_data_model_settings(state.store.clone())
-        .list_models(context.user.id)
-        .await?;
+    let models = settings_service(
+        &state,
+        access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID,
+    )
+    .list_models(context.user.id)
+    .await?;
     let model_ids = STATE_MODEL_RESOURCE.select_batch_ids(
         models,
         ResourceBatchSelection::new(body.filter_by_tk, body.filter),
@@ -777,13 +816,16 @@ pub async fn batch_delete_models(
         |model| model.id,
     )?;
 
-    let deleted_ids = mutation_service(&state)
-        .batch_delete_models(BatchDeleteModelDefinitionsCommand {
-            actor_user_id: context.user.id,
-            model_ids,
-            confirmed: body.confirmed,
-        })
-        .await?;
+    let deleted_ids = mutation_service(
+        &state,
+        access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID,
+    )
+    .batch_delete_models(BatchDeleteModelDefinitionsCommand {
+        actor_user_id: context.user.id,
+        model_ids,
+        confirmed: body.confirmed,
+    })
+    .await?;
 
     Ok(Json(ApiSuccess::new(BatchDeletedResponse {
         deleted: true,
@@ -812,7 +854,7 @@ pub async fn create_field(
     require_csrf(&headers, &context)?;
     let model_id = helpers::parse_uuid(&model_id, "model_id")?;
 
-    let field = mutation_service(&state)
+    let field = mutation_service(&state, access_control::MODEL_FIELDS_CREATE_OPERATION_ID)
         .add_field(AddModelFieldCommand {
             actor_user_id: context.user.id,
             model_id,
@@ -835,7 +877,7 @@ pub async fn create_field(
             relation_options: body.relation_options,
         })
         .await?;
-    let model = ModelDefinitionService::for_data_model_settings(state.store.clone())
+    let model = settings_service(&state, access_control::MODEL_FIELDS_CREATE_OPERATION_ID)
         .get_model(context.user.id, model_id)
         .await?;
 
@@ -866,7 +908,7 @@ pub async fn update_field(
     let model_id = helpers::parse_uuid(&model_id, "model_id")?;
     let field_id = helpers::parse_uuid(&field_id, "field_id")?;
 
-    let field = mutation_service(&state)
+    let field = mutation_service(&state, access_control::MODEL_FIELDS_UPDATE_OPERATION_ID)
         .update_field(UpdateModelFieldCommand {
             actor_user_id: context.user.id,
             model_id,
@@ -882,7 +924,7 @@ pub async fn update_field(
             relation_options: body.relation_options,
         })
         .await?;
-    let model = ModelDefinitionService::for_data_model_settings(state.store.clone())
+    let model = settings_service(&state, access_control::MODEL_FIELDS_UPDATE_OPERATION_ID)
         .get_model(context.user.id, model_id)
         .await?;
 
@@ -910,7 +952,7 @@ pub async fn delete_field(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    mutation_service(&state)
+    mutation_service(&state, access_control::MODEL_FIELDS_DELETE_OPERATION_ID)
         .delete_field(DeleteModelFieldCommand {
             actor_user_id: context.user.id,
             model_id: helpers::parse_uuid(&model_id, "model_id")?,
@@ -940,18 +982,20 @@ pub async fn create_scope_grant(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    let grant = ModelDefinitionService::for_data_model_settings(state.store.clone())
-        .create_scope_grant(CreateScopeDataModelGrantCommand {
-            actor_user_id: context.user.id,
-            scope_kind: parse_scope_kind(&body.scope_kind)?,
-            scope_id: body.scope_id,
-            data_model_id: helpers::parse_uuid(&model_id, "model_id")?,
-            enabled: body.enabled,
-            permission_profile: body.permission_profile,
-            confirm_unsafe_external_source_system_all: body
-                .confirm_unsafe_external_source_system_all,
-        })
-        .await?;
+    let grant = settings_service(
+        &state,
+        access_control::MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID,
+    )
+    .create_scope_grant(CreateScopeDataModelGrantCommand {
+        actor_user_id: context.user.id,
+        scope_kind: parse_scope_kind(&body.scope_kind)?,
+        scope_id: body.scope_id,
+        data_model_id: helpers::parse_uuid(&model_id, "model_id")?,
+        enabled: body.enabled,
+        permission_profile: body.permission_profile,
+        confirm_unsafe_external_source_system_all: body.confirm_unsafe_external_source_system_all,
+    })
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -983,17 +1027,19 @@ pub async fn update_scope_grant(
         );
     }
 
-    let grant = ModelDefinitionService::for_data_model_settings(state.store.clone())
-        .update_scope_grant(UpdateScopeDataModelGrantCommand {
-            actor_user_id: context.user.id,
-            data_model_id: helpers::parse_uuid(&model_id, "model_id")?,
-            grant_id: helpers::parse_uuid(&grant_id, "grant_id")?,
-            enabled: body.enabled,
-            permission_profile: body.permission_profile,
-            confirm_unsafe_external_source_system_all: body
-                .confirm_unsafe_external_source_system_all,
-        })
-        .await?;
+    let grant = settings_service(
+        &state,
+        access_control::MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID,
+    )
+    .update_scope_grant(UpdateScopeDataModelGrantCommand {
+        actor_user_id: context.user.id,
+        data_model_id: helpers::parse_uuid(&model_id, "model_id")?,
+        grant_id: helpers::parse_uuid(&grant_id, "grant_id")?,
+        enabled: body.enabled,
+        permission_profile: body.permission_profile,
+        confirm_unsafe_external_source_system_all: body.confirm_unsafe_external_source_system_all,
+    })
+    .await?;
 
     Ok(Json(ApiSuccess::new(to_scope_grant_response(grant))))
 }

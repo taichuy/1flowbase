@@ -6,8 +6,8 @@ use control_plane::model_definition::{
 };
 use control_plane::ports::{
     AddModelFieldInput, CreateModelDefinitionInput, CreateScopeDataModelGrantInput,
-    ModelDefinitionRepository, UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput,
-    UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
+    ModelDefinitionRepository, RoleConsolePolicyReader, UpdateModelDefinitionInput,
+    UpdateModelDefinitionStatusInput, UpdateModelFieldInput, UpdateScopeDataModelGrantInput,
 };
 use domain::{
     ActorContext, AuditLogRecord, DataModelOwnerKind, DataModelProtection, DataModelScopeKind,
@@ -36,6 +36,7 @@ struct ScopedModelDefinitionRepository {
         >,
     >,
     audit_logs: Arc<Mutex<Vec<AuditLogRecord>>>,
+    console_policies: Arc<Mutex<Vec<domain::RoleConsolePolicy>>>,
 }
 
 impl ScopedModelDefinitionRepository {
@@ -47,6 +48,7 @@ impl ScopedModelDefinitionRepository {
             grants: Arc::default(),
             role_data_policies: Arc::default(),
             audit_logs: Arc::default(),
+            console_policies: Arc::default(),
         }
     }
 
@@ -96,6 +98,96 @@ impl ScopedModelDefinitionRepository {
             .map(|event| event.event_code.clone())
             .collect()
     }
+
+    fn with_console_operation(self, operation_id: &str) -> Self {
+        let group = domain::ConsolePolicyGroup::settings_feature("system.data-models")
+            .expect("data-model settings group must be valid");
+        self.console_policies
+            .lock()
+            .expect("console policy lock poisoned")
+            .push(domain::RoleConsolePolicy::new(
+                Uuid::now_v7(),
+                vec![domain::RoleConsoleGroupPolicy::custom(
+                    group,
+                    vec![domain::ConsoleOperationPolicy::simple(
+                        domain::ConsoleOperationId::try_from(operation_id)
+                            .expect("model definition operation id must be valid"),
+                        true,
+                    )],
+                )],
+            ));
+        self
+    }
+}
+
+#[async_trait::async_trait]
+impl RoleConsolePolicyReader for ScopedModelDefinitionRepository {
+    async fn load_role_console_policies_for_user(
+        &self,
+        _user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>> {
+        Ok(self
+            .console_policies
+            .lock()
+            .expect("console policy lock poisoned")
+            .clone())
+    }
+}
+
+#[tokio::test]
+async fn ac_1281_model_definition_policy_only_allows_without_legacy_grant() {
+    let actor = ActorContext::scoped(Uuid::now_v7(), Uuid::now_v7(), "member", Vec::new());
+    let repository = ScopedModelDefinitionRepository::new(actor.clone())
+        .with_console_operation("model_definitions.list");
+
+    ModelDefinitionService::for_console_operation(
+        repository.clone(),
+        domain::ConsolePolicyGroup::settings_feature("system.data-models").unwrap(),
+        "model_definitions.list",
+    )
+    .list_models(actor.user_id)
+    .await
+    .expect("the exact model-definition operation must authorize the settings owner");
+
+    let create_error = ModelDefinitionService::for_console_operation(
+        repository,
+        domain::ConsolePolicyGroup::settings_feature("system.data-models").unwrap(),
+        "model_definitions.create",
+    )
+    .create_model(CreateModelDefinitionCommand {
+        actor_user_id: actor.user_id,
+        scope_kind: DataModelScopeKind::Workspace,
+        data_source_instance_id: None,
+        external_resource_key: None,
+        external_table_id: None,
+        code: "should_not_create".to_string(),
+        title: "Should not create".to_string(),
+        status: None,
+    })
+    .await
+    .expect_err("list policy must not enable the independent create operation");
+    assert!(create_error.to_string().contains("permission_denied"));
+}
+
+#[tokio::test]
+async fn ac_1281_model_definition_legacy_only_does_not_authorize() {
+    let actor = ActorContext::scoped(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        "member",
+        vec![access_control::SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION.to_string()],
+    );
+    let repository = ScopedModelDefinitionRepository::new(actor.clone());
+
+    assert!(ModelDefinitionService::for_console_operation(
+        repository,
+        domain::ConsolePolicyGroup::settings_feature("system.data-models").unwrap(),
+        "model_definitions.list",
+    )
+    .list_models(actor.user_id)
+    .await
+    .is_err());
 }
 
 #[async_trait::async_trait]

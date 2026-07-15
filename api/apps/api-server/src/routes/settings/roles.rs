@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
+    Json, Router,
 };
 use control_plane::model_definition::ModelDefinitionService;
 use control_plane::ports::{RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput};
@@ -22,7 +22,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get, console_patch},
+    routes::console_route_assembly::{console_get, console_patch, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -615,9 +615,14 @@ pub async fn list_data_model_options(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<RoleDataModelOptionResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let models = ModelDefinitionService::new(state.store.clone())
-        .list_role_settings_data_model_options(context.user.id)
-        .await?;
+    let models = ModelDefinitionService::for_console_operation(
+        state.store.clone(),
+        domain::ConsolePolicyGroup::settings_feature("system.roles")
+            .expect("compiled roles settings group must be valid"),
+        "roles.data_model_options.list",
+    )
+    .list_role_settings_data_model_options(context.user.id)
+    .await?;
     Ok(Json(ApiSuccess::new(
         models
             .into_iter()
