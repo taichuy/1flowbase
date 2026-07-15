@@ -434,8 +434,9 @@ test("GitHub automation docs describe React Doctor as nightly-only structural de
   assert.match(readme, /nightly-only/u);
   assert.match(
     readme,
-    /npm exec --yes --package react-doctor@0\.2\.16 -- react-doctor web\/app --diff origin\/main --no-score --fail-on warning --verbose --no-color/u,
+    /npm exec --yes --package react-doctor@0\.2\.16 -- react-doctor web\/app --diff <parent-sha> --no-score --fail-on warning --verbose --no-color/u,
   );
+  assert.match(readme, /REACT_DOCTOR_DIFF_BASE/u);
   assert.match(readme, /scope: repo-frontend-react-doctor/u);
   assert.match(readme, /tmp\/test-governance\/react-doctor\.\*/u);
   assert.match(readme, /web\/app\/doctor\.config\.json/u);
