@@ -4,7 +4,6 @@ use std::{
     path::Path,
 };
 
-use access_control::ensure_permission;
 use anyhow::{bail, Context, Result};
 use plugin_framework::{
     parse_host_extension_contribution_manifest, parse_plugin_manifest,
@@ -17,8 +16,8 @@ use crate::{
     errors::ControlPlaneError,
     host_extension::is_host_extension_manifest,
     ports::{
-        AuthRepository, HostInfrastructureConfigRepository, PluginRepository,
-        UpdatePluginDesiredStateInput, UpsertHostInfrastructureProviderConfigInput,
+        HostInfrastructureConfigRepository, PluginRepository, UpdatePluginDesiredStateInput,
+        UpsertHostInfrastructureProviderConfigInput,
     },
 };
 
@@ -84,22 +83,13 @@ struct ProviderGroup {
 
 impl<R> HostInfrastructureConfigService<R>
 where
-    R: AuthRepository + PluginRepository + HostInfrastructureConfigRepository,
+    R: PluginRepository + HostInfrastructureConfigRepository,
 {
     pub fn new(repository: R) -> Self {
         Self { repository }
     }
 
-    pub async fn list_providers(
-        &self,
-        actor: domain::ActorContext,
-    ) -> Result<HostInfrastructureProviderConfigList> {
-        ensure_permission(
-            &actor,
-            access_control::SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
-        )
-        .map_err(ControlPlaneError::PermissionDenied)?;
-
+    pub async fn list_providers(&self) -> Result<HostInfrastructureProviderConfigList> {
         let saved_configs = self
             .repository
             .list_host_infrastructure_provider_configs()
@@ -152,16 +142,6 @@ where
         &self,
         command: SaveHostInfrastructureProviderConfigCommand,
     ) -> Result<SaveHostInfrastructureProviderConfigResult> {
-        let actor = self
-            .repository
-            .load_actor_context_for_user(command.actor_user_id)
-            .await?;
-        ensure_permission(
-            &actor,
-            access_control::SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
-        )
-        .map_err(ControlPlaneError::PermissionDenied)?;
-
         let groups = self.load_provider_groups().await?;
         let group = groups
             .into_iter()
