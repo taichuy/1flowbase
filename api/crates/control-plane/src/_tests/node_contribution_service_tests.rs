@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
     node_contribution::{ListNodeContributionsQuery, NodeContributionService},
-    ports::{AuthRepository, NodeContributionRepository},
+    ports::{AuthRepository, NodeContributionRepository, RoleConsolePolicyReader},
 };
 use domain::{ActorContext, NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 use tokio::sync::RwLock;
@@ -17,6 +17,7 @@ use super::plugin_management::support::actor_with_permissions;
 struct MemoryNodeContributionRepository {
     actor: ActorContext,
     entries: Arc<RwLock<Vec<NodeContributionRegistryEntry>>>,
+    console_policies: Vec<domain::RoleConsolePolicy>,
 }
 
 impl MemoryNodeContributionRepository {
@@ -24,7 +25,25 @@ impl MemoryNodeContributionRepository {
         Self {
             actor,
             entries: Arc::new(RwLock::new(entries)),
+            console_policies: Vec::new(),
         }
+    }
+
+    fn with_console_operation(mut self, operation_id: &str) -> Self {
+        let group = domain::ConsolePolicyGroup::other("other.node-contributions")
+            .expect("node contribution policy group must be valid");
+        self.console_policies = vec![domain::RoleConsolePolicy::new(
+            Uuid::now_v7(),
+            vec![domain::RoleConsoleGroupPolicy::custom(
+                group,
+                vec![domain::ConsoleOperationPolicy::simple(
+                    domain::ConsoleOperationId::try_from(operation_id)
+                        .expect("node contribution operation id must be valid"),
+                    true,
+                )],
+            )],
+        )];
+        self
     }
 }
 
@@ -130,6 +149,17 @@ impl NodeContributionRepository for MemoryNodeContributionRepository {
     }
 }
 
+#[async_trait]
+impl RoleConsolePolicyReader for MemoryNodeContributionRepository {
+    async fn load_role_console_policies_for_user(
+        &self,
+        _user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        Ok(self.console_policies.clone())
+    }
+}
+
 fn sample_entry(
     contribution_code: &str,
     status: NodeContributionDependencyStatus,
@@ -172,12 +202,13 @@ fn sample_entry(
 async fn node_contribution_service_lists_workspace_entries() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryNodeContributionRepository::new(
-        actor_with_permissions(workspace_id, &["plugin_config.view.all"]),
+        actor_with_permissions(workspace_id, &[]),
         vec![sample_entry(
             "openai_prompt",
             NodeContributionDependencyStatus::Ready,
         )],
-    );
+    )
+    .with_console_operation("node_contributions.view");
     let service = NodeContributionService::new(repository);
 
     let view = service
@@ -193,7 +224,7 @@ async fn node_contribution_service_lists_workspace_entries() {
 }
 
 #[tokio::test]
-async fn node_contribution_service_requires_plugin_config_view_permission() {
+async fn node_contribution_service_defaults_to_deny_without_console_operation() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryNodeContributionRepository::new(
         actor_with_permissions(workspace_id, &[]),
@@ -210,6 +241,52 @@ async fn node_contribution_service_requires_plugin_config_view_permission() {
         })
         .await
         .unwrap_err();
+
+    assert!(matches!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::PermissionDenied(_))
+    ));
+}
+
+#[tokio::test]
+async fn ac_1281_node_contributions_policy_only_allows_without_legacy_grant() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryNodeContributionRepository::new(
+        actor_with_permissions(workspace_id, &[]),
+        vec![sample_entry(
+            "policy_only",
+            NodeContributionDependencyStatus::Ready,
+        )],
+    )
+    .with_console_operation("node_contributions.view");
+
+    let view = NodeContributionService::new(repository)
+        .list_node_contributions(ListNodeContributionsQuery {
+            actor_user_id: Uuid::now_v7(),
+        })
+        .await
+        .expect("the exact console operation must authorize the catalog owner");
+
+    assert_eq!(view.entries[0].contribution_code, "policy_only");
+}
+
+#[tokio::test]
+async fn ac_1281_node_contributions_legacy_only_does_not_authorize() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryNodeContributionRepository::new(
+        actor_with_permissions(workspace_id, &["plugin_config.view.all"]),
+        vec![sample_entry(
+            "legacy_only",
+            NodeContributionDependencyStatus::Ready,
+        )],
+    );
+
+    let error = NodeContributionService::new(repository)
+        .list_node_contributions(ListNodeContributionsQuery {
+            actor_user_id: Uuid::now_v7(),
+        })
+        .await
+        .expect_err("legacy plugin_config grants must not authorize the compiled operation");
 
     assert!(matches!(
         error.downcast_ref::<ControlPlaneError>(),
