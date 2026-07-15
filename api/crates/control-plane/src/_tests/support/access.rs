@@ -492,3 +492,155 @@ impl RoleConsolePolicyReader for MemoryRoleRepository {
         Ok(self.actor_console_policies.read().await.clone())
     }
 }
+
+#[async_trait]
+impl crate::ports::FrontstagePageRepository for MemoryRoleRepository {
+    async fn load_actor_context_for_workspace(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<ActorContext> {
+        let mut actor = RoleRepository::load_actor_context_for_user(self, actor_user_id).await?;
+        actor.current_workspace_id = workspace_id;
+        Ok(actor)
+    }
+
+    async fn list_frontstage_pages(
+        &self,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::FrontstagePageRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn list_frontstage_page_visibility_rules_for_actor_roles(
+        &self,
+        _actor_user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn list_frontstage_page_visibility_rules_for_role(
+        &self,
+        _workspace_id: Uuid,
+        _role_code: &str,
+    ) -> Result<Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn replace_frontstage_page_visibility_rules_for_role(
+        &self,
+        _workspace_id: Uuid,
+        _role_code: &str,
+        _page_ids: &[Uuid],
+        _tab_ids: &[Uuid],
+        _actor_user_id: Uuid,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn get_frontstage_page(
+        &self,
+        _workspace_id: Uuid,
+        _page_id: Uuid,
+    ) -> Result<Option<domain::FrontstagePageRecord>> {
+        Ok(None)
+    }
+
+    async fn list_frontstage_page_tabs(
+        &self,
+        _workspace_id: Uuid,
+        _page_id: Uuid,
+    ) -> Result<Vec<domain::frontstage::FrontstagePageTabRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn get_frontstage_page_tab_detail(
+        &self,
+        _workspace_id: Uuid,
+        _page_id: Uuid,
+        _tab_id: Uuid,
+    ) -> Result<Option<domain::frontstage::FrontstagePageDetail>> {
+        Ok(None)
+    }
+
+    async fn create_frontstage_page(
+        &self,
+        _input: &crate::ports::CreateFrontstagePageInput,
+    ) -> Result<domain::frontstage::FrontstagePageCreation> {
+        anyhow::bail!("frontstage page creation is not used by role tests")
+    }
+
+    async fn create_frontstage_page_tab(
+        &self,
+        _input: &crate::ports::CreateFrontstagePageTabInput,
+    ) -> Result<domain::frontstage::FrontstagePageTabRecord> {
+        anyhow::bail!("frontstage tab creation is not used by role tests")
+    }
+
+    async fn update_frontstage_page_metadata(
+        &self,
+        _input: &crate::ports::UpdateFrontstagePageMetadataInput,
+    ) -> Result<domain::FrontstagePageRecord> {
+        anyhow::bail!("frontstage metadata update is not used by role tests")
+    }
+
+    async fn update_frontstage_page_tab(
+        &self,
+        _input: &crate::ports::UpdateFrontstagePageTabInput,
+    ) -> Result<domain::frontstage::FrontstagePageTabRecord> {
+        anyhow::bail!("frontstage tab update is not used by role tests")
+    }
+
+    async fn move_frontstage_page(
+        &self,
+        _input: &crate::ports::MoveFrontstagePageInput,
+    ) -> Result<domain::FrontstagePageRecord> {
+        anyhow::bail!("frontstage move is not used by role tests")
+    }
+
+    async fn delete_frontstage_page(&self, _workspace_id: Uuid, _page_id: Uuid) -> Result<()> {
+        anyhow::bail!("frontstage page deletion is not used by role tests")
+    }
+
+    async fn delete_frontstage_page_tab(
+        &self,
+        _workspace_id: Uuid,
+        _page_id: Uuid,
+        _tab_id: Uuid,
+        _actor_user_id: Uuid,
+    ) -> Result<()> {
+        anyhow::bail!("frontstage tab deletion is not used by role tests")
+    }
+
+    async fn save_frontstage_tab_document(
+        &self,
+        _input: &crate::ports::SaveFrontstageTabDocumentInput,
+    ) -> Result<domain::frontstage::FrontstagePageDetail> {
+        anyhow::bail!("frontstage document save is not used by role tests")
+    }
+
+    async fn get_frontstage_block_code(
+        &self,
+        _workspace_id: Uuid,
+        _page_id: Uuid,
+        _code_ref: &str,
+    ) -> Result<Option<domain::frontstage::FrontstageBlockCodeRecord>> {
+        Ok(None)
+    }
+
+    async fn save_frontstage_block_code(
+        &self,
+        _input: &crate::ports::SaveFrontstageBlockCodeInput,
+    ) -> Result<domain::frontstage::FrontstageBlockCodeRecord> {
+        anyhow::bail!("frontstage code save is not used by role tests")
+    }
+
+    async fn append_audit_log(&self, event: &AuditLogRecord) -> Result<()> {
+        self.audit_events
+            .write()
+            .await
+            .push(event.event_code.clone());
+        Ok(())
+    }
+}

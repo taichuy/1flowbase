@@ -1,11 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use access_control::{
-    ensure_permission, ConsoleAuthorization, ConsoleLocaleCatalog,
-    ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry,
-    ConsolePolicyGroup as RegisteredConsolePolicyGroup, ResourceAccessRegistration,
-    ResourceAccessScopeKind, SettingsFeatureLifecycle, SYSTEM_ROLES_SETTINGS_FEATURE_ID,
-    SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION,
+    ConsoleAuthorization, ConsoleLocaleCatalog, ConsoleOperationCompiledInventory,
+    ConsoleOperationInventoryEntry, ConsolePolicyGroup as RegisteredConsolePolicyGroup,
+    ResourceAccessRegistration, ResourceAccessScopeKind, SettingsFeatureLifecycle,
+    SYSTEM_ROLES_SETTINGS_FEATURE_ID,
 };
 use anyhow::Result;
 use uuid::Uuid;
@@ -40,6 +39,8 @@ const ROLES_CREATE_OPERATION_ID: &str = "roles.create";
 const ROLES_DATA_POLICY_REPLACE_OPERATION_ID: &str = "roles.data_policy.replace";
 const ROLES_DATA_POLICY_VIEW_OPERATION_ID: &str = "roles.data_policy.view";
 const ROLES_DELETE_OPERATION_ID: &str = "roles.delete";
+const ROLES_FRONTSTAGE_ROUTES_REPLACE_OPERATION_ID: &str = "roles.frontstage_routes.replace";
+const ROLES_FRONTSTAGE_ROUTES_VIEW_OPERATION_ID: &str = "roles.frontstage_routes.view";
 const ROLES_LIST_OPERATION_ID: &str = "roles.list";
 const ROLES_PERMISSION_OPTIONS_LIST_OPERATION_ID: &str = "roles.permission_options.list";
 const ROLES_PERMISSIONS_REPLACE_OPERATION_ID: &str = "roles.permissions.replace";
@@ -834,7 +835,7 @@ fn roles_console_group() -> domain::ConsolePolicyGroup {
 
 impl<R> RoleService<R>
 where
-    R: RoleRepository + FrontstagePageRepository,
+    R: RoleRepository + RoleConsolePolicyReader + FrontstagePageRepository,
 {
     pub async fn get_frontstage_routes(
         &self,
@@ -843,9 +844,8 @@ where
     ) -> Result<RoleFrontstageRoutesView> {
         let actor =
             RoleRepository::load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        // Frontstage route visibility is explicitly outside this console-policy cutover.
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_FRONTSTAGE_ROUTES_VIEW_OPERATION_ID)
+            .await?;
         RoleRepository::list_role_permissions(
             &self.repository,
             actor.current_workspace_id,
@@ -892,9 +892,8 @@ where
         let actor =
             RoleRepository::load_actor_context_for_user(&self.repository, command.actor_user_id)
                 .await?;
-        // Frontstage route visibility is explicitly outside this console-policy cutover.
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_FRONTSTAGE_ROUTES_REPLACE_OPERATION_ID)
+            .await?;
         RoleRepository::list_role_permissions(
             &self.repository,
             actor.current_workspace_id,

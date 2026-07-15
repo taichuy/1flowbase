@@ -18,7 +18,8 @@ use crate::ports::{
 use crate::role::{
     ConsolePolicyCatalogFullProfile, ConsolePolicyGroupInput, ConsolePolicyOperationInput,
     CreateRoleCommand, DeleteRoleCommand, ReplaceRoleConsolePolicyCommand,
-    ReplaceRoleDataPolicyCommand, ReplaceRolePermissionsCommand, RoleService, UpdateRoleCommand,
+    ReplaceRoleDataPolicyCommand, ReplaceRoleFrontstageRoutesCommand,
+    ReplaceRolePermissionsCommand, RoleService, UpdateRoleCommand,
 };
 use domain::ConsoleOperationRowScope;
 use uuid::Uuid;
@@ -489,6 +490,64 @@ async fn ac_011_roles_legacy_feature_grant_does_not_authorize_crud_or_policy_pat
         .is_err());
     assert!(service
         .get_console_policy_catalog(actor.user_id, &console_policy_inventory(), "en_US")
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn ac_1281_role_frontstage_routes_use_independent_console_operations() {
+    let repository = MemoryRoleRepository::default();
+    let actor = memory_actor_context(false, &[]);
+    repository.set_actor_context(actor.clone()).await;
+    repository
+        .set_actor_console_policies(vec![roles_policy(&[
+            "roles.frontstage_routes.view",
+            "roles.frontstage_routes.replace",
+        ])])
+        .await;
+    let service = RoleService::new(repository.clone());
+
+    service
+        .get_frontstage_routes(actor.user_id, "member")
+        .await
+        .expect("view operation must authorize the real role frontstage owner");
+    service
+        .replace_frontstage_routes(ReplaceRoleFrontstageRoutesCommand {
+            actor_user_id: actor.user_id,
+            role_code: "member".to_string(),
+            page_ids: Vec::new(),
+            tab_ids: Vec::new(),
+        })
+        .await
+        .expect("replace operation must authorize the real role frontstage owner");
+
+    assert_eq!(
+        repository.audit_events(),
+        vec!["role.frontstage_routes_replaced"]
+    );
+}
+
+#[tokio::test]
+async fn ac_1281_role_frontstage_routes_reject_legacy_only_grant() {
+    let repository = MemoryRoleRepository::default();
+    let actor = memory_actor_context(
+        false,
+        &[access_control::SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION],
+    );
+    repository.set_actor_context(actor.clone()).await;
+    let service = RoleService::new(repository);
+
+    assert!(service
+        .get_frontstage_routes(actor.user_id, "member")
+        .await
+        .is_err());
+    assert!(service
+        .replace_frontstage_routes(ReplaceRoleFrontstageRoutesCommand {
+            actor_user_id: actor.user_id,
+            role_code: "member".to_string(),
+            page_ids: Vec::new(),
+            tab_ids: Vec::new(),
+        })
         .await
         .is_err());
 }
