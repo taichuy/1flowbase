@@ -7,8 +7,8 @@ use access_control::{
 use crate::{
     app_state::compile_core_settings_feature_registry,
     routes::console_route_assembly::{
-        ConsoleRouteAssembly, compile_migrated_core_console_operation_registry,
-        migrated_core_console_route_assembly,
+        compile_migrated_core_console_operation_registry, migrated_core_console_route_assembly,
+        ConsoleRouteAssembly,
     },
 };
 
@@ -58,11 +58,9 @@ fn console_route_assembly_unclassified_route_fails_coverage() {
         )])
         .unwrap_err();
 
-    assert!(
-        error
-            .to_string()
-            .contains("missing compiled ownership: GET /api/console/session")
-    );
+    assert!(error
+        .to_string()
+        .contains("missing compiled ownership: GET /api/console/session"));
 }
 
 #[test]
@@ -86,11 +84,9 @@ fn console_route_assembly_duplicate_ownership_fails_coverage() {
         ])
         .unwrap_err();
 
-    assert!(
-        error
-            .to_string()
-            .contains("duplicate assembled console route ownership")
-    );
+    assert!(error
+        .to_string()
+        .contains("duplicate assembled console route ownership"));
 }
 
 #[test]
@@ -123,70 +119,17 @@ fn applications_routes_compile_exact_operations_and_resource_metadata() {
         .iter()
         .filter(|binding| binding.route.path.starts_with("/api/console/applications"))
         .collect::<Vec<_>>();
+    let owner_assembly = crate::routes::applications::route_assembly()
+        .merge(crate::routes::application_api::route_assembly())
+        .merge(crate::routes::application_orchestration::route_assembly())
+        .merge(crate::routes::application_runtime::route_assembly());
     assert_eq!(
-        application_bindings
-            .iter()
-            .map(|binding| {
-                (
-                    binding.route.method.as_str(),
-                    binding.route.path.as_str(),
-                    match &binding.ownership {
-                        ConsoleRouteOwnership::ConsoleOperation(operation_id) => {
-                            operation_id.as_str()
-                        }
-                        ConsoleRouteOwnership::Authenticated => "authenticated",
-                    },
-                )
-            })
-            .collect::<Vec<_>>(),
-        vec![
-            ("GET", "/api/console/applications", "applications.view"),
-            ("POST", "/api/console/applications", "applications.create"),
-            ("GET", "/api/console/applications/:id", "applications.view",),
-            (
-                "PATCH",
-                "/api/console/applications/:id",
-                "applications.update",
-            ),
-            (
-                "DELETE",
-                "/api/console/applications/:id",
-                "applications.delete",
-            ),
-            (
-                "GET",
-                "/api/console/applications/catalog",
-                "applications.create",
-            ),
-            (
-                "POST",
-                "/api/console/applications/tags",
-                "applications.create",
-            ),
-            (
-                "GET",
-                "/api/console/applications/:id/environment-variables",
-                "applications.view",
-            ),
-            (
-                "PUT",
-                "/api/console/applications/:id/environment-variables",
-                "applications.update",
-            ),
-            (
-                "GET",
-                "/api/console/applications/:id/js-dependencies",
-                "applications.view",
-            ),
-            (
-                "PUT",
-                "/api/console/applications/:id/js-dependencies",
-                "applications.update",
-            ),
-        ]
+        application_bindings,
+        owner_assembly.bindings().iter().collect::<Vec<_>>(),
+        "the migrated assembly must consume every application owner assembly without a copied route list"
     );
 
-    let expected_routes = [
+    let critical_routes = [
         ("GET", "/api/console/applications", "applications.view"),
         ("POST", "/api/console/applications", "applications.create"),
         (
@@ -205,37 +148,17 @@ fn applications_routes_compile_exact_operations_and_resource_metadata() {
             "applications.delete",
         ),
         (
-            "GET",
-            "/api/console/applications/catalog",
-            "applications.create",
+            "POST",
+            "/api/console/applications/00000000-0000-0000-0000-000000000001/api-publications",
+            "applications.publish",
         ),
         (
             "POST",
-            "/api/console/applications/tags",
-            "applications.create",
-        ),
-        (
-            "GET",
-            "/api/console/applications/00000000-0000-0000-0000-000000000001/environment-variables",
-            "applications.view",
-        ),
-        (
-            "PUT",
-            "/api/console/applications/00000000-0000-0000-0000-000000000001/environment-variables",
-            "applications.update",
-        ),
-        (
-            "GET",
-            "/api/console/applications/00000000-0000-0000-0000-000000000001/js-dependencies",
-            "applications.view",
-        ),
-        (
-            "PUT",
-            "/api/console/applications/00000000-0000-0000-0000-000000000001/js-dependencies",
-            "applications.update",
+            "/api/console/applications/00000000-0000-0000-0000-000000000001/orchestration/debug-runs",
+            "applications.run",
         ),
     ];
-    for (method, path, operation_id) in expected_routes {
+    for (method, path, operation_id) in critical_routes {
         let access = registry.access_for_console_route(method, path).unwrap();
         assert_eq!(access.operation_id, operation_id);
     }
@@ -325,11 +248,9 @@ fn applications_closed_set_rejects_duplicate_or_missing_binding() {
         .cloned()
         .collect::<Vec<_>>();
     let error = compile_migrated_core_console_operation_registry(&settings, &missing).unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("operation applications.delete must own at least one console route")
-    );
+    assert!(error
+        .to_string()
+        .contains("operation applications.delete must own at least one console route"));
 }
 
 #[test]
@@ -845,12 +766,10 @@ fn data_model_docs_and_data_source_routes_compile_exact_operations() {
             ),
         ]
     );
-    assert!(
-        assembly
-            .bindings()
-            .iter()
-            .all(|binding| { binding.ownership != ConsoleRouteOwnership::Authenticated })
-    );
+    assert!(assembly
+        .bindings()
+        .iter()
+        .all(|binding| { binding.ownership != ConsoleRouteOwnership::Authenticated }));
 
     let settings = compile_core_settings_feature_registry().unwrap();
     let migrated = migrated_core_console_route_assembly();

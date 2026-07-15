@@ -1,6 +1,15 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+
+const {
+  DEFAULT_BASELINE_INVENTORY_PATH,
+  generateCompiledInventorySnapshot,
+} = require('./compiled-inventory-generator.js');
+const {
+  buildCompiledAssemblyCommands,
+  parseCargoTestCounts,
+  runCompiledAssemblyChecks,
+} = require('./compiled-assembly-checks.js');
 
 const OUTPUT_ROOT = path.join('tmp', 'test-governance');
 const JSON_REPORT_FILE = 'console-operation-registry-hygiene.json';
@@ -55,18 +64,6 @@ const SOURCE_SCAN_FILES = {
   consoleMiddleware: DEFAULT_CONSOLE_MIDDLEWARE_FILE,
   legacyMapping: DEFAULT_LEGACY_MAPPING_FILE,
 };
-const COMPILED_ASSEMBLY_CHECKS = [
-  {
-    label: 'migrated-assembly-owners',
-    filter: 'migrated_assembly_contains_every_console_router_owner_assembly',
-  },
-  {
-    label: 'console-route-assembly',
-    filter: 'console_route_assembly',
-  },
-];
-const RUN_COMMAND_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
-
 function getRepoRoot() {
   return path.resolve(__dirname, '..', '..', '..');
 }
@@ -385,6 +382,13 @@ function collectConsoleOperationRegistryInventory({
     : embeddedBaseline
       ? normalizeCompiledEvidence(embeddedBaseline)
       : null;
+  const embeddedLocales = currentFile?.value?.locales || currentFile?.value?.locale_catalogs;
+  const localeSources = embeddedLocales && typeof embeddedLocales === 'object'
+    ? Object.fromEntries(DEFAULT_LOCALES.map((locale) => [locale, {
+      file: `${currentFile.file}#locales.${locale}`,
+      data: embeddedLocales[locale] || null,
+    }]))
+    : collectLocaleSources(repoRoot, localeDir);
 
   return {
     compiledInventoryPath: currentFile?.file || null,
@@ -392,7 +396,7 @@ function collectConsoleOperationRegistryInventory({
     current,
     inventory: current,
     baseline,
-    localeSources: collectLocaleSources(repoRoot, localeDir),
+    localeSources,
     localeDir: normalizePath(localeDir),
     sourceFiles: collectSourceFiles(repoRoot, sourceFiles),
   };
@@ -1025,9 +1029,8 @@ function evaluateConsoleOperationRegistryHygiene({
   if (!current) {
     findings.push(createFinding({
       rule: 'compiled-inventory-snapshot-missing',
-      severity: 'warning',
       source: 'compiled-assembly',
-      message: 'no compiled inventory snapshot was supplied; cargo assembly tests remain authoritative, inventory/locale/diff checks are unverified',
+      message: 'no compiled inventory snapshot was supplied; inventory, locale, and diff checks fail closed',
     }));
   } else {
     validateCompiledEvidence(current, findings, diff);
@@ -1040,9 +1043,8 @@ function evaluateConsoleOperationRegistryHygiene({
     } else {
       findings.push(createFinding({
         rule: 'compiled-inventory-baseline-missing',
-        severity: 'warning',
         source: 'compiled-assembly',
-        message: 'no baseline compiled inventory was supplied; permission expansion diff is unverified',
+        message: 'no baseline compiled inventory was supplied; permission expansion diff fails closed',
       }));
     }
 
@@ -1071,6 +1073,10 @@ function evaluateConsoleOperationRegistryHygiene({
 
   const errors = findings.filter((finding) => finding.severity === 'error').length;
   const warnings = findings.filter((finding) => finding.severity === 'warning').length;
+  const localeReferenceCount = collectI18nRefs(current).length;
+  const localeFailed = findings.some((finding) => (
+    finding.rule === 'locale-evidence-missing' || finding.rule === 'locale-ref-missing'
+  ));
   return {
     generatedAt: new Date().toISOString(),
     summary: {
@@ -1093,115 +1099,32 @@ function evaluateConsoleOperationRegistryHygiene({
         source: inventory.compiledInventoryPath,
       }
       : null,
+    checks: {
+      inventory: {
+        status: current ? 'passed' : 'failed',
+        source: inventory?.compiledInventoryPath || null,
+        operation_count: current?.operations?.length || 0,
+        resource_count: current?.resources?.length || 0,
+        route_assembly_count: current?.routeAssembly?.length || 0,
+      },
+      locale: {
+        status: current && !localeFailed ? 'passed' : 'failed',
+        locales: DEFAULT_LOCALES.map((locale) => ({
+          locale,
+          source: inventory?.localeSources?.[locale]?.file || null,
+        })),
+        reference_count: localeReferenceCount,
+      },
+      diff: {
+        status: current && baseline ? 'passed' : 'failed',
+        baseline_source: inventory?.baselineInventoryPath || null,
+        compared_operation_count: baseline?.operations?.length || 0,
+        compared_resource_count: baseline?.resources?.length || 0,
+      },
+    },
     diff,
     findings,
     repo_root: repoRoot,
-  };
-}
-
-function parseCargoTestCounts(output) {
-  let passedCount = 0;
-  let failedCount = 0;
-  let ignoredCount = 0;
-  const pattern = /test result:\s+(?:ok|FAILED)\.\s+(\d+) passed;\s+(\d+) failed;(?:\s+(\d+) ignored;)?/gu;
-  let match = pattern.exec(output);
-  while (match) {
-    passedCount += Number.parseInt(match[1], 10);
-    failedCount += Number.parseInt(match[2], 10);
-    ignoredCount += Number.parseInt(match[3] || '0', 10);
-    match = pattern.exec(output);
-  }
-  return {
-    passedCount,
-    failedCount,
-    ignoredCount,
-    testsRun: passedCount + failedCount,
-  };
-}
-
-function buildCompiledAssemblyCommands({ repoRoot = getRepoRoot() } = {}) {
-  return COMPILED_ASSEMBLY_CHECKS.map((target) => ({
-    label: target.label,
-    command: 'cargo',
-    args: [
-      'test',
-      '-p',
-      'api-server',
-      target.filter,
-      '--',
-      '--test-threads=1',
-    ],
-    cwd: path.join(repoRoot, 'api'),
-  }));
-}
-
-function runCompiledAssemblyChecks({
-  repoRoot = getRepoRoot(),
-  env = process.env,
-  spawnSyncImpl = spawnSync,
-  writeStdout = () => {},
-  writeStderr = () => {},
-  nowImpl = () => Date.now(),
-} = {}) {
-  const commands = buildCompiledAssemblyCommands({ repoRoot });
-  const results = [];
-  let status = 0;
-
-  for (const command of commands) {
-    const startedAtMs = nowImpl();
-    let result;
-    try {
-      result = spawnSyncImpl(command.command, command.args, {
-        cwd: command.cwd,
-        env: {
-          ...env,
-          CARGO_INCREMENTAL: '0',
-        },
-        encoding: 'utf8',
-        maxBuffer: RUN_COMMAND_MAX_BUFFER_BYTES,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-    } catch (error) {
-      result = {
-        status: 1,
-        stdout: '',
-        stderr: error.message,
-      };
-    }
-    const finishedAtMs = nowImpl();
-    const stdout = result?.stdout || '';
-    const stderr = result?.stderr || '';
-    const counts = parseCargoTestCounts(`${stdout}\n${stderr}`);
-    const exitCode = result?.status ?? 1;
-    const passed = exitCode === 0 && counts.failedCount === 0 && counts.testsRun > 0;
-    if (!passed) {
-      status = exitCode === 0 ? 1 : exitCode;
-    }
-    if (stdout) {
-      writeStdout(stdout);
-    }
-    if (stderr && !passed) {
-      writeStderr(stderr);
-    }
-    results.push({
-      label: command.label,
-      command: command.command,
-      args: command.args,
-      cwd: relativeRepoPath(repoRoot, command.cwd),
-      status: passed ? 'passed' : 'failed',
-      exitCode,
-      passedCount: counts.passedCount,
-      failedCount: counts.failedCount,
-      testsRun: counts.testsRun,
-      durationMs: Math.max(0, finishedAtMs - startedAtMs),
-      failureReason: passed ? null : exitCode !== 0 ? 'cargo-test-failed' : 'no-matching-test-result',
-    });
-  }
-
-  return {
-    status,
-    authoritative: true,
-    commands: results,
   };
 }
 
@@ -1381,10 +1304,18 @@ async function main(argv = [], deps = {}) {
       writeStderr,
       spawnSyncImpl: deps.spawnSyncImpl,
     });
+    const compiledInventoryPath = options.compiledInventoryPath
+      || (deps.generateCompiledInventoryImpl || generateCompiledInventorySnapshot)({
+        repoRoot,
+        env,
+        spawnSyncImpl: deps.spawnSyncImpl,
+      });
+    const baselineInventoryPath = options.baselineInventoryPath
+      || DEFAULT_BASELINE_INVENTORY_PATH;
     inventory = (deps.collectInventoryImpl || collectConsoleOperationRegistryInventory)({
       repoRoot,
-      compiledInventoryPath: options.compiledInventoryPath,
-      baselineInventoryPath: options.baselineInventoryPath,
+      compiledInventoryPath,
+      baselineInventoryPath,
       localeDir: options.localeDir,
     });
     report = (deps.evaluateImpl || evaluateConsoleOperationRegistryHygiene)({
@@ -1449,11 +1380,13 @@ async function main(argv = [], deps = {}) {
 }
 
 module.exports = {
+  DEFAULT_BASELINE_INVENTORY_PATH,
   INVENTORY_SCHEMA_VERSION,
   buildCompiledAssemblyCommands,
   collectConsoleOperationRegistryInventory,
   compareCompiledInventories,
   evaluateConsoleOperationRegistryHygiene,
+  generateCompiledInventorySnapshot,
   main,
   normalizeCompiledEvidence,
   parseCargoTestCounts,

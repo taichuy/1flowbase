@@ -1,8 +1,12 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use control_plane::ports::{OfficialPluginSourcePort, RuntimeEventStream, SessionStore};
 use plugin_framework::HostExtensionContributionManifest;
 use runtime_core::runtime_engine::RuntimeEngine;
+use serde::Serialize;
 use storage_durable::MainDurableStore;
 use time::OffsetDateTime;
 
@@ -12,8 +16,8 @@ use crate::{
     console_surface_registry::ConsoleSurfaceRegistry,
     host_extensions::console::ResolvedHostExtensionConsoleContribution,
     routes::console_route_assembly::{
-        ConsoleRouteAssembly, compile_migrated_console_operation_registry,
-        migrated_core_console_route_assembly,
+        compile_migrated_console_operation_registry, migrated_core_console_route_assembly,
+        ConsoleRouteAssembly,
     },
 };
 use crate::{
@@ -58,6 +62,68 @@ pub fn compile_core_console_operation_registry(
         assembly.bindings(),
     )
     .map(Arc::new)
+}
+
+#[derive(Debug, Serialize)]
+pub struct CoreConsoleOperationInventorySnapshot {
+    pub compiled_inventory: access_control::ConsoleOperationCompiledInventory,
+    pub route_assembly: Vec<access_control::ConsoleRouteAssemblyBinding>,
+    pub locales: BTreeMap<&'static str, BTreeMap<String, String>>,
+}
+
+pub fn compile_core_console_operation_inventory_snapshot(
+) -> anyhow::Result<CoreConsoleOperationInventorySnapshot> {
+    let settings_features = compile_core_settings_feature_registry()?;
+    let route_assembly = migrated_core_console_route_assembly();
+    let registry = compile_migrated_console_operation_registry(
+        &settings_features,
+        route_assembly.bindings(),
+        &[],
+    )?;
+    let inventory = registry.inventory();
+    let locale_catalog = inventory
+        .locale_catalog
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Core console operation inventory has no locale catalog"))?;
+    let references = inventory
+        .operations
+        .iter()
+        .flat_map(|operation| {
+            std::iter::once(operation.label_ref.as_str())
+                .chain(operation.description_ref.as_deref())
+        })
+        .chain(inventory.resources.iter().flat_map(|resource| {
+            std::iter::once(resource.label_ref.as_str())
+                .chain(resource.description_ref.as_deref())
+                .chain(resource.actions.iter().flat_map(|action| {
+                    std::iter::once(action.label_ref.as_str())
+                        .chain(action.description_ref.as_deref())
+                }))
+        }))
+        .collect::<BTreeSet<_>>();
+    let locales = ["zh_Hans", "en_US"]
+        .into_iter()
+        .map(|locale| {
+            let values = references
+                .iter()
+                .map(|reference| {
+                    let value = locale_catalog.text(locale, reference).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "compiled locale catalog is missing {locale} reference {reference}"
+                        )
+                    })?;
+                    Ok(((*reference).to_string(), value.to_string()))
+                })
+                .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
+            Ok((locale, values))
+        })
+        .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
+
+    Ok(CoreConsoleOperationInventorySnapshot {
+        compiled_inventory: inventory.clone(),
+        route_assembly: route_assembly.bindings().to_vec(),
+        locales,
+    })
 }
 
 pub(crate) struct CompiledConsoleBootPlan {

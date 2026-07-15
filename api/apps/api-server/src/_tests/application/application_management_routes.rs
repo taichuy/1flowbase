@@ -24,27 +24,13 @@ async fn create_application(
 ) -> String {
     let response = app
         .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/applications")
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "application_type": application_type,
-                        "workflow_trigger_type": workflow_trigger_type,
-                        "name": name,
-                        "description": format!("{name} description"),
-                        "icon": null,
-                        "icon_type": null,
-                        "icon_background": null
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
+        .oneshot(application_create_request(
+            cookie,
+            csrf,
+            application_type,
+            workflow_trigger_type,
+            name,
+        ))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
@@ -52,6 +38,80 @@ async fn create_application(
         .as_str()
         .unwrap()
         .to_string()
+}
+
+fn application_create_request(
+    cookie: &str,
+    csrf: &str,
+    application_type: &str,
+    workflow_trigger_type: Option<&str>,
+    name: &str,
+) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri("/api/console/applications")
+        .header("cookie", cookie)
+        .header("x-csrf-token", csrf)
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({
+                "application_type": application_type,
+                "workflow_trigger_type": workflow_trigger_type,
+                "name": name,
+                "description": format!("{name} description"),
+                "icon": null,
+                "icon_type": null,
+                "icon_background": null
+            })
+            .to_string(),
+        ))
+        .unwrap()
+}
+
+async fn replace_application_console_policy(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    role_code: &str,
+) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/settings/roles/{role_code}/console-policy"
+                ))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "groups": [{
+                            "kind": "settings_feature",
+                            "group_id": "system.applications",
+                            "mode": "custom",
+                            "operations": [
+                                {
+                                    "kind": "simple",
+                                    "operation_id": "applications.create",
+                                    "enabled": true
+                                },
+                                {
+                                    "kind": "row",
+                                    "operation_id": "applications.view",
+                                    "scope": "own"
+                                }
+                            ]
+                        }]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]
@@ -130,6 +190,21 @@ async fn ac_002_008_own_viewer_keeps_workbench_access_without_settings_managemen
     .await;
     let (member_cookie, member_csrf) =
         login_and_capture_cookie(&app, "application-own-viewer", "temp-pass").await;
+    let legacy_only = app
+        .clone()
+        .oneshot(application_create_request(
+            &member_cookie,
+            &member_csrf,
+            "agent_flow",
+            None,
+            "Legacy Grant Must Fail",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(legacy_only.status(), StatusCode::FORBIDDEN);
+
+    replace_application_console_policy(&app, &root_cookie, &root_csrf, "application_own_viewer")
+        .await;
     create_application(
         &app,
         &member_cookie,

@@ -5,8 +5,10 @@ const os = require('node:os');
 const path = require('node:path');
 
 const {
+  DEFAULT_BASELINE_INVENTORY_PATH,
   collectConsoleOperationRegistryInventory,
   evaluateConsoleOperationRegistryHygiene,
+  generateCompiledInventorySnapshot,
   main,
   runCompiledAssemblyChecks,
 } = require('../core.js');
@@ -165,6 +167,72 @@ test('healthy compiled fixture settles route, locale, migration, and diff checks
   assert.deepEqual(report.diff.missing, []);
   assert.deepEqual(report.diff.expansion, []);
   assert.equal(report.compiled_checks.authoritative, true);
+  assert.equal(report.checks.inventory.status, 'passed');
+  assert.equal(report.checks.locale.status, 'passed');
+  assert.equal(report.checks.diff.status, 'passed');
+  assert.ok(report.checks.locale.reference_count > 0);
+  assert.ok(report.checks.diff.compared_operation_count > 0);
+});
+
+test('missing compiled snapshot fails closed even when authoritative assembly tests pass', () => {
+  const report = evaluateConsoleOperationRegistryHygiene({
+    repoRoot: '/repo-root',
+    inventory: { current: null, baseline: null, localeSources: {} },
+    compiledChecks: passingCompiledChecks(),
+  });
+
+  assert.equal(report.summary.errors, 1);
+  assert.equal(report.checks.inventory.status, 'failed');
+  assert.ok(report.findings.some((finding) => (
+    finding.rule === 'compiled-inventory-snapshot-missing'
+      && finding.severity === 'error'
+  )));
+});
+
+test('default main generates and consumes the Rust compiled inventory snapshot and baseline', async () => {
+  const repoRoot = createFixtureRepo();
+  const current = readFixture();
+  current.locales = {
+    zh_Hans: LOCALE_SOURCE,
+    en_US: LOCALE_SOURCE,
+  };
+  writeJson(repoRoot, 'tmp/generated-current.json', current);
+  writeJson(repoRoot, DEFAULT_BASELINE_INVENTORY_PATH, current);
+  const generated = [];
+
+  const status = await main([], {
+    repoRoot,
+    generateCompiledInventoryImpl() {
+      generated.push(true);
+      return 'tmp/generated-current.json';
+    },
+    runCompiledChecksImpl: passingCompiledChecks,
+  });
+
+  assert.equal(status, 0);
+  assert.equal(generated.length, 1);
+  const report = JSON.parse(fs.readFileSync(path.join(
+    repoRoot,
+    'tmp/test-governance/console-operation-registry-hygiene.json'
+  ), 'utf8'));
+  assert.equal(report.inventory.source, 'tmp/generated-current.json');
+  assert.equal(report.checks.inventory.status, 'passed');
+  assert.equal(report.checks.locale.status, 'passed');
+  assert.equal(report.checks.diff.status, 'passed');
+});
+
+test('Rust snapshot generator fails when cargo exits successfully without writing inventory', () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-console-generator-'));
+
+  assert.throws(
+    () => generateCompiledInventorySnapshot({
+      repoRoot,
+      spawnSyncImpl() {
+        return { status: 0, stdout: '', stderr: '' };
+      },
+    }),
+    /did not write/u
+  );
 });
 
 test('drift fixture reports missing coverage, permission expansion, migration delta, locale gaps, and source warnings', () => {
