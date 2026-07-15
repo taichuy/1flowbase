@@ -53,4 +53,21 @@ async fn role_console_policy_catalog_serializes_compiled_full_profiles() {
         view["full_profile"],
         json!({ "kind": "row", "scope": "scope_all" })
     );
+    assert_eq!(
+        create["routes"],
+        json!([
+            {
+                "method": "GET",
+                "path": "/api/console/applications/catalog"
+            },
+            {
+                "method": "POST",
+                "path": "/api/console/applications"
+            },
+            {
+                "method": "POST",
+                "path": "/api/console/applications/tags"
+            }
+        ])
+    );
 }

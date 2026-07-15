@@ -56,11 +56,17 @@ export type ConsolePolicyCatalogFullProfile =
   | ConsolePolicyCatalogSimpleFullProfile
   | ConsolePolicyCatalogRowFullProfile;
 
+export interface ConsolePolicyCatalogRoute {
+  method: string;
+  path: string;
+}
+
 export interface ConsolePolicyCatalogOperation {
   operation_id: string;
   label: string;
   description: string;
   order: number;
+  routes: ConsolePolicyCatalogRoute[];
   full_profile: ConsolePolicyCatalogFullProfile;
   allowed_row_scopes: ConsolePolicyCatalogOption<ConsolePolicyRowScope>[];
   authorization: ConsolePolicyOperationAuthorization;

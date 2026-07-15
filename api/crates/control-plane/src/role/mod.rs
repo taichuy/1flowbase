@@ -334,6 +334,7 @@ fn build_console_policy_catalog_for_locale(
                         label,
                         description,
                         order: operation.order,
+                        routes: operation.routes.clone(),
                         full_profile: full_profile.clone(),
                         allowed_row_scopes,
                         authorization,

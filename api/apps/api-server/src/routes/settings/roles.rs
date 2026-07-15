@@ -260,9 +260,16 @@ pub struct ConsolePolicyCatalogOperationResponse {
     pub label: String,
     pub description: String,
     pub order: i32,
+    pub routes: Vec<ConsolePolicyCatalogRouteResponse>,
     pub full_profile: ConsolePolicyCatalogOperationFullProfileResponse,
     pub allowed_row_scopes: Vec<ConsolePolicyCatalogOptionResponse>,
     pub authorization: ConsolePolicyOperationAuthorizationResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConsolePolicyCatalogRouteResponse {
+    pub method: String,
+    pub path: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -401,6 +408,14 @@ fn to_console_policy_catalog_response(
                         label: operation.label,
                         description: operation.description,
                         order: operation.order,
+                        routes: operation
+                            .routes
+                            .into_iter()
+                            .map(|route| ConsolePolicyCatalogRouteResponse {
+                                method: route.method,
+                                path: route.path,
+                            })
+                            .collect(),
                         full_profile: match operation.full_profile {
                             control_plane::role::ConsolePolicyCatalogFullProfile::Simple {
                                 enabled,

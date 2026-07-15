@@ -192,10 +192,7 @@ export function RolePermissionPanel({
     toAppLocale(i18n.resolvedLanguage) ??
     toAppLocale(i18n.language) ??
     FALLBACK_APP_LOCALE;
-  const backendSystemSettingsTabLabel = i18nText(
-    'settings',
-    'auto.backend_system_settings'
-  );
+  const backendSettingsTabLabel = i18nText('settings', 'auto.backend_setting');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
   const [messageApi, contextHolder] = message.useMessage();
@@ -593,49 +590,46 @@ export function RolePermissionPanel({
             )
           },
           {
-            title: i18nText('settings', 'auto.grant_access'),
-            key: 'grant-access',
-            width: 160,
-            align: 'center' as const,
+            title: i18nText('settings', 'auto.authorization_policy'),
+            key: 'authorization-policy',
+            width: 180,
             render: (
               _: unknown,
               row: ReturnType<typeof policyTableRows>[number]
             ) => (
-              <Checkbox
-                aria-label={i18nText(
+              <Select
+                aria-label={`${row.catalogGroup.label} ${i18nText(
                   'settings',
-                  'auto.grant_backend_setting_access',
-                  { value1: row.catalogGroup.label }
-                )}
-                disabled={!canManageRoles || !selectedRole?.is_editable}
-                checked={row.policyGroup.mode !== 'disabled'}
-                onChange={(event) => {
-                  const nextGroup: ConsolePolicyGroup = {
-                    ...row.policyGroup,
-                    mode: event.target.checked ? 'full' : 'disabled',
-                    operations: []
-                  };
-                  const nextGroups = replaceConsolePolicyGroup(
-                    consolePolicyGroups,
-                    nextGroup
+                  'auto.authorization_policy'
+                )}`}
+                value={row.policyGroup.mode}
+                disabled={
+                  !canManageRoles ||
+                  !selectedRole?.is_editable ||
+                  replaceConsolePolicyMutation.isPending
+                }
+                options={groupModeOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                  title: option.label
+                }))}
+                style={{ width: 160 }}
+                onChange={(mode: ConsolePolicyGroup['mode']) => {
+                  if (mode === 'custom') {
+                    openConsolePolicyDetail(row.catalogGroup);
+                    return;
+                  }
+
+                  saveConsolePolicyGroups(
+                    replaceConsolePolicyGroup(consolePolicyGroups, {
+                      ...row.policyGroup,
+                      mode,
+                      operations: []
+                    })
                   );
-                  saveConsolePolicyGroups(nextGroups);
                 }}
               />
             )
-          },
-          {
-            title: i18nText('settings', 'auto.permission_policy_summary'),
-            key: 'policy-summary',
-            render: (
-              _: unknown,
-              row: ReturnType<typeof policyTableRows>[number]
-            ) => {
-              const modeOption = groupModeOptions.find(
-                (option) => option.value === row.policyGroup.mode
-              );
-              return modeOption ? <Tag>{modeOption.label}</Tag> : null;
-            }
           },
           {
             title: i18nText('settings', 'auto.operation'),
@@ -644,50 +638,20 @@ export function RolePermissionPanel({
               _: unknown,
               row: ReturnType<typeof policyTableRows>[number]
             ) => {
-              const fullModeOption = groupModeOptions.find(
-                (option) => option.value === 'full'
-              );
-              const restoreFullLabel = fullModeOption
-                ? i18nText(
-                    'settings',
-                    'auto.permission_policy_restore_mode',
-                    { value1: fullModeOption.label }
-                  )
-                : null;
               const canEdit = canManageRoles && selectedRole?.is_editable;
               return (
-                <Space size={0}>
-                  {row.policyGroup.mode === 'custom' && restoreFullLabel ? (
-                    <Button
-                      type="link"
-                      aria-label={restoreFullLabel}
-                      disabled={!canEdit}
-                      onClick={() =>
-                        saveConsolePolicyGroups(
-                          replaceConsolePolicyGroup(consolePolicyGroups, {
-                            ...row.policyGroup,
-                            mode: 'full',
-                            operations: []
-                          })
-                        )
-                      }
-                    >
-                      {restoreFullLabel}
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="link"
-                    aria-label={i18nText(
-                      'settings',
-                      'auto.permission_policy_details',
-                      { value1: row.catalogGroup.label }
-                    )}
-                    disabled={!canEdit}
-                    onClick={() => openConsolePolicyDetail(row.catalogGroup)}
-                  >
-                    {i18nText('settings', 'auto.permission_policy_details_text')}
-                  </Button>
-                </Space>
+                <Button
+                  type="link"
+                  aria-label={i18nText(
+                    'settings',
+                    'auto.permission_policy_details',
+                    { value1: row.catalogGroup.label }
+                  )}
+                  disabled={!canEdit}
+                  onClick={() => openConsolePolicyDetail(row.catalogGroup)}
+                >
+                  {i18nText('settings', 'auto.permission_policy_details_text')}
+                </Button>
               );
             }
           }
@@ -771,7 +735,7 @@ export function RolePermissionPanel({
     const backendSettingsTab = settingsFeatureGroups.length
       ? {
           key: CONSOLE_POLICY_TAB,
-          label: backendSystemSettingsTabLabel,
+          label: backendSettingsTabLabel,
           children: renderConsolePolicyTable('settings_feature')
         }
       : null;
@@ -793,7 +757,7 @@ export function RolePermissionPanel({
   }, [
     canManageRoles,
     consolePolicyCatalogQuery.data,
-    backendSystemSettingsTabLabel,
+    backendSettingsTabLabel,
     consolePolicyGroups,
     dataPolicyFormId,
     displayedCheckedRouteIds,
@@ -1191,6 +1155,16 @@ export function RolePermissionPanel({
                             {operation.description}
                           </Typography.Text>
                         ) : null}
+                        {operation.routes.map((route) => (
+                          <Typography.Text
+                            key={`${route.method}:${route.path}`}
+                            code
+                            type="secondary"
+                            style={{ overflowWrap: 'anywhere' }}
+                          >
+                            {route.method} {route.path}
+                          </Typography.Text>
+                        ))}
                       </Space>
                     )
                   },

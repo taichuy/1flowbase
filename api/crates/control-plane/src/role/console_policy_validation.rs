@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use access_control::ConsoleRouteBinding;
 use domain::{
     ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup,
     ConsolePolicyGroupKind, ConsolePolicyMode, RoleConsoleGroupPolicy, RoleConsolePolicy,
@@ -40,6 +41,7 @@ pub struct ConsolePolicyCatalogOperation {
     pub label: String,
     pub description: String,
     pub order: i32,
+    pub routes: Vec<ConsoleRouteBinding>,
     pub full_profile: ConsolePolicyCatalogFullProfile,
     pub allowed_row_scopes: Vec<ConsolePolicyCatalogOption>,
     pub authorization: ConsolePolicyAuthorization,
