@@ -14,6 +14,14 @@ pub(super) const LEGACY_NO_PROJECTIONS: &[LegacyNoProjectionSpec] = &[
         "The Core has no owner-scoped data-source simple-operation contract; do not widen it to workspace scope.",
     ),
     no_projection(
+        "external_data_source.edit.own",
+        "The old data-models SettingsRoute implied this grant, but no released or live console route/service consumed it; mapping it to configure or secret operations would expand authority.",
+    ),
+    no_projection(
+        "external_data_source.edit.all",
+        "The old data-models SettingsRoute implied this grant, but no released or live console route/service consumed it; mapping it to configure or secret operations would expand authority.",
+    ),
+    no_projection(
         "external_data_source.delete.own",
         "The baseline delete permission has no registered live console operation.",
     ),

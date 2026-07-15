@@ -31,18 +31,18 @@ use super::{
     crosswalk::LIVE_CORE_MIGRATION_SOURCE_CONTRACT, report::ConsolePolicyMigrationUnknownGrant,
 };
 
-pub(super) struct LiveConsolePolicyMigrationContext {
+pub(crate) struct LiveConsolePolicyMigrationContext {
     pub(super) store: storage_durable::MainDurableStore,
     pub(super) migration: CompiledCoreConsolePolicyMigration,
 }
 
-pub(super) struct LiveConsolePolicyMigrationPreview {
-    pub(super) role_projections: Vec<Value>,
-    pub(super) actor_previews: Vec<Value>,
-    pub(super) unknown_grants: Vec<ConsolePolicyMigrationUnknownGrant>,
-    pub(super) authorization_deltas: Vec<Value>,
-    pub(super) validation_errors: Vec<String>,
-    pub(super) rehearsal: Option<RoleConsolePolicyMigrationRehearsalInput>,
+pub(crate) struct LiveConsolePolicyMigrationPreview {
+    pub(crate) role_projections: Vec<Value>,
+    pub(crate) actor_previews: Vec<Value>,
+    pub(crate) unknown_grants: Vec<ConsolePolicyMigrationUnknownGrant>,
+    pub(crate) authorization_deltas: Vec<Value>,
+    pub(crate) validation_errors: Vec<String>,
+    pub(crate) rehearsal: Option<RoleConsolePolicyMigrationRehearsalInput>,
 }
 
 pub(super) async fn load_live_context(
@@ -81,7 +81,7 @@ pub(super) async fn load_live_context(
     Ok(LiveConsolePolicyMigrationContext { store, migration })
 }
 
-pub(super) async fn preview_live_migration(
+pub(crate) async fn preview_live_migration(
     store: &storage_durable::MainDurableStore,
     migration: &CompiledCoreConsolePolicyMigration,
     run_id: Uuid,

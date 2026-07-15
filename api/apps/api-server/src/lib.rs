@@ -213,6 +213,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     )
     .await?;
     let store = durable.store.clone();
+    console_policy_migration::require_runtime_console_policy_cutover(&store).await?;
     let builtin_host_extensions =
         host_extensions::builtin::load_builtin_host_extension_manifests(api_workspace_root()?)?;
     let host_extension_registry =
