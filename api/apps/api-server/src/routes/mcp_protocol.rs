@@ -1,24 +1,24 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     routing::post,
+    Json, Router,
 };
 use control_plane::mcp_management::McpManagementService;
 use domain::mcp_management::{McpInstanceStatus, McpToolStatus};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use super::mcp_management::upstream_client::{
-    McpStreamableHttpClient, map_proxy_arguments, map_proxy_result,
+    map_proxy_arguments, map_proxy_result, McpStreamableHttpClient,
 };
-use super::mcp_management::{McpDebugExecuteBody, McpDebugResponseMode, bindable_mcp_interface};
+use super::mcp_management::{bindable_mcp_interface, McpDebugExecuteBody, McpDebugResponseMode};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::{RequestCredential, require_session},
+    middleware::require_session::{require_session, RequestCredential},
 };
 
 #[derive(Deserialize)]

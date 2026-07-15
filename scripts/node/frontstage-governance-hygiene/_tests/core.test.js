@@ -116,7 +116,7 @@ alter table frontstage_page_visibility_rules
     self.repository.save_frontstage_block_code(&input).await
   }
 
-  async fn ensure_page_parent(&self, workspace_id: Uuid, parent_id: Option<Uuid>) -> Result<()> {
+  async fn ensure_page_parent_placement(&self, workspace_id: Uuid, parent_id: Option<Uuid>) -> Result<()> {
     let parent = self.repository.get_frontstage_page(workspace_id, parent_id.unwrap()).await?;
     if parent.kind != domain::FrontstagePageKind::Group { return Err(error); }
     Ok(())

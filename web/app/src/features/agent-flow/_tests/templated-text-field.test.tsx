@@ -1,4 +1,3 @@
-/* eslint-disable testing-library/no-node-access */
 import {
   act,
   fireEvent,
@@ -216,9 +215,7 @@ describe('TemplatedTextField', () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.getAllByText('Start/query').length
-      ).toBeGreaterThan(0);
+      expect(screen.getAllByText('Start/query').length).toBeGreaterThan(0);
     });
     expect(
       screen.getAllByTestId('templated-text-inline-chip').length
@@ -248,9 +245,7 @@ describe('TemplatedTextField', () => {
 
     fireEvent.focus(editor);
     fireEvent.click(screen.getByRole('button', { name: '插入变量' }));
-    fireEvent.click(
-      await screen.findByRole('option', { name: 'Start/query' })
-    );
+    fireEvent.click(await screen.findByRole('option', { name: 'Start/query' }));
 
     expect(onChange).not.toHaveBeenCalled();
 
@@ -337,9 +332,7 @@ describe('TemplatedTextField', () => {
       screen.getByRole('option', { name: 'Start/query' })
     ).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole('option', { name: 'Start/query' })
-    );
+    fireEvent.click(screen.getByRole('option', { name: 'Start/query' }));
 
     await waitFor(() => {
       expect(
@@ -496,7 +489,9 @@ describe('TemplatedTextField', () => {
         '请基于 {{node-start.history}}'
       );
     });
-    expect(screen.getByTestId('templated-text-value')).not.toHaveTextContent('/hi');
+    expect(screen.getByTestId('templated-text-value')).not.toHaveTextContent(
+      '/hi'
+    );
   });
 
   test('closes the editor-owned picker on Escape', async () => {
@@ -588,9 +583,7 @@ describe('TemplatedTextField', () => {
     fireEvent.focus(editor);
 
     fireEvent.click(screen.getByRole('button', { name: '插入变量' }));
-    fireEvent.click(
-      await screen.findByRole('option', { name: 'Start/query' })
-    );
+    fireEvent.click(await screen.findByRole('option', { name: 'Start/query' }));
     await act(async () => {
       await new Promise((resolve) => {
         window.setTimeout(resolve, 0);
@@ -602,9 +595,7 @@ describe('TemplatedTextField', () => {
       ).not.toBeInTheDocument();
     });
 
-    expect(
-      screen.getAllByText('Start/query').length
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText('Start/query').length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.getByTestId('templated-text-value')).toHaveTextContent(
         '请基于 {{node-start.query}}'
@@ -620,9 +611,7 @@ describe('TemplatedTextField', () => {
     fireEvent.focus(editor);
     fireEvent.keyDown(editor, { key: '/' });
     triggerEditorInput(editor, '请基于 /', '/');
-    fireEvent.click(
-      await screen.findByRole('option', { name: 'Start/query' })
-    );
+    fireEvent.click(await screen.findByRole('option', { name: 'Start/query' }));
 
     await waitFor(() => {
       expect(screen.getByText('Start/query')).toBeInTheDocument();

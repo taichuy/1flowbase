@@ -6,11 +6,12 @@ const path = require('node:path');
 
 const {
   buildReactDoctorCommand,
+  resolveReactDoctorDiffBase,
   runReactDoctorGate,
 } = require('../core.js');
 
-test('buildReactDoctorCommand pins the nightly structural debt command', () => {
-  assert.deepEqual(buildReactDoctorCommand({ repoRoot: '/repo' }), {
+test('buildReactDoctorCommand checks only the current commit by default', () => {
+  assert.deepEqual(buildReactDoctorCommand({ repoRoot: '/repo', diffBase: 'abc123' }), {
     command: 'npm',
     args: [
       'exec',
@@ -21,7 +22,7 @@ test('buildReactDoctorCommand pins the nightly structural debt command', () => {
       'react-doctor',
       'web/app',
       '--diff',
-      'origin/main',
+      'abc123',
       '--no-score',
       '--fail-on',
       'warning',
@@ -30,6 +31,32 @@ test('buildReactDoctorCommand pins the nightly structural debt command', () => {
     ],
     cwd: '/repo',
   });
+});
+
+test('buildReactDoctorCommand accepts an explicit debt audit baseline', () => {
+  const command = buildReactDoctorCommand({
+    repoRoot: '/repo',
+    diffBase: 'origin/main',
+  });
+
+  assert.deepEqual(command.args.slice(7, 10), ['--diff', 'origin/main', '--no-score']);
+});
+
+test('resolveReactDoctorDiffBase resolves the current commit parent to a SHA', () => {
+  const calls = [];
+  const diffBase = resolveReactDoctorDiffBase({
+    repoRoot: '/repo',
+    env: {},
+    spawnSyncImpl(command, args, options) {
+      calls.push({ command, args, options });
+      return { status: 0, stdout: 'abc123\n', stderr: '' };
+    },
+  });
+
+  assert.equal(diffBase, 'abc123');
+  assert.equal(calls[0].command, 'git');
+  assert.deepEqual(calls[0].args, ['rev-parse', '--verify', 'HEAD^']);
+  assert.equal(calls[0].options.cwd, '/repo');
 });
 
 test('runReactDoctorGate writes stable test-governance evidence', () => {
@@ -41,6 +68,7 @@ test('runReactDoctorGate writes stable test-governance evidence', () => {
     repoRoot,
     env: {
       PATH: process.env.PATH,
+      REACT_DOCTOR_DIFF_BASE: 'abc123',
     },
     spawnSyncImpl(command, args, options) {
       calls.push({ command, args, options });
@@ -69,7 +97,7 @@ test('runReactDoctorGate writes stable test-governance evidence', () => {
     'react-doctor',
     'web/app',
     '--diff',
-    'origin/main',
+    'abc123',
     '--no-score',
     '--fail-on',
     'warning',
@@ -88,6 +116,6 @@ test('runReactDoctorGate writes stable test-governance evidence', () => {
   const report = JSON.parse(fs.readFileSync(path.join(outputDir, 'react-doctor.json'), 'utf8'));
   assert.equal(report.status, 'passed');
   assert.equal(report.exitCode, 0);
-  assert.equal(report.command, 'npm exec --yes --package react-doctor@0.2.16 -- react-doctor web/app --diff origin/main --no-score --fail-on warning --verbose --no-color');
+  assert.equal(report.command, 'npm exec --yes --package react-doctor@0.2.16 -- react-doctor web/app --diff abc123 --no-score --fail-on warning --verbose --no-color');
   assert.equal(report.logPath, 'tmp/test-governance/react-doctor.log');
 });

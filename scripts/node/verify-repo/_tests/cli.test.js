@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const { buildCommands, main } = require('../../verify-repo.js');
 
-test('buildCommands composes gate router, hygiene, schema hygiene, growth report, raw JSONB report, log query contract report, capacity report, i18n hygiene, security risk, Vite lazy deps, script tests, contract tests, frontend gates and backend verify gate', () => {
+test('buildCommands composes gate router, hygiene, schema and frontstage governance, reports, script tests, frontend gates and backend verify gate', () => {
   const repoRoot = '/repo-root';
 
   assert.deepEqual(buildCommands({ repoRoot }), [
@@ -32,6 +32,15 @@ test('buildCommands composes gate router, hygiene, schema hygiene, growth report
       label: 'repo-schema-hygiene',
       command: process.execPath,
       args: [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'schema-hygiene'],
+      cwd: repoRoot,
+    },
+    {
+      label: 'repo-frontstage-governance-hygiene',
+      command: process.execPath,
+      args: [
+        path.join(repoRoot, 'scripts', 'node', 'tooling.js'),
+        'frontstage-governance-hygiene',
+      ],
       cwd: repoRoot,
     },
     {
@@ -113,6 +122,7 @@ test('buildCommands can select repository gate slices for parallel CI jobs', () 
       'repo-hygiene',
       'repo-i18n-hygiene',
       'repo-schema-hygiene',
+      'repo-frontstage-governance-hygiene',
       'repo-growth-table-report',
       'repo-raw-jsonb-report',
       'repo-log-query-contract-report',
@@ -157,7 +167,7 @@ test('main runs repository full gate in order and captures advisory output', asy
   });
 
   assert.equal(status, 0);
-  assert.equal(calls.length, 15);
+  assert.equal(calls.length, 16);
   assert.deepEqual(
     calls.map((call) => call.args),
     [
@@ -165,6 +175,10 @@ test('main runs repository full gate in order and captures advisory output', asy
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'repo-hygiene'],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'i18n-hygiene'],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'schema-hygiene'],
+      [
+        path.join(repoRoot, 'scripts', 'node', 'tooling.js'),
+        'frontstage-governance-hygiene',
+      ],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'growth-table-report'],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'raw-jsonb-report'],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'log-query-contract-report'],
@@ -257,7 +271,7 @@ test('main passes the inherited lock token through every repository gate command
   });
 
   assert.equal(status, 0);
-  assert.equal(calls.length, 15);
+  assert.equal(calls.length, 16);
   assert.equal(
     calls.every((call) => call.options.env.ONEFLOWBASE_VERIFY_LOCK_TOKEN === 'chain-token'),
     true

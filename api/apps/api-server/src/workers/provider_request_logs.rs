@@ -1,8 +1,8 @@
 use std::{sync::Arc, time::Duration as StdDuration};
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use control_plane::ports::{
-    ClaimedTask, PROVIDER_REQUEST_LOG_QUEUE, ProviderRequestLogTask, TaskQueue,
+    ClaimedTask, ProviderRequestLogTask, TaskQueue, PROVIDER_REQUEST_LOG_QUEUE,
 };
 use time::Duration;
 use tracing::{error, warn};

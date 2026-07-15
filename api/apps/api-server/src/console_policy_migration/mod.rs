@@ -3,22 +3,22 @@ mod crosswalk;
 mod live;
 mod report;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use control_plane::ports::{
     RoleConsolePolicyMigrationCutoverMarker, RoleConsolePolicyMigrationRepository,
 };
 
-pub use cli::{ConsolePolicyMigrationCommand, parse_command, run_from_env};
+pub use cli::{parse_command, run_from_env, ConsolePolicyMigrationCommand};
 pub use crosswalk::{
+    compile_core_console_policy_migration_plan, live_legacy_migration_source,
     CompiledCoreConsolePolicyMigration, ConsolePolicyMigrationOperationDisposition,
-    ConsolePolicyMigrationOperationDispositionKind, compile_core_console_policy_migration_plan,
-    live_legacy_migration_source,
+    ConsolePolicyMigrationOperationDispositionKind,
 };
 #[cfg(test)]
 pub(crate) use live::preview_live_migration;
 pub use report::{
-    ConsolePolicyMigrationEvidencePaths, ConsolePolicyMigrationEvidenceReport,
-    ConsolePolicyMigrationUnknownGrant, write_evidence_report,
+    write_evidence_report, ConsolePolicyMigrationEvidencePaths,
+    ConsolePolicyMigrationEvidenceReport, ConsolePolicyMigrationUnknownGrant,
 };
 
 pub async fn require_runtime_console_policy_cutover(

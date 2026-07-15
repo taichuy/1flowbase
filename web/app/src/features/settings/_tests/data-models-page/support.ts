@@ -1,4 +1,5 @@
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -325,12 +326,16 @@ export function renderApp(pathname: string) {
   );
 }
 
+export function setDataModelsPageBreakpoint(breakpoint: { md: boolean }) {
+  useBreakpointSpy.mockReturnValue(breakpoint);
+}
+
 export function findDataModelsNavigation() {
   return screen.findByRole('link', { name: '数据源' }, { timeout: 5000 });
 }
 
 export async function openContactsDataModelEditor() {
-  await screen.findByText(
+  await screen.findAllByText(
     'Contacts',
     {},
     { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
@@ -339,14 +344,18 @@ export async function openContactsDataModelEditor() {
 }
 
 export async function openDataModelEditorByTitle(title: string) {
-  await screen.findByText(
+  await screen.findAllByText(
     title,
     {},
     { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
   );
   const contactsRow = screen
     .getAllByRole('row')
-    .find((row) => within(row).queryByText(title));
+    .find(
+      (row) =>
+        within(row).queryByText(title) &&
+        within(row).queryByRole('button', { name: '编辑' })
+    );
   expect(contactsRow).toBeInstanceOf(HTMLElement);
 
   fireEvent.click(
@@ -975,6 +984,7 @@ export function setupDataModelsPageTest() {
 }
 
 export function cleanupDataModelsPageTest() {
+  cleanup();
   const warningCalls = [
     ...consoleWarnSpy.mock.calls,
     ...consoleErrorSpy.mock.calls

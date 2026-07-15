@@ -5,11 +5,11 @@ use std::{
 };
 
 use axum::{
-    Json,
     body::Body,
     extract::{Multipart, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::Response,
+    Json,
 };
 use control_plane::{
     errors::ControlPlaneError,
@@ -18,14 +18,14 @@ use control_plane::{
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
@@ -280,7 +280,7 @@ async fn parse_downloaded_bundle(bytes: Vec<u8>) -> Result<domain::McpBundlePack
 fn parse_bundle_archive(bytes: &[u8]) -> Result<domain::McpBundlePackage, ControlPlaneError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes))
         .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_archive"))?;
-    if archive.len() == 0 || archive.len() > MAX_BUNDLE_FILES {
+    if archive.is_empty() || archive.len() > MAX_BUNDLE_FILES {
         return Err(ControlPlaneError::InvalidInput("mcp_bundle_file_count"));
     }
 

@@ -124,6 +124,11 @@ const fileManagementApi = vi.hoisted(() => ({
   deleteSettingsFileTable: vi.fn()
 }));
 
+const consoleNavigationApi = vi.hoisted(() => ({
+  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+  fetchSettingsConsoleNavigation: vi.fn()
+}));
+
 vi.mock('../api/members', () => membersApi);
 vi.mock('../api/roles', () => rolesApi);
 vi.mock('../api/permissions', () => permissionsApi);
@@ -132,6 +137,7 @@ vi.mock('../api/model-providers', () => modelProvidersApi);
 vi.mock('../api/plugins', () => pluginsApi);
 vi.mock('../api/system-runtime', () => systemRuntimeApi);
 vi.mock('../api/file-management', () => fileManagementApi);
+vi.mock('../api/console-navigation', () => consoleNavigationApi);
 vi.mock('@scalar/api-reference-react', () => ({
   ApiReferenceReact: () => <div data-testid="settings-page-scalar">Scalar</div>
 }));
@@ -201,6 +207,27 @@ describe('File management settings page', () => {
       permission_codes: []
     });
     permissionsApi.fetchSettingsPermissions.mockResolvedValue([]);
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue({
+      route_definitions: [
+        {
+          route_id: 'settings.files',
+          surface_key: 'files',
+          path: '/settings/files',
+          surface_kind: 'system'
+        }
+      ],
+      navigation_items: [
+        {
+          item_id: 'files',
+          route_id: 'settings.files',
+          parent_item_id: 'settings',
+          label_key: 'auto.file_management',
+          navigation_slot: 'settings',
+          order: 1
+        }
+      ],
+      permission_bindings: []
+    });
     docsApi.fetchSettingsApiDocsCatalog.mockResolvedValue({
       title: '1flowbase API',
       version: '0.1.0',

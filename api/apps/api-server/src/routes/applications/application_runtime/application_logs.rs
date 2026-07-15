@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;
 

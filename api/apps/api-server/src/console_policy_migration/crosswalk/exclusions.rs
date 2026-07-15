@@ -1,4 +1,4 @@
-use super::{LegacyNoProjectionSpec, no_projection};
+use super::{no_projection, LegacyNoProjectionSpec};
 
 pub(super) const LEGACY_NO_PROJECTIONS: &[LegacyNoProjectionSpec] = &[
     no_projection(

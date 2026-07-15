@@ -335,8 +335,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
                 codeRef: 'hero-code'
               })
             ]
-          }),
-          dataEffectHandler: expect.any(Function)
+          })
         })
       );
     });

@@ -87,21 +87,6 @@ async fn application_runtime_routes_debug_snapshot_uses_orchestration_plane() {
             .is_some_and(|items| !items.is_empty()),
         "debug snapshot should remain a debug-session detail contract"
     );
-
-    let old_logs_detail = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!(
-                    "/api/console/applications/{application_id}/logs/runs/{flow_run_id}"
-                ))
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(old_logs_detail.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

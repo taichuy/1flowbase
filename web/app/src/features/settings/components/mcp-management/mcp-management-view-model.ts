@@ -1,3 +1,5 @@
+import type { DataNode } from 'antd/es/tree';
+
 type DirectoryInstance = {
   id: string;
   instance_id: string;
@@ -32,7 +34,7 @@ type DirectoryTool = {
   short_description: string;
 };
 
-export type McpDirectoryTreeNode = {
+export type McpDirectoryTreeNode = Omit<DataNode, 'children' | 'key' | 'title'> & {
   key: string;
   title: string;
   node_type: 'instance' | 'group' | 'binding';

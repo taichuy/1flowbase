@@ -564,6 +564,9 @@ function parseCreateIndex(statement, context) {
   }
 
   const tableName = normalizeIdentifier(match[3]);
+  if (context.temporaryTables.has(tableName)) {
+    return;
+  }
   const table = getOrCreateTable(context.tables, tableName, context.relativePath);
   const columns = parseColumnList(match[5]);
   const index = {
@@ -688,6 +691,9 @@ function parseAlterTable(statement, context) {
   }
 
   const tableName = normalizeIdentifier(match[1]);
+  if (context.temporaryTables.has(tableName)) {
+    return;
+  }
   const table = getOrCreateTable(context.tables, tableName, context.relativePath);
 
   for (const action of splitTopLevel(match[2], ',')) {
@@ -697,6 +703,8 @@ function parseAlterTable(statement, context) {
       parsed = parseAlterTableAddColumn(table, trimmed);
     } else if (/^add\s+constraint\b/iu.test(trimmed)) {
       parsed = parseAlterTableAddConstraint(table, trimmed);
+    } else if (/^add\s+(?:primary\s+key|unique|foreign\s+key|check)\b/iu.test(trimmed)) {
+      parsed = parseTableConstraint(table, trimmed.replace(/^add\s+/iu, ''));
     } else if (/^drop\s+column\b/iu.test(trimmed)) {
       parsed = parseAlterTableDropColumn(table, trimmed);
     } else if (/^drop\s+constraint\b/iu.test(trimmed)) {
@@ -716,7 +724,9 @@ function parseAlterTable(statement, context) {
 function parseDropTable(statement, context) {
   const match = /^drop\s+table\s+(?:if\s+exists\s+)?([a-zA-Z0-9_."$]+)(?:\s+cascade|\s+restrict)?$/iu.exec(stripSqlComments(statement).trim());
   if (match) {
-    context.tables.delete(normalizeIdentifier(match[1]));
+    const tableName = normalizeIdentifier(match[1]);
+    context.temporaryTables.delete(tableName);
+    context.tables.delete(tableName);
   }
 }
 
@@ -748,6 +758,12 @@ function createParseError(context, rule, statement) {
 function parseSchemaStatement(statement, context) {
   const normalized = stripSqlComments(statement).trim();
   if (normalized.length === 0) {
+    return;
+  }
+
+  const temporaryTableMatch = /^create\s+(?:temporary|temp)\s+table\s+(?:if\s+not\s+exists\s+)?([a-zA-Z0-9_."$]+)/iu.exec(normalized);
+  if (temporaryTableMatch) {
+    context.temporaryTables.add(normalizeIdentifier(temporaryTableMatch[1]));
     return;
   }
 
@@ -796,7 +812,8 @@ function collectMigrationVersionFindings({ repoRoot, files }) {
   for (const absolutePath of files) {
     const relativePath = normalizePath(path.relative(repoRoot, absolutePath));
     const fileName = path.basename(absolutePath);
-    const match = /^(\d+)_/u.exec(fileName);
+    const reversibleMatch = /^(\d+)_(.+)\.(up|down)\.sql$/u.exec(fileName);
+    const match = reversibleMatch || /^(\d+)_(.+)\.sql$/u.exec(fileName);
     if (!match) {
       continue;
     }
@@ -805,14 +822,28 @@ function collectMigrationVersionFindings({ repoRoot, files }) {
     if (!byVersion.has(version)) {
       byVersion.set(version, []);
     }
-    byVersion.get(version).push(relativePath);
+    byVersion.get(version).push({
+      relativePath,
+      description: match[2],
+      direction: reversibleMatch ? reversibleMatch[3] : null,
+    });
   }
 
   const findings = [];
-  for (const [version, relativePaths] of byVersion) {
-    if (relativePaths.length < 2) {
+  for (const [version, entries] of byVersion) {
+    if (entries.length < 2) {
       continue;
     }
+
+    const reversiblePair = entries.length === 2
+      && entries[0].description === entries[1].description
+      && new Set(entries.map((entry) => entry.direction)).size === 2
+      && entries.every((entry) => entry.direction === 'up' || entry.direction === 'down');
+    if (reversiblePair) {
+      continue;
+    }
+
+    const relativePaths = entries.map((entry) => entry.relativePath);
 
     const message = `PostgreSQL migration version ${version} is used by multiple files: ${relativePaths.join(', ')}`;
     findings.push({
@@ -831,15 +862,20 @@ function collectMigrationVersionFindings({ repoRoot, files }) {
 
 function collectSchemaInventory({ repoRoot = getRepoRoot(), migrationsDir = DEFAULT_MIGRATIONS_DIR } = {}) {
   const tables = new Map();
+  const temporaryTables = new Set();
   const parseErrors = [];
   const files = collectMigrationFiles({ repoRoot, migrationsDir });
   const migrationErrors = collectMigrationVersionFindings({ repoRoot, files });
 
   for (const absolutePath of files) {
+    if (path.basename(absolutePath).endsWith('.down.sql')) {
+      continue;
+    }
     const relativePath = normalizePath(path.relative(repoRoot, absolutePath));
     const sql = fs.readFileSync(absolutePath, 'utf8');
     const context = {
       tables,
+      temporaryTables,
       parseErrors,
       relativePath,
     };

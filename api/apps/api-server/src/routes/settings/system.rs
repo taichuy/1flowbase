@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
     extract::{Query, State},
-    http::{HeaderMap, header::ACCEPT_LANGUAGE},
+    http::{header::ACCEPT_LANGUAGE, HeaderMap},
+    Json, Router,
 };
 use control_plane::system_runtime::SystemRuntimeService;
 use runtime_profile::{LocaleResolution, LocaleResolutionInput, LocaleSource, RuntimeProfile};
@@ -15,7 +15,7 @@ use crate::{
     error_response::ApiError,
     middleware::require_session::require_session,
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 pub use super::release_status::{

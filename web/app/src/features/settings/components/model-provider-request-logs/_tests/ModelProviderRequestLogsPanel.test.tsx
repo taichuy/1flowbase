@@ -148,7 +148,7 @@ test('AC-006 does not render a conversation link for legacy rows', async () => {
   renderPanel();
 
   expect(await screen.findByText('Legacy App')).toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: '查看对话' })).toBeNull();
+  expect(screen.queryByRole('link', { name: '查看对话' })).not.toBeInTheDocument();
 });
 
 test('AC-001 defaults to the past seven days and clears selection when the range changes', async () => {

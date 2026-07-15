@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{Json, Router, extract::State, http::HeaderMap};
+use axum::{extract::State, http::HeaderMap, Json, Router};
 use control_plane::frontend_block_catalog::{
     FrontendBlockCatalogService, ListFrontendBlockCatalogQuery,
 };
@@ -12,7 +12,7 @@ use crate::{
     error_response::ApiError,
     middleware::require_session::require_session,
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Serialize, ToSchema)]

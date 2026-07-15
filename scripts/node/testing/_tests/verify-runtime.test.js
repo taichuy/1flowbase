@@ -45,6 +45,19 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
   });
 });
 
+test("frontend vitest defaults cap coverage concurrency on large machines", () => {
+  const repoRoot = createRepoRoot();
+
+  const config = loadVerifyRuntimeConfig({
+    repoRoot,
+    env: {},
+    availableParallelism: 16,
+  });
+
+  assert.equal(config.frontend.vitestMaxWorkers, 4);
+  assert.equal(config.frontend.turboConcurrency, 8);
+});
+
 test("cargo-jobs prints half of the machine parallelism by default", () => {
   const repoRoot = createRepoRoot();
   let stdout = "";

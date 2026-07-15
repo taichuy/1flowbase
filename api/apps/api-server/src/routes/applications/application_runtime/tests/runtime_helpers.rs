@@ -227,34 +227,26 @@ fn trace_tree_endpoints_read_projection_without_full_detail_fallback() {
         );
     }
 
-    assert!(
-        application_trace_tree_endpoint_source(
-            log_endpoint_source,
-            "get_application_run_trace_tree"
-        )
-        .contains("list_application_run_trace_roots")
-    );
-    assert!(
-        application_trace_tree_endpoint_source(
-            log_endpoint_source,
-            "get_application_run_trace_tree"
-        )
-        .contains("get_application_run_trace_statistics")
-    );
-    assert!(
-        !application_trace_tree_endpoint_source(
-            log_endpoint_source,
-            "get_application_run_trace_tree"
-        )
-        .contains("list_application_run_trace_nodes_for_statistics")
-    );
-    assert!(
-        application_trace_tree_endpoint_source(
-            log_endpoint_source,
-            "get_application_run_trace_node_children"
-        )
-        .contains("list_application_run_trace_children")
-    );
+    assert!(application_trace_tree_endpoint_source(
+        log_endpoint_source,
+        "get_application_run_trace_tree"
+    )
+    .contains("list_application_run_trace_roots"));
+    assert!(application_trace_tree_endpoint_source(
+        log_endpoint_source,
+        "get_application_run_trace_tree"
+    )
+    .contains("get_application_run_trace_statistics"));
+    assert!(!application_trace_tree_endpoint_source(
+        log_endpoint_source,
+        "get_application_run_trace_tree"
+    )
+    .contains("list_application_run_trace_nodes_for_statistics"));
+    assert!(application_trace_tree_endpoint_source(
+        log_endpoint_source,
+        "get_application_run_trace_node_children"
+    )
+    .contains("list_application_run_trace_children"));
     assert!(
         application_trace_tree_endpoint_source(
             log_endpoint_source,

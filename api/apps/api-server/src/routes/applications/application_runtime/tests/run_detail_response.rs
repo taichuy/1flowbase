@@ -101,12 +101,10 @@ fn run_detail_response_moves_waiting_prefix_answer_into_answer_snapshot() {
         answer_snapshot.waiting_node_run_id.as_deref(),
         Some(waiting_node_run_id.to_string().as_str())
     );
-    assert!(
-        response
-            .node_runs
-            .iter()
-            .all(|node_run| node_run.node_id != "node-answer")
-    );
+    assert!(response
+        .node_runs
+        .iter()
+        .all(|node_run| node_run.node_id != "node-answer"));
 }
 
 #[test]
@@ -215,12 +213,10 @@ fn run_detail_response_exposes_stitched_trace_sources() {
         source_node_run_id.to_string()
     );
     assert_eq!(response.stitched_trace[0].node_runs.len(), 1);
-    assert!(
-        response.stitched_trace[0]
-            .node_runs
-            .iter()
-            .all(|node_run| node_run.node_type != "answer")
-    );
+    assert!(response.stitched_trace[0]
+        .node_runs
+        .iter()
+        .all(|node_run| node_run.node_type != "answer"));
     assert_eq!(
         response.stitched_trace[0].callback_tasks[0].id,
         callback_task_id.to_string()
@@ -341,12 +337,10 @@ fn visible_internal_llm_route_trace_uses_precise_node_run_id_before_reused_node_
         .iter()
         .find(|node_run| node_run.id == later_node_run_id)
         .expect("later node run should stay visible");
-    assert!(
-        later_node
-            .debug_payload
-            .get("visible_internal_llm_tool_trace")
-            .is_none()
-    );
+    assert!(later_node
+        .debug_payload
+        .get("visible_internal_llm_tool_trace")
+        .is_none());
 }
 
 #[test]
@@ -590,16 +584,12 @@ fn run_detail_response_hides_historical_waiting_prefix_after_run_finishes() {
     let response = to_application_run_detail_response(&application, detail);
 
     assert!(response.answer_snapshot.is_none());
-    assert!(
-        response
-            .node_runs
-            .iter()
-            .all(|node_run| node_run.id != virtual_answer_node_run_id.to_string())
-    );
-    assert!(
-        response
-            .node_runs
-            .iter()
-            .any(|node_run| node_run.id == final_answer_node_run_id.to_string())
-    );
+    assert!(response
+        .node_runs
+        .iter()
+        .all(|node_run| node_run.id != virtual_answer_node_run_id.to_string()));
+    assert!(response
+        .node_runs
+        .iter()
+        .any(|node_run| node_run.id == final_answer_node_run_id.to_string()));
 }

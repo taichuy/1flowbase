@@ -104,13 +104,11 @@ fn openai_response_filters_internal_visible_llm_tool_calls() {
         json!("visible internal LLM output")
     );
     assert_eq!(responses_payload["output"][0]["type"], json!("message"));
-    assert!(
-        responses_payload["output"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|item| item["type"] != json!("function_call"))
-    );
+    assert!(responses_payload["output"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|item| item["type"] != json!("function_call")));
 }
 
 #[test]

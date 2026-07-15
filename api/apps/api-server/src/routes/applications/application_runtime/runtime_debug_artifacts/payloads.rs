@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     body::Body,
-    http::{Response, StatusCode, header::CONTENT_TYPE},
+    http::{header::CONTENT_TYPE, Response, StatusCode},
 };
 use control_plane::{
     errors::ControlPlaneError,

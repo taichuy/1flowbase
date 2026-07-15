@@ -48,6 +48,7 @@ pub(super) async fn llm_request_runtimes(
                 (counter - 1).rem_euclid(routing.queue_targets.len() as i64) as usize
             }
             crate::compiled_plan::LlmDistributionRule::RetryRoundRobin
+            | crate::compiled_plan::LlmDistributionRule::None
                 if routing.queue_targets.len() > 1 =>
             {
                 attempt_index % routing.queue_targets.len()

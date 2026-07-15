@@ -536,22 +536,6 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         Some("custom-beta")
     );
     assert!(beta_group["model"].get("parameter_form").is_none());
-
-    let legacy_routing = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri("/api/console/model-providers/providers/fixture_provider/routing")
-                .header("cookie", &cookie)
-                .header("x-csrf-token", &csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(json!({}).to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(legacy_routing.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

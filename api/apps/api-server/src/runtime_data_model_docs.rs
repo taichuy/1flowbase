@@ -1,5 +1,5 @@
 use control_plane::{errors::ControlPlaneError, model_definition::ModelDefinitionService};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::{

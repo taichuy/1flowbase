@@ -1,7 +1,6 @@
 use super::{
-    LegacyGrantMappingSpec,
     application::{APPLICATION_SIMPLE_OPERATIONS, DATA_MODEL_SIMPLE_OPERATIONS},
-    legacy_mapping,
+    legacy_mapping, LegacyGrantMappingSpec,
 };
 
 const MODEL_PROVIDER_FEATURE_SIMPLE_OPERATIONS: &[&str] = &[

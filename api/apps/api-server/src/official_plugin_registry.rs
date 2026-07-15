@@ -14,7 +14,7 @@ use control_plane::ports::{
 use plugin_framework::RuntimeTarget;
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
 use crate::config::ResolvedOfficialPluginSourceConfig;

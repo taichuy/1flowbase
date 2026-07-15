@@ -26,7 +26,7 @@ fn assembled_route(
     }
 }
 
-fn route_bindings<'a, S>(assembly: &'a ConsoleRouteAssembly<S>) -> Vec<(&'a str, &'a str, &'a str)>
+fn route_bindings<S>(assembly: &ConsoleRouteAssembly<S>) -> Vec<(&str, &str, &str)>
 where
     S: Clone + Send + Sync + 'static,
 {

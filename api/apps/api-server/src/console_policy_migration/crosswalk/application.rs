@@ -1,4 +1,4 @@
-use super::{LegacyGrantMappingSpec, legacy_mapping};
+use super::{legacy_mapping, LegacyGrantMappingSpec};
 
 pub(super) const APPLICATION_SIMPLE_OPERATIONS: &[&str] = &[
     "applications.api.set_enabled",

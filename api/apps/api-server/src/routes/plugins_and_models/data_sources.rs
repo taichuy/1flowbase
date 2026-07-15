@@ -4,9 +4,9 @@ use access_control::{
     ConsoleRouteOwnership::ConsoleOperation, DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
 };
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    Json, Router,
 };
 use control_plane::data_source::{
     CreateDataSourceInstanceCommand, DataSourceBackendView, DataSourceCatalogEntryView,
@@ -28,10 +28,10 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_post},
+    routes::console_route_assembly::{console_post, ConsoleRouteAssembly},
 };
 
-use super::model_definitions::{ModelDefinitionResponse, to_model_definition_response};
+use super::model_definitions::{to_model_definition_response, ModelDefinitionResponse};
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateDataSourceBody {

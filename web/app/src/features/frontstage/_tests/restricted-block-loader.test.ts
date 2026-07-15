@@ -87,7 +87,12 @@ describe('restricted block loader core', () => {
       catalogEntry: createCatalogEntry({
         codeCapabilities: {
           template: null,
-          allowedImports: ['@1flowbase/block-sdk', 'antd']
+          allowedImports: [
+            '@1flowbase/block-sdk',
+            '@1flowbase/block-renderer/antd-facade'
+          ],
+          monacoExtraLibs: [],
+          workerModuleSources: []
         }
       }),
       code: 'export default { render() {} }',
@@ -117,7 +122,10 @@ describe('restricted block loader core', () => {
           maxRenderDepth: 8,
           maxRenderNodes: 250
         },
-        allowedImports: ['@1flowbase/block-sdk', 'antd']
+        allowedImports: [
+          '@1flowbase/block-sdk',
+          '@1flowbase/block-renderer/antd-facade'
+        ]
       },
       schemaValidationOptions: {
         maxDepth: 8,

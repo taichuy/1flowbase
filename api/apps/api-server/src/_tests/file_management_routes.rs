@@ -1,6 +1,7 @@
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
-    replace_role_permissions, seed_workspace, test_app, test_app_with_database_url,
+    replace_role_legacy_permissions_only, replace_role_permissions, seed_workspace, test_app,
+    test_app_with_database_url,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -99,6 +100,38 @@ async fn register_files_feature_permission(database_url: &str) {
         }])
         .await
         .expect("files feature permission should be seeded");
+}
+
+async fn grant_file_admin_data_policy(app: &axum::Router, root_cookie: &str, root_csrf: &str) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/settings/roles/file_admin/data-policy")
+                .header("cookie", root_cookie)
+                .header("x-csrf-token", root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "default_policy": {
+                            "can_view": true,
+                            "can_create": true,
+                            "can_update": true,
+                            "can_delete": true,
+                            "default_view_scope": "scope_all",
+                            "default_update_scope": "scope_all",
+                            "default_delete_scope": "scope_all"
+                        },
+                        "model_policies": []
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 // AC-003/AC-004: system.files alone may list the current workspace's file tables,
@@ -298,7 +331,7 @@ async fn settings_feature_files_route_rejects_legacy_actions_and_removes_old_htt
     let (app, _) = test_app_with_database_url().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     create_role(&app, &root_cookie, &root_csrf, "legacy_files_actions").await;
-    replace_role_permissions(
+    replace_role_legacy_permissions_only(
         &app,
         &root_cookie,
         &root_csrf,
@@ -358,29 +391,25 @@ async fn settings_feature_files_route_rejects_legacy_actions_and_removes_old_htt
         .await
         .unwrap();
     assert_eq!(unregistered.status(), StatusCode::FORBIDDEN);
-
-    for legacy_path in ["/api/console/file-storages", "/api/console/file-tables"] {
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri(legacy_path)
-                    .header("cookie", &root_cookie)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{legacy_path}");
-    }
 }
 
 #[tokio::test]
 async fn file_management_routes_create_workspace_table_upload_and_read_by_storage_snapshot() {
-    let app = test_app().await;
+    let (app, database_url) = test_app_with_database_url().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    register_files_feature_permission(&database_url).await;
+    create_role(&app, &root_cookie, &root_csrf, "file_admin").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "file_admin",
+        &[FILES_FEATURE_PERMISSION],
+    )
+    .await;
+    grant_file_admin_data_policy(&app, &root_cookie, &root_csrf).await;
     let member_id = create_member(&app, &root_cookie, &root_csrf, "file-admin", "change-me").await;
-    replace_member_roles(&app, &root_cookie, &root_csrf, &member_id, &["admin"]).await;
+    replace_member_roles(&app, &root_cookie, &root_csrf, &member_id, &["file_admin"]).await;
     let (admin_cookie, admin_csrf) =
         login_and_capture_cookie(&app, "file-admin", "change-me").await;
 
@@ -757,10 +786,20 @@ async fn file_upload_requires_workspace_session_context() {
 
 #[tokio::test]
 async fn file_management_settings_routes_enforce_root_only_storage_and_binding_rules() {
-    let app = test_app().await;
+    let (app, database_url) = test_app_with_database_url().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    register_files_feature_permission(&database_url).await;
+    create_role(&app, &root_cookie, &root_csrf, "file_admin").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "file_admin",
+        &[FILES_FEATURE_PERMISSION],
+    )
+    .await;
     let member_id = create_member(&app, &root_cookie, &root_csrf, "file-admin", "change-me").await;
-    replace_member_roles(&app, &root_cookie, &root_csrf, &member_id, &["admin"]).await;
+    replace_member_roles(&app, &root_cookie, &root_csrf, &member_id, &["file_admin"]).await;
     let (admin_cookie, admin_csrf) =
         login_and_capture_cookie(&app, "file-admin", "change-me").await;
 

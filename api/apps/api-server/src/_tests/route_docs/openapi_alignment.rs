@@ -342,7 +342,7 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
     let frontstage_move_route =
         paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/move");
     let frontstage_content_route =
-        paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/content");
+        paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document");
     let frontstage_block_code_route =
         paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/{code_ref}");
 
@@ -364,7 +364,7 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
     );
     assert!(
         frontstage_content_route.is_some(),
-        "missing path /api/console/frontstage/{{workspace_id}}/pages/{{page_id}}/content"
+        "missing path /api/console/frontstage/{{workspace_id}}/pages/{{page_id}}/tabs/{{tab_id}}/document"
     );
     assert!(
         frontstage_block_code_route.is_some(),
@@ -374,7 +374,6 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
     let get_op = &frontstage_route.unwrap()["get"];
     let post_page_op = &frontstage_route.unwrap()["post"];
     let post_group_op = &frontstage_groups_route.unwrap()["post"];
-    let detail_get_op = &frontstage_node_route.unwrap()["get"];
     let patch_op = &frontstage_node_route.unwrap()["patch"];
     let delete_op = &frontstage_node_route.unwrap()["delete"];
     let move_op = &frontstage_move_route.unwrap()["post"];
@@ -385,7 +384,6 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
     assert!(get_op["responses"]["200"]["content"]["application/json"]["schema"].is_object());
     assert!(post_page_op["responses"]["201"]["content"]["application/json"]["schema"].is_object());
     assert!(post_group_op["responses"]["201"]["content"]["application/json"]["schema"].is_object());
-    assert!(detail_get_op["responses"]["200"]["content"]["application/json"]["schema"].is_object());
     assert!(patch_op["responses"]["200"]["content"]["application/json"]["schema"].is_object());
     assert!(move_op["responses"]["200"]["content"]["application/json"]["schema"].is_object());
     assert!(
@@ -393,7 +391,7 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
     );
     assert_eq!(
         content_put_op["requestBody"]["content"]["application/json"]["schema"]["$ref"],
-        json!("#/components/schemas/SaveFrontstagePageContentBody")
+        json!("#/components/schemas/SaveFrontstageTabDocumentBody")
     );
     assert!(block_get_op["responses"]["200"]["content"]["application/json"]["schema"].is_object());
     assert!(block_put_op["responses"]["200"]["content"]["application/json"]["schema"].is_object());
@@ -462,22 +460,11 @@ async fn openapi_plugin_descriptions_drop_compatibility_wording() {
 }
 
 #[tokio::test]
-async fn openapi_excludes_legacy_member_mutation_routes() {
+async fn openapi_contains_member_mutation_routes() {
     let paths = openapi_paths().await;
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let action_member_id = create_member(&app, &cookie, &csrf, "action-member").await;
-    let legacy_member_id = create_member(&app, &cookie, &csrf, "legacy-member").await;
-
-    for route in [
-        "/api/console/settings/members/{id}/disable",
-        "/api/console/settings/members/{id}/reset-password",
-    ] {
-        assert!(
-            !paths.contains_key(route),
-            "expected openapi to exclude legacy path {route}"
-        );
-    }
 
     let member_mutation_paths = paths
         .keys()
@@ -534,43 +521,4 @@ async fn openapi_excludes_legacy_member_mutation_routes() {
         .await
         .unwrap();
     assert_eq!(action_disable_response.status(), StatusCode::NO_CONTENT);
-
-    let legacy_reset_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!(
-                    "/api/console/settings/members/{legacy_member_id}/reset-password"
-                ))
-                .header("cookie", &cookie)
-                .header("x-csrf-token", &csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "new_password": "legacy-pass"
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(legacy_reset_response.status(), StatusCode::NOT_FOUND);
-
-    let legacy_disable_response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!(
-                    "/api/console/settings/members/{legacy_member_id}/disable"
-                ))
-                .header("cookie", &cookie)
-                .header("x-csrf-token", &csrf)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(legacy_disable_response.status(), StatusCode::NOT_FOUND);
 }

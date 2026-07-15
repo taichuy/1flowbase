@@ -598,7 +598,6 @@ function renderTreeNode({
                   disabled={isOperationPending}
                   draggable={!isOperationPending}
                   icon={<DragOutlined />}
-                  size="small"
                   onDragEnd={(event) => {
                     event.stopPropagation();
                     setDraggedNodeId(null);
@@ -627,7 +626,6 @@ function renderTreeNode({
                   aria-label={i18nText('frontstage', 'auto.page_action_menu')}
                   disabled={isOperationPending}
                   icon={<MenuOutlined />}
-                  size="small"
                   onClick={(event) => {
                     event.stopPropagation();
                   }}

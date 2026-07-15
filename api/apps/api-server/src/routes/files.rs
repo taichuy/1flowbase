@@ -1,11 +1,11 @@
 use std::{collections::HashSet, sync::Arc};
 
 use axum::{
-    Json, Router,
     body::Body,
     extract::{Multipart, Path, State},
-    http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
+    http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
     response::Response,
+    Json, Router,
 };
 use control_plane::ports::{FileManagementRepository, ModelDefinitionRepository};
 use control_plane::resource_action::{
@@ -21,7 +21,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

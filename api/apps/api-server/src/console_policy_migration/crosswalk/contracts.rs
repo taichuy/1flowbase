@@ -1,6 +1,6 @@
 use super::{
-    ExpectedOperationGroup, core_authenticated_other, core_row_settings, core_simple_other,
-    core_simple_settings,
+    core_authenticated_other, core_row_settings, core_simple_other, core_simple_settings,
+    ExpectedOperationGroup,
 };
 
 // This is intentionally an immutable audit ledger rather than a policy-group expansion. A new

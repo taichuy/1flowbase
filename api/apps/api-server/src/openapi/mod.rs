@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use axum::{Json, extract::State};
+use axum::{extract::State, Json};
 use control_plane::{
     application_public_api::{
         mapping::{
@@ -11,7 +11,7 @@ use control_plane::{
     },
     ports::ApplicationPublicationRepository,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use utoipa::OpenApi;
 
 use crate::{app_state::ApiState, error_response::ApiError};

@@ -1,4 +1,4 @@
-use super::{LegacyGrantMappingSpec, legacy_mapping};
+use super::{legacy_mapping, LegacyGrantMappingSpec};
 
 const MCP_SIMPLE_OPERATIONS: &[&str] = &[
     "mcp.bundles.export",

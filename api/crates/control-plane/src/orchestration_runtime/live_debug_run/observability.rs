@@ -125,6 +125,7 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn persist_llm_context_observability<R>(
     repository: &R,
     scope_id: Uuid,

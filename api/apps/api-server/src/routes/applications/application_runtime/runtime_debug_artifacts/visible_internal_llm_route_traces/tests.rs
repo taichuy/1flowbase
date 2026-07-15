@@ -114,11 +114,9 @@ fn route_trace_summary_proves_return_to_main_without_large_payloads() {
     assert_eq!(summary["__runtime_debug_artifact"], json!(true));
     assert_eq!(summary["artifact_ref"], json!(Uuid::nil().to_string()));
     assert!(!summary.to_string().contains("request_payload"));
-    assert!(
-        !summary
-            .to_string()
-            .contains("large-base64-data-should-stay-in-detail")
-    );
+    assert!(!summary
+        .to_string()
+        .contains("large-base64-data-should-stay-in-detail"));
     assert!(!summary.to_string().contains(&route_output));
 
     let detail = traces[0].detail_payload();
@@ -129,8 +127,8 @@ fn route_trace_summary_proves_return_to_main_without_large_payloads() {
         json!("main model saw the routed result and answered")
     );
     assert_eq!(
-        detail["callback_requests"][0]["request_payload"]["history"][0]["content_blocks"][0]["source"]
-            ["data"],
+        detail["callback_requests"][0]["request_payload"]["history"][0]["content_blocks"][0]
+            ["source"]["data"],
         json!("large-base64-data-should-stay-in-detail")
     );
 }

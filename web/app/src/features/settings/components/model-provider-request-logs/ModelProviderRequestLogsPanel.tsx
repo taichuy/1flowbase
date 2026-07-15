@@ -131,7 +131,8 @@ export function ModelProviderRequestLogsPanel() {
         title: i18nText('settings', 'auto.request_log_start_time'),
         dataIndex: 'started_at',
         width: 180,
-        render: (value: string) => new Date(value).toLocaleString()
+        render: (value) =>
+          typeof value === 'string' ? new Date(value).toLocaleString() : '—'
       },
       {
         key: 'application_name',
@@ -176,13 +177,13 @@ export function ModelProviderRequestLogsPanel() {
         title: i18nText('settings', 'auto.request_log_output_tokens'),
         dataIndex: 'output_tokens',
         width: 120,
-        render: (value: number | null) => (
+        render: (value) => (
           <span
             style={{
               color: value === 0 ? 'var(--ant-color-error)' : undefined
             }}
           >
-            {value ?? '—'}
+            {typeof value === 'number' ? value : '—'}
           </span>
         )
       },
@@ -191,14 +192,16 @@ export function ModelProviderRequestLogsPanel() {
         title: i18nText('settings', 'auto.request_log_first_token'),
         dataIndex: 'time_to_first_token_ms',
         width: 110,
-        render: formatDuration
+        render: (value) =>
+          formatDuration(typeof value === 'number' ? value : null)
       },
       {
         key: 'total_duration_ms',
         title: i18nText('settings', 'auto.request_log_total_duration'),
         dataIndex: 'total_duration_ms',
         width: 110,
-        render: formatDuration
+        render: (value) =>
+          formatDuration(typeof value === 'number' ? value : null)
       },
       {
         key: 'attempt_index',
@@ -222,7 +225,7 @@ export function ModelProviderRequestLogsPanel() {
         dataIndex: 'retry_reason',
         width: 160,
         ellipsis: true,
-        render: (value: string | null) => value ?? '—'
+        render: (value) => (typeof value === 'string' ? value : '—')
       },
       {
         key: 'conversation_link',

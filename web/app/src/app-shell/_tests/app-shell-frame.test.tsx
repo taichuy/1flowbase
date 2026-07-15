@@ -3,9 +3,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { patchUserPreferences } = vi.hoisted(() => ({
+const { getConsoleNavigation, patchUserPreferences } = vi.hoisted(() => ({
+  getConsoleNavigation: vi.fn(),
   patchUserPreferences: vi.fn()
 }));
+
+vi.mock('@1flowbase/api-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@1flowbase/api-client')>();
+  return {
+    ...actual,
+    getConsoleNavigation
+  };
+});
 
 vi.mock('../../shared/user-preferences/user-preferences', async () => {
   const actual = await vi.importActual<
@@ -40,6 +49,28 @@ describe('AppShellFrame', () => {
   beforeEach(() => {
     window.localStorage.clear();
     patchUserPreferences.mockReset();
+    getConsoleNavigation.mockReset();
+    getConsoleNavigation.mockResolvedValue({
+      route_definitions: [
+        {
+          route_id: 'home',
+          surface_key: 'home',
+          path: '/',
+          surface_kind: 'system'
+        }
+      ],
+      navigation_items: [
+        {
+          item_id: 'home',
+          route_id: 'home',
+          parent_item_id: null,
+          label_key: 'auto.workbench',
+          navigation_slot: 'primary',
+          order: 1
+        }
+      ],
+      permission_bindings: []
+    });
     patchUserPreferences.mockResolvedValue({
       id: 'user-1',
       account: 'root',
@@ -131,7 +162,7 @@ describe('AppShellFrame', () => {
     expect(await screen.findByLabelText('Switch language')).toBeInTheDocument();
     expect(
       // Ant Design exposes submenu selected state only through its own classes.
-      // eslint-disable-next-line testing-library/no-container, testing-library/no-node-access
+
       container.querySelector(
         '.app-shell-language-menu .ant-menu-submenu-selected'
       )
@@ -147,7 +178,9 @@ describe('AppShellFrame', () => {
     await waitFor(() => {
       expect(useAuthStore.getState().me?.preferred_locale).toBe('en_US');
     });
-    expect(window.localStorage.getItem('1flowbase.ui.locale_preference')).toBe('en_US');
+    expect(window.localStorage.getItem('1flowbase.ui.locale_preference')).toBe(
+      'en_US'
+    );
     expect(patchUserPreferences).toHaveBeenCalledWith(
       {
         ui: {

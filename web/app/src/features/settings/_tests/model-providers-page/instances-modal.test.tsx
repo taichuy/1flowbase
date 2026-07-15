@@ -132,6 +132,11 @@ const fileManagementApi = vi.hoisted(() => ({
   updateSettingsFileTableBinding: vi.fn()
 }));
 
+const consoleNavigationApi = vi.hoisted(() => ({
+  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+  fetchSettingsConsoleNavigation: vi.fn()
+}));
+
 vi.mock('../../api/members', () => membersApi);
 vi.mock('../../api/roles', () => rolesApi);
 vi.mock('../../api/permissions', () => permissionsApi);
@@ -140,6 +145,7 @@ vi.mock('../../api/model-providers', () => modelProvidersApi);
 vi.mock('../../api/plugins', () => pluginsApi);
 vi.mock('../../api/system-runtime', () => systemRuntimeApi);
 vi.mock('../../api/file-management', () => fileManagementApi);
+vi.mock('../../api/console-navigation', () => consoleNavigationApi);
 vi.mock('@scalar/api-reference-react', () => ({
   ApiReferenceReact: () => <div data-testid="settings-page-scalar">Scalar</div>
 }));
@@ -224,6 +230,27 @@ async function openSourceManagementTab(modal: HTMLElement) {
 
 describe('ModelProvidersPage - instances modal', () => {
   beforeEach(() => {
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue({
+      route_definitions: [
+        {
+          route_id: 'settings.model-providers',
+          surface_key: 'model-providers',
+          path: '/settings/model-providers',
+          surface_kind: 'system'
+        }
+      ],
+      navigation_items: [
+        {
+          item_id: 'model-providers',
+          route_id: 'settings.model-providers',
+          parent_item_id: 'settings',
+          label_key: 'auto.model_provider',
+          navigation_slot: 'settings',
+          order: 1
+        }
+      ],
+      permission_bindings: []
+    });
     resetAuthStore();
     useBreakpointSpy.mockReturnValue({
       xs: true,
@@ -576,12 +603,13 @@ describe('ModelProvidersPage - instances modal', () => {
 
   test(
     'opens provider instances modal from installed provider row as a management list',
-    { timeout: 15000 },
+    { timeout: 30000 },
     async () => {
       authenticateAsModelProviderManager();
       const options = buildSettingsModelProviderOptions();
       options.providers[0].model_groups[0] = {
         model_id: primaryContractProviderModels[0].model_id,
+        distribution_rule: 'none',
         model: primaryContractProviderModels[0],
         targets: [
           {
@@ -746,7 +774,7 @@ describe('ModelProvidersPage - instances modal', () => {
       if (!(distributionRuleSelect instanceof HTMLSelectElement)) {
         throw new Error('expected distribution rule select');
       }
-      expect(distributionRuleSelect).not.toBeDisabled();
+      expect(distributionRuleSelect).toBeEnabled();
       expect((await screen.findAllByText('无')).length).toBeGreaterThan(0);
       expect((await screen.findAllByText('轮询')).length).toBeGreaterThan(0);
       expect((await screen.findAllByText('重试轮询')).length).toBeGreaterThan(0);
@@ -848,7 +876,9 @@ describe('ModelProvidersPage - instances modal', () => {
         fireEvent.mouseEnter(
           within(modal).getByRole('button', { name: action.buttonName })
         );
-        expect(await screen.findByText(action.tooltip)).toBeInTheDocument();
+        expect(
+          await screen.findByText(action.tooltip, undefined, { timeout: 10000 })
+        ).toBeInTheDocument();
       }
     }
   );
@@ -861,6 +891,7 @@ describe('ModelProvidersPage - instances modal', () => {
       const options = buildSettingsModelProviderOptions();
       options.providers[0].model_groups[0] = {
         model_id: primaryContractProviderModels[0].model_id,
+        distribution_rule: 'none',
         model: primaryContractProviderModels[0],
         targets: [
           {

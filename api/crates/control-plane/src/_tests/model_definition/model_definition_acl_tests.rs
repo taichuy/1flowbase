@@ -152,6 +152,37 @@ impl ModelDefinitionRepository for AclTestRepository {
             .collect())
     }
 
+    async fn list_actor_role_data_policies(
+        &self,
+        _actor_user_id: Uuid,
+        _workspace_id: Uuid,
+        _data_model_id: Uuid,
+    ) -> Result<
+        Vec<(
+            domain::RoleDataPolicyRecord,
+            Option<domain::RoleDataModelPolicyRecord>,
+        )>,
+    > {
+        let now = time::OffsetDateTime::now_utc();
+        Ok(vec![(
+            domain::RoleDataPolicyRecord {
+                id: Uuid::now_v7(),
+                role_id: Uuid::now_v7(),
+                role_code: "member".into(),
+                can_view: true,
+                can_create: true,
+                can_update: true,
+                can_delete: true,
+                default_view_scope: domain::RoleDataPolicyScope::ScopeAll,
+                default_update_scope: domain::RoleDataPolicyScope::ScopeAll,
+                default_delete_scope: domain::RoleDataPolicyScope::ScopeAll,
+                created_at: now,
+                updated_at: now,
+            },
+            None,
+        )])
+    }
+
     async fn append_audit_log(&self, _event: &AuditLogRecord) -> Result<()> {
         Ok(())
     }

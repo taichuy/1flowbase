@@ -1,7 +1,8 @@
 use super::*;
 use crate::_tests::support::{
     build_official_provider_package, create_member, create_role, login_and_capture_cookie,
-    replace_member_roles, replace_role_permissions, test_app_with_database_url,
+    replace_member_roles, replace_role_legacy_permissions_only, replace_role_permissions,
+    test_app_with_database_url,
 };
 
 const MODEL_PROVIDERS_FEATURE_PERMISSION: &str = "settings_feature.access.system.model-providers";
@@ -443,28 +444,6 @@ async fn model_providers_settings_routes_do_not_take_over_business_consumers() {
         assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
     }
 
-    for old_settings_path in [
-        "/api/console/model-providers/catalog",
-        "/api/console/model-providers",
-    ] {
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri(old_settings_path)
-                    .header("cookie", &root_cookie)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(
-            response.status(),
-            StatusCode::NOT_FOUND,
-            "{old_settings_path}"
-        );
-    }
-
     create_role(
         &app,
         &root_cookie,
@@ -472,7 +451,7 @@ async fn model_providers_settings_routes_do_not_take_over_business_consumers() {
         "legacy_model_provider_actions",
     )
     .await;
-    replace_role_permissions(
+    replace_role_legacy_permissions_only(
         &app,
         &root_cookie,
         &root_csrf,
@@ -480,6 +459,47 @@ async fn model_providers_settings_routes_do_not_take_over_business_consumers() {
         &["state_model.view.all", "plugin_config.view.all"],
     )
     .await;
+    let business_policy_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/settings/roles/legacy_model_provider_actions/console-policy")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "groups": [
+                            {
+                                "kind": "other",
+                                "group_id": "other.model-providers",
+                                "mode": "custom",
+                                "operations": [{
+                                    "kind": "simple",
+                                    "operation_id": "model_providers.options.view",
+                                    "enabled": true
+                                }]
+                            },
+                            {
+                                "kind": "other",
+                                "group_id": "other.plugins",
+                                "mode": "custom",
+                                "operations": [{
+                                    "kind": "simple",
+                                    "operation_id": "plugins.families.view",
+                                    "enabled": true
+                                }]
+                            }
+                        ]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(business_policy_response.status(), StatusCode::NO_CONTENT);
     let legacy_actor_id = create_member(
         &app,
         &root_cookie,

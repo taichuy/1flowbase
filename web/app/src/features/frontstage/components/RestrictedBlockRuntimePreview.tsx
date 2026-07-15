@@ -175,7 +175,7 @@ function formatEffect(
     case 'action':
       return `${i18nText("frontstage", "auto.effect_action")}: ${effect.actionId}`;
     case 'data':
-      return `${i18nText("frontstage", "auto.effect_data")}: ${effect.operation}`;
+      return `${i18nText("frontstage", "auto.effect_data")}: ${effect.queryId}`;
     case 'event':
       return `${i18nText("frontstage", "auto.effect_event")}: ${effect.name}`;
   }

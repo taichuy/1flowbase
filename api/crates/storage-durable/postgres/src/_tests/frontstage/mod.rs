@@ -235,18 +235,13 @@ async fn placement_integrity_trigger_rejects_direct_sql_and_allows_cascade_delet
         Some("frontstage_pages_parent_child_placement")
     );
 
-    let parent_update_error =
-        sqlx::query("update frontstage_pages set placement = 'topbar' where id = $1")
-            .bind(group_id)
-            .execute(&pool)
-            .await
-            .unwrap_err();
-    assert_eq!(
-        parent_update_error
-            .as_database_error()
-            .and_then(|error| error.constraint()),
-        Some("frontstage_pages_parent_child_placement")
-    );
+    sqlx::query(
+        "update frontstage_pages set placement = 'topbar', slug = 'root-group' where id = $1",
+    )
+    .bind(group_id)
+    .execute(&pool)
+    .await
+    .unwrap();
 
     sqlx::query("delete from frontstage_pages where workspace_id = $1 and id = $2")
         .bind(workspace_id)
@@ -273,7 +268,7 @@ async fn placement_integrity_serializes_parent_and_child_updates() {
     let (workspace_id, _) = insert_frontstage_test_workspaces(&pool).await;
     let group_id = Uuid::now_v7();
     sqlx::query(
-        "insert into frontstage_pages (id, workspace_id, kind, title, placement, rank) values ($1, $2, 'group', 'Group', 'sidebar', 'a')",
+        "insert into frontstage_pages (id, workspace_id, kind, title, placement, slug, rank) values ($1, $2, 'group', 'Group', 'topbar', 'root-group', 'a')",
     )
         .bind(group_id)
         .bind(workspace_id)
@@ -282,7 +277,7 @@ async fn placement_integrity_serializes_parent_and_child_updates() {
         .unwrap();
 
     let mut parent_tx = pool.begin().await.unwrap();
-    sqlx::query("update frontstage_pages set placement = 'topbar' where id = $1")
+    sqlx::query("update frontstage_pages set placement = 'sidebar', slug = null where id = $1")
         .bind(group_id)
         .execute(&mut *parent_tx)
         .await
@@ -292,7 +287,7 @@ async fn placement_integrity_serializes_parent_and_child_updates() {
     let child_id = Uuid::now_v7();
     let child_insert = tokio::spawn(async move {
         sqlx::query(
-            "insert into frontstage_pages (id, workspace_id, parent_id, kind, title, placement, rank) values ($1, $2, $3, 'page', 'Child', 'sidebar', 'a')",
+            "insert into frontstage_pages (id, workspace_id, parent_id, kind, title, placement, rank) values ($1, $2, $3, 'page', 'Child', 'topbar', 'a')",
         )
             .bind(child_id)
             .bind(workspace_id)
@@ -1673,7 +1668,7 @@ async fn migration_creates_frontstage_page_visibility_rules() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(foreign_key_count, 3);
+    assert_eq!(foreign_key_count, 4);
 
     let unique_indexes: Vec<String> = sqlx::query_scalar(
         r#"

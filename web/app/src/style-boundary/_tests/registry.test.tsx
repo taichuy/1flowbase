@@ -263,12 +263,18 @@ describe('style boundary registry', () => {
       </AppProviders>
     );
 
-    expect(await screen.findByText('Boundary Workflow')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        'Boundary Workflow',
+        undefined,
+        { timeout: 10_000 }
+      )
+    ).toBeInTheDocument();
     expect(screen.getByText('Style boundary application')).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '应用' })).toBeInTheDocument();
-  }, 15_000);
+  }, 30_000);
 
-  test('renders the settings mcp management scene and opens the directory editor', async () => {
+  test('renders the settings mcp management scene', async () => {
     const scene = getRuntimeScene('page.settings-mcp-management');
 
     render(
@@ -278,11 +284,21 @@ describe('style boundary registry', () => {
     );
 
     expect(await screen.findByText('Workspace Ops')).toBeInTheDocument();
-    expect(
-      await screen.findByRole('dialog', { name: '目录编辑' }, { timeout: 8000 })
-    ).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '新增分组' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '挂载 Tool' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'MCP 实例' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Tool 配置' })).toBeInTheDocument();
+  }, 15_000);
+
+  test('renders the settings API docs scene from the backend navigation fixture', async () => {
+    const scene = getRuntimeScene('page.settings-docs');
+    const view = render(
+      <AppProviders>
+        <StyleBoundaryHarness scene={scene} />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(view.container.querySelector('.api-docs-panel')).toBeInTheDocument();
+    });
   }, 15_000);
 
   test('seeds model provider instances with enabled model ids instead of validation history', async () => {

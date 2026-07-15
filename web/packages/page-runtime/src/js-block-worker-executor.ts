@@ -322,6 +322,15 @@ function createBlockContext(
           queryId,
           ...(isRecord(params) ? { params } : {})
         });
+      },
+      async create() {
+        throw new Error('Restricted block data creation is not supported.');
+      },
+      async update() {
+        throw new Error('Restricted block data updates are not supported.');
+      },
+      async delete() {
+        throw new Error('Restricted block data deletion is not supported.');
       }
     },
     actions: {

@@ -839,18 +839,14 @@ describe('SettingsPage', () => {
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockRejectedValue(
       new Error('registry unavailable')
     );
-    authenticateWithPermissions([
-      'settings_feature.access.system.docs'
-    ]);
+    authenticateWithPermissions(['settings_feature.access.system.docs']);
 
     renderApp('/settings/docs');
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/settings/docs');
     });
-    expect(
-      await screen.findByText('设置导航加载失败')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('设置导航加载失败')).toBeInTheDocument();
     expect(docsApi.fetchSettingsApiDocsCatalog).not.toHaveBeenCalled();
   }, 10000);
 
@@ -858,14 +854,14 @@ describe('SettingsPage', () => {
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockReturnValue(
       new Promise(() => undefined)
     );
-    authenticateWithPermissions([
-      'settings_feature.access.system.docs'
-    ]);
+    authenticateWithPermissions(['settings_feature.access.system.docs']);
 
     renderApp('/settings/docs');
 
     expect(await screen.findByText('加载中...')).toBeInTheDocument();
-    expect(screen.queryByText('当前账号暂无可访问内容')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('当前账号暂无可访问内容')
+    ).not.toBeInTheDocument();
     expect(docsApi.fetchSettingsApiDocsCatalog).not.toHaveBeenCalled();
   });
 
@@ -894,10 +890,7 @@ describe('SettingsPage', () => {
   });
 
   test('renders auth center actions and opens configuration drawer', async () => {
-    authenticateWithPermissions([
-      'user.view.all',
-      'user.manage.all'
-    ]);
+    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
@@ -977,10 +970,7 @@ describe('SettingsPage', () => {
   });
 
   test('initializes auth center config form from authenticator fields', async () => {
-    authenticateWithPermissions([
-      'user.view.all',
-      'user.manage.all'
-    ]);
+    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
@@ -1033,10 +1023,10 @@ describe('SettingsPage', () => {
     expect(resizeHandle).toHaveAttribute('aria-valuenow', '960');
     const footer = within(dialog)
       .getByRole('button', { name: /保\s*存/ })
-      // eslint-disable-next-line testing-library/no-node-access
+
       .closest('.ant-drawer-footer');
     expect(footer).not.toBeNull();
-    // eslint-disable-next-line testing-library/no-node-access
+
     expect(footer?.querySelector('.ant-flex-justify-start')).not.toBeNull();
     const footerButtons = within(footer as HTMLElement).getAllByRole('button');
     expect(footerButtons.map((button) => button.textContent)).toEqual([
@@ -1046,10 +1036,7 @@ describe('SettingsPage', () => {
   });
 
   test('submits auth center config, refreshes the list, and closes the drawer', async () => {
-    authenticateWithPermissions([
-      'user.view.all',
-      'user.manage.all'
-    ]);
+    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     authCenterApi.fetchSettingsAuthCenterOverview
       .mockResolvedValueOnce({
         default_authenticator_id: 'auth-oidc-main',
@@ -1155,10 +1142,7 @@ describe('SettingsPage', () => {
   });
 
   test('shows auth center config errors in the drawer', async () => {
-    authenticateWithPermissions([
-      'user.view.all',
-      'user.manage.all'
-    ]);
+    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
@@ -1236,10 +1220,7 @@ describe('SettingsPage', () => {
   });
 
   test('shows auth center csrf error in the drawer', async () => {
-    authenticateWithPermissions([
-      'user.view.all',
-      'user.manage.all'
-    ]);
+    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     useAuthStore.setState({ csrfToken: null });
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_authenticator_id: 'auth-oidc-main',
@@ -1332,10 +1313,7 @@ describe('SettingsPage', () => {
   });
 
   test('allows root safe member edits while keeping destructive actions locked', async () => {
-    authenticateWithPermissions(
-      ['user.view.all', 'user.manage.all'],
-      'root'
-    );
+    authenticateWithPermissions(['user.view.all', 'user.manage.all'], 'root');
     rolesApi.fetchSettingsRoles.mockResolvedValue([
       {
         code: 'operator',
@@ -1529,9 +1507,7 @@ describe('SettingsPage', () => {
   });
 
   test('shows 数据源 when state_model.view.all is present', async () => {
-    authenticateWithPermissions([
-      'state_model.view.all'
-    ]);
+    authenticateWithPermissions(['state_model.view.all']);
 
     renderApp('/settings/data-models');
 
@@ -1569,9 +1545,7 @@ describe('SettingsPage', () => {
   });
 
   test('shows 基础设施 and 内存观察 when plugin_config.view.all is present', async () => {
-    authenticateWithPermissions([
-      'plugin_config.view.all'
-    ]);
+    authenticateWithPermissions(['plugin_config.view.all']);
 
     renderApp('/settings/host-infrastructure');
 
@@ -1592,9 +1566,7 @@ describe('SettingsPage', () => {
   });
 
   test('renders memory observation as a settings section route', async () => {
-    authenticateWithPermissions([
-      'plugin_config.view.all'
-    ]);
+    authenticateWithPermissions(['plugin_config.view.all']);
     hostInfrastructureApi.fetchSettingsHostInfrastructureMemoryOverview.mockResolvedValue(
       {
         can_manage: true,

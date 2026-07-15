@@ -213,14 +213,12 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       );
     });
 
-    fireEvent.click(
-      within(staffRow).getByRole('button', { name: '删除' })
-    );
+    fireEvent.click(within(staffRow).getByRole('button', { name: '删除' }));
     const confirmDeleteText = (await screen.findAllByText(/删\s*除/)).find(
       (element) => element.tagName === 'SPAN'
     );
     // Ant Design Popconfirm nests the OK text in a span inside the action button.
-    // eslint-disable-next-line testing-library/no-node-access
+
     const confirmDeleteButton = confirmDeleteText?.closest('button');
     expect(confirmDeleteButton).not.toBeNull();
     fireEvent.click(confirmDeleteButton as HTMLElement);
@@ -261,7 +259,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
         name: '调整认证器配置抽屉宽度'
       });
       // Ant Design applies the drawer width to a wrapper without an accessible role.
-      // eslint-disable-next-line testing-library/no-node-access
+
       const drawerWrapper = dialog.closest('.ant-drawer-content-wrapper');
       expect(drawerWrapper).toBeInstanceOf(HTMLElement);
 
@@ -283,9 +281,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
       fireEvent.mouseUp(document);
       expect(resizeHandle).toHaveAttribute('aria-valuenow', '570');
-      expect(document.body).not.toHaveClass(
-        'schema-form-drawer--resizing'
-      );
+      expect(document.body).not.toHaveClass('schema-form-drawer--resizing');
     } finally {
       requestAnimationFrameSpy.mockRestore();
       cancelAnimationFrameSpy.mockRestore();

@@ -23,7 +23,10 @@ function formatCommand(command) {
   return [command.command, ...command.args].join(' ');
 }
 
-function buildReactDoctorCommand({ repoRoot = getRepoRoot() } = {}) {
+function buildReactDoctorCommand({
+  repoRoot = getRepoRoot(),
+  diffBase,
+} = {}) {
   return {
     command: 'npm',
     args: [
@@ -35,7 +38,7 @@ function buildReactDoctorCommand({ repoRoot = getRepoRoot() } = {}) {
       'react-doctor',
       'web/app',
       '--diff',
-      'origin/main',
+      diffBase,
       '--no-score',
       '--fail-on',
       'warning',
@@ -44,6 +47,30 @@ function buildReactDoctorCommand({ repoRoot = getRepoRoot() } = {}) {
     ],
     cwd: repoRoot,
   };
+}
+
+function resolveReactDoctorDiffBase({
+  repoRoot = getRepoRoot(),
+  env = process.env,
+  spawnSyncImpl = spawnSync,
+} = {}) {
+  const configuredBase = env.REACT_DOCTOR_DIFF_BASE?.trim();
+  if (configuredBase) {
+    return configuredBase;
+  }
+
+  const result = spawnSyncImpl('git', ['rev-parse', '--verify', 'HEAD^'], {
+    cwd: repoRoot,
+    env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const parentSha = result.stdout?.trim();
+  if (result.error || result.status !== 0 || !parentSha) {
+    const detail = result.stderr?.trim() || result.error?.message || 'unknown git error';
+    throw new Error(`cannot resolve React Doctor parent baseline: ${detail}`);
+  }
+  return parentSha;
 }
 
 function writeReactDoctorReports({
@@ -99,7 +126,8 @@ function runReactDoctorGate({
   writeStdout = (text) => process.stdout.write(text),
   writeStderr = (text) => process.stderr.write(text),
 } = {}) {
-  const command = buildReactDoctorCommand({ repoRoot });
+  const diffBase = resolveReactDoctorDiffBase({ repoRoot, env, spawnSyncImpl });
+  const command = buildReactDoctorCommand({ repoRoot, diffBase });
   const result = spawnSyncImpl(command.command, command.args, {
     cwd: command.cwd,
     env,
@@ -135,6 +163,7 @@ function runReactDoctorGate({
 
 module.exports = {
   buildReactDoctorCommand,
+  resolveReactDoctorDiffBase,
   runReactDoctorGate,
   stripAnsiControlSequences,
   writeReactDoctorReports,

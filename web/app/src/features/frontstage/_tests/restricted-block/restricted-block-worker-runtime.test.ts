@@ -128,7 +128,6 @@ function findEffectMessage(
     direction: 'worker_to_host',
     type: 'data',
     requestId: 'restricted-block:block-1:code-1',
-    operation: 'query',
     effectId: expect.any(String)
   });
   return message as Extract<JsBlockWorkerToHostMessage, { type: 'data' }>;
@@ -173,8 +172,8 @@ describe('FrontStage restricted block worker runtime', () => {
         direction: 'worker_to_host',
         type: 'data',
         requestId: 'restricted-block:block-1:code-1',
-        operation: 'query',
-        payload: { model: 'records', limit: 1 },
+        queryId: 'records',
+        params: { limit: 1 },
         effectId: effectMessage.effectId
       },
       {

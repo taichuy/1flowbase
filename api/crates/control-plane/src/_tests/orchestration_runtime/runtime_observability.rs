@@ -870,6 +870,8 @@ fn failover_queue_document(
                     "position": { "x": 240, "y": 0 },
                     "configVersion": 1,
                     "config": {
+                        "retry_enabled": true,
+                        "max_retries": 1,
                         "model_provider": {
                             "routing_mode": "failover_queue",
                             "queue_template_id": "queue-template-1",

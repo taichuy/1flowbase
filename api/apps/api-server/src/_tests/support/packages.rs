@@ -215,10 +215,51 @@ fn append_dir_to_tar(builder: &mut Builder<GzEncoder<Vec<u8>>>, root: &Path, cur
         let path = entry.path();
         let relative = path.strip_prefix(root).unwrap();
         if path.is_dir() {
-            builder.append_dir(relative, &path).unwrap();
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(tar::EntryType::Directory);
+            header.set_size(0);
+            header.set_mode(0o755);
+            header.set_uid(0);
+            header.set_gid(0);
+            header.set_mtime(0);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, relative, std::io::empty())
+                .unwrap();
             append_dir_to_tar(builder, root, &path);
             continue;
         }
-        builder.append_path_with_name(&path, relative).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(package_file_mode(&path));
+        header.set_uid(0);
+        header.set_gid(0);
+        header.set_mtime(0);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, relative, bytes.as_slice())
+            .unwrap();
     }
+}
+
+#[cfg(unix)]
+fn package_file_mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
+#[cfg(not(unix))]
+fn package_file_mode(_path: &Path) -> u32 {
+    0o644
+}
+
+#[test]
+fn official_provider_package_is_deterministic_across_file_timestamps() {
+    let first = build_official_provider_package("0.2.0");
+    std::thread::sleep(std::time::Duration::from_millis(1_100));
+    let second = build_official_provider_package("0.2.0");
+
+    assert_eq!(Sha256::digest(first), Sha256::digest(second));
 }

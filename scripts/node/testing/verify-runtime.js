@@ -101,7 +101,7 @@ function resolveFrontendDefaults(availableParallelism) {
 
   return {
     turboConcurrency: Math.min(defaultWorkers, parallelism),
-    vitestMaxWorkers: Math.min(defaultWorkers, parallelism),
+    vitestMaxWorkers: Math.min(defaultWorkers, parallelism, 4),
   };
 }
 

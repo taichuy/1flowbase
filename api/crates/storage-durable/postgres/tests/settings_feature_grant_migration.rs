@@ -580,7 +580,10 @@ async fn migration_reconciles_members_and_roles_grants_without_touching_other_fe
         ])
     );
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    before_explicit_settings_feature_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
 
     assert_eq!(
         permission_codes(&pool, members_role).await,
@@ -607,7 +610,7 @@ async fn migration_reconciles_members_and_roles_grants_without_touching_other_fe
 
     let removed_legacy_definitions: i64 =
         sqlx::query_scalar("select count(*) from permission_definitions where code = any($1)")
-            .bind(&[MEMBERS_VISIBILITY, ROLES_VISIBILITY])
+            .bind([MEMBERS_VISIBILITY, ROLES_VISIBILITY])
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -661,7 +664,7 @@ async fn migration_rolls_back_all_grants_when_legacy_cleanup_fails() {
     );
     let new_definition_count: i64 =
         sqlx::query_scalar("select count(*) from permission_definitions where code = any($1)")
-            .bind(&[MEMBERS_FEATURE, ROLES_FEATURE])
+            .bind([MEMBERS_FEATURE, ROLES_FEATURE])
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -756,7 +759,7 @@ async fn migration_reconciles_four_explicit_settings_features_and_preserves_othe
 
     let removed_legacy_definitions: i64 =
         sqlx::query_scalar("select count(*) from permission_definitions where code = any($1)")
-            .bind(&[
+            .bind([
                 AUTH_CENTER_VISIBILITY,
                 HOST_INFRASTRUCTURE_VISIBILITY,
                 MEMORY_OBSERVATION_VISIBILITY,
@@ -833,7 +836,7 @@ async fn explicit_settings_migration_rolls_back_when_legacy_cleanup_fails() {
     );
     let new_definition_count: i64 =
         sqlx::query_scalar("select count(*) from permission_definitions where code = any($1)")
-            .bind(&[
+            .bind([
                 AUTH_CENTER_FEATURE,
                 HOST_INFRASTRUCTURE_FEATURE,
                 MEMORY_OBSERVATION_FEATURE,
@@ -1089,7 +1092,10 @@ async fn migration_reconciles_model_providers_grants_and_preserves_remaining_fou
         grant(&pool, untouched_role, workspace.id, code).await;
     }
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    before_final_settings_feature_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
 
     let mut expected = MODEL_PROVIDER_ALL_PERMISSIONS
         .iter()

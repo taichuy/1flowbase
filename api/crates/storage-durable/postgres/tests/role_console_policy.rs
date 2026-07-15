@@ -65,6 +65,23 @@ async fn role_store() -> (PgControlPlaneStore, Uuid, Uuid) {
     (store, workspace.id, actor_user_id)
 }
 
+async fn simulate_legacy_cutover_state(store: &PgControlPlaneStore) {
+    sqlx::query(
+        r#"
+        update role_console_policy_migration_cutover_state
+        set marker = 'legacy',
+            run_id = null,
+            catalog_fingerprint = null,
+            mapping_fingerprint = null,
+            updated_at = now()
+        where singleton
+        "#,
+    )
+    .execute(store.pool())
+    .await
+    .unwrap();
+}
+
 async fn grant_legacy_application_permissions(
     store: &PgControlPlaneStore,
     workspace_id: Uuid,
@@ -335,6 +352,7 @@ async fn bind_synthetic_migration_actor(
 async fn ac_010_ac_011_migration_artifacts_bind_multi_role_probe_union_to_singleton_cutover_state()
 {
     let (store, workspace_id, actor_user_id) = role_store().await;
+    simulate_legacy_cutover_state(&store).await;
     RoleRepository::create_team_role(
         &store,
         &CreateWorkspaceRoleInput {
@@ -840,6 +858,7 @@ async fn ac_010_applications_console_policy_sql_rehearsal_preserves_exact_and_pa
 #[tokio::test]
 async fn ac_011_rehearsal_fences_apply_and_verified_rollback_restores_pre_apply_policy() {
     let (store, workspace_id, actor_user_id) = role_store().await;
+    simulate_legacy_cutover_state(&store).await;
     grant_legacy_application_permissions(
         &store,
         workspace_id,
@@ -994,6 +1013,7 @@ async fn ac_011_rehearsal_fences_apply_and_verified_rollback_restores_pre_apply_
 #[tokio::test]
 async fn ac_011_finalize_releases_fence_and_prevents_destructive_rollback_after_user_edits() {
     let (store, workspace_id, actor_user_id) = role_store().await;
+    simulate_legacy_cutover_state(&store).await;
     grant_legacy_application_permissions(
         &store,
         workspace_id,

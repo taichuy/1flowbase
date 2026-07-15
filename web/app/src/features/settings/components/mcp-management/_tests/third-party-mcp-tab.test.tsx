@@ -53,7 +53,7 @@ function renderTab(onImported = vi.fn()) {
       <ThirdPartyMcpTab canManage onImported={onImported} />
     </AppProviders>
   );
-  return onImported;
+  return { onImported };
 }
 
 describe('ThirdPartyMcpTab', () => {
@@ -167,6 +167,11 @@ describe('ThirdPartyMcpTab', () => {
         ''
       );
     });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: '新增第三方 MCP 连接' })
+      ).not.toBeInTheDocument();
+    });
   });
 
   test('AC-004 tests a connection in a modal with backend result fields', async () => {
@@ -178,10 +183,16 @@ describe('ThirdPartyMcpTab', () => {
     const dialog = await screen.findByRole('dialog', { name: '连接测试' });
     expect(await within(dialog).findByText('Acme Server')).toBeInTheDocument();
     expect(within(dialog).getByText('2025-03-26')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: '连接测试' })
+      ).not.toBeInTheDocument();
+    });
   });
 
   test('AC-007 AC-008 AC-015 discovers, searches, previews differences, and imports a selection', async () => {
-    const onImported = renderTab();
+    const { onImported } = renderTab();
     expect(await screen.findByText('Acme MCP')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '发现 Tool Acme MCP' }));
@@ -212,5 +223,10 @@ describe('ThirdPartyMcpTab', () => {
       );
     });
     expect(onImported).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: '发现与导入 Tool' })
+      ).not.toBeInTheDocument();
+    });
   });
 });

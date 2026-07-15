@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use control_plane::{
     application_public_api::workflow_schedule::{
-        WORKFLOW_SCHEDULE_RUN_QUEUE, WorkflowScheduleTriggerService,
+        WorkflowScheduleTriggerService, WORKFLOW_SCHEDULE_RUN_QUEUE,
     },
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
     ports::TaskQueue,
@@ -19,7 +19,7 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     routes::application_public_api::native::api_provider_runtime,
-    runtime_activity::{ApplicationActivityKind, scope_application_activity},
+    runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

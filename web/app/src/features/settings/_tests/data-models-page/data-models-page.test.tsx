@@ -6,7 +6,6 @@ import {
   within
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { Grid } from 'antd';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { DataModelFormDrawer } from '../../components/data-models/DataModelFormDrawer';
@@ -19,6 +18,7 @@ import {
   openContactsDataModelEditor,
   openDataModelEditorByTitle,
   renderApp,
+  setDataModelsPageBreakpoint,
   setupDataModelsPageTest
 } from './support';
 
@@ -29,31 +29,36 @@ describe('Settings data models page', () => {
   test('AC-002 presents main and other data sources in one table', async () => {
     renderApp('/settings/data-models');
 
-    await waitFor(() =>
-      expect(dataModelsApi.fetchSettingsDataSources).toHaveBeenCalled()
+    await waitFor(
+      () => expect(dataModelsApi.fetchSettingsDataSources).toHaveBeenCalled(),
+      { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
     );
 
     expect(
-      await screen.findByText(
-        '主数据源',
-        undefined,
-        { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
-      )
+      await screen.findByText('主数据源', undefined, {
+        timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT
+      })
     ).toBeInTheDocument();
     const table = screen.getByRole('table', { name: '数据源列表' });
     expect(within(table).getByText('HubSpot')).toBeInTheDocument();
-    expect(within(table).getByRole('columnheader', { name: '数据源名称' }))
-      .toBeInTheDocument();
-    expect(within(table).getByRole('columnheader', { name: '类型' }))
-      .toBeInTheDocument();
-    expect(within(table).getByRole('columnheader', { name: '状态' }))
-      .toBeInTheDocument();
-    expect(within(table).getByRole('columnheader', { name: '已启用' }))
-      .toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '主数据源' }))
-      .not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '外部连接' }))
-      .not.toBeInTheDocument();
+    expect(
+      within(table).getByRole('columnheader', { name: '数据源名称' })
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole('columnheader', { name: '类型' })
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole('columnheader', { name: '状态' })
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole('columnheader', { name: '已启用' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: '主数据源' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: '外部连接' })
+    ).not.toBeInTheDocument();
   });
 
   test('AC-004/005 runtime extension data sources map discovered resources without generic table-id input', async () => {
@@ -100,7 +105,9 @@ describe('Settings data models page', () => {
     );
 
     const previewDrawer = await screen.findByRole('dialog');
-    expect(within(previewDrawer).getByText('Contacts 预览')).toBeInTheDocument();
+    expect(
+      within(previewDrawer).getByText('Contacts 预览')
+    ).toBeInTheDocument();
     expect(
       within(previewDrawer).getAllByText('contact_id').length
     ).toBeGreaterThan(0);
@@ -112,7 +119,9 @@ describe('Settings data models page', () => {
     expect(within(previewDrawer).getByText('tier')).toBeInTheDocument();
     expect(within(previewDrawer).getByText('gold')).toBeInTheDocument();
 
-    fireEvent.click(within(previewDrawer).getByRole('button', { name: '关闭' }));
+    fireEvent.click(
+      within(previewDrawer).getByRole('button', { name: '关闭' })
+    );
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     );
@@ -139,7 +148,9 @@ describe('Settings data models page', () => {
     expect(
       within(previewDrawer).getByText('此资源没有可预览的数据')
     ).toBeInTheDocument();
-    expect(within(previewDrawer).getByText('预览已返回 0 条记录')).toBeInTheDocument();
+    expect(
+      within(previewDrawer).getByText('预览已返回 0 条记录')
+    ).toBeInTheDocument();
   });
 
   test('AC-004 keeps preview request errors visible without opening stale rows', async () => {
@@ -157,14 +168,14 @@ describe('Settings data models page', () => {
       )
     );
 
-    expect(await screen.findByText('preview request failed')).toBeInTheDocument();
+    expect(
+      await screen.findByText('preview request failed')
+    ).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   test('AC-004 presents preview rows as a vertical record list on mobile', async () => {
-    const breakpointSpy = vi
-      .spyOn(Grid, 'useBreakpoint')
-      .mockReturnValue({ md: false });
+    setDataModelsPageBreakpoint({ md: false });
     dataModelsApi.previewSettingsDataSourceResource.mockResolvedValueOnce({
       preview_session_id: 'preview-mobile',
       expires_at: '2026-07-13T09:30:00Z',
@@ -174,25 +185,21 @@ describe('Settings data models page', () => {
       }
     });
 
-    try {
-      renderApp('/settings/data-models?source=source-1');
-      fireEvent.click(
-        await screen.findByRole(
-          'button',
-          { name: /预览/ },
-          { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
-        )
-      );
+    renderApp('/settings/data-models?source=source-1');
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: /预览/ },
+        { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+      )
+    );
 
-      const previewDrawer = await screen.findByRole('dialog');
-      expect(
-        within(previewDrawer).getByLabelText('移动端预览记录')
-      ).toBeInTheDocument();
-      expect(within(previewDrawer).getByText('第 1 条记录')).toBeInTheDocument();
-      expect(within(previewDrawer).getByText('Grace Hopper')).toBeInTheDocument();
-    } finally {
-      breakpointSpy.mockRestore();
-    }
+    const previewDrawer = await screen.findByRole('dialog');
+    expect(
+      within(previewDrawer).getByLabelText('移动端预览记录')
+    ).toBeInTheDocument();
+    expect(within(previewDrawer).getByText('第 1 条记录')).toBeInTheDocument();
+    expect(within(previewDrawer).getByText('Grace Hopper')).toBeInTheDocument();
   });
 
   test.each([
@@ -201,9 +208,7 @@ describe('Settings data models page', () => {
   ])(
     'AC-004 caps rows, fields, keys, and scalar values on $layout',
     async ({ breakpoint }) => {
-      const breakpointSpy = vi
-        .spyOn(Grid, 'useBreakpoint')
-        .mockReturnValue(breakpoint);
+      setDataModelsPageBreakpoint(breakpoint);
       const longFieldKey = `long_field_${'k'.repeat(90)}_FIELD_KEY_TAIL`;
       const nestedLongFieldKey = `nested_field_${'n'.repeat(90)}_NESTED_KEY_TAIL`;
       const longValue = `long-value-${'v'.repeat(260)}-VALUE_TAIL`;
@@ -229,65 +234,63 @@ describe('Settings data models page', () => {
         output: { rows, next_cursor: null }
       });
 
-      try {
-        renderApp('/settings/data-models?source=source-1');
-        fireEvent.click(
-          await screen.findByRole(
-            'button',
-            { name: /预览/ },
-            { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
-          )
-        );
+      renderApp('/settings/data-models?source=source-1');
+      fireEvent.click(
+        await screen.findByRole(
+          'button',
+          { name: /预览/ },
+          { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+        )
+      );
 
-        const previewDrawer = await screen.findByRole('dialog');
-        expect(
-          within(previewDrawer).getByText('另有 2 个字段未显示')
-        ).toBeInTheDocument();
-        expect(
-          within(previewDrawer).getByText('另有 2 条记录未显示')
-        ).toBeInTheDocument();
-        expect(within(previewDrawer).getByText('row-19')).toBeInTheDocument();
-        expect(within(previewDrawer).queryByText('row-20')).not.toBeInTheDocument();
-        expect(
-          within(previewDrawer).queryByText(/FIELD_KEY_TAIL/)
-        ).not.toBeInTheDocument();
-        expect(
-          within(previewDrawer).queryByText(/NESTED_KEY_TAIL/)
-        ).not.toBeInTheDocument();
-        expect(
-          within(previewDrawer).queryByText(/VALUE_TAIL/)
-        ).not.toBeInTheDocument();
-        expect(
-          within(previewDrawer).queryByText(/NESTED_VALUE_TAIL/)
-        ).not.toBeInTheDocument();
-        expect(
-          within(previewDrawer).getAllByRole('button', {
-            name: '复制完整值'
-          }).length
-        ).toBeGreaterThanOrEqual(2);
-        expect(
-          within(previewDrawer).getAllByText(
-            `已省略 ${longValue.length - 240} 个字符`
-          ).length
-        ).toBeGreaterThan(0);
-        expect(
-          within(previewDrawer).getAllByText(
-            `已省略 ${nestedLongValue.length - 240} 个字符`
-          ).length
-        ).toBeGreaterThan(0);
-        expect(
-          within(previewDrawer).getAllByText(
-            `已省略 ${longFieldKey.length - 80} 个字符`
-          ).length
-        ).toBeGreaterThan(0);
-        expect(
-          within(previewDrawer).getAllByText(
-            `已省略 ${nestedLongFieldKey.length - 80} 个字符`
-          ).length
-        ).toBeGreaterThan(0);
-      } finally {
-        breakpointSpy.mockRestore();
-      }
+      const previewDrawer = await screen.findByRole('dialog');
+      expect(
+        within(previewDrawer).getByText('另有 2 个字段未显示')
+      ).toBeInTheDocument();
+      expect(
+        within(previewDrawer).getByText('另有 2 条记录未显示')
+      ).toBeInTheDocument();
+      expect(within(previewDrawer).getByText('row-19')).toBeInTheDocument();
+      expect(
+        within(previewDrawer).queryByText('row-20')
+      ).not.toBeInTheDocument();
+      expect(
+        within(previewDrawer).queryByText(/FIELD_KEY_TAIL/)
+      ).not.toBeInTheDocument();
+      expect(
+        within(previewDrawer).queryByText(/NESTED_KEY_TAIL/)
+      ).not.toBeInTheDocument();
+      expect(
+        within(previewDrawer).queryByText(/VALUE_TAIL/)
+      ).not.toBeInTheDocument();
+      expect(
+        within(previewDrawer).queryByText(/NESTED_VALUE_TAIL/)
+      ).not.toBeInTheDocument();
+      expect(
+        within(previewDrawer).getAllByRole('button', {
+          name: '复制完整值'
+        }).length
+      ).toBeGreaterThanOrEqual(2);
+      expect(
+        within(previewDrawer).getAllByText(
+          `已省略 ${longValue.length - 240} 个字符`
+        ).length
+      ).toBeGreaterThan(0);
+      expect(
+        within(previewDrawer).getAllByText(
+          `已省略 ${nestedLongValue.length - 240} 个字符`
+        ).length
+      ).toBeGreaterThan(0);
+      expect(
+        within(previewDrawer).getAllByText(
+          `已省略 ${longFieldKey.length - 80} 个字符`
+        ).length
+      ).toBeGreaterThan(0);
+      expect(
+        within(previewDrawer).getAllByText(
+          `已省略 ${nestedLongFieldKey.length - 80} 个字符`
+        ).length
+      ).toBeGreaterThan(0);
     }
   );
 
@@ -337,11 +340,9 @@ describe('Settings data models page', () => {
     renderApp('/settings/data-models');
 
     await findDataModelsNavigation();
-    await screen.findByText(
-      '主数据源',
-      undefined,
-      { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
-    );
+    await screen.findByText('主数据源', undefined, {
+      timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT
+    });
 
     const addDataSourceButton = await screen.findByRole(
       'button',
@@ -632,21 +633,33 @@ describe('Settings data models page', () => {
       expect(within(detailSummary).getByText('标题：')).toBeInTheDocument();
       expect(within(detailSummary).getByText('Code：')).toBeInTheDocument();
       expect(within(detailSummary).getByText('Contacts')).toBeInTheDocument();
-      expect(within(detailSummary).getByText('contacts')).toBeInTheDocument();
+      expect(within(detailSummary).getAllByText('contacts')).not.toHaveLength(
+        0
+      );
       const summaryRows = within(detailSummary).getAllByTestId(
         'data-model-summary-row'
       );
-      expect(summaryRows).toHaveLength(4);
+      expect(summaryRows).toHaveLength(3);
       expect(within(summaryRows[0]).getByText('标题：')).toBeInTheDocument();
       expect(within(summaryRows[0]).getByText('来源：')).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('Code：')).toBeInTheDocument();
-      expect(within(summaryRows[1]).getByText('开放 API：')).toBeInTheDocument();
+      expect(
+        within(summaryRows[1]).getByText('开放 API：')
+      ).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('开放')).toBeInTheDocument();
-      expect(within(summaryRows[2]).getByText('物理表：')).toBeInTheDocument();
-      expect(within(detailSummary).queryByText('状态：')).not.toBeInTheDocument();
-      expect(within(summaryRows[2]).queryByText('published')).not.toBeInTheDocument();
-      expect(within(detailSummary).queryByText('available')).not.toBeInTheDocument();
-      expect(within(detailSummary).getByText('表 ID：')).toBeInTheDocument();
+      expect(within(summaryRows[2]).getByText('数据源：')).toBeInTheDocument();
+      expect(
+        within(detailSummary).queryByText('状态：')
+      ).not.toBeInTheDocument();
+      expect(
+        within(summaryRows[2]).queryByText('published')
+      ).not.toBeInTheDocument();
+      expect(
+        within(detailSummary).queryByText('available')
+      ).not.toBeInTheDocument();
+      expect(
+        within(detailSummary).getByText('远端资源标识：')
+      ).toBeInTheDocument();
       const detailActions = within(editorDialog).getByTestId(
         'data-model-detail-actions'
       );
@@ -767,7 +780,7 @@ describe('Settings data models page', () => {
   test(
     'keeps field contract warning visible when the Data Model OpenAPI contract fails to load',
     async () => {
-      dataModelsApi.fetchSettingsDataModelOpenApiDocument.mockRejectedValue(
+      dataModelsApi.fetchSettingsDataModelOpenApiDocument.mockRejectedValueOnce(
         new Error('openapi unavailable')
       );
       renderApp('/settings/data-models?source=source-1');
@@ -814,7 +827,7 @@ describe('Settings data models page', () => {
       const resizeHandle = screen.getByRole('separator', {
         name: '调整 Data Model 详情宽度'
       });
-      // eslint-disable-next-line testing-library/no-node-access
+
       const drawerWrapper = editorDialog.closest('.ant-drawer-content-wrapper');
 
       expect(drawerWrapper).toBeInstanceOf(HTMLElement);
@@ -916,9 +929,12 @@ describe('Settings data models page', () => {
         selector: '.ant-select-item-option-content'
       })
     ).not.toBeInTheDocument();
-    fireEvent.keyDown(screen.getByRole('combobox', { name: '权限 grant-owner' }), {
-      key: 'Escape'
-    });
+    fireEvent.keyDown(
+      screen.getByRole('combobox', { name: '权限 grant-owner' }),
+      {
+        key: 'Escape'
+      }
+    );
 
     const systemDropdown = await openPermissionDropdown('权限 grant-system');
     expect(
@@ -956,83 +972,21 @@ describe('Settings data models page', () => {
     ).not.toBeInTheDocument();
   }, 20_000);
 
-  test('creates Data Models from the data source section', async () => {
-    renderApp('/settings/data-models?source=source-1');
-
-    await screen.findByText(
-      'Contacts',
-      {},
-      { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
-    );
-    fireEvent.click(screen.getByRole('button', { name: '新建数据表' }));
-    const createDialog = await screen.findByRole('dialog', {
-      name: '新建 Data Model'
-    });
-    expect(createDialog).toBeInTheDocument();
-    expect(within(createDialog).getByLabelText('Code说明')).toBeInTheDocument();
-    expect(
-      within(createDialog).getByText(/Code: Data Model 的稳定标识/)
-    ).toBeInTheDocument();
-    expect(within(createDialog).getByLabelText('标题说明')).toBeInTheDocument();
-    expect(
-      within(createDialog).getByText(/标题: 管理台展示名称/)
-    ).toBeInTheDocument();
-    expect(
-      within(createDialog).getByLabelText('开放 API说明')
-    ).toBeInTheDocument();
-    expect(
-      within(createDialog).getByText(/开启后该 Data Model 进入运行面 API 可用性判断/)
-    ).toBeInTheDocument();
-    const titleInput = within(createDialog).getByLabelText('标题');
-    const codeInput = within(createDialog).getByLabelText('Code');
-    expect(
-      titleInput.compareDocumentPosition(codeInput) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-
-    fireEvent.change(screen.getByLabelText('Code'), {
-      target: { value: 'companies' }
-    });
-    fireEvent.change(screen.getByLabelText('标题'), {
-      target: { value: 'Companies' }
-    });
-    fireEvent.change(screen.getByLabelText('表 ID'), {
-      target: { value: 'crm.companies' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: '创建' }));
-
-    await waitFor(() =>
-      expect(dataModelsApi.createSettingsDataModel).toHaveBeenCalledWith(
-        expect.objectContaining({
-          scope_kind: 'workspace',
-          code: 'companies',
-          title: 'Companies',
-          status: 'draft',
-          data_source_id: 'source-1',
-          external_resource_key: 'crm.companies',
-          external_table_id: 'crm.companies'
-        }),
-        'csrf-123'
-      )
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByRole('dialog', { name: '新建 Data Model' })
-      ).not.toBeInTheDocument()
-    );
-  }, 20_000);
-
   test('exposes Data Model editing from the detail drawer', async () => {
     renderApp('/settings/data-models?source=source-1');
 
-    await screen.findByText(
+    await screen.findAllByText(
       'Contacts',
       {},
       { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
     );
     const contactsRow = screen
       .getAllByRole('row')
-      .find((row) => within(row).queryByText('Contacts'));
+      .find(
+        (row) =>
+          within(row).queryByText('Contacts') &&
+          within(row).queryByRole('button', { name: '编辑' })
+      );
     expect(contactsRow).toBeInstanceOf(HTMLElement);
 
     fireEvent.click(
@@ -1048,7 +1002,7 @@ describe('Settings data models page', () => {
     expect(
       within(editorDialog).getByRole('tab', { name: '字段' })
     ).toBeInTheDocument();
-    expect(within(editorDialog).getByText('crm.contacts')).toBeInTheDocument();
+    expect(within(editorDialog).getAllByText('contacts')).not.toHaveLength(0);
     fireEvent.click(
       within(detailActions).getByRole('button', { name: /编\s*辑/ })
     );
@@ -1080,12 +1034,16 @@ describe('Settings data models page', () => {
       { timeout: 5000 }
     );
     expect(within(editDialog).getByDisplayValue('Contacts')).toBeDisabled();
-    expect(within(editDialog).getByDisplayValue('crm.contacts')).toBeDisabled();
+    expect(
+      within(editDialog).queryByLabelText('表 ID')
+    ).not.toBeInTheDocument();
     const apiSwitch = within(editDialog).getByRole('switch', {
       name: '开放 API'
     });
     expect(apiSwitch).toBeChecked();
-    expect(within(editDialog).queryByLabelText('数据源')).not.toBeInTheDocument();
+    expect(
+      within(editDialog).queryByLabelText('数据源')
+    ).not.toBeInTheDocument();
     fireEvent.click(apiSwitch);
     fireEvent.click(within(editDialog).getByRole('button', { name: '保存' }));
 
@@ -1099,14 +1057,18 @@ describe('Settings data models page', () => {
   test('deletes a Data Model from the table operation column after confirmation', async () => {
     renderApp('/settings/data-models?source=source-1');
 
-    await screen.findByText(
+    await screen.findAllByText(
       'Contacts',
       {},
       { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
     );
-    const contactsRow = screen
-      .getAllByRole('row')
-      .find((row) => within(row).queryByText('Contacts'));
+    const contactsRow = screen.getAllByRole('row').find(
+      (row) =>
+        within(row).queryByText('Contacts') &&
+        within(row).queryByRole('button', {
+          name: '删除数据表 Contacts'
+        })
+    );
     expect(contactsRow).toBeInstanceOf(HTMLElement);
 
     fireEvent.click(

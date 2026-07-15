@@ -68,6 +68,57 @@ test('evaluateSchemaHygiene reports duplicate PostgreSQL migration versions', ()
   assert.match(duplicate.message, /20260101000000_backfill_events\.sql/u);
 });
 
+test('collectSchemaInventory accepts SQLx reversible migration pairs and inventories the up migration', () => {
+  const repoRoot = createRepoWithMigrations({
+    '20260101000000_create_events.up.sql': `
+      create table scoped_events (
+        id uuid primary key,
+        scope_id uuid not null,
+        payload jsonb not null default '{}'::jsonb,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+
+      create index scoped_events_scope_created_idx
+        on scoped_events (scope_id, created_at desc, id desc);
+    `,
+    '20260101000000_create_events.down.sql': `
+      drop table scoped_events;
+    `,
+  });
+
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({ inventory });
+
+  assert.deepEqual(inventory.migrationErrors, []);
+  assert.equal(inventory.tables.some((table) => table.name === 'scoped_events'), true);
+  assert.equal(report.summary.errors, 0);
+});
+
+test('collectSchemaInventory ignores transaction-scoped temporary projection tables', () => {
+  const repoRoot = createRepoWithMigration(`
+    create table scoped_events (
+      id uuid primary key,
+      scope_id uuid not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index scoped_events_scope_created_idx
+      on scoped_events (scope_id, created_at desc, id desc);
+
+    create temporary table migration_projection on commit drop as
+      select id from scoped_events;
+    alter table migration_projection add column mode text;
+  `);
+
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({ inventory });
+
+  assert.deepEqual(inventory.parseErrors, []);
+  assert.deepEqual(inventory.tables.map((table) => table.name), ['scoped_events']);
+  assert.equal(report.summary.errors, 0);
+});
+
 test('collectSchemaInventory reads tables, columns, constraints, indexes, FKs, and JSONB fields from migrations', () => {
   const repoRoot = createRepoWithMigration(`
     create table workspaces (
@@ -495,6 +546,30 @@ test('collectSchemaInventory applies supported alter column nullability and defa
   assert.equal(inventory.parseErrors.length, 0);
   assert.equal(label.nullable, false);
   assert.equal(label.default, true);
+});
+
+test('collectSchemaInventory applies unnamed constraints added by alter table', () => {
+  const repoRoot = createRepoWithMigration(`
+    create table parent_rows (
+      id uuid primary key
+    );
+    create table editable_rows (
+      id uuid not null,
+      parent_id uuid not null,
+      code text not null
+    );
+    alter table editable_rows add primary key (id);
+    alter table editable_rows add unique (code);
+    alter table editable_rows add foreign key (parent_id) references parent_rows(id);
+  `);
+
+  const inventory = collectSchemaInventory({ repoRoot });
+  const table = inventory.tables.find((candidate) => candidate.name === 'editable_rows');
+
+  assert.deepEqual(inventory.parseErrors, []);
+  assert.deepEqual(table.primaryKey.columns, ['id']);
+  assert.deepEqual(table.uniqueConstraints[0].columns, ['code']);
+  assert.deepEqual(table.foreignKeys[0].columns, ['parent_id']);
 });
 
 test('evaluateSchemaHygiene fails exemptions without a reason', () => {

@@ -104,6 +104,14 @@ async fn replace_role_permissions(
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    crate::_tests::support::project_legacy_permissions_to_console_policy(
+        app,
+        cookie,
+        csrf,
+        role_code,
+        permission_codes,
+    )
+    .await;
 }
 
 async fn replace_member_roles(

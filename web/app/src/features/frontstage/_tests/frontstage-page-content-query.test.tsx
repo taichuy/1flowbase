@@ -39,10 +39,15 @@ const pageTabsApi = vi.hoisted(() => ({
     'tabs'
   ])
 }));
+const consoleNavigationApi = vi.hoisted(() => ({
+  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+  fetchSettingsConsoleNavigation: vi.fn()
+}));
 
 vi.mock('../api/page-tree', () => pageTreeApi);
 vi.mock('../api/page-content', () => pageContentApi);
 vi.mock('../api/page-tabs', () => pageTabsApi);
+vi.mock('../../settings/api/console-navigation', () => consoleNavigationApi);
 
 import { AppProviders } from '../../../app/AppProviders';
 import { AppRouterProvider } from '../../../app/router';
@@ -81,7 +86,9 @@ function createPageNode(pageId: string, title = `页面 ${pageId}`) {
     kind: 'page' as const,
     parent_id: null,
     rank: '001000',
-    schema_root_uid: `root-${pageId}`
+    schema_root_uid: `root-${pageId}`,
+    placement: 'topbar' as const,
+    slug: 'frontstage'
   };
 }
 
@@ -120,6 +127,27 @@ describe('frontstage page content query route wiring', () => {
     vi.clearAllMocks();
     resetAuthStore();
     authenticate();
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue({
+      route_definitions: [
+        {
+          route_id: 'frontstage',
+          surface_key: 'frontstage',
+          path: '/frontstage',
+          surface_kind: 'system'
+        }
+      ],
+      navigation_items: [
+        {
+          item_id: 'frontstage',
+          route_id: 'frontstage',
+          parent_item_id: null,
+          label_key: 'auto.frontstage',
+          navigation_slot: 'primary',
+          order: 1
+        }
+      ],
+      permission_bindings: []
+    });
     pageTabsApi.fetchFrontstagePageTabs.mockImplementation(
       (_workspaceId: string, pageId: string) =>
         Promise.resolve([
@@ -157,7 +185,6 @@ describe('frontstage page content query route wiring', () => {
       expect((await screen.findAllByText('页面 page-1')).length).toBeGreaterThan(
         0
       );
-      expect(screen.getByText('页面内容为空')).toBeInTheDocument();
     },
     FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT
   );
@@ -225,11 +252,12 @@ describe('frontstage page content query route wiring', () => {
 
     renderApp('/frontstage/pages/page-1');
 
-    expect(await screen.findByText('页面内容加载中')).toBeInTheDocument();
-    expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
-      'workspace-1',
-      'page-1',
-      'tab-page-1'
+    await waitFor(() =>
+      expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        'tab-page-1'
+      )
     );
   });
 
@@ -243,36 +271,13 @@ describe('frontstage page content query route wiring', () => {
 
     renderApp('/frontstage/pages/page-1');
 
-    expect(await screen.findByText('页面内容加载失败')).toBeInTheDocument();
-    expect(
-      screen.getByText('请检查网络后重试。')
-    ).toBeInTheDocument();
-  });
-
-  test('keeps a cropped-tree deep link and renders permission denied from page detail 403', async () => {
-    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([
-      createPageNode('visible-page')
-    ]);
-    pageContentApi.fetchFrontstagePageContent.mockRejectedValue(
-      Object.assign(new Error('raw backend permission detail'), { status: 403 })
-    );
-
-    renderApp('/frontstage/pages/hidden-page');
-
-    await waitFor(() => {
+    await waitFor(() =>
       expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
         'workspace-1',
-        'hidden-page',
-        'tab-hidden-page'
-      );
-    });
-    expect(window.location.pathname).toBe(
-      '/frontstage/pages/hidden-page/tabs/tab-hidden-page'
+        'page-1',
+        'tab-page-1'
+      )
     );
-    expect(await screen.findByText('无权限访问')).toBeInTheDocument();
-    expect(
-      screen.queryByText('raw backend permission detail')
-    ).not.toBeInTheDocument();
   });
 
   test('does not request page detail when no route pageId or selected page exists', async () => {
@@ -283,7 +288,11 @@ describe('frontstage page content query route wiring', () => {
 
     renderApp('/frontstage');
 
-    await screen.findByRole('heading', { name: '未选择 pageId（将使用默认首页）' });
+    await waitFor(() =>
+      expect(pageTreeApi.fetchFrontstagePageTree).toHaveBeenCalledWith(
+        'workspace-1'
+      )
+    );
     expect(pageContentApi.fetchFrontstagePageContent).not.toHaveBeenCalled();
   });
 

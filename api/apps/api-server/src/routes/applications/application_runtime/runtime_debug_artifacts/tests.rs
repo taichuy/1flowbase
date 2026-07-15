@@ -256,12 +256,10 @@ fn llm_tool_callback_payloads_keep_context_usage_without_token_delta() {
         json!(8224)
     );
     assert!(callbacks[0].detail_payload().get("token_delta").is_none());
-    assert!(
-        callbacks[0]
-            .summary_payload(Uuid::now_v7())
-            .get("token_delta")
-            .is_none()
-    );
+    assert!(callbacks[0]
+        .summary_payload(Uuid::now_v7())
+        .get("token_delta")
+        .is_none());
 }
 
 #[test]

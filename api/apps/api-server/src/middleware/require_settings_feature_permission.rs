@@ -6,8 +6,8 @@ use access_control::{
 use axum::{body::Body, extract::State, http::Request, middleware::Next, response::Response};
 use control_plane::{errors::ControlPlaneError, ports::ApplicationRepository};
 use domain::{
-    ActorContext, ConsoleOperationId, ConsoleOperationRowScope, RoleConsolePolicy,
-    effective_console_row_scope, effective_console_simple_operation,
+    effective_console_row_scope, effective_console_simple_operation, ActorContext,
+    ConsoleOperationId, ConsoleOperationRowScope, RoleConsolePolicy,
 };
 
 use crate::{

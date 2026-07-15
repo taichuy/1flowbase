@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
 const VISIBLE_INTERNAL_LLM_TOOL_TRACE_KIND: &str = "visible_internal_llm_tool_trace";

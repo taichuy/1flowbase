@@ -1,6 +1,6 @@
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
-    replace_role_permissions, test_app,
+    replace_role_legacy_permissions_only, test_app,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -172,7 +172,7 @@ async fn ac_002_008_own_viewer_keeps_workbench_access_without_settings_managemen
     )
     .await;
     create_role(&app, &root_cookie, &root_csrf, "application_own_viewer").await;
-    replace_role_permissions(
+    replace_role_legacy_permissions_only(
         &app,
         &root_cookie,
         &root_csrf,
