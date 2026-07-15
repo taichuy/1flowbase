@@ -61,7 +61,8 @@ where
         command: EnablePluginCommand,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
         let installation = self
             .repository
             .get_installation(command.installation_id)
@@ -212,7 +213,8 @@ where
         command: AssignPluginCommand,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
         let installation = self
             .repository
             .get_installation(command.installation_id)
@@ -313,7 +315,8 @@ where
         command: SwitchPluginVersionCommand,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
 
         let current = self
             .load_current_family_installation(actor.current_workspace_id, &command.provider_code)
@@ -348,7 +351,8 @@ where
         command: DeletePluginFamilyCommand,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
 
         let installations = self
             .repository
@@ -493,7 +497,8 @@ where
 
     pub async fn list_tasks(&self, actor_user_id: Uuid) -> Result<Vec<domain::PluginTaskRecord>> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.view.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")
+            .await?;
         self.repository.list_tasks().await
     }
 
@@ -503,13 +508,14 @@ where
         task_id: Uuid,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.view.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")
+            .await?;
         let task = self
             .repository
             .get_task(task_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_task"))?;
-        if self.use_case == PluginManagementUseCase::ModelProviderSettings {
+        if self.is_model_provider_console_operation() {
             let owns_task_scope = match task.workspace_id {
                 Some(workspace_id) => workspace_id == actor.current_workspace_id,
                 None => task.created_by == Some(actor.user_id),

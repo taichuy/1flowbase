@@ -699,3 +699,63 @@ async fn list_official_catalog_filters_by_plugin_type_and_returns_localized_item
     assert_eq!(view.page.limit, 20);
     assert!(view.page.next_cursor.is_none());
 }
+
+#[tokio::test]
+async fn ac_1281_plugin_catalog_policy_only_allows_without_legacy_grant() {
+    let workspace_id = Uuid::now_v7();
+    let repository =
+        MemoryPluginManagementRepository::new(actor_with_permissions(workspace_id, &[]));
+    repository
+        .set_console_operation(
+            domain::ConsolePolicyGroup::other("other.plugins").unwrap(),
+            "plugins.families.view",
+        )
+        .await;
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        std::env::temp_dir().join(format!("plugin-policy-only-{}", Uuid::now_v7())),
+    )
+    .for_plugin_console_operation(
+        domain::ConsolePolicyGroup::other("other.plugins").unwrap(),
+        "plugins.families.view",
+    );
+
+    service
+        .list_families(
+            repository.actor.user_id,
+            PluginCatalogFilter::default(),
+            requested_locales(),
+        )
+        .await
+        .expect("the exact plugin operation must authorize the catalog owner");
+}
+
+#[tokio::test]
+async fn ac_1281_plugin_catalog_legacy_only_does_not_authorize() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all"],
+    ));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        std::env::temp_dir().join(format!("plugin-legacy-only-{}", Uuid::now_v7())),
+    )
+    .for_plugin_console_operation(
+        domain::ConsolePolicyGroup::other("other.plugins").unwrap(),
+        "plugins.families.view",
+    );
+
+    assert!(service
+        .list_families(
+            repository.actor.user_id,
+            PluginCatalogFilter::default(),
+            requested_locales(),
+        )
+        .await
+        .is_err());
+}

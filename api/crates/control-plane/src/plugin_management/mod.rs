@@ -44,7 +44,7 @@ use crate::{
         OfficialPluginSourceEntry, OfficialPluginSourcePort, PluginRepository, ProviderRuntimePort,
         ReassignModelProviderInstancesInput, ReplaceInstallationFrontendBlocksInput,
         ReplaceInstallationJsDependenciesInput, ReplaceInstallationNodeContributionsInput,
-        UpdatePluginDesiredStateInput, UpdatePluginRuntimeSnapshotInput,
+        RoleConsolePolicyReader, UpdatePluginDesiredStateInput, UpdatePluginRuntimeSnapshotInput,
         UpdatePluginTaskStatusInput, UpsertModelProviderCatalogCacheInput,
         UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
         UpsertPluginPackageCatalogProjectionInput,
@@ -70,10 +70,19 @@ pub struct PluginManagementService<R, H> {
     use_case: PluginManagementUseCase,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone)]
 enum PluginManagementUseCase {
     BusinessActions,
-    ModelProviderSettings,
+    PluginConsoleOperation {
+        policy_reader: Arc<dyn RoleConsolePolicyReader>,
+        group: domain::ConsolePolicyGroup,
+        operation_id: domain::ConsoleOperationId,
+    },
+    ModelProviderConsoleOperation {
+        policy_reader: Arc<dyn RoleConsolePolicyReader>,
+        group: domain::ConsolePolicyGroup,
+        operation_id: domain::ConsoleOperationId,
+    },
 }
 
 pub const PLUGIN_HOST_COMPATIBILITY_BELOW_MINIMUM: &str = "below_minimum_host_version";
@@ -137,41 +146,85 @@ impl<R, H> PluginManagementService<R, H> {
         self
     }
 
-    pub fn for_model_provider_settings(mut self) -> Self {
-        self.use_case = PluginManagementUseCase::ModelProviderSettings;
+    pub fn for_plugin_console_operation(
+        mut self,
+        group: domain::ConsolePolicyGroup,
+        operation_id: &'static str,
+    ) -> Self
+    where
+        R: RoleConsolePolicyReader + Clone + 'static,
+    {
+        self.use_case = PluginManagementUseCase::PluginConsoleOperation {
+            policy_reader: Arc::new(self.repository.clone()),
+            group,
+            operation_id: domain::ConsoleOperationId::try_from(operation_id)
+                .expect("compiled plugin operation id must be valid"),
+        };
         self
     }
 
-    fn ensure_use_case_permission(
+    pub fn for_model_provider_console_operation(mut self, operation_id: &'static str) -> Self
+    where
+        R: RoleConsolePolicyReader + Clone + 'static,
+    {
+        self.use_case = PluginManagementUseCase::ModelProviderConsoleOperation {
+            policy_reader: Arc::new(self.repository.clone()),
+            group: domain::ConsolePolicyGroup::settings_feature("system.model-providers")
+                .expect("compiled model-provider settings group must be valid"),
+            operation_id: domain::ConsoleOperationId::try_from(operation_id)
+                .expect("compiled model-provider plugin operation id must be valid"),
+        };
+        self
+    }
+
+    async fn ensure_use_case_permission(
         &self,
         actor: &domain::ActorContext,
         business_permission: &str,
     ) -> Result<()> {
-        match self.use_case {
+        match &self.use_case {
             PluginManagementUseCase::BusinessActions => {
                 ensure_permission(actor, business_permission)
                     .map_err(ControlPlaneError::PermissionDenied)?;
                 Ok(())
             }
-            PluginManagementUseCase::ModelProviderSettings
-                if actor.is_root
-                    || actor.has_permission(
-                        access_control::SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION,
-                    ) =>
-            {
-                Ok(())
+            PluginManagementUseCase::PluginConsoleOperation {
+                policy_reader,
+                group,
+                operation_id,
             }
-            PluginManagementUseCase::ModelProviderSettings => {
-                Err(ControlPlaneError::PermissionDenied("permission_denied").into())
+            | PluginManagementUseCase::ModelProviderConsoleOperation {
+                policy_reader,
+                group,
+                operation_id,
+            } => {
+                if actor.is_root {
+                    return Ok(());
+                }
+                let policies = policy_reader
+                    .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+                    .await?;
+                if domain::effective_console_simple_operation(&policies, group, operation_id) {
+                    Ok(())
+                } else {
+                    Err(ControlPlaneError::PermissionDenied("permission_denied").into())
+                }
             }
         }
+    }
+
+    fn is_model_provider_console_operation(&self) -> bool {
+        matches!(
+            &self.use_case,
+            PluginManagementUseCase::ModelProviderConsoleOperation { .. }
+        )
     }
 
     fn ensure_model_provider_target(
         &self,
         installation: &domain::PluginInstallationRecord,
     ) -> Result<()> {
-        if self.use_case == PluginManagementUseCase::ModelProviderSettings
+        if self.is_model_provider_console_operation()
             && !is_model_provider_installation(installation)
         {
             return Err(
@@ -182,7 +235,7 @@ impl<R, H> PluginManagementService<R, H> {
     }
 
     fn ensure_model_provider_package_kind(&self, kind: RoutedPluginPackageKind) -> Result<()> {
-        if self.use_case == PluginManagementUseCase::ModelProviderSettings
+        if self.is_model_provider_console_operation()
             && kind != RoutedPluginPackageKind::ModelProviderRuntime
         {
             return Err(

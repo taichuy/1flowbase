@@ -365,7 +365,8 @@ where
         locales: RequestedLocales,
     ) -> Result<PluginCatalogView> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.view.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")
+            .await?;
 
         let assigned_installation_ids = self
             .repository
@@ -439,7 +440,8 @@ where
         locales: RequestedLocales,
     ) -> Result<OfficialPluginCatalogView> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.view.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")
+            .await?;
 
         let assigned_installation_ids = self
             .repository
@@ -533,7 +535,8 @@ where
         locales: RequestedLocales,
     ) -> Result<PluginFamilyCatalogView> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.view.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")
+            .await?;
 
         let assignments = self
             .repository

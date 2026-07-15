@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
-    Json, Router,
     extract::{Multipart, Path, Query, State},
-    http::{HeaderMap, StatusCode, header::ACCEPT_LANGUAGE},
+    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
     routing::{delete, get, post},
+    Json, Router,
 };
 use control_plane::plugin_management::{
     AssignPluginCommand, DeletePluginFamilyCommand, EnablePluginCommand,
@@ -34,7 +34,7 @@ use crate::{
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::{
-        console_route_assembly::{ConsoleRouteAssembly, console_delete, console_get, console_post},
+        console_route_assembly::{console_delete, console_get, console_post, ConsoleRouteAssembly},
         system::LocaleMetaResponse,
     },
 };
@@ -480,7 +480,9 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 pub(crate) mod settings_routes;
 
-fn service(state: &ApiState) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
+pub(super) fn base_service(
+    state: &ApiState,
+) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
     PluginManagementService::new(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
@@ -489,6 +491,17 @@ fn service(state: &ApiState) -> PluginManagementService<MainDurableStore, ApiPro
     )
     .with_node_id(state.api_node_id.clone())
     .with_allow_uploaded_host_extensions(state.allow_uploaded_host_extensions)
+}
+
+fn service(
+    state: &ApiState,
+    operation_id: &'static str,
+) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
+    base_service(state).for_plugin_console_operation(
+        domain::ConsolePolicyGroup::other("other.plugins")
+            .expect("compiled plugin policy group must be valid"),
+        operation_id,
+    )
 }
 
 fn install_plugin_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel, ApiError> {
@@ -506,7 +519,7 @@ fn install_plugin_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKe
             let input: InstallPluginActionInput = serde_json::from_value(input).map_err(|_| {
                 control_plane::errors::ControlPlaneError::InvalidInput("plugin_install_action")
             })?;
-            let result = service(&state)
+            let result = service(&state, "plugins.install")
                 .install_plugin(InstallPluginCommand {
                     actor_user_id: input.actor_user_id,
                     package_root: input.package_root,
@@ -890,7 +903,7 @@ pub async fn list_catalog(
         query.locale.clone(),
         context.user.preferred_locale,
     );
-    let catalog = service(&state)
+    let catalog = service(&state, "plugins.catalog.view")
         .list_catalog(
             context.user.id,
             filter_from_query(&query),
@@ -926,7 +939,7 @@ pub async fn list_families(
         query.locale.clone(),
         context.user.preferred_locale,
     );
-    let families = service(&state)
+    let families = service(&state, "plugins.families.view")
         .list_families(
             context.user.id,
             filter_from_query(&query),
@@ -962,7 +975,7 @@ pub async fn list_official_catalog(
         query.locale.clone(),
         context.user.preferred_locale,
     );
-    let catalog = service(&state)
+    let catalog = service(&state, "plugins.official_catalog.view")
         .list_official_catalog(
             context.user.id,
             official_filter_from_query(&query),
@@ -1020,7 +1033,7 @@ pub async fn install_uploaded_plugin(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let (file_name, package_bytes) = read_upload_file(&mut multipart).await?;
-    let result = service(&state)
+    let result = service(&state, "plugins.install.upload")
         .install_uploaded_plugin(InstallUploadedPluginCommand {
             actor_user_id: context.user.id,
             file_name,
@@ -1048,7 +1061,7 @@ pub async fn install_official_plugin(
 ) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let result = service(&state)
+    let result = service(&state, "plugins.install.official")
         .install_official_plugin(InstallOfficialPluginCommand {
             actor_user_id: context.user.id,
             plugin_id: body.plugin_id,
@@ -1075,7 +1088,7 @@ pub async fn refresh_catalog_projection(
 ) -> Result<Json<ApiSuccess<PluginCatalogProjectionResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let projection = service(&state)
+    let projection = service(&state, "plugins.catalog_projection.refresh")
         .refresh_catalog_projection(RefreshPluginPackageCatalogProjectionCommand {
             actor_user_id: context.user.id,
             installation_id: parse_uuid(&installation_id, "installation_id")?,
@@ -1099,7 +1112,7 @@ pub async fn refresh_current_node_artifact(
 ) -> Result<Json<ApiSuccess<PluginArtifactInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let artifact = service(&state)
+    let artifact = service(&state, "plugins.artifact.refresh")
         .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
             actor_user_id: context.user.id,
             installation_id: parse_uuid(&installation_id, "installation_id")?,
@@ -1123,7 +1136,7 @@ pub async fn install_current_node_artifact(
 ) -> Result<Json<ApiSuccess<PluginArtifactInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let artifact = service(&state)
+    let artifact = service(&state, "plugins.artifact.install")
         .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
             actor_user_id: context.user.id,
             installation_id: parse_uuid(&installation_id, "installation_id")?,
@@ -1148,7 +1161,7 @@ pub async fn upgrade_latest(
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let task = service(&state)
+    let task = service(&state, "plugins.families.upgrade")
         .upgrade_latest(UpgradeLatestPluginFamilyCommand {
             actor_user_id: context.user.id,
             provider_code,
@@ -1175,7 +1188,7 @@ pub async fn switch_version(
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let task = service(&state)
+    let task = service(&state, "plugins.families.switch")
         .switch_version(SwitchPluginVersionCommand {
             actor_user_id: context.user.id,
             provider_code,
@@ -1198,7 +1211,7 @@ pub async fn delete_family(
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let task = service(&state)
+    let task = service(&state, "plugins.families.delete")
         .delete_family(DeletePluginFamilyCommand {
             actor_user_id: context.user.id,
             provider_code,
@@ -1220,7 +1233,7 @@ pub async fn enable_plugin(
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let task = service(&state)
+    let task = service(&state, "plugins.enable")
         .enable_plugin(EnablePluginCommand {
             actor_user_id: context.user.id,
             installation_id: parse_uuid(&installation_id, "installation_id")?,
@@ -1242,7 +1255,7 @@ pub async fn assign_plugin(
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let task = service(&state)
+    let task = service(&state, "plugins.assign")
         .assign_plugin(AssignPluginCommand {
             actor_user_id: context.user.id,
             installation_id: parse_uuid(&installation_id, "installation_id")?,
@@ -1262,7 +1275,9 @@ pub async fn list_tasks(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<PluginTaskResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let tasks = service(&state).list_tasks(context.user.id).await?;
+    let tasks = service(&state, "plugins.tasks.view")
+        .list_tasks(context.user.id)
+        .await?;
     Ok(Json(ApiSuccess::new(
         tasks.into_iter().map(to_task_response).collect(),
     )))
@@ -1280,7 +1295,7 @@ pub async fn get_task(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let task = service(&state)
+    let task = service(&state, "plugins.tasks.view")
         .get_task(context.user.id, parse_uuid(&task_id, "task_id")?)
         .await?;
     Ok(Json(ApiSuccess::new(to_task_response(task))))

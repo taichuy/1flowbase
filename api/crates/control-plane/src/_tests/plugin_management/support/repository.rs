@@ -21,6 +21,7 @@ pub(crate) struct MemoryPluginManagementRepository {
     artifact_snapshot_updates: Arc<RwLock<Vec<Uuid>>>,
     created_task_status_override: Arc<RwLock<Option<PluginTaskStatus>>>,
     fail_installation_catalog_commit: Arc<RwLock<bool>>,
+    console_policies: Arc<RwLock<Vec<domain::RoleConsolePolicy>>>,
 }
 
 impl MemoryPluginManagementRepository {
@@ -48,7 +49,26 @@ impl MemoryPluginManagementRepository {
             artifact_snapshot_updates: Arc::new(RwLock::new(Vec::new())),
             created_task_status_override: Arc::new(RwLock::new(None)),
             fail_installation_catalog_commit: Arc::new(RwLock::new(false)),
+            console_policies: Arc::new(RwLock::new(Vec::new())),
         }
+    }
+
+    pub(crate) async fn set_console_operation(
+        &self,
+        group: domain::ConsolePolicyGroup,
+        operation_id: &str,
+    ) {
+        *self.console_policies.write().await = vec![domain::RoleConsolePolicy::new(
+            Uuid::now_v7(),
+            vec![domain::RoleConsoleGroupPolicy::custom(
+                group,
+                vec![domain::ConsoleOperationPolicy::simple(
+                    domain::ConsoleOperationId::try_from(operation_id)
+                        .expect("plugin console operation id must be valid"),
+                    true,
+                )],
+            )],
+        )];
     }
 
     pub(crate) async fn audit_events(&self) -> Vec<String> {
@@ -150,6 +170,17 @@ impl MemoryPluginManagementRepository {
             },
         );
         instance_id
+    }
+}
+
+#[async_trait]
+impl RoleConsolePolicyReader for MemoryPluginManagementRepository {
+    async fn load_role_console_policies_for_user(
+        &self,
+        _user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        Ok(self.console_policies.read().await.clone())
     }
 }
 

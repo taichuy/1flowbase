@@ -1,16 +1,12 @@
-use access_control::ensure_permission;
 use anyhow::Result;
 use plugin_framework::provider_package::ProviderPackage;
 use serde_json::{json, Value};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{
-    errors::ControlPlaneError,
-    ports::{
-        AuthRepository, PluginRepository, ProviderRuntimePort,
-        UpsertPluginPackageCatalogProjectionInput,
-    },
+use crate::ports::{
+    AuthRepository, PluginRepository, ProviderRuntimePort,
+    UpsertPluginPackageCatalogProjectionInput,
 };
 
 use super::{
@@ -34,8 +30,8 @@ where
         command: RefreshPluginPackageCatalogProjectionCommand,
     ) -> Result<domain::PluginPackageCatalogProjectionRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_permission(&actor, "plugin_config.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
         let installation = self
             .ready_current_node_installation(command.installation_id)
             .await?;

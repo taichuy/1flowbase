@@ -445,7 +445,8 @@ where
         command: InstallOfficialPluginCommand,
     ) -> Result<InstallPluginResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
 
         let snapshot = self.official_source.list_official_catalog().await?;
         let entry = snapshot
@@ -453,9 +454,7 @@ where
             .into_iter()
             .find(|item| item.plugin_id == command.plugin_id)
             .ok_or(ControlPlaneError::NotFound("official_plugin"))?;
-        if self.use_case == PluginManagementUseCase::ModelProviderSettings
-            && entry.plugin_type != "model_provider"
-        {
+        if self.is_model_provider_console_operation() && entry.plugin_type != "model_provider" {
             return Err(
                 ControlPlaneError::PermissionDenied("model_provider_plugin_required").into(),
             );
@@ -525,7 +524,8 @@ where
         command: UpgradeLatestPluginFamilyCommand,
     ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
 
         let current = self
             .load_current_family_installation(actor.current_workspace_id, &command.provider_code)
@@ -536,7 +536,7 @@ where
             .into_iter()
             .find(|entry| entry.provider_code == command.provider_code)
             .ok_or(ControlPlaneError::NotFound("official_plugin"))?;
-        if self.use_case == PluginManagementUseCase::ModelProviderSettings
+        if self.is_model_provider_console_operation()
             && official_entry.plugin_type != "model_provider"
         {
             return Err(
@@ -654,7 +654,8 @@ where
         detail_json: serde_json::Value,
     ) -> Result<InstallPluginResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
 
         let task_id = Uuid::now_v7();
         let task = self

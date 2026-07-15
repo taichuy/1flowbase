@@ -46,7 +46,8 @@ where
         command: RefreshCurrentNodePluginArtifactCommand,
     ) -> Result<domain::PluginArtifactInstanceRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
         let installation = self
             .repository
             .get_installation(command.installation_id)
@@ -63,7 +64,8 @@ where
         command: InstallCurrentNodePluginArtifactCommand,
     ) -> Result<domain::PluginArtifactInstanceRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
         let installation = self
             .repository
             .get_installation(command.installation_id)

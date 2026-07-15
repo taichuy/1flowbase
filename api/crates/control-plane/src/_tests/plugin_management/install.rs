@@ -29,17 +29,21 @@ use super::support::{
 #[tokio::test]
 async fn model_provider_settings_reject_capability_upload_before_install_side_effects() {
     let workspace_id = Uuid::now_v7();
-    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
-        workspace_id,
-        &[access_control::SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION],
-    ));
+    let repository =
+        MemoryPluginManagementRepository::new(actor_with_permissions(workspace_id, &[]));
+    repository
+        .set_console_operation(
+            domain::ConsolePolicyGroup::settings_feature("system.model-providers").unwrap(),
+            "model_provider_plugins.install.upload",
+        )
+        .await;
     let service = PluginManagementService::new(
         repository.clone(),
         MemoryProviderRuntime::default(),
         Arc::new(MemoryOfficialPluginSource::default()),
         std::env::temp_dir().join(format!("model-provider-settings-{}", Uuid::now_v7())),
     )
-    .for_model_provider_settings();
+    .for_model_provider_console_operation("model_provider_plugins.install.upload");
 
     let error = service
         .install_uploaded_plugin(InstallUploadedPluginCommand {
@@ -63,17 +67,21 @@ async fn model_provider_settings_reject_capability_upload_before_install_side_ef
 #[tokio::test]
 async fn model_provider_settings_reject_plugin_task_from_another_workspace() {
     let workspace_id = Uuid::now_v7();
-    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
-        workspace_id,
-        &[access_control::SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION],
-    ));
+    let repository =
+        MemoryPluginManagementRepository::new(actor_with_permissions(workspace_id, &[]));
+    repository
+        .set_console_operation(
+            domain::ConsolePolicyGroup::settings_feature("system.model-providers").unwrap(),
+            "model_provider_plugins.tasks.view",
+        )
+        .await;
     let service = PluginManagementService::new(
         repository.clone(),
         MemoryProviderRuntime::default(),
         Arc::new(MemoryOfficialPluginSource::default()),
         std::env::temp_dir().join(format!("model-provider-task-scope-{}", Uuid::now_v7())),
     )
-    .for_model_provider_settings();
+    .for_model_provider_console_operation("model_provider_plugins.tasks.view");
     let task_id = Uuid::now_v7();
     repository
         .create_task(&CreatePluginTaskInput {
