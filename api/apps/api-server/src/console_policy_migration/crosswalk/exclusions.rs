@@ -237,6 +237,18 @@ pub(super) const LEGACY_NO_PROJECTIONS: &[LegacyNoProjectionSpec] = &[
         "embedded_app.delete.all",
         "Embedded-app access is public/runtime authorization, excluded from console policy.",
     ),
+    no_projection(
+        "embedded_app.use.own",
+        "Embedded-app use is public/runtime authorization, excluded from console policy.",
+    ),
+    no_projection(
+        "embedded_app.use.all",
+        "Embedded-app use is public/runtime authorization, excluded from console policy.",
+    ),
+    no_projection(
+        "plugin_config.edit.all",
+        "The baseline catalog defined this grant, but no released or live console route/service consumed it; mapping it to configure operations would expand authority.",
+    ),
 ];
 
 pub(super) const LEGACY_SOURCE_RESOURCES: &[&str] = &[

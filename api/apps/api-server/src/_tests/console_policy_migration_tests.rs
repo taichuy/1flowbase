@@ -709,6 +709,40 @@ fn ac_010_external_data_source_edit_implied_grants_have_audited_zero_projection(
 }
 
 #[test]
+fn ac_010_catalog_only_legacy_grants_do_not_expand_console_authority() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let registry = compile_core_console_operation_registry(&settings).unwrap();
+    let migration = compile_core_console_policy_migration_plan(registry.inventory()).unwrap();
+
+    for legacy_grant in [
+        "embedded_app.use.own",
+        "embedded_app.use.all",
+        "plugin_config.edit.all",
+    ] {
+        let mapping = migration
+            .legacy_mappings()
+            .iter()
+            .find(|mapping| mapping.legacy_grant == legacy_grant)
+            .expect("a baseline catalog-only grant must have an audited disposition");
+        let ConsolePolicyMigrationLegacyGrantProjection::NoProjection { evidence } =
+            &mapping.projection
+        else {
+            panic!("{legacy_grant} must not expand into a live console operation");
+        };
+        assert!(evidence.contains("console"));
+
+        let preview = migration
+            .plan()
+            .project_legacy_role(Uuid::now_v7(), &[legacy_grant.to_string()])
+            .expect("an audited catalog-only grant must not block migration");
+        assert!(preview.authorization_delta.added.is_empty());
+        assert!(preview.authorization_delta.removed.is_empty());
+        assert!(preview.effective_delta.is_empty());
+        assert!(preview.effective_after.is_empty());
+    }
+}
+
+#[test]
 fn ac_010_active_host_operation_without_a_crosswalk_hard_stops() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let registry = compile_core_console_operation_registry(&settings).unwrap();
