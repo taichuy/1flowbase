@@ -200,6 +200,106 @@ test('collectI18nHygieneFindings fails duplicated values inside one owner locale
   assert.deepEqual(duplicateValue?.keys, ['actions.save', 'actions.submit']);
 });
 
+test('AC-009 settings locale owners have no duplicated values', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const settingsOwner = 'web/app/src/features/settings';
+  const duplicateValues = collectI18nHygieneFindings({ repoRoot }).filter(
+    (finding) =>
+      finding.rule === 'duplicate-value-in-owner' &&
+      (finding.owner === settingsOwner ||
+        finding.owner?.startsWith(`${settingsOwner}/`))
+  );
+
+  assert.deepEqual(duplicateValues, []);
+
+  const expectedValues = {
+    zh_Hans: {
+      application: '应用',
+      actions: '操作',
+      requestLogApplication: '应用',
+      operation: '操作'
+    },
+    en_US: {
+      application: 'Application',
+      actions: 'Actions',
+      requestLogApplication: 'Application',
+      operation: 'Operation'
+    }
+  };
+  for (const [locale, expected] of Object.entries(expectedValues)) {
+    const settingsResource = JSON.parse(
+      fs.readFileSync(
+        path.join(repoRoot, settingsOwner, 'i18n', `${locale}.json`),
+        'utf8'
+      )
+    );
+    const applicationManagementResource = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          repoRoot,
+          settingsOwner,
+          'components/application-management/i18n',
+          `${locale}.json`
+        ),
+        'utf8'
+      )
+    );
+
+    assert.equal(
+      applicationManagementResource.auto.application_management_application,
+      expected.application
+    );
+    assert.equal(
+      applicationManagementResource.auto.application_management_actions,
+      expected.actions
+    );
+    assert.equal(
+      settingsResource.auto.request_log_application,
+      expected.requestLogApplication
+    );
+    assert.equal(settingsResource.auto.operation, expected.operation);
+  }
+});
+
+test('AC-009 retired role permission technical-tab locale keys stay removed', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const localeDirectory = path.join(
+    repoRoot,
+    'web/app/src/features/settings/i18n'
+  );
+  const retiredKeys = [
+    'agent_application',
+    'application',
+    'basic_configuration',
+    'basic_general',
+    'data_source_external_data_source',
+    'model_supplier_state_model',
+    'permission_role_permission',
+    'permission_update_failed',
+    'permissions_updated_successfully',
+    'plugin_configuration_plugin_config',
+    'publish_endpoint',
+    'subsystem_embedded_app',
+    'system_management',
+    'team',
+    'user',
+    'workflow'
+  ];
+
+  for (const locale of ['zh_Hans', 'en_US']) {
+    const resource = JSON.parse(
+      fs.readFileSync(path.join(localeDirectory, `${locale}.json`), 'utf8')
+    );
+    for (const key of retiredKeys) {
+      assert.equal(
+        Object.hasOwn(resource.auto, key),
+        false,
+        `${locale} still contains retired role permission key auto.${key}`
+      );
+    }
+  }
+});
+
 test('collectI18nHygieneFindings keeps cross-owner duplicate keys and values out of the default gate', () => {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), 'oneflowbase-i18n-cross-owner-')

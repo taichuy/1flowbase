@@ -283,7 +283,10 @@ export function ApplicationManagementPanel() {
     () => [
       {
         key: 'application',
-        title: i18nText('settings', 'auto.application_management_application'),
+        title: i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_application'
+        ),
         width: 260,
         render: (_, application) => (
           <Flex vertical gap={2}>
@@ -301,7 +304,10 @@ export function ApplicationManagementPanel() {
       },
       {
         key: 'application_type',
-        title: i18nText('settings', 'auto.application_management_type'),
+        title: i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_type'
+        ),
         width: 120,
         render: (_, application) => (
           <Tag>{applicationTypeLabel(application.application_type)}</Tag>
@@ -309,14 +315,20 @@ export function ApplicationManagementPanel() {
       },
       {
         key: 'workflow_trigger_type',
-        title: i18nText('settings', 'auto.application_management_trigger'),
+        title: i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_trigger'
+        ),
         width: 120,
         render: (_, application) =>
           triggerTypeLabel(application.workflow_trigger_type)
       },
       {
         key: 'publication_status',
-        title: i18nText('settings', 'auto.application_management_publication_status'),
+        title: i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_publication_status'
+        ),
         width: 120,
         render: (_, application) => (
           <Tag
@@ -334,13 +346,19 @@ export function ApplicationManagementPanel() {
       },
       {
         key: 'created_by_display_name',
-        title: i18nText('settings', 'auto.application_management_creator'),
+        title: i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_creator'
+        ),
         dataIndex: 'created_by_display_name',
         width: 150
       },
       {
         key: 'tags',
-        title: i18nText('settings', 'auto.application_management_tags'),
+        title: i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_tags'
+        ),
         width: 180,
         render: (_, application) =>
           application.tags.length > 0 ? (
@@ -369,7 +387,10 @@ export function ApplicationManagementPanel() {
       },
       {
         key: 'actions',
-        title: i18nText('settings', 'auto.application_management_actions'),
+        title: i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_actions'
+        ),
         width: 90,
         render: (_, application) => {
           const editAllowed = canEdit(application);
@@ -459,9 +480,12 @@ export function ApplicationManagementPanel() {
           <Flex gap={12} wrap>
             <Select
               allowClear
-              aria-label={i18nText('settings', 'auto.application_management_type')}
+              aria-label={i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_type'
+              )}
               placeholder={i18nText(
-                'settings',
+                'settingsApplicationManagement',
                 'auto.application_management_all_types'
               )}
               value={routeState.application_type}
@@ -474,11 +498,11 @@ export function ApplicationManagementPanel() {
             <Select
               allowClear
               aria-label={i18nText(
-                'settings',
+                'settingsApplicationManagement',
                 'auto.application_management_publication_status'
               )}
               placeholder={i18nText(
-                'settings',
+                'settingsApplicationManagement',
                 'auto.application_management_all_publication_statuses'
               )}
               value={routeState.publication_status}
@@ -499,11 +523,11 @@ export function ApplicationManagementPanel() {
             />
             <Input
               aria-label={i18nText(
-                'settings',
+                'settingsApplicationManagement',
                 'auto.application_management_creator_id'
               )}
               placeholder={i18nText(
-                'settings',
+                'settingsApplicationManagement',
                 'auto.application_management_creator_id'
               )}
               value={routeState.created_by ?? ''}
@@ -517,9 +541,12 @@ export function ApplicationManagementPanel() {
             />
             <Select
               allowClear
-              aria-label={i18nText('settings', 'auto.application_management_tags')}
+              aria-label={i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_tags'
+              )}
               placeholder={i18nText(
-                'settings',
+                'settingsApplicationManagement',
                 'auto.application_management_all_tags'
               )}
               value={routeState.tag_id}
@@ -532,11 +559,11 @@ export function ApplicationManagementPanel() {
             />
             <Input.Search
               aria-label={i18nText(
-                'settings',
+                'settingsApplicationManagement',
                 'auto.application_management_search'
               )}
               placeholder={i18nText(
-                'settings',
+                'settingsApplicationManagement',
                 'auto.application_management_search'
               )}
               value={keywordDraft}
@@ -550,28 +577,31 @@ export function ApplicationManagementPanel() {
               }
             />
             <Select
-              aria-label={i18nText('settings', 'auto.application_management_sort')}
+              aria-label={i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_sort'
+              )}
               value={routeState.sort}
               style={{ width: 180 }}
               options={[
                 {
                   value: 'updated_at:desc',
                   label: i18nText(
-                    'settings',
+                    'settingsApplicationManagement',
                     'auto.application_management_sort_updated_desc'
                   )
                 },
                 {
                   value: 'created_at:desc',
                   label: i18nText(
-                    'settings',
+                    'settingsApplicationManagement',
                     'auto.application_management_sort_created_desc'
                   )
                 },
                 {
                   value: 'name:asc',
                   label: i18nText(
-                    'settings',
+                    'settingsApplicationManagement',
                     'auto.application_management_sort_name_asc'
                   )
                 }

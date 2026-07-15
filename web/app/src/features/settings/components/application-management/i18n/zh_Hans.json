@@ -1,0 +1,20 @@
+{
+  "auto": {
+    "application_management_application": "应用",
+    "application_management_type": "应用类型",
+    "application_management_trigger": "触发方式",
+    "application_management_publication_status": "发布状态",
+    "application_management_creator": "创建者",
+    "application_management_creator_id": "创建者 ID",
+    "application_management_tags": "标签",
+    "application_management_actions": "操作",
+    "application_management_all_types": "全部应用类型",
+    "application_management_all_publication_statuses": "全部发布状态",
+    "application_management_all_tags": "全部标签",
+    "application_management_search": "搜索应用名称或 ID",
+    "application_management_sort": "排序",
+    "application_management_sort_updated_desc": "最近更新",
+    "application_management_sort_created_desc": "最近创建",
+    "application_management_sort_name_asc": "名称升序"
+  }
+}
