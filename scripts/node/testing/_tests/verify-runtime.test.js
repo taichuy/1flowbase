@@ -10,6 +10,7 @@ const {
   acquireHeavyVerifyLock,
   isCiEnvironment,
   loadVerifyRuntimeConfig,
+  main,
   readHeavyVerifyLockOwner,
   withHeavyVerifyLock,
 } = require("../verify-runtime.js");
@@ -42,6 +43,23 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
       pollIntervalMs: 5000,
     },
   });
+});
+
+test("cargo-jobs prints half of the machine parallelism by default", () => {
+  const repoRoot = createRepoRoot();
+  let stdout = "";
+
+  const status = main(["cargo-jobs"], {
+    repoRoot,
+    env: {},
+    availableParallelism: 10,
+    writeStdout: (text) => {
+      stdout += text;
+    },
+  });
+
+  assert.equal(status, 0);
+  assert.equal(stdout, "5\n");
 });
 
 test("loadVerifyRuntimeConfig applies local overrides when config file exists", () => {

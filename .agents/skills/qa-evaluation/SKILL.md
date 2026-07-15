@@ -89,7 +89,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - Provider / 上游 runtime 错误属于透传 contract：QA 不得把 provider stdout / stderr / upstream error 原样进入 `RuntimeContract` / API response 误判为泄漏或要求脱敏；应检查宿主是否改写、截断、翻译、吞掉或泛化上游信息，导致 provider / 协议排障信息损失
 - 后端范围命中 Rust 代码时，必须额外检查类型不变量、错误边界、状态方法、事务、幂等、async 阻塞、锁跨 await、数据库约束和 Rust 质量门禁
 - Rust 后端验收必须核对 completion self-check；缺少证据时对应项只能写 `未验证`，不能下通过结论
-- 同一工作区内执行后端 `cargo` 验证命令时默认串行，不要为了加速 QA 并发启动多条 `cargo test / check / clippy` 导致锁等待和结论失真
+- 同一 worktree 内同时只执行一条后端 Cargo 验证命令，避免多进程争抢 package cache / artifact lock；单条命令内部默认读取机器逻辑 CPU 的一半并行编译，不写死 `CARGO_BUILD_JOBS=1/4`。仓库包装命令自动读取；直接定向命令使用 `CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo ...`
 - 验证预算由 gate lane 决定：开发后验收用最小证据链和早停；PR 门禁用 CI / gate DAG / artifact；项目体检用全量维度覆盖、风险热力图和轮转深挖
 - 前端层级、入口、L0 / L1 / L2 / L3 问题：使用 `frontend-development` 的 `interaction-architecture-gate`
 - 后端契约、状态入口、边界污染问题：联动 `backend-development`

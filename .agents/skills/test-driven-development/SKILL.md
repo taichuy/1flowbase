@@ -40,6 +40,7 @@ description: Use when implementing 1flowbase features, bug fixes, refactors, bac
 4. 绿灯后再重构，重构后保持绿灯。
 5. 按变更风险补必要回归：定向测试优先，只补当前任务结果和直接风险所需的类型、lint、build 或 smoke。
 6. workspace 级 cargo / pnpm build、clippy、full test、服务重启、`api-debug`，或超过 3 条重验证命令的收益和成本，必须在 `problem-framing` / 已确认 issue / handoff 阶段前置说明。实现期发现未预期重验证需求时，默认不打断开发，交付说明标为 beta / CI / 全局门禁未验证；只有缺少该证据会让继续实现不安全或无法判断当前任务是否完成时，才暂停并说明原因。
+7. 同一 worktree 同时只运行一条 Cargo 命令；单条命令内部默认使用机器逻辑 CPU 的一半，不写死 `CARGO_BUILD_JOBS=1/4`。仓库包装命令会自动读取；直接运行定向 Cargo 时使用 `CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo ...`。只有复现资源问题或本地配置明确限流时才降低。
 
 ## Test Authenticity Gate
 

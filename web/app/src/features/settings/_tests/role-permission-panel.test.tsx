@@ -470,6 +470,28 @@ describe('RolePermissionPanel', () => {
     expect(screen.queryByRole('tab', { name: 'Agent 应用' })).not.toBeInTheDocument();
   });
 
+  test('AC-003 selects Other when the catalog has no SettingsFeature group', async () => {
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(
+      consolePolicyCatalog([
+        {
+          kind: 'other',
+          group_id: 'other.general',
+          label: '其他',
+          description: '其他已注册操作',
+          operations: []
+        }
+      ])
+    );
+
+    renderPanel();
+
+    expect(await screen.findByRole('tab', { name: '其他' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    expect(screen.getByText('其他已注册操作')).toBeInTheDocument();
+  });
+
   test('AC-004 toggles group mode and saves simple/resource scopes from the detail drawer', async () => {
     permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue({
       schema_version: '2026-07-14',

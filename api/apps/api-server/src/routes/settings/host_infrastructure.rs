@@ -1,13 +1,10 @@
 use std::sync::Arc;
 
-use access_control::{
-    SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
-    SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION, ensure_permission,
-};
+use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
+    Json, Router,
 };
 use control_plane::{
     audit::audit_log,
@@ -22,7 +19,8 @@ use control_plane::{
         EphemeralInspectionCapabilities, EphemeralInspectionEntryPage,
         EphemeralInspectionPageRequest, EphemeralInspectionSummarySnapshot,
         EphemeralInspectionTreeNodeSnapshot, EphemeralInspectionTreePage, EphemeralValueRevealMode,
-        EventBus, RateLimitStore, RuntimeEventStream, SessionStore, TaskQueue,
+        EventBus, RateLimitStore, RoleConsolePolicyReader, RuntimeEventStream, SessionStore,
+        TaskQueue,
     },
 };
 use plugin_framework::provider_contract::{
@@ -38,7 +36,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
-        ConsoleRouteAssembly, console_get, console_post, console_put,
+        console_get, console_post, console_put, ConsoleRouteAssembly,
     },
 };
 
@@ -463,14 +461,13 @@ pub async fn get_host_infrastructure_memory_overview(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<MemoryOverviewResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_memory_view(&context.actor)?;
     let mut contracts = Vec::new();
     for (contract_code, label) in memory_contract_definitions() {
         contracts.push(memory_contract_summary(&state, contract_code, label).await?);
     }
 
     Ok(Json(ApiSuccess::new(MemoryOverviewResponse {
-        can_manage: can_manage_memory(&context.actor),
+        can_manage: can_manage_memory(&state, &context.actor).await?,
         contracts,
     })))
 }
@@ -484,8 +481,7 @@ pub async fn get_host_infrastructure_memory_stats_overview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<MemoryStatsOverviewResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_memory_view(&context.actor)?;
+    require_session(&state, &headers).await?;
     let inspection_path = Vec::new();
     let mut contracts = Vec::new();
     let mut total = EphemeralInspectionSummarySnapshot::empty();
@@ -517,8 +513,7 @@ pub async fn list_host_infrastructure_memory_entries(
     Path(contract_code): Path<String>,
     Query(query): Query<MemoryPageQuery>,
 ) -> Result<Json<ApiSuccess<MemoryEntriesResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_memory_view(&context.actor)?;
+    require_session(&state, &headers).await?;
     let label = memory_contract_label(&contract_code)?;
     let target = memory_inspection_target(&state, &contract_code)?;
     let capabilities = target.capabilities();
@@ -565,8 +560,7 @@ pub async fn get_host_infrastructure_memory_stats(
     Path(contract_code): Path<String>,
     Query(query): Query<MemoryPathQuery>,
 ) -> Result<Json<ApiSuccess<MemoryStatsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_memory_view(&context.actor)?;
+    require_session(&state, &headers).await?;
     let label = memory_contract_label(&contract_code)?;
     let inspection_path = memory_query_path(query.path);
     let stats =
@@ -587,8 +581,7 @@ pub async fn list_host_infrastructure_memory_tree(
     Path(contract_code): Path<String>,
     Query(query): Query<MemoryPageQuery>,
 ) -> Result<Json<ApiSuccess<MemoryTreeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_memory_view(&context.actor)?;
+    require_session(&state, &headers).await?;
     let label = memory_contract_label(&contract_code)?;
     let target = memory_inspection_target(&state, &contract_code)?;
     let capabilities = target.capabilities();
@@ -635,8 +628,7 @@ pub async fn search_host_infrastructure_memory_entries(
     Path(contract_code): Path<String>,
     Query(query): Query<MemorySearchQuery>,
 ) -> Result<Json<ApiSuccess<MemoryEntriesResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_memory_view(&context.actor)?;
+    require_session(&state, &headers).await?;
     let label = memory_contract_label(&contract_code)?;
     let target = memory_inspection_target(&state, &contract_code)?;
     let capabilities = target.capabilities();
@@ -686,7 +678,6 @@ pub async fn reveal_host_infrastructure_memory_entry(
 ) -> Result<Json<ApiSuccess<MemoryEntryValueResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    ensure_memory_manage(&context.actor)?;
     let _label = memory_contract_label(&contract_code)?;
     let target = memory_inspection_target(&state, &contract_code)?;
     let capabilities = target.capabilities();
@@ -741,7 +732,6 @@ pub async fn get_host_infrastructure_cache_overview(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<CacheOverviewResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_cache_view(&context.actor)?;
     let cache = state.infrastructure.cache_store();
     let capabilities = cache.inspection_capabilities();
     let domains = if capabilities.list_domains {
@@ -760,7 +750,7 @@ pub async fn get_host_infrastructure_cache_overview(
             .infrastructure
             .default_provider("cache-store")
             .map(ToString::to_string),
-        can_manage: can_manage_cache(&context.actor),
+        can_manage: can_manage_cache(&state, &context.actor).await?,
         capabilities: capabilities.into(),
         domains,
     })))
@@ -777,8 +767,7 @@ pub async fn list_host_infrastructure_cache_entries(
     headers: HeaderMap,
     Path(domain_code): Path<String>,
 ) -> Result<Json<ApiSuccess<CacheEntriesResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_cache_view(&context.actor)?;
+    require_session(&state, &headers).await?;
     let cache = state.infrastructure.cache_store();
     let capabilities = cache.inspection_capabilities();
     let entries = if capabilities.list_entries {
@@ -814,7 +803,6 @@ pub async fn reveal_host_infrastructure_cache_entry(
 ) -> Result<Json<ApiSuccess<CacheEntryValueResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    ensure_cache_manage(&context.actor)?;
     let cache = state.infrastructure.cache_store();
     let capabilities = cache.inspection_capabilities();
     if !capabilities.reveal_value {
@@ -858,7 +846,6 @@ pub async fn clear_host_infrastructure_cache_entry(
 ) -> Result<Json<ApiSuccess<ClearCacheEntryResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    ensure_cache_manage(&context.actor)?;
     let cache = state.infrastructure.cache_store();
     let capabilities = cache.inspection_capabilities();
     if !capabilities.clear_entry {
@@ -894,7 +881,6 @@ pub async fn clear_host_infrastructure_cache_domain(
 ) -> Result<Json<ApiSuccess<ClearCacheDomainResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    ensure_cache_manage(&context.actor)?;
     let cache = state.infrastructure.cache_store();
     let capabilities = cache.inspection_capabilities();
     if !capabilities.clear_domain {
@@ -927,9 +913,9 @@ pub async fn list_host_infrastructure_providers(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<HostInfrastructureProviderConfigResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
+    require_session(&state, &headers).await?;
     let providers = HostInfrastructureConfigService::new(state.store.clone())
-        .list_providers(context.actor)
+        .list_providers()
         .await?
         .providers
         .into_iter()
@@ -1000,20 +986,11 @@ fn to_provider_response(
     }
 }
 
-fn ensure_memory_view(actor: &domain::ActorContext) -> Result<(), ApiError> {
-    ensure_permission(actor, SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION)
-        .map_err(ControlPlaneError::PermissionDenied)?;
-    Ok(())
-}
-
-fn ensure_memory_manage(actor: &domain::ActorContext) -> Result<(), ApiError> {
-    ensure_permission(actor, SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION)
-        .map_err(ControlPlaneError::PermissionDenied)?;
-    Ok(())
-}
-
-fn can_manage_memory(actor: &domain::ActorContext) -> bool {
-    actor.has_permission(SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION)
+async fn can_manage_memory(
+    state: &ApiState,
+    actor: &domain::ActorContext,
+) -> Result<bool, ApiError> {
+    can_manage_registered_operations(state, actor, &["host_infrastructure.memory.reveal"]).await
 }
 
 async fn append_memory_audit(
@@ -1042,26 +1019,77 @@ async fn append_memory_audit(
     Ok(())
 }
 
-fn ensure_cache_view(actor: &domain::ActorContext) -> Result<(), ApiError> {
-    ensure_permission(
+async fn can_manage_cache(
+    state: &ApiState,
+    actor: &domain::ActorContext,
+) -> Result<bool, ApiError> {
+    can_manage_registered_operations(
+        state,
         actor,
-        SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
+        &[
+            "host_infrastructure.cache.reveal",
+            "host_infrastructure.cache.entry.clear",
+            "host_infrastructure.cache.domain.clear",
+        ],
     )
-    .map_err(ControlPlaneError::PermissionDenied)?;
-    Ok(())
+    .await
 }
 
-fn ensure_cache_manage(actor: &domain::ActorContext) -> Result<(), ApiError> {
-    ensure_permission(
+async fn can_manage_registered_operations(
+    state: &ApiState,
+    actor: &domain::ActorContext,
+    operation_ids: &[&str],
+) -> Result<bool, ApiError> {
+    if actor.is_root {
+        return Ok(true);
+    }
+    let policies = state
+        .store
+        .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+        .await?;
+    Ok(has_registered_simple_operations(
+        &state.console_operation_registry,
         actor,
-        SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION,
-    )
-    .map_err(ControlPlaneError::PermissionDenied)?;
-    Ok(())
+        &policies,
+        operation_ids,
+    ))
 }
 
-fn can_manage_cache(actor: &domain::ActorContext) -> bool {
-    actor.has_permission(SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION)
+fn has_registered_simple_operations(
+    registry: &ConsoleOperationRegistry,
+    actor: &domain::ActorContext,
+    policies: &[domain::RoleConsolePolicy],
+    operation_ids: &[&str],
+) -> bool {
+    if actor.is_root {
+        return true;
+    }
+    operation_ids.iter().all(|operation_id| {
+        let Some(operation) = registry
+            .inventory()
+            .operations
+            .iter()
+            .find(|operation| operation.operation_id == *operation_id)
+        else {
+            return false;
+        };
+        if operation.authorization != ConsoleAuthorization::Simple {
+            return false;
+        }
+        let group = match &operation.policy_group {
+            ConsolePolicyGroup::SettingsFeature(feature_id) => {
+                domain::ConsolePolicyGroup::settings_feature(feature_id)
+            }
+            ConsolePolicyGroup::Other(group_id) => domain::ConsolePolicyGroup::other(group_id),
+        };
+        let (Ok(group), Ok(operation_id)) = (
+            group,
+            domain::ConsoleOperationId::try_from(operation.operation_id.as_str()),
+        ) else {
+            return false;
+        };
+        domain::effective_console_simple_operation(policies, &group, &operation_id)
+    })
 }
 
 async fn append_cache_audit(
@@ -1229,5 +1257,92 @@ fn to_plugin_form_field_schema_response(
             .into_iter()
             .map(to_plugin_form_condition_response)
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use domain::{
+        ActorContext, ConsoleOperationId, ConsoleOperationPolicy, ConsolePolicyGroup,
+        RoleConsoleGroupPolicy, RoleConsolePolicy,
+    };
+    use uuid::Uuid;
+
+    use super::has_registered_simple_operations;
+
+    fn policy(feature_id: &str, operation_ids: &[&str]) -> RoleConsolePolicy {
+        let group = ConsolePolicyGroup::settings_feature(feature_id)
+            .expect("compiled settings feature id must be valid");
+        RoleConsolePolicy::new(
+            Uuid::now_v7(),
+            vec![RoleConsoleGroupPolicy::custom(
+                group,
+                operation_ids
+                    .iter()
+                    .map(|operation_id| {
+                        ConsoleOperationPolicy::simple(
+                            ConsoleOperationId::try_from(*operation_id)
+                                .expect("compiled operation id must be valid"),
+                            true,
+                        )
+                    })
+                    .collect(),
+            )],
+        )
+    }
+
+    #[test]
+    fn ac_007_ac_011_host_and_mcp_capabilities_ignore_legacy_grants() {
+        let settings = crate::app_state::compile_core_settings_feature_registry()
+            .expect("core settings feature registry must compile");
+        let registry = crate::app_state::compile_core_console_operation_registry(&settings)
+            .expect("core console operation registry must compile");
+        let policy_only = ActorContext::scoped(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            "member",
+            Vec::<String>::new(),
+        );
+        let legacy_only = ActorContext::scoped(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            "member",
+            [
+                access_control::SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION.to_string(),
+                access_control::SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_PERMISSION.to_string(),
+            ],
+        );
+        let policies = vec![
+            policy(
+                "system.host-infrastructure",
+                &["host_infrastructure.cache.reveal"],
+            ),
+            policy("system.mcp-management", &["mcp.instances.create"]),
+        ];
+
+        assert!(has_registered_simple_operations(
+            &registry,
+            &policy_only,
+            &policies,
+            &["host_infrastructure.cache.reveal"]
+        ));
+        assert!(has_registered_simple_operations(
+            &registry,
+            &policy_only,
+            &policies,
+            &["mcp.instances.create"]
+        ));
+        assert!(!has_registered_simple_operations(
+            &registry,
+            &legacy_only,
+            &[],
+            &["host_infrastructure.cache.reveal"]
+        ));
+        assert!(!has_registered_simple_operations(
+            &registry,
+            &legacy_only,
+            &[],
+            &["mcp.instances.create"]
+        ));
     }
 }

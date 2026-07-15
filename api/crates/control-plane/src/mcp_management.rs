@@ -1178,37 +1178,18 @@ where
     }
 
     pub(crate) async fn authorize_view(&self, actor_user_id: Uuid) -> Result<domain::ActorContext> {
-        let actor = self
-            .repository
+        self.repository
             .load_actor_context_for_user(actor_user_id)
-            .await?;
-        if actor.is_root
-            || actor.has_permission("mcp_management.view.all")
-            || actor.has_permission("mcp_management.manage.all")
-            || actor
-                .has_permission(access_control::SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_PERMISSION)
-        {
-            return Ok(actor);
-        }
-        Err(ControlPlaneError::PermissionDenied("permission_denied").into())
+            .await
     }
 
     pub(crate) async fn authorize_manage(
         &self,
         actor_user_id: Uuid,
     ) -> Result<domain::ActorContext> {
-        let actor = self
-            .repository
+        self.repository
             .load_actor_context_for_user(actor_user_id)
-            .await?;
-        if actor.is_root
-            || actor.has_permission("mcp_management.manage.all")
-            || actor
-                .has_permission(access_control::SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_PERMISSION)
-        {
-            return Ok(actor);
-        }
-        Err(ControlPlaneError::PermissionDenied("permission_denied").into())
+            .await
     }
 }
 

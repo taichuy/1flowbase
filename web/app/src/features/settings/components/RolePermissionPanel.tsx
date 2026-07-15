@@ -58,10 +58,6 @@ import { i18nText } from '../../../shared/i18n/text';
 import { FALLBACK_APP_LOCALE, toAppLocale } from '../../../shared/i18n/locales';
 import { RoleDataPolicySection } from './role-permissions/RoleDataPolicySection';
 
-const BACKEND_SYSTEM_SETTINGS_TAB = i18nText(
-  'settings',
-  'auto.backend_system_settings'
-);
 const CONSOLE_POLICY_TAB = 'console-policy';
 const OTHER_POLICY_TAB = 'other-policy';
 const DYNAMIC_ROUTE_TAB = 'dynamic-routes';
@@ -195,6 +191,10 @@ export function RolePermissionPanel({
     toAppLocale(i18n.resolvedLanguage) ??
     toAppLocale(i18n.language) ??
     FALLBACK_APP_LOCALE;
+  const backendSystemSettingsTabLabel = i18nText(
+    'settings',
+    'auto.backend_system_settings'
+  );
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
   const [messageApi, contextHolder] = message.useMessage();
@@ -286,6 +286,28 @@ export function RolePermissionPanel({
   useEffect(() => {
     setConsolePolicyGroups(roleConsolePolicyQuery.data?.groups ?? []);
   }, [roleConsolePolicyQuery.data?.groups]);
+
+  useEffect(() => {
+    const catalogGroups = consolePolicyCatalogQuery.data?.groups ?? [];
+    const hasSettingsFeature = catalogGroups.some(
+      (group) => group.kind === 'settings_feature'
+    );
+    const hasOther = catalogGroups.some((group) => group.kind === 'other');
+
+    if (
+      activePermissionTab === CONSOLE_POLICY_TAB &&
+      !hasSettingsFeature &&
+      hasOther
+    ) {
+      setActivePermissionTab(OTHER_POLICY_TAB);
+    } else if (
+      activePermissionTab === OTHER_POLICY_TAB &&
+      !hasOther &&
+      hasSettingsFeature
+    ) {
+      setActivePermissionTab(CONSOLE_POLICY_TAB);
+    }
+  }, [activePermissionTab, consolePolicyCatalogQuery.data?.groups]);
 
   useEffect(() => {
     if (!selectedRoleCode && rolesQuery.data?.length) {
@@ -624,7 +646,11 @@ export function RolePermissionPanel({
                 (option) => option.value === 'full'
               );
               const restoreFullLabel = fullModeOption
-                ? `${i18nText('settings', 'auto.restore')} ${fullModeOption.label}`
+                ? i18nText(
+                    'settings',
+                    'auto.permission_policy_restore_mode',
+                    { value1: fullModeOption.label }
+                  )
                 : null;
               const canEdit = canManageRoles && selectedRole?.is_editable;
               return (
@@ -743,7 +769,7 @@ export function RolePermissionPanel({
     const backendSettingsTab = settingsFeatureGroups.length
       ? {
           key: CONSOLE_POLICY_TAB,
-          label: BACKEND_SYSTEM_SETTINGS_TAB,
+          label: backendSystemSettingsTabLabel,
           children: renderConsolePolicyTable('settings_feature')
         }
       : null;
@@ -765,6 +791,7 @@ export function RolePermissionPanel({
   }, [
     canManageRoles,
     consolePolicyCatalogQuery.data,
+    backendSystemSettingsTabLabel,
     consolePolicyGroups,
     dataPolicyFormId,
     displayedCheckedRouteIds,
@@ -1170,7 +1197,7 @@ export function RolePermissionPanel({
                   }))}
                 columns={[
                   {
-                    title: i18nText('settings', 'auto.permission_policy_operation'),
+                    title: i18nText('settings', 'auto.operation'),
                     key: 'operation',
                     render: (
                       _: unknown,
@@ -1187,7 +1214,7 @@ export function RolePermissionPanel({
                     )
                   },
                   {
-                    title: i18nText('settings', 'auto.permission_policy_scope'),
+                    title: i18nText('settings', 'auto.scope'),
                     key: 'policy',
                     render: (
                       _: unknown,
@@ -1230,7 +1257,7 @@ export function RolePermissionPanel({
                         <Select
                           aria-label={`${operation.label} ${i18nText(
                             'settings',
-                            'auto.permission_policy_scope'
+                            'auto.scope'
                           )}`}
                           value={scope}
                           disabled={
@@ -1240,7 +1267,8 @@ export function RolePermissionPanel({
                           }
                           options={operation.allowed_row_scopes.map((option) => ({
                             value: option.value,
-                            label: option.label
+                            label: option.label,
+                            title: option.label
                           }))}
                           onChange={(value) =>
                             updateConsolePolicyDetailOperation(

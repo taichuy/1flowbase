@@ -144,12 +144,10 @@ async fn seed_host_extension_installation(
 }
 
 #[tokio::test]
-async fn list_providers_aggregates_contracts_for_inactive_disabled_extension() {
+async fn ac_007_ac_011_operation_qualified_provider_list_does_not_require_legacy_grant() {
     let workspace_id = Uuid::now_v7();
-    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
-        workspace_id,
-        &["settings_feature.access.system.host-infrastructure"],
-    ));
+    let repository =
+        MemoryPluginManagementRepository::new(actor_with_permissions(workspace_id, &[]));
     let install_root =
         std::env::temp_dir().join(format!("host-infra-config-list-{}", Uuid::now_v7()));
     write_host_extension_fixture(&install_root);
@@ -162,10 +160,7 @@ async fn list_providers_aggregates_contracts_for_inactive_disabled_extension() {
     .await;
 
     let service = HostInfrastructureConfigService::new(repository.clone());
-    let result = service
-        .list_providers(repository.actor.clone())
-        .await
-        .unwrap();
+    let result = service.list_providers().await.unwrap();
 
     assert_eq!(result.providers.len(), 1);
     let provider = &result.providers[0];
@@ -185,12 +180,10 @@ async fn list_providers_aggregates_contracts_for_inactive_disabled_extension() {
 }
 
 #[tokio::test]
-async fn save_provider_config_sets_pending_restart_without_runtime_activation() {
+async fn ac_007_ac_011_operation_qualified_provider_save_preserves_state_without_legacy_grant() {
     let workspace_id = Uuid::now_v7();
-    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
-        workspace_id,
-        &["settings_feature.access.system.host-infrastructure"],
-    ));
+    let repository =
+        MemoryPluginManagementRepository::new(actor_with_permissions(workspace_id, &[]));
     let install_root =
         std::env::temp_dir().join(format!("host-infra-config-save-{}", Uuid::now_v7()));
     write_host_extension_fixture(&install_root);
