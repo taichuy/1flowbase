@@ -15,6 +15,7 @@ import {
   replaceConsoleApplicationApiMapping,
   replaceConsoleWorkflowScheduleTrigger,
   revokeConsoleApplicationApiKey,
+  unpublishConsoleApplicationApiVersion,
   updateConsoleApplicationApiStatus
 } from '../application-public-api';
 
@@ -197,6 +198,25 @@ describe('application public API client', () => {
         method: 'PATCH',
         body: JSON.stringify({ api_enabled: false })
       })
+    );
+  });
+
+  test('unpublish issues DELETE on the active publication path', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await unpublishConsoleApplicationApiVersion(
+      'app-1',
+      'csrf-1',
+      'http://localhost:7800'
+    );
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://localhost:7800/api/console/applications/app-1/api-publication'
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ method: 'DELETE' })
     );
   });
 

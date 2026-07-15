@@ -21,7 +21,8 @@ use crate::{
         ApplicationApiMappingRepository, ApplicationCompileContextRepository,
         ApplicationCompiledPlanRepository, ApplicationJsDependencySelectionRepository,
         ApplicationPublicationRepository, ApplicationRepository,
-        CreateApplicationPublicationVersionInput, FlowRepository, SetApplicationApiEnabledInput,
+        CreateApplicationPublicationVersionInput, DeactivateApplicationPublicationsInput,
+        FlowRepository, SetApplicationApiEnabledInput,
     },
 };
 
@@ -43,6 +44,12 @@ pub struct SetApplicationApiEnabledCommand {
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
     pub api_enabled: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnpublishApplicationCommand {
+    pub actor_user_id: Uuid,
+    pub application_id: Uuid,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -313,6 +320,54 @@ where
                 application_id: application.id,
                 api_enabled: command.api_enabled,
             })
+            .await
+    }
+
+    /// Unpublishes the application: every publication version is deactivated so
+    /// the derived publication status returns to draft. Public API calls,
+    /// enabled extension registration, and schedule dispatch all read the
+    /// active publication, so they stop together without touching trigger
+    /// configuration.
+    pub async fn unpublish(&self, command: UnpublishApplicationCommand) -> Result<()>
+    where
+        R: ApplicationPublicationRepository,
+    {
+        let actor = self
+            .repository
+            .load_actor_context_for_user(command.actor_user_id)
+            .await?;
+        let application = self
+            .repository
+            .get_application(actor.current_workspace_id, command.application_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor_user_id,
+                    actor.current_workspace_id,
+                )
+                .await?;
+            ensure_existing_application_non_crud_console_operation(
+                &actor,
+                &application,
+                &policies,
+                ApplicationNonCrudConsoleOperation::Publish,
+            )?;
+        }
+        self.repository
+            .load_active_application_publication(application.id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("publication"))?;
+
+        self.repository
+            .deactivate_application_publication_versions(
+                &DeactivateApplicationPublicationsInput {
+                    actor_user_id: command.actor_user_id,
+                    application_id: application.id,
+                },
+            )
             .await
     }
 }

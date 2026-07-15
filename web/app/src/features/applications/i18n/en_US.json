@@ -297,6 +297,10 @@
     "schedule_cron_required": "Enter a Cron expression",
     "schedule_timezone": "Timezone",
     "schedule_timezone_required": "Enter a timezone",
-    "schedule_disabled_hint": "The schedule is disabled by default. Enable it after publishing and confirming the configuration."
+    "schedule_disabled_hint": "The schedule is disabled by default. Enable it after publishing and confirming the configuration.",
+    "revert_to_draft": "Revert to draft",
+    "revert_to_draft_confirm_content": "Reverting stops this application from serving traffic: the public API stops responding, the extension endpoint is unregistered, and schedule dispatch stops. You can publish again at any time.",
+    "revert_to_draft_success": "Reverted to draft",
+    "revert_to_draft_failed": "Failed to revert to draft"
   }
 }

@@ -27,7 +27,7 @@ use control_plane::{
         publications::{
             ApplicationPublicationService, ApplicationPublicationVersionRecord,
             LoadActiveApplicationPublicationCommand, PublishApplicationCommand,
-            SetApplicationApiEnabledCommand,
+            SetApplicationApiEnabledCommand, UnpublishApplicationCommand,
         },
         workflow_schedule::{
             GetWorkflowScheduleTriggerCommand, ReplaceWorkflowScheduleTriggerCommand,
@@ -312,6 +312,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(
                 get_application_api_publication,
                 ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .delete(
+                unpublish_application_api,
+                ConsoleOperation(APPLICATIONS_PUBLISH_OPERATION_ID.to_string()),
             ),
         )
         .route(
@@ -888,6 +892,35 @@ pub async fn publish_application_api(
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_publication_response(publication))),
     ))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/console/applications/{application_id}/api-publication",
+    params(("application_id" = Uuid, Path, description = "Application id")),
+    responses(
+        (status = 204),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn unpublish_application_api(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(application_id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    ApplicationPublicationService::new(state.store.clone())
+        .unpublish(UnpublishApplicationCommand {
+            actor_user_id: context.user.id,
+            application_id,
+        })
+        .await
+        .map_err(map_publication_not_found)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(

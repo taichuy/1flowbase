@@ -8,9 +8,9 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         ApplicationApiMappingRepository, ApplicationPublicationRepository,
-        CreateApplicationPublicationVersionInput, ReplaceApplicationApiMappingInput,
-        ReplaceWorkflowScheduleTriggerInput, SetApplicationApiEnabledInput,
-        WorkflowScheduleTriggerRepository,
+        CreateApplicationPublicationVersionInput, DeactivateApplicationPublicationsInput,
+        ReplaceApplicationApiMappingInput, ReplaceWorkflowScheduleTriggerInput,
+        SetApplicationApiEnabledInput, WorkflowScheduleTriggerRepository,
     },
 };
 use sqlx::Row;
@@ -387,10 +387,12 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         &self,
         application_id: Uuid,
     ) -> Result<Option<ApplicationPublicationVersionRecord>> {
-        let row = sqlx::query(publication_select_sql("where application_id = $1").as_str())
-            .bind(application_id)
-            .fetch_optional(self.pool())
-            .await?;
+        let row = sqlx::query(
+            publication_select_sql("where active and application_id = $1").as_str(),
+        )
+        .bind(application_id)
+        .fetch_optional(self.pool())
+        .await?;
 
         row.map(map_publication_row).transpose()
     }
@@ -452,6 +454,41 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         )
         .bind(input.application_id)
         .bind(input.api_enabled)
+        .bind(input.actor_user_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn deactivate_application_publication_versions(
+        &self,
+        input: &DeactivateApplicationPublicationsInput,
+    ) -> Result<()> {
+        let mut tx = self.pool().begin().await?;
+        let updated_application = sqlx::query(
+            "update applications set api_enabled = false, updated_by = $2, updated_at = now() where id = $1",
+        )
+        .bind(input.application_id)
+        .bind(input.actor_user_id)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if updated_application == 0 {
+            return Err(ControlPlaneError::NotFound("application").into());
+        }
+
+        sqlx::query(
+            r#"
+            update application_publication_versions
+            set active = false,
+                api_enabled = false,
+                updated_by = $2,
+                updated_at = now()
+            where application_id = $1
+            "#,
+        )
+        .bind(input.application_id)
         .bind(input.actor_user_id)
         .execute(&mut *tx)
         .await?;

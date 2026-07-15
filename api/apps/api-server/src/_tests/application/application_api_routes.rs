@@ -738,6 +738,129 @@ async fn application_api_publication_routes_publish_and_patch_api_enabled_state(
 }
 
 #[tokio::test]
+async fn application_api_publication_route_unpublish_reverts_to_draft_and_allows_republish() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_id = create_application(&app, &cookie, &csrf, "Unpublish App").await;
+
+    let mapping = json!({
+        "input": {
+            "query_target": "node-start.query",
+            "model_target": null,
+            "inputs_target": null,
+            "history_target": null,
+            "attachments_target": null
+        },
+        "output": {
+            "answer_selector": null,
+            "usage_selector": null,
+            "files_selector": null,
+            "error_selector": null
+        }
+    });
+
+    let publish = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-publications"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "mapping": mapping,
+                        "api_enabled": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(publish.status(), StatusCode::CREATED);
+
+    let unpublish = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-publication"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unpublish.status(), StatusCode::NO_CONTENT);
+
+    let active_publication = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-publication"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(active_publication.status(), StatusCode::NOT_FOUND);
+
+    let unpublish_draft = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-publication"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unpublish_draft.status(), StatusCode::NOT_FOUND);
+
+    let republish = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-publications"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "mapping": mapping,
+                        "api_enabled": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(republish.status(), StatusCode::CREATED);
+    let republish_payload = response_json(republish).await;
+    assert_eq!(republish_payload["data"]["active"].as_bool(), Some(true));
+    assert_eq!(republish_payload["data"]["api_enabled"].as_bool(), Some(true));
+}
+
+#[tokio::test]
 async fn application_public_api_js_dependency_snapshot_is_empty_without_selection_on_publish_response(
 ) {
     let app = test_app().await;

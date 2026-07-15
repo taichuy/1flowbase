@@ -272,6 +272,19 @@ export function updateConsoleApplicationApiStatus(
   });
 }
 
+export function unpublishConsoleApplicationApiVersion(
+  applicationId: string,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<void> {
+  return apiFetchVoid({
+    path: `/api/console/applications/${applicationId}/api-publication`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
 export function getConsoleWorkflowScheduleTrigger(
   applicationId: string,
   baseUrl?: string

@@ -177,4 +177,27 @@ impl ApplicationPublicationRepository for ApplicationPublicApiTestRepository {
         }
         Ok(())
     }
+
+    async fn deactivate_application_publication_versions(
+        &self,
+        input: &DeactivateApplicationPublicationsInput,
+    ) -> Result<()> {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        if !inner.applications.contains_key(&input.application_id) {
+            return Err(ControlPlaneError::NotFound("application").into());
+        }
+        inner
+            .application_api_enabled
+            .insert(input.application_id, false);
+        for publication in inner.publications.values_mut() {
+            if publication.application_id == input.application_id {
+                publication.active = false;
+                publication.api_enabled = false;
+            }
+        }
+        Ok(())
+    }
 }

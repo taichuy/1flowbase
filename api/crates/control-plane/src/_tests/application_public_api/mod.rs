@@ -46,6 +46,7 @@ mod client_protocol_envelope;
 mod conversations;
 mod native_run;
 mod openai_compat;
+mod publications;
 mod resume;
 mod run_service;
 mod workflow_start_http_inputs;

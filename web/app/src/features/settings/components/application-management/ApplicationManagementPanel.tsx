@@ -4,6 +4,7 @@ import {
   EditOutlined,
   ExportOutlined,
   MoreOutlined,
+  RollbackOutlined,
   TagOutlined
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -43,6 +44,7 @@ import {
 } from '../../../applications/api/applications';
 import { ApplicationEditModal } from '../../../applications/components/ApplicationEditModal';
 import { ApplicationTagManagerModal } from '../../../applications/components/ApplicationTagManagerModal';
+import { unpublishApplicationApiVersion } from '../../../applications/api/public-api';
 import { downloadTemplateFile } from '../../../applications/lib/template-download';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import {
@@ -237,6 +239,18 @@ export function ApplicationManagementPanel() {
     onError: () =>
       messageApi.error(i18nText('applications', 'auto.template_export_failed'))
   });
+  const revertToDraftMutation = useMutation({
+    mutationFn: (applicationId: string) =>
+      unpublishApplicationApiVersion(applicationId, csrfToken),
+    onSuccess: async () => {
+      await invalidateApplications();
+      messageApi.success(
+        i18nText('applications', 'auto.revert_to_draft_success')
+      );
+    },
+    onError: () =>
+      messageApi.error(i18nText('applications', 'auto.revert_to_draft_failed'))
+  });
   const createTagMutation = useMutation({
     mutationFn: (name: string) => createApplicationTag({ name }, csrfToken),
     onSuccess: invalidateApplications
@@ -244,6 +258,7 @@ export function ApplicationManagementPanel() {
   const copyApplication = copyMutation.mutate;
   const exportApplication = exportMutation.mutate;
   const deleteApplicationById = deleteMutation.mutateAsync;
+  const revertToDraft = revertToDraftMutation.mutateAsync;
 
   const permissions = me?.permissions ?? [];
   const isRoot = actor?.effective_display_role === 'root';
@@ -275,6 +290,19 @@ export function ApplicationManagementPanel() {
       });
     },
     [deleteApplicationById, modalApi]
+  );
+
+  const confirmRevertToDraft = useCallback(
+    (application: SettingsApplicationManagementItem) => {
+      modalApi.confirm({
+        title: i18nText('applications', 'auto.revert_to_draft'),
+        content: i18nText('applications', 'auto.revert_to_draft_confirm_content'),
+        okText: i18nText('applications', 'auto.revert_to_draft'),
+        cancelText: i18nText('applications', 'auto.cancel'),
+        onOk: () => revertToDraft(application.id)
+      });
+    },
+    [modalApi, revertToDraft]
   );
 
   const columns = useMemo<
@@ -420,6 +448,12 @@ export function ApplicationManagementPanel() {
               label: i18nText('applications', 'auto.export_template'),
               disabled: application.application_type !== 'agent_flow'
             },
+            {
+              key: 'revert_to_draft',
+              icon: <RollbackOutlined />,
+              label: i18nText('applications', 'auto.revert_to_draft'),
+              disabled: application.publication_status !== 'published'
+            },
             { type: 'divider' },
             {
               key: 'delete',
@@ -438,6 +472,8 @@ export function ApplicationManagementPanel() {
                   if (key === 'tags') setTaggingApplication(application);
                   if (key === 'copy') copyApplication(application);
                   if (key === 'export') exportApplication(application.id);
+                  if (key === 'revert_to_draft')
+                    confirmRevertToDraft(application);
                   if (key === 'delete') confirmDelete(application);
                 }
               }}
@@ -462,6 +498,7 @@ export function ApplicationManagementPanel() {
       canDelete,
       canEdit,
       confirmDelete,
+      confirmRevertToDraft,
       copyApplication,
       exportApplication
     ]

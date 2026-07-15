@@ -37,6 +37,12 @@ pub struct SetApplicationApiEnabledInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct DeactivateApplicationPublicationsInput {
+    pub actor_user_id: Uuid,
+    pub application_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
 pub struct ReplaceWorkflowScheduleTriggerInput {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
@@ -194,5 +200,10 @@ pub trait ApplicationPublicationRepository: Send + Sync {
     async fn set_application_api_enabled(
         &self,
         input: &SetApplicationApiEnabledInput,
+    ) -> anyhow::Result<()>;
+
+    async fn deactivate_application_publication_versions(
+        &self,
+        input: &DeactivateApplicationPublicationsInput,
     ) -> anyhow::Result<()>;
 }

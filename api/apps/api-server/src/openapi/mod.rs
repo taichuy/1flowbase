@@ -40,6 +40,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::application_api::replace_application_api_mapping,
         crate::routes::application_api::get_application_api_publication,
         crate::routes::application_api::publish_application_api,
+        crate::routes::application_api::unpublish_application_api,
         crate::routes::application_api::patch_application_api_status,
         crate::routes::application_api::get_workflow_schedule_trigger,
         crate::routes::application_api::replace_workflow_schedule_trigger,

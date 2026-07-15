@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const applicationManagementApi = vi.hoisted(() => ({
@@ -21,8 +22,13 @@ const applicationsApi = vi.hoisted(() => ({
   exportAgentFlowTemplate: vi.fn()
 }));
 
+const applicationsPublicApi = vi.hoisted(() => ({
+  unpublishApplicationApiVersion: vi.fn()
+}));
+
 vi.mock('../../api/application-management', () => applicationManagementApi);
 vi.mock('../../../applications/api/applications', () => applicationsApi);
+vi.mock('../../../applications/api/public-api', () => applicationsPublicApi);
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
@@ -89,6 +95,9 @@ describe('ApplicationManagementPanel', () => {
       ],
       tags: [{ id: 'tag-report', name: '报表', application_count: 1 }]
     });
+    applicationsPublicApi.unpublishApplicationApiVersion.mockResolvedValue(
+      undefined
+    );
   });
 
   test('AC-003 AC-006 restores URL filters and renders backend management fields', async () => {
@@ -135,6 +144,54 @@ describe('ApplicationManagementPanel', () => {
         },
         sort: 'updated_at:desc'
       });
+    });
+  });
+
+  test('#1286 reverts a published application to draft via the actions menu', async () => {
+    applicationManagementApi.fetchSettingsApplicationManagement.mockResolvedValue(
+      {
+        items: [
+          {
+            id: 'app-published',
+            application_type: 'agent_flow',
+            workflow_trigger_type: null,
+            name: 'Live Assistant',
+            description: 'Serving traffic',
+            icon: null,
+            icon_type: null,
+            icon_background: null,
+            created_by: 'root-user',
+            created_by_display_name: 'Root',
+            created_at: '2026-07-12T08:00:00Z',
+            updated_at: '2026-07-13T08:00:00Z',
+            tags: [],
+            publication_status: 'published'
+          }
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20
+      }
+    );
+
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: '更多操作-Live Assistant' })
+    );
+    fireEvent.click(await screen.findByText('退回草稿'));
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: '退回草稿' }));
+
+    await waitFor(() => {
+      expect(
+        applicationsPublicApi.unpublishApplicationApiVersion
+      ).toHaveBeenCalledWith('app-published', 'csrf-123');
     });
   });
 });
