@@ -30,7 +30,7 @@ where
     H: ProviderRuntimePort,
 {
     let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_model_provider_permission(&actor, "manage", use_case)?;
+    ensure_model_provider_permission(&actor, "manage", &use_case).await?;
     let instance = repository
         .get_instance(actor.current_workspace_id, instance_id)
         .await?

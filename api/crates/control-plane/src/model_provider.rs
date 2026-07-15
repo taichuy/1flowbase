@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
+    sync::Arc,
 };
 
 use anyhow::Result;
@@ -19,7 +20,7 @@ use crate::{
     plugin_management::mark_current_node_plugin_runtime_status,
     ports::{
         AuthRepository, CreateModelProviderInstanceInput, CreateModelProviderPreviewSessionInput,
-        ModelProviderRepository, PluginRepository, ProviderRuntimePort,
+        ModelProviderRepository, PluginRepository, ProviderRuntimePort, RoleConsolePolicyReader,
         UpdateModelProviderInstanceInput, UpsertModelProviderCatalogCacheInput,
         UpsertModelProviderSecretInput,
     },
@@ -238,10 +239,14 @@ pub struct ModelProviderOptionsView {
     pub i18n_catalog: I18nCatalog,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone)]
 pub(super) enum ModelProviderUseCase {
     BusinessActions,
-    ModelProviderSettings,
+    ConsoleOperation {
+        policy_reader: Arc<dyn RoleConsolePolicyReader>,
+        group: domain::ConsolePolicyGroup,
+        operation_id: domain::ConsoleOperationId,
+    },
 }
 
 pub struct ModelProviderService<R, H> {
@@ -269,18 +274,29 @@ where
         }
     }
 
-    pub fn for_model_provider_settings(
+    pub fn for_console_operation(
         repository: R,
         runtime: H,
         provider_secret_master_key: impl Into<String>,
-    ) -> Self {
+        group: domain::ConsolePolicyGroup,
+        operation_id: &'static str,
+    ) -> Self
+    where
+        R: RoleConsolePolicyReader + Clone + 'static,
+    {
+        let policy_reader = Arc::new(repository.clone());
         Self {
             repository,
             runtime,
             provider_secret_master_key: provider_secret_master_key.into(),
             node_id: None,
             install_root: None,
-            use_case: ModelProviderUseCase::ModelProviderSettings,
+            use_case: ModelProviderUseCase::ConsoleOperation {
+                policy_reader,
+                group,
+                operation_id: domain::ConsoleOperationId::try_from(operation_id)
+                    .expect("compiled model-provider operation id must be valid"),
+            },
         }
     }
 
@@ -318,7 +334,13 @@ where
         actor_user_id: Uuid,
         locales: RequestedLocales,
     ) -> Result<ModelProviderCatalogView> {
-        catalog::list_catalog(&self.repository, actor_user_id, locales, self.use_case).await
+        catalog::list_catalog(
+            &self.repository,
+            actor_user_id,
+            locales,
+            self.use_case.clone(),
+        )
+        .await
     }
 
     pub async fn list_instances(
@@ -326,7 +348,7 @@ where
         actor_user_id: Uuid,
     ) -> Result<Vec<ModelProviderInstanceView>> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        ensure_model_provider_permission(&actor, "view", self.use_case)?;
+        ensure_model_provider_permission(&actor, "view", &self.use_case).await?;
 
         let instances = self
             .repository
@@ -391,7 +413,7 @@ where
         provider_code: &str,
     ) -> Result<ModelProviderMainInstanceView> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        ensure_model_provider_permission(&actor, "view", self.use_case)?;
+        ensure_model_provider_permission(&actor, "view", &self.use_case).await?;
         main_instance::get_main_instance(
             &self.repository,
             actor.current_workspace_id,
@@ -406,7 +428,7 @@ where
         provider_code: &str,
     ) -> Result<ModelProviderIconSource> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        ensure_model_provider_permission(&actor, "view", self.use_case)?;
+        ensure_model_provider_permission(&actor, "view", &self.use_case).await?;
         let assignment = self
             .repository
             .list_assignments(actor.current_workspace_id)
@@ -430,7 +452,7 @@ where
         command: CreateModelProviderInstanceCommand,
     ) -> Result<ModelProviderInstanceView> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_model_provider_permission(&actor, "manage", self.use_case)?;
+        ensure_model_provider_permission(&actor, "manage", &self.use_case).await?;
         let installation = self.ready_installation(command.installation_id).await?;
         ensure_installation_assigned(
             &self.repository,
@@ -542,7 +564,7 @@ where
         command: UpdateModelProviderInstanceCommand,
     ) -> Result<ModelProviderInstanceView> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_model_provider_permission(&actor, "manage", self.use_case)?;
+        ensure_model_provider_permission(&actor, "manage", &self.use_case).await?;
         let existing = self
             .repository
             .get_instance(actor.current_workspace_id, command.instance_id)
@@ -710,7 +732,7 @@ where
         instance_id: Uuid,
     ) -> Result<ValidateModelProviderResult> {
         let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        ensure_model_provider_permission(&actor, "manage", self.use_case)?;
+        ensure_model_provider_permission(&actor, "manage", &self.use_case).await?;
         let instance = self
             .repository
             .get_instance(actor.current_workspace_id, instance_id)
@@ -869,7 +891,7 @@ where
         command: PreviewModelProviderModelsCommand,
     ) -> Result<PreviewModelProviderModelsResult> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_model_provider_permission(&actor, "manage", self.use_case)?;
+        ensure_model_provider_permission(&actor, "manage", &self.use_case).await?;
 
         let (installation, _package, provider_config, provider_code, audit_resource_id) =
             match command.instance_id {
@@ -1003,7 +1025,7 @@ where
             actor_user_id,
             instance_id,
             self.node_artifact_context(),
-            self.use_case,
+            self.use_case.clone(),
         )
         .await
     }
@@ -1020,7 +1042,7 @@ where
             actor_user_id,
             instance_id,
             self.node_artifact_context(),
-            self.use_case,
+            self.use_case.clone(),
         )
         .await
     }
@@ -1037,14 +1059,14 @@ where
             actor_user_id,
             instance_id,
             self.node_artifact_context(),
-            self.use_case,
+            self.use_case.clone(),
         )
         .await
     }
 
     pub async fn delete_instance(&self, command: DeleteModelProviderInstanceCommand) -> Result<()> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_model_provider_permission(&actor, "manage", self.use_case)?;
+        ensure_model_provider_permission(&actor, "manage", &self.use_case).await?;
         let instance = self
             .repository
             .get_instance(actor.current_workspace_id, command.instance_id)
@@ -1094,7 +1116,7 @@ where
         command: UpdateModelProviderMainInstanceCommand,
     ) -> Result<ModelProviderMainInstanceView> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
-        ensure_model_provider_permission(&actor, "manage", self.use_case)?;
+        ensure_model_provider_permission(&actor, "manage", &self.use_case).await?;
         let updated = main_instance::update_main_instance(
             &self.repository,
             actor.current_workspace_id,
@@ -1129,7 +1151,7 @@ where
             actor_user_id,
             locales,
             self.node_artifact_context(),
-            self.use_case,
+            self.use_case.clone(),
         )
         .await
     }
@@ -1147,7 +1169,7 @@ where
             instance_id,
             key,
             self.node_artifact_context(),
-            self.use_case,
+            self.use_case.clone(),
         )
         .await
     }

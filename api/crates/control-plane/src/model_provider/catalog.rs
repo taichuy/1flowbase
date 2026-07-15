@@ -50,7 +50,7 @@ where
     R: AuthRepository + PluginRepository,
 {
     let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_model_provider_permission(&actor, "view", use_case)?;
+    ensure_model_provider_permission(&actor, "view", &use_case).await?;
 
     let assignments = repository
         .list_assignments(actor.current_workspace_id)
@@ -130,7 +130,7 @@ where
     R: AuthRepository + PluginRepository + ModelProviderRepository,
 {
     let actor = load_actor_context_for_user(repository, actor_user_id).await?;
-    ensure_model_provider_permission(&actor, "view", use_case)?;
+    ensure_model_provider_permission(&actor, "view", &use_case).await?;
     let mut installation_map = HashMap::new();
     for installation in repository.list_installations().await? {
         let Some(installation) = model_provider_installation_from_current_snapshot(

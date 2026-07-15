@@ -18,12 +18,13 @@ use crate::{
         AuthRepository, CreateModelProviderInstanceInput, CreateModelProviderPreviewSessionInput,
         CreatePluginAssignmentInput, CreatePluginTaskInput, ModelProviderRepository,
         PluginRepository, ProviderRuntimeInvocationOutput, ProviderRuntimePort,
-        ReassignModelProviderInstancesInput, UpdateModelProviderInstanceInput,
-        UpdatePluginArtifactSnapshotInput, UpdatePluginDesiredStateInput,
-        UpdatePluginRuntimeSnapshotInput, UpdatePluginTaskStatusInput, UpdateProfileInput,
-        UpsertModelProviderCatalogCacheInput, UpsertModelProviderMainInstanceInput,
-        UpsertModelProviderSecretInput, UpsertPluginArtifactInstanceInput,
-        UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
+        ReassignModelProviderInstancesInput, RoleConsolePolicyReader,
+        UpdateModelProviderInstanceInput, UpdatePluginArtifactSnapshotInput,
+        UpdatePluginDesiredStateInput, UpdatePluginRuntimeSnapshotInput,
+        UpdatePluginTaskStatusInput, UpdateProfileInput, UpsertModelProviderCatalogCacheInput,
+        UpsertModelProviderMainInstanceInput, UpsertModelProviderSecretInput,
+        UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
+        UpsertPluginPackageCatalogProjectionInput,
     },
 };
 use domain::{
@@ -58,6 +59,7 @@ struct MemoryModelProviderRepository {
     references: Arc<RwLock<HashMap<Uuid, u64>>>,
     audit_events: Arc<RwLock<Vec<String>>>,
     artifact_snapshot_updates: Arc<RwLock<Vec<Uuid>>>,
+    console_policies: Arc<RwLock<Vec<domain::RoleConsolePolicy>>>,
 }
 
 impl MemoryModelProviderRepository {
@@ -81,7 +83,28 @@ impl MemoryModelProviderRepository {
             references: Arc::new(RwLock::new(HashMap::new())),
             audit_events: Arc::new(RwLock::new(Vec::new())),
             artifact_snapshot_updates: Arc::new(RwLock::new(Vec::new())),
+            console_policies: Arc::new(RwLock::new(Vec::new())),
         }
+    }
+
+    async fn set_console_operation(&self, group_id: &str, operation_id: &str) {
+        let group = if group_id.starts_with("system.") {
+            domain::ConsolePolicyGroup::settings_feature(group_id)
+        } else {
+            domain::ConsolePolicyGroup::other(group_id)
+        }
+        .expect("model-provider policy group must be valid");
+        *self.console_policies.write().await = vec![domain::RoleConsolePolicy::new(
+            Uuid::now_v7(),
+            vec![domain::RoleConsoleGroupPolicy::custom(
+                group,
+                vec![domain::ConsoleOperationPolicy::simple(
+                    domain::ConsoleOperationId::try_from(operation_id)
+                        .expect("model-provider operation id must be valid"),
+                    true,
+                )],
+            )],
+        )];
     }
 
     async fn seed_installation(
@@ -257,6 +280,17 @@ impl MemoryModelProviderRepository {
             .get(&installation_id)
             .cloned()
             .expect("installation should exist for test")
+    }
+}
+
+#[async_trait]
+impl RoleConsolePolicyReader for MemoryModelProviderRepository {
+    async fn load_role_console_policies_for_user(
+        &self,
+        _user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        Ok(self.console_policies.read().await.clone())
     }
 }
 
@@ -1069,6 +1103,46 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
             result: ProviderInvocationResult::default(),
         })
     }
+}
+
+#[tokio::test]
+async fn ac_1281_model_provider_policy_only_allows_without_legacy_grant() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryModelProviderRepository::new(actor_with_permissions(workspace_id, &[]));
+    repository
+        .set_console_operation("system.model-providers", "model_providers.instances.view")
+        .await;
+
+    ModelProviderService::for_console_operation(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        "test-master-key",
+        domain::ConsolePolicyGroup::settings_feature("system.model-providers").unwrap(),
+        "model_providers.instances.view",
+    )
+    .list_instances(repository.actor.user_id)
+    .await
+    .expect("the exact model-provider operation must authorize the settings owner");
+}
+
+#[tokio::test]
+async fn ac_1281_model_provider_legacy_only_does_not_authorize() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryModelProviderRepository::new(actor_with_permissions(
+        workspace_id,
+        &[access_control::SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION],
+    ));
+
+    assert!(ModelProviderService::for_console_operation(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        "test-master-key",
+        domain::ConsolePolicyGroup::settings_feature("system.model-providers").unwrap(),
+        "model_providers.instances.view",
+    )
+    .list_instances(repository.actor.user_id)
+    .await
+    .is_err());
 }
 
 mod access_main_instance;

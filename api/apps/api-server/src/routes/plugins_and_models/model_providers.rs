@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode, header::ACCEPT_LANGUAGE},
+    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
+    Json, Router,
 };
 use control_plane::model_provider::{
     ClearModelProviderRequestLogsBatchCommand, ClearModelProviderRequestLogsContinuation,
@@ -36,7 +36,7 @@ use crate::{
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::{
-        console_route_assembly::{ConsoleRouteAssembly, console_get},
+        console_route_assembly::{console_get, ConsoleRouteAssembly},
         system::LocaleMetaResponse,
     },
 };
@@ -481,11 +481,18 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .merge(settings_routes::route_assembly())
 }
 
-fn service(state: &ApiState) -> ModelProviderService<MainDurableStore, ApiProviderRuntime> {
-    ModelProviderService::new(
+fn service(
+    state: &ApiState,
+    group_id: &'static str,
+    operation_id: &'static str,
+) -> ModelProviderService<MainDurableStore, ApiProviderRuntime> {
+    ModelProviderService::for_console_operation(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
         state.provider_secret_master_key.clone(),
+        domain::ConsolePolicyGroup::other(group_id)
+            .expect("compiled model-provider other group must be valid"),
+        operation_id,
     )
     .with_node_artifact_context(
         state.api_node_id.clone(),
@@ -946,7 +953,7 @@ pub async fn list_catalog(
 ) -> Result<Json<ApiSuccess<ModelProviderCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let locale_meta = resolve_locale_meta(&headers, query.locale, context.user.preferred_locale);
-    let catalog = settings_service(&state)
+    let catalog = settings_service(&state, "model_providers.catalog.view")
         .list_catalog(context.user.id, requested_locales(&locale_meta))
         .await?;
     Ok(Json(ApiSuccess::new(to_catalog_view_response(
@@ -967,7 +974,7 @@ pub async fn list_request_logs(
     Query(query): Query<ModelProviderRequestLogsQuery>,
 ) -> Result<Json<ApiSuccess<ModelProviderRequestLogsPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let page = settings_service(&state)
+    let page = settings_service(&state, "model_providers.request_logs.view")
         .list_request_logs(ListModelProviderRequestLogsCommand {
             actor: context.actor,
             application_name: query.application_name,
@@ -1027,7 +1034,7 @@ pub async fn delete_selected_request_logs(
         .iter()
         .map(|attempt_id| parse_uuid(attempt_id, "attempt_ids"))
         .collect::<Result<Vec<_>, _>>()?;
-    let deleted_count = settings_service(&state)
+    let deleted_count = settings_service(&state, "model_providers.request_logs.delete")
         .delete_selected_request_logs(DeleteSelectedModelProviderRequestLogsCommand {
             actor: context.actor,
             attempt_ids,
@@ -1071,7 +1078,7 @@ pub async fn clear_request_logs_batch(
         },
         None => ClearModelProviderRequestLogsContinuation::Start,
     };
-    let result = settings_service(&state)
+    let result = settings_service(&state, "model_providers.request_logs.clear")
         .clear_request_logs_batch(ClearModelProviderRequestLogsBatchCommand {
             actor: context.actor,
             continuation,
@@ -1134,7 +1141,7 @@ pub async fn list_instances(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<ModelProviderInstanceResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let instances = settings_service(&state)
+    let instances = settings_service(&state, "model_providers.instances.view")
         .list_instances(context.user.id)
         .await?;
     Ok(Json(ApiSuccess::new(
@@ -1156,7 +1163,7 @@ pub async fn create_instance(
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelProviderInstanceResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let created = settings_service(&state)
+    let created = settings_service(&state, "model_providers.instances.create")
         .create_instance(CreateModelProviderInstanceCommand {
             actor_user_id: context.user.id,
             installation_id: parse_uuid(&body.installation_id, "installation_id")?,
@@ -1202,7 +1209,7 @@ pub async fn update_instance(
 ) -> Result<Json<ApiSuccess<ModelProviderInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let updated = settings_service(&state)
+    let updated = settings_service(&state, "model_providers.instances.update")
         .update_instance(UpdateModelProviderInstanceCommand {
             actor_user_id: context.user.id,
             instance_id: parse_uuid(&id, "id")?,
@@ -1243,7 +1250,7 @@ pub async fn validate_instance(
 ) -> Result<Json<ApiSuccess<ValidateModelProviderResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let result = settings_service(&state)
+    let result = settings_service(&state, "model_providers.instances.validate")
         .validate_instance(context.user.id, parse_uuid(&id, "id")?)
         .await?;
     Ok(Json(ApiSuccess::new(to_validate_response(result))))
@@ -1261,9 +1268,13 @@ pub async fn get_balance(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderBalanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let result = service(&state)
-        .get_balance(context.user.id, parse_uuid(&id, "id")?)
-        .await?;
+    let result = service(
+        &state,
+        "other.model-providers",
+        "model_providers.balance.view",
+    )
+    .get_balance(context.user.id, parse_uuid(&id, "id")?)
+    .await?;
     Ok(Json(ApiSuccess::new(to_balance_response(result))))
 }
 
@@ -1284,7 +1295,7 @@ pub async fn get_main_instance(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderMainInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let view = settings_service(&state)
+    let view = settings_service(&state, "model_providers.main_instance.view")
         .get_main_instance(context.user.id, &provider_code)
         .await?;
     Ok(Json(ApiSuccess::new(to_main_instance_response(view))))
@@ -1318,7 +1329,7 @@ pub async fn update_main_instance(
                 .collect::<Result<Vec<_>, ApiError>>()
         })
         .transpose()?;
-    let view = settings_service(&state)
+    let view = settings_service(&state, "model_providers.main_instance.update")
         .update_main_instance(UpdateModelProviderMainInstanceCommand {
             actor_user_id: context.user.id,
             provider_code,
@@ -1344,7 +1355,7 @@ pub async fn preview_models(
 ) -> Result<Json<ApiSuccess<PreviewModelProviderModelsResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let preview = settings_service(&state)
+    let preview = settings_service(&state, "model_providers.preview.view")
         .preview_models(PreviewModelProviderModelsCommand {
             actor_user_id: context.user.id,
             installation_id: body
@@ -1386,7 +1397,7 @@ pub async fn reveal_secret(
 ) -> Result<Json<ApiSuccess<RevealModelProviderSecretResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let value = settings_service(&state)
+    let value = settings_service(&state, "model_providers.instances.secrets.reveal")
         .reveal_secret(context.user.id, parse_uuid(&id, "id")?, &body.key)
         .await?;
     Ok(Json(ApiSuccess::new(RevealModelProviderSecretResponse {
@@ -1407,7 +1418,7 @@ pub async fn list_models(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderModelCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let catalog = settings_service(&state)
+    let catalog = settings_service(&state, "model_providers.instances.models.view")
         .list_models(context.user.id, parse_uuid(&id, "id")?)
         .await?;
     Ok(Json(ApiSuccess::new(to_model_catalog_response(catalog))))
@@ -1426,7 +1437,7 @@ pub async fn refresh_models(
 ) -> Result<Json<ApiSuccess<ModelProviderModelCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let catalog = settings_service(&state)
+    let catalog = settings_service(&state, "model_providers.instances.models.refresh")
         .refresh_models(context.user.id, parse_uuid(&id, "id")?)
         .await?;
     Ok(Json(ApiSuccess::new(to_model_catalog_response(catalog))))
@@ -1445,7 +1456,7 @@ pub async fn delete_instance(
 ) -> Result<Json<ApiSuccess<DeletedResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    settings_service(&state)
+    settings_service(&state, "model_providers.instances.delete")
         .delete_instance(DeleteModelProviderInstanceCommand {
             actor_user_id: context.user.id,
             instance_id: parse_uuid(&id, "id")?,
@@ -1468,9 +1479,13 @@ pub async fn list_options(
 ) -> Result<Json<ApiSuccess<ModelProviderOptionsResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let locale_meta = resolve_locale_meta(&headers, query.locale, context.user.preferred_locale);
-    let options = service(&state)
-        .options(context.user.id, requested_locales(&locale_meta))
-        .await?;
+    let options = service(
+        &state,
+        "other.model-providers",
+        "model_providers.options.view",
+    )
+    .options(context.user.id, requested_locales(&locale_meta))
+    .await?;
     Ok(Json(ApiSuccess::new(to_options_view_response(
         locale_meta,
         options,
@@ -1480,7 +1495,7 @@ pub async fn list_options(
 #[cfg(test)]
 mod request_log_response_tests {
     use super::*;
-    use time::{Duration, macros::datetime};
+    use time::{macros::datetime, Duration};
 
     #[test]
     fn request_log_response_uses_persisted_duration_fields() {

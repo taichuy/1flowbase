@@ -108,10 +108,10 @@ where
     }
 }
 
-pub(super) fn ensure_model_provider_permission(
+pub(super) async fn ensure_model_provider_permission(
     actor: &domain::ActorContext,
     action: &str,
-    use_case: super::ModelProviderUseCase,
+    use_case: &super::ModelProviderUseCase,
 ) -> Result<(), ControlPlaneError> {
     match use_case {
         super::ModelProviderUseCase::BusinessActions
@@ -121,11 +121,19 @@ pub(super) fn ensure_model_provider_permission(
         {
             Ok(())
         }
-        super::ModelProviderUseCase::ModelProviderSettings
-            if actor.is_root
-                || actor.has_permission(
-                    access_control::SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION,
-                ) =>
+        super::ModelProviderUseCase::ConsoleOperation {
+            policy_reader,
+            group,
+            operation_id,
+        } if actor.is_root
+            || domain::effective_console_simple_operation(
+                &policy_reader
+                    .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+                    .await
+                    .map_err(|_| ControlPlaneError::PermissionDenied("permission_denied"))?,
+                group,
+                operation_id,
+            ) =>
         {
             Ok(())
         }

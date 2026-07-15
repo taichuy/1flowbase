@@ -6,7 +6,7 @@ use std::{
 use axum::{
     body::Body,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
+    http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
     response::Response,
 };
 
@@ -105,9 +105,13 @@ pub async fn read_provider_icon(
     Path(provider_code): Path<String>,
 ) -> Result<Response, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let source = super::service(&state)
-        .provider_icon_source(context.user.id, &provider_code)
-        .await?;
+    let source = super::service(
+        &state,
+        "other.model-providers",
+        "model_providers.icons.view",
+    )
+    .provider_icon_source(context.user.id, &provider_code)
+    .await?;
     let icon_path = installation_icon_path(&source.installed_path, &source.metadata_json)
         .await
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(

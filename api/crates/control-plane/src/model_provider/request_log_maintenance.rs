@@ -58,7 +58,7 @@ where
         &self,
         command: ListModelProviderRequestLogsCommand,
     ) -> Result<ModelProviderRequestLogsPage> {
-        ensure_model_provider_permission(&command.actor, "view", self.use_case)?;
+        ensure_model_provider_permission(&command.actor, "view", &self.use_case).await?;
         self.repository
             .list_model_provider_request_logs_page(ListModelProviderRequestLogsPageInput {
                 scope_id: command.actor.current_workspace_id,
@@ -79,7 +79,7 @@ where
         &self,
         command: DeleteSelectedModelProviderRequestLogsCommand,
     ) -> Result<u64> {
-        ensure_model_provider_permission(&command.actor, "manage", self.use_case)?;
+        ensure_model_provider_permission(&command.actor, "manage", &self.use_case).await?;
         if command.attempt_ids.is_empty()
             || command.attempt_ids.len() > MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT
         {
@@ -98,7 +98,7 @@ where
         &self,
         command: ClearModelProviderRequestLogsBatchCommand,
     ) -> Result<ClearModelProviderRequestLogsBatchView> {
-        ensure_model_provider_permission(&command.actor, "manage", self.use_case)?;
+        ensure_model_provider_permission(&command.actor, "manage", &self.use_case).await?;
         let result = self
             .repository
             .clear_model_provider_request_logs_batch(ClearModelProviderRequestLogsBatchInput {
