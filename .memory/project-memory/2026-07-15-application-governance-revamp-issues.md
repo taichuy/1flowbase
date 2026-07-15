@@ -52,6 +52,13 @@ scope:
 - 发布单向是后端能力缺口：port 层只有 `create_active_application_publication_version` 与 `set_application_api_enabled`，没有下线命令；workflow 类型前端被过滤掉 API 分区，连开关都不可达。
 - schedule 调度只读 `workflow_schedule_triggers.enabled` 与 publication 无关，状态列会失真——实现 #1286 时必须核实调度执行的是草稿还是发布快照，再定发布语义方案（发布=创建 publication+启用 trigger，或 调度=enabled AND published）。
 
+## #1286 实现进展（2026-07-16 核实）
+
+- 已核实：schedule 调度真值其实**同时**依赖 publication——`workflow_schedule.rs` 的 dispatch 要求存在 active + api_enabled publication，trigger.enabled 只是附加条件。故发布语义采用「调度 = enabled AND published」，unpublish 不触碰 trigger 配置。
+- 已合入 dev（commit 0ae048298）：control-plane `unpublish` 命令 + port `deactivate_application_publication_versions` + postgres/in-memory 双实现 + `DELETE /api/console/applications/{id}/api-publication` 路由 + 设置页「退回草稿」菜单项。附带修复 postgres `load_active_application_publication` 漏 `active` 过滤的存量缺陷。
+- AC-001/002/003/004/006 已由 control-plane 6 测 + 路由 2 测结算；AC-005（单一开关心智）未完成。
+- 剩余两项都是前端 UI，按用户偏好（前端视觉先看效果再提交）停在此等确认：① workflow 编辑器可达的发布/退回入口（workflow 应用当前 UI 无法发布，`saveWorkflowScheduleTrigger`/`publishApplicationApiVersion` 在 workflow 前端零调用方）；② `ApplicationApiPage` 把 `api_enabled` Switch 收敛为发布状态语义。
+
 ## 截止与状态
 
-- 无硬截止；用户 2026-07-15 指示"继续"，按依赖顺序从 #1286 开始实现，落 dev 分支。
+- 无硬截止；用户 2026-07-15 指示"继续"，按依赖顺序从 #1286 开始实现，落 dev 分支。#1287/#1288/#1289/#1290 尚未动工。
