@@ -15,6 +15,7 @@ import {
   replaceConsoleRoleFrontstageRoutes,
   replaceConsoleRolePermissions,
   updateConsoleRole,
+  type ConsolePolicyCatalog,
   type ReplaceConsoleRoleDataPolicyInput
 } from '../console-roles';
 
@@ -85,7 +86,30 @@ describe('console roles client', () => {
     });
   });
 
-  test('uses the console policy catalog and role policy contract (Issue #1259 AC-003/004)', async () => {
+  test('requests the localized console policy catalog and exposes its echoed locale (Issue #1259 AC-003/004/009)', async () => {
+    const catalog: ConsolePolicyCatalog = {
+      schema_version: '2026-07-15',
+      locale: 'en_US',
+      group_mode_options: [
+        { value: 'disabled', label: 'Disabled', description: 'No operations' },
+        { value: 'full', label: 'Full', description: 'All operations' },
+        { value: 'custom', label: 'Custom', description: 'Explicit operations' }
+      ],
+      groups: [],
+      resources: []
+    };
+    vi.mocked(transport.apiFetch).mockResolvedValueOnce(catalog as never);
+
+    await expect(
+      fetchConsoleRoleConsolePolicyCatalog('en_US')
+    ).resolves.toEqual(catalog);
+    expect(transport.apiFetch).toHaveBeenLastCalledWith({
+      path: '/api/console/settings/roles/console-policy-catalog?locale=en_US',
+      baseUrl: undefined
+    });
+  });
+
+  test('uses the console policy and role policy contract (Issue #1259 AC-003/004)', async () => {
     const input = {
       groups: [
         {
@@ -108,9 +132,6 @@ describe('console roles client', () => {
       ]
     };
 
-    await expect(fetchConsoleRoleConsolePolicyCatalog()).resolves.toMatchObject({
-      path: '/api/console/settings/roles/console-policy-catalog'
-    });
     await expect(fetchConsoleRoleConsolePolicy('member')).resolves.toMatchObject({
       path: '/api/console/settings/roles/member/console-policy'
     });
