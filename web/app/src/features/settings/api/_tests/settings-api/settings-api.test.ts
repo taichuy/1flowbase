@@ -27,7 +27,7 @@ import {
   replaceConsoleRolePermissions,
   listConsoleModelProviderCatalog,
   listConsoleModelProviderInstances,
-  listConsoleModelProviderOptions,
+  listConsoleSettingsModelProviderOptions,
   getConsoleModelProviderMainInstance,
   getConsoleModelProviderModels,
   previewConsoleModelProviderModels,
@@ -511,7 +511,7 @@ describe('settings api wrappers', () => {
 
     expect(listConsoleModelProviderCatalog).toHaveBeenCalledTimes(1);
     expect(listConsoleModelProviderInstances).toHaveBeenCalledTimes(1);
-    expect(listConsoleModelProviderOptions).toHaveBeenCalledTimes(1);
+    expect(listConsoleSettingsModelProviderOptions).toHaveBeenCalledTimes(1);
     expect(getConsoleModelProviderMainInstance).toHaveBeenCalledWith(
       'openai_compatible'
     );

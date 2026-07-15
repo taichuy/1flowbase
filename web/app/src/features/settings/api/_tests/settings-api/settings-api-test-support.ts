@@ -118,7 +118,7 @@ vi.mock('@1flowbase/api-client', () => ({
     .fn()
     .mockResolvedValue(modelProviderCatalogContract),
   listConsoleModelProviderInstances: vi.fn().mockResolvedValue([]),
-  listConsoleModelProviderOptions: vi
+  listConsoleSettingsModelProviderOptions: vi
     .fn()
     .mockResolvedValue(modelProviderApiFixtures.options),
   getConsoleModelProviderMainInstance: vi

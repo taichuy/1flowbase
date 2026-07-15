@@ -325,7 +325,7 @@ export function listConsoleModelProviderCatalog(
 ) {
   return apiFetch<ConsoleModelProviderCatalogResponse>({
     path: buildModelProviderCatalogPath(
-      '/api/console/model-providers/catalog',
+      '/api/console/settings/model-providers/catalog',
       filter
     ),
     baseUrl
@@ -334,7 +334,7 @@ export function listConsoleModelProviderCatalog(
 
 export function listConsoleModelProviderInstances(baseUrl?: string) {
   return apiFetch<ConsoleModelProviderInstance[]>({
-    path: '/api/console/model-providers',
+    path: '/api/console/settings/model-providers/instances',
     baseUrl
   });
 }
@@ -345,7 +345,7 @@ export function createConsoleModelProviderInstance(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleModelProviderInstance>({
-    path: '/api/console/model-providers',
+    path: '/api/console/settings/model-providers/instances',
     method: 'POST',
     body: input,
     csrfToken,
@@ -359,7 +359,7 @@ export function previewConsoleModelProviderModels(
   baseUrl?: string
 ) {
   return apiFetch<PreviewConsoleModelProviderModelsResponse>({
-    path: '/api/console/model-providers/preview-models',
+    path: '/api/console/settings/model-providers/preview-models',
     method: 'POST',
     body: input,
     csrfToken,
@@ -374,7 +374,7 @@ export function updateConsoleModelProviderInstance(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleModelProviderInstance>({
-    path: `/api/console/model-providers/${instanceId}`,
+    path: `/api/console/settings/model-providers/instances/${instanceId}`,
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -387,7 +387,7 @@ export function getConsoleModelProviderMainInstance(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleModelProviderMainInstance>({
-    path: `/api/console/model-providers/providers/${providerCode}/main-instance`,
+    path: `/api/console/settings/model-providers/providers/${providerCode}/main-instance`,
     baseUrl
   });
 }
@@ -399,7 +399,7 @@ export function updateConsoleModelProviderMainInstance(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleModelProviderMainInstance>({
-    path: `/api/console/model-providers/providers/${providerCode}/main-instance`,
+    path: `/api/console/settings/model-providers/providers/${providerCode}/main-instance`,
     method: 'PUT',
     body: input,
     csrfToken,
@@ -413,7 +413,7 @@ export function validateConsoleModelProviderInstance(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleValidateModelProviderResult>({
-    path: `/api/console/model-providers/${instanceId}/validate`,
+    path: `/api/console/settings/model-providers/instances/${instanceId}/validate`,
     method: 'POST',
     csrfToken,
     baseUrl
@@ -425,7 +425,7 @@ export function getConsoleModelProviderModels(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleModelProviderModelCatalog>({
-    path: `/api/console/model-providers/${instanceId}/models`,
+    path: `/api/console/settings/model-providers/instances/${instanceId}/models`,
     baseUrl
   });
 }
@@ -436,7 +436,7 @@ export function refreshConsoleModelProviderModels(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleModelProviderModelCatalog>({
-    path: `/api/console/model-providers/${instanceId}/models/refresh`,
+    path: `/api/console/settings/model-providers/instances/${instanceId}/models/refresh`,
     method: 'POST',
     csrfToken,
     baseUrl
@@ -450,7 +450,7 @@ export function revealConsoleModelProviderSecret(
   baseUrl?: string
 ) {
   return apiFetch<RevealConsoleModelProviderSecretResult>({
-    path: `/api/console/model-providers/${instanceId}/secrets/reveal`,
+    path: `/api/console/settings/model-providers/instances/${instanceId}/secrets/reveal`,
     method: 'POST',
     body: { key },
     csrfToken,
@@ -464,7 +464,7 @@ export function deleteConsoleModelProviderInstance(
   baseUrl?: string
 ) {
   return apiFetch<DeleteConsoleModelProviderResult>({
-    path: `/api/console/model-providers/${instanceId}`,
+    path: `/api/console/settings/model-providers/instances/${instanceId}`,
     method: 'DELETE',
     csrfToken,
     baseUrl
@@ -474,6 +474,13 @@ export function deleteConsoleModelProviderInstance(
 export function listConsoleModelProviderOptions(baseUrl?: string) {
   return apiFetch<ConsoleModelProviderOptions>({
     path: '/api/console/model-providers/options',
+    baseUrl
+  });
+}
+
+export function listConsoleSettingsModelProviderOptions(baseUrl?: string) {
+  return apiFetch<ConsoleModelProviderOptions>({
+    path: '/api/console/settings/model-providers/options',
     baseUrl
   });
 }
@@ -490,7 +497,7 @@ export function listConsoleModelProviderRequestLogs(
   });
   const query = params.toString();
   return apiFetch<ConsoleModelProviderRequestLogsPage>({
-    path: `/api/console/model-providers/request-logs${query ? `?${query}` : ''}`,
+    path: `/api/console/settings/model-providers/request-logs${query ? `?${query}` : ''}`,
     baseUrl
   });
 }
@@ -501,7 +508,7 @@ export function deleteConsoleModelProviderRequestLogs(
   baseUrl?: string
 ) {
   return apiFetch<DeleteConsoleModelProviderRequestLogsResult>({
-    path: '/api/console/model-providers/request-logs',
+    path: '/api/console/settings/model-providers/request-logs',
     method: 'DELETE',
     body: input,
     csrfToken,
@@ -515,7 +522,7 @@ export function clearConsoleModelProviderRequestLogsBatch(
   baseUrl?: string
 ) {
   return apiFetch<ClearConsoleModelProviderRequestLogsBatchResult>({
-    path: '/api/console/model-providers/request-logs/clear',
+    path: '/api/console/settings/model-providers/request-logs/clear',
     method: 'POST',
     body: input,
     csrfToken,

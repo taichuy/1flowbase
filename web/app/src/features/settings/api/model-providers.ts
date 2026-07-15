@@ -7,7 +7,7 @@ import {
   getConsoleModelProviderModels,
   listConsoleModelProviderCatalog,
   listConsoleModelProviderInstances,
-  listConsoleModelProviderOptions,
+  listConsoleSettingsModelProviderOptions,
   listConsoleModelProviderRequestLogs,
   previewConsoleModelProviderModels,
   revealConsoleModelProviderSecret,
@@ -257,7 +257,7 @@ export function fetchSettingsModelProviderInstances() {
 }
 
 export function fetchSettingsModelProviderOptions() {
-  return listConsoleModelProviderOptions();
+  return listConsoleSettingsModelProviderOptions();
 }
 
 export function fetchSettingsModelProviderMainInstance(providerCode: string) {

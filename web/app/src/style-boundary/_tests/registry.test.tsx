@@ -303,7 +303,7 @@ describe('style boundary registry', () => {
     ).toBeInTheDocument();
 
     const response = await fetch(
-      'http://127.0.0.1:7800/api/console/model-providers'
+      'http://127.0.0.1:7800/api/console/settings/model-providers/instances'
     );
     const payload = await response.json();
     const instance = payload.data[0] as Record<string, unknown>;

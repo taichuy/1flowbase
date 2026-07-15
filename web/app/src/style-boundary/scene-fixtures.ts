@@ -840,7 +840,7 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
-      requestUrl.pathname === '/api/console/model-providers/options'
+      requestUrl.pathname === '/api/console/settings/model-providers/options'
     ) {
       return new Response(
         JSON.stringify({
@@ -856,7 +856,7 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
-      requestUrl.pathname === '/api/console/model-providers/catalog'
+      requestUrl.pathname === '/api/console/settings/model-providers/catalog'
     ) {
       return new Response(
         JSON.stringify({
@@ -936,7 +936,7 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
-      url.endsWith('/api/console/model-providers')
+      url.endsWith('/api/console/settings/model-providers/instances')
     ) {
       return new Response(
         JSON.stringify({
