@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import {
   Button,
   Checkbox,
@@ -33,7 +34,8 @@ import { useAuthStore } from '../../../state/auth-store';
 import {
   fetchSettingsConsolePolicyCatalog,
   settingsConsolePolicyCatalogQueryKey,
-  type SettingsConsolePolicyCatalog
+  type SettingsConsolePolicyCatalog,
+  type SettingsConsolePolicyCatalogLocale
 } from '../api/permissions';
 import {
   createSettingsRole,
@@ -53,6 +55,7 @@ import {
 } from '../api/roles';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
 import { i18nText } from '../../../shared/i18n/text';
+import { FALLBACK_APP_LOCALE, toAppLocale } from '../../../shared/i18n/locales';
 import { RoleDataPolicySection } from './role-permissions/RoleDataPolicySection';
 
 const BACKEND_SYSTEM_SETTINGS_TAB = i18nText(
@@ -66,28 +69,120 @@ const ROLE_TABLE_GENERAL_TAB = 'table-general-policy';
 const ROLE_TABLE_SINGLE_TAB = 'table-single-policy';
 
 type ConsolePolicyCatalogGroup = SettingsConsolePolicyCatalog['groups'][number];
+type ConsolePolicyCatalogOperation = ConsolePolicyCatalogGroup['operations'][number];
 type ConsolePolicyGroup = SettingsRoleConsolePolicy['groups'][number];
+type ConsolePolicyOperation = ConsolePolicyGroup['operations'][number];
+type ConsolePolicyRowOperation = Extract<
+  ConsolePolicyOperation,
+  { kind: 'row' }
+>;
 
-function consolePolicyModeLabel(mode: ConsolePolicyGroup['mode']) {
-  switch (mode) {
-    case 'disabled':
-      return i18nText('settings', 'auto.permission_policy_mode_disabled');
-    case 'full':
-      return i18nText('settings', 'auto.permission_policy_mode_full');
-    case 'custom':
-      return i18nText('settings', 'auto.permission_policy_mode_custom');
-  }
+function disabledConsolePolicyGroup(
+  catalogGroup: ConsolePolicyCatalogGroup
+): ConsolePolicyGroup {
+  return {
+    kind: catalogGroup.kind,
+    group_id: catalogGroup.group_id,
+    mode: 'disabled',
+    operations: []
+  };
 }
 
-function consolePolicyScopeLabel(scope: Extract<ConsolePolicyGroup['operations'][number], { kind: 'row' }>['scope']) {
-  switch (scope) {
-    case 'disabled':
-      return i18nText('settings', 'auto.disabled');
-    case 'own':
-      return i18nText('settings', 'auto.own_records');
-    case 'scope_all':
-      return i18nText('settings', 'auto.scope_all_records');
+function policyOperationFromFullProfile(
+  operation: ConsolePolicyCatalogOperation
+): ConsolePolicyOperation {
+  if (operation.full_profile.kind === 'simple') {
+    return {
+      operation_id: operation.operation_id,
+      kind: 'simple',
+      enabled: operation.full_profile.enabled
+    };
   }
+
+  return {
+    operation_id: operation.operation_id,
+    kind: 'row',
+    scope: operation.full_profile.scope
+  };
+}
+
+function disabledConsolePolicyOperation(
+  operation: ConsolePolicyCatalogOperation
+): ConsolePolicyOperation {
+  if (operation.full_profile.kind === 'simple') {
+    return {
+      operation_id: operation.operation_id,
+      kind: 'simple',
+      enabled: false
+    };
+  }
+
+  return {
+    operation_id: operation.operation_id,
+    kind: 'row',
+    scope: 'disabled'
+  };
+}
+
+function matchesCatalogOperationKind(
+  policyOperation: ConsolePolicyOperation,
+  catalogOperation: ConsolePolicyCatalogOperation
+) {
+  return policyOperation.kind === catalogOperation.full_profile.kind;
+}
+
+function detailPolicyOperation(
+  policyGroup: ConsolePolicyGroup,
+  catalogOperation: ConsolePolicyCatalogOperation
+): ConsolePolicyOperation {
+  if (policyGroup.mode === 'full') {
+    return policyOperationFromFullProfile(catalogOperation);
+  }
+
+  if (policyGroup.mode === 'disabled') {
+    return disabledConsolePolicyOperation(catalogOperation);
+  }
+
+  const storedOperation = policyGroup.operations.find(
+    (operation) => operation.operation_id === catalogOperation.operation_id
+  );
+  if (storedOperation && matchesCatalogOperationKind(storedOperation, catalogOperation)) {
+    return storedOperation;
+  }
+
+  return disabledConsolePolicyOperation(catalogOperation);
+}
+
+function materializeDetailPolicyOperations(
+  policyGroup: ConsolePolicyGroup,
+  catalogGroup: ConsolePolicyCatalogGroup
+) {
+  return catalogGroup.operations.map((catalogOperation) =>
+    detailPolicyOperation(policyGroup, catalogOperation)
+  );
+}
+
+function sameConsolePolicyGroup(
+  left: Pick<ConsolePolicyGroup, 'kind' | 'group_id'>,
+  right: Pick<ConsolePolicyGroup, 'kind' | 'group_id'>
+) {
+  return left.kind === right.kind && left.group_id === right.group_id;
+}
+
+function replaceConsolePolicyGroup(
+  groups: ConsolePolicyGroup[],
+  nextGroup: ConsolePolicyGroup
+) {
+  const existingIndex = groups.findIndex((group) =>
+    sameConsolePolicyGroup(group, nextGroup)
+  );
+  if (existingIndex === -1) {
+    return [...groups, nextGroup];
+  }
+
+  return groups.map((group, index) =>
+    index === existingIndex ? nextGroup : group
+  );
 }
 
 export function RolePermissionPanel({
@@ -95,6 +190,11 @@ export function RolePermissionPanel({
 }: {
   canManageRoles: boolean;
 }) {
+  const { i18n } = useTranslation();
+  const consolePolicyCatalogLocale: SettingsConsolePolicyCatalogLocale =
+    toAppLocale(i18n.resolvedLanguage) ??
+    toAppLocale(i18n.language) ??
+    FALLBACK_APP_LOCALE;
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
   const [messageApi, contextHolder] = message.useMessage();
@@ -124,8 +224,8 @@ export function RolePermissionPanel({
   });
 
   const consolePolicyCatalogQuery = useQuery({
-    queryKey: settingsConsolePolicyCatalogQueryKey,
-    queryFn: fetchSettingsConsolePolicyCatalog
+    queryKey: settingsConsolePolicyCatalogQueryKey(consolePolicyCatalogLocale),
+    queryFn: () => fetchSettingsConsolePolicyCatalog(consolePolicyCatalogLocale)
   });
 
   const roleFrontstageRoutesQuery = useQuery({
@@ -342,32 +442,40 @@ export function RolePermissionPanel({
     });
   };
 
-  const saveConsolePolicyGroups = (
-    groups: SettingsRoleConsolePolicy['groups']
-  ) => {
-    setConsolePolicyGroups(groups);
-    replaceConsolePolicyMutation.mutate(groups);
-  };
+  const saveConsolePolicyGroups = useCallback(
+    (groups: SettingsRoleConsolePolicy['groups']) => {
+      setConsolePolicyGroups(groups);
+      replaceConsolePolicyMutation.mutate(groups);
+    },
+    [replaceConsolePolicyMutation]
+  );
 
-  const openConsolePolicyDetail = (catalogGroup: ConsolePolicyCatalogGroup) => {
-    const policyGroup = consolePolicyGroups.find(
-      (group) =>
-        group.kind === catalogGroup.kind && group.group_id === catalogGroup.group_id
-    );
-    if (!policyGroup) return;
+  const policyGroupForCatalogGroup = useCallback(
+    (catalogGroup: ConsolePolicyCatalogGroup) =>
+      consolePolicyGroups.find((group) =>
+        sameConsolePolicyGroup(group, catalogGroup)
+      ) ?? disabledConsolePolicyGroup(catalogGroup),
+    [consolePolicyGroups]
+  );
 
-    setConsolePolicyDetail({
-      catalogGroup,
-      policyGroup: {
-        ...policyGroup,
-        operations: policyGroup.operations.map((operation) => ({ ...operation }))
-      }
-    });
-  };
+  const openConsolePolicyDetail = useCallback(
+    (catalogGroup: ConsolePolicyCatalogGroup) => {
+      const policyGroup = policyGroupForCatalogGroup(catalogGroup);
+
+      setConsolePolicyDetail({
+        catalogGroup,
+        policyGroup: {
+          ...policyGroup,
+          operations: policyGroup.operations.map((operation) => ({ ...operation }))
+        }
+      });
+    },
+    [policyGroupForCatalogGroup]
+  );
 
   const updateConsolePolicyDetailOperation = (
     operationId: string,
-    value: boolean | Extract<ConsolePolicyGroup['operations'][number], { kind: 'row' }>['scope']
+    value: boolean | ConsolePolicyRowOperation['scope']
   ) => {
     setConsolePolicyDetail((current) => {
       if (!current) return current;
@@ -377,7 +485,7 @@ export function RolePermissionPanel({
       if (!catalogOperation) return current;
 
       const nextPolicyOperation =
-        catalogOperation.authorization.kind === 'simple'
+        catalogOperation.full_profile.kind === 'simple'
           ? {
               operation_id: operationId,
               kind: 'simple' as const,
@@ -386,15 +494,15 @@ export function RolePermissionPanel({
           : {
               operation_id: operationId,
               kind: 'row' as const,
-              scope: value as Extract<
-                ConsolePolicyGroup['operations'][number],
-                { kind: 'row' }
-              >['scope']
+              scope: value as ConsolePolicyRowOperation['scope']
             };
-      const existingOperationIndex = current.policyGroup.operations.findIndex(
+      const operations = materializeDetailPolicyOperations(
+        current.policyGroup,
+        current.catalogGroup
+      );
+      const existingOperationIndex = operations.findIndex(
         (operation) => operation.operation_id === operationId
       );
-      const operations = [...current.policyGroup.operations];
       if (existingOperationIndex === -1) {
         operations.push(nextPolicyOperation);
       } else {
@@ -403,18 +511,20 @@ export function RolePermissionPanel({
 
       return {
         ...current,
-        policyGroup: { ...current.policyGroup, operations }
+        policyGroup: {
+          ...current.policyGroup,
+          mode: 'custom',
+          operations
+        }
       };
     });
   };
 
   const saveConsolePolicyDetail = () => {
     if (!consolePolicyDetail) return;
-    const nextGroups = consolePolicyGroups.map((group) =>
-      group.kind === consolePolicyDetail.policyGroup.kind &&
-      group.group_id === consolePolicyDetail.policyGroup.group_id
-        ? consolePolicyDetail.policyGroup
-        : group
+    const nextGroups = replaceConsolePolicyGroup(
+      consolePolicyGroups,
+      consolePolicyDetail.policyGroup
     );
     setConsolePolicyDetail(null);
     saveConsolePolicyGroups(nextGroups);
@@ -422,33 +532,22 @@ export function RolePermissionPanel({
 
   const permissionTabItems = useMemo(() => {
     const catalogGroups = consolePolicyCatalogQuery.data?.groups ?? [];
+    const groupModeOptions =
+      consolePolicyCatalogQuery.data?.group_mode_options ?? [];
     const policyTableRows = (kind: ConsolePolicyCatalogGroup['kind']) =>
       catalogGroups
         .filter((catalogGroup) => catalogGroup.kind === kind)
-        .map((catalogGroup) => ({
-          key: `${catalogGroup.kind}:${catalogGroup.group_id}`,
+        .map((catalogGroup, displayKey) => ({
+          display_key: displayKey,
           catalogGroup,
-          policyGroup: consolePolicyGroups.find(
-            (group) =>
-              group.kind === catalogGroup.kind &&
-              group.group_id === catalogGroup.group_id
-          )
-        }))
-        .filter(
-          (
-            row
-          ): row is {
-            key: string;
-            catalogGroup: ConsolePolicyCatalogGroup;
-            policyGroup: ConsolePolicyGroup;
-          } => Boolean(row.policyGroup)
-        );
+          policyGroup: policyGroupForCatalogGroup(catalogGroup)
+        }));
 
     const renderConsolePolicyTable = (
       kind: ConsolePolicyCatalogGroup['kind']
     ) => (
       <Table
-        rowKey="key"
+        rowKey="display_key"
         pagination={false}
         dataSource={policyTableRows(kind)}
         columns={[
@@ -487,14 +586,14 @@ export function RolePermissionPanel({
                 disabled={!canManageRoles || !selectedRole?.is_editable}
                 checked={row.policyGroup.mode !== 'disabled'}
                 onChange={(event) => {
-                  const nextGroups = consolePolicyGroups.map((group) =>
-                    group.kind === row.catalogGroup.kind &&
-                    group.group_id === row.catalogGroup.group_id
-                      ? {
-                          ...group,
-                          mode: event.target.checked ? ('full' as const) : ('disabled' as const)
-                        }
-                      : group
+                  const nextGroup: ConsolePolicyGroup = {
+                    ...row.policyGroup,
+                    mode: event.target.checked ? 'full' : 'disabled',
+                    operations: []
+                  };
+                  const nextGroups = replaceConsolePolicyGroup(
+                    consolePolicyGroups,
+                    nextGroup
                   );
                   saveConsolePolicyGroups(nextGroups);
                 }}
@@ -507,7 +606,12 @@ export function RolePermissionPanel({
             render: (
               _: unknown,
               row: ReturnType<typeof policyTableRows>[number]
-            ) => <Tag>{consolePolicyModeLabel(row.policyGroup.mode)}</Tag>
+            ) => {
+              const modeOption = groupModeOptions.find(
+                (option) => option.value === row.policyGroup.mode
+              );
+              return modeOption ? <Tag>{modeOption.label}</Tag> : null;
+            }
           },
           {
             title: i18nText('settings', 'auto.operation'),
@@ -515,20 +619,49 @@ export function RolePermissionPanel({
             render: (
               _: unknown,
               row: ReturnType<typeof policyTableRows>[number]
-            ) => (
-              <Button
-                type="link"
-                aria-label={i18nText(
-                  'settings',
-                  'auto.permission_policy_details',
-                  { value1: row.catalogGroup.label }
-                )}
-                disabled={!canManageRoles || !selectedRole?.is_editable}
-                onClick={() => openConsolePolicyDetail(row.catalogGroup)}
-              >
-                {i18nText('settings', 'auto.permission_policy_details_text')}
-              </Button>
-            )
+            ) => {
+              const fullModeOption = groupModeOptions.find(
+                (option) => option.value === 'full'
+              );
+              const restoreFullLabel = fullModeOption
+                ? `${i18nText('settings', 'auto.restore')} ${fullModeOption.label}`
+                : null;
+              const canEdit = canManageRoles && selectedRole?.is_editable;
+              return (
+                <Space size={0}>
+                  {row.policyGroup.mode === 'custom' && restoreFullLabel ? (
+                    <Button
+                      type="link"
+                      aria-label={restoreFullLabel}
+                      disabled={!canEdit}
+                      onClick={() =>
+                        saveConsolePolicyGroups(
+                          replaceConsolePolicyGroup(consolePolicyGroups, {
+                            ...row.policyGroup,
+                            mode: 'full',
+                            operations: []
+                          })
+                        )
+                      }
+                    >
+                      {restoreFullLabel}
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="link"
+                    aria-label={i18nText(
+                      'settings',
+                      'auto.permission_policy_details',
+                      { value1: row.catalogGroup.label }
+                    )}
+                    disabled={!canEdit}
+                    onClick={() => openConsolePolicyDetail(row.catalogGroup)}
+                  >
+                    {i18nText('settings', 'auto.permission_policy_details_text')}
+                  </Button>
+                </Space>
+              );
+            }
           }
         ]}
       />
@@ -636,9 +769,12 @@ export function RolePermissionPanel({
     dataPolicyFormId,
     displayedCheckedRouteIds,
     localCheckedRouteIds,
+    openConsolePolicyDetail,
+    policyGroupForCatalogGroup,
     replaceFrontstageRoutesMutation,
     roleFrontstageRoutesQuery.data,
     routeKindById,
+    saveConsolePolicyGroups,
     selectedRole
   ]);
 
@@ -1024,11 +1160,14 @@ export function RolePermissionPanel({
                 </Typography.Paragraph>
               ) : null}
               <Table
-                rowKey="operation_id"
+                rowKey="display_key"
                 pagination={false}
-                dataSource={[...consolePolicyDetail.catalogGroup.operations].sort(
-                  (left, right) => left.order - right.order
-                )}
+                dataSource={[...consolePolicyDetail.catalogGroup.operations]
+                  .sort((left, right) => left.order - right.order)
+                  .map((operation, displayKey) => ({
+                    ...operation,
+                    display_key: displayKey
+                  }))}
                 columns={[
                   {
                     title: i18nText('settings', 'auto.permission_policy_operation'),
@@ -1055,17 +1194,17 @@ export function RolePermissionPanel({
                       operation: ConsolePolicyCatalogGroup['operations'][number]
                     ) => {
                       const policyOperation =
-                        consolePolicyDetail.policyGroup.operations.find(
-                          (candidate) =>
-                            candidate.operation_id === operation.operation_id
+                        detailPolicyOperation(
+                          consolePolicyDetail.policyGroup,
+                          operation
                         );
 
-                      if (operation.authorization.kind === 'simple') {
+                      if (operation.full_profile.kind === 'simple') {
                         return (
                           <Checkbox
                             aria-label={operation.label}
                             checked={
-                              policyOperation?.kind === 'simple' &&
+                              policyOperation.kind === 'simple' &&
                               policyOperation.enabled
                             }
                             disabled={
@@ -1084,7 +1223,7 @@ export function RolePermissionPanel({
                       }
 
                       const scope =
-                        policyOperation?.kind === 'row'
+                        policyOperation.kind === 'row'
                           ? policyOperation.scope
                           : 'disabled';
                       return (
@@ -1099,27 +1238,14 @@ export function RolePermissionPanel({
                             !selectedRole?.is_editable ||
                             replaceConsolePolicyMutation.isPending
                           }
-                          options={[
-                            {
-                              value: 'disabled',
-                              label: consolePolicyScopeLabel('disabled')
-                            },
-                            {
-                              value: 'own',
-                              label: consolePolicyScopeLabel('own')
-                            },
-                            {
-                              value: 'scope_all',
-                              label: consolePolicyScopeLabel('scope_all')
-                            }
-                          ]}
+                          options={operation.allowed_row_scopes.map((option) => ({
+                            value: option.value,
+                            label: option.label
+                          }))}
                           onChange={(value) =>
                             updateConsolePolicyDetailOperation(
                               operation.operation_id,
-                              value as Extract<
-                                ConsolePolicyGroup['operations'][number],
-                                { kind: 'row' }
-                              >['scope']
+                              value as ConsolePolicyRowOperation['scope']
                             )
                           }
                         />

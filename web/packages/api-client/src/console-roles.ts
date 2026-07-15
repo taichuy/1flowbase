@@ -20,6 +20,13 @@ export interface ConsoleRolePermissions {
 export type ConsolePolicyGroupKind = 'settings_feature' | 'other';
 export type ConsolePolicyMode = 'disabled' | 'full' | 'custom';
 export type ConsolePolicyRowScope = 'disabled' | 'own' | 'scope_all';
+export type ConsolePolicyCatalogLocale = 'zh_Hans' | 'en_US';
+
+export interface ConsolePolicyCatalogOption<TValue extends string = string> {
+  value: TValue;
+  label: string;
+  description: string;
+}
 
 export interface ConsolePolicyOperationSimpleAuthorization {
   kind: 'simple';
@@ -35,11 +42,27 @@ export type ConsolePolicyOperationAuthorization =
   | ConsolePolicyOperationSimpleAuthorization
   | ConsolePolicyOperationResourceActionAuthorization;
 
+export interface ConsolePolicyCatalogSimpleFullProfile {
+  kind: 'simple';
+  enabled: boolean;
+}
+
+export interface ConsolePolicyCatalogRowFullProfile {
+  kind: 'row';
+  scope: ConsolePolicyRowScope;
+}
+
+export type ConsolePolicyCatalogFullProfile =
+  | ConsolePolicyCatalogSimpleFullProfile
+  | ConsolePolicyCatalogRowFullProfile;
+
 export interface ConsolePolicyCatalogOperation {
   operation_id: string;
   label: string;
-  description: string | null;
+  description: string;
   order: number;
+  full_profile: ConsolePolicyCatalogFullProfile;
+  allowed_row_scopes: ConsolePolicyCatalogOption<ConsolePolicyRowScope>[];
   authorization: ConsolePolicyOperationAuthorization;
 }
 
@@ -47,25 +70,27 @@ export interface ConsolePolicyCatalogGroup {
   kind: ConsolePolicyGroupKind;
   group_id: string;
   label: string;
-  description: string | null;
+  description: string;
   operations: ConsolePolicyCatalogOperation[];
 }
 
 export interface ConsolePolicyCatalogResourceAction {
   action_code: string;
   label: string;
-  description: string | null;
+  description: string;
 }
 
 export interface ConsolePolicyCatalogResource {
   resource_code: string;
   label: string;
-  description: string | null;
+  description: string;
   actions: ConsolePolicyCatalogResourceAction[];
 }
 
 export interface ConsolePolicyCatalog {
   schema_version: string;
+  locale: ConsolePolicyCatalogLocale;
+  group_mode_options: ConsolePolicyCatalogOption<ConsolePolicyMode>[];
   groups: ConsolePolicyCatalogGroup[];
   resources: ConsolePolicyCatalogResource[];
 }
@@ -235,11 +260,20 @@ export function fetchConsoleRolePermissions(
   });
 }
 
+function buildConsoleRoleConsolePolicyCatalogPath(
+  locale: ConsolePolicyCatalogLocale
+) {
+  const params = new URLSearchParams();
+  params.set('locale', locale);
+  return `/api/console/settings/roles/console-policy-catalog?${params.toString()}`;
+}
+
 export function fetchConsoleRoleConsolePolicyCatalog(
+  locale: ConsolePolicyCatalogLocale,
   baseUrl?: string
 ): Promise<ConsolePolicyCatalog> {
   return apiFetch<ConsolePolicyCatalog>({
-    path: '/api/console/settings/roles/console-policy-catalog',
+    path: buildConsoleRoleConsolePolicyCatalogPath(locale),
     baseUrl
   });
 }

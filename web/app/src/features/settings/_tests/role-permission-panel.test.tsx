@@ -88,6 +88,12 @@ function authenticate() {
   });
 }
 
+function setPreferredLocale(locale: 'zh_Hans' | 'en_US') {
+  useAuthStore.setState((state) => ({
+    me: state.me ? { ...state.me, preferred_locale: locale } : state.me
+  }));
+}
+
 function renderPanel(canManageRoles = true) {
   return render(
     <AppProviders>
@@ -451,9 +457,13 @@ describe('RolePermissionPanel', () => {
     expect(container.innerHTML).not.toContain('application');
 
     fireEvent.click(screen.getByRole('tab', { name: '其他' }));
-    expect(screen.getByText('导出审计记录')).toBeInTheDocument();
     expect(screen.getByText('不授予')).toBeInTheDocument();
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: '详细配置 其他' })
+    );
+    const otherDrawer = await screen.findByRole('dialog');
+    expect(within(otherDrawer).getByText('导出审计记录')).toBeInTheDocument();
 
     expect(screen.queryByRole('tab', { name: '基础通用' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: '系统管理' })).not.toBeInTheDocument();
@@ -535,7 +545,7 @@ describe('RolePermissionPanel', () => {
       name: '开放 应用管理 权限'
     });
     expect(accessCheckbox).toBeChecked();
-    expect(screen.getByText('自定义')).toBeInTheDocument();
+    expect(screen.getByText('按操作配置')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '详细配置 应用管理' }));
     const drawer = await screen.findByRole('dialog');
@@ -545,7 +555,7 @@ describe('RolePermissionPanel', () => {
     fireEvent.mouseDown(
       within(drawer).getByRole('combobox', { name: '查询应用 作用域' })
     );
-    fireEvent.click((await screen.findAllByTitle('本空间')).at(-1)!);
+    fireEvent.click((await screen.findAllByTitle('当前空间')).at(-1)!);
     fireEvent.click(within(drawer).getByRole('checkbox', { name: '发布应用' }));
     fireEvent.click(within(drawer).getByRole('button', { name: '保存权限配置' }));
 
@@ -868,8 +878,10 @@ describe('RolePermissionPanel', () => {
     fireEvent.mouseDown(
       within(drawer).getByRole('combobox', { name: '读取受限记录 作用域' })
     );
-    expect(await screen.findByTitle('目录关闭')).toBeInTheDocument();
-    expect(await screen.findByTitle('目录中的本人记录')).toBeInTheDocument();
+    expect((await screen.findAllByTitle('目录关闭')).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByTitle('目录中的本人记录')).length
+    ).toBeGreaterThan(0);
     expect(screen.queryByTitle('当前空间')).not.toBeInTheDocument();
     expect(screen.queryByTitle('本空间')).not.toBeInTheDocument();
     expect(container.innerHTML).not.toContain('other.limited-scopes');
@@ -1163,29 +1175,47 @@ describe('RolePermissionPanel', () => {
       ]
     });
 
+    setPreferredLocale('en_US');
     await appI18n.changeLanguage('en_US');
-    const englishView = renderPanel();
+    const view = renderPanel();
+    await waitFor(() => {
+      expect(permissionsApi.fetchSettingsConsolePolicyCatalog).toHaveBeenCalledWith(
+        'en_US'
+      );
+    });
+    fireEvent.click(await screen.findByRole('tab', { name: 'Others' }));
     expect(await screen.findByText('Other settings')).toBeInTheDocument();
-    expect(screen.getByText('Export audit records')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Configure Other settings' })
+    );
+    const englishDrawer = await screen.findByRole('dialog');
+    expect(
+      within(englishDrawer).getByText('Export audit records')
+    ).toBeInTheDocument();
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
     expect(screen.queryByText('audit.export')).not.toBeInTheDocument();
-    expect(permissionsApi.fetchSettingsConsolePolicyCatalog).toHaveBeenCalledWith(
-      'en_US'
-    );
     expect(permissionsApi.settingsConsolePolicyCatalogQueryKey).toHaveBeenCalledWith(
       'en_US'
     );
-    englishView.unmount();
+    view.unmount();
 
+    setPreferredLocale('zh_Hans');
     await appI18n.changeLanguage('zh_Hans');
     renderPanel();
+    await waitFor(() => {
+      expect(permissionsApi.fetchSettingsConsolePolicyCatalog).toHaveBeenCalledWith(
+        'zh_Hans'
+      );
+    });
+    fireEvent.click(await screen.findByRole('tab', { name: '其他' }));
     expect(await screen.findByText('其他设置')).toBeInTheDocument();
-    expect(screen.getByText('导出审计记录')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: '详细配置 其他设置' })
+    );
+    const chineseDrawer = await screen.findByRole('dialog');
+    expect(within(chineseDrawer).getByText('导出审计记录')).toBeInTheDocument();
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
     expect(screen.queryByText('audit.export')).not.toBeInTheDocument();
-    expect(permissionsApi.fetchSettingsConsolePolicyCatalog).toHaveBeenCalledWith(
-      'zh_Hans'
-    );
     expect(permissionsApi.settingsConsolePolicyCatalogQueryKey).toHaveBeenCalledWith(
       'zh_Hans'
     );
