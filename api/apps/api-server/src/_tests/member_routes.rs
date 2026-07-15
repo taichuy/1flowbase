@@ -1,4 +1,6 @@
-use crate::_tests::support::{login_and_capture_cookie, test_app};
+use crate::_tests::support::{
+    create_role, login_and_capture_cookie, replace_member_roles, replace_role_permissions, test_app,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -739,27 +741,23 @@ async fn delete_current_member_is_forbidden() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let member_id = create_member(&app, &root_cookie, &root_csrf, "self-delete", "temp-pass").await;
-
-    let replace_roles_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri(format!("/api/console/settings/members/{member_id}/roles"))
-                .header("cookie", &root_cookie)
-                .header("x-csrf-token", &root_csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "role_codes": ["admin"]
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(replace_roles_response.status(), StatusCode::NO_CONTENT);
+    create_role(&app, &root_cookie, &root_csrf, "self_delete_admin").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "self_delete_admin",
+        &["settings_feature.access.system.members"],
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["self_delete_admin"],
+    )
+    .await;
 
     let (member_cookie, member_csrf) =
         login_and_capture_cookie(&app, "self-delete", "temp-pass").await;

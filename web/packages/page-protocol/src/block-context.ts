@@ -36,6 +36,13 @@ export interface BlockContextPage {
 
 export interface BlockContextDataAccess {
   query(queryId: string, params?: BlockContextRecord): Promise<unknown>;
+  create(modelId: string, values: BlockContextRecord): Promise<BlockContextRecord>;
+  update(
+    modelId: string,
+    recordId: string,
+    values: BlockContextRecord
+  ): Promise<unknown>;
+  delete(modelId: string, recordId: string): Promise<unknown>;
 }
 
 export interface BlockContextActions {

@@ -149,11 +149,8 @@ impl EphemeralKvStore for MemoryKvStore {
         let mut map = self.inner.write().await;
         let now = OffsetDateTime::now_utc();
         let existing = map.get(&namespaced_key).cloned();
-        let active_entry = existing.filter(|entry| {
-            !entry
-                .expires_at
-                .is_some_and(|deadline| deadline <= OffsetDateTime::now_utc())
-        });
+        let active_entry =
+            existing.filter(|entry| entry.expires_at.is_none_or(|deadline| deadline > now));
         if active_entry.is_none() {
             map.remove(&namespaced_key);
         }

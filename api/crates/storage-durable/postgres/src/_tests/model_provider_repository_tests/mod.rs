@@ -56,6 +56,11 @@ const PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS: &[&str] = &[
 const MAIN_INSTANCE_AGGREGATION_MIGRATION_SQL: &str = include_str!(
     "../../../migrations/20260423093000_replace_manual_primary_with_main_instance_aggregation.sql"
 );
+const ROLE_DATA_POLICIES_MIGRATION_SQL: &str =
+    include_str!("../../../migrations/20260704100000_create_role_data_policies.sql");
+const MAIN_MODEL_DISTRIBUTION_RULES_MIGRATION_SQL: &str = include_str!(
+    "../../../migrations/20260708100000_add_model_provider_main_model_distribution_rules.sql"
+);
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
@@ -163,6 +168,10 @@ async fn seed_store_before_main_instance_aggregation() -> (
     for migration_sql in PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS {
         sqlx::raw_sql(migration_sql).execute(&pool).await.unwrap();
     }
+    sqlx::raw_sql(ROLE_DATA_POLICIES_MIGRATION_SQL)
+        .execute(&pool)
+        .await
+        .unwrap();
     sqlx::raw_sql(
         r#"
         alter table permission_definitions

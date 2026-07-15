@@ -7,7 +7,7 @@ use api_server::{
 use control_plane::ports::{
     RoleConsolePolicyMigrationCutoverMarker, RoleConsolePolicyMigrationRepository,
 };
-use sqlx::{PgPool, migrate::Migrator, postgres::PgPoolOptions};
+use sqlx::{migrate::Migrator, postgres::PgPoolOptions, PgPool};
 use uuid::Uuid;
 
 fn base_database_url() -> String {

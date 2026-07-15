@@ -30,7 +30,7 @@ use plugin_runner::{
     capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
 };
 use runtime_core::runtime_engine::DataSourceRuntimeRecordBackend;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use storage_durable::MainDurableStore;
@@ -38,8 +38,8 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::runtime_activity::{
-    ApplicationActivityFinish, ApplicationActivityGuard, ApplicationActivityKind,
-    ApplicationRuntimeActivityTracker, current_application_id,
+    current_application_id, ApplicationActivityFinish, ApplicationActivityGuard,
+    ApplicationActivityKind, ApplicationRuntimeActivityTracker,
 };
 
 #[derive(Clone)]

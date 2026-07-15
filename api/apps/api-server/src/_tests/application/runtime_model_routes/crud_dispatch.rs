@@ -332,43 +332,13 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
     let (app, database_url) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let data_source_instance_id = seed_runtime_data_source_instance(&database_url, &package).await;
-
-    let create_model_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/settings/data-models/model-definitions")
-                .header("cookie", &cookie)
-                .header("x-csrf-token", &csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "scope_kind": "workspace",
-                        "data_source_instance_id": data_source_instance_id,
-                        "external_resource_key": "contacts",
-                        "code": "external_runtime_contacts",
-                        "title": "External Runtime Contacts",
-                        "status": "published"
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(create_model_response.status(), StatusCode::CREATED);
-    let model_payload: serde_json::Value = serde_json::from_slice(
-        &to_bytes(create_model_response.into_body(), usize::MAX)
-            .await
-            .unwrap(),
+    let model_id = seed_external_runtime_model(
+        &database_url,
+        &data_source_instance_id,
+        "external_runtime_contacts",
+        "External Runtime Contacts",
     )
-    .unwrap();
-    let model_id = model_payload["data"]["id"].as_str().unwrap().to_string();
-    assert_eq!(
-        model_payload["data"]["source_kind"],
-        json!("external_source")
-    );
+    .await;
 
     create_text_field_with_external_key(&app, &cookie, &csrf, &model_id, "email", "email_address")
         .await;
@@ -617,38 +587,13 @@ async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unava
             seed_runtime_data_source_instance_with_options(&database_url, &package, options).await;
         let model_code = format!("external_runtime_blocked_{case_name}");
 
-        let create_model_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/console/settings/data-models/model-definitions")
-                    .header("cookie", &cookie)
-                    .header("x-csrf-token", &csrf)
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        json!({
-                            "scope_kind": "workspace",
-                            "data_source_instance_id": data_source_instance_id,
-                            "external_resource_key": "contacts",
-                            "code": model_code,
-                            "title": format!("External Runtime Blocked {case_name}"),
-                            "status": "published"
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(create_model_response.status(), StatusCode::CREATED);
-        let model_payload: serde_json::Value = serde_json::from_slice(
-            &to_bytes(create_model_response.into_body(), usize::MAX)
-                .await
-                .unwrap(),
+        let model_id = seed_external_runtime_model(
+            &database_url,
+            &data_source_instance_id,
+            &model_code,
+            &format!("External Runtime Blocked {case_name}"),
         )
-        .unwrap();
-        let model_id = model_payload["data"]["id"].as_str().unwrap().to_string();
+        .await;
         create_text_field_with_external_key(&app, &cookie, &csrf, &model_id, "email", "email")
             .await;
 

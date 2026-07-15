@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use anyhow::{Context, anyhow};
+use anyhow::{anyhow, Context};
 use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
@@ -240,12 +240,10 @@ mod tests {
             release_status.contributors_url,
             "https://github.com/taichuy/1flowbase/graphs/contributors"
         );
-        assert!(
-            release_status
-                .upgrade_commands
-                .shell
-                .contains("scripts/shell/docker-deploy.sh")
-        );
+        assert!(release_status
+            .upgrade_commands
+            .shell
+            .contains("scripts/shell/docker-deploy.sh"));
     }
 
     #[test]

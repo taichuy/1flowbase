@@ -419,6 +419,75 @@ async fn seed_runtime_data_source_instance_with_options(
     data_source_instance_id.to_string()
 }
 
+async fn seed_external_runtime_model(
+    database_url: &str,
+    data_source_instance_id: &str,
+    code: &str,
+    title: &str,
+) -> String {
+    let pool = sqlx::PgPool::connect(database_url).await.unwrap();
+    let actor = sqlx::query(
+        r#"
+        select users.id as user_id, workspace_memberships.workspace_id as workspace_id
+        from users
+        join workspace_memberships on workspace_memberships.user_id = users.id
+        where users.account = 'root'
+        order by workspace_memberships.created_at asc
+        limit 1
+        "#,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let actor_user_id: uuid::Uuid = actor.get("user_id");
+    let workspace_id: uuid::Uuid = actor.get("workspace_id");
+    let model_id = uuid::Uuid::now_v7();
+
+    sqlx::query(
+        r#"
+        insert into model_definitions (
+            id, scope_kind, scope_id, data_source_instance_id, source_kind,
+            external_resource_key, external_capability_snapshot,
+            code, title, physical_table_name, acl_namespace, audit_namespace,
+            availability_status, status, owner_kind, is_protected, created_by, updated_by
+        ) values (
+            $1, 'system', $2, $3, 'external_source', 'contacts', '{}',
+            $4, $5, $6, $7, $8,
+            'available', 'published', 'core', false, $9, $9
+        )
+        "#,
+    )
+    .bind(model_id)
+    .bind(domain::SYSTEM_SCOPE_ID)
+    .bind(uuid::Uuid::parse_str(data_source_instance_id).unwrap())
+    .bind(code)
+    .bind(title)
+    .bind(format!("external_{}", model_id.simple()))
+    .bind(format!("data_model.{code}"))
+    .bind(format!("data_model.{code}"))
+    .bind(actor_user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        insert into scope_data_model_grants (
+            id, scope_kind, scope_id, data_model_id, enabled, permission_profile, created_by
+        ) values ($1, 'workspace', $2, $3, true, 'scope_all', $4)
+        "#,
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(model_id)
+    .bind(actor_user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    model_id.to_string()
+}
+
 async fn create_user_api_key(app: &axum::Router, cookie: &str, csrf: &str, name: &str) -> String {
     let response = app
         .clone()

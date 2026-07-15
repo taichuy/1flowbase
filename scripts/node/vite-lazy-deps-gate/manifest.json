@@ -30,6 +30,16 @@
     },
     {
       "source": "web/app/src/features/applications/pages/ApplicationDetailPage.tsx",
+      "specifier": "../../workflow/pages/WorkflowEditorPage",
+      "smokePaths": [
+        {
+          "path": "/applications/vite-lazy-deps-application/orchestration",
+          "requiresFixture": true
+        }
+      ]
+    },
+    {
+      "source": "web/app/src/features/applications/pages/ApplicationDetailPage.tsx",
       "specifier": "./ApplicationLogsPage",
       "smokePaths": [
         {
@@ -74,7 +84,7 @@
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
-      "specifier": "./SettingsModelProvidersSection",
+      "specifier": "./ModelProviderSettingsTabs",
       "smokePaths": [
         "/settings/model-providers"
       ]
@@ -98,6 +108,13 @@
       "specifier": "../../components/host-infrastructure/HostInfrastructureMemoryObservationPanel",
       "smokePaths": [
         "/settings/memory-observation"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "../../components/application-management/ApplicationManagementPanel",
+      "smokePaths": [
+        "/settings/applications"
       ]
     }
   ]

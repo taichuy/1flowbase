@@ -641,6 +641,13 @@ async fn application_public_api_repository_publication_extension_slug_lookup_lis
         seed_application(&store, workspace_id, actor_user_id, "Public App A").await;
     let second_application_id =
         seed_application(&store, workspace_id, actor_user_id, "Public App B").await;
+    sqlx::query(
+        "update applications set application_type = 'workflow', workflow_trigger_type = 'extension' where id = any($1)",
+    )
+        .bind(vec![first_application_id, second_application_id])
+        .execute(&pool)
+        .await
+        .unwrap();
     let (first_flow_id, first_flow_version_id, first_compiled_plan_id, first_document) =
         seed_flow_version_and_compiled_plan(&store, first_application_id, actor_user_id).await;
     let (second_flow_id, second_flow_version_id, second_compiled_plan_id, second_document) =

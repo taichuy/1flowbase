@@ -360,6 +360,9 @@ function normalizeEffect(
       return effectInvalid(queryId.path, queryId.message, requestId.value);
     }
     const params = readOptionalProperty(value, 'params');
+    if (!params.ok) {
+      return effectInvalid(params.path, params.message, requestId.value);
+    }
     const effectId = readOptionalStringProperty(
       value,
       'effectId',
@@ -749,16 +752,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isRecordLike(value: unknown): value is object {
   return typeof value === 'object' && value !== null;
-}
-
-function isJsonRecord(
-  value: BlockContextJsonValue | undefined
-): value is { [key: string]: BlockContextJsonValue } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value)
-  );
 }
 
 function toSet(values: readonly string[] | undefined): ReadonlySet<string> {

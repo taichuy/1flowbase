@@ -5,9 +5,9 @@ use access_control::{
     FILE_TABLES_LIST_OPERATION_ID, FILE_TABLES_STORAGE_BIND_OPERATION_ID,
 };
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    Json, Router,
 };
 use control_plane::file_management::{
     BindFileTableStorageCommand, CreateFileTableCommand, DeleteFileTableCommand, FileTableService,
@@ -24,7 +24,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
-        ConsoleRouteAssembly, console_delete, console_get, console_put,
+        console_delete, console_get, console_put, ConsoleRouteAssembly,
     },
     runtime_registry_sync::ApiRuntimeRegistrySync,
 };

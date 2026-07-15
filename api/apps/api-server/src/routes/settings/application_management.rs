@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{Json, Router, extract::Query, extract::State, http::HeaderMap};
+use axum::{extract::Query, extract::State, http::HeaderMap, Json, Router};
 use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
@@ -19,7 +19,7 @@ use crate::{
     error_response::ApiError,
     middleware::require_session::require_session,
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize)]
@@ -114,7 +114,7 @@ pub async fn list_application_management(
         )
         .await?;
 
-    Ok(Json(ApiSuccess::new(page.into())))
+    Ok(Json(ApiSuccess::new(page.try_into()?)))
 }
 
 fn parse_application_management_sort(
@@ -151,9 +151,11 @@ fn parse_application_management_sort(
     Ok((field, direction))
 }
 
-impl From<ApplicationManagementRecord> for ApplicationManagementItemResponse {
-    fn from(record: ApplicationManagementRecord) -> Self {
-        Self {
+impl TryFrom<ApplicationManagementRecord> for ApplicationManagementItemResponse {
+    type Error = time::error::Format;
+
+    fn try_from(record: ApplicationManagementRecord) -> Result<Self, Self::Error> {
+        Ok(Self {
             id: record.id.to_string(),
             application_type: record.application_type.as_str().to_string(),
             workflow_trigger_type: record
@@ -166,8 +168,8 @@ impl From<ApplicationManagementRecord> for ApplicationManagementItemResponse {
             icon_background: record.icon_background,
             created_by: record.created_by.to_string(),
             created_by_display_name: record.created_by_display_name,
-            created_at: record.created_at.format(&Rfc3339).unwrap(),
-            updated_at: record.updated_at.format(&Rfc3339).unwrap(),
+            created_at: record.created_at.format(&Rfc3339)?,
+            updated_at: record.updated_at.format(&Rfc3339)?,
             tags: record
                 .tags
                 .into_iter()
@@ -177,17 +179,23 @@ impl From<ApplicationManagementRecord> for ApplicationManagementItemResponse {
                 })
                 .collect(),
             publication_status: record.publication_status.as_str().to_string(),
-        }
+        })
     }
 }
 
-impl From<ApplicationManagementPage> for ApplicationManagementPageResponse {
-    fn from(page: ApplicationManagementPage) -> Self {
-        Self {
-            items: page.items.into_iter().map(Into::into).collect(),
+impl TryFrom<ApplicationManagementPage> for ApplicationManagementPageResponse {
+    type Error = time::error::Format;
+
+    fn try_from(page: ApplicationManagementPage) -> Result<Self, Self::Error> {
+        Ok(Self {
+            items: page
+                .items
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<_>, _>>()?,
             total: page.total,
             page: page.page,
             page_size: page.page_size,
-        }
+        })
     }
 }

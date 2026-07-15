@@ -1,3 +1,5 @@
+import type { ConsoleModelProviderOptions } from '@1flowbase/api-client';
+
 import {
   modelProviderCatalogEntries,
   primaryContractProviderModels
@@ -63,7 +65,7 @@ export function buildSettingsModelProviderInstances() {
   ];
 }
 
-export function buildSettingsModelProviderOptions() {
+export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions {
   return {
     locale_meta: {
       requested_locale: 'zh_Hans',
@@ -89,6 +91,7 @@ export function buildSettingsModelProviderOptions() {
           group_count: primaryContractProviderModels.length,
           model_count: primaryContractProviderModels.length
         },
+        parameter_form: null,
         model_groups: [
           {
             model_id: primaryContractProviderModels[0].model_id,

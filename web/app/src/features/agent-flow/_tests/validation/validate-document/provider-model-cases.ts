@@ -165,6 +165,7 @@ describe('validateDocument model providers', () => {
     duplicatedProvider.model_groups = [
       {
         model_id: primaryModel.model_id,
+        distribution_rule: 'none',
         model: { ...primaryModel },
         targets: [
           {

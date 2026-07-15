@@ -104,9 +104,9 @@ async fn upsert_builtin_roles_sets_admin_auto_grant_and_member_default_role() {
 async fn role_data_policy_migration_seeds_builtin_roles_and_new_roles_get_restricted_default() {
     let (store, workspace_id) = bootstrapped_store().await;
 
-    let builtin_policies: Vec<(String, bool, bool, bool, bool, String, String, String)> =
-        sqlx::query_as(
-            r#"
+    type BuiltinPolicyRow = (String, bool, bool, bool, bool, String, String, String);
+    let builtin_policies: Vec<BuiltinPolicyRow> = sqlx::query_as(
+        r#"
             select
               r.code,
               p.can_view,
@@ -121,11 +121,11 @@ async fn role_data_policy_migration_seeds_builtin_roles_and_new_roles_get_restri
             where (r.scope_kind = 'workspace' and r.workspace_id = $1) or r.scope_kind = 'system'
             order by r.scope_kind asc, r.code asc
             "#,
-        )
-        .bind(workspace_id)
-        .fetch_all(store.pool())
-        .await
-        .unwrap();
+    )
+    .bind(workspace_id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
 
     assert_eq!(
         builtin_policies,

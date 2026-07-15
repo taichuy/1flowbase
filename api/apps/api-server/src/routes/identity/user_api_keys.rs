@@ -1,9 +1,9 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    Json, Router,
 };
 use control_plane::auth::{
     ApiKeyService, CreateUserApiKeyCommand, ListUserApiKeysCommand, RevokeUserApiKeyCommand,
@@ -11,7 +11,7 @@ use control_plane::auth::{
 };
 use control_plane::ports::RoleRepository;
 use serde::{Deserialize, Serialize};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -20,7 +20,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]

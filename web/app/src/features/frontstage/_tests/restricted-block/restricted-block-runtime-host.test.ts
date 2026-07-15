@@ -248,8 +248,8 @@ describe('restricted block runtime host controller', () => {
       type: 'data',
       requestId: 'restricted-block:block-1:code-1',
       effectId: 'effect-data',
-      operation: 'query',
-      payload: { model: 'records', where: { id: 'record-1' } }
+      queryId: 'records',
+      params: { where: { id: 'record-1' } }
     });
     worker.emitMessage({
       direction: 'worker_to_host',
@@ -264,8 +264,8 @@ describe('restricted block runtime host controller', () => {
       type: 'data',
       requestId: 'restricted-block:block-1:code-1',
       effectId: 'effect-data',
-      operation: 'query',
-      payload: { model: 'records', where: { id: 'record-1' } }
+      queryId: 'records',
+      params: { where: { id: 'record-1' } }
     });
     expect(actionHandler).toHaveBeenCalledWith({
       type: 'action',
@@ -302,8 +302,8 @@ describe('restricted block runtime host controller', () => {
         type: 'data',
         requestId: 'restricted-block:block-1:code-1',
         effectId: 'effect-data',
-        operation: 'query',
-        payload: { model: 'records', where: { id: 'record-1' } }
+        queryId: 'records',
+        params: { where: { id: 'record-1' } }
       },
       {
         type: 'action',
@@ -331,8 +331,7 @@ describe('restricted block runtime host controller', () => {
       type: 'data',
       requestId: 'restricted-block:block-1:code-1',
       effectId: 'effect-data',
-      operation: 'query',
-      payload: { model: 'private_records' }
+      queryId: 'private_records'
     });
     worker.emitMessage({
       direction: 'worker_to_host',
@@ -353,12 +352,12 @@ describe('restricted block runtime host controller', () => {
         ok: false,
         error: {
           kind: 'runtime_error',
-          message: 'Data model is not allowed: private_records.',
+          message: 'Query is not allowed: private_records.',
           errors: [
             {
               code: 'query_denied',
-              path: 'payload.model',
-              message: 'Data model is not allowed: private_records.'
+              path: 'data.queryId',
+              message: 'Query is not allowed: private_records.'
             }
           ]
         }
@@ -439,7 +438,9 @@ describe('restricted block runtime host controller', () => {
     schema.children[0].props.children = 'Mutated';
     snapshot.logs[0].message = 'mutated log';
     (snapshot.logs[0].data as { phase: string }).phase = 'mutated';
-    snapshot.effects[0].payload = { id: 'mutated-record' };
+    if (snapshot.effects[0].type === 'event') {
+      snapshot.effects[0].payload = { id: 'mutated-record' };
+    }
     snapshot.rejections.push({
       code: 'invalid_message',
       path: 'test',

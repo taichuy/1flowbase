@@ -128,6 +128,18 @@ pub(crate) async fn replace_role_permissions(
     role_code: &str,
     permission_codes: &[&str],
 ) {
+    replace_role_legacy_permissions_only(app, cookie, csrf, role_code, permission_codes).await;
+    project_legacy_permissions_to_console_policy(app, cookie, csrf, role_code, permission_codes)
+        .await;
+}
+
+pub(crate) async fn replace_role_legacy_permissions_only(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    role_code: &str,
+    permission_codes: &[&str],
+) {
     let response = app
         .clone()
         .oneshot(
@@ -145,6 +157,69 @@ pub(crate) async fn replace_role_permissions(
                     })
                     .to_string(),
                 ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+pub(crate) async fn project_legacy_permissions_to_console_policy(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    role_code: &str,
+    permission_codes: &[&str],
+) {
+    let settings_feature_registry = crate::app_state::compile_core_settings_feature_registry()
+        .expect("test settings feature registry should compile");
+    let console_operation_registry =
+        crate::app_state::compile_core_console_operation_registry(&settings_feature_registry)
+            .expect("test console operation registry should compile");
+    let migration = crate::console_policy_migration::compile_core_console_policy_migration_plan(
+        console_operation_registry.inventory(),
+    )
+    .expect("test console policy migration should compile");
+    let known_legacy_grants = migration
+        .legacy_mappings()
+        .iter()
+        .map(|mapping| mapping.legacy_grant.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let source_grants = permission_codes
+        .iter()
+        .filter(|permission| known_legacy_grants.contains(**permission))
+        .map(|permission| (*permission).to_string())
+        .collect::<Vec<_>>();
+    let projection = migration
+        .plan()
+        .project_legacy_role(Uuid::nil(), &source_grants)
+        .expect("test legacy permissions should project into console policy");
+    let groups = projection
+        .policy
+        .groups()
+        .iter()
+        .map(|policy| {
+            json!({
+                "kind": policy.group().kind().as_str(),
+                "group_id": policy.group().group_id().as_str(),
+                "mode": policy.mode().as_str(),
+                "operations": policy.operations(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/settings/roles/{role_code}/console-policy"
+                ))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "groups": groups }).to_string()))
                 .unwrap(),
         )
         .await

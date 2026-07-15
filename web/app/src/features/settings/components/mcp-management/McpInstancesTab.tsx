@@ -30,6 +30,7 @@ import {
   Typography,
   message
 } from 'antd';
+import type { TreeProps } from 'antd';
 import {
   useCallback,
   useMemo,
@@ -67,6 +68,7 @@ import {
   buildMcpDirectoryTreeData,
   buildRandomToolIdSeed,
   nextMcpDirectoryExpandedKeys,
+  type McpDirectoryTreeNode,
   normalizeMcpDirectoryPath
 } from './mcp-management-view-model';
 import { McpInstanceDiscoveryPolicyModal } from './McpInstanceDiscoveryPolicyModal';
@@ -93,6 +95,26 @@ type BindingFormValues = {
   visible: boolean;
   sort_order: number;
 };
+type McpDirectoryTreeDropInfo = Parameters<
+  NonNullable<TreeProps<McpDirectoryTreeNode>['onDrop']>
+>[0];
+
+function findDirectoryNodeByPath(
+  node: McpDirectoryTreeNode,
+  path: string
+): McpDirectoryTreeNode | null {
+  if (
+    node.node_type === 'group' &&
+    normalizeMcpDirectoryPath(node.path) === path
+  ) {
+    return node;
+  }
+  for (const child of node.children ?? []) {
+    const found = findDirectoryNodeByPath(child, path);
+    if (found) return found;
+  }
+  return null;
+}
 
 function useCsrfToken() {
   return useAuthStore((state) => state.csrfToken ?? '');
@@ -453,23 +475,8 @@ export function McpInstancesTab({
       );
       let targetParentNode = rootNode;
       if (targetParentPath !== '/') {
-        const findNodeByPath = (node: any, path: string): any => {
-          if (
-            node.node_type === 'group' &&
-            normalizeMcpDirectoryPath(node.path) === path
-          ) {
-            return node;
-          }
-          if (node.children) {
-            for (const child of node.children) {
-              const found = findNodeByPath(child, path);
-              if (found) return found;
-            }
-          }
-          return null;
-        };
         targetParentNode =
-          findNodeByPath(rootNode, targetParentPath) || rootNode;
+          findDirectoryNodeByPath(rootNode, targetParentPath) || rootNode;
       }
 
       if (!draftPathAlreadyExists) {
@@ -496,26 +503,11 @@ export function McpInstancesTab({
       const targetPath = normalizeMcpDirectoryPath(
         watchedGroupPath || selectedInstance.default_entry_path
       );
-      let targetNode: any = null;
+      let targetNode: McpDirectoryTreeNode | null = null;
       if (targetPath === normalizeMcpDirectoryPath(rootNode.path)) {
         targetNode = rootNode;
       } else {
-        const findNodeByPath = (node: any, path: string): any => {
-          if (
-            node.node_type === 'group' &&
-            normalizeMcpDirectoryPath(node.path) === path
-          ) {
-            return node;
-          }
-          if (node.children) {
-            for (const child of node.children) {
-              const found = findNodeByPath(child, path);
-              if (found) return found;
-            }
-          }
-          return null;
-        };
-        targetNode = findNodeByPath(rootNode, targetPath);
+        targetNode = findDirectoryNodeByPath(rootNode, targetPath);
       }
 
       if (targetNode) {
@@ -544,7 +536,6 @@ export function McpInstancesTab({
     catalog.tools,
     groupByPath,
     directoryEditorMode,
-    selectedDirectoryKey,
     watchedPath,
     watchedDisplayName,
     watchedGroupDescriptionShort,
@@ -555,7 +546,7 @@ export function McpInstancesTab({
     directoryDraftActive
   ]);
 
-  const handleTreeDrop = (info: any) => {
+  const handleTreeDrop = (info: McpDirectoryTreeDropInfo) => {
     const dragKey = String(info.dragNode.key);
     const dropKey = String(info.node.key);
     const dropPosition = info.dropPosition;
@@ -1379,7 +1370,7 @@ export function McpInstancesTab({
                 </Button>
               </Flex>
 
-              <Tree
+              <Tree<McpDirectoryTreeNode>
                 key={`${directoryEditorMode}:${directoryDraftActive ? directoryDraftVersion : 'stable'}`}
                 className="mcp-management__directory-tree"
                 draggable={canManage ? { icon: false } : false}
@@ -1432,7 +1423,7 @@ export function McpInstancesTab({
                   });
                 }}
                 onDrop={handleTreeDrop}
-                titleRender={(node: any) => {
+                titleRender={(node) => {
                   const [type, ...parts] = node.key.split(':');
                   const isInstance = type === 'instance';
                   const isGroup = type === 'group';
@@ -1535,8 +1526,9 @@ export function McpInstancesTab({
                     </span>
                   );
                 }}
-                icon={(nodeProps: any) => {
-                  const key = nodeProps?.data?.key || nodeProps?.key;
+                icon={(nodeProps) => {
+                  const key =
+                    'key' in nodeProps ? nodeProps.key : undefined;
                   if (!key) return null;
                   const [type] = String(key).split(':');
                   if (type === 'instance') {

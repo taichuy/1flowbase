@@ -317,7 +317,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
 
       measuredLabels.forEach((label) => {
         // Hidden measurement spans are intentionally aria-hidden and have no text content.
-        // eslint-disable-next-line testing-library/no-node-access
+
         const measureItem = document.querySelector(
           `.autosize-select__measure-item[data-measure-label="${label}"]`
         );

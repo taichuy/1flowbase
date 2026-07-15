@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
     extract::{Query, State},
     http::HeaderMap,
+    Json, Router,
 };
 use control_plane::{
     application::ApplicationService,
@@ -18,7 +18,7 @@ use crate::{
     error_response::ApiError,
     middleware::require_session::require_session,
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, IntoParams, Clone, ToSchema)]

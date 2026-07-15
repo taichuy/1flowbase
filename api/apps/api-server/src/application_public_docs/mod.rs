@@ -1,6 +1,6 @@
 use control_plane::application_public_api::publications::ApplicationPublicationVersionRecord;
 use domain::ApplicationRecord;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::openapi_docs::{
     DocsCatalog, DocsCatalogCategory, DocsCatalogCategoryOperations, DocsCatalogOperation,

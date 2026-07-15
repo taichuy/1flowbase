@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use control_plane::ports::SessionStore;
 use plugin_framework::HostExtensionRegistry;
 use storage_ephemeral::{
@@ -10,7 +10,7 @@ use storage_ephemeral::{
 
 use super::{
     CacheStore, DistributedLock, EventBus, HostInfrastructureRegistry, LocalRuntimeEventStream,
-    RateLimitStore, RuntimeEventStream, SESSION_STORE_NAMESPACE, TaskQueue,
+    RateLimitStore, RuntimeEventStream, TaskQueue, SESSION_STORE_NAMESPACE,
 };
 
 const LOCAL_PROVIDER_CODE: &str = "local";

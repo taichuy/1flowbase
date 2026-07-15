@@ -19,7 +19,8 @@ import type {
   FrontstagePageContent,
   SaveFrontstagePageContentInput
 } from '../../api/page-content';
-import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
+import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
+import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
   moveNodeInTree,
@@ -166,7 +167,7 @@ function createPageContent(
       title: 'Landing',
       kind: 'page',
       parentId: null,
-      rank: '001000',
+      rank: '001000'
     },
     schema: {
       rootUid: 'root-1',
@@ -420,7 +421,6 @@ async function clickPageTreeOperationMenuItemAndFlush(
 async function findLatestVisibleText(label: string | RegExp) {
   let elements: HTMLElement[] = [];
   await waitFor(() => {
-    // eslint-disable-next-line testing-library/no-node-access
     const activeDropdowns = document.body.querySelectorAll<HTMLElement>(
       '.ant-dropdown:not(.ant-dropdown-hidden), .ant-dropdown-menu-submenu-popup:not(.ant-dropdown-hidden)'
     );
@@ -496,7 +496,8 @@ function mockRuntimeSessions(
     hasError: false,
     ...overrides
   });
-}describe('FrontStagePage - page tree CRUD', () => {
+}
+describe('FrontStagePage - page tree CRUD', () => {
   beforeEach(() => {
     resetAuthStore();
     resetFrontstageDesignModeStore();

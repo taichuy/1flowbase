@@ -790,12 +790,11 @@ pub fn preview_console_policy_migration_actor_authorizations(
         let effective_delta = effective_before
             .iter()
             .zip(&effective_after)
-            .filter_map(|(before, after)| {
-                (before.allowed != after.allowed).then(|| ConsolePolicyMigrationProbeDelta {
-                    probe: before.probe.clone(),
-                    before: before.allowed,
-                    after: after.allowed,
-                })
+            .filter(|(before, after)| before.allowed != after.allowed)
+            .map(|(before, after)| ConsolePolicyMigrationProbeDelta {
+                probe: before.probe.clone(),
+                before: before.allowed,
+                after: after.allowed,
             })
             .collect();
         actor_previews.insert(

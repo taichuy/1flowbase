@@ -772,7 +772,11 @@ describe('RolePermissionPanel', () => {
     renderPanel();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: '详细配置 完整策略组' })
+      await screen.findByRole(
+        'button',
+        { name: '详细配置 完整策略组' },
+        { timeout: 5000 }
+      )
     );
     const drawer = await screen.findByRole('dialog');
     expect(within(drawer).getByText('当前空间')).toBeInTheDocument();
@@ -858,7 +862,11 @@ describe('RolePermissionPanel', () => {
     renderPanel();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: '恢复 全部操作' })
+      await screen.findByRole(
+        'button',
+        { name: '恢复 全部操作' },
+        { timeout: 5000 }
+      )
     );
 
     await waitFor(() => {

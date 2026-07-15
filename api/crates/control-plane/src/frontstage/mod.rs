@@ -337,11 +337,7 @@ where
                 .list_frontstage_pages(command.workspace_id)
                 .await?;
             let rules = self
-                .visibility_rules_for_actor(
-                    &actor,
-                    command.actor_user_id,
-                    command.workspace_id,
-                )
+                .visibility_rules_for_actor(&actor, command.actor_user_id, command.workspace_id)
                 .await?;
             if !FrontstagePageVisibilityContext::new(&pages, &rules)
                 .is_tab_visible(command.page_id, command.tab_id)
@@ -880,8 +876,7 @@ struct FrontstagePageVisibilityContext {
     role_ids: HashSet<Uuid>,
     visibility_by_page_and_role:
         HashMap<(Option<Uuid>, Uuid), domain::frontstage::FrontstagePageVisibility>,
-    visibility_by_tab_and_role:
-        HashMap<(Uuid, Uuid), domain::frontstage::FrontstagePageVisibility>,
+    visibility_by_tab_and_role: HashMap<(Uuid, Uuid), domain::frontstage::FrontstagePageVisibility>,
 }
 
 impl FrontstagePageVisibilityContext {

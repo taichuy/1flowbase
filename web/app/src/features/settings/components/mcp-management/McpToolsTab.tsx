@@ -39,7 +39,8 @@ import type {
   ConsoleMcpProxyInputMapping,
   ConsoleMcpProxyOutputMapping,
   ConsoleMcpTool,
-  SaveConsoleMcpToolBody
+  SaveConsoleMcpToolBody,
+  UpdateConsoleMcpToolBody
 } from '@1flowbase/api-client';
 
 import {
@@ -130,6 +131,14 @@ function emptyObjectSchema(): Record<string, unknown> {
 
 function schemaRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : emptyObjectSchema();
+}
+
+function toUpdateToolBody(
+  body: SaveConsoleMcpToolBody
+): UpdateConsoleMcpToolBody {
+  const updateBody = { ...body } as Partial<SaveConsoleMcpToolBody>;
+  delete updateBody.tool_id;
+  return updateBody as UpdateConsoleMcpToolBody;
 }
 
 function interfaceOptionLabel(entry: ConsoleMcpInterfaceCapability) {
@@ -460,10 +469,9 @@ export function McpToolsTab({
         };
       }
       if (editingTool) {
-        const { tool_id: _toolId, ...updateBody } = body;
         return updateSettingsMcpTool(
           editingTool.tool_id,
-          updateBody,
+          toUpdateToolBody(body),
           csrfToken
         );
       }
@@ -629,11 +637,17 @@ export function McpToolsTab({
                     record.execution_target.kind === 'mcp_proxy'
                       ? record.execution_target.source_schema_hash
                       : undefined,
-                  parameter_schema: schemaRecord(record.parameter_schema),
-                  result_schema: schemaRecord(record.result_schema),
                   risk_level: record.risk_level,
                   status: record.status
                 });
+                form.setFieldValue(
+                  'parameter_schema',
+                  schemaRecord(record.parameter_schema)
+                );
+                form.setFieldValue(
+                  'result_schema',
+                  schemaRecord(record.result_schema)
+                );
                 form.setFieldValue(
                   'input_mapping',
                   record.execution_target.kind === 'mcp_proxy'
@@ -802,11 +816,11 @@ export function McpToolsTab({
                 des_id: buildRandomToolIdSeed(),
                 execution_target_kind: 'interface_wrapper',
                 interface_id: undefined,
-                parameter_schema: emptyObjectSchema(),
-                result_schema: emptyObjectSchema(),
                 risk_level: 'high',
                 status: 'draft'
               });
+              form.setFieldValue('parameter_schema', emptyObjectSchema());
+              form.setFieldValue('result_schema', emptyObjectSchema());
               form.setFieldValue('input_mapping', {
                 interface_parameters: [],
                 mappings: []

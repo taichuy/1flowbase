@@ -1,4 +1,5 @@
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+import type { ConsoleMcpCatalog } from '@1flowbase/api-client';
 
 import { useAuthStore } from '../state/auth-store';
 import { i18nText } from '../shared/i18n/text';
@@ -127,7 +128,7 @@ export const styleBoundaryMcpCatalog = {
       list_return_fields: ['path', 'name', 'risk_level']
     }
   ]
-};
+} satisfies ConsoleMcpCatalog;
 
 export const styleBoundaryMcpInterfaceCapabilities = [
   {
@@ -468,6 +469,12 @@ function getStyleBoundaryCommonResponse(
             surface_key: 'applications',
             path: '/settings/applications',
             surface_kind: 'system'
+          },
+          {
+            route_id: 'settings.docs',
+            surface_key: 'docs',
+            path: '/settings/docs',
+            surface_kind: 'system'
           }
         ],
         navigation_items: [
@@ -510,6 +517,14 @@ function getStyleBoundaryCommonResponse(
             label_key: 'auto.application_management',
             navigation_slot: 'settings',
             order: 2
+          },
+          {
+            item_id: 'docs',
+            route_id: 'settings.docs',
+            parent_item_id: 'settings',
+            label_key: 'auto.api_documentation',
+            navigation_slot: 'settings',
+            order: 3
           }
         ],
         permission_bindings: []

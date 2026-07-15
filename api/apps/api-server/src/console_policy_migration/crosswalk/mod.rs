@@ -10,12 +10,12 @@ use access_control::{
     ConsoleAuthorization, ConsoleOperationCompiledInventory, ConsolePolicyGroup,
     SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
 };
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use control_plane::{
     ports::RoleConsolePolicyMigrationSource,
     role::console_policy_migration::{
-        CompiledConsolePolicyMigrationPlan, ConsolePolicyMigrationLegacyGrantMapping,
-        ConsolePolicyMigrationLegacyGrantProjection, compile_console_policy_migration_plan,
+        compile_console_policy_migration_plan, CompiledConsolePolicyMigrationPlan,
+        ConsolePolicyMigrationLegacyGrantMapping, ConsolePolicyMigrationLegacyGrantProjection,
     },
 };
 use domain::{ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope};
@@ -235,8 +235,8 @@ pub fn compile_core_console_policy_migration_plan(
     })
 }
 
-fn expected_operation_index()
--> Result<BTreeMap<&'static str, (ExpectedPolicyGroup, ExpectedAuthorization)>> {
+fn expected_operation_index(
+) -> Result<BTreeMap<&'static str, (ExpectedPolicyGroup, ExpectedAuthorization)>> {
     let mut operations = BTreeMap::new();
     for entry in CORE_OPERATION_GROUPS {
         for operation_id in entry.operation_ids {
@@ -347,12 +347,14 @@ impl ExpectedAuthorization {
     }
 }
 
-fn compile_legacy_mappings(
-    expected_operations: &BTreeMap<&'static str, (ExpectedPolicyGroup, ExpectedAuthorization)>,
-) -> Result<(
+type CompiledLegacyMappings = (
     Vec<ConsolePolicyMigrationLegacyGrantMapping>,
     BTreeMap<String, BTreeSet<String>>,
-)> {
+);
+
+fn compile_legacy_mappings(
+    expected_operations: &BTreeMap<&'static str, (ExpectedPolicyGroup, ExpectedAuthorization)>,
+) -> Result<CompiledLegacyMappings> {
     let mut mappings = BTreeMap::new();
     for mapping in LEGACY_NO_PROJECTIONS {
         if mapping.evidence.trim().is_empty() {

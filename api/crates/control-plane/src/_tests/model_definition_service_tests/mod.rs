@@ -21,20 +21,18 @@ use std::{
 };
 use uuid::Uuid;
 
+type RoleDataPolicyFixture = (
+    domain::RoleDataPolicyRecord,
+    Option<domain::RoleDataModelPolicyRecord>,
+);
+
 #[derive(Clone)]
 struct ScopedModelDefinitionRepository {
     actor: ActorContext,
     models: Arc<Mutex<HashMap<Uuid, ModelDefinitionRecord>>>,
     data_source_defaults: Arc<Mutex<HashMap<(Uuid, Uuid), DataSourceDefaults>>>,
     grants: Arc<Mutex<Vec<ScopeDataModelGrantRecord>>>,
-    role_data_policies: Arc<
-        Mutex<
-            Vec<(
-                domain::RoleDataPolicyRecord,
-                Option<domain::RoleDataModelPolicyRecord>,
-            )>,
-        >,
-    >,
+    role_data_policies: Arc<Mutex<Vec<RoleDataPolicyFixture>>>,
     audit_logs: Arc<Mutex<Vec<AuditLogRecord>>>,
     console_policies: Arc<Mutex<Vec<domain::RoleConsolePolicy>>>,
 }

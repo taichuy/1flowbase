@@ -1,4 +1,3 @@
-/* eslint-disable testing-library/no-node-access */
 import {
   fireEvent,
   render,

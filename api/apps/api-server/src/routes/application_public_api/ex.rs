@@ -1,11 +1,11 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
-    Json, Router,
     body::Bytes,
     extract::{Path, State},
-    http::{HeaderMap, Method, StatusCode, header::CONTENT_TYPE},
+    http::{header::CONTENT_TYPE, HeaderMap, Method, StatusCode},
     response::{IntoResponse, Response},
+    Json, Router,
 };
 use control_plane::{
     application_public_api::{
@@ -18,14 +18,14 @@ use control_plane::{
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
 };
 use serde::Serialize;
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 use crate::{
     app_state::ApiState,
     routes::application_public_api::native::{
-        NativeApiError, api_provider_runtime, bearer_token, service_error,
+        api_provider_runtime, bearer_token, service_error, NativeApiError,
     },
-    runtime_activity::{ApplicationActivityKind, scope_application_activity},
+    runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
 #[derive(Debug, Serialize)]

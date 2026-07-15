@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use plugin_framework::HostExtensionContributionManifest;
 
 use crate::{app_state::ApiState, routes::console_route_assembly::ConsoleRouteAssembly};

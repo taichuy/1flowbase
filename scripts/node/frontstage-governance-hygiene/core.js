@@ -156,7 +156,9 @@ function hasCreateTable(sql, table) {
 }
 
 function hasWorkspaceParentQuery({ serviceSource, repositorySource }) {
-  const ensureParentBody = extractRustMethodBody(serviceSource, 'ensure_page_parent');
+  const ensureParentBody =
+    extractRustMethodBody(serviceSource, 'ensure_page_parent_placement')
+    || extractRustMethodBody(serviceSource, 'ensure_page_parent');
   const getPageBody = extractRustMethodBody(repositorySource, 'get_frontstage_page');
 
   if (!ensureParentBody || !getPageBody) {

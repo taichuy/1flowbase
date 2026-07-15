@@ -21,13 +21,14 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
-        ConsoleRouteAssembly, console_get, console_post, console_put,
+        console_get, console_post, console_put, ConsoleRouteAssembly,
     },
 };
 
 use super::{
-    McpToolResponse, to_tool_response_with_operation,
-    upstream_client::{McpStreamableHttpClient, execute_proxy_call},
+    to_tool_response_with_operation,
+    upstream_client::{execute_proxy_call, McpStreamableHttpClient},
+    McpToolResponse,
 };
 
 #[derive(Debug, Deserialize, ToSchema)]

@@ -112,12 +112,11 @@ fn builtin_data_model_contract_covers_core_and_runtime_read_models() {
     );
     assert!(request_logs_contract.owns_field_code("attempt_id"));
     assert!(request_logs_contract.owns_field_code("created_at"));
-    assert_eq!(
+    assert!(
         request_logs_contract
             .field_contract("attempt_id")
             .expect("attempt_id field contract")
-            .is_unique,
-        true
+            .is_unique
     );
 
     let user_account = crate::builtin_data_model_contract("users")

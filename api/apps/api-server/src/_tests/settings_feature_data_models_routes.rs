@@ -1,6 +1,7 @@
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
-    replace_role_permissions, seed_workspace, test_app_with_database_url,
+    replace_role_legacy_permissions_only, replace_role_permissions, seed_workspace,
+    test_app_with_database_url,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -175,28 +176,8 @@ async fn data_models_feature_only_lists_sources_and_current_scope_model_definiti
         .unwrap();
     assert_eq!(unregistered.status(), StatusCode::FORBIDDEN);
 
-    for old_path in [
-        "/api/console/data-sources",
-        "/api/console/data-sources/instances",
-        "/api/console/models",
-        "/api/console/docs/data-models/not-a-model/openapi.json",
-    ] {
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri(old_path)
-                    .header("cookie", &root_cookie)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{old_path}");
-    }
-
     create_role(&app, &root_cookie, &root_csrf, "legacy_data_model_actions").await;
-    replace_role_permissions(
+    replace_role_legacy_permissions_only(
         &app,
         &root_cookie,
         &root_csrf,

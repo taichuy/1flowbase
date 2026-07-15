@@ -1,4 +1,3 @@
-/* eslint-disable testing-library/no-container, testing-library/no-node-access */
 window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
 
 import {
@@ -791,6 +790,7 @@ describe('LlmModelField', () => {
     duplicatedProvider.model_groups = [
       {
         model_id: 'gpt-4o-mini',
+        distribution_rule: 'none',
         model: {
           ...primaryProviderFirstModel,
           model_id: 'gpt-4o-mini',

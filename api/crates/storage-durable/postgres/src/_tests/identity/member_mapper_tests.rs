@@ -21,11 +21,7 @@ fn member_mapper_preserves_roles_and_status() {
         phone_login_enabled: false,
         status: "active".into(),
         session_version: 1,
-        roles: vec![(
-            "member".into(),
-            RoleScopeKind::Workspace,
-            Some(Uuid::nil()),
-        )],
+        roles: vec![("member".into(), RoleScopeKind::Workspace, Some(Uuid::nil()))],
     };
 
     let user = PgMemberMapper::to_user_record(row);

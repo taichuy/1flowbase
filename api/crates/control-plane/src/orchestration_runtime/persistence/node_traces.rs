@@ -1,6 +1,7 @@
 use super::*;
 use std::sync::Arc;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn persist_flow_debug_node_traces<R>(
     repository: &R,
     scope_id: Uuid,

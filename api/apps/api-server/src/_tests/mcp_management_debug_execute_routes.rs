@@ -502,7 +502,10 @@ async fn mcp_debug_execute_requires_mcp_manage_permission() {
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let payload = response_json(response).await;
-    assert_eq!(payload["code"], json!("permission_denied"));
+    assert_eq!(
+        payload["code"],
+        json!("console_operation_permission_denied")
+    );
 }
 
 #[tokio::test]

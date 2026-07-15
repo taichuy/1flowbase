@@ -1,12 +1,12 @@
 use std::collections::BTreeSet;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use control_plane::{
     ports::{RoleConsolePolicyMigrationRehearsalInput, RoleConsolePolicyMigrationRepository},
     role::console_policy_migration::{
-        ConsolePolicyMigrationActorProbeSet, ConsolePolicyMigrationActorRoleBinding,
-        ConsolePolicyMigrationPreview, compile_console_policy_migration_probes,
-        preview_console_policy_migration_actor_authorizations,
+        compile_console_policy_migration_probes,
+        preview_console_policy_migration_actor_authorizations, ConsolePolicyMigrationActorProbeSet,
+        ConsolePolicyMigrationActorRoleBinding, ConsolePolicyMigrationPreview,
     },
 };
 use serde_json::Value;
@@ -26,8 +26,8 @@ use crate::{
 };
 
 use super::{
-    CompiledCoreConsolePolicyMigration, compile_core_console_policy_migration_plan,
-    crosswalk::LIVE_CORE_MIGRATION_SOURCE_CONTRACT, report::ConsolePolicyMigrationUnknownGrant,
+    compile_core_console_policy_migration_plan, crosswalk::LIVE_CORE_MIGRATION_SOURCE_CONTRACT,
+    report::ConsolePolicyMigrationUnknownGrant, CompiledCoreConsolePolicyMigration,
 };
 
 pub(crate) struct LiveConsolePolicyMigrationContext {

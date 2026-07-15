@@ -132,6 +132,11 @@ const fileManagementApi = vi.hoisted(() => ({
   updateSettingsFileTableBinding: vi.fn()
 }));
 
+const consoleNavigationApi = vi.hoisted(() => ({
+  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+  fetchSettingsConsoleNavigation: vi.fn()
+}));
+
 vi.mock('../../api/members', () => membersApi);
 vi.mock('../../api/roles', () => rolesApi);
 vi.mock('../../api/permissions', () => permissionsApi);
@@ -140,6 +145,7 @@ vi.mock('../../api/model-providers', () => modelProvidersApi);
 vi.mock('../../api/plugins', () => pluginsApi);
 vi.mock('../../api/system-runtime', () => systemRuntimeApi);
 vi.mock('../../api/file-management', () => fileManagementApi);
+vi.mock('../../api/console-navigation', () => consoleNavigationApi);
 vi.mock('@scalar/api-reference-react', () => ({
   ApiReferenceReact: () => <div data-testid="settings-page-scalar">Scalar</div>
 }));
@@ -213,6 +219,27 @@ async function openProviderInstancesModal() {
 
 describe('ModelProvidersPage - main instance selection', () => {
   beforeEach(() => {
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue({
+      route_definitions: [
+        {
+          route_id: 'settings.model-providers',
+          surface_key: 'model-providers',
+          path: '/settings/model-providers',
+          surface_kind: 'system'
+        }
+      ],
+      navigation_items: [
+        {
+          item_id: 'model-providers',
+          route_id: 'settings.model-providers',
+          parent_item_id: 'settings',
+          label_key: 'auto.model_provider',
+          navigation_slot: 'settings',
+          order: 1
+        }
+      ],
+      permission_bindings: []
+    });
     resetAuthStore();
     useBreakpointSpy.mockReturnValue({
       xs: true,
@@ -572,6 +599,7 @@ describe('ModelProvidersPage - main instance selection', () => {
         within(modal).getAllByText(primaryContractProviderModels[0].model_id)
           .length
       ).toBeGreaterThanOrEqual(1);
+      fireEvent.click(within(modal).getByRole('tab', { name: '来源管理' }));
       expect(
         within(modal).getByRole('switch', {
           name: '注入主实例 OpenAI Production'
@@ -599,6 +627,7 @@ describe('ModelProvidersPage - main instance selection', () => {
         within(modal).queryByRole('combobox', { name: '主实例' })
       ).not.toBeInTheDocument();
 
+      fireEvent.click(within(modal).getByRole('tab', { name: '来源管理' }));
       expect(
         within(modal).getAllByText('OpenAI Production').length
       ).toBeGreaterThanOrEqual(1);

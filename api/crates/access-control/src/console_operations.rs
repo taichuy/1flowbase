@@ -897,7 +897,7 @@ fn compile_console_locale_catalog(
         required_references.insert(option.description_ref.to_string());
     }
 
-    for (key, _) in &declared_other_groups {
+    for key in declared_other_groups.keys() {
         if !referenced_other_groups.contains(key) {
             return Err(ConsoleOperationRegistryError::new(format!(
                 "unreferenced Other policy group display {}.{}",

@@ -9,8 +9,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::{
-    ConsolePolicyMigrationOperationDisposition,
     crosswalk::{CompiledCoreConsolePolicyMigration, LIVE_CORE_MIGRATION_SOURCE_CONTRACT},
+    ConsolePolicyMigrationOperationDisposition,
 };
 
 #[derive(Debug, Clone, Serialize)]

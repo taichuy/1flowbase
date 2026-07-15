@@ -349,6 +349,7 @@ impl TraceProjectionBuilder {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_callback_children(
         &mut self,
         parent_order_key: &str,

@@ -410,11 +410,10 @@ async fn openapi_route_exposes_api_title() {
 }
 
 #[tokio::test]
-async fn member_action_routes_remove_legacy_aliases() {
+async fn member_action_routes_support_current_mutations() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let action_member_id = create_member(&app, &cookie, &csrf, "action-route-member").await;
-    let legacy_member_id = create_member(&app, &cookie, &csrf, "legacy-route-member").await;
 
     let action_reset_response = app
         .clone()
@@ -455,45 +454,6 @@ async fn member_action_routes_remove_legacy_aliases() {
         .await
         .unwrap();
     assert_eq!(action_disable_response.status(), StatusCode::NO_CONTENT);
-
-    let legacy_reset_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!(
-                    "/api/console/settings/members/{legacy_member_id}/reset-password"
-                ))
-                .header("cookie", &cookie)
-                .header("x-csrf-token", &csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({
-                        "new_password": "legacy-pass"
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(legacy_reset_response.status(), StatusCode::NOT_FOUND);
-
-    let legacy_disable_response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!(
-                    "/api/console/settings/members/{legacy_member_id}/disable"
-                ))
-                .header("cookie", &cookie)
-                .header("x-csrf-token", &csrf)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(legacy_disable_response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

@@ -1098,25 +1098,40 @@ impl ModelProviderRepository for PgControlPlaneStore {
     ) -> Result<domain::ModelFailoverQueueItemRecord> {
         let row = sqlx::query(
             r#"
-            insert into model_failover_queue_items (
-                id,
-                queue_template_id,
-                sort_index,
-                provider_instance_id,
-                provider_code,
-                upstream_model_id,
-                protocol,
-                enabled
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8)
-            returning
-                id,
-                queue_template_id,
-                sort_index,
-                provider_instance_id,
-                provider_code,
-                upstream_model_id,
-                protocol,
-                enabled
+            with inserted as (
+                insert into model_failover_queue_items (
+                    id,
+                    queue_template_id,
+                    sort_index,
+                    provider_instance_id,
+                    provider_code,
+                    upstream_model_id,
+                    protocol,
+                    enabled
+                ) values ($1, $2, $3, $4, $5, $6, $7, $8)
+                returning
+                    id,
+                    queue_template_id,
+                    sort_index,
+                    provider_instance_id,
+                    provider_code,
+                    upstream_model_id,
+                    protocol,
+                    enabled
+            )
+            select
+                inserted.id,
+                inserted.queue_template_id,
+                inserted.sort_index,
+                inserted.provider_instance_id,
+                instances.display_name as provider_instance_display_name,
+                inserted.provider_code,
+                inserted.upstream_model_id,
+                inserted.protocol,
+                inserted.enabled
+            from inserted
+            join model_provider_instances instances
+              on instances.id = inserted.provider_instance_id
             "#,
         )
         .bind(input.queue_item_id)
@@ -1140,17 +1155,20 @@ impl ModelProviderRepository for PgControlPlaneStore {
         let rows = sqlx::query(
             r#"
             select
-                id,
-                queue_template_id,
-                sort_index,
-                provider_instance_id,
-                provider_code,
-                upstream_model_id,
-                protocol,
-                enabled
-            from model_failover_queue_items
-            where queue_template_id = $1
-            order by sort_index asc, id asc
+                items.id,
+                items.queue_template_id,
+                items.sort_index,
+                items.provider_instance_id,
+                instances.display_name as provider_instance_display_name,
+                items.provider_code,
+                items.upstream_model_id,
+                items.protocol,
+                items.enabled
+            from model_failover_queue_items items
+            join model_provider_instances instances
+              on instances.id = items.provider_instance_id
+            where items.queue_template_id = $1
+            order by items.sort_index asc, items.id asc
             "#,
         )
         .bind(queue_template_id)

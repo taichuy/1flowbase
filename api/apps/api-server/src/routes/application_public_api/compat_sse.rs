@@ -1,8 +1,8 @@
 use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use axum::response::{
-    IntoResponse, Response,
     sse::{Event, KeepAlive, Sse},
+    IntoResponse, Response,
 };
 use control_plane::{
     application_public_api::{
@@ -15,11 +15,11 @@ use control_plane::{
         run_service::native_result_from_run_detail,
     },
     orchestration_runtime::{
-        OrchestrationRuntimeService, StartPublishedFlowRunCommand, debug_stream_events,
+        debug_stream_events, OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
     ports::{OrchestrationRuntimeRepository, RuntimeEventEnvelope, RuntimeEventPayload},
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info, warn};
 
@@ -27,12 +27,12 @@ use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
-        native::{NativeApiError, service_error},
+        native::{service_error, NativeApiError},
         stream_terminal_fallback::{
-            TerminalAnswerDelta, TerminalAnswerDeltaKind,
             enrich_terminal_runtime_event_with_durable_answer,
             load_latest_native_run_for_terminal_fallback, terminal_answer_deltas_from_payload,
             terminal_answer_text_from_payload, terminal_runtime_event_from_native_run,
+            TerminalAnswerDelta, TerminalAnswerDeltaKind,
         },
         tool_callback_ids::{
             encode_anthropic_callback_tool_use_id, encode_openai_callback_tool_call_id,
@@ -50,8 +50,8 @@ use event_forwarding::{
     send_compatible_runtime_event_stream,
 };
 use protocol_mappers::{
-    AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper,
     anthropic_completed_run_to_sse, terminal_answer_deltas_from_run_or_payload,
+    AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper,
 };
 
 type CompatRunSseStream = tokio_stream::wrappers::ReceiverStream<Result<Event, Infallible>>;

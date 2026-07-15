@@ -1,25 +1,25 @@
 use std::{collections::BTreeSet, convert::Infallible, sync::Arc};
 
 use access_control::{
-    APPLICATIONS_CREATE_ACTION_CODE, APPLICATIONS_DELETE_ACTION_CODE, APPLICATIONS_RESOURCE_CODE,
-    APPLICATIONS_UPDATE_ACTION_CODE, APPLICATIONS_VIEW_ACTION_CODE, ConsoleAuthorization,
-    ConsoleOperationOwner, ConsoleOperationRegistration, ConsoleOperationRegistry,
-    ConsolePolicyGroup, ConsoleRouteAssemblyBinding, ConsoleRouteBinding, ConsoleRouteOwnership,
-    DATA_SOURCE_INSTANCES_RESOURCE_CODE, DATA_SOURCES_VIEW_ACTION_CODE, ResourceAccessAction,
-    ResourceAccessRegistration, ResourceAccessScopeKind, SettingsFeatureLifecycle,
-    SettingsFeatureOwnerKind, SettingsFeatureRegistry,
+    ConsoleAuthorization, ConsoleOperationOwner, ConsoleOperationRegistration,
+    ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteAssemblyBinding, ConsoleRouteBinding,
+    ConsoleRouteOwnership, ResourceAccessAction, ResourceAccessRegistration,
+    ResourceAccessScopeKind, SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
+    SettingsFeatureRegistry, APPLICATIONS_CREATE_ACTION_CODE, APPLICATIONS_DELETE_ACTION_CODE,
+    APPLICATIONS_RESOURCE_CODE, APPLICATIONS_UPDATE_ACTION_CODE, APPLICATIONS_VIEW_ACTION_CODE,
+    DATA_SOURCES_VIEW_ACTION_CODE, DATA_SOURCE_INSTANCES_RESOURCE_CODE,
 };
 use axum::{
-    Router,
     handler::Handler,
-    routing::{MethodRouter, get, patch, post},
+    routing::{get, patch, post, MethodRouter},
+    Router,
 };
 use plugin_framework::HostExtensionContributionManifest;
 
 use super::core_console_i18n::core_console_locale_catalog_contribution;
 use super::core_console_operation_specs::{
-    CORE_CONSOLE_OPERATION_SPECS, CoreConsoleAuthorizationSpec, CoreConsoleOperationSpec,
-    CoreConsolePolicyGroupSpec,
+    CoreConsoleAuthorizationSpec, CoreConsoleOperationSpec, CoreConsolePolicyGroupSpec,
+    CORE_CONSOLE_OPERATION_SPECS,
 };
 use crate::app_state::ApiState;
 
@@ -142,6 +142,15 @@ where
 pub struct ConsoleRouteAssembly<S> {
     router: Router<S>,
     bindings: Vec<ConsoleRouteAssemblyBinding>,
+}
+
+impl<S> Default for ConsoleRouteAssembly<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<S> ConsoleRouteAssembly<S>
@@ -481,7 +490,7 @@ mod tests {
     use access_control::ConsoleRouteOwnership;
 
     use super::{
-        ConsoleRouteAssembly, console_health_route_assembly, migrated_core_console_route_assembly,
+        console_health_route_assembly, migrated_core_console_route_assembly, ConsoleRouteAssembly,
     };
 
     fn route_keys<S>(assembly: &ConsoleRouteAssembly<S>) -> BTreeSet<(String, String, String)>

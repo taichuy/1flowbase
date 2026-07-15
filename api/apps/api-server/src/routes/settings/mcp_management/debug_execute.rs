@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{
-        HeaderMap, HeaderName, Method, Request, StatusCode,
         header::{ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_TYPE, COOKIE},
+        HeaderMap, HeaderName, Method, Request, StatusCode,
     },
     response::Response,
 };
@@ -31,17 +31,12 @@ pub struct McpDebugExecuteBody {
     pub output_mapping: Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema, Clone, Copy)]
+#[derive(Debug, Default, Deserialize, ToSchema, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum McpDebugResponseMode {
+    #[default]
     ToolResult,
     DebugDetails,
-}
-
-impl Default for McpDebugResponseMode {
-    fn default() -> Self {
-        Self::ToolResult
-    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -141,9 +136,10 @@ fn build_interface_arguments(
         let mcp_value = match get_path_value(mcp_arguments, &mapping.mcp_param) {
             Some(value) if !is_blank_argument(value) => value.clone(),
             _ if mapping.required => {
-                return Err(
-                    control_plane::errors::ControlPlaneError::InvalidInput("mcp_arguments").into(),
-                );
+                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "mcp_arguments",
+                )
+                .into());
             }
             _ => continue,
         };

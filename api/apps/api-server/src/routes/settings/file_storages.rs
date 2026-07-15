@@ -5,9 +5,9 @@ use access_control::{
     FILE_STORAGES_LIST_OPERATION_ID, FILE_STORAGES_UPDATE_OPERATION_ID,
 };
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    Json, Router,
 };
 use control_plane::file_management::{
     CreateFileStorageCommand, DeleteFileStorageCommand, FileStorageService,
@@ -22,7 +22,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get, console_put},
+    routes::console_route_assembly::{console_get, console_put, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]

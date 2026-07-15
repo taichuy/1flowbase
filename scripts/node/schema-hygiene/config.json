@@ -48,6 +48,7 @@
     "flow_run_checkpoints",
     "flow_run_events",
     "model_failover_queue_snapshots",
+    "model_provider_request_logs",
     "node_runs",
     "runtime_artifacts",
     "runtime_audit_hashes",
@@ -599,6 +600,15 @@
         "managed-table-scope-time-index"
       ]
     },
+    "mcp_upstream_connection_secrets": {
+      "kind": "bounded_secret_projection",
+      "reason": "one encrypted secret projection is bounded by each upstream connection and uses upstream_connection_id as its stable identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-time-index"
+      ]
+    },
     "plugin_artifact_instances": {
       "kind": "bounded_projection",
       "reason": "bounded plugin artifact projection is keyed by plugin installation and node without unbounded history",
@@ -616,6 +626,116 @@
       "skip": [
         "managed-table-id",
         "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_group_policies": {
+      "kind": "bounded_role_policy_child",
+      "reason": "console group policies are bounded by the owning role and compiled console group catalog",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_operation_policies": {
+      "kind": "bounded_role_policy_child",
+      "reason": "console operation overrides are bounded by the owning role and compiled operation catalog",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_group_policy_snapshots": {
+      "kind": "bounded_migration_snapshot",
+      "reason": "group policy snapshots are bounded children of one console policy migration run",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_operation_policy_snapshots": {
+      "kind": "bounded_migration_snapshot",
+      "reason": "operation policy snapshots are bounded children of one console policy migration run",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_actor_previews": {
+      "kind": "bounded_migration_preview",
+      "reason": "actor previews are bounded by one console policy migration run and its captured actor set",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_cutover_state": {
+      "kind": "system_singleton_state",
+      "reason": "console policy cutover state is one system singleton and is not workspace-routed history",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_ledger": {
+      "kind": "low_volume_migration_history",
+      "reason": "console policy migration ledger is bounded release history owned through role_id and migration revision fingerprints",
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_role_previews": {
+      "kind": "bounded_migration_preview",
+      "reason": "role previews are bounded by one console policy migration run and the captured role set",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_run_artifacts": {
+      "kind": "bounded_migration_artifact",
+      "reason": "compiled migration artifacts are one bounded snapshot per console policy migration run",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_runs": {
+      "kind": "low_volume_migration_history",
+      "reason": "console policy migration runs are low volume system release history keyed by migration revision",
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_data_model_policies": {
+      "kind": "bounded_role_policy_child",
+      "reason": "data model policy overrides are bounded by the owning role and registered data model set",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_data_policies": {
+      "kind": "bounded_role_policy_child",
+      "reason": "default data policies are one bounded policy row per owning role",
+      "skip": [
         "managed-table-scope-column",
         "managed-table-scope-time-index"
       ]

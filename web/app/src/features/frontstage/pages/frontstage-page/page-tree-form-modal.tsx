@@ -32,6 +32,8 @@ type PageTreeFormDialog =
       initialTitle: string;
       initialIcon: string;
       initialTooltip: string;
+      initialSlug?: string;
+      showSlug?: boolean;
     }
   | {
       kind: 'tooltip';

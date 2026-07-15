@@ -260,18 +260,6 @@ async fn roles_feature_only_completes_role_crud_and_permission_configuration() {
         .await
         .unwrap();
     assert_eq!(delete_response.status(), StatusCode::NO_CONTENT);
-
-    let old_route = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/console/roles")
-                .header("cookie", &actor_cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(old_route.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

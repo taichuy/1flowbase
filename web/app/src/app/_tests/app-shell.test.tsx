@@ -91,7 +91,9 @@ vi.mock('@1flowbase/api-client', () => ({
   fetchConsoleRuntimeModelRecords: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   createConsoleRuntimeModelRecord: vi.fn().mockResolvedValue({}),
   updateConsoleRuntimeModelRecord: vi.fn().mockResolvedValue({}),
-  deleteConsoleRuntimeModelRecord: vi.fn().mockResolvedValue({ deleted: true })
+  deleteConsoleRuntimeModelRecord: vi.fn().mockResolvedValue({ deleted: true }),
+  dispatchFrontstageQuery: vi.fn(),
+  dispatchFrontstageAction: vi.fn()
 }));
 
 vi.mock('../../features/auth/components/AuthBootstrap', () => ({

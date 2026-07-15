@@ -2,8 +2,8 @@ use super::application_runtime_routes::{
     create_ready_provider_instance, seed_agent_flow_application,
 };
 use crate::_tests::support::{
-    create_member, login_and_capture_cookie, replace_member_roles, test_app,
-    test_app_with_database_url,
+    create_member, create_role, login_and_capture_cookie, replace_member_roles,
+    replace_role_permissions, test_app, test_app_with_database_url,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -237,7 +237,27 @@ async fn debug_variable_snapshot_keeps_actor_run_scope_isolated() {
         "change-me",
     )
     .await;
-    replace_member_roles(&app, &root_cookie, &root_csrf, &member_id, &["admin"]).await;
+    create_role(&app, &root_cookie, &root_csrf, "snapshot_admin").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "snapshot_admin",
+        &[
+            "application.view.all",
+            "application.edit.all",
+            "application.use.all",
+        ],
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["snapshot_admin"],
+    )
+    .await;
     let (member_cookie, member_csrf) =
         login_and_capture_cookie(&app, "snapshot-admin", "change-me").await;
 

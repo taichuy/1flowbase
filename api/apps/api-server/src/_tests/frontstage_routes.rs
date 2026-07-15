@@ -231,6 +231,7 @@ async fn get_json(app: &axum::Router, path: &str, cookie: &str) -> (StatusCode, 
     (status, payload)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn save_page_content(
     app: &axum::Router,
     cookie: &str,
@@ -259,6 +260,7 @@ async fn save_page_content(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_capability(
     app: &axum::Router,
     cookie: &str,
@@ -634,7 +636,12 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
         &format!("/api/console/frontstage/{workspace_id}/pages"),
         &cookie,
         &csrf,
-        json!({"title": "Topbar root", "rank": "b", "placement": "topbar"}),
+        json!({
+            "title": "Topbar root",
+            "rank": "b",
+            "placement": "topbar",
+            "slug": "topbar-root"
+        }),
     )
     .await;
     assert_eq!(page_status, StatusCode::CREATED);
@@ -674,7 +681,7 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
         &format!("/api/console/frontstage/{workspace_id}/pages/{group_id}"),
         &cookie,
         &csrf,
-        json!({"placement": "topbar"}),
+        json!({"placement": "topbar", "slug": "sidebar-group"}),
     )
     .await;
     assert_eq!(metadata_status, StatusCode::BAD_REQUEST);
@@ -685,7 +692,7 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
 }
 
 #[tokio::test]
-async fn group_under_group_is_rejected() {
+async fn group_under_group_is_allowed() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
@@ -708,7 +715,7 @@ async fn group_under_group_is_rejected() {
     )
     .await;
 
-    assert_eq!(nested_status, StatusCode::BAD_REQUEST);
+    assert_eq!(nested_status, StatusCode::CREATED);
 }
 
 #[tokio::test]
@@ -1263,10 +1270,10 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
         &viewer_cookie,
     )
     .await;
-    assert_eq!(detail_status, StatusCode::FORBIDDEN);
+    assert_eq!(detail_status, StatusCode::NOT_FOUND);
 
     let (read_status, _) = get_json(&app, &code_path, &viewer_cookie).await;
-    assert_eq!(read_status, StatusCode::FORBIDDEN);
+    assert_eq!(read_status, StatusCode::NOT_FOUND);
 
     let (write_status, _) = send_json(
         &app,

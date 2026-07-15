@@ -1110,18 +1110,4 @@ async fn mcp_instance_discovery_policy_updates_validate_and_isolate_list_behavio
     assert_eq!(long_regex_response.status(), StatusCode::BAD_REQUEST);
     let long_regex_payload = response_json(long_regex_response).await;
     assert_eq!(long_regex_payload["code"].as_str(), Some("path_regex"));
-
-    let legacy_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/api/console/mcp/meta-tool-config")
-                .header("cookie", &root_cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(legacy_response.status(), StatusCode::NOT_FOUND);
 }

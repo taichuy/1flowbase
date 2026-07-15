@@ -1021,6 +1021,7 @@ where
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_items(
         &self,
         actor_user_id: Uuid,

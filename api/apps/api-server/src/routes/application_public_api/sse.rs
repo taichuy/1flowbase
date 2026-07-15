@@ -6,7 +6,7 @@ use control_plane::{
     ports::RuntimeEventEnvelope,
 };
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use time::format_description::well_known::Rfc3339;
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
@@ -15,8 +15,8 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     routes::application_public_api::stream_terminal_fallback::{
-        TerminalAnswerDelta, TerminalAnswerDeltaKind, load_latest_native_run_for_terminal_fallback,
-        terminal_answer_deltas_from_payload, terminal_runtime_event_from_native_run,
+        load_latest_native_run_for_terminal_fallback, terminal_answer_deltas_from_payload,
+        terminal_runtime_event_from_native_run, TerminalAnswerDelta, TerminalAnswerDeltaKind,
     },
 };
 
@@ -707,10 +707,12 @@ mod tests {
             },
         );
 
-        assert!(
-            native_sse_payload_for_runtime_event(&run, IncludeWorkflowEvents::None, provider_event)
-                .is_none()
-        );
+        assert!(native_sse_payload_for_runtime_event(
+            &run,
+            IncludeWorkflowEvents::None,
+            provider_event
+        )
+        .is_none());
         let (event_name, payload) = native_sse_payload_for_runtime_event(
             &run,
             IncludeWorkflowEvents::None,
@@ -725,7 +727,7 @@ mod tests {
 
     #[tokio::test]
     async fn native_terminal_answer_delta_sse_events_project_thinking_before_completed() {
-        use axum::response::{IntoResponse, sse::Sse};
+        use axum::response::{sse::Sse, IntoResponse};
 
         let run = native_run();
         let terminal_event = RuntimeEventEnvelope::new(

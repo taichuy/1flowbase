@@ -1,9 +1,9 @@
 use std::{fs, path::Path};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use plugin_framework::{
-    HostExtensionContributionManifest, PluginManifestV1,
     parse_host_extension_contribution_manifest, parse_plugin_manifest,
+    HostExtensionContributionManifest, PluginManifestV1,
 };
 
 pub fn builtin_host_extension_manifest_paths() -> Vec<&'static str> {

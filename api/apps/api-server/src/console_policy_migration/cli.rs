@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use control_plane::ports::RoleConsolePolicyMigrationRepository;
 use uuid::Uuid;
 

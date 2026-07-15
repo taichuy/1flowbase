@@ -39,7 +39,10 @@ export default tseslint.config(
     },
     rules: {
       ...testingLibrary.configs.react.rules,
-      ...jestDom.configs.recommended.rules
+      ...jestDom.configs.recommended.rules,
+      // Structural and style-boundary tests intentionally inspect DOM topology.
+      'testing-library/no-container': 'off',
+      'testing-library/no-node-access': 'off'
     }
   }
 );

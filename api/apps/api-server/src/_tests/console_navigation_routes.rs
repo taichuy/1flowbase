@@ -138,17 +138,17 @@ async fn console_navigation_route_trims_limited_member_registry() {
     assert!(!item_ids.contains(&"settings.members".to_string()));
     assert!(!item_ids.contains(&"settings.docs".to_string()));
     assert!(!item_ids.contains(&"settings.roles".to_string()));
-    assert!(!item_ids.contains(&"templates".to_string()));
+    assert!(item_ids.contains(&"templates".to_string()));
 
     let route_ids = string_values(&payload, &["data", "route_definitions"], "route_id");
     assert!(!route_ids.contains(&"settings.docs".to_string()));
     assert!(!route_ids.contains(&"settings.roles".to_string()));
-    assert!(!route_ids.contains(&"templates".to_string()));
+    assert!(route_ids.contains(&"templates".to_string()));
 
     let binding_route_ids = string_values(&payload, &["data", "permission_bindings"], "route_id");
     assert!(!binding_route_ids.contains(&"settings.docs".to_string()));
     assert!(!binding_route_ids.contains(&"settings.roles".to_string()));
-    assert!(!binding_route_ids.contains(&"templates".to_string()));
+    assert!(binding_route_ids.contains(&"templates".to_string()));
 }
 
 #[tokio::test]

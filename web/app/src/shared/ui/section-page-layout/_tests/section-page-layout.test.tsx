@@ -1,5 +1,3 @@
-/* eslint-disable testing-library/no-container, testing-library/no-node-access */
-
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ReactElement } from 'react';
@@ -72,11 +70,13 @@ describe('SectionPageLayout', () => {
 
     expect(await screen.findByRole('navigation')).toBeInTheDocument();
     expect(screen.getByText('个人资料内容')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '退出登录' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '退出登录' })
+    ).toBeInTheDocument();
     expect(screen.getByTestId('section-page-layout')).toHaveClass('ant-layout');
-    expect(view.container.querySelector('.section-page-layout__rail')).toHaveClass(
-      'ant-layout-sider'
-    );
+    expect(
+      view.container.querySelector('.section-page-layout__rail')
+    ).toHaveClass('ant-layout-sider');
     expect(
       view.container.querySelector('.section-page-layout__content')
     ).toHaveClass('ant-layout-content');
@@ -114,7 +114,9 @@ describe('SectionPageLayout', () => {
     );
 
     expect(await screen.findByText('窄布局内容')).toBeInTheDocument();
-    expect(screen.getByTestId('section-page-layout')).toHaveClass('section-page-layout--narrow');
+    expect(screen.getByTestId('section-page-layout')).toHaveClass(
+      'section-page-layout--narrow'
+    );
     view.unmount();
   });
 
@@ -285,7 +287,9 @@ describe('SectionPageLayout', () => {
     expect(mobileBlock).toContain('.section-page-layout--viewport');
     expect(mobileBlock).toContain('height: auto;');
     expect(mobileBlock).toContain('overflow: visible;');
-    expect(mobileBlock).toContain('padding: var(--section-page-top-padding) 0;');
+    expect(mobileBlock).toContain(
+      'padding: var(--section-page-top-padding) 0;'
+    );
   });
 
   test('renders empty state instead of broken navigation when navItems is empty', async () => {
@@ -300,7 +304,9 @@ describe('SectionPageLayout', () => {
       </SectionPageLayout>
     );
 
-    expect(await screen.findByText('当前账号暂无可访问内容')).toBeInTheDocument();
+    expect(
+      await screen.findByText('当前账号暂无可访问内容')
+    ).toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(screen.queryByText('不会显示的内容')).not.toBeInTheDocument();
   });
@@ -343,7 +349,9 @@ describe('SectionPageLayout', () => {
     );
 
     expect(await screen.findByRole('tablist')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '更多分区' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '更多分区' })
+    ).not.toBeInTheDocument();
 
     view.unmount();
 
@@ -357,7 +365,9 @@ describe('SectionPageLayout', () => {
       </SectionPageLayout>
     );
 
-    expect(await screen.findByRole('button', { name: '更多分区' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: '更多分区' })
+    ).toBeInTheDocument();
   });
 
   test('can hide compact navigation when another responsive selector owns it', async () => {
@@ -371,17 +381,15 @@ describe('SectionPageLayout', () => {
     });
 
     renderInRouter(
-      <SectionPageLayout
-        navItems={navItems}
-        activeKey="profile"
-        hideCompactNav
-      >
+      <SectionPageLayout navItems={navItems} activeKey="profile" hideCompactNav>
         <section>设置页内容</section>
       </SectionPageLayout>
     );
 
     expect(await screen.findByText('设置页内容')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '更多分区' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '更多分区' })
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
   });
 });

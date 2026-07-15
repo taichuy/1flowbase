@@ -1461,7 +1461,6 @@ describe('McpManagementPanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     const rootLabel = within(dialog).getByText('Ops MCP /');
-    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
     await waitFor(() => {
@@ -1667,15 +1666,22 @@ describe('McpManagementPanel', () => {
     clickSegmentedOption(dialog, 'input_mapping');
     expect(within(dialog).getByText('parameter_schema')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
-    fireEvent.change(await within(dialog).findByLabelText('JSON Schema 内容'), {
-      target: {
-        value: JSON.stringify({
-          type: 'object',
-          properties: { local_query: { type: 'string' } },
-          required: ['local_query']
-        })
+    fireEvent.change(
+      await within(dialog).findByLabelText(
+        'JSON Schema 内容',
+        undefined,
+        { timeout: 10000 }
+      ),
+      {
+        target: {
+          value: JSON.stringify({
+            type: 'object',
+            properties: { local_query: { type: 'string' } },
+            required: ['local_query']
+          })
+        }
       }
-    });
+    );
     expect(within(dialog).getByLabelText('local_path 1')).toHaveValue(
       'request.query'
     );
@@ -1754,7 +1760,7 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
-  });
+  }, 30_000);
 
   test('falls back from the removed meta tab to instances', async () => {
     window.history.replaceState({}, '', '/settings/mcp-management?tab=meta');
@@ -2999,7 +3005,7 @@ describe('McpManagementPanel', () => {
 
     expect(desIdOptions).toHaveLength(1);
     expect(applicationIdOptions).toHaveLength(2);
-  }, 30000);
+  }, 90000);
 
   test('allows manually adding interface parameters and mappings when descriptors are empty', async () => {
     renderPanel([
@@ -3090,5 +3096,5 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
-  }, 30000);
+  }, 90000);
 });

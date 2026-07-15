@@ -3,7 +3,7 @@ use std::{
     path::{Component, Path},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use control_plane::{
     errors::ControlPlaneError,
     host_extension::{is_host_extension_installation, is_host_extension_manifest},
@@ -15,15 +15,15 @@ use control_plane::{
 };
 use domain::{PluginArtifactStatus, PluginDesiredState, PluginRuntimeStatus};
 use plugin_framework::{
-    HostExtensionContributionManifest, HostExtensionDropinPolicy, HostExtensionDropinScan,
     parse_host_extension_contribution_manifest, scan_host_extension_dropins_with_policy,
+    HostExtensionContributionManifest, HostExtensionDropinPolicy, HostExtensionDropinScan,
 };
 
 #[cfg(test)]
 use crate::app_state::ApiState;
 use crate::host_extensions::console::{
-    ResolvedHostExtensionConsoleContribution, linked_host_console_route_sources,
-    resolve_linked_host_extension_console_contribution,
+    linked_host_console_route_sources, resolve_linked_host_extension_console_contribution,
+    ResolvedHostExtensionConsoleContribution,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

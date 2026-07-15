@@ -125,6 +125,7 @@ where
     Ok(records)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn enqueue_provider_request_log_tasks(
     task_queue: Option<&std::sync::Arc<dyn crate::ports::TaskQueue>>,
     scope_id: Uuid,
@@ -174,6 +175,7 @@ pub(crate) async fn enqueue_provider_request_log_tasks(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn provider_request_log_task_from_attempt(
     scope_id: Uuid,
     attempt_id: Uuid,

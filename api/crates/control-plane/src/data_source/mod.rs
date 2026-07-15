@@ -109,6 +109,7 @@ pub struct DataSourceInstanceView {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum DataSourceBackendView {
     Core {
         defaults: domain::DataSourceDefaults,

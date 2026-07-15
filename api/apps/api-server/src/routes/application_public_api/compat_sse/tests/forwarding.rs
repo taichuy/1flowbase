@@ -1,8 +1,8 @@
 use super::super::event_forwarding::advance_durable_cursor_for_forwarded_event;
 use super::super::protocol_mappers::{
-    AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper,
     anthropic_delta_payload, openai_delta_chunk_payload, openai_finish_chunk_payload,
     openai_response_function_call_output_items, openai_tool_call_chunk_payload,
+    AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper,
 };
 use super::super::*;
 use super::support::*;
@@ -521,12 +521,10 @@ fn openai_responses_waiting_callback_maps_to_function_call_item() {
     assert_eq!(output[0]["type"], json!("function_call"));
     assert_eq!(output[0]["name"], json!("lookup_inventory"));
     assert_eq!(output[0]["arguments"], json!("{\"sku\":\"sku_123\"}"));
-    assert!(
-        output[0]["call_id"]
-            .as_str()
-            .expect("call id should be encoded")
-            .contains("call_inventory")
-    );
+    assert!(output[0]["call_id"]
+        .as_str()
+        .expect("call id should be encoded")
+        .contains("call_inventory"));
 }
 
 #[test]

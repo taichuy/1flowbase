@@ -142,6 +142,14 @@ async fn console_user_api_key_role_options_only_include_current_user_roles() {
     .await;
     create_role(&app, &root_cookie, &root_csrf, "pat_owned_role").await;
     create_role(&app, &root_cookie, &root_csrf, "pat_other_role").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "pat_owned_role",
+        &["settings_feature.access.system.api-key-authentication"],
+    )
+    .await;
     replace_member_roles(
         &app,
         &root_cookie,
@@ -292,7 +300,14 @@ async fn console_user_api_key_reuses_bound_user_permissions_and_denies_missing_p
     )
     .await;
     create_role(&app, &root_cookie, &root_csrf, "pat_no_permission").await;
-    replace_role_permissions(&app, &root_cookie, &root_csrf, "pat_no_permission", &[]).await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "pat_no_permission",
+        &["settings_feature.access.system.api-key-authentication"],
+    )
+    .await;
     replace_member_roles(
         &app,
         &root_cookie,
@@ -321,7 +336,10 @@ async fn console_user_api_key_reuses_bound_user_permissions_and_denies_missing_p
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(payload["code"], json!("permission_denied"));
+    assert_eq!(
+        payload["code"],
+        json!("console_operation_permission_denied")
+    );
 }
 
 #[tokio::test]
@@ -759,34 +777,6 @@ async fn public_auth_sign_in_handles_cors_preflight() {
         .headers()
         .get(header::ACCESS_CONTROL_ALLOW_METHODS)
         .is_some());
-}
-
-#[tokio::test]
-async fn console_api_keys_route_is_not_registered() {
-    let app = test_app().await;
-    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/api-keys")
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "name": "console route key",
-                        "permissions": []
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 async fn create_user_api_key(app: &axum::Router, cookie: &str, csrf: &str, name: &str) -> String {

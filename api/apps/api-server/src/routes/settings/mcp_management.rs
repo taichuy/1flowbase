@@ -9,10 +9,10 @@ use std::{
 };
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
+    Json, Router,
 };
 use control_plane::mcp_management::{
     CreateMcpInstanceCommand, CreateMcpToolBindingCommand, CreateMcpToolCommand,
@@ -34,7 +34,7 @@ use crate::{
     openapi_docs::{ApiDocsRegistry, DocsCatalogOperation},
     response::ApiSuccess,
     routes::console_route_assembly::{
-        ConsoleRouteAssembly, console_get, console_post, console_put,
+        console_get, console_post, console_put, ConsoleRouteAssembly,
     },
     runtime_data_model_docs,
 };
@@ -2518,41 +2518,33 @@ mod tests {
             McpInterfaceCapabilitySource::StaticApiDocs,
         )
         .expect("JSON operation should become an MCP interface entry");
-        assert!(
-            json_entry
-                .parameter_descriptors
-                .iter()
-                .any(|descriptor| descriptor.name == "widget_id"
-                    && descriptor.parameter_type == McpParameterType::Url
-                    && descriptor.required)
-        );
-        assert!(
-            json_entry
-                .parameter_descriptors
-                .iter()
-                .any(|descriptor| descriptor.name == "locale"
-                    && descriptor.parameter_type == McpParameterType::Url
-                    && !descriptor.required)
-        );
-        assert!(
-            json_entry
-                .parameter_descriptors
-                .iter()
-                .any(|descriptor| descriptor.name == "title"
-                    && descriptor.parameter_type == McpParameterType::JsonBody
-                    && descriptor.field_type == "string"
-                    && descriptor.required
-                    && descriptor.description.as_deref() == Some("Widget title"))
-        );
-        assert!(
-            json_entry
-                .parameter_descriptors
-                .iter()
-                .any(|descriptor| descriptor.name == "enabled"
-                    && descriptor.parameter_type == McpParameterType::JsonBody
-                    && descriptor.field_type == "boolean"
-                    && !descriptor.required)
-        );
+        assert!(json_entry
+            .parameter_descriptors
+            .iter()
+            .any(|descriptor| descriptor.name == "widget_id"
+                && descriptor.parameter_type == McpParameterType::Url
+                && descriptor.required));
+        assert!(json_entry
+            .parameter_descriptors
+            .iter()
+            .any(|descriptor| descriptor.name == "locale"
+                && descriptor.parameter_type == McpParameterType::Url
+                && !descriptor.required));
+        assert!(json_entry
+            .parameter_descriptors
+            .iter()
+            .any(|descriptor| descriptor.name == "title"
+                && descriptor.parameter_type == McpParameterType::JsonBody
+                && descriptor.field_type == "string"
+                && descriptor.required
+                && descriptor.description.as_deref() == Some("Widget title")));
+        assert!(json_entry
+            .parameter_descriptors
+            .iter()
+            .any(|descriptor| descriptor.name == "enabled"
+                && descriptor.parameter_type == McpParameterType::JsonBody
+                && descriptor.field_type == "boolean"
+                && !descriptor.required));
 
         let form_entry = mcp_interface_entry_from_operation(
             &operation("upload_widget", "POST", "/api/console/uploads"),
@@ -2560,22 +2552,18 @@ mod tests {
             McpInterfaceCapabilitySource::StaticApiDocs,
         )
         .expect("form operation should become an MCP interface entry");
-        assert!(
-            form_entry
-                .parameter_descriptors
-                .iter()
-                .any(|descriptor| descriptor.name == "file"
-                    && descriptor.parameter_type == McpParameterType::Form
-                    && descriptor.required)
-        );
-        assert!(
-            form_entry
-                .parameter_descriptors
-                .iter()
-                .any(|descriptor| descriptor.name == "label"
-                    && descriptor.parameter_type == McpParameterType::Form
-                    && !descriptor.required)
-        );
+        assert!(form_entry
+            .parameter_descriptors
+            .iter()
+            .any(|descriptor| descriptor.name == "file"
+                && descriptor.parameter_type == McpParameterType::Form
+                && descriptor.required));
+        assert!(form_entry
+            .parameter_descriptors
+            .iter()
+            .any(|descriptor| descriptor.name == "label"
+                && descriptor.parameter_type == McpParameterType::Form
+                && !descriptor.required));
     }
 
     #[test]

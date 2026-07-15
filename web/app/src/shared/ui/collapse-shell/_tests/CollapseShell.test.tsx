@@ -1,4 +1,3 @@
-/* eslint-disable testing-library/no-node-access */
 import { render, screen } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
@@ -41,6 +40,9 @@ describe('CollapseShell', () => {
       />
     );
 
-    expect(container.firstChild).toHaveClass('collapse-shell', 'collapse-shell--compact');
+    expect(container.firstChild).toHaveClass(
+      'collapse-shell',
+      'collapse-shell--compact'
+    );
   });
 });
