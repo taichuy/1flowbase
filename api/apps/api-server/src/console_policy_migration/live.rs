@@ -5,11 +5,10 @@ use control_plane::{
     ports::{RoleConsolePolicyMigrationRehearsalInput, RoleConsolePolicyMigrationRepository},
     role::console_policy_migration::{
         ConsolePolicyMigrationActorProbeSet, ConsolePolicyMigrationActorRoleBinding,
-        ConsolePolicyMigrationPreview, ConsolePolicyMigrationProbe,
-        ConsolePolicyMigrationProbeKind, preview_console_policy_migration_actor_authorizations,
+        ConsolePolicyMigrationPreview, compile_console_policy_migration_probes,
+        preview_console_policy_migration_actor_authorizations,
     },
 };
-use domain::ConsoleOperationId;
 use serde_json::Value;
 use sqlx::Row;
 use uuid::Uuid;
@@ -182,7 +181,8 @@ pub(crate) async fn preview_live_migration(
         .map(|preview| preview.policy.role_id())
         .collect::<Vec<_>>();
     let actor_bindings = live_actor_role_bindings(store, &role_ids).await?;
-    let probes = default_five_probes()?;
+    let probes = compile_console_policy_migration_probes(migration.plan())
+        .map_err(|error| anyhow!("cannot compile actor operation/row probes: {error}"))?;
     let actor_probe_sets = actor_bindings
         .into_iter()
         .map(|binding| ConsolePolicyMigrationActorProbeSet {
@@ -195,13 +195,14 @@ pub(crate) async fn preview_live_migration(
         &actor_probe_sets,
         &previews,
     )
-    .map_err(|error| anyhow!("cannot build actor five-probe migration matrix: {error}"))?;
+    .map_err(|error| anyhow!("cannot build actor operation/row migration matrix: {error}"))?;
     if actor_previews
         .iter()
         .any(|preview| !preview.effective_delta.is_empty())
     {
-        validation_errors
-            .push("actor multi-role five-probe delta stops migration before rehearsal".to_string());
+        validation_errors.push(
+            "actor multi-role operation/row delta stops migration before rehearsal".to_string(),
+        );
     }
     let actor_preview_values = actor_previews
         .iter()
@@ -256,33 +257,4 @@ async fn live_actor_role_bindings(
             role_ids: row.get("role_ids"),
         })
         .collect())
-}
-
-fn default_five_probes() -> Result<Vec<ConsolePolicyMigrationProbe>> {
-    let operation = |value: &str| {
-        ConsoleOperationId::try_from(value)
-            .map_err(|_| anyhow!("invalid audited five-probe operation {value}"))
-    };
-    Ok(vec![
-        ConsolePolicyMigrationProbe {
-            operation_id: operation("settings_feature.access.system.applications")?,
-            kind: ConsolePolicyMigrationProbeKind::Simple,
-        },
-        ConsolePolicyMigrationProbe {
-            operation_id: operation("applications.create")?,
-            kind: ConsolePolicyMigrationProbeKind::Create,
-        },
-        ConsolePolicyMigrationProbe {
-            operation_id: operation("applications.view")?,
-            kind: ConsolePolicyMigrationProbeKind::OwnRow,
-        },
-        ConsolePolicyMigrationProbe {
-            operation_id: operation("applications.view")?,
-            kind: ConsolePolicyMigrationProbeKind::SameScopeOther,
-        },
-        ConsolePolicyMigrationProbe {
-            operation_id: operation("applications.view")?,
-            kind: ConsolePolicyMigrationProbeKind::CrossScope,
-        },
-    ])
 }

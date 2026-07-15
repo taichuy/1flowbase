@@ -731,6 +731,15 @@ pub struct ConsolePolicyMigrationActorPreview {
     pub effective_delta: Vec<ConsolePolicyMigrationProbeDelta>,
 }
 
+pub fn compile_console_policy_migration_probes(
+    plan: &CompiledConsolePolicyMigrationPlan,
+) -> Result<Vec<ConsolePolicyMigrationProbe>, ConsolePolicyMigrationError> {
+    let (_, catalog_operations) = canonical_catalog_indexes(plan.catalog())?;
+    Ok(expected_actor_probes(&catalog_operations)
+        .into_iter()
+        .collect())
+}
+
 pub fn preview_console_policy_migration_actor_authorizations(
     plan: &CompiledConsolePolicyMigrationPlan,
     actor_probe_sets: &[ConsolePolicyMigrationActorProbeSet],
@@ -846,20 +855,11 @@ fn canonical_probe_set(
     catalog_operations: &CatalogOperationIndex,
     probes: &[ConsolePolicyMigrationProbe],
 ) -> Result<Vec<ConsolePolicyMigrationProbe>, ConsolePolicyMigrationError> {
-    let expected_kinds = BTreeSet::from([
-        ConsolePolicyMigrationProbeKind::Simple,
-        ConsolePolicyMigrationProbeKind::Create,
-        ConsolePolicyMigrationProbeKind::OwnRow,
-        ConsolePolicyMigrationProbeKind::SameScopeOther,
-        ConsolePolicyMigrationProbeKind::CrossScope,
-    ]);
-    let supplied_kinds = probes
-        .iter()
-        .map(|probe| probe.kind)
-        .collect::<BTreeSet<_>>();
-    if probes.len() != expected_kinds.len() || supplied_kinds != expected_kinds {
+    let expected = expected_actor_probes(catalog_operations);
+    let supplied = probes.iter().cloned().collect::<BTreeSet<_>>();
+    if probes.len() != supplied.len() || supplied != expected {
         return Err(ConsolePolicyMigrationError::new(
-            "actor migration probes must cover simple/create/own-row/same-scope-other/cross-scope exactly once",
+            "actor migration probes must cover every compiled simple/create operation once and every row operation with own-row/same-scope-other/cross-scope exactly once",
         ));
     }
     let mut probes = probes.to_vec();
@@ -898,6 +898,40 @@ fn canonical_probe_set(
         }
     }
     Ok(probes)
+}
+
+fn expected_actor_probes(
+    catalog_operations: &CatalogOperationIndex,
+) -> BTreeSet<ConsolePolicyMigrationProbe> {
+    let mut probes = BTreeSet::new();
+    for (operation_id, (_, operation)) in catalog_operations {
+        match operation {
+            ConsoleOperationPolicy::Simple { .. } => {
+                let kind = if operation_id.as_str().rsplit('.').next() == Some("create") {
+                    ConsolePolicyMigrationProbeKind::Create
+                } else {
+                    ConsolePolicyMigrationProbeKind::Simple
+                };
+                probes.insert(ConsolePolicyMigrationProbe {
+                    operation_id: operation_id.clone(),
+                    kind,
+                });
+            }
+            ConsoleOperationPolicy::Row { .. } => {
+                for kind in [
+                    ConsolePolicyMigrationProbeKind::OwnRow,
+                    ConsolePolicyMigrationProbeKind::SameScopeOther,
+                    ConsolePolicyMigrationProbeKind::CrossScope,
+                ] {
+                    probes.insert(ConsolePolicyMigrationProbe {
+                        operation_id: operation_id.clone(),
+                        kind,
+                    });
+                }
+            }
+        }
+    }
+    probes
 }
 
 fn effective_probe_allow(

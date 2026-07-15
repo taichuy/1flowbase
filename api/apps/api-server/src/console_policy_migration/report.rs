@@ -40,7 +40,7 @@ pub struct ConsolePolicyMigrationEvidenceReport {
     pub operation_dispositions: Vec<ConsolePolicyMigrationOperationDisposition>,
     pub legacy_mappings: Vec<ConsolePolicyMigrationLegacyGrantMapping>,
     pub role_projections: Vec<Value>,
-    pub actor_multi_role_five_probe_matrix: Vec<Value>,
+    pub actor_multi_role_operation_matrix: Vec<Value>,
     pub unknown_grants: Vec<ConsolePolicyMigrationUnknownGrant>,
     pub authorization_deltas: Vec<Value>,
     pub validation_errors: Vec<String>,
@@ -65,26 +65,26 @@ impl ConsolePolicyMigrationEvidenceReport {
             operation_dispositions: migration.dispositions().to_vec(),
             legacy_mappings: migration.legacy_mappings().to_vec(),
             role_projections: Vec::new(),
-            actor_multi_role_five_probe_matrix: Vec::new(),
+            actor_multi_role_operation_matrix: Vec::new(),
             unknown_grants: Vec::new(),
             authorization_deltas: Vec::new(),
             validation_errors: Vec::new(),
             cutover_before: None,
             cutover_after: None,
-            runtime_cutover: "Runtime marker enforcement and service cutover are intentionally out of scope for this migration CLI.",
+            runtime_cutover: "The API runtime consumes the finalized cutover marker; this CLI owns rehearsal, apply, finalize, and rollback.",
         }
     }
 
     pub fn markdown(&self) -> String {
         let mut markdown = format!(
-            "# Console policy migration evidence\n\n- Command: `{}`\n- Run: `{}`\n- Catalog fingerprint: `{}`\n- Mapping fingerprint: `{}`\n- Operation dispositions: {}\n- Role projections: {}\n- Actor five-probe matrices: {}\n- Unknown grants: {}\n- Authorization deltas: {}\n\n{}\n",
+            "# Console policy migration evidence\n\n- Command: `{}`\n- Run: `{}`\n- Catalog fingerprint: `{}`\n- Mapping fingerprint: `{}`\n- Operation dispositions: {}\n- Role projections: {}\n- Actor operation/row matrices: {}\n- Unknown grants: {}\n- Authorization deltas: {}\n\n{}\n",
             self.command,
             self.run_id,
             self.catalog_fingerprint,
             self.mapping_fingerprint,
             self.operation_dispositions.len(),
             self.role_projections.len(),
-            self.actor_multi_role_five_probe_matrix.len(),
+            self.actor_multi_role_operation_matrix.len(),
             self.unknown_grants.len(),
             self.authorization_deltas.len(),
             self.runtime_cutover,
@@ -119,8 +119,8 @@ impl ConsolePolicyMigrationEvidenceReport {
         append_json_section(&mut markdown, "Role projections", &self.role_projections);
         append_json_section(
             &mut markdown,
-            "Actor multi-role five-probe matrix",
-            &self.actor_multi_role_five_probe_matrix,
+            "Actor multi-role operation/row matrix",
+            &self.actor_multi_role_operation_matrix,
         );
         if !self.unknown_grants.is_empty() {
             markdown.push_str("\n## Unknown legacy grants\n\n");

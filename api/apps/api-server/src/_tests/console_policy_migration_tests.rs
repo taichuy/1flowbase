@@ -5,6 +5,7 @@ use control_plane::ports::{
     RoleConsolePolicyMigrationCutoverMarker, RoleConsolePolicyMigrationRepository,
 };
 use control_plane::role::console_policy_migration::ConsolePolicyMigrationLegacyGrantProjection;
+use control_plane::role::console_policy_migration::compile_console_policy_migration_probes;
 use sqlx::{PgPool, migrate::Migrator, postgres::PgPoolOptions};
 use uuid::Uuid;
 
@@ -118,6 +119,7 @@ async fn seed_historical_console_fixture(
     let workspace_id = Uuid::now_v7();
     let user_id = Uuid::now_v7();
     let role_id = Uuid::now_v7();
+    let partial_role_id = Uuid::now_v7();
     let has_scoped_acl_columns: bool = sqlx::query_scalar(
         r#"
         select exists (
@@ -166,7 +168,7 @@ async fn seed_historical_console_fixture(
         insert into roles (
           id, scope_id, scope_kind, workspace_id, code, name, is_builtin, is_editable,
           auto_grant_new_permissions, is_default_member_role
-        ) values ($1, $2, 'workspace', $2, 'historical_operator', 'Historical operator',
+        ) values ($1, $2, 'workspace', $2, $3, $3,
                   false, true, false, false)
         "#
     } else {
@@ -174,13 +176,21 @@ async fn seed_historical_console_fixture(
         insert into roles (
           id, scope_kind, workspace_id, code, name, is_builtin, is_editable,
           auto_grant_new_permissions, is_default_member_role
-        ) values ($1, 'workspace', $2, 'historical_operator', 'Historical operator',
+        ) values ($1, 'workspace', $2, $3, $3,
                   false, true, false, false)
         "#
     };
     sqlx::query(role_insert)
         .bind(role_id)
         .bind(workspace_id)
+        .bind("historical_operator")
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(role_insert)
+        .bind(partial_role_id)
+        .bind(workspace_id)
+        .bind("historical_partial")
         .execute(pool)
         .await
         .unwrap();
@@ -193,6 +203,14 @@ async fn seed_historical_console_fixture(
         .bind(Uuid::now_v7())
         .bind(user_id)
         .bind(role_id)
+        .bind(workspace_id)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(binding_insert)
+        .bind(Uuid::now_v7())
+        .bind(user_id)
+        .bind(partial_role_id)
         .bind(workspace_id)
         .execute(pool)
         .await
@@ -246,6 +264,19 @@ async fn seed_historical_console_fixture(
             .await
             .unwrap();
     }
+    let partial_grant_insert = if has_scoped_acl_columns {
+        "insert into role_permissions (id, scope_id, role_id, permission_id) select $1, $4, $2, id from permission_definitions where code = $3"
+    } else {
+        "with ignored as (select $4::uuid) insert into role_permissions (id, role_id, permission_id) select $1, $2, id from permission_definitions where code = $3"
+    };
+    sqlx::query(partial_grant_insert)
+        .bind(Uuid::now_v7())
+        .bind(partial_role_id)
+        .bind("application.view.own")
+        .bind(workspace_id)
+        .execute(pool)
+        .await
+        .unwrap();
 }
 
 async fn verify_release_cohort(
@@ -278,6 +309,17 @@ async fn verify_release_cohort(
         rollback_preview.unknown_grants
     );
     assert!(!rollback_preview.actor_previews.is_empty());
+    let expected_probes = compile_console_policy_migration_probes(migration.plan()).unwrap();
+    assert!(rollback_preview.actor_previews.iter().all(|preview| {
+        preview
+            .get("probes")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|probes| probes.len() == expected_probes.len())
+            && preview
+                .pointer("/binding/role_ids")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|role_ids| role_ids.len() == 2)
+    }));
     let role_preview_count = rollback_preview.role_projections.len();
     let actor_preview_count = rollback_preview.actor_previews.len();
     let rollback_rehearsal = rollback_preview.rehearsal.unwrap();
@@ -417,6 +459,8 @@ async fn verify_release_cohort(
         "released_tags": releases,
         "role_previews": role_preview_count,
         "actor_previews": actor_preview_count,
+        "probes_per_actor": expected_probes.len(),
+        "multi_role_union_role_count": 2,
         "effective_delta": [],
         "rollback_marker": "legacy",
         "finalized_marker": "console_policy",
@@ -515,6 +559,39 @@ fn ac_010_live_core_crosswalk_disposes_each_of_175_operations() {
         operation.operation_id == "core.authenticated"
             && operation.authorization == ConsoleAuthorization::Authenticated
     }));
+}
+
+#[test]
+fn ac_010_compiled_catalog_generates_every_actor_operation_and_row_probe() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let registry = compile_core_console_operation_registry(&settings).unwrap();
+    let migration = compile_core_console_policy_migration_plan(registry.inventory()).unwrap();
+    let probes = compile_console_policy_migration_probes(migration.plan()).unwrap();
+    let configurable_operation_count = migration
+        .plan()
+        .catalog()
+        .groups
+        .iter()
+        .map(|group| group.full_operations.len())
+        .sum::<usize>();
+
+    assert!(probes.len() >= configurable_operation_count);
+    for group in &migration.plan().catalog().groups {
+        for operation in &group.full_operations {
+            let operation_probes = probes
+                .iter()
+                .filter(|probe| probe.operation_id == *operation.operation_id())
+                .collect::<Vec<_>>();
+            match operation {
+                domain::ConsoleOperationPolicy::Simple { .. } => {
+                    assert_eq!(operation_probes.len(), 1);
+                }
+                domain::ConsoleOperationPolicy::Row { .. } => {
+                    assert_eq!(operation_probes.len(), 3);
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -696,9 +773,9 @@ fn ac_010_cli_commands_and_static_evidence_are_deterministic() {
     assert!(serialized.contains("data_sources.secret.rotate"));
     assert!(!serialized.contains("system_all"));
     assert!(
-        first.markdown().contains(
-            "Runtime marker enforcement and service cutover are intentionally out of scope"
-        )
+        first
+            .markdown()
+            .contains("The API runtime consumes the finalized cutover marker")
     );
     assert!(
         migration
@@ -719,6 +796,6 @@ fn ac_010_cli_commands_and_static_evidence_are_deterministic() {
     assert!(
         std::fs::read_to_string(paths.markdown)
             .unwrap()
-            .contains("Actor five-probe matrices")
+            .contains("Actor operation/row matrices")
     );
 }

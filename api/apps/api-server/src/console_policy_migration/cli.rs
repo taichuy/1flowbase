@@ -61,7 +61,7 @@ pub async fn run_from_env() -> Result<()> {
         &context.migration,
     );
     report.role_projections = preview.role_projections;
-    report.actor_multi_role_five_probe_matrix = preview.actor_previews;
+    report.actor_multi_role_operation_matrix = preview.actor_previews;
     report.unknown_grants = preview.unknown_grants;
     report.authorization_deltas = preview.authorization_deltas;
     report.validation_errors = preview.validation_errors;
