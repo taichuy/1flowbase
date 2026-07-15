@@ -64,7 +64,7 @@ import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { RolePermissionPanel } from '../components/RolePermissionPanel';
 
-function authenticate() {
+function authenticate(preferredLocale?: 'zh_Hans' | 'en_US') {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
     actor: {
@@ -83,6 +83,7 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
+      ...(preferredLocale ? { preferred_locale: preferredLocale } : {}),
       permissions: ['role_permission.manage.all']
     }
   });
@@ -535,7 +536,7 @@ describe('RolePermissionPanel', () => {
       name: '开放 应用管理 权限'
     });
     expect(accessCheckbox).toBeChecked();
-    expect(screen.getByText('自定义')).toBeInTheDocument();
+    expect(screen.getByText('按操作配置')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '详细配置 应用管理' }));
     const drawer = await screen.findByRole('dialog');
@@ -545,7 +546,7 @@ describe('RolePermissionPanel', () => {
     fireEvent.mouseDown(
       within(drawer).getByRole('combobox', { name: '查询应用 作用域' })
     );
-    fireEvent.click((await screen.findAllByTitle('本空间')).at(-1)!);
+    fireEvent.click((await screen.findAllByTitle('当前空间')).at(-1)!);
     fireEvent.click(within(drawer).getByRole('checkbox', { name: '发布应用' }));
     fireEvent.click(within(drawer).getByRole('button', { name: '保存权限配置' }));
 
@@ -868,8 +869,10 @@ describe('RolePermissionPanel', () => {
     fireEvent.mouseDown(
       within(drawer).getByRole('combobox', { name: '读取受限记录 作用域' })
     );
-    expect(await screen.findByTitle('目录关闭')).toBeInTheDocument();
-    expect(await screen.findByTitle('目录中的本人记录')).toBeInTheDocument();
+    expect((await screen.findAllByTitle('目录关闭')).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByTitle('目录中的本人记录')).length
+    ).toBeGreaterThan(0);
     expect(screen.queryByTitle('当前空间')).not.toBeInTheDocument();
     expect(screen.queryByTitle('本空间')).not.toBeInTheDocument();
     expect(container.innerHTML).not.toContain('other.limited-scopes');
@@ -1164,7 +1167,8 @@ describe('RolePermissionPanel', () => {
     });
 
     await appI18n.changeLanguage('en_US');
-    const englishView = renderPanel();
+    authenticate('en_US');
+    const view = renderPanel();
     expect(await screen.findByText('Other settings')).toBeInTheDocument();
     expect(screen.getByText('Export audit records')).toBeInTheDocument();
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
@@ -1175,9 +1179,10 @@ describe('RolePermissionPanel', () => {
     expect(permissionsApi.settingsConsolePolicyCatalogQueryKey).toHaveBeenCalledWith(
       'en_US'
     );
-    englishView.unmount();
+    view.unmount();
 
     await appI18n.changeLanguage('zh_Hans');
+    authenticate('zh_Hans');
     renderPanel();
     expect(await screen.findByText('其他设置')).toBeInTheDocument();
     expect(screen.getByText('导出审计记录')).toBeInTheDocument();

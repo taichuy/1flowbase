@@ -20,6 +20,13 @@ export interface ConsoleRolePermissions {
 export type ConsolePolicyGroupKind = 'settings_feature' | 'other';
 export type ConsolePolicyMode = 'disabled' | 'full' | 'custom';
 export type ConsolePolicyRowScope = 'disabled' | 'own' | 'scope_all';
+export type ConsolePolicyLocale = 'zh_Hans' | 'en_US';
+
+export interface ConsolePolicyCatalogOption<Value extends string = string> {
+  value: Value;
+  label: string;
+  description: string;
+}
 
 export interface ConsolePolicyOperationSimpleAuthorization {
   kind: 'simple';
@@ -35,11 +42,27 @@ export type ConsolePolicyOperationAuthorization =
   | ConsolePolicyOperationSimpleAuthorization
   | ConsolePolicyOperationResourceActionAuthorization;
 
+export interface ConsolePolicyOperationSimpleFullProfile {
+  kind: 'simple';
+  enabled: boolean;
+}
+
+export interface ConsolePolicyOperationRowFullProfile {
+  kind: 'row';
+  scope: ConsolePolicyRowScope;
+}
+
+export type ConsolePolicyOperationFullProfile =
+  | ConsolePolicyOperationSimpleFullProfile
+  | ConsolePolicyOperationRowFullProfile;
+
 export interface ConsolePolicyCatalogOperation {
   operation_id: string;
   label: string;
   description: string | null;
   order: number;
+  full_profile: ConsolePolicyOperationFullProfile;
+  allowed_row_scopes: ConsolePolicyCatalogOption<ConsolePolicyRowScope>[];
   authorization: ConsolePolicyOperationAuthorization;
 }
 
@@ -66,6 +89,8 @@ export interface ConsolePolicyCatalogResource {
 
 export interface ConsolePolicyCatalog {
   schema_version: string;
+  locale: ConsolePolicyLocale;
+  group_mode_options: ConsolePolicyCatalogOption<ConsolePolicyMode>[];
   groups: ConsolePolicyCatalogGroup[];
   resources: ConsolePolicyCatalogResource[];
 }
@@ -236,10 +261,11 @@ export function fetchConsoleRolePermissions(
 }
 
 export function fetchConsoleRoleConsolePolicyCatalog(
+  locale: ConsolePolicyLocale,
   baseUrl?: string
 ): Promise<ConsolePolicyCatalog> {
   return apiFetch<ConsolePolicyCatalog>({
-    path: '/api/console/settings/roles/console-policy-catalog',
+    path: `/api/console/settings/roles/console-policy-catalog?locale=${encodeURIComponent(locale)}`,
     baseUrl
   });
 }
