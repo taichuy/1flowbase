@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    Json,
 };
 use control_plane::mcp_management::{
     McpManagementService, McpRemoteToolDefinition, McpUpstreamCredential,
@@ -125,10 +125,6 @@ pub struct DebugMcpProxyToolResponse {
     pub upstream_result: serde_json::Value,
     #[schema(value_type = Object)]
     pub mapped_result: serde_json::Value,
-}
-
-pub fn router() -> Router<Arc<ApiState>> {
-    route_assembly().into_router()
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {

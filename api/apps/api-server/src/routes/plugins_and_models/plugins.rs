@@ -4,7 +4,6 @@ use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{Multipart, Path, Query, State},
     http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
-    routing::{delete, get, post},
     Json, Router,
 };
 use control_plane::plugin_management::{

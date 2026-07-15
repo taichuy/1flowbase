@@ -2,50 +2,6 @@ use super::*;
 
 const MODEL_PROVIDER_PLUGIN_TYPE: &str = "model_provider";
 
-pub(super) fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route(
-            "/settings/model-providers/plugins/families",
-            get(list_families),
-        )
-        .route(
-            "/settings/model-providers/plugins/official-catalog",
-            get(list_official_catalog),
-        )
-        .route(
-            "/settings/model-providers/plugins/install-official",
-            post(install_official_plugin),
-        )
-        .route(
-            "/settings/model-providers/plugins/install-upload",
-            post(install_uploaded_plugin),
-        )
-        .route(
-            "/settings/model-providers/plugins/:installation_id/artifact/refresh",
-            post(refresh_current_node_artifact),
-        )
-        .route(
-            "/settings/model-providers/plugins/:installation_id/artifact/install-current-node",
-            post(install_current_node_artifact),
-        )
-        .route(
-            "/settings/model-providers/plugins/families/:provider_code/upgrade-latest",
-            post(upgrade_latest),
-        )
-        .route(
-            "/settings/model-providers/plugins/families/:provider_code/switch-version",
-            post(switch_version),
-        )
-        .route(
-            "/settings/model-providers/plugins/families/:provider_code",
-            delete(delete_family),
-        )
-        .route(
-            "/settings/model-providers/plugins/tasks/:task_id",
-            get(get_task),
-        )
-}
-
 fn service(
     state: &ApiState,
     operation_id: &'static str,
