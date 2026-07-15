@@ -12,15 +12,18 @@ keywords:
   - openai compatible
   - openai responses
   - websocket fallback
+  - retry policy
 created_at: 2026-05-21 17
-updated_at: 2026-05-26 23
-last_verified_at: 2026-05-26 23
+updated_at: 2026-07-15 18
+last_verified_at: 2026-07-15 18
 decision_policy: direct_reference
 scope:
   - api/crates/orchestration-runtime
   - api/crates/plugin-framework/src/provider_contract.rs
   - api/apps/plugin-runner/src/provider_host.rs
   - api/apps/api-server/src/provider_runtime.rs
+  - api/crates/orchestration-runtime/src/execution_engine
+  - ../1flowbase-official-plugins/runtime-extensions/model-providers/anthropic
   - ../1flowbase-official-plugins/runtime-extensions/model-providers/openai
 ---
 
@@ -36,6 +39,8 @@ OpenAI Responses tool callback continuation 中，`previous_response_id` 是 1fl
 
 LLM tool callback continuation 为节省上下文只向 provider 发送 tool result delta messages 时，`ProviderInvocationInput.system` 仍属于 1flowbase Native provider contract 的稳定真值，必须从 checkpoint history 保留下来。OpenAI Responses 插件再把这个 native `system` 映射为上游 `instructions`；不要在主仓运行时、`api-server` 或 `plugin-runner` 通用 host 中引入 OpenAI 专属字段。
 
+供应商协议序列化错误由对应 provider 插件修复；调用失败后的重试分类、次数和退避策略属于 Agent Flow 大语言模型节点专门模块。修复 provider wire shape 时不得顺手修改重试策略；即使发现确定性 `4xx` 被重复调用，也应作为独立的大语言模型节点任务处理。
+
 ## 原因
 
 用户纠正过：1flowbase 只有一个唯一真值层，把 OpenAI 形状补在 `api-server`、运行时输入或 `plugin-runner` 通用 host 里，只解决了一个协议的表象，还会让兼容协议污染 Native 真值。真正问题是工具回调或 provider stream 跨越运行时真值和供应商线协议时缺少清晰边界。
@@ -49,3 +54,4 @@ LLM tool callback continuation 为节省上下文只向 provider 发送 tool res
 - 修复 OpenAI Responses API 插件携带 `previous_response_id` 的工具回调续跑，尤其是避免 WebSocket response cursor 被 fallback 成 HTTP SSE 后触发 `previous_response_id is only supported on Responses WebSocket v2`。
 - 修复工具结果续调后上游报 `Instructions are required`：先检查 Native `ProviderInvocationInput.system` 是否在 `previous_response_id + delta messages` 路径中被保留，再由对应插件转换成供应商字段。
 - 新增非 OpenAI provider 协议适配时，优先在 provider 插件源码处理，不改 `plugin-runner` 通用 host、运行时 checkpoint、Native public API 或 api-server 通用 runtime port。
+- 处理 provider `4xx/5xx`、空响应或首次 token 后失败的重试行为时，进入大语言模型节点专门模块，不在 provider 插件协议修复中混改重试策略。
