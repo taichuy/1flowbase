@@ -129,6 +129,7 @@ async fn seed_runtime_base_with_workspace_name(
             workspace_id,
             application_type: ApplicationType::AgentFlow,
             workflow_trigger_type: None,
+            workflow_trigger_config: None,
             name: "Runtime App".into(),
             description: "runtime".into(),
             icon: None,
