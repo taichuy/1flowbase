@@ -13,7 +13,8 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::ports::{
-    AuthRepository, SessionStore, UpdateProfileInput, UpdateUserMetaInput, WorkspaceRepository,
+    AuthRepository, AuthenticatorSettingsRepository, RoleConsolePolicyReader, SessionStore,
+    UpdateProfileInput, UpdateUserMetaInput, WorkspaceRepository,
 };
 use domain::{
     ActorContext, AuditLogRecord, AuthenticatorRecord, BoundRole, PermissionDefinition,
@@ -34,6 +35,7 @@ pub struct MemoryWorkspaceRepository {
     workspaces: Arc<RwLock<HashMap<Uuid, WorkspaceRecord>>>,
     accessible_workspaces: Arc<RwLock<HashMap<Uuid, Vec<Uuid>>>>,
     root_user_ids: Arc<RwLock<HashSet<Uuid>>>,
+    console_policies: Arc<RwLock<Vec<domain::RoleConsolePolicy>>>,
 }
 
 impl MemoryWorkspaceRepository {
@@ -62,6 +64,10 @@ impl MemoryWorkspaceRepository {
     #[allow(dead_code)]
     pub async fn mark_root_user(&self, user_id: Uuid) {
         self.root_user_ids.write().await.insert(user_id);
+    }
+
+    pub async fn set_console_policies(&self, policies: Vec<domain::RoleConsolePolicy>) {
+        *self.console_policies.write().await = policies;
     }
 }
 
@@ -144,10 +150,23 @@ impl WorkspaceRepository for MemoryWorkspaceRepository {
     }
 }
 
+#[async_trait]
+impl RoleConsolePolicyReader for MemoryWorkspaceRepository {
+    async fn load_role_console_policies_for_user(
+        &self,
+        _user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        Ok(self.console_policies.read().await.clone())
+    }
+}
+
 #[derive(Clone)]
 pub struct MemoryAuthRepository {
     user: Arc<RwLock<UserRecord>>,
     permissions: Arc<RwLock<HashSet<String>>>,
+    authenticators: Arc<RwLock<Vec<AuthenticatorRecord>>>,
+    console_policies: Arc<RwLock<Vec<domain::RoleConsolePolicy>>>,
     audit_events: Arc<RwLock<Vec<String>>>,
     audit_logs: Arc<RwLock<Vec<AuditLogRecord>>>,
     bump_session_version_calls: Arc<RwLock<Vec<(Uuid, Uuid)>>>,
@@ -158,6 +177,8 @@ impl MemoryAuthRepository {
         Self {
             user: Arc::new(RwLock::new(user)),
             permissions: Arc::new(RwLock::new(HashSet::new())),
+            authenticators: Arc::new(RwLock::new(Vec::new())),
+            console_policies: Arc::new(RwLock::new(Vec::new())),
             audit_events: Arc::new(RwLock::new(Vec::new())),
             audit_logs: Arc::new(RwLock::new(Vec::new())),
             bump_session_version_calls: Arc::new(RwLock::new(Vec::new())),
@@ -249,12 +270,26 @@ impl MemoryAuthRepository {
             .expect("bump_session_version_calls lock should be free in assertions")
             .clone()
     }
+
+    pub async fn set_console_policies(&self, policies: Vec<domain::RoleConsolePolicy>) {
+        *self.console_policies.write().await = policies;
+    }
 }
 
 #[async_trait]
 impl AuthRepository for MemoryAuthRepository {
-    async fn find_authenticator(&self, _id: Uuid) -> Result<Option<AuthenticatorRecord>> {
-        Ok(None)
+    async fn find_authenticator(&self, id: Uuid) -> Result<Option<AuthenticatorRecord>> {
+        Ok(self
+            .authenticators
+            .read()
+            .await
+            .iter()
+            .find(|authenticator| authenticator.id == id)
+            .cloned())
+    }
+
+    async fn list_authenticators(&self) -> Result<Vec<AuthenticatorRecord>> {
+        Ok(self.authenticators.read().await.clone())
     }
 
     async fn find_user_for_password_login(
@@ -371,6 +406,59 @@ impl AuthRepository for MemoryAuthRepository {
             .await
             .push(event.event_code.clone());
         Ok(())
+    }
+}
+
+#[async_trait]
+impl AuthenticatorSettingsRepository for MemoryAuthRepository {
+    async fn create_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
+        self.authenticators
+            .write()
+            .await
+            .push(authenticator.clone());
+        Ok(())
+    }
+
+    async fn update_authenticator_config(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
+        let mut authenticators = self.authenticators.write().await;
+        let existing = authenticators
+            .iter_mut()
+            .find(|stored| stored.id == authenticator.id)
+            .ok_or_else(|| anyhow::anyhow!("authenticator not found"))?;
+        *existing = authenticator.clone();
+        Ok(())
+    }
+
+    async fn delete_authenticator_if_unbound(&self, id: Uuid) -> Result<()> {
+        self.authenticators
+            .write()
+            .await
+            .retain(|authenticator| authenticator.id != id);
+        Ok(())
+    }
+
+    async fn update_authenticator_order(&self, ids: &[Uuid]) -> Result<()> {
+        let mut authenticators = self.authenticators.write().await;
+        for (sort_order, id) in ids.iter().enumerate() {
+            let authenticator = authenticators
+                .iter_mut()
+                .find(|authenticator| authenticator.id == *id)
+                .ok_or_else(|| anyhow::anyhow!("authenticator not found"))?;
+            authenticator.sort_order = (sort_order as i32 + 1) * 10;
+        }
+        authenticators.sort_by_key(|authenticator| authenticator.sort_order);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl RoleConsolePolicyReader for MemoryAuthRepository {
+    async fn load_role_console_policies_for_user(
+        &self,
+        _user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        Ok(self.console_policies.read().await.clone())
     }
 }
 

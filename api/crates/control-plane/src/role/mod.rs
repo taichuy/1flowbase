@@ -4,7 +4,8 @@ use access_control::{
     ensure_permission, ConsoleAuthorization, ConsoleLocaleCatalog,
     ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry,
     ConsolePolicyGroup as RegisteredConsolePolicyGroup, ResourceAccessRegistration,
-    ResourceAccessScopeKind, SettingsFeatureLifecycle, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION,
+    ResourceAccessScopeKind, SettingsFeatureLifecycle, SYSTEM_ROLES_SETTINGS_FEATURE_ID,
+    SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION,
 };
 use anyhow::Result;
 use uuid::Uuid;
@@ -14,8 +15,8 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         AuthRepository, CreateWorkspaceRoleInput, FrontstagePageRepository,
-        ReplaceRoleDataPolicyInput, RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput,
-        RoleDataPolicyView, RoleRepository, UpdateWorkspaceRoleInput,
+        ReplaceRoleDataPolicyInput, RoleConsolePolicyReader, RoleDataModelPolicyInput,
+        RoleDataPolicyDefaultsInput, RoleDataPolicyView, RoleRepository, UpdateWorkspaceRoleInput,
     },
 };
 
@@ -31,6 +32,19 @@ pub use console_policy_validation::{
     ConsolePolicyCatalogFullProfile, ConsolePolicyCatalogGroup, ConsolePolicyCatalogOperation,
     ConsolePolicyCatalogOption, ConsolePolicyCatalogResource,
 };
+
+const ROLES_CONSOLE_POLICY_CATALOG_VIEW_OPERATION_ID: &str = "roles.console_policy_catalog.view";
+const ROLES_CONSOLE_POLICY_VIEW_OPERATION_ID: &str = "roles.console_policy.view";
+const ROLES_CONSOLE_POLICY_REPLACE_OPERATION_ID: &str = "roles.console_policy.replace";
+const ROLES_CREATE_OPERATION_ID: &str = "roles.create";
+const ROLES_DATA_POLICY_REPLACE_OPERATION_ID: &str = "roles.data_policy.replace";
+const ROLES_DATA_POLICY_VIEW_OPERATION_ID: &str = "roles.data_policy.view";
+const ROLES_DELETE_OPERATION_ID: &str = "roles.delete";
+const ROLES_LIST_OPERATION_ID: &str = "roles.list";
+const ROLES_PERMISSION_OPTIONS_LIST_OPERATION_ID: &str = "roles.permission_options.list";
+const ROLES_PERMISSIONS_REPLACE_OPERATION_ID: &str = "roles.permissions.replace";
+const ROLES_PERMISSIONS_VIEW_OPERATION_ID: &str = "roles.permissions.view";
+const ROLES_UPDATE_OPERATION_ID: &str = "roles.update";
 
 pub struct CreateRoleCommand {
     pub actor_user_id: Uuid,
@@ -452,7 +466,7 @@ fn ensure_workspace_role_data_policy_allowed(
 
 impl<R> RoleService<R>
 where
-    R: RoleRepository,
+    R: RoleRepository + RoleConsolePolicyReader,
 {
     pub fn new(repository: R) -> Self {
         Self { repository }
@@ -468,8 +482,8 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_CONSOLE_POLICY_CATALOG_VIEW_OPERATION_ID)
+            .await?;
         validate_complete_console_policy_catalog(inventory)?;
         let locale_catalog =
             inventory
@@ -492,8 +506,8 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_CONSOLE_POLICY_VIEW_OPERATION_ID)
+            .await?;
         let operation_index = validate_complete_console_policy_catalog(inventory)?;
         let policy = self
             .repository
@@ -514,8 +528,8 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_CONSOLE_POLICY_REPLACE_OPERATION_ID)
+            .await?;
 
         if self
             .repository
@@ -561,8 +575,8 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_LIST_OPERATION_ID)
+            .await?;
         self.repository.list_roles(actor.current_workspace_id).await
     }
 
@@ -575,8 +589,8 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_PERMISSIONS_VIEW_OPERATION_ID)
+            .await?;
         self.repository
             .list_role_permissions(actor.current_workspace_id, role_code)
             .await
@@ -591,8 +605,8 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_DATA_POLICY_VIEW_OPERATION_ID)
+            .await?;
         self.repository
             .get_role_data_policy(actor.current_workspace_id, role_code)
             .await
@@ -603,8 +617,8 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_CREATE_OPERATION_ID)
+            .await?;
         self.repository
             .create_team_role(&CreateWorkspaceRoleInput {
                 actor_user_id: command.actor_user_id,
@@ -637,8 +651,8 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_UPDATE_OPERATION_ID)
+            .await?;
         self.repository
             .update_team_role(&UpdateWorkspaceRoleInput {
                 actor_user_id: command.actor_user_id,
@@ -671,8 +685,8 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_DELETE_OPERATION_ID)
+            .await?;
         self.repository
             .delete_team_role(
                 command.actor_user_id,
@@ -701,8 +715,8 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_PERMISSIONS_REPLACE_OPERATION_ID)
+            .await?;
 
         self.repository
             .replace_role_permissions(
@@ -739,8 +753,8 @@ where
             .repository
             .load_actor_context_for_user(command.actor_user_id)
             .await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_DATA_POLICY_REPLACE_OPERATION_ID)
+            .await?;
         ensure_workspace_role_data_policy_allowed(
             &command.default_policy,
             &command.model_policies,
@@ -770,11 +784,36 @@ where
             .await?;
         Ok(policy)
     }
+
+    async fn ensure_console_operation(
+        &self,
+        actor: &domain::ActorContext,
+        operation_id: &str,
+    ) -> Result<()> {
+        if actor.is_root {
+            return Ok(());
+        }
+        let policies = self
+            .repository
+            .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+            .await?;
+        let operation_id = domain::ConsoleOperationId::try_from(operation_id)
+            .expect("compiled roles operation id must be valid");
+        if domain::effective_console_simple_operation(
+            &policies,
+            &roles_console_group(),
+            &operation_id,
+        ) {
+            Ok(())
+        } else {
+            Err(ControlPlaneError::PermissionDenied("permission_denied").into())
+        }
+    }
 }
 
 impl<R> RoleService<R>
 where
-    R: RoleRepository + AuthRepository,
+    R: RoleRepository + RoleConsolePolicyReader + AuthRepository,
 {
     pub async fn list_permission_options(
         &self,
@@ -782,10 +821,15 @@ where
     ) -> Result<Vec<domain::PermissionDefinition>> {
         let actor =
             RoleRepository::load_actor_context_for_user(&self.repository, actor_user_id).await?;
-        ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        self.ensure_console_operation(&actor, ROLES_PERMISSION_OPTIONS_LIST_OPERATION_ID)
+            .await?;
         AuthRepository::list_permissions(&self.repository).await
     }
+}
+
+fn roles_console_group() -> domain::ConsolePolicyGroup {
+    domain::ConsolePolicyGroup::settings_feature(SYSTEM_ROLES_SETTINGS_FEATURE_ID)
+        .expect("compiled roles settings feature id must be valid")
 }
 
 impl<R> RoleService<R>
@@ -799,6 +843,7 @@ where
     ) -> Result<RoleFrontstageRoutesView> {
         let actor =
             RoleRepository::load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        // Frontstage route visibility is explicitly outside this console-policy cutover.
         ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         RoleRepository::list_role_permissions(
@@ -847,6 +892,7 @@ where
         let actor =
             RoleRepository::load_actor_context_for_user(&self.repository, command.actor_user_id)
                 .await?;
+        // Frontstage route visibility is explicitly outside this console-policy cutover.
         ensure_permission(&actor, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION)
             .map_err(ControlPlaneError::PermissionDenied)?;
         RoleRepository::list_role_permissions(

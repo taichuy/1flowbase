@@ -3,7 +3,10 @@ use control_plane::application::{
     CreateApplicationTagCommand, DeleteApplicationCommand,
     ReplaceApplicationEnvironmentVariablesCommand, UpdateApplicationCommand,
 };
-use control_plane::ports::ApplicationEnvironmentVariableInput;
+use control_plane::ports::{
+    ApplicationEnvironmentVariableInput, ApplicationManagementQuery,
+    ApplicationManagementSortDirection, ApplicationManagementSortField,
+};
 use domain::ApplicationType;
 use uuid::Uuid;
 
@@ -49,6 +52,45 @@ fn environment_variable(name: &str) -> ApplicationEnvironmentVariableInput {
         value: serde_json::json!("value"),
         description: String::new(),
     }
+}
+
+fn management_query() -> ApplicationManagementQuery {
+    ApplicationManagementQuery {
+        filter: domain::ResourceFilterExpr::all(Vec::new()),
+        sort_field: ApplicationManagementSortField::UpdatedAt,
+        sort_direction: ApplicationManagementSortDirection::Desc,
+        page: 1,
+        page_size: 20,
+    }
+}
+
+#[tokio::test]
+async fn ac_011_application_management_policy_only_allows_without_legacy_feature_grant() {
+    let policy_only = ApplicationService::for_tests_with_console_policies(
+        Vec::new(),
+        vec![custom_policy(vec![domain::ConsoleOperationPolicy::simple(
+            operation_id(access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION),
+            true,
+        )])],
+    );
+
+    let page = policy_only
+        .list_application_management(Uuid::nil(), management_query())
+        .await
+        .unwrap();
+    assert_eq!(page.total, 0);
+}
+
+#[tokio::test]
+async fn ac_011_application_management_legacy_feature_grant_does_not_authorize() {
+    let legacy_only = ApplicationService::for_tests_with_console_policies(
+        vec![access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION],
+        Vec::new(),
+    );
+    assert!(legacy_only
+        .list_application_management(Uuid::nil(), management_query())
+        .await
+        .is_err());
 }
 
 #[tokio::test]

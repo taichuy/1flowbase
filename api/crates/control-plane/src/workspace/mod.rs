@@ -1,9 +1,13 @@
-use access_control::ensure_permission;
 use anyhow::Result;
 use domain::{ActorContext, WorkspaceRecord};
 use uuid::Uuid;
 
-use crate::{errors::ControlPlaneError, ports::WorkspaceRepository};
+use crate::{
+    errors::ControlPlaneError,
+    ports::{RoleConsolePolicyReader, WorkspaceRepository},
+};
+
+const WORKSPACE_UPDATE_OPERATION_ID: &str = "workspace.update";
 
 pub struct UpdateWorkspaceCommand {
     pub actor: ActorContext,
@@ -19,7 +23,7 @@ pub struct WorkspaceService<R> {
 
 impl<R> WorkspaceService<R>
 where
-    R: WorkspaceRepository,
+    R: WorkspaceRepository + RoleConsolePolicyReader,
 {
     pub fn new(repository: R) -> Self {
         Self { repository }
@@ -51,8 +55,25 @@ where
         &self,
         command: UpdateWorkspaceCommand,
     ) -> Result<WorkspaceRecord> {
-        ensure_permission(&command.actor, "workspace.configure.all")
-            .map_err(ControlPlaneError::PermissionDenied)?;
+        if command.workspace_id != command.actor.current_workspace_id {
+            return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+        }
+        if !command.actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(
+                    command.actor.user_id,
+                    command.actor.current_workspace_id,
+                )
+                .await?;
+            let operation_id = domain::ConsoleOperationId::try_from(WORKSPACE_UPDATE_OPERATION_ID)
+                .expect("compiled workspace update operation id must be valid");
+            let group = domain::ConsolePolicyGroup::other("other.workspace")
+                .expect("compiled workspace policy group must be valid");
+            if !domain::effective_console_simple_operation(&policies, &group, &operation_id) {
+                return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+            }
+        }
 
         self.repository
             .update_workspace(

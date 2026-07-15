@@ -6,8 +6,8 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::ports::{
-    CreateMemberInput, CreateWorkspaceRoleInput, MemberRepository, RoleRepository,
-    UpdateMemberInput, UpdateWorkspaceRoleInput,
+    CreateMemberInput, CreateWorkspaceRoleInput, MemberRepository, RoleConsolePolicyReader,
+    RoleRepository, UpdateMemberInput, UpdateWorkspaceRoleInput,
 };
 use domain::{
     ActorContext, AuditLogRecord, BoundRole, RoleScopeKind, RoleTemplate, UserRecord, UserStatus,
@@ -21,6 +21,8 @@ pub struct CreatedMember {
 #[derive(Clone)]
 pub struct MemoryMemberRepository {
     root_user_id: Uuid,
+    actor_context: Arc<RwLock<Option<ActorContext>>>,
+    console_policies: Arc<RwLock<Vec<domain::RoleConsolePolicy>>>,
     default_role_code: Arc<RwLock<String>>,
     created_members: Arc<RwLock<Vec<CreatedMember>>>,
     audit_events: Arc<RwLock<Vec<String>>>,
@@ -36,6 +38,8 @@ impl MemoryMemberRepository {
     pub fn with_default_role(role_code: &str) -> Self {
         Self {
             root_user_id: Uuid::now_v7(),
+            actor_context: Arc::new(RwLock::new(None)),
+            console_policies: Arc::new(RwLock::new(Vec::new())),
             default_role_code: Arc::new(RwLock::new(role_code.to_string())),
             created_members: Arc::new(RwLock::new(Vec::new())),
             audit_events: Arc::new(RwLock::new(Vec::new())),
@@ -59,11 +63,22 @@ impl MemoryMemberRepository {
             .expect("audit_events lock should be free in assertions")
             .clone()
     }
+
+    pub async fn set_actor_context(&self, actor: ActorContext) {
+        *self.actor_context.write().await = Some(actor);
+    }
+
+    pub async fn set_console_policies(&self, policies: Vec<domain::RoleConsolePolicy>) {
+        *self.console_policies.write().await = policies;
+    }
 }
 
 #[async_trait]
 impl MemberRepository for MemoryMemberRepository {
     async fn load_actor_context_for_user(&self, actor_user_id: Uuid) -> Result<ActorContext> {
+        if let Some(actor) = self.actor_context.read().await.clone() {
+            return Ok(actor);
+        }
         Ok(ActorContext::root(actor_user_id, Uuid::nil(), "root"))
     }
 
@@ -170,23 +185,38 @@ impl MemberRepository for MemoryMemberRepository {
     }
 }
 
+#[async_trait]
+impl RoleConsolePolicyReader for MemoryMemberRepository {
+    async fn load_role_console_policies_for_user(
+        &self,
+        _user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        Ok(self.console_policies.read().await.clone())
+    }
+}
+
 #[derive(Clone)]
 pub struct MemoryRoleRepository {
     root_user_id: Uuid,
+    actor_context: Arc<RwLock<Option<ActorContext>>>,
     roles: Arc<RwLock<Vec<RoleTemplate>>>,
     audit_events: Arc<RwLock<Vec<String>>>,
     touched_workspaces: Arc<RwLock<Vec<Uuid>>>,
     console_policies: Arc<RwLock<std::collections::BTreeMap<String, domain::RoleConsolePolicy>>>,
+    actor_console_policies: Arc<RwLock<Vec<domain::RoleConsolePolicy>>>,
 }
 
 impl Default for MemoryRoleRepository {
     fn default() -> Self {
         Self {
             root_user_id: Uuid::now_v7(),
+            actor_context: Arc::new(RwLock::new(None)),
             roles: Arc::new(RwLock::new(Vec::new())),
             audit_events: Arc::new(RwLock::new(Vec::new())),
             touched_workspaces: Arc::new(RwLock::new(Vec::new())),
             console_policies: Arc::new(RwLock::new(std::collections::BTreeMap::new())),
+            actor_console_policies: Arc::new(RwLock::new(Vec::new())),
         }
     }
 }
@@ -202,11 +232,22 @@ impl MemoryRoleRepository {
             .expect("audit_events lock should be free in assertions")
             .clone()
     }
+
+    pub async fn set_actor_context(&self, actor: ActorContext) {
+        *self.actor_context.write().await = Some(actor);
+    }
+
+    pub async fn set_actor_console_policies(&self, policies: Vec<domain::RoleConsolePolicy>) {
+        *self.actor_console_policies.write().await = policies;
+    }
 }
 
 #[async_trait]
 impl RoleRepository for MemoryRoleRepository {
     async fn load_actor_context_for_user(&self, actor_user_id: Uuid) -> Result<ActorContext> {
+        if let Some(actor) = self.actor_context.read().await.clone() {
+            return Ok(actor);
+        }
         Ok(ActorContext::root(actor_user_id, Uuid::nil(), "root"))
     }
 
@@ -438,5 +479,16 @@ impl RoleRepository for MemoryRoleRepository {
             .await
             .push(event.event_code.clone());
         Ok(())
+    }
+}
+
+#[async_trait]
+impl RoleConsolePolicyReader for MemoryRoleRepository {
+    async fn load_role_console_policies_for_user(
+        &self,
+        _user_id: Uuid,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        Ok(self.actor_console_policies.read().await.clone())
     }
 }

@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 
-use access_control::{ensure_permission, SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_PERMISSION};
+use access_control::SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID;
 use anyhow::Result;
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
 use crate::{
     errors::ControlPlaneError,
-    ports::{AuthRepository, AuthenticatorSettingsRepository},
+    ports::{AuthRepository, AuthenticatorSettingsRepository, RoleConsolePolicyReader},
 };
 
 use super::AuthenticatorRegistry;
@@ -43,9 +43,17 @@ pub struct AuthCenterSettingsService<R> {
     repository: R,
 }
 
+const AUTH_CENTER_OVERVIEW_VIEW_OPERATION_ID: &str = "auth_center.overview.view";
+const AUTH_CENTER_AUTHENTICATOR_CREATE_OPERATION_ID: &str = "auth_center.authenticators.create";
+const AUTH_CENTER_AUTHENTICATOR_COPY_OPERATION_ID: &str = "auth_center.authenticators.copy";
+const AUTH_CENTER_AUTHENTICATOR_DELETE_OPERATION_ID: &str = "auth_center.authenticators.delete";
+const AUTH_CENTER_AUTHENTICATOR_ENABLE_OPERATION_ID: &str = "auth_center.authenticators.enable";
+const AUTH_CENTER_AUTHENTICATOR_ORDER_OPERATION_ID: &str = "auth_center.authenticators.order";
+const AUTH_CENTER_AUTHENTICATOR_UPDATE_OPERATION_ID: &str = "auth_center.authenticators.update";
+
 impl<R> AuthCenterSettingsService<R>
 where
-    R: AuthRepository + AuthenticatorSettingsRepository,
+    R: AuthRepository + AuthenticatorSettingsRepository + RoleConsolePolicyReader,
 {
     pub fn new(repository: R) -> Self {
         Self { repository }
@@ -55,7 +63,8 @@ where
         &self,
         actor: &domain::ActorContext,
     ) -> Result<AuthCenterSettingsOverview> {
-        ensure_auth_center_settings_access(actor)?;
+        self.ensure_console_operation(actor, AUTH_CENTER_OVERVIEW_VIEW_OPERATION_ID)
+            .await?;
         Ok(AuthCenterSettingsOverview {
             default_authenticator_id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
             supported_auth_types: supported_auth_types(),
@@ -68,7 +77,8 @@ where
         actor: &domain::ActorContext,
         command: CreateAuthCenterAuthenticatorCommand,
     ) -> Result<domain::AuthenticatorRecord> {
-        ensure_auth_center_settings_access(actor)?;
+        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_CREATE_OPERATION_ID)
+            .await?;
         validate_supported_auth_type(&command.auth_type)?;
         validate_authenticator_title(&command.title)?;
         let sort_order = match command.sort_order {
@@ -93,7 +103,8 @@ where
         actor: &domain::ActorContext,
         command: CopyAuthCenterAuthenticatorCommand,
     ) -> Result<domain::AuthenticatorRecord> {
-        ensure_auth_center_settings_access(actor)?;
+        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_COPY_OPERATION_ID)
+            .await?;
         validate_authenticator_title(&command.title)?;
         let source = self
             .repository
@@ -123,7 +134,8 @@ where
         actor: &domain::ActorContext,
         authenticator_id: Uuid,
     ) -> Result<()> {
-        ensure_auth_center_settings_access(actor)?;
+        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_DELETE_OPERATION_ID)
+            .await?;
         self.repository
             .delete_authenticator_if_unbound(authenticator_id)
             .await
@@ -134,11 +146,16 @@ where
         actor: &domain::ActorContext,
         ids: &[Uuid],
     ) -> Result<AuthCenterSettingsOverview> {
-        ensure_auth_center_settings_access(actor)?;
+        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_ORDER_OPERATION_ID)
+            .await?;
         let existing = self.repository.list_authenticators().await?;
         validate_reorder_ids(ids, &existing)?;
         self.repository.update_authenticator_order(ids).await?;
-        self.overview(actor).await
+        Ok(AuthCenterSettingsOverview {
+            default_authenticator_id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+            supported_auth_types: supported_auth_types(),
+            authenticators: self.repository.list_authenticators().await?,
+        })
     }
 
     pub async fn enable_authenticator(
@@ -146,7 +163,8 @@ where
         actor: &domain::ActorContext,
         authenticator_id: Uuid,
     ) -> Result<domain::AuthenticatorRecord> {
-        ensure_auth_center_settings_access(actor)?;
+        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_ENABLE_OPERATION_ID)
+            .await?;
         let mut authenticator = self
             .repository
             .find_authenticator(authenticator_id)
@@ -164,7 +182,8 @@ where
         actor: &domain::ActorContext,
         command: UpdateAuthCenterAuthenticatorCommand,
     ) -> Result<domain::AuthenticatorRecord> {
-        ensure_auth_center_settings_access(actor)?;
+        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_UPDATE_OPERATION_ID)
+            .await?;
         validate_authenticator_title(&command.title)?;
         let mut authenticator = self
             .repository
@@ -193,12 +212,36 @@ where
             .unwrap_or(0)
             + 10)
     }
+
+    async fn ensure_console_operation(
+        &self,
+        actor: &domain::ActorContext,
+        operation_id: &str,
+    ) -> Result<()> {
+        if actor.is_root {
+            return Ok(());
+        }
+        let policies = self
+            .repository
+            .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+            .await?;
+        let operation_id = domain::ConsoleOperationId::try_from(operation_id)
+            .expect("compiled auth-center operation id must be valid");
+        if domain::effective_console_simple_operation(
+            &policies,
+            &auth_center_console_group(),
+            &operation_id,
+        ) {
+            Ok(())
+        } else {
+            Err(ControlPlaneError::PermissionDenied("permission_denied").into())
+        }
+    }
 }
 
-fn ensure_auth_center_settings_access(actor: &domain::ActorContext) -> Result<()> {
-    ensure_permission(actor, SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_PERMISSION)
-        .map_err(ControlPlaneError::PermissionDenied)?;
-    Ok(())
+fn auth_center_console_group() -> domain::ConsolePolicyGroup {
+    domain::ConsolePolicyGroup::settings_feature(SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID)
+        .expect("compiled auth-center settings feature id must be valid")
 }
 
 fn supported_auth_types() -> Vec<String> {

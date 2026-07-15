@@ -10,7 +10,7 @@ use access_control::{
     SettingsFeatureRegistry,
 };
 
-use crate::_tests::support::MemoryRoleRepository;
+use crate::_tests::support::{memory_actor_context, MemoryRoleRepository};
 use crate::ports::{
     ReplaceRoleConsolePolicyInput, RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput,
     RoleRepository,
@@ -327,6 +327,27 @@ fn policy_group(
     }
 }
 
+fn roles_policy(operation_ids: &[&str]) -> domain::RoleConsolePolicy {
+    let group = domain::ConsolePolicyGroup::settings_feature("system.roles")
+        .expect("roles feature id must be valid");
+    domain::RoleConsolePolicy::new(
+        Uuid::now_v7(),
+        vec![domain::RoleConsoleGroupPolicy::custom(
+            group,
+            operation_ids
+                .iter()
+                .map(|operation_id| {
+                    domain::ConsoleOperationPolicy::simple(
+                        domain::ConsoleOperationId::try_from(*operation_id)
+                            .expect("roles operation id must be valid"),
+                        true,
+                    )
+                })
+                .collect(),
+        )],
+    )
+}
+
 async fn editable_role(
     service: &RoleService<MemoryRoleRepository>,
     repository: &MemoryRoleRepository,
@@ -343,6 +364,133 @@ async fn editable_role(
         })
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn ac_011_roles_policy_only_covers_crud_permissions_data_policy_and_console_policy() {
+    let repository = MemoryRoleRepository::default();
+    let actor = memory_actor_context(false, &[]);
+    repository.set_actor_context(actor.clone()).await;
+    let disabled_roles_group = domain::ConsolePolicyGroup::settings_feature("system.roles")
+        .expect("roles feature id must be valid");
+    repository
+        .set_actor_console_policies(vec![
+            domain::RoleConsolePolicy::new(
+                Uuid::now_v7(),
+                vec![domain::RoleConsoleGroupPolicy::disabled(
+                    disabled_roles_group,
+                )],
+            ),
+            roles_policy(&[
+                "roles.list",
+                "roles.create",
+                "roles.permissions.view",
+                "roles.permissions.replace",
+                "roles.data_policy.view",
+                "roles.data_policy.replace",
+                "roles.console_policy_catalog.view",
+                "roles.console_policy.replace",
+            ]),
+        ])
+        .await;
+    let service = RoleService::new(repository.clone());
+
+    assert!(service.list_roles(actor.user_id).await.is_ok());
+    service
+        .create_role(CreateRoleCommand {
+            actor_user_id: actor.user_id,
+            code: "policy-editor".to_string(),
+            name: "Policy editor".to_string(),
+            introduction: String::new(),
+            auto_grant_new_permissions: false,
+            is_default_member_role: false,
+        })
+        .await
+        .unwrap();
+    assert!(service
+        .get_role_permissions(actor.user_id, "policy-editor")
+        .await
+        .is_ok());
+    service
+        .replace_permissions(ReplaceRolePermissionsCommand {
+            actor_user_id: actor.user_id,
+            role_code: "policy-editor".to_string(),
+            permission_codes: vec!["application.view.own".to_string()],
+        })
+        .await
+        .unwrap();
+    assert!(service
+        .get_role_data_policy(actor.user_id, "policy-editor")
+        .await
+        .is_ok());
+    service
+        .replace_data_policy(ReplaceRoleDataPolicyCommand {
+            actor_user_id: actor.user_id,
+            role_code: "policy-editor".to_string(),
+            default_policy: RoleDataPolicyDefaultsInput {
+                can_view: true,
+                can_create: true,
+                can_update: true,
+                can_delete: false,
+                default_view_scope: domain::RoleDataPolicyScope::ScopeAll,
+                default_update_scope: domain::RoleDataPolicyScope::Own,
+                default_delete_scope: domain::RoleDataPolicyScope::Own,
+            },
+            model_policies: Vec::new(),
+        })
+        .await
+        .unwrap();
+    assert!(service
+        .get_console_policy_catalog(actor.user_id, &console_policy_inventory(), "en_US")
+        .await
+        .is_ok());
+    service
+        .replace_console_policy(
+            ReplaceRoleConsolePolicyCommand {
+                actor_user_id: actor.user_id,
+                role_code: "policy-editor".to_string(),
+                groups: vec![policy_group(
+                    "settings_feature",
+                    "system.applications",
+                    "custom",
+                    vec![ConsolePolicyOperationInput::Simple {
+                        operation_id: "applications.create".to_string(),
+                        enabled: true,
+                    }],
+                )],
+            },
+            &console_policy_inventory(),
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn ac_011_roles_legacy_feature_grant_does_not_authorize_crud_or_policy_paths() {
+    let repository = MemoryRoleRepository::default();
+    let actor = memory_actor_context(
+        false,
+        &[access_control::SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION],
+    );
+    repository.set_actor_context(actor.clone()).await;
+    let service = RoleService::new(repository);
+
+    assert!(service.list_roles(actor.user_id).await.is_err());
+    assert!(service
+        .create_role(CreateRoleCommand {
+            actor_user_id: actor.user_id,
+            code: "legacy-editor".to_string(),
+            name: "Legacy editor".to_string(),
+            introduction: String::new(),
+            auto_grant_new_permissions: false,
+            is_default_member_role: false,
+        })
+        .await
+        .is_err());
+    assert!(service
+        .get_console_policy_catalog(actor.user_id, &console_policy_inventory(), "en_US")
+        .await
+        .is_err());
 }
 
 #[tokio::test]
