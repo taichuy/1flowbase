@@ -623,6 +623,7 @@
   .app-shell-header-main {
     align-items: center;
     gap: 16px;
+    flex: none;
     width: auto;
   }
 
@@ -635,12 +636,21 @@
   }
 
   .app-shell-nav {
+    flex: none;
+    min-width: max-content;
     width: auto;
     overflow: visible;
   }
 
   .app-shell-navigation {
+    flex: none;
+    min-width: max-content;
     width: auto;
+  }
+
+  .app-shell-menu.ant-menu-horizontal {
+    flex: none;
+    min-width: max-content;
   }
 
   .app-shell-actions {

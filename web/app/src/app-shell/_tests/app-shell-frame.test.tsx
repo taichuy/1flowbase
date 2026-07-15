@@ -277,6 +277,15 @@ describe('AppShellFrame', () => {
     const mobileActionsRule = appShellCss.match(
       /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-actions \{([\s\S]*?)\n {2}\}/
     )?.[1];
+    const mobileHeaderMainRule = appShellCss.match(
+      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-header-main \{([\s\S]*?)\n {2}\}/
+    )?.[1];
+    const mobileNavigationRule = appShellCss.match(
+      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-navigation \{([\s\S]*?)\n {2}\}/
+    )?.[1];
+    const mobileMenuRule = appShellCss.match(
+      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-menu\.ant-menu-horizontal \{([\s\S]*?)\n {2}\}/
+    )?.[1];
 
     expect(headerRule).toContain('flex-wrap: nowrap;');
     expect(headerRule).toContain('overflow-x: auto;');
@@ -288,5 +297,10 @@ describe('AppShellFrame', () => {
     expect(mobileActionsRule).toContain('align-self: center;');
     expect(mobileActionsRule).toContain('width: auto;');
     expect(mobileActionsRule).toContain('max-width: none;');
+    expect(mobileHeaderMainRule).toContain('flex: none;');
+    expect(mobileNavigationRule).toContain('flex: none;');
+    expect(mobileNavigationRule).toContain('min-width: max-content;');
+    expect(mobileMenuRule).toContain('flex: none;');
+    expect(mobileMenuRule).toContain('min-width: max-content;');
   });
 });

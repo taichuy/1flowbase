@@ -57,6 +57,7 @@ import { SettingsSectionSurface } from './SettingsSectionSurface';
 import { i18nText } from '../../../shared/i18n/text';
 import { FALLBACK_APP_LOCALE, toAppLocale } from '../../../shared/i18n/locales';
 import { RoleDataPolicySection } from './role-permissions/RoleDataPolicySection';
+import './role-permissions/role-permission-panel.css';
 
 const CONSOLE_POLICY_TAB = 'console-policy';
 const OTHER_POLICY_TAB = 'other-policy';
@@ -571,6 +572,7 @@ export function RolePermissionPanel({
       <Table
         rowKey="display_key"
         pagination={false}
+        scroll={{ x: 'max-content' }}
         dataSource={policyTableRows(kind)}
         columns={[
           {
@@ -819,26 +821,20 @@ export function RolePermissionPanel({
         {contextHolder}
 
         <div
+          className="role-permission-layout"
+          data-testid="role-permission-layout"
           style={{
             flex: 1,
             minHeight: 0,
-            display: 'flex',
             border: '1px solid #f0f0f0',
             borderRadius: '8px',
-            background: '#fff',
-            overflow: 'hidden'
+            background: '#fff'
           }}
         >
           {/* 左侧：角色列表 */}
           <div
-            style={{
-              width: 280,
-              borderRight: '1px solid #f0f0f0',
-              display: 'flex',
-              flexDirection: 'column',
-              background: '#fafafa',
-              flexShrink: 0
-            }}
+            className="role-permission-layout__rail"
+            data-testid="role-permission-rail"
           >
             <div
               style={{
@@ -935,26 +931,13 @@ export function RolePermissionPanel({
 
           {/* 右侧：权限配置详情 */}
           <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden'
-            }}
+            className="role-permission-layout__content"
+            data-testid="role-permission-content"
           >
             {selectedRole ? (
               <>
                 {/* 头部信息 */}
-                <div
-                  style={{
-                    padding: '20px 24px',
-                    borderBottom: '1px solid #f0f0f0',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    flexShrink: 0
-                  }}
-                >
+                <div className="role-permission-layout__header">
                   <div>
                     <Typography.Title
                       level={4}
@@ -965,7 +948,7 @@ export function RolePermissionPanel({
                       />
                       {selectedRole.name}
                     </Typography.Title>
-                    <Space size="large" style={{ color: '#595959' }}>
+                    <Space size="large" wrap style={{ color: '#595959' }}>
                       <span>{i18nText("settings", "auto.encoding")}{selectedRole.code}</span>
                       <span>{i18nText("settings", "auto.scope_alt")}{selectedRole.scope_kind}</span>
                       {selectedRole.introduction && (
@@ -979,7 +962,7 @@ export function RolePermissionPanel({
                       ) : null}
                     </Space>
                   </div>
-                  <Space>
+                  <Space wrap>
                     {isDataPolicyTab && dataPolicyFormId ? (
                       <Button
                         aria-label={i18nText("settings", "auto.save_data_policy")}
@@ -1015,9 +998,7 @@ export function RolePermissionPanel({
                 </div>
 
                 {/* 权限多 Tab 配置 */}
-                <div
-                  style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}
-                >
+                <div className="role-permission-layout__policy">
                   {consolePolicyCatalogQuery.isLoading ||
                   roleConsolePolicyQuery.isLoading ? (
                     <div style={{ padding: 32, textAlign: 'center' }}>

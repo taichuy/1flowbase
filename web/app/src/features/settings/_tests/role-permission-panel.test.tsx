@@ -1,4 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import fs from 'node:fs';
+import path from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const rolesApi = vi.hoisted(() => ({
@@ -326,6 +328,41 @@ describe('RolePermissionPanel', () => {
     rolesApi.replaceSettingsRoleConsolePolicy.mockResolvedValue(undefined);
     dataModelsApi.fetchSettingsAllDataModels.mockResolvedValue(
       defaultDataModels()
+    );
+  });
+
+  test('AC-008 stacks the role rail above policy content at 390px', async () => {
+    renderPanel();
+
+    expect(await screen.findByTestId('role-permission-layout')).toHaveClass(
+      'role-permission-layout'
+    );
+    expect(screen.getByTestId('role-permission-rail')).toHaveClass(
+      'role-permission-layout__rail'
+    );
+    expect(screen.getByTestId('role-permission-content')).toHaveClass(
+      'role-permission-layout__content'
+    );
+
+    const layoutCss = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        '../components/role-permissions/role-permission-panel.css'
+      ),
+      'utf8'
+    );
+    const mobileRule = layoutCss.match(
+      /@media \(max-width: 767px\) \{([\s\S]*?)\n\}/
+    )?.[1];
+
+    expect(mobileRule).toContain(
+      '.role-permission-layout {\n    flex-direction: column;'
+    );
+    expect(mobileRule).toContain(
+      '.role-permission-layout__rail {\n    width: 100%;'
+    );
+    expect(mobileRule).toContain(
+      '.role-permission-layout__content {\n    min-width: 0;'
     );
   });
 
