@@ -2,6 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use plugin_framework::provider_contract::{
+    NativePromptBlock, NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY,
+};
 use serde_json::{json, Value};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -619,14 +622,35 @@ fn application_public_run_query(payload: &Value) -> Option<String> {
 }
 
 fn application_public_run_system(payload: &Value) -> Option<String> {
-    for source in [payload, application_public_run_start_payload(payload)] {
-        if let Some(system) = source
-            .get("system")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|system| !system.is_empty())
-        {
-            return Some(system.to_string());
+    let start_payload = application_public_run_start_payload(payload);
+    for system in [
+        payload
+            .get(NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY)
+            .and_then(|context| context.get("system")),
+        payload.get("system"),
+        start_payload.get("system"),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        match system {
+            Value::String(text) if !text.trim().is_empty() => {
+                return Some(text.trim().to_string());
+            }
+            Value::Array(_) => {
+                let blocks =
+                    serde_json::from_value::<Vec<NativePromptBlock>>(system.clone()).ok()?;
+                let text = blocks
+                    .iter()
+                    .map(NativePromptBlock::text_content)
+                    .filter(|text| !text.trim().is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                if !text.is_empty() {
+                    return Some(text);
+                }
+            }
+            _ => {}
         }
     }
     None

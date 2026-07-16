@@ -7,8 +7,9 @@ pub use orchestration_runtime::answer_projection::{
     AnswerProjectionSegment, AnswerProjectionSegmentKind, ANSWER_SEGMENTS_KEY,
 };
 use plugin_framework::provider_contract::{
-    ClientProtocolEnvelope, NativeModelRequestContext, NativePromptBlock,
-    CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
+    ClientProtocolEnvelope, NativeModelPromptContext, NativeModelRequestContext, NativePromptBlock,
+    CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY, NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY,
+    NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
 };
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Map, Value};
@@ -245,6 +246,7 @@ pub struct NativeMappedInput {
 pub enum NativeInputMappingError {
     SelectorCollision { selector: String },
     InvalidSelector { selector: String },
+    InvalidPromptContext,
     InvalidSystemPrompt,
     InvalidRequestContext,
 }
@@ -277,6 +279,18 @@ impl NativeInputMapper {
             request.inputs.as_value(),
         )?;
         let (system, history) = split_system_context_from_history(request)?;
+        let native_model_prompt_context = NativeModelPromptContext {
+            system: system.clone(),
+            messages: history.clone(),
+        };
+        if !native_model_prompt_context.is_empty() {
+            write_selector(
+                &mut node_input_payload,
+                NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY,
+                serde_json::to_value(native_model_prompt_context)
+                    .map_err(|_| NativeInputMappingError::InvalidPromptContext)?,
+            )?;
+        }
         write_optional_selector(
             &mut node_input_payload,
             input.history_target.as_deref(),
@@ -903,6 +917,18 @@ mod tests {
         assert_eq!(
             mapped.node_input_payload["node-start"]["history"],
             json!([{ "role": "user", "content": "Earlier question" }])
+        );
+        assert_eq!(
+            mapped.node_input_payload[NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY],
+            json!({
+                "system": [
+                    { "type": "text", "text": "Use the request system." },
+                    { "type": "text", "text": "Use the legacy history system." }
+                ],
+                "messages": [
+                    { "role": "user", "content": "Earlier question" }
+                ]
+            })
         );
     }
 }

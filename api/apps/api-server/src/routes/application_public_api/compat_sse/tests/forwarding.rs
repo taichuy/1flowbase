@@ -208,6 +208,96 @@ async fn anthropic_live_flow_started_is_not_duplicated_by_durable_drain() {
     assert!(body.contains("\"stop_reason\":\"tool_use\""), "{body}");
 }
 
+#[tokio::test]
+async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_once() {
+    let mut run = native_run();
+    run.answer = Some("answer exactly once".to_string());
+
+    let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    seed_flow_run_for_compat_sse_test(&base_state, &run).await;
+    let answer_delta = debug_stream_events::answer_text_delta(
+        "node-answer",
+        "answer exactly once".to_string(),
+        0,
+        Some("node-llm"),
+        None,
+        Some("text"),
+    );
+    let runtime_event_stream = Arc::new(
+        ReplayBeforeFallbackRuntimeEventStream::with_subscription_replay(
+            vec![
+                RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
+                RuntimeEventEnvelope::new(run.id, 2, answer_delta.clone()),
+                RuntimeEventEnvelope::new(run.id, 3, answer_delta),
+                RuntimeEventEnvelope::new(
+                    run.id,
+                    4,
+                    debug_stream_events::flow_finished(
+                        run.id,
+                        json!({ "answer": "answer exactly once" }),
+                    ),
+                ),
+            ],
+            Vec::new(),
+        ),
+    );
+    let state = Arc::new(ApiState {
+        store: base_state.store.clone(),
+        settings_feature_registry: base_state.settings_feature_registry.clone(),
+        console_operation_registry: base_state.console_operation_registry.clone(),
+        infrastructure: base_state.infrastructure.clone(),
+        console_surface_registry: base_state.console_surface_registry.clone(),
+        file_storage_registry: base_state.file_storage_registry.clone(),
+        runtime_engine: base_state.runtime_engine.clone(),
+        provider_runtime: base_state.provider_runtime.clone(),
+        process_started_at: base_state.process_started_at,
+        runtime_activity: base_state.runtime_activity.clone(),
+        api_runtime_profile: base_state.api_runtime_profile.clone(),
+        plugin_runner_system: base_state.plugin_runner_system.clone(),
+        official_plugin_source: base_state.official_plugin_source.clone(),
+        official_agent_flow_template_source: base_state.official_agent_flow_template_source.clone(),
+        official_mcp_bundle_source: base_state.official_mcp_bundle_source.clone(),
+        api_node_id: base_state.api_node_id.clone(),
+        provider_install_root: base_state.provider_install_root.clone(),
+        provider_secret_master_key: base_state.provider_secret_master_key.clone(),
+        host_extension_dropin_root: base_state.host_extension_dropin_root.clone(),
+        allow_unverified_filesystem_dropins: base_state.allow_unverified_filesystem_dropins,
+        allow_uploaded_host_extensions: base_state.allow_uploaded_host_extensions,
+        session_store: base_state.session_store.clone(),
+        runtime_event_stream,
+        api_docs: base_state.api_docs.clone(),
+        cookie_name: base_state.cookie_name.clone(),
+        cookie_secure: base_state.cookie_secure,
+        session_ttl_days: base_state.session_ttl_days,
+        bootstrap_workspace_name: base_state.bootstrap_workspace_name.clone(),
+    });
+    let (sender, mut receiver) = mpsc::channel(32);
+    let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
+
+    send_compatible_runtime_event_stream(
+        state,
+        run,
+        ANTHROPIC_SSE_PROJECTION,
+        Some(0),
+        None,
+        sender,
+        move |run, envelope| mapper.runtime_event_to_sse(run, envelope),
+    )
+    .await;
+
+    let mut events = Vec::new();
+    while let Some(event) = receiver.recv().await {
+        events.push(event);
+    }
+    let response = completed_compatible_stream(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    assert_eq!(body.matches("answer exactly once").count(), 1, "{body}");
+}
+
 #[test]
 fn openai_delta_chunk_maps_reasoning_to_reasoning_content() {
     let chat_completion_id = "chatcmpl-test";

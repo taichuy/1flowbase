@@ -724,6 +724,9 @@ async fn forward_single_compatible_runtime_event<F>(
 where
     F: FnMut(&NativeRunResult, RuntimeEventEnvelope) -> Vec<Result<Event, Infallible>>,
 {
+    if !stats.claim_runtime_event(&event) {
+        return CompatibleForwardOutcome::Open { saw_event: true };
+    }
     let is_terminal = is_public_terminal_runtime_event(&event.event_type);
     let terminal_run;
     let run = if is_terminal {

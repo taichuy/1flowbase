@@ -102,6 +102,7 @@ pub(super) fn build_provider_invocation(
                     resolved_inputs,
                     variable_pool,
                     &context_policy,
+                    runtime_context,
                 )?
             };
         let mut context = provider_context_from_prompt_messages(prompt_messages)?;
@@ -123,6 +124,7 @@ pub(super) fn build_provider_invocation(
             resolved_inputs,
             variable_pool,
             &context_policy,
+            runtime_context,
         )?)?
     };
 

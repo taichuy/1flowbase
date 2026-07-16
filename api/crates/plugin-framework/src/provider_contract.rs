@@ -9,6 +9,7 @@ use serde_json::Value;
 use crate::error::PluginFrameworkError;
 
 pub const CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY: &str = "__client_protocol_envelope";
+pub const NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY: &str = "__native_model_prompt_context";
 pub const NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY: &str = "__native_model_request_context";
 pub const PROVIDER_CONTRACT_V1: &str = "1flowbase.provider/v1";
 pub const PROVIDER_CONTRACT_V2: &str = "1flowbase.provider/v2";
@@ -360,6 +361,21 @@ pub struct NativeModelRequestContext {
 impl NativeModelRequestContext {
     pub fn is_empty(&self) -> bool {
         self.end_user_reference.is_none()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct NativeModelPromptContext {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub system: Vec<NativePromptBlock>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub messages: Vec<Value>,
+}
+
+impl NativeModelPromptContext {
+    pub fn is_empty(&self) -> bool {
+        self.system.is_empty() && self.messages.is_empty()
     }
 }
 

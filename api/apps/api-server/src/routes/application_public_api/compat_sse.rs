@@ -1,4 +1,4 @@
-use std::{convert::Infallible, sync::Arc, time::Duration};
+use std::{collections::HashSet, convert::Infallible, sync::Arc, time::Duration};
 
 use axum::response::{
     sse::{Event, KeepAlive, Sse},
@@ -66,11 +66,31 @@ struct CompatibleStreamStats {
     emitted_content_bytes: usize,
     emitted_text_content: bool,
     emitted_reasoning_content: bool,
+    forwarded_event_identities: HashSet<CompatiblePublicEventIdentity>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CompatiblePublicEventIdentity {
+    event_type: String,
+    text: Option<String>,
+    node_id: Option<String>,
+    answer_node_id: Option<String>,
+    segment_index: Option<String>,
+    source_node_id: Option<String>,
+    source_node_run_id: Option<String>,
+    source_output_key: Option<String>,
 }
 
 impl CompatibleStreamStats {
     fn emitted_content(&self) -> bool {
         self.emitted_content_bytes > 0
+    }
+
+    fn claim_runtime_event(&mut self, event: &RuntimeEventEnvelope) -> bool {
+        let Some(identity) = compatible_public_event_identity(event) else {
+            return true;
+        };
+        self.forwarded_event_identities.insert(identity)
     }
 
     fn record_sent_runtime_event(
@@ -120,6 +140,51 @@ impl CompatibleStreamStats {
         self.emitted_reasoning_content = true;
         self.emitted_content_bytes += text.len();
     }
+}
+
+fn compatible_public_event_identity(
+    event: &RuntimeEventEnvelope,
+) -> Option<CompatiblePublicEventIdentity> {
+    if event.event_type == "flow_started" {
+        return Some(CompatiblePublicEventIdentity {
+            event_type: event.event_type.clone(),
+            text: None,
+            node_id: None,
+            answer_node_id: None,
+            segment_index: None,
+            source_node_id: None,
+            source_node_run_id: None,
+            source_output_key: None,
+        });
+    }
+    if !is_answer_presentation_delta(event) {
+        return None;
+    }
+
+    let presentation = event.payload.get("presentation");
+    Some(CompatiblePublicEventIdentity {
+        event_type: event.event_type.clone(),
+        text: event.text.clone(),
+        node_id: event
+            .payload
+            .get("node_id")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        answer_node_id: presentation_value_identity(presentation, "answer_node_id"),
+        segment_index: presentation_value_identity(presentation, "segment_index"),
+        source_node_id: presentation_value_identity(presentation, "source_node_id"),
+        source_node_run_id: presentation_value_identity(presentation, "source_node_run_id"),
+        source_output_key: presentation_value_identity(presentation, "source_output_key"),
+    })
+}
+
+fn presentation_value_identity(presentation: Option<&Value>, key: &str) -> Option<String> {
+    presentation
+        .and_then(|value| value.get(key))
+        .map(|value| match value {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        })
 }
 
 pub(crate) async fn start_openai_run_stream(

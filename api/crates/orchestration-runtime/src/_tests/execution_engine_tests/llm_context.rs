@@ -1,5 +1,158 @@
 use super::*;
 
+fn plan_with_llm_behind_if_else() -> CompiledPlan {
+    let mut plan = base_plan();
+    plan.topological_order = vec![
+        "node-start".to_string(),
+        "node-if".to_string(),
+        "node-llm".to_string(),
+        "node-human".to_string(),
+        "node-answer".to_string(),
+    ];
+    plan.edges = vec![
+        CompiledEdge {
+            edge_id: "edge-start-if".to_string(),
+            source: "node-start".to_string(),
+            target: "node-if".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+        CompiledEdge {
+            edge_id: "edge-if-llm".to_string(),
+            source: "node-if".to_string(),
+            target: "node-llm".to_string(),
+            source_handle: Some("if".to_string()),
+            target_handle: None,
+        },
+        CompiledEdge {
+            edge_id: "edge-llm-human".to_string(),
+            source: "node-llm".to_string(),
+            target: "node-human".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+        CompiledEdge {
+            edge_id: "edge-human-answer".to_string(),
+            source: "node-human".to_string(),
+            target: "node-answer".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+    ];
+    plan.nodes
+        .get_mut("node-start")
+        .expect("start node should exist")
+        .downstream_node_ids = vec!["node-if".to_string()];
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.dependency_node_ids = vec!["node-if".to_string()];
+    plan.nodes.insert(
+        "node-if".to_string(),
+        CompiledNode {
+            node_id: "node-if".to_string(),
+            node_type: "if_else".to_string(),
+            alias: "If / Else".to_string(),
+            container_id: None,
+            dependency_node_ids: vec!["node-start".to_string()],
+            downstream_node_ids: vec!["node-llm".to_string()],
+            bindings: BTreeMap::from([(
+                "branches".to_string(),
+                CompiledBinding {
+                    kind: "if_else_branches".to_string(),
+                    selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
+                    raw_value: json!({
+                        "branches": [
+                            {
+                                "id": "if",
+                                "kind": "if",
+                                "title": "If",
+                                "sourceHandle": "if",
+                                "condition": {
+                                    "operator": "and",
+                                    "conditions": [{
+                                        "kind": "rule",
+                                        "left": ["node-start", "query"],
+                                        "comparator": "exists"
+                                    }]
+                                }
+                            },
+                            {
+                                "id": "else",
+                                "kind": "else",
+                                "title": "Else",
+                                "sourceHandle": "else"
+                            }
+                        ]
+                    }),
+                },
+            )]),
+            outputs: Vec::new(),
+            config: json!({}),
+            plugin_runtime: None,
+            llm_runtime: None,
+            code_runtime: None,
+        },
+    );
+    plan
+}
+
+#[tokio::test]
+async fn native_prompt_context_reaches_llm_across_intermediate_nodes_once() {
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: captured_input.clone(),
+        final_content: "ok".to_string(),
+    };
+
+    start_flow_debug_run(
+        &plan_with_llm_behind_if_else(),
+        &json!({
+            "__native_model_prompt_context": {
+                "system": [
+                    { "type": "text", "text": "Use the external system." }
+                ],
+                "messages": [
+                    { "role": "user", "content": "Earlier question" },
+                    { "role": "assistant", "content": "Earlier answer" }
+                ]
+            },
+            "node-start": {
+                "query": "Current question",
+                "system": [
+                    { "type": "text", "text": "Use the external system." }
+                ],
+                "history": [
+                    { "role": "user", "content": "Earlier question" },
+                    { "role": "assistant", "content": "Earlier answer" }
+                ]
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let input = captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+    assert_eq!(
+        input.system_text().as_deref(),
+        Some("Use the external system.")
+    );
+    assert_eq!(input.messages.len(), 3);
+    assert_eq!(input.messages[0].role, ProviderMessageRole::User);
+    assert_eq!(input.messages[0].content, "Earlier question");
+    assert_eq!(input.messages[1].role, ProviderMessageRole::Assistant);
+    assert_eq!(input.messages[1].content, "Earlier answer");
+    assert_eq!(input.messages[2].role, ProviderMessageRole::User);
+    assert_eq!(input.messages[2].content, "Current question");
+}
+
 #[tokio::test]
 async fn ac_003_prompt_binding_appends_text_block_without_stringifying_system_blocks() {
     let mut plan = base_plan();

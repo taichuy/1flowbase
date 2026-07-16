@@ -58,6 +58,7 @@ pub(super) fn binding_prompt_messages_with_context_sources(
     resolved_inputs: &Map<String, Value>,
     variable_pool: &Map<String, Value>,
     context_policy: &Value,
+    runtime_context: &ExecutionRuntimeContext,
 ) -> Result<Vec<Value>, Value> {
     if let Some(history) = pending_llm_tool_callback_history(node, variable_pool) {
         return Ok(annotate_prompt_messages(
@@ -73,18 +74,31 @@ pub(super) fn binding_prompt_messages_with_context_sources(
             node,
             resolved_inputs,
             variable_pool,
-        ));
+            runtime_context,
+        )?);
         messages.extend(selected_context_messages_with_sources(
             node,
             variable_pool,
             context_policy,
         )?);
         if !context_policy_has_selector(context_policy) {
-            messages.extend(compatible_history_messages_with_context_sources(
-                node,
-                resolved_inputs,
-                variable_pool,
-            ));
+            if runtime_context
+                .native_model_prompt_context
+                .messages
+                .is_empty()
+            {
+                messages.extend(compatible_history_messages_with_context_sources(
+                    node,
+                    resolved_inputs,
+                    variable_pool,
+                ));
+            } else {
+                messages.extend(annotate_prompt_messages(
+                    runtime_context.native_model_prompt_context.messages.clone(),
+                    "history",
+                    "native_model_prompt_context.messages".to_string(),
+                ));
+            }
         }
     }
     messages.extend(annotate_prompt_messages(
@@ -179,8 +193,63 @@ pub(super) fn run_level_system_prompt_messages(
     node: &CompiledNode,
     resolved_inputs: &Map<String, Value>,
     variable_pool: &Map<String, Value>,
-) -> Vec<Value> {
+    runtime_context: &ExecutionRuntimeContext,
+) -> Result<Vec<Value>, Value> {
     let mut messages = Vec::new();
+    if !runtime_context
+        .native_model_prompt_context
+        .system
+        .is_empty()
+    {
+        let native_system = serde_json::to_value(
+            &runtime_context.native_model_prompt_context.system,
+        )
+        .map_err(|error| {
+            json!({
+                "error_code": "llm_context_serialization_failed",
+                "message": "Native model prompt context could not be serialized",
+                "runtime_message": error.to_string(),
+            })
+        })?;
+        if !prompt_binding_selects_any_system(node) {
+            messages.push(system_prompt_message_with_source(
+                native_system.clone(),
+                "run_level_system",
+                "native_model_prompt_context.system",
+            ));
+        }
+
+        if let Some(system) = resolved_inputs
+            .get("system")
+            .and_then(system_prompt_value)
+            .filter(|system| system != &native_system)
+        {
+            messages.push(system_prompt_message_with_source(
+                system,
+                "run_level_system",
+                "resolved_inputs.system",
+            ));
+        }
+        for node_id in &node.dependency_node_ids {
+            if prompt_binding_selects_system(node, node_id) {
+                continue;
+            }
+            if let Some(system) = variable_pool
+                .get(node_id)
+                .and_then(|payload| payload.get("system"))
+                .and_then(system_prompt_value)
+                .filter(|system| system != &native_system)
+            {
+                messages.push(system_prompt_message_with_source(
+                    system,
+                    "run_level_system",
+                    format!("{node_id}.system"),
+                ));
+            }
+        }
+        return Ok(messages);
+    }
+
     if let Some(system) = resolved_inputs.get("system").and_then(system_prompt_value) {
         messages.push(system_prompt_message_with_source(
             system,
@@ -206,7 +275,16 @@ pub(super) fn run_level_system_prompt_messages(
         }
     }
 
-    messages
+    Ok(messages)
+}
+
+fn prompt_binding_selects_any_system(node: &CompiledNode) -> bool {
+    node.bindings.get("prompt_messages").is_some_and(|binding| {
+        binding
+            .selector_paths
+            .iter()
+            .any(|selector| selector.last().is_some_and(|segment| segment == "system"))
+    })
 }
 
 fn prompt_binding_selects_system(node: &CompiledNode, source_node_id: &str) -> bool {
