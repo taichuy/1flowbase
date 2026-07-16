@@ -181,33 +181,25 @@ pub(super) fn run_level_system_prompt_messages(
     variable_pool: &Map<String, Value>,
 ) -> Vec<Value> {
     let mut messages = Vec::new();
-    if let Some(system) = resolved_inputs
-        .get("system")
-        .and_then(value_to_text)
-        .and_then(|value| {
-            let trimmed = value.trim();
-            (!trimmed.is_empty()).then(|| trimmed.to_string())
-        })
-    {
+    if let Some(system) = resolved_inputs.get("system").and_then(system_prompt_value) {
         messages.push(system_prompt_message_with_source(
-            &system,
+            system,
             "run_level_system",
             "resolved_inputs.system",
         ));
     }
 
     for node_id in &node.dependency_node_ids {
+        if prompt_binding_selects_system(node, node_id) {
+            continue;
+        }
         if let Some(system) = variable_pool
             .get(node_id)
             .and_then(|payload| payload.get("system"))
-            .and_then(value_to_text)
-            .and_then(|value| {
-                let trimmed = value.trim();
-                (!trimmed.is_empty()).then(|| trimmed.to_string())
-            })
+            .and_then(system_prompt_value)
         {
             messages.push(system_prompt_message_with_source(
-                &system,
+                system,
                 "run_level_system",
                 format!("{node_id}.system"),
             ));
@@ -217,14 +209,33 @@ pub(super) fn run_level_system_prompt_messages(
     messages
 }
 
+fn prompt_binding_selects_system(node: &CompiledNode, source_node_id: &str) -> bool {
+    node.bindings.get("prompt_messages").is_some_and(|binding| {
+        binding.selector_paths.iter().any(|selector| {
+            selector.as_slice() == [source_node_id.to_string(), "system".to_string()]
+        })
+    })
+}
+
+fn system_prompt_value(value: &Value) -> Option<Value> {
+    match value {
+        Value::String(text) => (!text.trim().is_empty()).then(|| value.clone()),
+        Value::Array(_) => serde_json::from_value::<Vec<NativePromptBlock>>(value.clone())
+            .ok()
+            .filter(|blocks| !blocks.is_empty())
+            .map(|_| value.clone()),
+        _ => None,
+    }
+}
+
 pub(super) fn system_prompt_message_with_source(
-    content: &str,
+    content: Value,
     source_kind: &str,
     source: impl Into<String>,
 ) -> Value {
     let mut message = Map::new();
     message.insert("role".to_string(), Value::String("system".to_string()));
-    message.insert("content".to_string(), Value::String(content.to_string()));
+    message.insert("content".to_string(), content);
     message.insert(
         LLM_CONTEXT_SOURCE_KEY.to_string(),
         json!({
@@ -315,34 +326,21 @@ pub(super) fn prompt_messages_from_bindings(
 
 pub(super) fn provider_messages_from_prompt_messages(
     prompt_messages: Vec<Value>,
-) -> (Option<String>, Vec<ProviderMessage>) {
-    let context = provider_context_from_prompt_messages(prompt_messages);
+) -> Result<(Vec<NativePromptBlock>, Vec<ProviderMessage>), Value> {
+    let context = provider_context_from_prompt_messages(prompt_messages)?;
 
-    (context.system, context.messages)
+    Ok((context.system, context.messages))
 }
 
 pub(super) fn provider_context_from_prompt_messages(
     prompt_messages: Vec<Value>,
-) -> ProviderPromptContext {
+) -> Result<ProviderPromptContext, Value> {
     let mut system_parts = Vec::new();
     let mut messages = Vec::new();
     let mut compatibility_promotions = Vec::new();
     let mut system_sources = Vec::new();
 
     for (index, message) in prompt_messages.iter().enumerate() {
-        let content = message
-            .get("content")
-            .and_then(value_to_text)
-            .unwrap_or_default();
-
-        let carries_tool_payload = message.get("tool_calls").is_some()
-            || message.get("tool_call_id").is_some()
-            || message.get("is_error").is_some()
-            || message.get("content_blocks").is_some();
-        if content.trim().is_empty() && !carries_tool_payload {
-            continue;
-        }
-
         let role = message
             .get("role")
             .and_then(Value::as_str)
@@ -350,9 +348,13 @@ pub(super) fn provider_context_from_prompt_messages(
             .unwrap_or(ProviderMessageRole::User);
 
         if role == ProviderMessageRole::System {
+            let blocks = system_prompt_blocks_from_value(message.get("content"), index)?;
+            if blocks.is_empty() {
+                continue;
+            }
             let source = system_source_payload(message, index);
             system_parts.push(SystemPromptPart {
-                content,
+                blocks,
                 source: source.clone(),
             });
             if source.get("source_kind").and_then(Value::as_str) == Some("history") {
@@ -360,6 +362,17 @@ pub(super) fn provider_context_from_prompt_messages(
             }
             system_sources.push(source);
         } else {
+            let content = message
+                .get("content")
+                .and_then(value_to_text)
+                .unwrap_or_default();
+            let carries_tool_payload = message.get("tool_calls").is_some()
+                || message.get("tool_call_id").is_some()
+                || message.get("is_error").is_some()
+                || message.get("content_blocks").is_some();
+            if content.trim().is_empty() && !carries_tool_payload {
+                continue;
+            }
             messages.push(ProviderMessage {
                 role,
                 content,
@@ -385,30 +398,63 @@ pub(super) fn provider_context_from_prompt_messages(
             &mut compatibility_promotions,
         )
     } else {
-        system_prompt_text(&system_parts)
+        system_prompt_blocks(&system_parts)
     };
 
-    ProviderPromptContext {
+    Ok(ProviderPromptContext {
         system,
         messages,
         compatibility_promotions,
         system_sources,
+    })
+}
+
+fn system_prompt_blocks_from_value(
+    value: Option<&Value>,
+    message_index: usize,
+) -> Result<Vec<NativePromptBlock>, Value> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let blocks = match value {
+        Value::String(text) => (!text.trim().is_empty())
+            .then(|| NativePromptBlock::text(text.clone()))
+            .into_iter()
+            .collect(),
+        Value::Array(_) => serde_json::from_value::<Vec<NativePromptBlock>>(value.clone())
+            .map_err(|_| invalid_system_prompt_blocks_payload(message_index))?,
+        _ => return Err(invalid_system_prompt_blocks_payload(message_index)),
+    };
+    if blocks
+        .iter()
+        .any(|block| block.text_content().trim().is_empty())
+    {
+        return Err(invalid_system_prompt_blocks_payload(message_index));
     }
+    Ok(blocks)
+}
+
+fn invalid_system_prompt_blocks_payload(message_index: usize) -> Value {
+    json!({
+        "error_code": "system_prompt_blocks_invalid",
+        "message": "system prompt content must be text or typed prompt blocks",
+        "message_index": message_index,
+    })
 }
 
 pub(super) fn seed_user_turn_from_system_only_node_prompt(
     messages: &mut Vec<ProviderMessage>,
     system_parts: &[SystemPromptPart],
     compatibility_promotions: &mut Vec<Value>,
-) -> Option<String> {
+) -> Vec<NativePromptBlock> {
     let seeded_content = system_parts
         .iter()
         .filter(|part| system_prompt_part_can_seed_user_turn(&part.source))
-        .map(|part| part.content.as_str())
+        .flat_map(|part| part.blocks.iter().map(NativePromptBlock::text_content))
         .collect::<Vec<_>>()
         .join("\n\n");
     if seeded_content.trim().is_empty() {
-        return system_prompt_text(system_parts);
+        return system_prompt_blocks(system_parts);
     }
 
     messages.push(ProviderMessage {
@@ -426,7 +472,7 @@ pub(super) fn seed_user_turn_from_system_only_node_prompt(
         "target": "provider_messages",
     }));
 
-    system_prompt_text(system_parts)
+    system_prompt_blocks(system_parts)
 }
 
 pub(super) fn system_prompt_part_can_seed_user_turn(source: &Value) -> bool {
@@ -436,14 +482,11 @@ pub(super) fn system_prompt_part_can_seed_user_turn(source: &Value) -> bool {
     )
 }
 
-pub(super) fn system_prompt_text(system_parts: &[SystemPromptPart]) -> Option<String> {
-    (!system_parts.is_empty()).then(|| {
-        system_parts
-            .iter()
-            .map(|part| part.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n")
-    })
+pub(super) fn system_prompt_blocks(system_parts: &[SystemPromptPart]) -> Vec<NativePromptBlock> {
+    system_parts
+        .iter()
+        .flat_map(|part| part.blocks.iter().cloned())
+        .collect()
 }
 
 pub(super) fn system_source_payload(message: &Value, fallback_index: usize) -> Value {

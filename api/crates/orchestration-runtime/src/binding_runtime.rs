@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Result};
+use plugin_framework::provider_contract::NativePromptBlock;
 use serde_json::{Map, Value};
 
 use crate::compiled_plan::{CompiledBinding, CompiledNode};
@@ -188,10 +189,11 @@ fn resolve_binding(binding: &CompiledBinding, variable_pool: &Map<String, Value>
                 }
 
                 message.insert("role".to_string(), Value::String(role.to_string()));
-                message.insert(
-                    "content".to_string(),
-                    Value::String(render_template(content, variable_pool)?),
-                );
+                let rendered_content = render_prompt_content_template(content, variable_pool)?;
+                if role != "system" && rendered_content.is_array() {
+                    bail!("typed prompt blocks are only supported for system messages");
+                }
+                message.insert("content".to_string(), rendered_content);
                 messages.push(Value::Object(message));
             }
 
@@ -531,6 +533,131 @@ pub(crate) fn render_template(
 
     rendered.push_str(&template[cursor..]);
     Ok(rendered)
+}
+
+fn render_prompt_content_template(
+    template: &str,
+    variable_pool: &Map<String, Value>,
+) -> Result<Value> {
+    let mut rendered_text = String::new();
+    let mut rendered_blocks = Vec::new();
+    let mut uses_prompt_blocks = false;
+    let mut cursor = 0;
+
+    while let Some(start_offset) = template[cursor..].find("{{") {
+        let start = cursor + start_offset;
+        append_prompt_template_text(
+            &mut rendered_text,
+            &mut rendered_blocks,
+            uses_prompt_blocks,
+            &template[cursor..start],
+        );
+        let token_start = start + 2;
+        let Some(end_offset) = template[token_start..].find("}}") else {
+            append_prompt_template_text(
+                &mut rendered_text,
+                &mut rendered_blocks,
+                uses_prompt_blocks,
+                &template[start..],
+            );
+            return prompt_template_value(rendered_text, rendered_blocks, uses_prompt_blocks);
+        };
+        let token_end = token_start + end_offset;
+        let token = template[token_start..token_end].trim();
+        let selector = token.split('.').map(str::to_string).collect::<Vec<_>>();
+        if selector.len() < 2 {
+            bail!("unresolved template selector {token}: selector path must include a source");
+        }
+
+        let value = lookup_selector_value(variable_pool, &selector).map_err(|error| {
+            anyhow!(
+                "unresolved template selector {}: {error}",
+                selector.join(".")
+            )
+        })?;
+        match value {
+            Value::Array(_) => {
+                let blocks: Vec<NativePromptBlock> = serde_json::from_value(value).map_err(|_| {
+                    anyhow!(
+                        "prompt template selector {} must resolve to typed prompt blocks, not an arbitrary array",
+                        selector.join(".")
+                    )
+                })?;
+                if !uses_prompt_blocks {
+                    if !rendered_text.is_empty() {
+                        rendered_blocks
+                            .push(NativePromptBlock::text(std::mem::take(&mut rendered_text)));
+                    }
+                    uses_prompt_blocks = true;
+                }
+                rendered_blocks.extend(blocks);
+            }
+            Value::Object(_) => {
+                bail!(
+                    "prompt template selector {} cannot implicitly stringify an object",
+                    selector.join(".")
+                );
+            }
+            Value::String(text) => append_prompt_template_text(
+                &mut rendered_text,
+                &mut rendered_blocks,
+                uses_prompt_blocks,
+                &text,
+            ),
+            Value::Null => append_prompt_template_text(
+                &mut rendered_text,
+                &mut rendered_blocks,
+                uses_prompt_blocks,
+                "null",
+            ),
+            scalar => append_prompt_template_text(
+                &mut rendered_text,
+                &mut rendered_blocks,
+                uses_prompt_blocks,
+                &scalar.to_string(),
+            ),
+        }
+
+        cursor = token_end + 2;
+    }
+
+    append_prompt_template_text(
+        &mut rendered_text,
+        &mut rendered_blocks,
+        uses_prompt_blocks,
+        &template[cursor..],
+    );
+    prompt_template_value(rendered_text, rendered_blocks, uses_prompt_blocks)
+}
+
+fn append_prompt_template_text(
+    rendered_text: &mut String,
+    rendered_blocks: &mut Vec<NativePromptBlock>,
+    uses_prompt_blocks: bool,
+    text: &str,
+) {
+    if text.is_empty() {
+        return;
+    }
+    if uses_prompt_blocks {
+        rendered_blocks.push(NativePromptBlock::text(text));
+    } else {
+        rendered_text.push_str(text);
+    }
+}
+
+fn prompt_template_value(
+    rendered_text: String,
+    mut rendered_blocks: Vec<NativePromptBlock>,
+    uses_prompt_blocks: bool,
+) -> Result<Value> {
+    if !uses_prompt_blocks {
+        return Ok(Value::String(rendered_text));
+    }
+    if !rendered_text.is_empty() {
+        rendered_blocks.push(NativePromptBlock::text(rendered_text));
+    }
+    serde_json::to_value(rendered_blocks).map_err(Into::into)
 }
 
 fn render_numeric_template_expression(

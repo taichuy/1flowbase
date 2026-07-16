@@ -8,10 +8,11 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        ClientProtocolEnvelope, ProviderFinishReason, ProviderInvocationInput,
-        ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-        CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
+        ClientProtocolEnvelope, NativeModelRequestContext, NativePromptBlock, ProviderFinishReason,
+        ProviderInvocationInput, ProviderInvocationResult, ProviderMessage, ProviderMessageRole,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall,
+        ProviderUsage, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
+        NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
     },
 };
 use serde_json::{json, Map, Value};
@@ -87,6 +88,7 @@ const RESPONSES_WEBSOCKET_TRANSPORT: &str = "responses_websocket";
 pub struct ExecutionRuntimeContext {
     tools: Vec<Value>,
     client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    native_model_request_context: NativeModelRequestContext,
     llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
 }
 
@@ -95,6 +97,9 @@ impl ExecutionRuntimeContext {
         Self {
             tools: run_level_provider_tools(plan, variable_pool),
             client_protocol_envelope: client_protocol_envelope_from_variable_pool(variable_pool),
+            native_model_request_context: native_model_request_context_from_variable_pool(
+                variable_pool,
+            ),
             llm_routing_counter_store: None,
         }
     }
@@ -118,6 +123,16 @@ impl ExecutionRuntimeContext {
             .ok_or_else(|| anyhow!("llm routing counter store is not configured"))?;
         store.increment_counter(key, 1, ttl).await
     }
+}
+
+fn native_model_request_context_from_variable_pool(
+    variable_pool: &Map<String, Value>,
+) -> NativeModelRequestContext {
+    variable_pool
+        .get(NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY)
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default()
 }
 
 fn client_protocol_envelope_from_variable_pool(

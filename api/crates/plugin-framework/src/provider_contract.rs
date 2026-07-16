@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -6,6 +9,9 @@ use serde_json::Value;
 use crate::error::PluginFrameworkError;
 
 pub const CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY: &str = "__client_protocol_envelope";
+pub const NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY: &str = "__native_model_request_context";
+pub const PROVIDER_CONTRACT_V1: &str = "1flowbase.provider/v1";
+pub const PROVIDER_CONTRACT_V2: &str = "1flowbase.provider/v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -290,6 +296,88 @@ pub enum ProviderMessageRole {
     Tool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativePromptCacheControlType {
+    Ephemeral,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NativePromptCacheTtl {
+    #[serde(rename = "5m")]
+    FiveMinutes,
+    #[serde(rename = "1h")]
+    OneHour,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativePromptCacheControl {
+    #[serde(rename = "type")]
+    pub cache_type: NativePromptCacheControlType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<NativePromptCacheTtl>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum NativePromptBlock {
+    Text {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_control: Option<NativePromptCacheControl>,
+    },
+}
+
+impl NativePromptBlock {
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::Text {
+            text: text.into(),
+            cache_control: None,
+        }
+    }
+
+    pub fn text_content(&self) -> &str {
+        match self {
+            Self::Text { text, .. } => text,
+        }
+    }
+
+    pub fn has_cache_control(&self) -> bool {
+        match self {
+            Self::Text { cache_control, .. } => cache_control.is_some(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct NativeModelRequestContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_user_reference: Option<String>,
+}
+
+impl NativeModelRequestContext {
+    pub fn is_empty(&self) -> bool {
+        self.end_user_reference.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ProviderInvocationContractVersion {
+    #[default]
+    #[serde(rename = "1flowbase.provider/v2")]
+    V2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderInvocationCapability {
+    SystemPromptBlocks,
+    SystemPromptCacheControl,
+    EndUserReference,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProviderMessage {
     pub role: ProviderMessageRole,
@@ -315,7 +403,43 @@ pub struct ClientProtocolEnvelope {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-pub struct ProviderInvocationInput {
+pub struct NativeModelInvocationV2 {
+    pub contract_version: ProviderInvocationContractVersion,
+    pub provider_instance_id: String,
+    pub provider_code: String,
+    pub protocol: String,
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_response_id: Option<String>,
+    #[serde(default)]
+    pub provider_config: Value,
+    #[serde(default)]
+    pub messages: Vec<ProviderMessage>,
+    #[serde(default)]
+    pub system: Vec<NativePromptBlock>,
+    #[serde(default, skip_serializing_if = "NativeModelRequestContext::is_empty")]
+    pub request_context: NativeModelRequestContext,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub required_capabilities: BTreeSet<ProviderInvocationCapability>,
+    #[serde(default)]
+    pub tools: Vec<Value>,
+    #[serde(default)]
+    pub mcp_bindings: Vec<Value>,
+    pub response_format: Option<Value>,
+    #[serde(default)]
+    pub model_parameters: BTreeMap<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    #[serde(default)]
+    pub trace_context: BTreeMap<String, String>,
+    #[serde(default)]
+    pub run_context: BTreeMap<String, Value>,
+}
+
+pub use NativeModelInvocationV2 as ProviderInvocationInput;
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProviderInvocationInputV1 {
     pub provider_instance_id: String,
     pub provider_code: String,
     pub protocol: String,
@@ -340,6 +464,122 @@ pub struct ProviderInvocationInput {
     pub trace_context: BTreeMap<String, String>,
     #[serde(default)]
     pub run_context: BTreeMap<String, Value>,
+}
+
+impl NativeModelInvocationV2 {
+    pub fn system_text(&self) -> Option<String> {
+        (!self.system.is_empty()).then(|| {
+            self.system
+                .iter()
+                .map(NativePromptBlock::text_content)
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        })
+    }
+
+    pub fn synchronize_required_capabilities(&mut self) {
+        self.required_capabilities
+            .extend(self.semantic_required_capabilities());
+    }
+
+    pub fn semantic_required_capabilities(&self) -> BTreeSet<ProviderInvocationCapability> {
+        let mut capabilities = BTreeSet::new();
+        if self.system.iter().any(NativePromptBlock::has_cache_control) {
+            capabilities.insert(ProviderInvocationCapability::SystemPromptBlocks);
+            capabilities.insert(ProviderInvocationCapability::SystemPromptCacheControl);
+        }
+        if self.request_context.end_user_reference.is_some() {
+            capabilities.insert(ProviderInvocationCapability::EndUserReference);
+        }
+        capabilities
+    }
+
+    pub fn to_provider_wire_value(
+        &self,
+        contract_version: &str,
+        declared_capabilities: &[String],
+    ) -> Result<Value, PluginFrameworkError> {
+        let mut invocation = self.clone();
+        invocation.synchronize_required_capabilities();
+        let declared_capabilities = declared_capabilities
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let unsupported = invocation
+            .required_capabilities
+            .iter()
+            .filter(|capability| {
+                !declared_capabilities.contains(provider_invocation_capability_name(capability))
+            })
+            .copied()
+            .collect::<Vec<_>>();
+
+        match contract_version {
+            PROVIDER_CONTRACT_V2 => {
+                if !unsupported.is_empty() {
+                    return Err(PluginFrameworkError::invalid_provider_contract(format!(
+                        "provider contract v2 is missing required capabilities: {}",
+                        unsupported
+                            .iter()
+                            .map(provider_invocation_capability_name)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )));
+                }
+                serde_json::to_value(invocation).map_err(|error| {
+                    PluginFrameworkError::invalid_provider_contract(error.to_string())
+                })
+            }
+            PROVIDER_CONTRACT_V1 => {
+                if !invocation.required_capabilities.is_empty() {
+                    return Err(PluginFrameworkError::invalid_provider_contract(format!(
+                        "provider contract v1 cannot represent required capabilities: {}",
+                        invocation
+                            .required_capabilities
+                            .iter()
+                            .map(provider_invocation_capability_name)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )));
+                }
+                serde_json::to_value(invocation.project_v1()).map_err(|error| {
+                    PluginFrameworkError::invalid_provider_contract(error.to_string())
+                })
+            }
+            other => Err(PluginFrameworkError::invalid_provider_contract(format!(
+                "unsupported provider contract version: {other}"
+            ))),
+        }
+    }
+
+    fn project_v1(self) -> ProviderInvocationInputV1 {
+        let system = self.system_text();
+        ProviderInvocationInputV1 {
+            provider_instance_id: self.provider_instance_id,
+            provider_code: self.provider_code,
+            protocol: self.protocol,
+            model: self.model,
+            previous_response_id: self.previous_response_id,
+            provider_config: self.provider_config,
+            messages: self.messages,
+            system,
+            tools: self.tools,
+            mcp_bindings: self.mcp_bindings,
+            response_format: self.response_format,
+            model_parameters: self.model_parameters,
+            client_protocol_envelope: self.client_protocol_envelope,
+            trace_context: self.trace_context,
+            run_context: self.run_context,
+        }
+    }
+}
+
+fn provider_invocation_capability_name(capability: &ProviderInvocationCapability) -> &'static str {
+    match capability {
+        ProviderInvocationCapability::SystemPromptBlocks => "system_prompt_blocks",
+        ProviderInvocationCapability::SystemPromptCacheControl => "system_prompt_cache_control",
+        ProviderInvocationCapability::EndUserReference => "end_user_reference",
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

@@ -1,6 +1,10 @@
 use control_plane::application_public_api::compat::anthropic::{
     map_messages_request, AnthropicCompatError,
 };
+use control_plane::application_public_api::{
+    mapping::ApplicationApiMappingConfig, native::NativeInputMapper,
+};
+use plugin_framework::provider_contract::NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY;
 use serde_json::{json, Value};
 
 fn base_request() -> Value {
@@ -33,13 +37,68 @@ fn system_maps_to_native_system_context() {
 
     let native = map_messages_request(request).unwrap();
 
-    assert_eq!(native.system.as_deref(), Some("Use the support playbook."));
+    assert_eq!(
+        native.system_text().as_deref(),
+        Some("Use the support playbook.")
+    );
     assert_eq!(
         native.history,
         vec![
             json!({"role": "user", "content": "Earlier question"}),
             json!({"role": "assistant", "content": "Earlier answer"})
         ]
+    );
+}
+
+#[test]
+fn ac_002_anthropic_system_blocks_and_end_user_reference_become_native_truth() {
+    let mut request = base_request();
+    request["system"] = json!([
+        {
+            "type": "text",
+            "text": "Use Claude Code project instructions.",
+            "cache_control": { "type": "ephemeral" }
+        },
+        {
+            "type": "text",
+            "text": "Preserve repository safety rules."
+        }
+    ]);
+    request["metadata"] = json!({
+        "user_id": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
+    });
+
+    let native = map_messages_request(request).unwrap();
+    let payload = serde_json::to_value(&native).unwrap();
+    let mapped =
+        NativeInputMapper::map(&native, &ApplicationApiMappingConfig::default_native()).unwrap();
+
+    assert_eq!(
+        payload["system"],
+        json!([
+            {
+                "type": "text",
+                "text": "Use Claude Code project instructions.",
+                "cache_control": { "type": "ephemeral" }
+            },
+            {
+                "type": "text",
+                "text": "Preserve repository safety rules."
+            }
+        ])
+    );
+    assert_eq!(
+        payload["request_context"]["end_user_reference"],
+        json!("user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f")
+    );
+    assert!(payload["metadata"].get("user_id").is_none());
+    assert_eq!(
+        mapped.node_input_payload[NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY]["end_user_reference"],
+        json!("user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f")
+    );
+    assert_eq!(
+        mapped.node_input_payload["node-start"]["system"],
+        payload["system"]
     );
 }
 

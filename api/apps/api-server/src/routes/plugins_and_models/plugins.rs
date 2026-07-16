@@ -645,7 +645,7 @@ fn to_artifact_instance_response(
 
 fn runtime_slot_for_contract(contract_version: &str) -> Option<String> {
     match contract_version {
-        "1flowbase.provider/v1" => Some("model_provider".to_string()),
+        "1flowbase.provider/v1" | "1flowbase.provider/v2" => Some("model_provider".to_string()),
         "1flowbase.data_source/v1" => Some("data_source".to_string()),
         _ => None,
     }

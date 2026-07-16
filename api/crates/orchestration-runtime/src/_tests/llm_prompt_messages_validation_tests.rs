@@ -315,7 +315,7 @@ async fn llm_runtime_executes_system_only_node_prompt_as_user_turn() {
     );
     assert!(
         input
-            .system
+            .system_text()
             .as_deref()
             .is_some_and(|system| system.contains("raw answer")),
         "system-only node prompt should still feed provider instructions"
@@ -336,8 +336,12 @@ async fn llm_runtime_executes_system_only_node_prompt_as_user_turn() {
     );
     assert!(
         trace.debug_payload["llm_context"]["effective_system"]
-            .as_str()
-            .is_some_and(|system| system.contains("raw answer")),
+            .as_array()
+            .is_some_and(|blocks| blocks.iter().any(|block| {
+                block["text"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("raw answer"))
+            })),
         "debug payload should show the preserved provider instructions"
     );
 }
@@ -376,5 +380,73 @@ async fn llm_runtime_fails_before_provider_when_prompt_template_selector_is_miss
                 .contains("node-start.query"));
         }
         other => panic!("expected failed stop reason, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn ac_003_prompt_binding_rejects_implicit_object_stringification() {
+    let plan = plan_with_templated_prompt_message();
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = CapturingProviderInvoker {
+        captured_input: captured_input.clone(),
+    };
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": { "unsafe": "object" } } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert!(captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .is_none());
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(failure) => {
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("binding_resolution_failed")
+            );
+            assert!(failure.error_payload["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("cannot implicitly stringify an object")));
+        }
+        other => panic!("expected prompt binding failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn ac_003_prompt_binding_rejects_untyped_array_stringification() {
+    let plan = plan_with_templated_prompt_message();
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = CapturingProviderInvoker {
+        captured_input: captured_input.clone(),
+    };
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": ["unsafe", "array"] } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert!(captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .is_none());
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(failure) => {
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("binding_resolution_failed")
+            );
+            assert!(failure.error_payload["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("not an arbitrary array")));
+        }
+        other => panic!("expected prompt binding failure, got {other:?}"),
     }
 }

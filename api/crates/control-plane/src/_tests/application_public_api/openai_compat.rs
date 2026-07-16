@@ -85,7 +85,10 @@ fn prior_system_message_maps_to_native_system_context() {
     }))
     .unwrap();
 
-    assert_eq!(native.system.as_deref(), Some("Use the support playbook."));
+    assert_eq!(
+        native.system_text().as_deref(),
+        Some("Use the support playbook.")
+    );
     assert_eq!(
         native.history,
         vec![
@@ -150,7 +153,10 @@ fn responses_instructions_map_to_native_system_context() {
     .unwrap();
 
     assert_eq!(native.query, "Final question");
-    assert_eq!(native.system.as_deref(), Some("Use the support playbook."));
+    assert_eq!(
+        native.system_text().as_deref(),
+        Some("Use the support playbook.")
+    );
     assert!(native.history.is_empty());
 }
 

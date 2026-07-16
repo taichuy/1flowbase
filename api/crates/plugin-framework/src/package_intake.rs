@@ -112,7 +112,12 @@ pub async fn intake_package_bytes(
     };
     match ProviderPackage::load_from_dir(&extracted.package_root) {
         Ok(_) => {}
-        Err(error) if manifest.contract_version == "1flowbase.provider/v1" => {
+        Err(error)
+            if matches!(
+                manifest.contract_version.as_str(),
+                "1flowbase.provider/v1" | "1flowbase.provider/v2"
+            ) =>
+        {
             let _ = fs::remove_dir_all(&extracted.temp_dir);
             return Err(error);
         }

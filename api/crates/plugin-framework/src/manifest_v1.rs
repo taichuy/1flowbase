@@ -58,6 +58,8 @@ pub struct PluginRuntimeManifest {
     pub protocol: String,
     pub entry: String,
     #[serde(default)]
+    pub capabilities: Vec<String>,
+    #[serde(default)]
     pub limits: PluginRuntimeLimits,
 }
 
@@ -279,6 +281,7 @@ fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> 
         &["stdio_json", "stdio_json_worker", "native_host"],
     )?;
     validate_execution_runtime_pair(manifest)?;
+    validate_provider_runtime_capabilities(manifest)?;
     validate_permission_values(&manifest.permissions)?;
     validate_binding_targets(&manifest.binding_targets)?;
     validate_slot_codes(manifest)?;
@@ -983,8 +986,13 @@ fn validate_contract_version(manifest: &PluginManifestV1) -> FrameworkResult<()>
                 .any(|slot| matches!(slot.as_str(), "data_source" | "data_import_snapshot"))
             {
                 "1flowbase.data_source/v1"
+            } else if matches!(
+                manifest.contract_version.as_str(),
+                "1flowbase.provider/v1" | "1flowbase.provider/v2"
+            ) {
+                return Ok(());
             } else {
-                "1flowbase.provider/v1"
+                "1flowbase.provider/v1 or 1flowbase.provider/v2"
             }
         }
         PluginConsumptionKind::CapabilityPlugin => "1flowbase.capability/v1",
@@ -998,4 +1006,36 @@ fn validate_contract_version(manifest: &PluginManifestV1) -> FrameworkResult<()>
         "contract_version must be {expected} for {}",
         manifest.consumption_kind.as_str()
     )))
+}
+
+fn validate_provider_runtime_capabilities(manifest: &PluginManifestV1) -> FrameworkResult<()> {
+    let is_model_provider = manifest.consumption_kind == PluginConsumptionKind::RuntimeExtension
+        && manifest
+            .slot_codes
+            .iter()
+            .any(|slot| slot == "model_provider");
+    if !is_model_provider && !manifest.runtime.capabilities.is_empty() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "runtime.capabilities is only supported for model_provider runtime extensions",
+        ));
+    }
+
+    let mut seen = HashSet::new();
+    for capability in &manifest.runtime.capabilities {
+        validate_allowed(
+            capability,
+            "runtime.capabilities[]",
+            &[
+                "system_prompt_blocks",
+                "system_prompt_cache_control",
+                "end_user_reference",
+            ],
+        )?;
+        if !seen.insert(capability.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(format!(
+                "runtime.capabilities contains duplicate value: {capability}"
+            )));
+        }
+    }
+    Ok(())
 }

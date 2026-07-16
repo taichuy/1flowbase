@@ -1139,9 +1139,12 @@ fn anthropic_request_has_claude_code_context(
         .and_then(Value::as_str)
         .map(str::trim)
         .is_some_and(|value| !value.is_empty())
-        || native_request.system.as_deref().is_some_and(|system| {
-            system.contains("Claude Code") || system.contains("x-anthropic-billing-header")
-        })
+        || native_request
+            .system_text()
+            .as_deref()
+            .is_some_and(|system| {
+                system.contains("Claude Code") || system.contains("x-anthropic-billing-header")
+            })
 }
 
 fn anthropic_message_has_only_tool_results(message: &Value) -> bool {

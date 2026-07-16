@@ -16,6 +16,7 @@ use control_plane::application_public_api::{
     ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
 };
 use control_plane::errors::ControlPlaneError;
+use plugin_framework::provider_contract::NativePromptBlock;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
@@ -93,7 +94,7 @@ fn anthropic_request(query: &str) -> NativeRunRequest {
 
 fn anthropic_builtin_agent_request(query: &str) -> NativeRunRequest {
     let mut request = anthropic_request(query);
-    request.system = Some(
+    request.system = vec![NativePromptBlock::text(
         "x-anthropic-billing-header: cc_version=2.1.141; cc_entrypoint=cli; cch=05fc2;\n\n\
 You are Claude Code, Anthropic's official CLI for Claude.\n\n\
 You are a file search specialist for Claude Code, Anthropic's official CLI for Claude.\n\n\
@@ -101,7 +102,7 @@ Notes:\n\
 - Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.\n\
 - Do NOT Write report/summary/findings/analysis .md files. Return findings directly as your final assistant message — the parent agent reads your text output, not files you create."
             .to_string(),
-    );
+    )];
     request
 }
 

@@ -349,7 +349,7 @@ async fn llm_runtime_sends_rendered_prompt_messages_to_provider() {
         .expect("captured input mutex poisoned")
         .clone()
         .expect("provider input should be captured");
-    assert_eq!(input.system, Some("You are concise.".to_string()));
+    assert_eq!(input.system_text().as_deref(), Some("You are concise."));
     assert_eq!(input.messages.len(), 2);
     assert_eq!(input.messages[0].role, ProviderMessageRole::User);
     assert_eq!(input.messages[0].content, "Question: hello");

@@ -507,9 +507,11 @@ pub(super) fn pending_llm_tool_callback_delta_messages(
 pub(super) fn pending_llm_tool_callback_system(
     node: &CompiledNode,
     variable_pool: &Map<String, Value>,
-) -> Option<String> {
+) -> Option<Vec<NativePromptBlock>> {
     let history = pending_llm_tool_callback_history(node, variable_pool)?;
-    provider_messages_from_prompt_messages(history).0
+    provider_messages_from_prompt_messages(history)
+        .ok()
+        .map(|context| context.0)
 }
 
 pub(super) fn pending_llm_tool_callback_previous_response_id(

@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use plugin_framework::{
     installation::PluginTaskStatus,
     provider_contract::{
-        ClientProtocolEnvelope, ModelDiscoveryMode, ProviderBalanceInfo, ProviderBalanceResult,
-        ProviderInvocationInput, ProviderInvocationResult, ProviderMessage, ProviderMessageRole,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
-        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
-        ProviderUsage,
+        ClientProtocolEnvelope, ModelDiscoveryMode, NativeModelRequestContext, NativePromptBlock,
+        NativePromptCacheControl, NativePromptCacheControlType, ProviderBalanceInfo,
+        ProviderBalanceResult, ProviderInvocationInput, ProviderInvocationResult, ProviderMessage,
+        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine,
+        ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent,
+        ProviderToolCall, ProviderUsage, PROVIDER_CONTRACT_V1, PROVIDER_CONTRACT_V2,
     },
 };
 use serde_json::json;
@@ -228,6 +229,86 @@ fn provider_invocation_input_serializes_client_protocol_envelope() {
             .map(String::as_str),
         Some("prompt-caching")
     );
+}
+
+#[test]
+fn ac_006_provider_v2_fails_closed_when_required_capability_is_missing() {
+    let input = ProviderInvocationInput {
+        system: vec![NativePromptBlock::Text {
+            text: "Cache this block".to_string(),
+            cache_control: Some(NativePromptCacheControl {
+                cache_type: NativePromptCacheControlType::Ephemeral,
+                ttl: None,
+            }),
+        }],
+        request_context: NativeModelRequestContext {
+            end_user_reference: Some("external-user-123".to_string()),
+        },
+        ..ProviderInvocationInput::default()
+    };
+
+    let error = input
+        .to_provider_wire_value(PROVIDER_CONTRACT_V2, &["system_prompt_blocks".to_string()])
+        .unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("system_prompt_cache_control"));
+    assert!(message.contains("end_user_reference"));
+}
+
+#[test]
+fn ac_007_provider_v1_projection_keeps_plain_text_workflows_running() {
+    let input = ProviderInvocationInput {
+        system: vec![
+            NativePromptBlock::text("First instruction"),
+            NativePromptBlock::text("Second instruction"),
+        ],
+        ..ProviderInvocationInput::default()
+    };
+
+    let payload = input
+        .to_provider_wire_value(PROVIDER_CONTRACT_V1, &[])
+        .unwrap();
+
+    assert_eq!(payload["system"], "First instruction\n\nSecond instruction");
+    assert!(payload.get("contract_version").is_none());
+    assert!(payload.get("request_context").is_none());
+    assert!(payload.get("required_capabilities").is_none());
+}
+
+#[test]
+fn ac_006_provider_v1_rejects_block_policy_before_network_invocation() {
+    let input = ProviderInvocationInput {
+        system: vec![NativePromptBlock::Text {
+            text: "Cache this block".to_string(),
+            cache_control: Some(NativePromptCacheControl {
+                cache_type: NativePromptCacheControlType::Ephemeral,
+                ttl: None,
+            }),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let error = input
+        .to_provider_wire_value(PROVIDER_CONTRACT_V1, &[])
+        .unwrap_err();
+
+    assert!(error.to_string().contains("system_prompt_cache_control"));
+}
+
+#[test]
+fn ac_004_native_model_invocation_v2_requires_explicit_contract_version() {
+    let error = serde_json::from_value::<ProviderInvocationInput>(json!({
+        "provider_instance_id": "provider-1",
+        "provider_code": "anthropic",
+        "protocol": "anthropic_messages",
+        "model": "claude-fable-5",
+        "messages": [{ "role": "user", "content": "hello" }],
+        "system": []
+    }))
+    .unwrap_err();
+
+    assert!(error.to_string().contains("contract_version"));
 }
 
 #[test]

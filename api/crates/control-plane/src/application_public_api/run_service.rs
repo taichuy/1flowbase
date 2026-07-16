@@ -559,7 +559,7 @@ fn public_run_idempotency_fingerprint(
 }
 
 fn is_claude_code_subagent_request(request: &NativeRunRequest) -> bool {
-    request.system.as_deref().is_some_and(|system| {
+    request.system_text().as_deref().is_some_and(|system| {
         system.contains("cc_is_subagent=true")
             || (system.contains("Agent threads always have their cwd reset between bash calls")
                 && system.contains("the parent agent reads your text output"))

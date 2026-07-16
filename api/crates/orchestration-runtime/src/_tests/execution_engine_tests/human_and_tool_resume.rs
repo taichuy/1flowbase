@@ -579,7 +579,7 @@ async fn resume_llm_tool_results_passes_native_response_cursor_system_and_delta_
         Some("resp_previous")
     );
     assert_eq!(
-        captured[0].system.as_deref(),
+        captured[0].system_text().as_deref(),
         Some("Always answer with current tool evidence.")
     );
     assert_eq!(captured[0].messages.len(), 1);

@@ -1,6 +1,105 @@
 use super::*;
 
 #[tokio::test]
+async fn ac_003_prompt_binding_appends_text_block_without_stringifying_system_blocks() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.bindings = BTreeMap::from([(
+        "prompt_messages".to_string(),
+        CompiledBinding {
+            kind: "prompt_messages".to_string(),
+            selector_paths: vec![
+                vec!["node-start".to_string(), "system".to_string()],
+                vec!["node-start".to_string(), "query".to_string()],
+            ],
+            raw_value: json!([
+                {
+                    "id": "system-1",
+                    "role": "system",
+                    "content": {
+                        "kind": "templated_text",
+                        "value": "{{node-start.system}}，语言偏好中文"
+                    }
+                },
+                {
+                    "id": "user-1",
+                    "role": "user",
+                    "content": {
+                        "kind": "templated_text",
+                        "value": "{{node-start.query}}"
+                    }
+                }
+            ]),
+        },
+    )]);
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: captured_input.clone(),
+        final_content: "ok".to_string(),
+    };
+
+    start_flow_debug_run(
+        &plan,
+        &json!({
+            "__native_model_request_context": {
+                "end_user_reference": "claude-code-user-123"
+            },
+            "node-start": {
+                "query": "hello",
+                "system": [
+                    {
+                        "type": "text",
+                        "text": "Use Claude Code project instructions.",
+                        "cache_control": { "type": "ephemeral" }
+                    },
+                    {
+                        "type": "text",
+                        "text": "Preserve repository safety rules."
+                    }
+                ]
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let input = captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+    let payload = serde_json::to_value(input).unwrap();
+
+    assert_eq!(
+        payload["system"],
+        json!([
+            {
+                "type": "text",
+                "text": "Use Claude Code project instructions.",
+                "cache_control": { "type": "ephemeral" }
+            },
+            {
+                "type": "text",
+                "text": "Preserve repository safety rules."
+            },
+            {
+                "type": "text",
+                "text": "，语言偏好中文"
+            }
+        ])
+    );
+    assert_eq!(
+        payload["request_context"]["end_user_reference"],
+        json!("claude-code-user-123")
+    );
+}
+
+#[tokio::test]
 async fn llm_runtime_exposes_effective_system_and_promotes_legacy_history_system() {
     let mut plan = base_plan();
     let llm = plan
@@ -65,7 +164,7 @@ async fn llm_runtime_exposes_effective_system_and_promotes_legacy_history_system
         .clone()
         .expect("provider input should be captured");
     assert_eq!(
-        input.system.as_deref(),
+        input.system_text().as_deref(),
         Some("Use the run policy.\n\nUse the legacy history policy.\n\nUse the node policy.")
     );
     assert_eq!(input.messages.len(), 2);
@@ -81,7 +180,11 @@ async fn llm_runtime_exposes_effective_system_and_promotes_legacy_history_system
         .expect("llm trace should exist");
     assert_eq!(
         trace.debug_payload["llm_context"]["effective_system"],
-        json!("Use the run policy.\n\nUse the legacy history policy.\n\nUse the node policy.")
+        json!([
+            { "type": "text", "text": "Use the run policy." },
+            { "type": "text", "text": "Use the legacy history policy." },
+            { "type": "text", "text": "Use the node policy." }
+        ])
     );
     assert_eq!(
         trace.debug_payload["llm_context"]["provider_messages"],
@@ -253,7 +356,7 @@ async fn llm_runtime_context_policy_can_disable_run_level_system_context() {
         .clone()
         .expect("provider input should be captured");
     assert_eq!(
-        input.system.as_deref(),
+        input.system_text().as_deref(),
         Some("Use only the local node policy.")
     );
     assert_eq!(input.messages.len(), 1);

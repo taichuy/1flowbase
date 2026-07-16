@@ -7,7 +7,8 @@ pub use orchestration_runtime::answer_projection::{
     AnswerProjectionSegment, AnswerProjectionSegmentKind, ANSWER_SEGMENTS_KEY,
 };
 use plugin_framework::provider_contract::{
-    ClientProtocolEnvelope, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
+    ClientProtocolEnvelope, NativeModelRequestContext, NativePromptBlock,
+    CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
 };
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Map, Value};
@@ -33,8 +34,12 @@ use crate::ports::{
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NativeRunRequest {
     pub query: String,
-    #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
-    pub system: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_native_prompt_blocks",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub system: Vec<NativePromptBlock>,
     #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
     pub model: Option<String>,
     #[serde(default, deserialize_with = "deserialize_native_object")]
@@ -59,6 +64,8 @@ pub struct NativeRunRequest {
     pub execution: NativeObject,
     #[serde(default, deserialize_with = "deserialize_native_object")]
     pub metadata: NativeObject,
+    #[serde(default, skip_serializing_if = "NativeModelRequestContext::is_empty")]
+    pub request_context: NativeModelRequestContext,
     #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
     pub title: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
@@ -71,6 +78,18 @@ pub struct NativeRunRequest {
     pub protocol_request_kind: Option<NativeProtocolRequestKind>,
     #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
     pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
+}
+
+impl NativeRunRequest {
+    pub fn system_text(&self) -> Option<String> {
+        (!self.system.is_empty()).then(|| {
+            self.system
+                .iter()
+                .map(NativePromptBlock::text_content)
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -226,6 +245,8 @@ pub struct NativeMappedInput {
 pub enum NativeInputMappingError {
     SelectorCollision { selector: String },
     InvalidSelector { selector: String },
+    InvalidSystemPrompt,
+    InvalidRequestContext,
 }
 
 pub struct NativeInputMapper;
@@ -255,17 +276,18 @@ impl NativeInputMapper {
             input.inputs_target.as_deref(),
             request.inputs.as_value(),
         )?;
-        let (system, history) = split_system_context_from_history(request);
+        let (system, history) = split_system_context_from_history(request)?;
         write_optional_selector(
             &mut node_input_payload,
             input.history_target.as_deref(),
             Value::Array(history),
         )?;
-        if let Some(system) = system {
+        if !system.is_empty() {
             write_optional_selector(
                 &mut node_input_payload,
                 system_target(input).as_deref(),
-                Value::String(system),
+                serde_json::to_value(system)
+                    .map_err(|_| NativeInputMappingError::InvalidSystemPrompt)?,
             )?;
         }
         write_optional_selector(
@@ -278,6 +300,14 @@ impl NativeInputMapper {
                 &mut node_input_payload,
                 CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
                 client_protocol_envelope_payload(envelope),
+            )?;
+        }
+        if !request.request_context.is_empty() {
+            write_selector(
+                &mut node_input_payload,
+                NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
+                serde_json::to_value(&request.request_context)
+                    .map_err(|_| NativeInputMappingError::InvalidRequestContext)?,
             )?;
         }
 
@@ -296,39 +326,46 @@ fn client_protocol_envelope_payload(envelope: &ClientProtocolEnvelope) -> Value 
     })
 }
 
-fn split_system_context_from_history(request: &NativeRunRequest) -> (Option<String>, Vec<Value>) {
-    let mut system_parts = request
-        .system
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| vec![value.to_string()])
-        .unwrap_or_default();
+fn split_system_context_from_history(
+    request: &NativeRunRequest,
+) -> std::result::Result<(Vec<NativePromptBlock>, Vec<Value>), NativeInputMappingError> {
+    let mut system_blocks = request.system.clone();
     let mut history = Vec::new();
 
     for message in &request.history {
         if message.get("role").and_then(Value::as_str) == Some("system") {
-            if let Some(content) = message
-                .get("content")
-                .and_then(native_message_content_text)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                system_parts.push(content.to_string());
+            if let Some(content) = message.get("content") {
+                system_blocks.extend(native_system_content_blocks(content)?);
             }
             continue;
         }
         history.push(message.clone());
     }
 
-    (
-        (!system_parts.is_empty()).then(|| system_parts.join("\n\n")),
-        history,
-    )
+    Ok((system_blocks, history))
 }
 
-fn native_message_content_text(value: &Value) -> Option<&str> {
-    value.as_str()
+fn native_system_content_blocks(
+    value: &Value,
+) -> std::result::Result<Vec<NativePromptBlock>, NativeInputMappingError> {
+    match value {
+        Value::String(text) => Ok((!text.trim().is_empty())
+            .then(|| NativePromptBlock::text(text.clone()))
+            .into_iter()
+            .collect()),
+        Value::Array(_) => {
+            let blocks: Vec<NativePromptBlock> = serde_json::from_value(value.clone())
+                .map_err(|_| NativeInputMappingError::InvalidSystemPrompt)?;
+            if blocks
+                .iter()
+                .any(|block| block.text_content().trim().is_empty())
+            {
+                return Err(NativeInputMappingError::InvalidSystemPrompt);
+            }
+            Ok(blocks)
+        }
+        _ => Err(NativeInputMappingError::InvalidSystemPrompt),
+    }
 }
 
 fn system_target(input: &super::mapping::ApplicationApiMappingInput) -> Option<String> {
@@ -569,6 +606,36 @@ where
         Value::String(value) => Ok(Some(value)),
         Value::Null => Err(de::Error::custom("expected string, found null")),
         _ => Err(de::Error::custom("expected string")),
+    }
+}
+
+fn deserialize_native_prompt_blocks<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Vec<NativePromptBlock>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::String(text) => Ok((!text.trim().is_empty())
+            .then(|| NativePromptBlock::text(text))
+            .into_iter()
+            .collect()),
+        Value::Array(_) => {
+            let blocks: Vec<NativePromptBlock> =
+                serde_json::from_value(value).map_err(de::Error::custom)?;
+            if blocks
+                .iter()
+                .any(|block| block.text_content().trim().is_empty())
+            {
+                return Err(de::Error::custom("system text block must not be empty"));
+            }
+            Ok(blocks)
+        }
+        Value::Null => Err(de::Error::custom(
+            "expected string or prompt blocks, found null",
+        )),
+        _ => Err(de::Error::custom("expected string or prompt blocks")),
     }
 }
 
@@ -828,7 +895,10 @@ mod tests {
 
         assert_eq!(
             mapped.node_input_payload["node-start"]["system"],
-            json!("Use the request system.\n\nUse the legacy history system.")
+            json!([
+                { "type": "text", "text": "Use the request system." },
+                { "type": "text", "text": "Use the legacy history system." }
+            ])
         );
         assert_eq!(
             mapped.node_input_payload["node-start"]["history"],

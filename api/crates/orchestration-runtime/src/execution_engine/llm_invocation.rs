@@ -8,7 +8,7 @@ pub(super) struct BuiltProviderInvocation {
 #[derive(Debug, Clone)]
 pub(super) struct LlmInvocationDebugContext {
     context_policy: Value,
-    effective_system: Option<String>,
+    effective_system: Vec<NativePromptBlock>,
     provider_messages: Vec<Value>,
     compatibility_promotions: Vec<Value>,
     system_sources: Vec<Value>,
@@ -42,10 +42,7 @@ impl LlmInvocationDebugContext {
         payload.insert("context_policy".to_string(), self.context_policy.clone());
         payload.insert(
             "effective_system".to_string(),
-            self.effective_system
-                .clone()
-                .map(Value::String)
-                .unwrap_or(Value::Null),
+            serde_json::to_value(&self.effective_system).unwrap_or(Value::Null),
         );
         payload.insert(
             "provider_messages".to_string(),
@@ -71,7 +68,7 @@ impl LlmInvocationDebugContext {
 
 #[derive(Debug, Clone)]
 pub(super) struct ProviderPromptContext {
-    pub(super) system: Option<String>,
+    pub(super) system: Vec<NativePromptBlock>,
     pub(super) messages: Vec<ProviderMessage>,
     pub(super) compatibility_promotions: Vec<Value>,
     pub(super) system_sources: Vec<Value>,
@@ -79,7 +76,7 @@ pub(super) struct ProviderPromptContext {
 
 #[derive(Debug, Clone)]
 pub(super) struct SystemPromptPart {
-    pub(super) content: String,
+    pub(super) blocks: Vec<NativePromptBlock>,
     pub(super) source: Value,
 }
 
@@ -107,10 +104,10 @@ pub(super) fn build_provider_invocation(
                     &context_policy,
                 )?
             };
-        let mut context = provider_context_from_prompt_messages(prompt_messages);
-        if context.system.is_none() {
+        let mut context = provider_context_from_prompt_messages(prompt_messages)?;
+        if context.system.is_empty() {
             if let Some(system) = pending_llm_tool_callback_system(node, variable_pool) {
-                context.system = Some(system);
+                context.system = system;
                 context.system_sources.push(json!({
                     "source": format!("{}.{}", node.node_id, LLM_TOOL_CALLBACK_STATE_KEY),
                     "source_kind": "pending_tool_callback_history",
@@ -126,7 +123,7 @@ pub(super) fn build_provider_invocation(
             resolved_inputs,
             variable_pool,
             &context_policy,
-        )?)
+        )?)?
     };
 
     let trace_context = BTreeMap::from([
@@ -147,7 +144,8 @@ pub(super) fn build_provider_invocation(
         run_context.insert("visible_internal_llm_media_tools".to_string(), media_tools);
     }
 
-    let input = ProviderInvocationInput {
+    let mut input = ProviderInvocationInput {
+        contract_version: Default::default(),
         provider_instance_id: runtime.provider_instance_id.clone(),
         provider_code: runtime.provider_code.clone(),
         protocol: runtime.protocol.clone(),
@@ -156,6 +154,8 @@ pub(super) fn build_provider_invocation(
         provider_config: Value::Null,
         messages: provider_context.messages,
         system: provider_context.system,
+        request_context: runtime_context.native_model_request_context.clone(),
+        required_capabilities: BTreeSet::new(),
         tools: provider_tools(
             node,
             resolved_inputs,
@@ -170,6 +170,7 @@ pub(super) fn build_provider_invocation(
         trace_context,
         run_context,
     };
+    input.synchronize_required_capabilities();
 
     Ok(BuiltProviderInvocation {
         input,

@@ -1,3 +1,4 @@
+use plugin_framework::provider_contract::{NativeModelRequestContext, NativePromptBlock};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
@@ -62,7 +63,7 @@ pub fn map_messages_request(request: Value) -> Result<NativeRunRequest, Anthropi
         .and_then(Value::as_array)
         .ok_or_else(|| AnthropicCompatError::invalid("messages is required"))?;
 
-    let mut system_parts = anthropic_system_content_parts(object.get("system"));
+    let mut system_parts = anthropic_system_content_parts(object.get("system"))?;
     let last_user_index = messages
         .iter()
         .rposition(|message| message.get("role").and_then(Value::as_str) == Some("user"))
@@ -151,7 +152,16 @@ pub fn map_messages_request(request: Value) -> Result<NativeRunRequest, Anthropi
         current_control_kind,
         latest_user_is_tool_result_only,
     );
+    let end_user_reference = metadata
+        .get("user_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
     let mut metadata = metadata;
+    if let Some(metadata) = metadata.as_object_mut() {
+        metadata.remove("user_id");
+    }
     if !compatibility.is_null() {
         metadata["compatibility"] = compatibility.clone();
     }
@@ -164,10 +174,12 @@ pub fn map_messages_request(request: Value) -> Result<NativeRunRequest, Anthropi
         "conversation": conversation,
         "response_mode": response_mode,
         "metadata": metadata,
+        "request_context": NativeModelRequestContext { end_user_reference },
         "compatibility_mode": ANTHROPIC_MESSAGES_COMPATIBILITY_MODE
     });
-    if let Some(system) = system_from_parts(system_parts) {
-        native["system"] = Value::String(system);
+    if !system_parts.is_empty() {
+        native["system"] = serde_json::to_value(system_parts)
+            .map_err(|_| AnthropicCompatError::invalid("failed to build Native system prompt"))?;
     }
     if response_mode.is_none() {
         native
@@ -209,7 +221,9 @@ fn normalize_anthropic_model_for_native(model: &str) -> (String, Option<&'static
     (model.to_string(), None)
 }
 
-fn anthropic_system_content_parts(value: Option<&Value>) -> Vec<String> {
+fn anthropic_system_content_parts(
+    value: Option<&Value>,
+) -> Result<Vec<NativePromptBlock>, AnthropicCompatError> {
     let mut parts = Vec::new();
     match value {
         Some(Value::String(text)) => push_system_part(&mut parts, text),
@@ -217,23 +231,30 @@ fn anthropic_system_content_parts(value: Option<&Value>) -> Vec<String> {
             for block in blocks {
                 match block {
                     Value::String(text) => push_system_part(&mut parts, text),
-                    Value::Object(object) => {
-                        if let Some(text) = object.get("text").and_then(Value::as_str) {
-                            push_system_part(&mut parts, text);
+                    Value::Object(_) => {
+                        let block: NativePromptBlock = serde_json::from_value(block.clone())
+                            .map_err(|_| AnthropicCompatError::unsupported("system"))?;
+                        if !block.text_content().trim().is_empty() {
+                            parts.push(block);
                         }
                     }
-                    _ => {}
+                    _ => return Err(AnthropicCompatError::unsupported("system")),
                 }
             }
         }
-        _ => {}
+        None => {}
+        _ => {
+            return Err(AnthropicCompatError::invalid(
+                "system must be text or text blocks",
+            ))
+        }
     }
-    parts
+    Ok(parts)
 }
 
-fn collect_system_reminder_parts(parts: &mut Vec<String>, content: &str) {
+fn collect_system_reminder_parts(parts: &mut Vec<NativePromptBlock>, content: &str) {
     for reminder in xml_tag_block_contents(content, "system-reminder") {
-        push_system_part(parts, &reminder);
+        push_unique_system_part(parts, &reminder);
     }
 }
 
@@ -256,16 +277,20 @@ fn xml_tag_block_contents(content: &str, tag: &str) -> Vec<String> {
     output
 }
 
-fn push_system_part(parts: &mut Vec<String>, content: &str) {
+fn push_system_part(parts: &mut Vec<NativePromptBlock>, content: &str) {
     let content = content.trim();
-    if content.is_empty() || parts.iter().any(|part| part == content) {
+    if content.is_empty() {
         return;
     }
-    parts.push(content.to_string());
+    parts.push(NativePromptBlock::text(content));
 }
 
-fn system_from_parts(parts: Vec<String>) -> Option<String> {
-    (!parts.is_empty()).then(|| parts.join("\n\n"))
+fn push_unique_system_part(parts: &mut Vec<NativePromptBlock>, content: &str) {
+    let content = content.trim();
+    if content.is_empty() || parts.iter().any(|part| part.text_content() == content) {
+        return;
+    }
+    parts.push(NativePromptBlock::text(content));
 }
 
 fn compatibility_payload(
@@ -351,12 +376,15 @@ pub fn claude_code_control_kind(content: &str) -> Option<&'static str> {
     None
 }
 
-fn claude_code_system_control_kind(system_parts: &[String]) -> Option<&'static str> {
+fn claude_code_system_control_kind(system_parts: &[NativePromptBlock]) -> Option<&'static str> {
     system_parts
         .iter()
         .any(|part| {
-            part.contains(CLAUDE_CODE_SESSION_TITLE_SYSTEM_MARKER)
-                && part.contains(CLAUDE_CODE_SESSION_TITLE_JSON_MARKER)
+            part.text_content()
+                .contains(CLAUDE_CODE_SESSION_TITLE_SYSTEM_MARKER)
+                && part
+                    .text_content()
+                    .contains(CLAUDE_CODE_SESSION_TITLE_JSON_MARKER)
         })
         .then_some("session_title")
 }
@@ -900,7 +928,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(request.query, "hi？");
-        assert_eq!(request.system.as_deref(), Some("internal tools"));
+        assert_eq!(request.system_text().as_deref(), Some("internal tools"));
         assert!(request.history.is_empty());
     }
 
@@ -926,7 +954,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            request.system.as_deref(),
+            request.system_text().as_deref(),
             Some("Use Claude Code project instructions.\n\nPreserve repository safety rules.")
         );
         assert_eq!(request.query, "hi？");
@@ -972,7 +1000,7 @@ mod tests {
             ]
         );
         assert_eq!(request.inputs.as_value()["tools"][0]["name"], json!("Read"));
-        assert_eq!(request.system.as_deref(), Some("available tools"));
+        assert_eq!(request.system_text().as_deref(), Some("available tools"));
     }
 
     #[test]

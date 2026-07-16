@@ -423,6 +423,55 @@ runtime:
 }
 
 #[test]
+fn provider_v2_manifest_declares_native_invocation_capabilities() {
+    let raw = r#"
+manifest_version: 1
+plugin_id: anthropic@0.2.0
+version: 0.2.0
+vendor: 1flowbase
+display_name: Anthropic
+description: Anthropic provider v2
+source_kind: official_registry
+trust_level: verified_official
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes:
+  - model_provider
+binding_targets:
+  - workspace
+selection_mode: assignment_then_select
+minimum_host_version: 0.2.6
+contract_version: 1flowbase.provider/v2
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: outbound_only
+  secrets: provider_instance_only
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/anthropic-provider
+  capabilities:
+    - system_prompt_blocks
+    - system_prompt_cache_control
+    - end_user_reference
+"#;
+
+    let manifest = parse_plugin_manifest(raw).expect("provider v2 manifest should parse");
+
+    assert_eq!(manifest.contract_version, "1flowbase.provider/v2");
+    assert_eq!(
+        manifest.runtime.capabilities,
+        vec![
+            "system_prompt_blocks",
+            "system_prompt_cache_control",
+            "end_user_reference"
+        ]
+    );
+}
+
+#[test]
 fn runtime_extension_rejects_provider_as_plugin_type_slot() {
     let raw = r#"
 manifest_version: 1

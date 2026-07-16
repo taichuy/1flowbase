@@ -607,6 +607,10 @@ impl ProviderHost {
             live_events,
         } = invocation;
 
+        let wire_input = input.to_provider_wire_value(
+            &loaded.package.manifest.contract_version,
+            &loaded.package.manifest.runtime.capabilities,
+        )?;
         let _lease =
             Self::acquire_active_invocation_lease(&active_invocation_leases, &input).await?;
         Self::register_active_stream(&active_streams, invocation_id.clone(), &plugin_id, &input)
@@ -617,7 +621,7 @@ impl ProviderHost {
         ));
         let request = ProviderStdioRequest {
             method: ProviderStdioMethod::Invoke,
-            input: serde_json::to_value(input).unwrap(),
+            input: wire_input,
         };
         let invocation_limits = provider_invocation_limits(&loaded.package.manifest.runtime.limits);
         let output = match loaded.package.manifest.execution_mode {
@@ -667,6 +671,7 @@ use operations::{
 #[cfg(test)]
 mod tests {
     use super::*;
+    use plugin_framework::provider_contract::NativeModelRequestContext;
     use std::{
         fs,
         path::{Path, PathBuf},
@@ -981,6 +986,25 @@ done
             sleep(Duration::from_millis(10)).await;
         }
         panic!("expected {count} active provider stream(s)");
+    }
+
+    #[tokio::test]
+    async fn ac_006_v1_capability_gate_fails_before_starting_provider_process() {
+        let package = TempProviderPackage::new();
+        let mut host = ProviderHost::default();
+        let summary = host.load(package.path().to_str().unwrap()).unwrap();
+        let mut input = invocation_input("fixture-model");
+        input.request_context = NativeModelRequestContext {
+            end_user_reference: Some("external-user-123".to_string()),
+        };
+
+        let error = host
+            .invoke_stream(&summary.plugin_id, input)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("end_user_reference"));
+        assert!(host.active_stream_snapshot().await.streams.is_empty());
     }
 
     #[tokio::test]
