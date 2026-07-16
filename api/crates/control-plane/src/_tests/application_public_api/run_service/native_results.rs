@@ -1,4 +1,10 @@
-use control_plane::application_public_api::run_service::native_result_from_flow_run;
+use control_plane::application_public_api::{
+    native::{NativeRunStatus, NativeUsage},
+    run_service::{
+        native_result_from_flow_run, native_result_from_run_stream_state, PublishedRunNodeUsage,
+        PublishedRunStreamState,
+    },
+};
 use serde_json::json;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -96,4 +102,72 @@ fn native_result_sanitizes_legacy_provider_upstream_raw_body_from_public_error()
     assert!(error.details.get("provider_details").is_none());
     assert!(!error.message.contains(raw_body));
     assert!(!error.details.to_string().contains(raw_body));
+}
+
+#[test]
+fn native_result_from_stream_state_preserves_usage_and_pending_tool_callback_contract() {
+    let mut flow_run = failed_published_flow_run(json!({}));
+    flow_run.status = domain::FlowRunStatus::Running;
+    flow_run.input_payload = json!({ "node-start": { "query": "hello" } });
+    flow_run.error_payload = None;
+    let initial = native_result_from_flow_run(&flow_run, json!({ "request_id": "req-1" }));
+    let callback_task = domain::CallbackTaskRecord {
+        id: uuid(8),
+        flow_run_id: flow_run.id,
+        node_run_id: uuid(9),
+        callback_kind: "llm_tool_calls".to_string(),
+        status: domain::CallbackTaskStatus::Pending,
+        request_payload: json!({
+            "tool_calls": [{
+                "id": "toolu_latest",
+                "name": "Read",
+                "arguments": { "path": "README.md" }
+            }]
+        }),
+        response_payload: None,
+        external_ref_payload: None,
+        created_at: OffsetDateTime::now_utc(),
+        completed_at: None,
+    };
+    let stream_state = PublishedRunStreamState {
+        status: domain::FlowRunStatus::WaitingCallback,
+        output_payload: json!({}),
+        error_payload: None,
+        node_usages: vec![PublishedRunNodeUsage {
+            metrics_usage: Some(json!({ "input_tokens": 21, "output_tokens": 8 })),
+            output_usage: Some(json!({ "prompt_tokens": 999, "completion_tokens": 999 })),
+        }],
+        latest_pending_callback_task: Some(callback_task.clone()),
+    };
+
+    let result = native_result_from_run_stream_state(&initial, &stream_state);
+
+    assert_eq!(result.id, initial.id);
+    assert_eq!(result.node_input_payload, initial.node_input_payload);
+    assert_eq!(result.metadata, initial.metadata);
+    assert_eq!(result.status, NativeRunStatus::Waiting);
+    assert_eq!(
+        result.usage,
+        Some(NativeUsage {
+            prompt_tokens: Some(21),
+            completion_tokens: Some(8),
+            total_tokens: Some(29),
+            ..NativeUsage::default()
+        })
+    );
+    assert_eq!(
+        result
+            .required_action
+            .as_ref()
+            .map(|action| action.action_type.as_str()),
+        Some("submit_tool_outputs")
+    );
+    assert_eq!(
+        result.required_action.as_ref().unwrap().payload["callback_task_id"],
+        json!(callback_task.id)
+    );
+    assert_eq!(
+        result.tool_calls.as_ref().unwrap()[0]["id"],
+        json!("toolu_latest")
+    );
 }

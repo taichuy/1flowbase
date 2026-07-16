@@ -1,5 +1,7 @@
 use super::*;
-use control_plane::application_public_api::run_service::ApplicationPublishedFlowRunRepository;
+use control_plane::application_public_api::run_service::{
+    ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
+};
 
 #[tokio::test]
 async fn orchestration_runtime_repository_round_trips_published_public_run_metadata() {
@@ -164,6 +166,116 @@ async fn published_run_idempotency_lookup_supports_schedule_runs_without_api_key
     assert_eq!(fetched.id, created.id);
     assert_eq!(fetched.api_key_id, None);
     assert!(api_key_scoped.is_none());
+}
+
+#[tokio::test]
+async fn published_run_stream_state_projects_status_usage_and_latest_pending_callback() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-07-16 15:00:00 UTC);
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        started_at,
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+    sqlx::query(
+        r#"
+        update node_runs
+        set metrics_payload = $2,
+            output_payload = $3
+        where id = $1
+        "#,
+    )
+    .bind(node_run.id)
+    .bind(json!({
+        "usage": {
+            "input_tokens": 21,
+            "output_tokens": 8
+        },
+        "large_unrelated_metrics": "must not be projected"
+    }))
+    .bind(json!({
+        "usage": {
+            "prompt_tokens": 999,
+            "completion_tokens": 999
+        },
+        "large_unrelated_output": "must not be projected"
+    }))
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let first_pending =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_callback_task(
+            &store,
+            &CreateCallbackTaskInput {
+                flow_run_id: run.id,
+                node_run_id: node_run.id,
+                callback_kind: "llm_tool_calls".to_string(),
+                request_payload: json!({ "tool_calls": [{ "id": "toolu_first" }] }),
+                external_ref_payload: None,
+            },
+        )
+        .await
+        .unwrap();
+    let latest_pending =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_callback_task(
+            &store,
+            &CreateCallbackTaskInput {
+                flow_run_id: run.id,
+                node_run_id: node_run.id,
+                callback_kind: "llm_tool_calls".to_string(),
+                request_payload: json!({ "tool_calls": [{ "id": "toolu_latest" }] }),
+                external_ref_payload: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let stream_state =
+        <PgControlPlaneStore as ApplicationPublishedRunControlRepository>::get_published_run_stream_state(
+            &store,
+            seeded.application_id,
+            run.id,
+        )
+        .await
+        .unwrap()
+        .expect("published run stream state should exist");
+    let wrong_application =
+        <PgControlPlaneStore as ApplicationPublishedRunControlRepository>::get_published_run_stream_state(
+            &store,
+            Uuid::now_v7(),
+            run.id,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(stream_state.status, FlowRunStatus::Running);
+    assert_eq!(stream_state.node_usages.len(), 1);
+    assert_eq!(
+        stream_state.node_usages[0].metrics_usage,
+        Some(json!({ "input_tokens": 21, "output_tokens": 8 }))
+    );
+    assert_eq!(
+        stream_state.node_usages[0].output_usage,
+        Some(json!({ "prompt_tokens": 999, "completion_tokens": 999 }))
+    );
+    assert_ne!(first_pending.id, latest_pending.id);
+    assert_eq!(
+        stream_state
+            .latest_pending_callback_task
+            .expect("latest pending callback should be projected")
+            .id,
+        latest_pending.id
+    );
+    assert!(wrong_application.is_none());
 }
 
 #[tokio::test]

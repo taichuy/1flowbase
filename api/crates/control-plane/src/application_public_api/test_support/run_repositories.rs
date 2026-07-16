@@ -329,6 +329,61 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
             .cloned())
     }
 
+    async fn get_published_run_stream_state(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<run_service::PublishedRunStreamState>> {
+        let inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let Some(flow_run) = inner.flow_runs.get(&flow_run_id).filter(|run| {
+            run.application_id == application_id
+                && run.run_mode == domain::FlowRunMode::PublishedApiRun
+        }) else {
+            return Ok(None);
+        };
+        let mut node_runs = inner
+            .node_runs
+            .values()
+            .filter(|node_run| node_run.flow_run_id == flow_run_id)
+            .collect::<Vec<_>>();
+        node_runs.sort_by(|left, right| {
+            left.started_at
+                .cmp(&right.started_at)
+                .then(left.id.cmp(&right.id))
+        });
+        let node_usages = node_runs
+            .into_iter()
+            .map(|node_run| run_service::PublishedRunNodeUsage {
+                metrics_usage: node_run.metrics_payload.get("usage").cloned(),
+                output_usage: node_run.output_payload.get("usage").cloned(),
+            })
+            .collect();
+        let latest_pending_callback_task = inner
+            .callback_tasks
+            .values()
+            .filter(|task| {
+                task.flow_run_id == flow_run_id
+                    && task.status == domain::CallbackTaskStatus::Pending
+            })
+            .max_by(|left, right| {
+                left.created_at
+                    .cmp(&right.created_at)
+                    .then(left.id.cmp(&right.id))
+            })
+            .cloned();
+
+        Ok(Some(run_service::PublishedRunStreamState {
+            status: flow_run.status,
+            output_payload: flow_run.output_payload.clone(),
+            error_payload: flow_run.error_payload.clone(),
+            node_usages,
+            latest_pending_callback_task,
+        }))
+    }
+
     async fn get_published_run_detail(
         &self,
         application_id: Uuid,

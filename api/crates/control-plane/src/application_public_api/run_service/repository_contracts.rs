@@ -50,6 +50,21 @@ pub struct ListWaitingCallbackPublishedRunsInput {
     pub compatibility_mode: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublishedRunNodeUsage {
+    pub metrics_usage: Option<Value>,
+    pub output_usage: Option<Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PublishedRunStreamState {
+    pub status: domain::FlowRunStatus,
+    pub output_payload: Value,
+    pub error_payload: Option<Value>,
+    pub node_usages: Vec<PublishedRunNodeUsage>,
+    pub latest_pending_callback_task: Option<domain::CallbackTaskRecord>,
+}
+
 #[async_trait]
 pub trait ApplicationPublishedRunControlRepository: Send + Sync {
     async fn get_published_flow_run(
@@ -77,6 +92,12 @@ pub trait ApplicationPublishedRunControlRepository: Send + Sync {
         &self,
         callback_task_id: Uuid,
     ) -> Result<Option<domain::CallbackTaskRecord>>;
+
+    async fn get_published_run_stream_state(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<PublishedRunStreamState>>;
 
     async fn get_published_run_detail(
         &self,

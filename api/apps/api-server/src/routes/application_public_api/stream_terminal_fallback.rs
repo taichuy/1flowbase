@@ -5,7 +5,9 @@ use control_plane::{
             AnswerProjectionSegment, AnswerProjectionSegmentKind, NativeRunResult, NativeRunStatus,
             ANSWER_SEGMENTS_KEY,
         },
-        run_service::{native_result_from_run_detail, ApplicationPublishedRunControlRepository},
+        run_service::{
+            native_result_from_run_stream_state, ApplicationPublishedRunControlRepository,
+        },
     },
     orchestration_runtime::{
         debug_artifacts::is_runtime_debug_artifact_preview, debug_stream_events,
@@ -39,15 +41,15 @@ pub(crate) async fn load_latest_native_run_for_terminal_fallback(
 ) -> NativeRunResult {
     match state
         .store
-        .get_published_run_detail(initial_run.application_id, initial_run.id)
+        .get_published_run_stream_state(initial_run.application_id, initial_run.id)
         .await
     {
-        Ok(Some(detail)) => native_result_from_run_detail(&detail, initial_run.metadata.clone()),
+        Ok(Some(stream_state)) => native_result_from_run_stream_state(initial_run, &stream_state),
         Ok(None) => {
             warn!(
                 flow_run_id = %initial_run.id,
                 application_id = %initial_run.application_id,
-                "compatible/native stream closed without terminal event and no durable run detail was found"
+                "compatible/native stream closed without terminal event and no durable run state was found"
             );
             initial_run.clone()
         }
@@ -56,7 +58,7 @@ pub(crate) async fn load_latest_native_run_for_terminal_fallback(
                 flow_run_id = %initial_run.id,
                 application_id = %initial_run.application_id,
                 error = %error,
-                "failed to load durable run detail for stream terminal fallback"
+                "failed to load durable run state for stream terminal fallback"
             );
             initial_run.clone()
         }

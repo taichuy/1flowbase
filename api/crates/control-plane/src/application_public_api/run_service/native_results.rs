@@ -5,11 +5,32 @@ use serde_json::{json, Value};
 
 use crate::application_public_api::native::{self, NativeRunResult, NativeRunStatus};
 
+use super::repository_contracts::PublishedRunStreamState;
+
 pub fn native_result_from_flow_run(
     flow_run: &domain::FlowRunRecord,
     metadata: Value,
 ) -> NativeRunResult {
-    let error = flow_run.error_payload.as_ref().map(|payload| {
+    NativeRunResult {
+        id: flow_run.id,
+        application_id: flow_run.application_id,
+        api_key_id: flow_run.api_key_id.unwrap_or_default(),
+        publication_version_id: flow_run.publication_version_id.unwrap_or_default(),
+        status: native_status(flow_run.status),
+        node_input_payload: flow_run.input_payload.clone(),
+        metadata,
+        answer: extract_answer(&flow_run.output_payload),
+        answer_segments: extract_answer_segments(&flow_run.output_payload),
+        required_action: None,
+        tool_calls: extract_tool_calls(&flow_run.output_payload),
+        usage: extract_usage(&flow_run.output_payload),
+        error: native_error_from_payload(flow_run.error_payload.as_ref()),
+        created_at: flow_run.created_at,
+    }
+}
+
+fn native_error_from_payload(payload: Option<&Value>) -> Option<native::NativeError> {
+    payload.map(|payload| {
         let public_details = public_native_error_details(payload);
         let message = payload
             .get("message")
@@ -26,23 +47,7 @@ pub fn native_result_from_flow_run(
             message: public_native_error_message(payload, &message),
             details: public_details,
         }
-    });
-    NativeRunResult {
-        id: flow_run.id,
-        application_id: flow_run.application_id,
-        api_key_id: flow_run.api_key_id.unwrap_or_default(),
-        publication_version_id: flow_run.publication_version_id.unwrap_or_default(),
-        status: native_status(flow_run.status),
-        node_input_payload: flow_run.input_payload.clone(),
-        metadata,
-        answer: extract_answer(&flow_run.output_payload),
-        answer_segments: extract_answer_segments(&flow_run.output_payload),
-        required_action: None,
-        tool_calls: extract_tool_calls(&flow_run.output_payload),
-        usage: extract_usage(&flow_run.output_payload),
-        error,
-        created_at: flow_run.created_at,
-    }
+    })
 }
 
 fn public_native_error_details(payload: &Value) -> Value {
@@ -101,18 +106,43 @@ pub fn native_result_from_run_detail(
 ) -> NativeRunResult {
     let mut result = native_result_from_flow_run(&detail.flow_run, metadata);
     if result.usage.is_none() {
-        result.usage = aggregate_node_usage(&detail.node_runs);
+        result.usage = aggregate_usage_payloads(detail.node_runs.iter().map(|node_run| {
+            (
+                node_run.metrics_payload.get("usage"),
+                node_run.output_payload.get("usage"),
+            )
+        }));
     }
-    if let Some(task) = latest_pending_callback_task(&detail.callback_tasks) {
-        result.required_action = Some(native_required_action_from_callback_task(task));
-        if task.callback_kind == "llm_tool_calls" {
-            result.tool_calls = task
-                .request_payload
-                .get("tool_calls")
-                .filter(|value| value.is_array())
-                .cloned();
-        }
-    }
+    apply_pending_callback_task(
+        &mut result,
+        latest_pending_callback_task(&detail.callback_tasks),
+    );
+    result
+}
+
+pub fn native_result_from_run_stream_state(
+    initial_run: &NativeRunResult,
+    stream_state: &PublishedRunStreamState,
+) -> NativeRunResult {
+    let mut result = initial_run.clone();
+    result.status = native_status(stream_state.status);
+    result.answer = extract_answer(&stream_state.output_payload);
+    result.answer_segments = extract_answer_segments(&stream_state.output_payload);
+    result.required_action = None;
+    result.tool_calls = extract_tool_calls(&stream_state.output_payload);
+    result.usage = extract_usage(&stream_state.output_payload).or_else(|| {
+        aggregate_usage_payloads(stream_state.node_usages.iter().map(|node_usage| {
+            (
+                node_usage.metrics_usage.as_ref(),
+                node_usage.output_usage.as_ref(),
+            )
+        }))
+    });
+    result.error = native_error_from_payload(stream_state.error_payload.as_ref());
+    apply_pending_callback_task(
+        &mut result,
+        stream_state.latest_pending_callback_task.as_ref(),
+    );
     result
 }
 
@@ -123,6 +153,23 @@ fn latest_pending_callback_task(
         .iter()
         .rev()
         .find(|task| task.status == domain::CallbackTaskStatus::Pending)
+}
+
+fn apply_pending_callback_task(
+    result: &mut NativeRunResult,
+    task: Option<&domain::CallbackTaskRecord>,
+) {
+    let Some(task) = task else {
+        return;
+    };
+    result.required_action = Some(native_required_action_from_callback_task(task));
+    if task.callback_kind == "llm_tool_calls" {
+        result.tool_calls = task
+            .request_payload
+            .get("tool_calls")
+            .filter(|value| value.is_array())
+            .cloned();
+    }
 }
 
 fn native_required_action_from_callback_task(
@@ -185,21 +232,16 @@ fn extract_usage(output_payload: &Value) -> Option<native::NativeUsage> {
     usage_from_payload(usage)
 }
 
-fn aggregate_node_usage(node_runs: &[domain::NodeRunRecord]) -> Option<native::NativeUsage> {
+fn aggregate_usage_payloads<'a>(
+    node_usages: impl IntoIterator<Item = (Option<&'a Value>, Option<&'a Value>)>,
+) -> Option<native::NativeUsage> {
     let mut aggregate = native::NativeUsage::default();
     let mut saw_usage = false;
 
-    for node_run in node_runs {
-        let usage = node_run
-            .metrics_payload
-            .get("usage")
+    for (metrics_usage, output_usage) in node_usages {
+        let usage = metrics_usage
             .and_then(usage_from_payload)
-            .or_else(|| {
-                node_run
-                    .output_payload
-                    .get("usage")
-                    .and_then(usage_from_payload)
-            });
+            .or_else(|| output_usage.and_then(usage_from_payload));
         let Some(usage) = usage else {
             continue;
         };

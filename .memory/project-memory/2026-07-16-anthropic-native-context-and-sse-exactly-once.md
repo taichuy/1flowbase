@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: Anthropic Native 上下文与兼容 SSE exactly-once 修复
-summary: Claude Code/AionUI 续聊历史经 Native prompt context 跨节点进入 Provider Invocation；首次执行、恢复、预览与分支变量遵守同一图作用域，Answer Presentation 按真实激活分支 exactly-once 投影，Anthropic -> AI Native -> Anthropic 仍是唯一执行链路。
+summary: Claude Code/AionUI 续聊历史经 Native prompt context 跨节点进入 Provider Invocation；Answer Presentation 按真实激活分支 exactly-once 投影；兼容 SSE 终态轮询只读取轻量 stream state，不再物化完整运行详情与 stitched trace。
 keywords:
   - anthropic
   - ai native
@@ -11,13 +11,14 @@ keywords:
   - sse
   - exactly once
 created_at: 2026-07-16 12
-updated_at: 2026-07-16 15
-last_verified_at: 2026-07-16 15
+updated_at: 2026-07-16 23
+last_verified_at: 2026-07-16 23
 decision_policy: verify_before_decision
 status: delivered
 scope:
   - api/crates/plugin-framework/src/provider_contract.rs
   - api/crates/control-plane/src/application_public_api
+  - api/crates/storage-durable/postgres/src/orchestration_runtime_repository
   - api/crates/orchestration-runtime/src/execution_engine
   - api/apps/api-server/src/routes/application_public_api/compat_sse
 ---
@@ -43,6 +44,8 @@ AI 按用户要求修复 Claude Code 经 AionUI 调用 1flowbase 时的续聊上
 - `orchestration-runtime` 是唯一执行状态机；control-plane 只负责生命周期、持久化、事件和权限，不再保留第二套首次执行循环。
 - 多 Answer 图按真实 Provider 来源和 checkpoint active set 选择终点；未激活分支的静态 Answer 不得污染等待态、终态或 SSE block 顺序。
 - `sys.dialog_count` 由 Native history 中此前 user turn 数生成；首轮为 0，第二轮为 1，兼容旧输入时才回退 Start history 投影。
+- Compatible SSE / Native stream 的终态兜底统一读取 `PublishedRunStreamState`；投影只包含当前 run 的 status、output/error、节点 usage 子字段和最新 pending callback，不得回到 `ApplicationRunDetail`、stitched trace 或 subagent trace。
+- Stream state 以初始 `NativeRunResult` 保留稳定身份、metadata 与 node input，只覆盖持久化动态状态；usage 聚合优先级与 pending `llm_tool_calls` required action 契约保持不变。
 
 ## 验证证据
 
@@ -52,6 +55,7 @@ AI 按用户要求修复 Claude Code 经 AionUI 调用 1flowbase 时的续聊上
 - 最终 Claude Code session `3ab4dffb-3d6d-4fc7-85d4-6c9dfe79001b` 两轮成功：第一轮 `已记住`，第二轮只返回 `FLOWBASE-5173`；run `019f69b5-0447-7980-b181-a5d4eef3fc0a` 与 `019f69b6-9e2d-7d60-b543-95e03b83291b` 均 succeeded，第二轮 history=2、dialog_count=1，Answer delta 拼接后无重复。
 - 最新自动化证据：orchestration-runtime 253 passed、control-plane orchestration 178 passed、前端变量/预览/节点目录 96 passed、TypeScript 通过、scoped clippy `-D warnings` 通过、Rust static warnings=0。
 - AionUI SQLite 对旧 session `a889e49c-f1b2-4d3e-ad60-e9023c0d2f63` 的 text/thinking exact duplicate groups=0；因此未修改 AionUI。
+- OOM 复现样本的旧完整详情会展开约 485 MB 历史 JSON；轻量投影只读取约 1.9 KB 当前状态数据。repository 红绿测试、control-plane stream-state contract 测试、compatible SSE 41 项回归和 Rust static gate 均通过；新后端启动后 RSS 约 100 MB。
 
 ## 截止日期与动机
 

@@ -11,7 +11,7 @@ use control_plane::{
         run_service::{
             ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
             CancelPublishedFlowRunInput, CreatePublishedFlowRunResult,
-            ListWaitingCallbackPublishedRunsInput,
+            ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunStreamState,
         },
     },
     errors::ControlPlaneError,
@@ -887,6 +887,96 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         callback_task_id: Uuid,
     ) -> Result<Option<domain::CallbackTaskRecord>> {
         PgControlPlaneStore::get_callback_task(self, callback_task_id).await
+    }
+
+    async fn get_published_run_stream_state(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<PublishedRunStreamState>> {
+        let row = sqlx::query(
+            r#"
+            select
+                status,
+                output_payload,
+                error_payload
+            from flow_runs
+            where application_id = $1
+              and id = $2
+              and run_mode = 'published_api_run'
+              and (
+                  import_job_id is null
+                  or exists (
+                      select 1
+                      from run_archive_import_jobs import_jobs
+                      where import_jobs.id = flow_runs.import_job_id
+                        and import_jobs.status = 'succeeded'
+                  )
+              )
+            "#,
+        )
+        .bind(application_id)
+        .bind(flow_run_id)
+        .fetch_optional(self.pool())
+        .await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let node_usage_rows = sqlx::query(
+            r#"
+            select
+                metrics_payload -> 'usage' as metrics_usage,
+                output_payload -> 'usage' as output_usage
+            from node_runs
+            where flow_run_id = $1
+            order by started_at asc, id asc
+            "#,
+        )
+        .bind(flow_run_id)
+        .fetch_all(self.pool())
+        .await?;
+        let node_usages = node_usage_rows
+            .into_iter()
+            .map(|row| PublishedRunNodeUsage {
+                metrics_usage: row.get("metrics_usage"),
+                output_usage: row.get("output_usage"),
+            })
+            .collect();
+        let latest_pending_callback_task = sqlx::query(
+            r#"
+            select
+                id,
+                flow_run_id,
+                node_run_id,
+                callback_kind,
+                status,
+                request_payload,
+                response_payload,
+                external_ref_payload,
+                created_at,
+                completed_at
+            from flow_run_callback_tasks
+            where flow_run_id = $1
+              and status = 'pending'
+            order by created_at desc, id desc
+            limit 1
+            "#,
+        )
+        .bind(flow_run_id)
+        .fetch_optional(self.pool())
+        .await?
+        .map(map_callback_task_record)
+        .transpose()?;
+
+        Ok(Some(PublishedRunStreamState {
+            status: crate::mappers::orchestration_runtime_mapper::parse_flow_run_status(
+                row.get::<String, _>("status").as_str(),
+            )?,
+            output_payload: row.get("output_payload"),
+            error_payload: row.get("error_payload"),
+            node_usages,
+            latest_pending_callback_task,
+        }))
     }
 
     async fn get_published_run_detail(

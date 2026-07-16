@@ -33,11 +33,13 @@ use crate::{
     state_transition::ensure_flow_run_transition,
 };
 use conversation_history::application_public_conversation_messages_to_native_history;
-pub use native_results::{native_result_from_flow_run, native_result_from_run_detail};
+pub use native_results::{
+    native_result_from_flow_run, native_result_from_run_detail, native_result_from_run_stream_state,
+};
 pub use repository_contracts::{
     ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
     CancelPublishedFlowRunInput, CreatePublishedFlowRunResult,
-    ListWaitingCallbackPublishedRunsInput,
+    ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunStreamState,
 };
 use run_input::{
     compiled_plan_start_node_id, freeze_run_input_environment, generate_external_conversation_id,
