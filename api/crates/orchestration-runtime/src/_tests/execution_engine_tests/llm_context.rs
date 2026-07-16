@@ -154,6 +154,83 @@ async fn native_prompt_context_reaches_llm_across_intermediate_nodes_once() {
 }
 
 #[tokio::test]
+async fn external_tool_callback_recall_keeps_native_prompt_across_intermediate_nodes() {
+    const ORIGINAL_REQUIREMENT: &str = "Keep the original UI design requirement.";
+    let plan = plan_with_llm_behind_if_else();
+    let (invoker, captured_inputs) = sequential_tool_invoker(vec![
+        tool_call_response(vec![ProviderToolCall {
+            id: "call_lookup".to_string(),
+            name: "lookup".to_string(),
+            arguments: json!({ "query": "UI design" }),
+            provider_metadata: json!({}),
+        }]),
+        final_llm_response("callback complete"),
+    ]);
+
+    let waiting = start_flow_debug_run(
+        &plan,
+        &json!({
+            "__native_model_prompt_context": {
+                "system": [
+                    { "type": "text", "text": "Preserve the AI Native prompt." }
+                ],
+                "messages": [
+                    { "role": "user", "content": ORIGINAL_REQUIREMENT },
+                    { "role": "assistant", "content": "I will use a tool." }
+                ]
+            },
+            "node-start": {
+                "query": "Current question",
+                "history": []
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+    let checkpoint = waiting
+        .checkpoint_snapshot
+        .expect("tool callback should persist a checkpoint");
+
+    resume_flow_debug_run(
+        &plan,
+        &checkpoint,
+        "node-llm",
+        &json!({
+            "tool_results": [{
+                "tool_call_id": "call_lookup",
+                "content": "lookup result"
+            }]
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let captured = captured_inputs
+        .lock()
+        .expect("captured inputs mutex poisoned")
+        .clone();
+    assert_eq!(captured.len(), 2);
+    for input in &captured {
+        assert_eq!(
+            input
+                .messages
+                .iter()
+                .filter(|message| message.content == ORIGINAL_REQUIREMENT)
+                .count(),
+            1,
+            "every external callback round must keep the original AI Native user turn exactly once: {:?}",
+            input.messages
+        );
+        assert_eq!(
+            input.system_text().as_deref(),
+            Some("Preserve the AI Native prompt.")
+        );
+    }
+}
+
+#[tokio::test]
 async fn compatible_start_context_reaches_llm_across_intermediate_nodes() {
     let captured_input = Arc::new(Mutex::new(None));
     let invoker = StubProviderInvoker {

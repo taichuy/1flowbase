@@ -60,7 +60,6 @@ pub use http_request::{
     execute_http_request_node, HttpRequestNodeExecution, HttpResponseFilePersistInput,
     HttpResponseFilePersister,
 };
-pub use llm_callbacks::build_llm_tool_callback_wait;
 use llm_callbacks::*;
 use llm_context::*;
 use llm_error_payloads::*;
@@ -614,15 +613,7 @@ where
                     continue;
                 }
 
-                let pending_callback = execution.pending_callback.or_else(|| {
-                    build_llm_tool_callback_wait(
-                        node,
-                        &resolved_inputs,
-                        &variable_pool,
-                        &execution.output_payload,
-                    )
-                });
-                if let Some(wait) = pending_callback {
+                if let Some(wait) = execution.pending_callback {
                     if let Some(trace) = wait.node_trace.clone() {
                         node_traces.push(trace);
                     }
@@ -1160,6 +1151,8 @@ where
                 },
             );
         }
+        let tool_prompt_transcript =
+            llm_tool_prompt_transcript(node, variable_pool, &invocation.input);
         let invocation_tools = invocation.input.tools.clone();
         let attempt_started_at = OffsetDateTime::now_utc();
         let mut output = match invoker.invoke_llm(attempt_runtime, invocation.input).await {
@@ -1314,7 +1307,7 @@ where
             );
         }
 
-        return build_successful_llm_execution(
+        let mut execution = build_successful_llm_execution(
             node,
             attempt_runtime,
             &output.result,
@@ -1333,7 +1326,14 @@ where
                 messages: &invocation_messages,
                 context: Some(&invocation.debug_context),
             },
-        );
+        )?;
+        execution.pending_callback = build_llm_tool_callback_wait(
+            node,
+            variable_pool,
+            &execution.output_payload,
+            &tool_prompt_transcript,
+        )?;
+        return Ok(execution);
     }
 
     let error_payload = json!({

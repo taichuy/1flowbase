@@ -92,7 +92,7 @@ pub(super) fn build_provider_invocation(
     let previous_response_id =
         pending_llm_tool_callback_previous_response_id(node, runtime, variable_pool);
     let context_policy = llm_context_policy(node, runtime);
-    let provider_context = if previous_response_id.is_some() {
+    let mut provider_context = if previous_response_id.is_some() {
         let prompt_messages =
             if let Some(messages) = pending_llm_tool_callback_delta_messages(node, variable_pool) {
                 messages
@@ -107,18 +107,7 @@ pub(super) fn build_provider_invocation(
                     runtime_context,
                 )?
             };
-        let mut context = provider_context_from_prompt_messages(prompt_messages)?;
-        if context.system.is_empty() {
-            if let Some(system) = pending_llm_tool_callback_system(node, variable_pool) {
-                context.system = system;
-                context.system_sources.push(json!({
-                    "source": format!("{}.{}", node.node_id, LLM_TOOL_CALLBACK_STATE_KEY),
-                    "source_kind": "pending_tool_callback_history",
-                    "target": "effective_system"
-                }));
-            }
-        }
-        context
+        provider_context_from_prompt_messages(prompt_messages)?
     } else {
         provider_context_from_prompt_messages(binding_prompt_messages_with_context_sources(
             plan,
@@ -130,6 +119,16 @@ pub(super) fn build_provider_invocation(
             runtime_context,
         )?)?
     };
+    if provider_context.system.is_empty() {
+        if let Some(system) = pending_llm_tool_callback_system(node, variable_pool)? {
+            provider_context.system = system;
+            provider_context.system_sources.push(json!({
+                "source": format!("{}.{}", node.node_id, LLM_TOOL_CALLBACK_STATE_KEY),
+                "source_kind": "pending_tool_callback_transcript",
+                "target": "effective_system"
+            }));
+        }
+    }
 
     let trace_context = BTreeMap::from([
         ("node_id".to_string(), node.node_id.clone()),

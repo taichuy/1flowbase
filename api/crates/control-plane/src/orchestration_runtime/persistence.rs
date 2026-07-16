@@ -230,6 +230,7 @@ where
                     flow_run.id,
                     compiled_plan,
                     outcome,
+                    prepared_node_runs,
                 )
                 .await?,
             );
@@ -329,6 +330,7 @@ where
                     flow_run.id,
                     compiled_plan,
                     outcome,
+                    prepared_node_runs,
                 )
                 .await?,
             );
@@ -381,6 +383,9 @@ where
                 append_answer_presentation_suffix(
                     repository,
                     flow_run.id,
+                    compiled_plan,
+                    outcome,
+                    prepared_node_runs,
                     answer_node_id(outcome),
                     &output_payload,
                 )
@@ -439,6 +444,9 @@ where
                 append_answer_presentation_suffix(
                     repository,
                     flow_run.id,
+                    compiled_plan,
+                    outcome,
+                    prepared_node_runs,
                     answer_node_id(outcome),
                     &output_payload,
                 )

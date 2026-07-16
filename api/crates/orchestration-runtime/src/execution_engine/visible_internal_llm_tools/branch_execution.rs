@@ -372,7 +372,7 @@ where
             {
                 return Ok(VisibleInternalLlmToolNodeExecution::Failed(error_payload));
             }
-            let execution = execute_llm_node_provider_round(
+            let mut execution = execute_llm_node_provider_round(
                 plan,
                 node,
                 &resolved_inputs,
@@ -386,12 +386,7 @@ where
             if let Some(error_payload) = execution.error_payload {
                 return Ok(VisibleInternalLlmToolNodeExecution::Failed(error_payload));
             }
-            if let Some(mut wait) = build_llm_tool_callback_wait(
-                node,
-                &resolved_inputs,
-                variable_pool,
-                &execution.output_payload,
-            ) {
+            if let Some(mut wait) = execution.pending_callback.take() {
                 if visible_internal_llm_tool_blocks_external_callback(variable_pool) {
                     return Ok(VisibleInternalLlmToolNodeExecution::Failed(json!({
                         "error_code": "visible_internal_llm_tool_external_callback_forbidden",

@@ -1,5 +1,6 @@
 use super::*;
 use crate::orchestration_runtime::answer_presentation;
+use std::collections::HashMap;
 
 pub(super) async fn materialize_ready_answer_node_run<R>(
     repository: &R,
@@ -88,6 +89,9 @@ where
 pub(super) async fn append_answer_presentation_suffix<R>(
     repository: &R,
     flow_run_id: Uuid,
+    compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
+    outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+    prepared_node_runs: Option<&PreparedNodeRuns>,
     answer_node_id: &str,
     output_payload: &Value,
 ) -> Result<Vec<crate::ports::RuntimeEventPayload>>
@@ -99,6 +103,18 @@ where
     };
     if answer.is_empty() {
         return Ok(Vec::new());
+    }
+
+    if let Some(candidate_events) =
+        final_answer_presentation_events(compiled_plan, outcome, prepared_node_runs, answer_node_id)
+            .filter(|events| !events.is_empty())
+    {
+        return append_missing_answer_presentation_events(
+            repository,
+            flow_run_id,
+            candidate_events,
+        )
+        .await;
     }
 
     let visible_answer = answer_presentation::visible_answer_text(answer);
@@ -122,11 +138,41 @@ where
     Ok(vec![event])
 }
 
+fn final_answer_presentation_events(
+    compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
+    outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+    prepared_node_runs: Option<&PreparedNodeRuns>,
+    answer_node_id: &str,
+) -> Option<Vec<crate::ports::RuntimeEventPayload>> {
+    let compiled_plan = compiled_plan?;
+    let presentation =
+        orchestration_runtime::answer_presentation::AnswerPresentationPlan::candidates_from_plan(
+            compiled_plan,
+        )
+        .into_iter()
+        .find(|presentation| presentation.answer_node_id == answer_node_id)?;
+    let mut cursor = answer_presentation::AnswerPresentationCursor::from_presentation(presentation);
+    let mut events = Vec::new();
+
+    for node_id in &compiled_plan.topological_order {
+        let Some(output_payload) = outcome.variable_pool.get(node_id) else {
+            continue;
+        };
+        let node_run_id = prepared_node_runs
+            .and_then(|node_runs| node_runs.get(node_id))
+            .map(|node_run| node_run.id);
+        events.extend(cursor.complete_node_with_run_id(node_id, node_run_id, output_payload));
+    }
+
+    Some(events)
+}
+
 pub(super) async fn append_ready_answer_presentation_prefix<R>(
     repository: &R,
     flow_run_id: Uuid,
     compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
     outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+    prepared_node_runs: Option<&PreparedNodeRuns>,
 ) -> Result<Vec<crate::ports::RuntimeEventPayload>>
 where
     R: OrchestrationRuntimeRepository,
@@ -164,7 +210,14 @@ where
         let Some(output_payload) = variable_pool.get(node_id) else {
             continue;
         };
-        candidate_events.extend(cursor.complete_node_with_run_id(node_id, None, output_payload));
+        let node_run_id = prepared_node_runs
+            .and_then(|node_runs| node_runs.get(node_id))
+            .map(|node_run| node_run.id);
+        candidate_events.extend(cursor.complete_node_with_run_id(
+            node_id,
+            node_run_id,
+            output_payload,
+        ));
     }
 
     append_missing_answer_presentation_events(repository, flow_run_id, candidate_events).await
@@ -194,32 +247,55 @@ async fn append_missing_answer_presentation_events<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
-    let existing_text =
-        existing_answer_presentation_text(repository, flow_run_id, "text_delta").await?;
-    let existing_reasoning =
-        existing_answer_presentation_text(repository, flow_run_id, "reasoning_delta").await?;
-    let candidate_text = answer_presentation_event_text(&events, "text_delta");
-    let candidate_reasoning = answer_presentation_event_text(&events, "reasoning_delta");
-    let mut skip_text_bytes = if candidate_text.starts_with(&existing_text) {
-        existing_text.len()
-    } else {
-        0
-    };
-    let mut skip_reasoning_bytes = if candidate_reasoning.starts_with(&existing_reasoning) {
-        existing_reasoning.len()
-    } else {
-        0
-    };
+    let existing_events = repository
+        .list_runtime_events(flow_run_id, 0)
+        .await?
+        .into_iter()
+        .filter(|event| debug_stream_events::is_answer_presentation_delta_payload(&event.payload))
+        .collect::<Vec<_>>();
+    let mut candidate_text_by_identity = HashMap::<AnswerPresentationDeltaIdentity, String>::new();
+    for event in &events {
+        let Some(identity) =
+            AnswerPresentationDeltaIdentity::from_payload(&event.event_type, &event.payload)
+        else {
+            continue;
+        };
+        if let Some(text) = event.payload.get("text").and_then(Value::as_str) {
+            candidate_text_by_identity
+                .entry(identity)
+                .or_default()
+                .push_str(text);
+        }
+    }
+    let mut skip_bytes_by_identity = candidate_text_by_identity
+        .iter()
+        .map(|(identity, candidate_text)| {
+            let existing_text = existing_events
+                .iter()
+                .filter(|event| identity.matches_existing(&event.event_type, &event.payload))
+                .filter_map(|event| event.payload.get("text").and_then(Value::as_str))
+                .collect::<String>();
+            let skip_bytes = if candidate_text.starts_with(&existing_text) {
+                existing_text.len()
+            } else {
+                0
+            };
+            (identity.clone(), skip_bytes)
+        })
+        .collect::<HashMap<_, _>>();
     let mut appended = Vec::new();
 
     for mut event in events {
         let Some(text) = event.payload.get("text").and_then(Value::as_str) else {
             continue;
         };
-        let skip_bytes = match event.event_type.as_str() {
-            "text_delta" => &mut skip_text_bytes,
-            "reasoning_delta" => &mut skip_reasoning_bytes,
-            _ => continue,
+        let Some(identity) =
+            AnswerPresentationDeltaIdentity::from_payload(&event.event_type, &event.payload)
+        else {
+            continue;
+        };
+        let Some(skip_bytes) = skip_bytes_by_identity.get_mut(&identity) else {
+            continue;
         };
         let missing = missing_answer_delta_text(skip_bytes, text);
         if missing.is_empty() {
@@ -236,15 +312,55 @@ where
     Ok(appended)
 }
 
-fn answer_presentation_event_text(
-    events: &[crate::ports::RuntimeEventPayload],
-    event_type: &str,
-) -> String {
-    events
-        .iter()
-        .filter(|event| event.event_type == event_type)
-        .filter_map(|event| event.payload.get("text").and_then(Value::as_str))
-        .collect()
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct AnswerPresentationDeltaIdentity {
+    event_type: String,
+    answer_node_id: Option<String>,
+    segment_index: Option<String>,
+    source_node_id: Option<String>,
+    source_node_run_id: Option<String>,
+    source_output_key: Option<String>,
+}
+
+impl AnswerPresentationDeltaIdentity {
+    fn from_payload(event_type: &str, payload: &Value) -> Option<Self> {
+        debug_stream_events::is_answer_presentation_delta_payload(payload).then(|| Self {
+            event_type: event_type.to_string(),
+            answer_node_id: presentation_identity_field(payload, "answer_node_id"),
+            segment_index: presentation_identity_field(payload, "segment_index"),
+            source_node_id: presentation_identity_field(payload, "source_node_id"),
+            source_node_run_id: presentation_identity_field(payload, "source_node_run_id"),
+            source_output_key: presentation_identity_field(payload, "source_output_key"),
+        })
+    }
+
+    fn matches_existing(&self, event_type: &str, payload: &Value) -> bool {
+        let Some(existing) = Self::from_payload(event_type, payload) else {
+            return false;
+        };
+        self.event_type == existing.event_type
+            && self.answer_node_id == existing.answer_node_id
+            && self.segment_index == existing.segment_index
+            && self.source_node_id == existing.source_node_id
+            && self.source_output_key == existing.source_output_key
+            && self
+                .source_node_run_id
+                .as_ref()
+                .is_none_or(|source_node_run_id| {
+                    existing.source_node_run_id.as_ref() == Some(source_node_run_id)
+                })
+    }
+}
+
+fn presentation_identity_field(payload: &Value, key: &str) -> Option<String> {
+    payload
+        .get("presentation")
+        .and_then(Value::as_object)
+        .and_then(|presentation| presentation.get(key))
+        .map(|value| match value {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        })
 }
 
 async fn existing_answer_presentation_text<R>(

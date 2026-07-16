@@ -1,42 +1,55 @@
 use super::*;
 
-pub fn build_llm_tool_callback_wait(
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct LlmToolPromptTranscript {
+    system: Vec<NativePromptBlock>,
+    messages: Vec<Value>,
+}
+
+pub(super) fn llm_tool_prompt_transcript(
     node: &CompiledNode,
-    resolved_inputs: &Map<String, Value>,
+    variable_pool: &Map<String, Value>,
+    invocation: &ProviderInvocationInput,
+) -> LlmToolPromptTranscript {
+    LlmToolPromptTranscript {
+        system: invocation.system.clone(),
+        messages: pending_llm_tool_callback_history(node, variable_pool)
+            .unwrap_or_else(|| prompt_messages_from_provider_messages(&invocation.messages)),
+    }
+}
+
+pub(super) fn build_llm_tool_callback_wait(
+    node: &CompiledNode,
     variable_pool: &Map<String, Value>,
     output_payload: &Value,
-) -> Option<LlmToolCallbackWait> {
-    has_pending_tool_calls(output_payload).then(|| LlmToolCallbackWait {
+    transcript: &LlmToolPromptTranscript,
+) -> Result<Option<LlmToolCallbackWait>> {
+    if !has_pending_tool_calls(output_payload) {
+        return Ok(None);
+    }
+
+    let history = llm_callback_history_after_assistant_tool_call(transcript, output_payload);
+    let serialized_system = serde_json::to_value(&transcript.system)
+        .map_err(|error| anyhow!("failed to serialize LLM tool callback system: {error}"))?;
+    Ok(Some(LlmToolCallbackWait {
         node_id: node.node_id.clone(),
         node_alias: node.alias.clone(),
-        request_payload: build_llm_tool_callback_request_payload(
-            node,
-            resolved_inputs,
-            variable_pool,
-            output_payload,
-        ),
+        request_payload: build_llm_tool_callback_request_payload(output_payload, &history),
         checkpoint_variable_pool: variable_pool_with_pending_llm_tool_callback(
             node,
-            resolved_inputs,
             variable_pool,
             output_payload,
+            serialized_system,
+            history,
         ),
         node_trace: None,
-    })
+    }))
 }
 
 pub(super) fn build_llm_tool_callback_request_payload(
-    node: &CompiledNode,
-    resolved_inputs: &Map<String, Value>,
-    variable_pool: &Map<String, Value>,
     output_payload: &Value,
+    history: &[Value],
 ) -> Value {
-    let history = llm_callback_history_after_assistant_tool_call(
-        node,
-        resolved_inputs,
-        variable_pool,
-        output_payload,
-    );
     let mut payload = Map::new();
 
     for key in [
@@ -56,24 +69,19 @@ pub(super) fn build_llm_tool_callback_request_payload(
         "callback_kind".to_string(),
         Value::String(LLM_TOOL_CALLBACK_KIND.to_string()),
     );
-    payload.insert("history".to_string(), Value::Array(history));
+    payload.insert("history".to_string(), Value::Array(history.to_vec()));
 
     Value::Object(payload)
 }
 
 pub(super) fn variable_pool_with_pending_llm_tool_callback(
     node: &CompiledNode,
-    resolved_inputs: &Map<String, Value>,
     variable_pool: &Map<String, Value>,
     output_payload: &Value,
+    system: Value,
+    history: Vec<Value>,
 ) -> Map<String, Value> {
     let mut checkpoint_variable_pool = variable_pool.clone();
-    let history = llm_callback_history_after_assistant_tool_call(
-        node,
-        resolved_inputs,
-        variable_pool,
-        output_payload,
-    );
     let mut callback_state = Map::new();
     callback_state.insert(
         "callback_kind".to_string(),
@@ -86,6 +94,7 @@ pub(super) fn variable_pool_with_pending_llm_tool_callback(
             .cloned()
             .unwrap_or_else(|| Value::Array(Vec::new())),
     );
+    callback_state.insert("system".to_string(), system);
     callback_state.insert("history".to_string(), Value::Array(history));
     if let Some(response_id) = output_payload
         .get("response_id")
@@ -113,19 +122,10 @@ pub(super) fn variable_pool_with_pending_llm_tool_callback(
 }
 
 pub(super) fn llm_callback_history_after_assistant_tool_call(
-    node: &CompiledNode,
-    resolved_inputs: &Map<String, Value>,
-    variable_pool: &Map<String, Value>,
+    transcript: &LlmToolPromptTranscript,
     output_payload: &Value,
 ) -> Vec<Value> {
-    let mut history = if let Some(history) = pending_llm_tool_callback_history(node, variable_pool)
-    {
-        history
-    } else {
-        let mut history = compatible_history_messages(node, resolved_inputs, variable_pool);
-        history.extend(prompt_messages_from_bindings(None, resolved_inputs));
-        history
-    };
+    let mut history = transcript.messages.clone();
     let mut assistant_message = Map::new();
     assistant_message.insert("role".to_string(), Value::String("assistant".to_string()));
     assistant_message.insert(
@@ -210,6 +210,66 @@ pub(super) fn apply_mixed_llm_tool_callback_results(
     Ok(())
 }
 
+pub(super) fn discard_llm_tool_callback_calls(
+    variable_pool: &mut Map<String, Value>,
+    waiting_node_id: &str,
+    discarded_tool_call_ids: &BTreeSet<String>,
+    retained_tool_calls: &[Value],
+) -> Result<()> {
+    let state = variable_pool
+        .get_mut(waiting_node_id)
+        .and_then(|node_state| node_state.get_mut(LLM_TOOL_CALLBACK_STATE_KEY))
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| anyhow!("llm tool callback state not found for {waiting_node_id}"))?;
+    let assistant = state
+        .get_mut("history")
+        .and_then(Value::as_array_mut)
+        .and_then(|history| history.last_mut())
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| anyhow!("llm tool callback state is missing assistant history"))?;
+    let tool_calls = assistant
+        .get_mut("tool_calls")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| anyhow!("llm tool callback assistant history is missing tool_calls"))?;
+    tool_calls.retain(|tool_call| {
+        tool_call
+            .get("id")
+            .and_then(Value::as_str)
+            .is_none_or(|id| !discarded_tool_call_ids.contains(id))
+    });
+    state.insert(
+        "pending_tool_calls".to_string(),
+        Value::Array(retained_tool_calls.to_vec()),
+    );
+    Ok(())
+}
+
+pub(super) fn refresh_llm_tool_callback_wait_from_checkpoint(
+    wait: &mut LlmToolCallbackWait,
+    checkpoint_variable_pool: Map<String, Value>,
+) -> Result<()> {
+    let state = pending_llm_tool_callback_state(&checkpoint_variable_pool, &wait.node_id)
+        .ok_or_else(|| anyhow!("llm tool callback state not found for {}", wait.node_id))?;
+    let history = state
+        .get("history")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| anyhow!("llm tool callback state is missing history"))?;
+    let pending_tool_calls = state
+        .get("pending_tool_calls")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| anyhow!("llm tool callback state is missing pending_tool_calls"))?;
+    let request_payload = wait
+        .request_payload
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("llm tool callback request payload must be an object"))?;
+    request_payload.insert("history".to_string(), Value::Array(history));
+    request_payload.insert("tool_calls".to_string(), Value::Array(pending_tool_calls));
+    wait.checkpoint_variable_pool = checkpoint_variable_pool;
+    Ok(())
+}
+
 pub(super) fn append_llm_tool_result_messages(
     variable_pool: &mut Map<String, Value>,
     waiting_node_id: &str,
@@ -222,6 +282,7 @@ pub(super) fn append_llm_tool_result_messages(
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
         .map(ToOwned::to_owned);
+    let system = state.get("system").cloned();
     let provider_route = state.get("provider_route").cloned();
     let provider_metadata = state.get("provider_metadata").cloned();
     let visible_internal_transcript = state.get("visible_internal_llm_tool_transcript").cloned();
@@ -327,6 +388,9 @@ pub(super) fn append_llm_tool_result_messages(
         "callback_kind".to_string(),
         Value::String(LLM_TOOL_CALLBACK_KIND.to_string()),
     );
+    if let Some(system) = system {
+        callback_state.insert("system".to_string(), system);
+    }
     callback_state.insert("history".to_string(), Value::Array(history));
     if let Some(response_id) = response_id {
         callback_state.insert("response_id".to_string(), Value::String(response_id));
@@ -507,11 +571,25 @@ pub(super) fn pending_llm_tool_callback_delta_messages(
 pub(super) fn pending_llm_tool_callback_system(
     node: &CompiledNode,
     variable_pool: &Map<String, Value>,
-) -> Option<Vec<NativePromptBlock>> {
-    let history = pending_llm_tool_callback_history(node, variable_pool)?;
-    provider_messages_from_prompt_messages(history)
-        .ok()
-        .map(|context| context.0)
+) -> Result<Option<Vec<NativePromptBlock>>, Value> {
+    if let Some(system) = pending_llm_tool_callback_state(variable_pool, &node.node_id)
+        .and_then(|state| state.get("system"))
+    {
+        return serde_json::from_value(system.clone())
+            .map(Some)
+            .map_err(|error| {
+                json!({
+                    "error_code": "llm_callback_context_invalid",
+                    "message": "LLM tool callback system context is invalid",
+                    "runtime_message": error.to_string(),
+                })
+            });
+    }
+
+    let Some(history) = pending_llm_tool_callback_history(node, variable_pool) else {
+        return Ok(None);
+    };
+    provider_messages_from_prompt_messages(history).map(|context| Some(context.0))
 }
 
 pub(super) fn pending_llm_tool_callback_previous_response_id(

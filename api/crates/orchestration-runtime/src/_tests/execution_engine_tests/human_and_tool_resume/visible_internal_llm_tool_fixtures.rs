@@ -173,6 +173,85 @@ pub(super) fn visible_internal_llm_tool_plan() -> CompiledPlan {
     plan
 }
 
+pub(super) fn visible_internal_llm_tool_plan_behind_if_else() -> CompiledPlan {
+    let mut plan = visible_internal_llm_tool_plan();
+    plan.topological_order.insert(1, "node-if".to_string());
+    plan.edges.retain(|edge| edge.edge_id != "edge-start-llm");
+    plan.edges.extend([
+        CompiledEdge {
+            edge_id: "edge-start-if".to_string(),
+            source: "node-start".to_string(),
+            target: "node-if".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+        CompiledEdge {
+            edge_id: "edge-if-llm".to_string(),
+            source: "node-if".to_string(),
+            target: "node-llm".to_string(),
+            source_handle: Some("if".to_string()),
+            target_handle: None,
+        },
+    ]);
+    plan.nodes
+        .get_mut("node-start")
+        .expect("start node should exist")
+        .downstream_node_ids = vec!["node-if".to_string()];
+    plan.nodes
+        .get_mut("node-llm")
+        .expect("main llm node should exist")
+        .dependency_node_ids = vec!["node-if".to_string()];
+    plan.nodes.insert(
+        "node-if".to_string(),
+        CompiledNode {
+            node_id: "node-if".to_string(),
+            node_type: "if_else".to_string(),
+            alias: "If / Else".to_string(),
+            container_id: None,
+            dependency_node_ids: vec!["node-start".to_string()],
+            downstream_node_ids: vec!["node-llm".to_string()],
+            bindings: BTreeMap::from([(
+                "branches".to_string(),
+                CompiledBinding {
+                    kind: "if_else_branches".to_string(),
+                    selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
+                    raw_value: json!({
+                        "branches": [
+                            {
+                                "id": "if",
+                                "kind": "if",
+                                "title": "If",
+                                "sourceHandle": "if",
+                                "condition": {
+                                    "operator": "and",
+                                    "conditions": [{
+                                        "kind": "rule",
+                                        "left": ["node-start", "query"],
+                                        "comparator": "exists"
+                                    }]
+                                }
+                            },
+                            {
+                                "id": "else",
+                                "kind": "else",
+                                "title": "Else",
+                                "sourceHandle": "else"
+                            }
+                        ]
+                    }),
+                },
+            )]),
+            outputs: Vec::new(),
+            config: json!({}),
+            plugin_runtime: None,
+            llm_runtime: None,
+            code_runtime: None,
+        },
+    );
+
+    plan
+}
+
 pub(super) fn visible_internal_llm_tool_chain_plan() -> CompiledPlan {
     let mut plan = visible_internal_llm_tool_plan();
     plan.topological_order = vec![

@@ -10,6 +10,7 @@ pub(crate) struct InMemoryProviderRuntime {
     provider_events: Option<Vec<ProviderStreamEvent>>,
     provider_result: Option<ProviderInvocationResult>,
     provider_results: Option<Arc<Mutex<VecDeque<ProviderInvocationResult>>>>,
+    provider_outputs: Option<Arc<Mutex<VecDeque<crate::ports::ProviderRuntimeInvocationOutput>>>>,
     live_events_then_error: Option<Vec<ProviderStreamEvent>>,
     fail_before_token_models: Vec<String>,
     captured_inputs: Option<Arc<Mutex<Vec<ProviderInvocationInput>>>>,
@@ -22,6 +23,7 @@ impl InMemoryProviderRuntime {
             provider_events: None,
             provider_result: None,
             provider_results: None,
+            provider_outputs: None,
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
@@ -34,6 +36,7 @@ impl InMemoryProviderRuntime {
             provider_events: Some(provider_events),
             provider_result: None,
             provider_results: None,
+            provider_outputs: None,
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
@@ -46,6 +49,7 @@ impl InMemoryProviderRuntime {
             provider_events: None,
             provider_result: Some(provider_result),
             provider_results: None,
+            provider_outputs: None,
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
@@ -61,6 +65,7 @@ impl InMemoryProviderRuntime {
             provider_events: Some(provider_events),
             provider_result: Some(provider_result),
             provider_results: None,
+            provider_outputs: None,
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
@@ -73,6 +78,22 @@ impl InMemoryProviderRuntime {
             provider_events: None,
             provider_result: None,
             provider_results: Some(Arc::new(Mutex::new(provider_results.into()))),
+            provider_outputs: None,
+            live_events_then_error: None,
+            fail_before_token_models: Vec::new(),
+            captured_inputs: None,
+        }
+    }
+
+    pub(crate) fn with_provider_outputs(
+        provider_outputs: Vec<crate::ports::ProviderRuntimeInvocationOutput>,
+    ) -> Self {
+        Self {
+            invoke_delay: None,
+            provider_events: None,
+            provider_result: None,
+            provider_results: None,
+            provider_outputs: Some(Arc::new(Mutex::new(provider_outputs.into()))),
             live_events_then_error: None,
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
@@ -85,6 +106,7 @@ impl InMemoryProviderRuntime {
             provider_events: None,
             provider_result: None,
             provider_results: None,
+            provider_outputs: None,
             live_events_then_error: Some(live_events),
             fail_before_token_models: Vec::new(),
             captured_inputs: None,
@@ -97,6 +119,7 @@ impl InMemoryProviderRuntime {
             provider_events: None,
             provider_result: None,
             provider_results: None,
+            provider_outputs: None,
             live_events_then_error: None,
             fail_before_token_models: models.into_iter().map(str::to_string).collect(),
             captured_inputs: None,
@@ -157,6 +180,14 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
         }
         if let Some(delay) = self.invoke_delay {
             tokio::time::sleep(delay).await;
+        }
+
+        if let Some(output) = self
+            .provider_outputs
+            .as_ref()
+            .and_then(|provider_outputs| provider_outputs.lock().ok()?.pop_front())
+        {
+            return Ok(output);
         }
 
         let prompt = input

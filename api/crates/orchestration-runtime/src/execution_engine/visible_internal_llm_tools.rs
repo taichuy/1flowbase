@@ -155,6 +155,21 @@ where
             attach_visible_internal_llm_tool_events(&mut execution, &route_events);
             return Ok(execution);
         }
+        let mut callback_wait = execution.pending_callback.take().ok_or_else(|| {
+            anyhow!(
+                "provider tool-call result is missing canonical callback transcript for {}",
+                node.node_id
+            )
+        })?;
+        let internal_call_ids = internal_tool_calls
+            .iter()
+            .map(|(tool_call, _)| tool_call_id(tool_call))
+            .collect::<BTreeSet<_>>();
+        let external_tool_calls = tool_calls
+            .iter()
+            .filter(|tool_call| !internal_call_ids.contains(&tool_call_id(tool_call)))
+            .cloned()
+            .collect::<Vec<_>>();
         if internal_tool_calls.len() != tool_calls.len() {
             if visible_internal_media_tool_calls_are_repeated_after_route(
                 &internal_tool_calls,
@@ -173,6 +188,19 @@ where
                     &mut execution.output_payload,
                     &internal_tool_calls,
                 );
+                let mut checkpoint_variable_pool =
+                    std::mem::take(&mut callback_wait.checkpoint_variable_pool);
+                discard_llm_tool_callback_calls(
+                    &mut checkpoint_variable_pool,
+                    &node.node_id,
+                    &internal_call_ids,
+                    &external_tool_calls,
+                )?;
+                refresh_llm_tool_callback_wait_from_checkpoint(
+                    &mut callback_wait,
+                    checkpoint_variable_pool,
+                )?;
+                execution.pending_callback = Some(callback_wait);
                 if !provider_events.is_empty() {
                     execution.provider_events = provider_events;
                 }
@@ -184,13 +212,7 @@ where
             // into the pending history, and hand only the external calls to the
             // normal client callback wait.
             append_output_text(&mut visible_transcript, &execution.output_payload);
-            let request_payload_pool = llm_variable_pool.clone();
-            llm_variable_pool = variable_pool_with_pending_llm_tool_callback(
-                node,
-                resolved_inputs,
-                &llm_variable_pool,
-                &execution.output_payload,
-            );
+            llm_variable_pool = std::mem::take(&mut callback_wait.checkpoint_variable_pool);
             set_pending_llm_tool_callback_visible_internal_transcript(
                 &mut llm_variable_pool,
                 &node.node_id,
@@ -274,15 +296,6 @@ where
                 }
             }
 
-            let internal_call_ids = internal_tool_calls
-                .iter()
-                .map(|(tool_call, _)| tool_call_id(tool_call))
-                .collect::<BTreeSet<_>>();
-            let external_tool_calls = tool_calls
-                .iter()
-                .filter(|tool_call| !internal_call_ids.contains(&tool_call_id(tool_call)))
-                .cloned()
-                .collect::<Vec<_>>();
             apply_mixed_llm_tool_callback_results(
                 &mut llm_variable_pool,
                 &node.node_id,
@@ -307,35 +320,19 @@ where
                     Value::String(visible_transcript.clone()),
                 );
             }
-            let wait = LlmToolCallbackWait {
-                node_id: node.node_id.clone(),
-                node_alias: node.alias.clone(),
-                request_payload: build_llm_tool_callback_request_payload(
-                    node,
-                    resolved_inputs,
-                    &request_payload_pool,
-                    &execution.output_payload,
-                ),
-                checkpoint_variable_pool: llm_variable_pool,
-                node_trace: None,
-            };
+            refresh_llm_tool_callback_wait_from_checkpoint(&mut callback_wait, llm_variable_pool)?;
             let mut pending_execution = execution_with_visible_transcript(
                 execution,
                 visible_transcript,
                 provider_events,
                 route_events,
             );
-            pending_execution.pending_callback = Some(wait);
+            pending_execution.pending_callback = Some(callback_wait);
             return Ok(pending_execution);
         }
 
         append_output_text(&mut visible_transcript, &execution.output_payload);
-        llm_variable_pool = variable_pool_with_pending_llm_tool_callback(
-            node,
-            resolved_inputs,
-            &llm_variable_pool,
-            &execution.output_payload,
-        );
+        llm_variable_pool = callback_wait.checkpoint_variable_pool;
         set_pending_llm_tool_callback_visible_internal_transcript(
             &mut llm_variable_pool,
             &node.node_id,

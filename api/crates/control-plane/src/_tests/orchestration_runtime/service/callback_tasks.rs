@@ -226,6 +226,139 @@ async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
 }
 
 #[tokio::test]
+async fn callback_resume_does_not_repeat_final_live_answer_presentation() {
+    use plugin_framework::provider_contract::{
+        ProviderFinishReason, ProviderInvocationResult, ProviderStreamEvent, ProviderToolCall,
+    };
+
+    let tool_call = ProviderToolCall {
+        id: "call_weather".to_string(),
+        name: "lookup_weather".to_string(),
+        arguments: json!({ "city": "Shanghai" }),
+        provider_metadata: json!({}),
+    };
+    let final_answer = "NATIVE-CALLBACK-7319|Cargo.toml=不存在|AGENTS=# 记忆";
+    let service = OrchestrationRuntimeService::for_tests_with_provider_outputs(vec![
+        crate::ports::ProviderRuntimeInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::TextDelta {
+                    delta: "我先检查文件。".to_string(),
+                },
+                ProviderStreamEvent::ToolCallCommit {
+                    call: tool_call.clone(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::ToolCall,
+                },
+            ],
+            result: ProviderInvocationResult {
+                final_content: Some("我先检查文件。".to_string()),
+                tool_calls: vec![tool_call],
+                finish_reason: Some(ProviderFinishReason::ToolCall),
+                ..ProviderInvocationResult::default()
+            },
+        },
+        crate::ports::ProviderRuntimeInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::TextDelta {
+                    delta: final_answer.to_string(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Stop,
+                },
+            ],
+            result: ProviderInvocationResult {
+                final_content: Some(final_answer.to_string()),
+                finish_reason: Some(ProviderFinishReason::Stop),
+                ..ProviderInvocationResult::default()
+            },
+        },
+    ]);
+    let seeded = service.seed_application_with_flow("Support Agent").await;
+    let stream =
+        std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+    let service = service.with_runtime_event_stream(stream.clone());
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({
+                "node-start": { "query": "检查 Cargo.toml 和 AGENTS.md" }
+            }),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    let waiting = service
+        .continue_flow_debug_run(ContinueFlowDebugRunCommand {
+            application_id: seeded.application_id,
+            flow_run_id: started.flow_run.id,
+            workspace_id: Uuid::nil(),
+        })
+        .await
+        .unwrap();
+
+    let completed = service
+        .complete_callback_task(CompleteCallbackTaskCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            callback_task_id: waiting.callback_tasks[0].id,
+            response_payload: json!({
+                "tool_results": [{
+                    "tool_call_id": "call_weather",
+                    "content": "file inspection complete"
+                }]
+            }),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(completed.flow_run.status, domain::FlowRunStatus::Succeeded);
+    assert_eq!(
+        completed.flow_run.output_payload["answer"],
+        json!(final_answer)
+    );
+    let presentation_events = service
+        .list_runtime_events(completed.flow_run.id, 0)
+        .await
+        .into_iter()
+        .filter(|event| event.event_type == "text_delta")
+        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
+        .collect::<Vec<_>>();
+    let presentation_text = presentation_events
+        .iter()
+        .filter_map(|event| event.payload["text"].as_str())
+        .collect::<String>();
+    let expected_presentation = format!("我先检查文件。{final_answer}");
+    assert_eq!(presentation_text, expected_presentation);
+    assert_eq!(
+        presentation_text.matches(final_answer).count(),
+        1,
+        "the callback resume final answer must be presented exactly once: {presentation_text}"
+    );
+    let final_presentation_events = presentation_events
+        .iter()
+        .filter(|event| event.payload["text"].as_str() == Some(final_answer))
+        .collect::<Vec<_>>();
+    assert_eq!(final_presentation_events.len(), 1);
+    assert!(final_presentation_events[0].payload["presentation"]["source_node_run_id"].is_string());
+    let streamed_text = stream
+        .events()
+        .into_iter()
+        .filter(|event| event.event_type == "text_delta")
+        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
+        .filter_map(|event| event.payload["text"].as_str().map(str::to_string))
+        .collect::<String>();
+    assert_eq!(streamed_text, expected_presentation);
+    assert_eq!(
+        streamed_text.matches(final_answer).count(),
+        1,
+        "the compatible SSE source must receive the callback final answer exactly once: {streamed_text}"
+    );
+}
+
+#[tokio::test]
 async fn callback_resume_waiting_again_projects_completed_answer_prefix_before_tool_call() {
     use plugin_framework::provider_contract::{
         ProviderFinishReason, ProviderInvocationResult, ProviderToolCall, ProviderUsage,
