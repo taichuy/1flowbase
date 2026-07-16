@@ -196,6 +196,7 @@ pub(super) fn ensure_compiled_plan_runnable(
     if let Some(issue) = compiled_plan.compile_issues.first() {
         return Err(ControlPlaneError::InvalidInput(compile_issue_field(issue)).into());
     }
+    orchestration_runtime::compiler::ensure_plan_execution_contract(compiled_plan)?;
 
     Ok(())
 }
@@ -301,6 +302,12 @@ fn compile_issue_field(issue: &orchestration_runtime::compiled_plan::CompileIssu
         orchestration_runtime::compiled_plan::CompileIssueCode::InvalidVisibleInternalLlmTool => {
             "visible_internal_llm_tools"
         }
+        orchestration_runtime::compiled_plan::CompileIssueCode::InvalidSelectorSource
+        | orchestration_runtime::compiled_plan::CompileIssueCode::SelectorSourceNotReachable
+        | orchestration_runtime::compiled_plan::CompileIssueCode::SelectorOutputNotFound => {
+            "bindings"
+        }
+        orchestration_runtime::compiled_plan::CompileIssueCode::UnsupportedNodeType => "node_type",
         orchestration_runtime::compiled_plan::CompileIssueCode::UnresolvedNode => {
             "unresolved_node"
         }

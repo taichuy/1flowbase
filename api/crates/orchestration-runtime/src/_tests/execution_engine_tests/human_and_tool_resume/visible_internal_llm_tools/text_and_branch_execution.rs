@@ -161,6 +161,107 @@ async fn visible_internal_llm_tool_executes_composed_connector_branch() {
 }
 
 #[tokio::test]
+async fn visible_internal_llm_tool_branch_commits_conversation_updates_on_sync_completion() {
+    let (invoker, _) = sequential_tool_invoker(vec![
+        ProviderInvocationResult {
+            final_content: Some("main-before ".to_string()),
+            tool_calls: vec![ProviderToolCall {
+                id: "call_visible".to_string(),
+                name: "inspect_visible_context".to_string(),
+                arguments: json!({ "query": "update context" }),
+                provider_metadata: json!({}),
+            }],
+            finish_reason: Some(ProviderFinishReason::ToolCall),
+            ..ProviderInvocationResult::default()
+        },
+        final_llm_response("mounted-visible "),
+        final_llm_response("main-after"),
+    ]);
+    let mut plan = visible_internal_llm_tool_plan();
+    plan.topological_order.insert(
+        plan.topological_order
+            .iter()
+            .position(|node_id| node_id == "node-tool-result")
+            .expect("tool result should be ordered"),
+        "node-conversation-update".to_string(),
+    );
+    plan.nodes
+        .get_mut("node-mounted-llm")
+        .expect("mounted LLM should exist")
+        .downstream_node_ids = vec!["node-conversation-update".to_string()];
+    plan.nodes
+        .get_mut("node-tool-result")
+        .expect("tool result should exist")
+        .dependency_node_ids = vec!["node-conversation-update".to_string()];
+    plan.nodes.insert(
+        "node-conversation-update".to_string(),
+        CompiledNode {
+            node_id: "node-conversation-update".to_string(),
+            node_type: "variable_assigner".to_string(),
+            alias: "Update Conversation".to_string(),
+            container_id: None,
+            dependency_node_ids: vec!["node-mounted-llm".to_string()],
+            downstream_node_ids: vec!["node-tool-result".to_string()],
+            bindings: BTreeMap::from([(
+                "operations".to_string(),
+                CompiledBinding {
+                    kind: "state_write".to_string(),
+                    selector_paths: Vec::new(),
+                    raw_value: json!([{
+                        "path": ["conversation", "branch_status"],
+                        "operator": "set",
+                        "value": {
+                            "kind": "constant",
+                            "value": "updated-by-internal-tool"
+                        }
+                    }]),
+                },
+            )]),
+            outputs: vec![CompiledOutput {
+                key: "branch_status".to_string(),
+                title: "conversation.branch_status".to_string(),
+                value_type: "string".to_string(),
+                selector: Vec::new(),
+                json_schema: None,
+            }],
+            config: json!({}),
+            plugin_runtime: None,
+            llm_runtime: None,
+            code_runtime: None,
+        },
+    );
+    plan.edges
+        .iter_mut()
+        .find(|edge| edge.edge_id == "edge-mounted-tool-result")
+        .expect("mounted LLM edge should exist")
+        .target = "node-conversation-update".to_string();
+    plan.edges.push(CompiledEdge {
+        edge_id: "edge-conversation-update-tool-result".to_string(),
+        source: "node-conversation-update".to_string(),
+        target: "node-tool-result".to_string(),
+        source_handle: None,
+        target_handle: None,
+    });
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "conversation": { "branch_status": "before" },
+            "node-start": { "query": "update context", "history": [] }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.stop_reason, ExecutionStopReason::Completed);
+    assert_eq!(
+        outcome.variable_pool["conversation"]["branch_status"],
+        json!("updated-by-internal-tool")
+    );
+}
+
+#[tokio::test]
 async fn visible_internal_llm_tool_returns_tool_result_node_content() {
     let (invoker, captured_inputs) = sequential_tool_invoker(vec![
         ProviderInvocationResult {
@@ -234,14 +335,85 @@ async fn visible_internal_llm_tool_branch_llm_can_wait_for_external_tool_callbac
         }]),
     ]);
     let mut plan = visible_internal_llm_tool_plan();
-    plan.nodes
+    let main_llm = plan
+        .nodes
         .get_mut("node-llm")
-        .expect("main llm node should exist")
-        .config["visible_internal_llm_tools"][0]["external_tool_policy"] = json!("inherited");
+        .expect("main llm node should exist");
+    main_llm.config["visible_internal_llm_tools"][0]["external_tool_policy"] = json!("inherited");
+    main_llm.config["visible_internal_llm_tools"][0]["target_node_id"] =
+        json!("node-conversation-update");
+    main_llm
+        .downstream_node_ids
+        .retain(|node_id| node_id != "node-mounted-llm");
+    main_llm
+        .downstream_node_ids
+        .push("node-conversation-update".to_string());
+    plan.topological_order.insert(
+        plan.topological_order
+            .iter()
+            .position(|node_id| node_id == "node-mounted-llm")
+            .expect("mounted LLM should be ordered"),
+        "node-conversation-update".to_string(),
+    );
+    plan.nodes
+        .get_mut("node-mounted-llm")
+        .expect("mounted LLM should exist")
+        .dependency_node_ids = vec!["node-conversation-update".to_string()];
+    plan.nodes.insert(
+        "node-conversation-update".to_string(),
+        CompiledNode {
+            node_id: "node-conversation-update".to_string(),
+            node_type: "variable_assigner".to_string(),
+            alias: "Update Conversation".to_string(),
+            container_id: None,
+            dependency_node_ids: vec!["node-llm".to_string()],
+            downstream_node_ids: vec!["node-mounted-llm".to_string()],
+            bindings: BTreeMap::from([(
+                "operations".to_string(),
+                CompiledBinding {
+                    kind: "state_write".to_string(),
+                    selector_paths: Vec::new(),
+                    raw_value: json!([{
+                        "path": ["conversation", "branch_status"],
+                        "operator": "set",
+                        "value": {
+                            "kind": "constant",
+                            "value": "updated-before-callback"
+                        }
+                    }]),
+                },
+            )]),
+            outputs: vec![CompiledOutput {
+                key: "branch_status".to_string(),
+                title: "conversation.branch_status".to_string(),
+                value_type: "string".to_string(),
+                selector: Vec::new(),
+                json_schema: None,
+            }],
+            config: json!({}),
+            plugin_runtime: None,
+            llm_runtime: None,
+            code_runtime: None,
+        },
+    );
+    let mounted_edge = plan
+        .edges
+        .iter_mut()
+        .find(|edge| edge.edge_id == "edge-llm-visible-tool-mounted")
+        .expect("mounted tool edge should exist");
+    mounted_edge.target = "node-conversation-update".to_string();
+    plan.edges.push(CompiledEdge {
+        edge_id: "edge-conversation-update-mounted".to_string(),
+        source: "node-conversation-update".to_string(),
+        target: "node-mounted-llm".to_string(),
+        source_handle: None,
+        target_handle: None,
+    });
 
     let waiting = start_flow_debug_run(
         &plan,
         &json!({
+            "conversation": { "branch_status": "before" },
             "node-start": {
                 "query": "describe the picture",
                 "history": [],
@@ -281,6 +453,10 @@ async fn visible_internal_llm_tool_branch_llm_can_wait_for_external_tool_callbac
         .checkpoint_snapshot
         .clone()
         .expect("mounted llm tool wait should have checkpoint");
+    assert_eq!(
+        checkpoint.variable_pool["conversation"]["branch_status"],
+        json!("updated-before-callback")
+    );
     let main_wait_trace = waiting
         .node_traces
         .iter()
@@ -335,6 +511,10 @@ async fn visible_internal_llm_tool_branch_llm_can_wait_for_external_tool_callbac
     assert_eq!(
         resumed.variable_pool["node-answer"]["answer"],
         json!("main-before mounted-after-tool main-after")
+    );
+    assert_eq!(
+        resumed.variable_pool["conversation"]["branch_status"],
+        json!("updated-before-callback")
     );
 
     let captured_resumed = resumed_inputs

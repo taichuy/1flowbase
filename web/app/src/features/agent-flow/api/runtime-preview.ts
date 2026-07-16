@@ -17,7 +17,6 @@ import {
 } from '../lib/if-else-branches';
 import { extractNamedBindingSelectors } from '../lib/named-binding-expressions';
 import {
-  TEMPLATE_SELECTOR_REGEX,
   parseTemplateSelectorTokens
 } from '../lib/template-binding';
 import type { AgentFlowEnvironmentVariable } from '../lib/variables/application-environment-variables';
@@ -58,13 +57,6 @@ export interface NodeDebugPreviewPlan {
 export interface NodeDebugVariableConfirmationPlan {
   input_payload: Record<string, Record<string, unknown>>;
   fields: NodeDebugPreviewVariableField[];
-}
-
-interface VariableAssignmentOperation {
-  path: string[];
-  operator: 'set' | 'append' | 'clear' | 'increment';
-  source?: string[] | null;
-  value?: StateWriteValueExpression | null;
 }
 
 type StateWriteValueExpression =
@@ -327,23 +319,19 @@ function collectUpstreamNodeIds(
   return visited;
 }
 
-function getVariableAssignmentOperations(
-  node: FlowNodeDocument
-): VariableAssignmentOperation[] {
-  const binding = node.bindings.operations;
+function collectDeterministicReplaySelectors(
+  document: FlowAuthoringDocument,
+  nodeId: string
+) {
+  const upstreamNodeIds = collectUpstreamNodeIds(document, nodeId);
 
-  if (node.type !== 'variable_assigner' || binding?.kind !== 'state_write') {
-    return [];
-  }
-
-  return binding.value.filter(
-    (operation): operation is VariableAssignmentOperation =>
-      operation.operator === 'set' &&
-      operation.path.length === 2 &&
-      operation.path[0] === conversationVariableNodeId &&
-      operation.path[1].trim().length > 0 &&
-      normalizeStateWriteValueExpression(operation.value) !== null
-  );
+  return document.graph.nodes
+    .filter(
+      (node) =>
+        upstreamNodeIds.has(node.id) &&
+        (node.type === 'if_else' || node.type === 'variable_assigner')
+    )
+    .flatMap(collectNodeReferenceSelectors);
 }
 
 function hasPreviewVariableValue(value: unknown) {
@@ -667,146 +655,6 @@ function resolvePreviewSelectorValue({
   return { found: false };
 }
 
-function stringifyTemplateReplacement(value: unknown) {
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (value === null) {
-    return 'null';
-  }
-
-  if (typeof value === 'object') {
-    return JSON.stringify(value);
-  }
-
-  return String(value);
-}
-
-function renderPreviewTemplateValue({
-  template,
-  document,
-  variableCache,
-  inputPayload,
-  missingFields
-}: {
-  template: string;
-  document: FlowAuthoringDocument;
-  variableCache: NodeDebugPreviewVariableCache;
-  inputPayload: Record<string, Record<string, unknown>>;
-  missingFields: NodeDebugPreviewVariableField[];
-}): { found: true; value: string } | { found: false } {
-  let hasMissingSelector = false;
-  TEMPLATE_SELECTOR_REGEX.lastIndex = 0;
-  const rendered = template.replace(
-    TEMPLATE_SELECTOR_REGEX,
-    (_match, selectorPath: string) => {
-      const selector = selectorPath.split('.');
-      const resolved = resolvePreviewSelectorValue({
-        document,
-        variableCache,
-        inputPayload,
-        missingFields,
-        selector
-      });
-
-      if (!resolved.found) {
-        hasMissingSelector = true;
-        return _match;
-      }
-
-      return stringifyTemplateReplacement(resolved.value);
-    }
-  );
-  TEMPLATE_SELECTOR_REGEX.lastIndex = 0;
-
-  return hasMissingSelector
-    ? { found: false }
-    : { found: true, value: rendered };
-}
-
-function resolveVariableAssignmentValue({
-  expression,
-  document,
-  variableCache,
-  inputPayload,
-  missingFields
-}: {
-  expression: StateWriteValueExpression;
-  document: FlowAuthoringDocument;
-  variableCache: NodeDebugPreviewVariableCache;
-  inputPayload: Record<string, Record<string, unknown>>;
-  missingFields: NodeDebugPreviewVariableField[];
-}): { found: true; value: unknown } | { found: false } {
-  if (expression.kind === 'constant') {
-    return { found: true, value: expression.value };
-  }
-
-  if (expression.kind === 'selector') {
-    return resolvePreviewSelectorValue({
-      document,
-      variableCache,
-      inputPayload,
-      missingFields,
-      selector: expression.selector
-    });
-  }
-
-  return renderPreviewTemplateValue({
-    template: expression.value,
-    document,
-    variableCache,
-    inputPayload,
-    missingFields
-  });
-}
-
-function applyVariableAssignmentsToPreviewPlan({
-  document,
-  nodeId,
-  variableCache,
-  inputPayload,
-  missingFields
-}: {
-  document: FlowAuthoringDocument;
-  nodeId: string;
-  variableCache: NodeDebugPreviewVariableCache;
-  inputPayload: Record<string, Record<string, unknown>>;
-  missingFields: NodeDebugPreviewVariableField[];
-}) {
-  const upstreamNodeIds = collectUpstreamNodeIds(document, nodeId);
-
-  for (const node of document.graph.nodes) {
-    if (!upstreamNodeIds.has(node.id)) {
-      continue;
-    }
-
-    for (const operation of getVariableAssignmentOperations(node)) {
-      const expression = normalizeStateWriteValueExpression(operation.value);
-
-      if (!expression) {
-        continue;
-      }
-
-      const resolved = resolveVariableAssignmentValue({
-        expression,
-        document,
-        variableCache,
-        inputPayload,
-        missingFields
-      });
-
-      if (!resolved.found) {
-        continue;
-      }
-
-      inputPayload[conversationVariableNodeId] ??= {};
-      inputPayload[conversationVariableNodeId][operation.path[1]] =
-        resolved.value;
-    }
-  }
-}
-
 function isRequiredStartPreviewKey(node: FlowNodeDocument, outputKey: string) {
   if (outputKey === 'query') {
     return true;
@@ -969,7 +817,10 @@ export function buildNodeDebugPreviewPlan(
     return { input_payload: inputPayload, missing_fields: missingFields };
   }
 
-  const selectors = collectNodeReferenceSelectors(node);
+  const selectors = [
+    ...collectNodeReferenceSelectors(node),
+    ...collectDeterministicReplaySelectors(document, nodeId)
+  ];
   const visited = new Set<string>();
 
   for (const selector of selectors) {
@@ -1024,14 +875,6 @@ export function buildNodeDebugPreviewPlan(
       buildMissingPreviewField(document, sourceNodeId, outputKey)
     );
   }
-
-  applyVariableAssignmentsToPreviewPlan({
-    document,
-    nodeId,
-    variableCache,
-    inputPayload,
-    missingFields
-  });
 
   return { input_payload: inputPayload, missing_fields: missingFields };
 }

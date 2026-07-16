@@ -112,18 +112,3 @@ fn serde_error_payload(error: &anyhow::Error) -> Value {
 
     payload
 }
-
-pub(super) async fn is_run_cancelled<R>(
-    repository: &R,
-    application_id: Uuid,
-    flow_run_id: Uuid,
-) -> Result<bool>
-where
-    R: OrchestrationRuntimeRepository,
-{
-    Ok(repository
-        .get_flow_run(application_id, flow_run_id)
-        .await?
-        .map(|run| run.status == domain::FlowRunStatus::Cancelled)
-        .unwrap_or(false))
-}

@@ -1,8 +1,7 @@
-use anyhow::Result;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::ports::{OrchestrationRuntimeRepository, RuntimeEventCloseReason, UpdateNodeRunInput};
+use crate::ports::{OrchestrationRuntimeRepository, RuntimeEventCloseReason};
 
 use super::super::{
     debug_stream_events, is_expected_runtime_event_stream_closed_error, runtime_event_persister,
@@ -113,41 +112,4 @@ async fn emit_flow_failed_and_close_with_reason<R, H>(
     )
     .await;
     close_runtime_event_stream(service, flow_run_id, reason).await;
-}
-
-pub(super) async fn update_node_run_and_emit<R, H>(
-    service: &OrchestrationRuntimeService<R, H>,
-    flow_run_id: Uuid,
-    input: &UpdateNodeRunInput,
-) -> Result<domain::NodeRunRecord>
-where
-    R: OrchestrationRuntimeRepository,
-{
-    let node_run = service.repository.update_node_run(input).await?;
-    append_runtime_event(
-        service,
-        flow_run_id,
-        debug_stream_events::node_finished(&node_run),
-    )
-    .await;
-    if let Some(route_events) = input
-        .debug_payload
-        .get("visible_internal_llm_tool_events")
-        .and_then(Value::as_array)
-    {
-        for route_event in route_events {
-            append_runtime_event(
-                service,
-                flow_run_id,
-                debug_stream_events::visible_internal_llm_tool_route(
-                    flow_run_id,
-                    node_run.id,
-                    &node_run.node_id,
-                    route_event,
-                ),
-            )
-            .await;
-        }
-    }
-    Ok(node_run)
 }

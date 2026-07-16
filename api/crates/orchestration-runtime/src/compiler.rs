@@ -21,6 +21,23 @@ mod topology;
 pub use node_compilation::js_dependency_lookup_key;
 pub use topology::FlowCompiler;
 
+pub fn ensure_plan_execution_contract(plan: &CompiledPlan) -> Result<()> {
+    if let Some(issue) = topology::validate_variable_scope_contracts(&plan.nodes)
+        .into_iter()
+        .next()
+    {
+        bail!(issue.message);
+    }
+    if let Some(issue) = topology::validate_executable_node_types(&plan.nodes)
+        .into_iter()
+        .next()
+    {
+        bail!(issue.message);
+    }
+
+    Ok(())
+}
+
 const FLOW_SCHEMA_VERSION: &str = "1flowbase.flow/v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

@@ -97,12 +97,15 @@ where
             let rendered_templates = render_templated_bindings(&node, &resolved_inputs);
             let mut provider_events = Vec::new();
             let execution = execute_visible_internal_llm_tool_node(
-                &node,
-                &resolved_inputs,
-                &rendered_templates,
+                VisibleInternalLlmToolNodeContext {
+                    plan,
+                    node: &node,
+                    resolved_inputs: &resolved_inputs,
+                    rendered_templates: &rendered_templates,
+                    runtime_context,
+                    invoker,
+                },
                 &mut panel_variable_pool,
-                runtime_context,
-                invoker,
                 &mut provider_events,
             )
             .await?;

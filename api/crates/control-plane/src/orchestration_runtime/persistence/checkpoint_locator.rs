@@ -19,6 +19,7 @@ impl CheckpointLocatorPayload {
         }
     }
 
+    #[cfg(test)]
     pub(in crate::orchestration_runtime) fn from_runtime_position(
         node_id: &str,
         next_node_index: usize,

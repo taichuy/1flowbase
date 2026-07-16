@@ -106,6 +106,7 @@ async fn orchestration_runtime_persists_visible_internal_llm_tool_route_events()
             flow_run: &flow_run,
             compiled_plan: None,
             outcome: &outcome,
+            prepared_node_runs: None,
             trigger_event_type: "flow_run_started",
             trigger_event_payload: json!({}),
             base_started_at: now,
@@ -142,13 +143,13 @@ async fn orchestration_runtime_resolve_llm_instance_keeps_invalid_uuid_as_source
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
 
@@ -171,13 +172,13 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
 
@@ -211,13 +212,13 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
 
@@ -245,13 +246,13 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_provider_code_mismat
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
 
@@ -282,13 +283,13 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_instance_not_in_main
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
 
@@ -323,13 +324,13 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_unassigned_installat
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
 
@@ -368,13 +369,13 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_disabled_installatio
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
 
@@ -413,13 +414,13 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_unavailable_installa
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
 
@@ -449,13 +450,13 @@ async fn orchestration_runtime_resolve_llm_instance_uses_selected_child_instance
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
 
@@ -498,13 +499,13 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_model_only_present_i
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
 
@@ -536,13 +537,13 @@ async fn orchestration_runtime_textualizes_user_media_when_selected_model_is_not
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
@@ -601,13 +602,13 @@ async fn orchestration_runtime_keeps_user_media_when_configured_model_supports_m
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
@@ -707,13 +708,13 @@ async fn orchestration_runtime_canonicalizes_live_provider_tool_call_names() {
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: Some(live_sender),
-        persist_events: None,
         runtime_event_stream: None,
         flow_run_id: None,
         active_node_id: Some("node-llm".to_string()),
         active_node_run_id: Some(Uuid::now_v7()),
         api_node_id: None,
         provider_install_root: None,
+        flow_execution_context: None,
         answer_presentation: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {

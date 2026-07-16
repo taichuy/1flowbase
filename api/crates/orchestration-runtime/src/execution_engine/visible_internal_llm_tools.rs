@@ -11,7 +11,7 @@ use self::branch_execution::{
     continue_visible_internal_llm_tool_branch, execute_visible_internal_llm_tool_call,
     execute_visible_internal_llm_tool_node,
     visible_internal_llm_tool_preconditions_from_variable_pool,
-    VisibleInternalLlmToolBranchContext,
+    VisibleInternalLlmToolBranchContext, VisibleInternalLlmToolNodeContext,
 };
 pub(super) use self::callback_state::has_visible_internal_llm_tool_callback_state;
 use self::callback_state::{
@@ -75,12 +75,21 @@ struct VisibleInternalLlmToolRemainingContext<'a, I: ?Sized> {
     main_node_id: &'a str,
 }
 
+fn commit_conversation_namespace(
+    variable_pool: &mut Map<String, Value>,
+    branch_variable_pool: &Map<String, Value>,
+) {
+    if let Some(conversation) = branch_variable_pool.get("conversation") {
+        variable_pool.insert("conversation".to_string(), conversation.clone());
+    }
+}
+
 pub(super) async fn execute_llm_node_with_visible_internal_tools<I>(
     plan: &CompiledPlan,
     node: &CompiledNode,
     resolved_inputs: &Map<String, Value>,
     rendered_templates: &Map<String, Value>,
-    variable_pool: &Map<String, Value>,
+    variable_pool: &mut Map<String, Value>,
     runtime_context: &ExecutionRuntimeContext,
     invoker: &I,
 ) -> Result<LlmNodeExecution>
@@ -90,6 +99,7 @@ where
     let tools = visible_internal_llm_tools(node);
     if tools.is_empty() {
         return execute_llm_node_provider_round(
+            plan,
             node,
             resolved_inputs,
             rendered_templates,
@@ -109,6 +119,7 @@ where
 
     for round_index in 0..MAX_VISIBLE_INTERNAL_LLM_TOOL_ROUNDS {
         let mut execution = execute_llm_node_provider_round(
+            plan,
             node,
             resolved_inputs,
             rendered_templates,
@@ -200,6 +211,8 @@ where
                 .await?
                 {
                     VisibleInternalLlmToolBranchExecution::Completed(output) => {
+                        llm_variable_pool = output.variable_pool;
+                        commit_conversation_namespace(variable_pool, &llm_variable_pool);
                         provider_events.extend(output.provider_events);
                         route_events.extend(output.route_events);
                         visible_transcript.push_str(&output.text);
@@ -401,6 +414,8 @@ where
                     );
                 }
             };
+            llm_variable_pool = target_output.variable_pool;
+            commit_conversation_namespace(variable_pool, &llm_variable_pool);
             provider_events.extend(target_output.provider_events);
             route_events.extend(target_output.route_events);
             visible_transcript.push_str(&target_output.text);
@@ -460,7 +475,7 @@ where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
     let plan = context.plan;
-    let variable_pool = context.variable_pool;
+    let mut variable_pool = context.variable_pool.clone();
     let runtime_context = context.runtime_context;
     let invoker = context.invoker;
     let main_node_id = context.main_node_id;
@@ -470,7 +485,7 @@ where
     for (index, pending_call) in pending_calls.iter().enumerate() {
         match execute_visible_internal_llm_tool_call(
             plan,
-            variable_pool,
+            &variable_pool,
             runtime_context,
             invoker,
             main_node_id,
@@ -480,6 +495,7 @@ where
         .await?
         {
             VisibleInternalLlmToolBranchExecution::Completed(output) => {
+                variable_pool = output.variable_pool;
                 provider_events.extend(output.provider_events);
                 route_events.extend(output.route_events);
                 visible_transcript.push_str(&output.text);
@@ -543,6 +559,7 @@ where
         visible_transcript,
         provider_events,
         route_events,
+        variable_pool,
     })
 }
 
@@ -568,12 +585,15 @@ where
     let mut route_events = state.route_events.clone();
 
     match execute_visible_internal_llm_tool_node(
-        node,
-        &resolved_inputs,
-        &rendered_templates,
+        VisibleInternalLlmToolNodeContext {
+            plan,
+            node,
+            resolved_inputs: &resolved_inputs,
+            rendered_templates: &rendered_templates,
+            runtime_context,
+            invoker,
+        },
         &mut variable_pool,
-        runtime_context,
-        invoker,
         &mut provider_events,
     )
     .await?
@@ -680,10 +700,13 @@ where
             let mut active_node_ids = BTreeSet::new();
             activate_downstream_nodes(plan, &mut active_node_ids, node, None);
             let branch_execution = if active_node_ids.is_empty() {
+                let mut completed_variable_pool = variable_pool.clone();
+                completed_variable_pool.remove(VISIBLE_INTERNAL_LLM_TOOL_VARIABLE);
                 VisibleInternalLlmToolBranchExecution::Completed(VisibleInternalLlmToolOutput {
                     text: branch_text,
                     provider_events,
                     route_events,
+                    variable_pool: completed_variable_pool,
                 })
             } else {
                 continue_visible_internal_llm_tool_branch(
@@ -704,8 +727,8 @@ where
                 .await?
             };
 
-            let (branch_output, branch_variable_pool) = match branch_execution {
-                VisibleInternalLlmToolBranchExecution::Completed(output) => (output, variable_pool),
+            let branch_output = match branch_execution {
+                VisibleInternalLlmToolBranchExecution::Completed(output) => output,
                 VisibleInternalLlmToolBranchExecution::Waiting {
                     mut wait,
                     branch_text,
@@ -759,7 +782,9 @@ where
                                 visible_transcript,
                                 provider_events: _remaining_provider_events,
                                 route_events: remaining_route_events,
+                                variable_pool: remaining_variable_pool,
                             } => {
+                                variable_pool = remaining_variable_pool;
                                 let mut route_events = route_events;
                                 route_events.extend(remaining_route_events);
                                 append_llm_tool_result_messages(
@@ -827,17 +852,22 @@ where
                 }
             };
 
+            let VisibleInternalLlmToolOutput {
+                text: branch_text,
+                provider_events: branch_provider_events,
+                route_events: branch_route_events,
+                variable_pool: branch_variable_pool,
+            } = branch_output;
             variable_pool = branch_variable_pool;
-            provider_events = branch_output.provider_events;
-            route_events = branch_output.route_events;
+            provider_events = branch_provider_events;
+            route_events = branch_route_events;
             let mut completed_tool_results = state.completed_tool_results.clone();
             completed_tool_results.push(visible_internal_llm_tool_result(
                 &state.tool_call,
                 &state.tool_name,
-                branch_output.text.clone(),
+                branch_text.clone(),
             ));
-            let visible_transcript =
-                format!("{}{}", state.main_visible_transcript, branch_output.text);
+            let visible_transcript = format!("{}{}", state.main_visible_transcript, branch_text);
             match execute_remaining_visible_internal_llm_tool_calls(
                 VisibleInternalLlmToolRemainingContext {
                     plan,
@@ -857,7 +887,9 @@ where
                     visible_transcript,
                     provider_events: remaining_provider_events,
                     route_events: remaining_route_events,
+                    variable_pool: remaining_variable_pool,
                 } => {
+                    variable_pool = remaining_variable_pool;
                     provider_events.extend(remaining_provider_events);
                     route_events.extend(remaining_route_events);
                     append_llm_tool_result_messages(
@@ -978,7 +1010,9 @@ where
                         visible_transcript,
                         provider_events: remaining_provider_events,
                         route_events: remaining_route_events,
+                        variable_pool: remaining_variable_pool,
                     } => {
+                        variable_pool = remaining_variable_pool;
                         provider_events.extend(remaining_provider_events);
                         route_events.extend(remaining_route_events);
                         append_llm_tool_result_messages(

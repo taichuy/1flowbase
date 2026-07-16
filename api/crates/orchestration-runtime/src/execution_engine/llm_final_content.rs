@@ -36,47 +36,35 @@ pub(super) fn resolve_final_llm_content(
 
 pub(super) fn collect_dify_style_deltas(events: &[ProviderStreamEvent]) -> Option<String> {
     let mut content = String::new();
+    let mut reasoning_delta_open = false;
 
     for event in events {
         match event {
             ProviderStreamEvent::ReasoningDelta { delta } => {
-                append_reasoning_delta(&mut content, delta);
+                if delta.is_empty() {
+                    continue;
+                }
+                if !reasoning_delta_open {
+                    content.push_str("<think>");
+                    reasoning_delta_open = true;
+                }
+                content.push_str(delta);
             }
             ProviderStreamEvent::TextDelta { delta } => {
-                append_text_delta(&mut content, delta);
+                if reasoning_delta_open {
+                    content.push_str("</think>");
+                    reasoning_delta_open = false;
+                }
+                content.push_str(delta);
             }
             _ => {}
         }
     }
 
-    close_open_think_block(&mut content);
-    (!content.is_empty()).then_some(content)
-}
-
-pub(super) fn append_reasoning_delta(content: &mut String, delta: &str) {
-    if delta.is_empty() {
-        return;
-    }
-
-    if !has_open_think_block(content) {
-        content.push_str("<think>");
-    }
-    content.push_str(delta);
-}
-
-pub(super) fn append_text_delta(content: &mut String, delta: &str) {
-    close_open_think_block(content);
-    content.push_str(delta);
-}
-
-pub(super) fn close_open_think_block(content: &mut String) {
-    if has_open_think_block(content) {
+    if reasoning_delta_open {
         content.push_str("</think>");
     }
-}
-
-pub(super) fn has_open_think_block(content: &str) -> bool {
-    content.rfind("<think>") > content.rfind("</think>")
+    (!content.is_empty()).then_some(content)
 }
 
 pub(super) fn collect_usage(

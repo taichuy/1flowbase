@@ -18,6 +18,37 @@ const EXTERNAL_CALLBACK_POLICY_INHERITED: &str = "inherited";
 const EXECUTION_MODE_SEQUENTIAL_RESUME: &str = "sequential_resume";
 const EXECUTION_MODE_BOUNDED_PARALLEL_PANEL: &str = "bounded_parallel_panel";
 
+const RUN_LEVEL_VARIABLE_NAMESPACES: &[&str] = &[
+    "sys",
+    "env",
+    "conversation",
+    "trigger",
+    VISIBLE_INTERNAL_LLM_TOOL_TYPE,
+];
+
+const EXECUTABLE_NODE_TYPES: &[&str] = &[
+    "start",
+    "workflow_start",
+    "workflow_end",
+    "answer",
+    "llm",
+    "if_else",
+    "code",
+    "template_transform",
+    "http_request",
+    "tool",
+    "tool_result",
+    "data_model_list",
+    "data_model_get",
+    "data_model_create",
+    "data_model_update",
+    "data_model_delete",
+    "variable_assigner",
+    "human_input",
+    "plugin_node",
+    "unresolved_node",
+];
+
 type NodeTopologyBuild = (
     BTreeMap<String, CompiledNode>,
     Vec<CompiledEdge>,
@@ -318,9 +349,140 @@ pub(super) fn build_nodes_and_topology(
         );
     }
 
+    compile_issues.extend(validate_variable_scope_contracts(&nodes));
     compile_issues.extend(validate_llm_context_policies(&nodes));
+    compile_issues.extend(validate_executable_node_types(&nodes));
 
     Ok((nodes, compiled_edges, topological_order, compile_issues))
+}
+
+pub(super) fn validate_variable_scope_contracts(
+    nodes: &BTreeMap<String, CompiledNode>,
+) -> Vec<CompileIssue> {
+    let mut issues = Vec::new();
+
+    for node in nodes.values() {
+        for selector in node
+            .bindings
+            .values()
+            .flat_map(|binding| binding.selector_paths.iter())
+        {
+            validate_variable_selector(nodes, node, selector, &mut issues);
+        }
+
+        if let Some(selector) = context_policy_selector(node) {
+            validate_variable_selector(nodes, node, &selector, &mut issues);
+        }
+    }
+
+    issues
+}
+
+fn validate_variable_selector(
+    nodes: &BTreeMap<String, CompiledNode>,
+    target: &CompiledNode,
+    selector: &[String],
+    issues: &mut Vec<CompileIssue>,
+) {
+    let Some(source_id) = selector.first() else {
+        return;
+    };
+    if RUN_LEVEL_VARIABLE_NAMESPACES.contains(&source_id.as_str()) {
+        return;
+    }
+
+    let Some(source) = nodes.get(source_id) else {
+        issues.push(CompileIssue {
+            node_id: target.node_id.clone(),
+            code: CompileIssueCode::InvalidSelectorSource,
+            message: format!(
+                "node {} selector {} references an unknown source node",
+                target.node_id,
+                selector.join(".")
+            ),
+        });
+        return;
+    };
+
+    if !node_depends_on(nodes, &target.node_id, source_id) {
+        issues.push(CompileIssue {
+            node_id: target.node_id.clone(),
+            code: CompileIssueCode::SelectorSourceNotReachable,
+            message: format!(
+                "node {} selector source {} is not reachable through connected upstream edges",
+                target.node_id, source_id
+            ),
+        });
+        return;
+    }
+
+    let Some(output_key) = selector.get(1) else {
+        return;
+    };
+    if matches!(source.node_type.as_str(), "start" | "workflow_start") {
+        return;
+    }
+    if source
+        .outputs
+        .iter()
+        .any(|output| output.key == *output_key || output.selector.first() == Some(output_key))
+    {
+        return;
+    }
+
+    issues.push(CompileIssue {
+        node_id: target.node_id.clone(),
+        code: CompileIssueCode::SelectorOutputNotFound,
+        message: format!(
+            "node {} selector {} is missing from source node {} output contract",
+            target.node_id,
+            selector.join("."),
+            source.node_id
+        ),
+    });
+}
+
+fn node_depends_on(
+    nodes: &BTreeMap<String, CompiledNode>,
+    node_id: &str,
+    dependency_node_id: &str,
+) -> bool {
+    let mut stack = vec![node_id];
+    let mut visited = BTreeSet::new();
+
+    while let Some(current) = stack.pop() {
+        if !visited.insert(current.to_string()) {
+            continue;
+        }
+        let Some(node) = nodes.get(current) else {
+            continue;
+        };
+        for dependency in &node.dependency_node_ids {
+            if dependency == dependency_node_id {
+                return true;
+            }
+            stack.push(dependency);
+        }
+    }
+
+    false
+}
+
+pub(super) fn validate_executable_node_types(
+    nodes: &BTreeMap<String, CompiledNode>,
+) -> Vec<CompileIssue> {
+    nodes
+        .values()
+        .filter(|node| !EXECUTABLE_NODE_TYPES.contains(&node.node_type.as_str()))
+        .map(|node| CompileIssue {
+            node_id: node.node_id.clone(),
+            code: CompileIssueCode::UnsupportedNodeType,
+            message: format!(
+                "node {} type {} is not executable by the orchestration runtime",
+                node.node_id, node.node_type
+            ),
+        })
+        .collect()
 }
 
 fn edge_handle(edge: &Value, camel_key: &str, snake_key: &str) -> Result<Option<String>> {
@@ -546,6 +708,11 @@ fn validate_llm_context_policies(nodes: &BTreeMap<String, CompiledNode>) -> Vec<
         .filter(|node| node.node_type == "llm")
         .filter_map(|node| {
             let selector = context_policy_selector(node)?;
+            if !RUN_LEVEL_VARIABLE_NAMESPACES.contains(&selector[0].as_str())
+                && !node_depends_on(nodes, &node.node_id, &selector[0])
+            {
+                return None;
+            }
             let Some(output) = output_for_selector(nodes, &selector) else {
                 return Some(CompileIssue {
                     node_id: node.node_id.clone(),

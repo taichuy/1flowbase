@@ -307,6 +307,56 @@ async fn flow_debug_run_resolves_system_variables_from_run_context() {
 }
 
 #[tokio::test]
+async fn flow_debug_run_counts_prior_native_user_turns_in_system_variables() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service.seed_application_with_flow("Support Agent").await;
+
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({
+                "__native_model_prompt_context": {
+                    "system": [],
+                    "messages": [
+                        { "role": "user", "content": "first turn" },
+                        { "role": "assistant", "content": "first answer" }
+                    ]
+                },
+                "node-start": {
+                    "query": "second turn",
+                    "history": [
+                        { "role": "user", "content": "first turn" },
+                        { "role": "assistant", "content": "first answer" }
+                    ]
+                }
+            }),
+            document_snapshot: None,
+            debug_session_id: Some("conversation-1".to_string()),
+        })
+        .await
+        .expect("second conversation turn should start");
+
+    let completed = service
+        .continue_flow_debug_run(ContinueFlowDebugRunCommand {
+            application_id: seeded.application_id,
+            flow_run_id: started.flow_run.id,
+            workspace_id: Uuid::nil(),
+        })
+        .await
+        .expect("second conversation turn should complete");
+
+    assert_eq!(
+        node_run(&completed, "node-start").input_payload["sys"]["dialog_count"],
+        json!(1)
+    );
+    assert_eq!(
+        completed.flow_run.output_payload["sys"]["dialog_count"],
+        json!(1)
+    );
+}
+
+#[tokio::test]
 async fn flow_debug_run_resolves_application_environment_variables() {
     let service = OrchestrationRuntimeService::for_tests();
     let seeded = service.seed_application_with_flow("Support Agent").await;
@@ -392,7 +442,10 @@ async fn live_debug_run_persists_start_context_and_answer_final_variables() {
         .start_flow_debug_run(StartFlowDebugRunCommand {
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
-            input_payload: json!({ "node-start": { "query": "hello" } }),
+            input_payload: json!({
+                "conversation": { "Locale": "zh-CN" },
+                "node-start": { "query": "hello" }
+            }),
             document_snapshot: Some(document),
             debug_session_id: Some("debug-session-1".to_string()),
         })
@@ -469,6 +522,10 @@ async fn live_debug_run_persists_start_context_and_answer_final_variables() {
     );
     assert!(answer_node.output_payload["sys"].get("app_id").is_none());
     assert_eq!(
+        answer_node.output_payload["conversation"]["Locale"],
+        json!("zh-CN")
+    );
+    assert_eq!(
         completed.flow_run.output_payload,
         answer_node.output_payload
     );
@@ -500,6 +557,50 @@ async fn live_debug_run_persists_start_context_and_answer_final_variables() {
     assert_eq!(
         reloaded.flow_run.output_payload["env"]["ApiBaseUrl"],
         json!("https://api.example.com")
+    );
+}
+
+#[tokio::test]
+async fn first_execution_uses_runtime_variable_assigner_semantics() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_application_with_flow("Conversation State Agent")
+        .await;
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({
+                "conversation": { "ApiBaseUrl": "https://old.example.com" },
+                "node-start": { "query": "new.example.com" }
+            }),
+            document_snapshot: Some(variable_assigner_to_answer_flow_document(seeded.flow_id)),
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+
+    let completed = service
+        .continue_flow_debug_run(ContinueFlowDebugRunCommand {
+            application_id: seeded.application_id,
+            flow_run_id: started.flow_run.id,
+            workspace_id: Uuid::nil(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(completed.flow_run.status, domain::FlowRunStatus::Succeeded);
+    assert_eq!(
+        node_run(&completed, "node-variable").output_payload["ApiBaseUrl"],
+        json!("https://new.example.com/v1")
+    );
+    assert_eq!(
+        completed.flow_run.output_payload["conversation"]["ApiBaseUrl"],
+        json!("https://new.example.com/v1")
+    );
+    assert_eq!(
+        completed.flow_run.output_payload["answer"],
+        json!("https://new.example.com/v1")
     );
 }
 
@@ -625,11 +726,22 @@ async fn flow_debug_run_fails_before_provider_when_prompt_template_selector_is_m
         .as_str()
         .expect("error message should be persisted");
     assert!(message.contains("unresolved template selector node-start.query"));
-    assert!(failed.node_runs.iter().all(|run| run.node_id != "node-llm"));
+    let llm_node = failed
+        .node_runs
+        .iter()
+        .find(|run| run.node_id == "node-llm")
+        .expect("binding failure should be recorded on the attempted LLM node");
+    assert_eq!(llm_node.status, domain::NodeRunStatus::Failed);
+    assert!(llm_node
+        .error_payload
+        .as_ref()
+        .and_then(|payload| payload.get("message"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|message| message.contains("unresolved template selector")));
 }
 
 #[tokio::test]
-async fn live_debug_run_returns_unknown_node_type_not_implemented_error() {
+async fn flow_compile_rejects_unknown_node_type_before_execution() {
     let service = OrchestrationRuntimeService::for_tests();
     let seeded = service
         .seed_application_with_flow("Unknown Node Agent")
@@ -687,7 +799,7 @@ async fn live_debug_run_returns_unknown_node_type_not_implemented_error() {
         }
     });
 
-    let started = service
+    let error = service
         .start_flow_debug_run(StartFlowDebugRunCommand {
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -696,52 +808,9 @@ async fn live_debug_run_returns_unknown_node_type_not_implemented_error() {
             debug_session_id: None,
         })
         .await
-        .unwrap();
+        .expect_err("unsupported node types must fail before a run is executed");
 
-    let failed = service
-        .continue_flow_debug_run(ContinueFlowDebugRunCommand {
-            application_id: seeded.application_id,
-            flow_run_id: started.flow_run.id,
-            workspace_id: Uuid::nil(),
-        })
-        .await
-        .unwrap();
-
-    assert_eq!(failed.flow_run.status, domain::FlowRunStatus::Failed);
-    let flow_error_payload = failed
-        .flow_run
-        .error_payload
-        .as_ref()
-        .expect("flow error payload should be persisted");
-    assert_eq!(
-        flow_error_payload["error_code"],
-        json!("node_type_not_implemented")
-    );
-    assert_eq!(flow_error_payload["node_type"], json!("x_unknown"));
-    assert_eq!(
-        flow_error_payload["message"].as_str(),
-        Some("x_unknown nodes are not implemented in debug runtime")
-    );
-
-    let unknown_node = failed
-        .node_runs
-        .iter()
-        .find(|node_run| node_run.node_id == "node-unknown")
-        .expect("unknown node should be persisted");
-    assert_eq!(unknown_node.status, domain::NodeRunStatus::Failed);
-    assert_eq!(
-        unknown_node.error_payload.as_ref().unwrap()["error_code"],
-        json!("node_type_not_implemented")
-    );
-    assert_eq!(
-        unknown_node.error_payload.as_ref().unwrap()["node_type"],
-        json!("x_unknown")
-    );
-    assert_eq!(
-        unknown_node.error_payload.as_ref().unwrap()["message"],
-        json!("x_unknown nodes are not implemented in debug runtime")
-    );
-    assert_eq!(failed.node_runs.len(), 2);
+    assert!(error.to_string().contains("invalid input: node_type"));
 }
 
 mod branching;

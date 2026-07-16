@@ -404,6 +404,111 @@ fn code_to_answer_flow_document(flow_id: Uuid, source: &str) -> Value {
     document
 }
 
+fn variable_assigner_to_answer_flow_document(flow_id: Uuid) -> Value {
+    json!({
+        "schemaVersion": "1flowbase.flow/v2",
+        "meta": {
+            "flowId": flow_id.to_string(),
+            "name": "Conversation State Agent",
+            "description": "",
+            "tags": []
+        },
+        "variables": {
+            "conversation": [{
+                "name": "ApiBaseUrl",
+                "valueType": "string",
+                "description": ""
+            }]
+        },
+        "graph": {
+            "nodes": [
+                {
+                    "id": "node-start",
+                    "type": "start",
+                    "alias": "Start",
+                    "description": "",
+                    "containerId": null,
+                    "position": { "x": 0, "y": 0 },
+                    "configVersion": 1,
+                    "config": {},
+                    "bindings": {},
+                    "outputs": []
+                },
+                {
+                    "id": "node-variable",
+                    "type": "variable_assigner",
+                    "alias": "Set conversation",
+                    "description": "",
+                    "containerId": null,
+                    "position": { "x": 240, "y": 0 },
+                    "configVersion": 1,
+                    "config": {},
+                    "bindings": {
+                        "operations": {
+                            "kind": "state_write",
+                            "value": [{
+                                "path": ["conversation", "ApiBaseUrl"],
+                                "operator": "set",
+                                "value": {
+                                    "kind": "templated_text",
+                                    "value": "https://{{node-start.query}}/v1"
+                                }
+                            }]
+                        }
+                    },
+                    "outputs": [{
+                        "key": "ApiBaseUrl",
+                        "title": "conversation.ApiBaseUrl",
+                        "valueType": "string"
+                    }]
+                },
+                {
+                    "id": "node-answer",
+                    "type": "answer",
+                    "alias": "Answer",
+                    "description": "",
+                    "containerId": null,
+                    "position": { "x": 480, "y": 0 },
+                    "configVersion": 1,
+                    "config": {},
+                    "bindings": {
+                        "answer": {
+                            "kind": "templated_text",
+                            "value": "{{conversation.ApiBaseUrl}}"
+                        }
+                    },
+                    "outputs": [{ "key": "answer", "title": "Answer", "valueType": "string" }]
+                }
+            ],
+            "edges": [
+                {
+                    "id": "edge-start-variable",
+                    "source": "node-start",
+                    "target": "node-variable",
+                    "sourceHandle": null,
+                    "targetHandle": null,
+                    "containerId": null,
+                    "points": []
+                },
+                {
+                    "id": "edge-variable-answer",
+                    "source": "node-variable",
+                    "target": "node-answer",
+                    "sourceHandle": null,
+                    "targetHandle": null,
+                    "containerId": null,
+                    "points": []
+                }
+            ]
+        },
+        "editor": {
+            "viewport": { "x": 0, "y": 0, "zoom": 1 },
+            "annotations": [],
+            "activeContainerPath": []
+        }
+    })
+}
+
 fn code_node(id: &str, source: &str) -> Value {
     json!({
         "id": id,

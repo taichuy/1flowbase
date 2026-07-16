@@ -476,6 +476,7 @@ pub trait ApplicationPublishedCallbackConsumer: Send + Sync {
 impl<R, H> ApplicationPublishedCallbackConsumer for OrchestrationRuntimeService<R, H>
 where
     R: ApplicationRepository
+        + crate::ports::FileManagementRepository
         + crate::ports::FlowRepository
         + OrchestrationRuntimeRepository
         + crate::ports::ModelDefinitionRepository

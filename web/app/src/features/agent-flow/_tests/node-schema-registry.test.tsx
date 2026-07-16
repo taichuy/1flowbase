@@ -411,14 +411,15 @@ describe('agent-flow node schema registry', () => {
     expect(workflowPickerTypes).toEqual(
       expect.arrayContaining([
         'llm',
-        'knowledge_retrieval',
-        'question_classifier',
         'if_else',
         'code',
         'template_transform',
         'http_request',
         'variable_assigner'
       ])
+    );
+    expect(workflowPickerTypes).not.toEqual(
+      expect.arrayContaining(['knowledge_retrieval', 'question_classifier'])
     );
   });
 

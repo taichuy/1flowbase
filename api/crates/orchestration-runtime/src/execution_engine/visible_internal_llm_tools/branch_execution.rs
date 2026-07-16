@@ -9,6 +9,15 @@ pub(super) struct VisibleInternalLlmToolBranchContext<'a, I: ?Sized> {
     pub(super) tool: &'a VisibleInternalLlmTool,
 }
 
+pub(super) struct VisibleInternalLlmToolNodeContext<'a, I: ?Sized> {
+    pub(super) plan: &'a CompiledPlan,
+    pub(super) node: &'a CompiledNode,
+    pub(super) resolved_inputs: &'a Map<String, Value>,
+    pub(super) rendered_templates: &'a Map<String, Value>,
+    pub(super) runtime_context: &'a ExecutionRuntimeContext,
+    pub(super) invoker: &'a I,
+}
+
 pub(super) async fn execute_visible_internal_llm_tool_call<I>(
     plan: &CompiledPlan,
     variable_pool: &Map<String, Value>,
@@ -216,12 +225,15 @@ where
         };
         let rendered_templates = render_templated_bindings(node, &resolved_inputs);
         let node_output = match execute_visible_internal_llm_tool_node(
-            node,
-            &resolved_inputs,
-            &rendered_templates,
+            VisibleInternalLlmToolNodeContext {
+                plan,
+                node,
+                resolved_inputs: &resolved_inputs,
+                rendered_templates: &rendered_templates,
+                runtime_context,
+                invoker,
+            },
             &mut variable_pool,
-            runtime_context,
-            invoker,
             &mut provider_events,
         )
         .await?
@@ -311,38 +323,46 @@ where
             project_node_variable_payload(node, &node_output.output_payload)?,
         );
         if node.node_type == TOOL_RESULT_NODE_TYPE {
+            variable_pool.remove(VISIBLE_INTERNAL_LLM_TOOL_VARIABLE);
             return Ok(VisibleInternalLlmToolBranchExecution::Completed(
                 VisibleInternalLlmToolOutput {
                     text: branch_text,
                     provider_events,
                     route_events,
+                    variable_pool,
                 },
             ));
         }
         activate_downstream_nodes(plan, &mut active_node_ids, node, None);
     }
 
+    variable_pool.remove(VISIBLE_INTERNAL_LLM_TOOL_VARIABLE);
     Ok(VisibleInternalLlmToolBranchExecution::Completed(
         VisibleInternalLlmToolOutput {
             text: branch_text,
             provider_events,
             route_events,
+            variable_pool,
         },
     ))
 }
 
 pub(super) async fn execute_visible_internal_llm_tool_node<I>(
-    node: &CompiledNode,
-    resolved_inputs: &Map<String, Value>,
-    rendered_templates: &Map<String, Value>,
+    context: VisibleInternalLlmToolNodeContext<'_, I>,
     variable_pool: &mut Map<String, Value>,
-    runtime_context: &ExecutionRuntimeContext,
-    invoker: &I,
     provider_events: &mut Vec<ProviderStreamEvent>,
 ) -> Result<VisibleInternalLlmToolNodeExecution>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    let VisibleInternalLlmToolNodeContext {
+        plan,
+        node,
+        resolved_inputs,
+        rendered_templates,
+        runtime_context,
+        invoker,
+    } = context;
     match node.node_type.as_str() {
         "llm" => {
             let resolved_inputs =
@@ -353,6 +373,7 @@ where
                 return Ok(VisibleInternalLlmToolNodeExecution::Failed(error_payload));
             }
             let execution = execute_llm_node_provider_round(
+                plan,
                 node,
                 &resolved_inputs,
                 rendered_templates,

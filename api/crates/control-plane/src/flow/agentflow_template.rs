@@ -19,8 +19,6 @@ const BUILTIN_NODE_TYPES: &[&str] = &[
     "start",
     "answer",
     "llm",
-    "knowledge_retrieval",
-    "question_classifier",
     "if_else",
     "code",
     "template_transform",
@@ -33,9 +31,6 @@ const BUILTIN_NODE_TYPES: &[&str] = &[
     "data_model_update",
     "data_model_delete",
     "variable_assigner",
-    "parameter_extractor",
-    "iteration",
-    "loop",
     "human_input",
 ];
 

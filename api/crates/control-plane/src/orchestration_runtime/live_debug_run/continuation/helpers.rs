@@ -1,11 +1,7 @@
-use super::*;
-use crate::orchestration_runtime::answer_presentation;
-use orchestration_runtime::payload_builder::PublicOutputContract;
-use serde_json::Map;
-use std::collections::BTreeSet;
+use serde_json::{json, Map, Value};
 
 pub(super) fn inject_system_variables(
-    variable_pool: &mut serde_json::Map<String, Value>,
+    variable_pool: &mut Map<String, Value>,
     flow_run: &domain::FlowRunRecord,
     application_type: domain::ApplicationType,
     start_node_id: Option<&str>,
@@ -87,8 +83,8 @@ pub(super) fn compiled_plan_start_node_id(
         .map(|node| node.node_id.as_str())
 }
 
-pub(super) fn insert_start_reasoning_effort(
-    variable_pool: &mut serde_json::Map<String, Value>,
+fn insert_start_reasoning_effort(
+    variable_pool: &mut Map<String, Value>,
     start_node_id: Option<&str>,
     reasoning_effort: String,
 ) {
@@ -111,7 +107,7 @@ pub(super) fn insert_start_reasoning_effort(
     }
 }
 
-pub(super) fn external_reasoning_effort(model_parameters: &Value) -> Option<String> {
+fn external_reasoning_effort(model_parameters: &Value) -> Option<String> {
     model_parameters
         .get("reasoning")
         .and_then(|value| value.get("effort"))
@@ -121,231 +117,8 @@ pub(super) fn external_reasoning_effort(model_parameters: &Value) -> Option<Stri
         .map(ToOwned::to_owned)
 }
 
-pub(super) fn start_node_input_payload(
-    variable_pool: &serde_json::Map<String, Value>,
-    node_id: &str,
-) -> Value {
-    let mut payload = variable_pool
-        .get(node_id)
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-
-    if let Some(sys) = variable_pool.get("sys") {
-        payload.insert("sys".to_string(), sys.clone());
-    }
-    if let Some(env) = variable_pool.get("env") {
-        payload.insert("env".to_string(), env.clone());
-    }
-    if let Some(trigger) = variable_pool.get("trigger") {
-        payload.insert("trigger".to_string(), trigger.clone());
-    }
-
-    Value::Object(payload)
-}
-
-pub(super) fn template_output_payload(
-    node: &orchestration_runtime::compiled_plan::CompiledNode,
-    output_key: String,
-    output_value: Value,
-    variable_pool: &serde_json::Map<String, Value>,
-) -> Value {
-    let mut payload = serde_json::Map::new();
-    payload.insert(output_key, output_value);
-
-    if node.node_type == "answer" {
-        if let Some(sys) = variable_pool.get("sys") {
-            payload.insert("sys".to_string(), sys.clone());
-        }
-        if let Some(env) = variable_pool.get("env") {
-            payload.insert("env".to_string(), env.clone());
-        }
-    }
-
-    Value::Object(payload)
-}
-
-pub(super) fn project_node_variable_payload(
-    node: &orchestration_runtime::compiled_plan::CompiledNode,
-    output_payload: &Value,
-) -> Result<Value> {
-    if node.node_type == "code" {
-        return Ok(output_payload.clone());
-    }
-
-    PublicOutputContract::from_compiled_outputs(&node.outputs)?
-        .project_variable_payload(output_payload)
-}
-
-pub(super) fn can_continue_to_terminal_template_nodes(
-    plan: &orchestration_runtime::compiled_plan::CompiledPlan,
-    failed_node_index: usize,
-    active_node_ids: &BTreeSet<String>,
-) -> bool {
-    let mut has_terminal_template_node = false;
-    for node_id in plan.topological_order.iter().skip(failed_node_index + 1) {
-        if !active_node_ids.contains(node_id) {
-            continue;
-        }
-
-        let Some(node) = plan.nodes.get(node_id) else {
-            return false;
-        };
-        if !matches!(node.node_type.as_str(), "template_transform" | "answer") {
-            return false;
-        }
-        has_terminal_template_node = true;
-    }
-    has_terminal_template_node
-}
-
-pub(super) async fn emit_answer_presentation_for_node<R, H>(
-    service: &OrchestrationRuntimeService<R, H>,
-    flow_run_id: uuid::Uuid,
-    answer_presentation: Option<&Arc<Mutex<answer_presentation::AnswerPresentationCursor>>>,
-    node_id: &str,
-    node_run_id: uuid::Uuid,
-    output_payload: &Value,
-) where
-    R: OrchestrationRuntimeRepository,
-{
-    let Some(answer_presentation) = answer_presentation else {
-        return;
-    };
-    let events =
-        answer_presentation
-            .lock()
-            .await
-            .complete_node(node_id, node_run_id, output_payload);
-    for event in events {
-        append_runtime_event(service, flow_run_id, event).await;
-    }
-}
-
-pub(super) async fn materialize_ready_answer_node_run<R, H>(
-    service: &OrchestrationRuntimeService<R, H>,
-    flow_run_id: uuid::Uuid,
-    compiled_plan: &orchestration_runtime::compiled_plan::CompiledPlan,
-    variable_pool: &Map<String, Value>,
-) -> Result<Option<Value>>
-where
-    R: OrchestrationRuntimeRepository,
-{
-    let Some(ready) =
-        answer_presentation::ready_answer_output_from_variable_pool(compiled_plan, variable_pool)
-    else {
-        return Ok(None);
-    };
-    let Some(answer_node) = compiled_plan.nodes.get(&ready.answer_node_id) else {
-        return Ok(None);
-    };
-    let started_at = OffsetDateTime::now_utc();
-    let node_run = service
-        .repository
-        .create_node_run(&CreateNodeRunInput {
-            flow_run_id,
-            node_id: answer_node.node_id.clone(),
-            node_type: answer_node.node_type.clone(),
-            node_alias: answer_node.alias.clone(),
-            status: domain::NodeRunStatus::Running,
-            input_payload: json!({
-                "presentation": {
-                    "kind": "answer",
-                    "complete": ready.complete,
-                    "materialized_from": "waiting_prefix"
-                }
-            }),
-            debug_payload: json!({}),
-            started_at,
-        })
-        .await?;
-    append_runtime_event(
-        service,
-        flow_run_id,
-        debug_stream_events::node_started(&node_run),
-    )
-    .await;
-
-    ensure_node_run_transition(
-        domain::NodeRunStatus::Running,
-        domain::NodeRunStatus::Succeeded,
-        "materialize_waiting_answer_node",
-    )?;
-    let output_payload = answer_presentation::ready_answer_output_payload(&ready, variable_pool);
-    update_node_run_and_emit(
-        service,
-        flow_run_id,
-        &UpdateNodeRunInput {
-            node_run_id: node_run.id,
-            status: domain::NodeRunStatus::Succeeded,
-            output_payload: output_payload.clone(),
-            error_payload: None,
-            metrics_payload: json!({
-                "preview_mode": true,
-                "answer_presentation": {
-                    "partial": !ready.complete,
-                    "materialized_from": "waiting_prefix"
-                }
-            }),
-            debug_payload: json!({
-                "answer_presentation": {
-                    "partial": !ready.complete,
-                    "materialized_from": "waiting_prefix"
-                }
-            }),
-            finished_at: Some(started_at),
-        },
-    )
-    .await?;
-
-    if ready.text.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(output_payload))
-    }
-}
-
-pub(super) async fn fail_current_live_run_after_node_error<R, H>(
-    service: &OrchestrationRuntimeService<R, H>,
-    command: &ContinueFlowDebugRunCommand,
-    flow_run: &domain::FlowRunRecord,
-    node_run_id: uuid::Uuid,
-    output_payload: Value,
-    error_payload: Value,
-) -> Result<domain::ApplicationRunDetail>
-where
-    R: OrchestrationRuntimeRepository,
-{
-    ensure_flow_run_transition(
-        domain::FlowRunStatus::Running,
-        domain::FlowRunStatus::Failed,
-        "continue_flow_debug_run",
-    )?;
-    service
-        .repository
-        .update_flow_run(&UpdateFlowRunInput {
-            flow_run_id: flow_run.id,
-            status: domain::FlowRunStatus::Failed,
-            output_payload,
-            error_payload: Some(error_payload.clone()),
-            finished_at: Some(OffsetDateTime::now_utc()),
-        })
-        .await?;
-    emit_flow_failed_and_close(service, flow_run.id, error_payload.clone()).await;
-    service
-        .repository
-        .append_run_event(&AppendRunEventInput {
-            flow_run_id: flow_run.id,
-            node_run_id: Some(node_run_id),
-            event_type: "flow_run_failed".to_string(),
-            payload: error_payload,
-        })
-        .await?;
-    load_run_detail(&service.repository, command.application_id, flow_run.id).await
-}
-
 pub(super) fn inject_application_environment_variables(
-    variable_pool: &mut serde_json::Map<String, Value>,
+    variable_pool: &mut Map<String, Value>,
     variables: &[domain::ApplicationEnvironmentVariable],
 ) {
     variable_pool.insert(

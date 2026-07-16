@@ -491,6 +491,7 @@ async fn llm_node_retry_routes_next_target_before_first_token() {
         &plan,
         &serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]),
     )
+    .expect("runtime context should parse")
     .with_llm_routing_counter_store(Arc::new(RecordingRoutingCounterStore::default()));
     let outcome = start_flow_debug_run_with_runtime_context(
         &plan,
@@ -655,6 +656,7 @@ async fn round_robin_distribution_rotates_first_attempt_across_runs() {
             &plan,
             &serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]),
         )
+        .expect("runtime context should parse")
         .with_llm_routing_counter_store(counter_store.clone());
         start_flow_debug_run_with_runtime_context(
             &plan,
@@ -705,6 +707,7 @@ async fn none_distribution_keeps_existing_attempt_order_across_runs() {
             &plan,
             &serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]),
         )
+        .expect("runtime context should parse")
         .with_llm_routing_counter_store(counter_store.clone());
         start_flow_debug_run_with_runtime_context(
             &plan,
@@ -751,6 +754,7 @@ async fn retry_round_robin_resets_to_first_target_across_runs() {
             &plan,
             &serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]),
         )
+        .expect("runtime context should parse")
         .with_llm_routing_counter_store(counter_store.clone());
         start_flow_debug_run_with_runtime_context(
             &plan,
@@ -798,6 +802,7 @@ async fn retry_round_robin_cycles_targets_within_llm_retry_budget() {
         &plan,
         &serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]),
     )
+    .expect("runtime context should parse")
     .with_llm_routing_counter_store(counter_store.clone());
 
     let outcome = start_flow_debug_run_with_runtime_context(
@@ -873,8 +878,10 @@ async fn retry_round_robin_keeps_concurrent_retry_sequences_request_local() {
     let plan_input =
         serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]);
     let runtime_context_a = ExecutionRuntimeContext::from_plan_input(&plan, &plan_input)
+        .expect("runtime context should parse")
         .with_llm_routing_counter_store(counter_store.clone());
     let runtime_context_b = ExecutionRuntimeContext::from_plan_input(&plan, &plan_input)
+        .expect("runtime context should parse")
         .with_llm_routing_counter_store(counter_store.clone());
     let input = json!({ "node-start": { "query": "hello" } });
 

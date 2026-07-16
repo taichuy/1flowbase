@@ -14,14 +14,18 @@ where
     let Some(compiled_plan) = compiled_plan else {
         return Ok(None);
     };
-    let variable_pool = outcome
+    let checkpoint = outcome
         .checkpoint_snapshot
         .as_ref()
-        .map(|snapshot| &snapshot.variable_pool)
-        .unwrap_or(&outcome.variable_pool);
-    let Some(ready) =
-        answer_presentation::ready_answer_output_from_variable_pool(compiled_plan, variable_pool)
-    else {
+        .ok_or_else(|| anyhow!("waiting Answer Presentation is missing checkpoint state"))?;
+    let variable_pool = &checkpoint.variable_pool;
+    let waiting_node_id = waiting_node_id(outcome)?;
+    let Some(ready) = answer_presentation::ready_waiting_answer_output_from_variable_pool(
+        compiled_plan,
+        variable_pool,
+        &checkpoint.active_node_ids,
+        waiting_node_id,
+    ) else {
         return Ok(None);
     };
     let Some(answer_node) = compiled_plan.nodes.get(&ready.answer_node_id) else {
@@ -97,8 +101,11 @@ where
         return Ok(Vec::new());
     }
 
+    let visible_answer = answer_presentation::visible_answer_text(answer);
     let existing = existing_answer_presentation_text(repository, flow_run_id, "text_delta").await?;
-    let suffix = answer.strip_prefix(&existing).unwrap_or(answer);
+    let suffix = visible_answer
+        .strip_prefix(&existing)
+        .unwrap_or(&visible_answer);
     if suffix.is_empty() {
         return Ok(Vec::new());
     }
@@ -127,15 +134,30 @@ where
     let Some(compiled_plan) = compiled_plan else {
         return Ok(Vec::new());
     };
-    let Some(mut cursor) = answer_presentation::AnswerPresentationCursor::from_plan(compiled_plan)
+    let checkpoint = outcome
+        .checkpoint_snapshot
+        .as_ref()
+        .ok_or_else(|| anyhow!("waiting Answer Presentation is missing checkpoint state"))?;
+    let variable_pool = &checkpoint.variable_pool;
+    let waiting_node_id = waiting_node_id(outcome)?;
+    let Some(ready) = answer_presentation::ready_waiting_answer_output_from_variable_pool(
+        compiled_plan,
+        variable_pool,
+        &checkpoint.active_node_ids,
+        waiting_node_id,
+    ) else {
+        return Ok(Vec::new());
+    };
+    let Some(presentation) =
+        orchestration_runtime::answer_presentation::AnswerPresentationPlan::candidates_from_plan(
+            compiled_plan,
+        )
+        .into_iter()
+        .find(|presentation| presentation.answer_node_id == ready.answer_node_id)
     else {
         return Ok(Vec::new());
     };
-    let variable_pool = outcome
-        .checkpoint_snapshot
-        .as_ref()
-        .map(|snapshot| &snapshot.variable_pool)
-        .unwrap_or(&outcome.variable_pool);
+    let mut cursor = answer_presentation::AnswerPresentationCursor::from_presentation(presentation);
     let mut candidate_events = Vec::new();
 
     for node_id in &compiled_plan.topological_order {
@@ -146,6 +168,22 @@ where
     }
 
     append_missing_answer_presentation_events(repository, flow_run_id, candidate_events).await
+}
+
+fn waiting_node_id(
+    outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+) -> Result<&str> {
+    match &outcome.stop_reason {
+        orchestration_runtime::execution_state::ExecutionStopReason::WaitingHuman(wait) => {
+            Ok(&wait.node_id)
+        }
+        orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(wait) => {
+            Ok(&wait.node_id)
+        }
+        _ => Err(anyhow!(
+            "waiting Answer Presentation requires a waiting execution outcome"
+        )),
+    }
 }
 
 async fn append_missing_answer_presentation_events<R>(

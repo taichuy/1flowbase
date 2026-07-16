@@ -154,6 +154,79 @@ async fn native_prompt_context_reaches_llm_across_intermediate_nodes_once() {
 }
 
 #[tokio::test]
+async fn compatible_start_context_reaches_llm_across_intermediate_nodes() {
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: captured_input.clone(),
+        final_content: "ok".to_string(),
+    };
+
+    start_flow_debug_run(
+        &plan_with_llm_behind_if_else(),
+        &json!({
+            "node-start": {
+                "query": "Current question",
+                "system": [
+                    { "type": "text", "text": "Use the compatible system." }
+                ],
+                "history": [
+                    { "role": "user", "content": "Earlier question" },
+                    { "role": "assistant", "content": "Earlier answer" }
+                ]
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let input = captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+    assert_eq!(
+        input.system_text().as_deref(),
+        Some("Use the compatible system.")
+    );
+    assert_eq!(input.messages.len(), 3);
+    assert_eq!(input.messages[0].content, "Earlier question");
+    assert_eq!(input.messages[1].content, "Earlier answer");
+    assert_eq!(input.messages[2].content, "Current question");
+}
+
+#[tokio::test]
+async fn malformed_native_prompt_context_fails_before_provider_invocation() {
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: captured_input.clone(),
+        final_content: "should not run".to_string(),
+    };
+
+    let error = start_flow_debug_run(
+        &base_plan(),
+        &json!({
+            "__native_model_prompt_context": "invalid",
+            "node-start": { "query": "hello" }
+        }),
+        &invoker,
+    )
+    .await
+    .expect_err("malformed Native context must fail closed");
+
+    assert!(
+        error.to_string().contains("__native_model_prompt_context"),
+        "unexpected error: {error}"
+    );
+    assert!(captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .is_none());
+}
+
+#[tokio::test]
 async fn ac_003_prompt_binding_appends_text_block_without_stringifying_system_blocks() {
     let mut plan = base_plan();
     let llm = plan

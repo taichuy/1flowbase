@@ -451,6 +451,13 @@ async fn live_debug_run_resumes_if_else_selected_branch_callback_only() {
         node_run(&waiting, "node-if").debug_payload["selected_source_handle"],
         json!("if")
     );
+    assert!(
+        waiting
+            .node_runs
+            .iter()
+            .all(|node_run| node_run.node_id != "node-else-answer"),
+        "inactive branch Answer must not be materialized before callback resume"
+    );
     let checkpoint = waiting
         .checkpoints
         .last()
@@ -476,8 +483,15 @@ async fn live_debug_run_resumes_if_else_selected_branch_callback_only() {
         completed.flow_run.output_payload["answer"],
         json!("selected callback")
     );
-    assert!(completed
+    let completed_node_ids = completed
         .node_runs
         .iter()
-        .all(|node_run| node_run.node_id != "node-else-answer"));
+        .map(|node_run| node_run.node_id.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        completed_node_ids
+            .iter()
+            .all(|node_id| *node_id != "node-else-answer"),
+        "inactive branch node run was persisted: {completed_node_ids:?}"
+    );
 }

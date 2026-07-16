@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use crate::{
     compiled_plan::{
-        CodeIsolationProfile, CompiledBinding, CompiledCodeRuntime, CompiledLlmRuntime,
-        CompiledNode, CompiledOutput, CompiledPlan,
+        CodeIsolationProfile, CompiledBinding, CompiledCodeRuntime, CompiledEdge,
+        CompiledLlmRuntime, CompiledNode, CompiledOutput, CompiledPlan,
     },
     execution_engine::{
         CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
@@ -251,6 +251,206 @@ async fn preview_executor_resolves_bindings_renders_prompt_and_calls_provider() 
         .expect("provider input should be captured");
     assert!(captured_input.model_parameters.is_empty());
     assert_eq!(captured_input.response_format, None);
+}
+
+#[tokio::test]
+async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_branch() {
+    let mut plan = sample_compiled_plan();
+    plan.topological_order = vec![
+        "node-start".to_string(),
+        "node-if".to_string(),
+        "node-assign-if".to_string(),
+        "node-assign-else".to_string(),
+        "node-llm".to_string(),
+    ];
+    plan.edges = vec![
+        CompiledEdge {
+            edge_id: "edge-start-if".to_string(),
+            source: "node-start".to_string(),
+            target: "node-if".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+        CompiledEdge {
+            edge_id: "edge-if-selected".to_string(),
+            source: "node-if".to_string(),
+            target: "node-assign-if".to_string(),
+            source_handle: Some("if".to_string()),
+            target_handle: None,
+        },
+        CompiledEdge {
+            edge_id: "edge-if-else".to_string(),
+            source: "node-if".to_string(),
+            target: "node-assign-else".to_string(),
+            source_handle: Some("else".to_string()),
+            target_handle: None,
+        },
+        CompiledEdge {
+            edge_id: "edge-selected-llm".to_string(),
+            source: "node-assign-if".to_string(),
+            target: "node-llm".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+        CompiledEdge {
+            edge_id: "edge-else-llm".to_string(),
+            source: "node-assign-else".to_string(),
+            target: "node-llm".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+    ];
+    plan.nodes
+        .get_mut("node-start")
+        .expect("start node should exist")
+        .downstream_node_ids = vec!["node-if".to_string()];
+    plan.nodes.insert(
+        "node-if".to_string(),
+        CompiledNode {
+            node_id: "node-if".to_string(),
+            node_type: "if_else".to_string(),
+            alias: "If / Else".to_string(),
+            container_id: None,
+            dependency_node_ids: vec!["node-start".to_string()],
+            downstream_node_ids: vec!["node-assign-if".to_string(), "node-assign-else".to_string()],
+            bindings: BTreeMap::from([(
+                "branches".to_string(),
+                CompiledBinding {
+                    kind: "if_else_branches".to_string(),
+                    selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
+                    raw_value: json!({
+                        "branches": [
+                            {
+                                "kind": "if",
+                                "sourceHandle": "if",
+                                "condition": {
+                                    "operator": "and",
+                                    "conditions": [{
+                                        "left": ["node-start", "query"],
+                                        "comparator": "equals",
+                                        "right": "if"
+                                    }]
+                                }
+                            },
+                            { "kind": "else", "sourceHandle": "else" }
+                        ]
+                    }),
+                },
+            )]),
+            outputs: Vec::new(),
+            config: json!({}),
+            plugin_runtime: None,
+            llm_runtime: None,
+            code_runtime: None,
+        },
+    );
+    for (node_id, value) in [
+        ("node-assign-if", "selected-if"),
+        ("node-assign-else", "selected-else"),
+    ] {
+        plan.nodes.insert(
+            node_id.to_string(),
+            CompiledNode {
+                node_id: node_id.to_string(),
+                node_type: "variable_assigner".to_string(),
+                alias: node_id.to_string(),
+                container_id: None,
+                dependency_node_ids: vec!["node-if".to_string()],
+                downstream_node_ids: vec!["node-llm".to_string()],
+                bindings: BTreeMap::from([(
+                    "operations".to_string(),
+                    CompiledBinding {
+                        kind: "state_write".to_string(),
+                        selector_paths: Vec::new(),
+                        raw_value: json!([{
+                            "path": ["conversation", "branch"],
+                            "operator": "set",
+                            "value": { "kind": "constant", "value": value }
+                        }]),
+                    },
+                )]),
+                outputs: vec![CompiledOutput {
+                    key: "branch".to_string(),
+                    title: "conversation.branch".to_string(),
+                    value_type: "string".to_string(),
+                    selector: Vec::new(),
+                    json_schema: None,
+                }],
+                config: json!({}),
+                plugin_runtime: None,
+                llm_runtime: None,
+                code_runtime: None,
+            },
+        );
+    }
+    let target = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("target LLM should exist");
+    target.dependency_node_ids = vec!["node-assign-if".to_string(), "node-assign-else".to_string()];
+    target.bindings = BTreeMap::from([(
+        "prompt_messages".to_string(),
+        CompiledBinding {
+            kind: "prompt_messages".to_string(),
+            selector_paths: vec![vec!["conversation".to_string(), "branch".to_string()]],
+            raw_value: json!([{
+                "id": "user-1",
+                "role": "user",
+                "content": {
+                    "kind": "templated_text",
+                    "value": "{{conversation.branch}}"
+                }
+            }]),
+        },
+    )]);
+
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = StubPreviewInvoker {
+        captured_input: captured_input.clone(),
+    };
+    let outcome = preview_executor::run_node_preview(
+        &plan,
+        "node-llm",
+        &json!({
+            "conversation": { "branch": "before" },
+            "node-start": { "query": "if" }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        outcome.resolved_inputs["prompt_messages"][0]["content"],
+        json!("selected-if")
+    );
+    let captured = captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+    assert_eq!(captured.messages[0].content, "selected-if");
+
+    let else_input = Arc::new(Mutex::new(None));
+    let else_invoker = StubPreviewInvoker {
+        captured_input: else_input.clone(),
+    };
+    let else_outcome = preview_executor::run_node_preview(
+        &plan,
+        "node-llm",
+        &json!({
+            "conversation": { "branch": "before" },
+            "node-start": { "query": "else" }
+        }),
+        &else_invoker,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        else_outcome.resolved_inputs["prompt_messages"][0]["content"],
+        json!("selected-else")
+    );
 }
 
 #[tokio::test]

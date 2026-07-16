@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Map, Value};
@@ -7,9 +7,13 @@ use crate::{
     binding_runtime::{render_templated_bindings, resolve_node_inputs},
     compiled_plan::CompiledPlan,
     execution_engine::{
+        branching::{
+            activate_downstream_nodes, initial_active_node_ids, select_if_else_source_handle,
+        },
         execute_code_node, execute_http_request_node, execute_llm_node,
-        execute_variable_assignment_node, CapabilityInvoker, CodeInvoker, ExecutionRuntimeContext,
-        HttpResponseFilePersister, LlmRoutingCounterStore, ProviderInvoker,
+        execute_variable_assignment_node, materialize_start_builtin_defaults, CapabilityInvoker,
+        CodeInvoker, ExecutionRuntimeContext, HttpResponseFilePersister, LlmRoutingCounterStore,
+        ProviderInvoker,
     },
     node_errors::build_node_type_not_implemented_error_payload,
 };
@@ -49,36 +53,16 @@ impl NodePreviewOutcome {
 fn start_preview_output(resolved_inputs: &Map<String, Value>) -> Value {
     let mut output = resolved_inputs.clone();
 
-    materialize_start_builtin_defaults(&mut output);
+    materialize_start_preview_defaults(&mut output);
 
     Value::Object(output)
 }
 
-fn materialize_start_builtin_defaults(start_payload: &mut Map<String, Value>) {
+fn materialize_start_preview_defaults(start_payload: &mut Map<String, Value>) {
     start_payload
         .entry("query".to_string())
         .or_insert_with(|| Value::String(String::new()));
-    start_payload
-        .entry("system".to_string())
-        .or_insert_with(|| Value::String(String::new()));
-    start_payload
-        .entry("model".to_string())
-        .or_insert_with(|| Value::String(String::new()));
-    start_payload
-        .entry("reasoning_effort".to_string())
-        .or_insert_with(|| Value::String(String::new()));
-    start_payload
-        .entry("history".to_string())
-        .or_insert_with(|| Value::Array(Vec::new()));
-    start_payload
-        .entry("files".to_string())
-        .or_insert_with(|| Value::Array(Vec::new()));
-    start_payload
-        .entry("tools".to_string())
-        .or_insert_with(|| Value::Array(Vec::new()));
-    start_payload
-        .entry("tool_choice".to_string())
-        .or_insert_with(|| Value::Object(Map::new()));
+    materialize_start_builtin_defaults(start_payload);
 }
 
 fn materialize_start_nodes_in_variable_pool(
@@ -95,9 +79,72 @@ fn materialize_start_nodes_in_variable_pool(
             .or_insert_with(|| Value::Object(Map::new()));
 
         if let Some(start_payload) = start_payload.as_object_mut() {
-            materialize_start_builtin_defaults(start_payload);
+            materialize_start_preview_defaults(start_payload);
         }
     }
+}
+
+fn collect_preview_execution_scope(plan: &CompiledPlan, target_node_id: &str) -> BTreeSet<String> {
+    let mut scope = BTreeSet::new();
+    let mut pending = vec![target_node_id.to_string()];
+
+    while let Some(node_id) = pending.pop() {
+        if !scope.insert(node_id.clone()) {
+            continue;
+        }
+        if let Some(node) = plan.nodes.get(&node_id) {
+            pending.extend(node.dependency_node_ids.iter().cloned());
+        }
+    }
+
+    scope
+}
+
+fn replay_deterministic_upstream_state(
+    plan: &CompiledPlan,
+    target_node_id: &str,
+    variable_pool: &mut Map<String, Value>,
+) -> Result<()> {
+    let execution_scope = collect_preview_execution_scope(plan, target_node_id);
+    let mut active_node_ids = initial_active_node_ids(plan);
+
+    for node_id in &plan.topological_order {
+        if node_id == target_node_id {
+            break;
+        }
+        if !execution_scope.contains(node_id) || !active_node_ids.contains(node_id) {
+            continue;
+        }
+        let Some(node) = plan.nodes.get(node_id) else {
+            continue;
+        };
+
+        let selected_source_handle = match node.node_type.as_str() {
+            "if_else" => select_if_else_source_handle(node, variable_pool)?,
+            "variable_assigner" => {
+                let resolved_inputs = resolve_node_inputs(node, variable_pool)?;
+                let output_payload =
+                    execute_variable_assignment_node(node, &resolved_inputs, variable_pool)?;
+                variable_pool.insert(node.node_id.clone(), output_payload);
+                None
+            }
+            _ => None,
+        };
+        activate_downstream_nodes(
+            plan,
+            &mut active_node_ids,
+            node,
+            selected_source_handle.as_deref(),
+        );
+    }
+
+    if !active_node_ids.contains(target_node_id) {
+        return Err(anyhow!(
+            "target node is inactive for supplied preview input: {target_node_id}"
+        ));
+    }
+
+    Ok(())
 }
 
 pub async fn run_node_preview<I>(
@@ -128,7 +175,7 @@ where
         .cloned()
         .ok_or_else(|| anyhow!("input payload must be an object"))?;
     materialize_start_nodes_in_variable_pool(plan, &mut variable_pool);
-    let runtime_context = ExecutionRuntimeContext::from_plan_input(plan, &variable_pool);
+    let runtime_context = ExecutionRuntimeContext::from_plan_input(plan, &variable_pool)?;
     run_node_preview_with_prepared_context(
         plan,
         target_node_id,
@@ -157,9 +204,9 @@ where
         .ok_or_else(|| anyhow!("input payload must be an object"))?;
     materialize_start_nodes_in_variable_pool(plan, &mut variable_pool);
     let runtime_context = match llm_routing_counter_store {
-        Some(store) => ExecutionRuntimeContext::from_plan_input(plan, &variable_pool)
+        Some(store) => ExecutionRuntimeContext::from_plan_input(plan, &variable_pool)?
             .with_llm_routing_counter_store(store),
-        None => ExecutionRuntimeContext::from_plan_input(plan, &variable_pool),
+        None => ExecutionRuntimeContext::from_plan_input(plan, &variable_pool)?,
     };
     run_node_preview_with_prepared_context(
         plan,
@@ -183,6 +230,7 @@ async fn run_node_preview_with_prepared_context<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    replay_deterministic_upstream_state(plan, target_node_id, &mut variable_pool)?;
     let node = plan
         .nodes
         .get(target_node_id)
@@ -226,7 +274,7 @@ where
             node,
             &resolved_inputs,
             &rendered_templates,
-            &variable_pool,
+            &mut variable_pool,
             &runtime_context,
             invoker,
         )

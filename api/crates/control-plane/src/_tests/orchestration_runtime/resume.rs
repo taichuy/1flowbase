@@ -67,10 +67,46 @@ async fn resume_flow_run_with_human_input_finishes_downstream_answer_node() {
         .unwrap();
 
     assert_eq!(detail.flow_run.status.as_str(), "succeeded");
-    assert_eq!(detail.node_runs.last().unwrap().node_id, "node-answer");
+    let resumed_answer = detail
+        .node_runs
+        .iter()
+        .find(|node_run| {
+            node_run.node_id == "node-answer"
+                && node_run.output_payload["answer"] == json!("已审核通过")
+        })
+        .expect("resume should execute the final answer node");
+    assert_eq!(resumed_answer.node_id, "node-answer");
     assert_eq!(
         detail.flow_run.output_payload["answer"],
         json!("已审核通过")
+    );
+    let runtime_events = service.list_runtime_events(detail.flow_run.id, 0).await;
+    let resumed_answer_started = runtime_events.iter().find(|event| {
+        event.event_type == "node_started"
+            && event.payload["node_run_id"] == json!(resumed_answer.id)
+    });
+    assert!(
+        resumed_answer_started.is_some(),
+        "resumed answer node {} must be observable before execution; node runs: {:?}; events: {:?}",
+        resumed_answer.id,
+        detail
+            .node_runs
+            .iter()
+            .map(|node| (&node.node_id, node.id, node.started_at))
+            .collect::<Vec<_>>(),
+        runtime_events
+            .iter()
+            .map(|event| (&event.event_type, event.payload.get("node_run_id")))
+            .collect::<Vec<_>>()
+    );
+    let waiting_answer = detail
+        .node_runs
+        .iter()
+        .find(|node_run| node_run.node_id == "node-answer" && node_run.id != resumed_answer.id)
+        .expect("waiting state should materialize a partial answer node");
+    assert!(
+        waiting_answer.started_at <= resumed_answer.started_at,
+        "waiting answer timestamp must precede resumed execution"
     );
 }
 
@@ -91,17 +127,29 @@ async fn complete_callback_task_updates_task_and_requeues_waiting_run() {
 
     assert_eq!(detail.callback_tasks[0].status.as_str(), "completed");
     assert_eq!(detail.flow_run.status.as_str(), "succeeded");
-    let runtime_event_types = service
-        .list_runtime_events(detail.flow_run.id, 0)
-        .await
-        .into_iter()
-        .map(|event| event.event_type)
+    let runtime_events = service.list_runtime_events(detail.flow_run.id, 0).await;
+    let runtime_event_types = runtime_events
+        .iter()
+        .map(|event| event.event_type.as_str())
         .collect::<Vec<_>>();
     assert!(
-        runtime_event_types
-            .iter()
-            .any(|event_type| event_type == "flow_finished"),
+        runtime_event_types.contains(&"flow_finished"),
         "callback resume completion should be durable: {runtime_event_types:?}"
+    );
+    let resumed_answer = detail
+        .node_runs
+        .iter()
+        .find(|node_run| {
+            node_run.node_id == "node-answer"
+                && node_run.output_payload == detail.flow_run.output_payload
+        })
+        .expect("callback resume should execute answer node");
+    assert!(
+        runtime_events.iter().any(|event| {
+            event.event_type == "node_started"
+                && event.payload["node_run_id"] == json!(resumed_answer.id)
+        }),
+        "callback-resumed answer node must be observable before execution"
     );
 }
 

@@ -293,6 +293,57 @@ async fn orchestration_runtime_data_model_confirmed_callback_executes_write_once
 }
 
 #[tokio::test]
+async fn data_model_callback_resume_starts_downstream_node_before_execution() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service.seed_application_with_flow("Data Model Agent").await;
+
+    let waiting = run_data_model_flow(
+        &service,
+        seeded.actor_user_id,
+        seeded.application_id,
+        seeded.flow_id,
+        vec![
+            data_model_node(
+                "node-create",
+                "create",
+                json!({
+                    "payload": { "title": "Order A", "status": "draft" },
+                    "side_effect_policy": "confirm_each_run"
+                }),
+                json!({}),
+            ),
+            data_model_node("node-list", "list", json!({}), json!({})),
+        ],
+        vec![("node-create", "node-list")],
+    )
+    .await;
+
+    let completed = service
+        .complete_callback_task(CompleteCallbackTaskCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            callback_task_id: waiting.callback_tasks[0].id,
+            response_payload: json!({ "approved": true }),
+        })
+        .await
+        .unwrap();
+
+    let list_node = node_run(&completed, "node-list");
+    assert_eq!(list_node.output_payload["total"], json!(1));
+    assert!(
+        service
+            .list_runtime_events(completed.flow_run.id, 0)
+            .await
+            .iter()
+            .any(|event| {
+                event.event_type == "node_started"
+                    && event.payload["node_run_id"] == json!(list_node.id)
+            }),
+        "data model callback downstream node must be observable before execution"
+    );
+}
+
+#[tokio::test]
 async fn orchestration_runtime_data_model_confirmed_callback_replays_same_run_receipt() {
     let service = OrchestrationRuntimeService::for_tests();
     let seeded = service.seed_application_with_flow("Data Model Agent").await;

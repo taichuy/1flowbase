@@ -1,18 +1,13 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        ClientProtocolEnvelope, NativeModelPromptContext, NativeModelRequestContext,
         NativePromptBlock, ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult,
         ProviderMessage, ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind,
-        ProviderStreamEvent, ProviderToolCall, ProviderUsage, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
-        NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
+        ProviderStreamEvent, ProviderToolCall, ProviderUsage,
     },
 };
 use serde_json::{json, Map, Value};
@@ -54,6 +49,7 @@ mod llm_metrics;
 mod llm_node_outputs;
 mod llm_parameters;
 mod node_failure_policy;
+mod run_input;
 #[cfg(test)]
 mod tests;
 mod variable_assignment;
@@ -77,86 +73,15 @@ pub use llm_node_outputs::{
 };
 use llm_parameters::*;
 use node_failure_policy::{apply_node_error_policy, NodeErrorPolicyApplication};
+pub(crate) use run_input::materialize_start_builtin_defaults;
+pub use run_input::{normalize_plan_variable_pool, ExecutionRuntimeContext};
+use run_input::{start_node_execution_input, synchronize_runtime_global_variables};
 pub(crate) use variable_assignment::execute_variable_assignment_node;
 use visible_internal_llm_tools::*;
 
 const LLM_TOOL_CALLBACK_KIND: &str = "llm_tool_calls";
 const LLM_TOOL_CALLBACK_STATE_KEY: &str = "__llm_tool_callback";
 const RESPONSES_WEBSOCKET_TRANSPORT: &str = "responses_websocket";
-
-#[derive(Clone, Default)]
-pub struct ExecutionRuntimeContext {
-    tools: Vec<Value>,
-    client_protocol_envelope: Option<ClientProtocolEnvelope>,
-    native_model_prompt_context: NativeModelPromptContext,
-    native_model_request_context: NativeModelRequestContext,
-    llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
-}
-
-impl ExecutionRuntimeContext {
-    pub fn from_plan_input(plan: &CompiledPlan, variable_pool: &Map<String, Value>) -> Self {
-        Self {
-            tools: run_level_provider_tools(plan, variable_pool),
-            client_protocol_envelope: client_protocol_envelope_from_variable_pool(variable_pool),
-            native_model_prompt_context: native_model_prompt_context_from_variable_pool(
-                variable_pool,
-            ),
-            native_model_request_context: native_model_request_context_from_variable_pool(
-                variable_pool,
-            ),
-            llm_routing_counter_store: None,
-        }
-    }
-
-    pub fn with_llm_routing_counter_store(
-        mut self,
-        store: Arc<dyn LlmRoutingCounterStore>,
-    ) -> Self {
-        self.llm_routing_counter_store = Some(store);
-        self
-    }
-
-    async fn next_llm_routing_counter(
-        &self,
-        key: &str,
-        ttl: Option<time::Duration>,
-    ) -> Result<i64> {
-        let store = self
-            .llm_routing_counter_store
-            .as_ref()
-            .ok_or_else(|| anyhow!("llm routing counter store is not configured"))?;
-        store.increment_counter(key, 1, ttl).await
-    }
-}
-
-fn native_model_prompt_context_from_variable_pool(
-    variable_pool: &Map<String, Value>,
-) -> NativeModelPromptContext {
-    variable_pool
-        .get(NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY)
-        .cloned()
-        .and_then(|value| serde_json::from_value(value).ok())
-        .unwrap_or_default()
-}
-
-fn native_model_request_context_from_variable_pool(
-    variable_pool: &Map<String, Value>,
-) -> NativeModelRequestContext {
-    variable_pool
-        .get(NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY)
-        .cloned()
-        .and_then(|value| serde_json::from_value(value).ok())
-        .unwrap_or_default()
-}
-
-fn client_protocol_envelope_from_variable_pool(
-    variable_pool: &Map<String, Value>,
-) -> Option<ClientProtocolEnvelope> {
-    variable_pool
-        .get(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY)
-        .cloned()
-        .and_then(|value| serde_json::from_value(value).ok())
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderInvocationOutput {
@@ -198,6 +123,28 @@ pub trait CapabilityInvoker: Send + Sync {
         config_payload: Value,
         input_payload: Value,
     ) -> Result<CapabilityInvocationOutput>;
+
+    async fn invoke_data_model_node(
+        &self,
+        _node: &CompiledNode,
+        _resolved_inputs: &Map<String, Value>,
+    ) -> Result<DataModelInvocationOutput> {
+        Err(anyhow!("data model runtime is not configured"))
+    }
+}
+
+#[async_trait]
+pub trait ExecutionLifecycle: Send + Sync {
+    async fn begin_node(&self, node: &CompiledNode, input_payload: &Value) -> Result<()>;
+}
+
+struct NoopExecutionLifecycle;
+
+#[async_trait]
+impl ExecutionLifecycle for NoopExecutionLifecycle {
+    async fn begin_node(&self, _node: &CompiledNode, _input_payload: &Value) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -216,6 +163,21 @@ pub struct CapabilityNodeExecution {
     pub error_payload: Option<Value>,
     pub metrics_payload: Value,
     pub debug_payload: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DataModelInvocationOutput {
+    pub output_payload: Value,
+    pub error_payload: Option<Value>,
+    pub metrics_payload: Value,
+    pub debug_payload: Value,
+    pub pending_callback: Option<DataModelCallback>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DataModelCallback {
+    pub callback_kind: String,
+    pub request_payload: Value,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -239,9 +201,18 @@ where
         .as_object()
         .cloned()
         .ok_or_else(|| anyhow!("input payload must be an object"))?;
-    let runtime_context = ExecutionRuntimeContext::from_plan_input(plan, &variable_pool);
+    let runtime_context = ExecutionRuntimeContext::from_plan_input(plan, &variable_pool)?;
 
-    execute_from(plan, 0, variable_pool, None, &runtime_context, invoker).await
+    execute_from(
+        plan,
+        0,
+        variable_pool,
+        None,
+        &runtime_context,
+        invoker,
+        &NoopExecutionLifecycle,
+    )
+    .await
 }
 
 pub async fn start_flow_debug_run_with_runtime_context<I>(
@@ -258,7 +229,43 @@ where
         .cloned()
         .ok_or_else(|| anyhow!("input payload must be an object"))?;
 
-    execute_from(plan, 0, variable_pool, None, &runtime_context, invoker).await
+    execute_from(
+        plan,
+        0,
+        variable_pool,
+        None,
+        &runtime_context,
+        invoker,
+        &NoopExecutionLifecycle,
+    )
+    .await
+}
+
+pub async fn start_flow_debug_run_with_runtime_context_and_lifecycle<I>(
+    plan: &CompiledPlan,
+    input_payload: &Value,
+    runtime_context: ExecutionRuntimeContext,
+    invoker: &I,
+    lifecycle: &dyn ExecutionLifecycle,
+) -> Result<FlowDebugExecutionOutcome>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
+    let variable_pool = input_payload
+        .as_object()
+        .cloned()
+        .ok_or_else(|| anyhow!("input payload must be an object"))?;
+
+    execute_from(
+        plan,
+        0,
+        variable_pool,
+        None,
+        &runtime_context,
+        invoker,
+        lifecycle,
+    )
+    .await
 }
 
 pub async fn resume_flow_debug_run<I>(
@@ -271,7 +278,8 @@ pub async fn resume_flow_debug_run<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
-    let runtime_context = ExecutionRuntimeContext::from_plan_input(plan, &checkpoint.variable_pool);
+    let runtime_context =
+        ExecutionRuntimeContext::from_plan_input(plan, &checkpoint.variable_pool)?;
     resume_flow_debug_run_with_runtime_context(
         plan,
         checkpoint,
@@ -290,6 +298,30 @@ pub async fn resume_flow_debug_run_with_runtime_context<I>(
     resume_payload: &Value,
     runtime_context: ExecutionRuntimeContext,
     invoker: &I,
+) -> Result<FlowDebugExecutionOutcome>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
+    resume_flow_debug_run_with_runtime_context_and_lifecycle(
+        plan,
+        checkpoint,
+        waiting_node_id,
+        resume_payload,
+        runtime_context,
+        invoker,
+        &NoopExecutionLifecycle,
+    )
+    .await
+}
+
+pub async fn resume_flow_debug_run_with_runtime_context_and_lifecycle<I>(
+    plan: &CompiledPlan,
+    checkpoint: &CheckpointSnapshot,
+    waiting_node_id: &str,
+    resume_payload: &Value,
+    runtime_context: ExecutionRuntimeContext,
+    invoker: &I,
+    lifecycle: &dyn ExecutionLifecycle,
 ) -> Result<FlowDebugExecutionOutcome>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
@@ -320,6 +352,7 @@ where
                         Some(checkpoint.active_node_ids.iter().cloned().collect()),
                         &runtime_context,
                         invoker,
+                        lifecycle,
                     )
                     .await;
                 }
@@ -373,6 +406,7 @@ where
             Some(checkpoint.active_node_ids.iter().cloned().collect()),
             &runtime_context,
             invoker,
+            lifecycle,
         )
         .await;
     }
@@ -401,6 +435,7 @@ where
         Some(checkpoint.active_node_ids.iter().cloned().collect()),
         &runtime_context,
         invoker,
+        lifecycle,
     )
     .await
 }
@@ -412,10 +447,13 @@ async fn execute_from<I>(
     active_node_ids: Option<BTreeSet<String>>,
     runtime_context: &ExecutionRuntimeContext,
     invoker: &I,
+    lifecycle: &dyn ExecutionLifecycle,
 ) -> Result<FlowDebugExecutionOutcome>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    normalize_plan_variable_pool(plan, &mut variable_pool);
+    synchronize_runtime_global_variables(plan, &mut variable_pool, runtime_context);
     let mut node_traces = Vec::new();
     let mut pending_failure: Option<NodeExecutionFailure> = None;
     let mut active_node_ids = active_node_ids.unwrap_or_else(|| initial_active_node_ids(plan));
@@ -450,6 +488,7 @@ where
                     (resolution.resolved_inputs, error_payload)
                 }
                 Err(error) => {
+                    lifecycle.begin_node(node, &json!({})).await?;
                     let error_payload = build_binding_resolution_error_payload(&error);
                     node_traces.push(NodeExecutionTrace {
                         node_id: node.node_id.clone(),
@@ -475,19 +514,21 @@ where
                 }
             };
         let rendered_templates = render_templated_bindings(node, &resolved_inputs);
+        let node_input_payload = if matches!(node.node_type.as_str(), "start" | "workflow_start") {
+            start_node_execution_input(&variable_pool, &node.node_id)
+        } else {
+            Value::Object(resolved_inputs.clone())
+        };
+        lifecycle.begin_node(node, &node_input_payload).await?;
         let mut selected_source_handle: Option<String> = None;
 
         match node.node_type.as_str() {
             "start" | "workflow_start" => {
-                let payload = variable_pool
-                    .get(node_id)
-                    .cloned()
-                    .unwrap_or_else(|| json!({}));
                 node_traces.push(NodeExecutionTrace {
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
-                    input_payload: payload,
+                    input_payload: node_input_payload,
                     output_payload: json!({}),
                     error_payload: None,
                     metrics_payload: json!({ "preview_mode": true }),
@@ -533,7 +574,7 @@ where
                     node,
                     &resolved_inputs,
                     &rendered_templates,
-                    &variable_pool,
+                    &mut variable_pool,
                     runtime_context,
                     invoker,
                 )
@@ -602,10 +643,7 @@ where
                     });
                 }
 
-                variable_pool.insert(
-                    node.node_id.clone(),
-                    project_node_variable_payload(node, &execution.output_payload)?,
-                );
+                variable_pool.insert(node.node_id.clone(), execution.output_payload);
             }
             "plugin_node" => {
                 let execution = execute_capability_plugin_node(
@@ -648,6 +686,69 @@ where
                         });
                     }
                     continue;
+                }
+
+                variable_pool.insert(
+                    node.node_id.clone(),
+                    project_node_variable_payload(node, &execution.output_payload)?,
+                );
+            }
+            "data_model_list" | "data_model_get" | "data_model_create" | "data_model_update"
+            | "data_model_delete" => {
+                let execution = invoker
+                    .invoke_data_model_node(node, &resolved_inputs)
+                    .await?;
+                node_traces.push(NodeExecutionTrace {
+                    node_id: node.node_id.clone(),
+                    node_type: node.node_type.clone(),
+                    node_alias: node.alias.clone(),
+                    input_payload: Value::Object(resolved_inputs),
+                    output_payload: execution.output_payload.clone(),
+                    error_payload: execution.error_payload.clone(),
+                    metrics_payload: execution.metrics_payload.clone(),
+                    debug_payload: execution.debug_payload.clone(),
+                    provider_events: Vec::new(),
+                });
+
+                if let Some(error_payload) = execution.error_payload {
+                    if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
+                        plan,
+                        failed_node_index: index,
+                        active_node_ids: &mut active_node_ids,
+                        variable_pool: &mut variable_pool,
+                        pending_failure: &mut pending_failure,
+                        node,
+                        output_payload: &execution.output_payload,
+                        error_payload,
+                        allow_terminal_template_fallback: false,
+                    })? {
+                        return Ok(FlowDebugExecutionOutcome {
+                            stop_reason: ExecutionStopReason::Failed(failure),
+                            variable_pool,
+                            checkpoint_snapshot: None,
+                            node_traces,
+                        });
+                    }
+                    continue;
+                }
+
+                if let Some(callback) = execution.pending_callback {
+                    activate_downstream_nodes(plan, &mut active_node_ids, node, None);
+                    return Ok(FlowDebugExecutionOutcome {
+                        stop_reason: ExecutionStopReason::WaitingCallback(PendingCallbackTask {
+                            node_id: node.node_id.clone(),
+                            node_alias: node.alias.clone(),
+                            callback_kind: callback.callback_kind,
+                            request_payload: callback.request_payload,
+                        }),
+                        variable_pool: variable_pool.clone(),
+                        checkpoint_snapshot: Some(CheckpointSnapshot {
+                            next_node_index: index + 1,
+                            variable_pool,
+                            active_node_ids: checkpoint_active_node_ids(&active_node_ids),
+                        }),
+                        node_traces,
+                    });
                 }
 
                 variable_pool.insert(
@@ -782,8 +883,13 @@ where
                 });
             }
             "http_request" => {
-                let execution =
-                    execute_http_request_node(node, &resolved_inputs, &variable_pool, None).await?;
+                let execution = execute_http_request_node(
+                    node,
+                    &resolved_inputs,
+                    &variable_pool,
+                    runtime_context.http_response_file_persister.as_deref(),
+                )
+                .await?;
                 node_traces.push(NodeExecutionTrace {
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
@@ -919,7 +1025,7 @@ pub async fn execute_llm_node<I>(
     node: &CompiledNode,
     resolved_inputs: &Map<String, Value>,
     rendered_templates: &Map<String, Value>,
-    variable_pool: &Map<String, Value>,
+    variable_pool: &mut Map<String, Value>,
     runtime_context: &ExecutionRuntimeContext,
     invoker: &I,
 ) -> Result<LlmNodeExecution>
@@ -939,6 +1045,7 @@ where
 }
 
 pub(super) async fn execute_llm_node_provider_round<I>(
+    plan: &CompiledPlan,
     node: &CompiledNode,
     resolved_inputs: &Map<String, Value>,
     rendered_templates: &Map<String, Value>,
@@ -972,6 +1079,7 @@ where
 
     for (attempt_index, attempt_runtime) in attempt_runtimes.iter().enumerate() {
         let mut invocation = match build_provider_invocation(
+            plan,
             node,
             attempt_runtime,
             resolved_inputs,

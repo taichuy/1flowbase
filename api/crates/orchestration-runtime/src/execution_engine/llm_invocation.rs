@@ -81,6 +81,7 @@ pub(super) struct SystemPromptPart {
 }
 
 pub(super) fn build_provider_invocation(
+    plan: &CompiledPlan,
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,
     resolved_inputs: &Map<String, Value>,
@@ -97,6 +98,7 @@ pub(super) fn build_provider_invocation(
                 messages
             } else {
                 binding_prompt_messages_with_context_sources(
+                    plan,
                     node,
                     rendered_templates,
                     resolved_inputs,
@@ -119,6 +121,7 @@ pub(super) fn build_provider_invocation(
         context
     } else {
         provider_context_from_prompt_messages(binding_prompt_messages_with_context_sources(
+            plan,
             node,
             rendered_templates,
             resolved_inputs,

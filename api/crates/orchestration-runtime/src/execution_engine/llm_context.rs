@@ -53,6 +53,7 @@ pub(super) fn binding_prompt_messages<'a>(
 }
 
 pub(super) fn binding_prompt_messages_with_context_sources(
+    plan: &CompiledPlan,
     node: &CompiledNode,
     rendered_templates: &Map<String, Value>,
     resolved_inputs: &Map<String, Value>,
@@ -71,6 +72,7 @@ pub(super) fn binding_prompt_messages_with_context_sources(
     let mut messages = Vec::new();
     if integration_context_enabled(context_policy) {
         messages.extend(run_level_system_prompt_messages(
+            plan,
             node,
             resolved_inputs,
             variable_pool,
@@ -88,6 +90,7 @@ pub(super) fn binding_prompt_messages_with_context_sources(
                 .is_empty()
             {
                 messages.extend(compatible_history_messages_with_context_sources(
+                    plan,
                     node,
                     resolved_inputs,
                     variable_pool,
@@ -190,6 +193,7 @@ pub(super) fn build_llm_context_selector_error_payload(
 }
 
 pub(super) fn run_level_system_prompt_messages(
+    plan: &CompiledPlan,
     node: &CompiledNode,
     resolved_inputs: &Map<String, Value>,
     variable_pool: &Map<String, Value>,
@@ -230,7 +234,7 @@ pub(super) fn run_level_system_prompt_messages(
                 "resolved_inputs.system",
             ));
         }
-        for node_id in &node.dependency_node_ids {
+        for node_id in connected_upstream_node_ids(plan, &node.node_id) {
             if prompt_binding_selects_system(node, node_id) {
                 continue;
             }
@@ -258,7 +262,7 @@ pub(super) fn run_level_system_prompt_messages(
         ));
     }
 
-    for node_id in &node.dependency_node_ids {
+    for node_id in connected_upstream_node_ids(plan, &node.node_id) {
         if prompt_binding_selects_system(node, node_id) {
             continue;
         }
@@ -326,6 +330,7 @@ pub(super) fn system_prompt_message_with_source(
 }
 
 pub(super) fn compatible_history_messages_with_context_sources(
+    plan: &CompiledPlan,
     node: &CompiledNode,
     resolved_inputs: &Map<String, Value>,
     variable_pool: &Map<String, Value>,
@@ -338,8 +343,8 @@ pub(super) fn compatible_history_messages_with_context_sources(
         return annotate_prompt_messages(history, "history", "resolved_inputs.history".to_string());
     }
 
-    node.dependency_node_ids
-        .iter()
+    connected_upstream_node_ids(plan, &node.node_id)
+        .into_iter()
         .filter_map(|node_id| {
             variable_pool
                 .get(node_id)?
@@ -353,6 +358,30 @@ pub(super) fn compatible_history_messages_with_context_sources(
         })
         .next()
         .unwrap_or_default()
+}
+
+fn connected_upstream_node_ids<'a>(plan: &'a CompiledPlan, node_id: &str) -> Vec<&'a str> {
+    let mut reachable = BTreeSet::new();
+    let mut stack = plan
+        .nodes
+        .get(node_id)
+        .map(|node| node.dependency_node_ids.clone())
+        .unwrap_or_default();
+
+    while let Some(current) = stack.pop() {
+        if !reachable.insert(current.clone()) {
+            continue;
+        }
+        if let Some(node) = plan.nodes.get(&current) {
+            stack.extend(node.dependency_node_ids.iter().cloned());
+        }
+    }
+
+    plan.topological_order
+        .iter()
+        .filter(|candidate| reachable.contains(candidate.as_str()))
+        .map(String::as_str)
+        .collect()
 }
 
 pub(super) fn annotate_prompt_messages(

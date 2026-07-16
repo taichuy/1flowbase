@@ -4,8 +4,9 @@ use orchestration_runtime::compiled_plan::{
     CodeIsolationProfile, CompileIssueCode, CompiledCodeDependency, CompiledLlmRouting,
 };
 use orchestration_runtime::compiler::{
-    FlowCompileContext, FlowCompileJsDependency, FlowCompileNodeContribution,
-    FlowCompileProviderFamily, FlowCompileProviderInstance, FlowCompiler,
+    ensure_plan_execution_contract, FlowCompileContext, FlowCompileJsDependency,
+    FlowCompileNodeContribution, FlowCompileProviderFamily, FlowCompileProviderInstance,
+    FlowCompiler,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;

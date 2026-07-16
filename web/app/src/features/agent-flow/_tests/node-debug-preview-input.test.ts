@@ -166,7 +166,7 @@ describe('node debug preview input', () => {
     });
   });
 
-  test('applies upstream variable assignment nodes to downstream preview input', () => {
+  test('collects upstream variable assignment inputs without applying state changes locally', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const variableNode = createNodeDocument(
       'variable_assigner',
@@ -236,7 +236,10 @@ describe('node debug preview input', () => {
     ).toEqual({
       input_payload: {
         conversation: {
-          ApiBaseUrl: 'https://new.example.com/v1'
+          ApiBaseUrl: 'https://old.example.com'
+        },
+        'node-start': {
+          query: 'new.example.com'
         }
       },
       missing_fields: []

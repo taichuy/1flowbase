@@ -296,14 +296,12 @@ impl NativeInputMapper {
             input.history_target.as_deref(),
             Value::Array(history),
         )?;
-        if !system.is_empty() {
-            write_optional_selector(
-                &mut node_input_payload,
-                system_target(input).as_deref(),
-                serde_json::to_value(system)
-                    .map_err(|_| NativeInputMappingError::InvalidSystemPrompt)?,
-            )?;
-        }
+        write_optional_selector(
+            &mut node_input_payload,
+            system_target(input).as_deref(),
+            serde_json::to_value(system)
+                .map_err(|_| NativeInputMappingError::InvalidSystemPrompt)?,
+        )?;
         write_optional_selector(
             &mut node_input_payload,
             input.attachments_target.as_deref(),
@@ -889,6 +887,24 @@ mod tests {
         assert!(mapped.node_input_payload["node-start"]
             .get("compatibility")
             .is_none());
+    }
+
+    #[test]
+    fn mapper_materializes_empty_typed_start_context() {
+        let request: NativeRunRequest = serde_json::from_value(json!({
+            "query": "hello"
+        }))
+        .unwrap();
+
+        let mapped =
+            NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native())
+                .unwrap();
+
+        assert_eq!(mapped.node_input_payload["node-start"]["system"], json!([]));
+        assert_eq!(
+            mapped.node_input_payload["node-start"]["history"],
+            json!([])
+        );
     }
 
     #[test]

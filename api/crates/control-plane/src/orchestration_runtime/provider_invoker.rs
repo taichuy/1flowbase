@@ -84,11 +84,22 @@ where
         let provider_invoke_started = std::time::Instant::now();
         let first_token_timing = Arc::new(Mutex::new(None::<FirstTokenTiming>));
         let mut live_forward_handle = None;
-        let live_provider_events = if let (Some(node_id), Some(node_run_id)) =
-            (self.active_node_id.clone(), self.active_node_run_id)
+        let active_node = self
+            .flow_execution_context
+            .as_ref()
+            .and_then(|context| context.active_node.lock().ok()?.clone());
+        let active_node = active_node.or_else(|| {
+            Some(RuntimeActiveNode {
+                node_id: self.active_node_id.clone()?,
+                node_run_id: self.active_node_run_id?,
+            })
+        });
+        let live_provider_events = if let Some(RuntimeActiveNode {
+            node_id,
+            node_run_id,
+        }) = active_node
         {
             let live_sender = self.live_provider_events.clone();
-            let persist_sender = self.persist_events.clone();
             let runtime_event_stream = self.runtime_event_stream.clone();
             let answer_presentation = self.answer_presentation.clone();
             let repository = self.repository.clone();
@@ -97,163 +108,144 @@ where
             let canonical_tool_registry_for_task = canonical_tool_registry.clone();
             let (provider_sender, mut provider_receiver) =
                 mpsc::unbounded_channel::<ProviderStreamEvent>();
-            if live_sender.is_some() || runtime_event_stream.is_some() || persist_sender.is_some() {
-                live_forward_handle = Some(tokio::spawn(async move {
-                    let mut think_tag_splitter = ThinkTagStreamSplitter::default();
-                    while let Some(mut event) = provider_receiver.recv().await {
-                        orchestration_runtime::execution_engine::canonicalize_provider_stream_event_tool_call_name(
+            live_forward_handle = Some(tokio::spawn(async move {
+                let mut think_tag_splitter = ThinkTagStreamSplitter::default();
+                while let Some(mut event) = provider_receiver.recv().await {
+                    orchestration_runtime::execution_engine::canonicalize_provider_stream_event_tool_call_name(
                             &mut event,
                             &canonical_tool_registry_for_task,
                         );
-                        record_first_token_timing(
-                            &first_token_timing_for_task,
-                            &event,
-                            provider_invoke_started_at,
-                            provider_invoke_started,
-                        );
-                        if let Some(sender) = &live_sender {
-                            let _ = sender.send(LiveProviderStreamEvent {
-                                node_id: node_id.clone(),
-                                node_run_id,
-                                event: event.clone(),
-                            });
-                        }
-                        if let (Some(stream), Some(flow_run_id)) =
-                            (&runtime_event_stream, flow_run_id)
-                        {
-                            let runtime_events = match &event {
-                                ProviderStreamEvent::TextDelta { delta } => {
-                                    let mut runtime_events = Vec::new();
-                                    let parts = think_tag_splitter.split(delta);
-                                    for part in parts {
-                                        let provider_event = match part.kind {
-                                            DebugDeltaKind::Text => {
-                                                runtime_events.push(
-                                                    debug_stream_events::text_delta(
-                                                        &node_id,
-                                                        node_run_id,
-                                                        part.text.clone(),
-                                                    ),
-                                                );
-                                                ProviderStreamEvent::TextDelta { delta: part.text }
-                                            }
-                                            DebugDeltaKind::Reasoning => {
-                                                runtime_events.push(
-                                                    debug_stream_events::reasoning_delta(
-                                                        &node_id,
-                                                        node_run_id,
-                                                        part.text.clone(),
-                                                    ),
-                                                );
-                                                ProviderStreamEvent::ReasoningDelta {
-                                                    delta: part.text,
-                                                }
-                                            }
-                                        };
-                                        if let Some(answer_presentation) = &answer_presentation {
-                                            runtime_events.extend(
-                                                answer_presentation
-                                                    .lock()
-                                                    .await
-                                                    .push_provider_event(
-                                                        &node_id,
-                                                        node_run_id,
-                                                        &provider_event,
-                                                    ),
-                                            );
+                    record_first_token_timing(
+                        &first_token_timing_for_task,
+                        &event,
+                        provider_invoke_started_at,
+                        provider_invoke_started,
+                    );
+                    if let Some(sender) = &live_sender {
+                        let _ = sender.send(LiveProviderStreamEvent {
+                            node_id: node_id.clone(),
+                            node_run_id,
+                            event: event.clone(),
+                        });
+                    }
+                    if let (Some(stream), Some(flow_run_id)) = (&runtime_event_stream, flow_run_id)
+                    {
+                        let runtime_events = match &event {
+                            ProviderStreamEvent::TextDelta { delta } => {
+                                let mut runtime_events = Vec::new();
+                                let parts = think_tag_splitter.split(delta);
+                                for part in parts {
+                                    let provider_event = match part.kind {
+                                        DebugDeltaKind::Text => {
+                                            runtime_events.push(debug_stream_events::text_delta(
+                                                &node_id,
+                                                node_run_id,
+                                                part.text.clone(),
+                                            ));
+                                            ProviderStreamEvent::TextDelta { delta: part.text }
                                         }
-                                    }
-                                    runtime_events
-                                }
-                                ProviderStreamEvent::ReasoningDelta { delta } => {
-                                    let mut runtime_events =
-                                        vec![debug_stream_events::reasoning_delta(
-                                            &node_id,
-                                            node_run_id,
-                                            delta.clone(),
-                                        )];
+                                        DebugDeltaKind::Reasoning => {
+                                            runtime_events.push(
+                                                debug_stream_events::reasoning_delta(
+                                                    &node_id,
+                                                    node_run_id,
+                                                    part.text.clone(),
+                                                ),
+                                            );
+                                            ProviderStreamEvent::ReasoningDelta { delta: part.text }
+                                        }
+                                    };
                                     if let Some(answer_presentation) = &answer_presentation {
                                         runtime_events.extend(
                                             answer_presentation.lock().await.push_provider_event(
                                                 &node_id,
                                                 node_run_id,
-                                                &event,
+                                                &provider_event,
                                             ),
                                         );
                                     }
-                                    runtime_events
                                 }
-                                _ => Vec::new(),
-                            };
-                            if runtime_events.is_empty() {
-                                if let Some(persist) = &persist_sender {
-                                    let _ = persist.send(event);
-                                }
-                                continue;
-                            };
-                            for runtime_event in runtime_events {
-                                let is_answer_presentation =
-                                    debug_stream_events::is_answer_presentation_delta_payload(
-                                        &runtime_event.payload,
+                                runtime_events
+                            }
+                            ProviderStreamEvent::ReasoningDelta { delta } => {
+                                let mut runtime_events =
+                                    vec![debug_stream_events::reasoning_delta(
+                                        &node_id,
+                                        node_run_id,
+                                        delta.clone(),
+                                    )];
+                                if let Some(answer_presentation) = &answer_presentation {
+                                    runtime_events.extend(
+                                        answer_presentation.lock().await.push_provider_event(
+                                            &node_id,
+                                            node_run_id,
+                                            &event,
+                                        ),
                                     );
-                                if is_answer_presentation {
-                                    if let Err(error) =
-                                        runtime_event_persister::persist_runtime_event_payload(
-                                            &repository,
-                                            flow_run_id,
-                                            &runtime_event,
-                                        )
-                                        .await
-                                    {
-                                        tracing::warn!(
-                                            flow_run_id = %flow_run_id,
-                                            event_type = %runtime_event.event_type,
-                                            error = %error,
-                                            "failed to persist answer presentation runtime event"
-                                        );
-                                    }
                                 }
-                                let event_type = runtime_event.event_type.clone();
-                                let source = runtime_event.source;
-                                let mut stream_event = runtime_event;
-                                if is_answer_presentation {
-                                    stream_event.persist_required = false;
+                                runtime_events
+                            }
+                            _ => Vec::new(),
+                        };
+                        if runtime_events.is_empty() {
+                            continue;
+                        };
+                        for runtime_event in runtime_events {
+                            let is_answer_presentation =
+                                debug_stream_events::is_answer_presentation_delta_payload(
+                                    &runtime_event.payload,
+                                );
+                            if is_answer_presentation {
+                                if let Err(error) =
+                                    runtime_event_persister::persist_runtime_event_payload(
+                                        &repository,
+                                        flow_run_id,
+                                        &runtime_event,
+                                    )
+                                    .await
+                                {
+                                    tracing::warn!(
+                                        flow_run_id = %flow_run_id,
+                                        event_type = %runtime_event.event_type,
+                                        error = %error,
+                                        "failed to persist answer presentation runtime event"
+                                    );
                                 }
-                                if let Err(error) = stream.append(flow_run_id, stream_event).await {
-                                    if is_expected_runtime_event_stream_closed_error(&error) {
-                                        tracing::debug!(
-                                            flow_run_id = %flow_run_id,
-                                            event_type = %event_type,
-                                            source = ?source,
-                                            error = %error,
-                                            "provider runtime event append skipped because stream is already closed"
-                                        );
-                                    } else {
-                                        tracing::warn!(
-                                            flow_run_id = %flow_run_id,
-                                            event_type = %event_type,
-                                            source = ?source,
-                                            error = %error,
-                                            "failed to append provider runtime event"
-                                        );
-                                    }
+                            }
+                            let event_type = runtime_event.event_type.clone();
+                            let source = runtime_event.source;
+                            let mut stream_event = runtime_event;
+                            if is_answer_presentation {
+                                stream_event.persist_required = false;
+                            }
+                            if let Err(error) = stream.append(flow_run_id, stream_event).await {
+                                if is_expected_runtime_event_stream_closed_error(&error) {
+                                    tracing::debug!(
+                                        flow_run_id = %flow_run_id,
+                                        event_type = %event_type,
+                                        source = ?source,
+                                        error = %error,
+                                        "provider runtime event append skipped because stream is already closed"
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        flow_run_id = %flow_run_id,
+                                        event_type = %event_type,
+                                        source = ?source,
+                                        error = %error,
+                                        "failed to append provider runtime event"
+                                    );
                                 }
                             }
                         }
-                        if let Some(persist) = &persist_sender {
-                            let _ = persist.send(event);
-                        }
                     }
-                }));
-                Some(provider_sender)
-            } else {
-                None
-            }
+                }
+            }));
+            Some(provider_sender)
         } else {
             None
         };
 
-        let has_live_provider_events = live_provider_events.is_some();
         let invocation_result = self
             .runtime
             .invoke_stream_with_live_events(&installation, input, live_provider_events)
@@ -283,14 +275,6 @@ where
             &mut output,
             &canonical_tool_registry,
         );
-        if let Some(persist) = &self.persist_events {
-            if !has_live_provider_events {
-                for event in output.events.iter().cloned() {
-                    let _ = persist.send(event);
-                }
-            }
-        }
-
         Ok(output)
     }
 }
@@ -473,59 +457,33 @@ where
             workspace_id: self.workspace_id,
             provider_secret_master_key: self.provider_secret_master_key.clone(),
             live_provider_events: self.live_provider_events.clone(),
-            persist_events: self.persist_events.clone(),
             runtime_event_stream: self.runtime_event_stream.clone(),
             flow_run_id: Some(flow_run_id),
             active_node_id: self.active_node_id.clone(),
             active_node_run_id: self.active_node_run_id,
             api_node_id: self.api_node_id.clone(),
             provider_install_root: self.provider_install_root.clone(),
+            flow_execution_context: self.flow_execution_context.clone(),
             answer_presentation: self.answer_presentation.clone(),
         }
+    }
+
+    pub(super) fn with_flow_execution_context(
+        &self,
+        context: Arc<RuntimeFlowExecutionContext>,
+    ) -> Self {
+        let mut invoker = self.clone();
+        invoker.flow_execution_context = Some(context);
+        invoker
     }
 
     pub(super) fn with_answer_presentation(
         &self,
         answer_presentation: Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>,
     ) -> Self {
-        Self {
-            repository: self.repository.clone(),
-            runtime: self.runtime.clone(),
-            workspace_id: self.workspace_id,
-            provider_secret_master_key: self.provider_secret_master_key.clone(),
-            live_provider_events: self.live_provider_events.clone(),
-            persist_events: self.persist_events.clone(),
-            runtime_event_stream: self.runtime_event_stream.clone(),
-            flow_run_id: self.flow_run_id,
-            active_node_id: self.active_node_id.clone(),
-            active_node_run_id: self.active_node_run_id,
-            api_node_id: self.api_node_id.clone(),
-            provider_install_root: self.provider_install_root.clone(),
-            answer_presentation: Some(answer_presentation),
-        }
-    }
-
-    pub(super) fn for_live_llm_node_with_persist(
-        &self,
-        node_id: String,
-        node_run_id: Uuid,
-        persist_events: mpsc::UnboundedSender<ProviderStreamEvent>,
-    ) -> Self {
-        Self {
-            repository: self.repository.clone(),
-            runtime: self.runtime.clone(),
-            workspace_id: self.workspace_id,
-            provider_secret_master_key: self.provider_secret_master_key.clone(),
-            live_provider_events: self.live_provider_events.clone(),
-            persist_events: Some(persist_events),
-            runtime_event_stream: self.runtime_event_stream.clone(),
-            flow_run_id: self.flow_run_id,
-            active_node_id: Some(node_id),
-            active_node_run_id: Some(node_run_id),
-            api_node_id: self.api_node_id.clone(),
-            provider_install_root: self.provider_install_root.clone(),
-            answer_presentation: self.answer_presentation.clone(),
-        }
+        let mut invoker = self.clone();
+        invoker.answer_presentation = Some(answer_presentation);
+        invoker
     }
 
     pub(super) async fn resolve_llm_instance(
@@ -586,7 +544,12 @@ where
 impl<R, H> orchestration_runtime::execution_engine::CapabilityInvoker
     for RuntimeProviderInvoker<R, H>
 where
-    R: PluginRepository + Clone + Send + Sync,
+    R: ModelDefinitionRepository
+        + OrchestrationRuntimeRepository
+        + PluginRepository
+        + Clone
+        + Send
+        + Sync,
     H: ProviderRuntimePort + CapabilityPluginRuntimePort + Clone + Send + Sync,
 {
     async fn invoke_capability_node(
@@ -627,6 +590,84 @@ where
         Ok(
             orchestration_runtime::execution_engine::CapabilityInvocationOutput {
                 output_payload: output.output_payload,
+            },
+        )
+    }
+
+    async fn invoke_data_model_node(
+        &self,
+        node: &orchestration_runtime::compiled_plan::CompiledNode,
+        resolved_inputs: &serde_json::Map<String, Value>,
+    ) -> Result<orchestration_runtime::execution_engine::DataModelInvocationOutput> {
+        let context = self
+            .flow_execution_context
+            .as_ref()
+            .ok_or_else(|| anyhow!("data model flow execution context is not configured"))?;
+        let active_node = context
+            .active_node
+            .lock()
+            .map_err(|_| anyhow!("active runtime node lock is poisoned"))?
+            .clone()
+            .ok_or_else(|| anyhow!("data model active runtime node is not set"))?;
+        if active_node.node_id != node.node_id {
+            return Err(anyhow!(
+                "data model active runtime node mismatch: expected {}, got {}",
+                node.node_id,
+                active_node.node_id
+            ));
+        }
+
+        let execution = data_model_runtime::execute_data_model_node(
+            self.repository.clone(),
+            context.data_model.runtime_engine.clone(),
+            &context.data_model.actor,
+            node,
+            resolved_inputs,
+            &data_model_runtime::DataModelRunContext {
+                workspace_id: self.workspace_id,
+                application_id: context.data_model.application_id,
+                draft_id: context.data_model.draft_id,
+                flow_run_id: context.data_model.flow_run_id,
+                node_run_id: active_node.node_run_id,
+            },
+        )
+        .await;
+
+        let (pending_callback, debug_payload) = match execution.waiting_confirmation {
+            Some(confirmation) => {
+                let request_payload = json!({
+                    "kind": "data_model_side_effect_confirmation",
+                    "actor_user_id": context.data_model.actor.user_id,
+                    "node_id": node.node_id,
+                    "run_id": context.data_model.flow_run_id,
+                    "payload_hash": confirmation.payload_hash,
+                    "idempotency_key": confirmation.idempotency_key,
+                    "expires_at": confirmation.expires_at,
+                    "request_payload": confirmation.request_payload,
+                });
+                (
+                    Some(orchestration_runtime::execution_engine::DataModelCallback {
+                        callback_kind: "data_model_side_effect_confirmation".to_string(),
+                        request_payload,
+                    }),
+                    json!({
+                        "side_effect_policy": "confirm_each_run",
+                        "idempotency_key": confirmation.idempotency_key,
+                        "payload_hash": confirmation.payload_hash,
+                        "expires_at": confirmation.expires_at,
+                    }),
+                )
+            }
+            None => (None, json!({})),
+        };
+
+        Ok(
+            orchestration_runtime::execution_engine::DataModelInvocationOutput {
+                output_payload: execution.output_payload,
+                error_payload: execution.error_payload,
+                metrics_payload: execution.metrics_payload,
+                debug_payload,
+                pending_callback,
             },
         )
     }

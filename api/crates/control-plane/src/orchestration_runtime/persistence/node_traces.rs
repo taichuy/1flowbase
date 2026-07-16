@@ -1,6 +1,14 @@
 use super::*;
 use std::sync::Arc;
 
+pub(in crate::orchestration_runtime) type PreparedNodeRuns =
+    std::collections::BTreeMap<String, domain::NodeRunRecord>;
+
+pub(super) struct PersistedNodeTraces {
+    pub(super) waiting_node_run: Option<domain::NodeRunRecord>,
+    pub(super) stream_events: Vec<crate::ports::RuntimeEventPayload>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn persist_flow_debug_node_traces<R>(
     repository: &R,
@@ -12,8 +20,9 @@ pub(super) async fn persist_flow_debug_node_traces<R>(
     flow_run_id: Uuid,
     flow_span_id: Option<Uuid>,
     outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+    prepared_node_runs: Option<&PreparedNodeRuns>,
     base_started_at: OffsetDateTime,
-) -> Result<Option<domain::NodeRunRecord>>
+) -> Result<PersistedNodeTraces>
 where
     R: OrchestrationRuntimeRepository,
 {
@@ -33,21 +42,30 @@ where
         orchestration_runtime::execution_state::ExecutionStopReason::Completed => None,
     };
     let mut waiting_node_run = None;
+    let mut stream_events = Vec::new();
 
     for (index, trace) in outcome.node_traces.iter().enumerate() {
-        let started_at = base_started_at + Duration::seconds(index as i64);
-        let node_run = repository
-            .create_node_run(&CreateNodeRunInput {
-                flow_run_id,
-                node_id: trace.node_id.clone(),
-                node_type: trace.node_type.clone(),
-                node_alias: trace.node_alias.clone(),
-                status: domain::NodeRunStatus::Running,
-                input_payload: trace.input_payload.clone(),
-                debug_payload: json!({}),
-                started_at,
-            })
-            .await?;
+        let fallback_started_at = base_started_at + Duration::seconds(index as i64);
+        let node_run = if let Some(node_run) = prepared_node_runs
+            .and_then(|node_runs| node_runs.get(&trace.node_id))
+            .cloned()
+        {
+            node_run
+        } else {
+            repository
+                .create_node_run(&CreateNodeRunInput {
+                    flow_run_id,
+                    node_id: trace.node_id.clone(),
+                    node_type: trace.node_type.clone(),
+                    node_alias: trace.node_alias.clone(),
+                    status: domain::NodeRunStatus::Running,
+                    input_payload: trace.input_payload.clone(),
+                    debug_payload: json!({}),
+                    started_at: fallback_started_at,
+                })
+                .await?
+        };
+        let started_at = node_run.started_at;
         let span_kind = if trace.node_type == "llm" {
             domain::RuntimeSpanKind::LlmTurn
         } else {
@@ -117,6 +135,14 @@ where
                 finished_at,
             })
             .await?;
+        let node_finished_event = debug_stream_events::node_finished(&node_run);
+        runtime_event_persister::persist_runtime_event_payload(
+            repository,
+            flow_run_id,
+            &node_finished_event,
+        )
+        .await?;
+        stream_events.push(node_finished_event);
         append_provider_stream_events(
             repository,
             flow_run_id,
@@ -139,7 +165,10 @@ where
         }
     }
 
-    Ok(waiting_node_run)
+    Ok(PersistedNodeTraces {
+        waiting_node_run,
+        stream_events,
+    })
 }
 
 async fn persist_visible_internal_llm_tool_route_events<R>(

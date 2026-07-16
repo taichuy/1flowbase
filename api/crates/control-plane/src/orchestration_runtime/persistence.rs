@@ -46,6 +46,7 @@ pub(in crate::orchestration_runtime) use checkpoint_locator::{
     checkpoint_node_id, checkpoint_snapshot_from_record, CheckpointLocatorPayload,
 };
 use node_traces::persist_flow_debug_node_traces;
+pub(super) use node_traces::PreparedNodeRuns;
 use provider_observability::{append_provider_stream_events, persist_llm_context_observability};
 
 pub(super) struct WaitingNodeResumeUpdate {
@@ -64,6 +65,7 @@ pub(super) struct PersistFlowDebugOutcomeInput<'a> {
     pub(super) flow_run: &'a domain::FlowRunRecord,
     pub(super) compiled_plan: Option<&'a orchestration_runtime::compiled_plan::CompiledPlan>,
     pub(super) outcome: &'a orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+    pub(super) prepared_node_runs: Option<&'a PreparedNodeRuns>,
     pub(super) trigger_event_type: &'a str,
     pub(super) trigger_event_payload: Value,
     pub(super) base_started_at: OffsetDateTime,
@@ -72,7 +74,8 @@ pub(super) struct PersistFlowDebugOutcomeInput<'a> {
 
 pub(super) struct PersistedFlowDebugOutcome {
     pub(super) detail: domain::ApplicationRunDetail,
-    pub(super) answer_presentation_events: Vec<crate::ports::RuntimeEventPayload>,
+    pub(super) stream_events: Vec<crate::ports::RuntimeEventPayload>,
+    pub(super) close_reason: Option<crate::ports::RuntimeEventCloseReason>,
 }
 
 pub(super) async fn persist_flow_debug_outcome<R>(
@@ -90,6 +93,7 @@ where
         flow_run,
         compiled_plan,
         outcome,
+        prepared_node_runs,
         trigger_event_type,
         trigger_event_payload,
         base_started_at,
@@ -112,7 +116,6 @@ where
         },
     )
     .await?;
-    let answer_presentation_events;
     repository
         .append_run_event(&AppendRunEventInput {
             flow_run_id: flow_run.id,
@@ -141,7 +144,7 @@ where
             .await?;
     }
 
-    let waiting_node_run = persist_flow_debug_node_traces(
+    let persisted_node_traces = persist_flow_debug_node_traces(
         repository,
         scope_id,
         application_name,
@@ -151,9 +154,13 @@ where
         flow_run.id,
         Some(flow_span.id),
         outcome,
+        prepared_node_runs,
         base_started_at,
     )
     .await?;
+    let waiting_node_run = persisted_node_traces.waiting_node_run;
+    let mut stream_events = persisted_node_traces.stream_events;
+    let close_reason;
 
     match &outcome.stop_reason {
         orchestration_runtime::execution_state::ExecutionStopReason::WaitingHuman(wait) => {
@@ -168,10 +175,40 @@ where
                 flow_run.id,
                 compiled_plan,
                 outcome,
-                base_started_at + Duration::seconds(outcome.node_traces.len() as i64),
+                OffsetDateTime::now_utc(),
             )
             .await?
             .unwrap_or_else(|| json!({}));
+            let updated = repository
+                .update_flow_run_if_status(
+                    &UpdateFlowRunInput {
+                        flow_run_id: flow_run.id,
+                        status: {
+                            ensure_flow_run_transition(
+                                flow_run.status,
+                                domain::FlowRunStatus::WaitingHuman,
+                                "persist_flow_waiting_human",
+                            )?;
+                            domain::FlowRunStatus::WaitingHuman
+                        },
+                        output_payload: answer_output_payload,
+                        error_payload: None,
+                        finished_at: None,
+                    },
+                    flow_run.status,
+                )
+                .await?;
+            if updated.is_none() {
+                let detail = repository
+                    .get_application_run_detail(application_id, flow_run.id)
+                    .await?
+                    .ok_or_else(|| anyhow!("persisted flow run detail not found"))?;
+                return Ok(PersistedFlowDebugOutcome {
+                    detail,
+                    stream_events: Vec::new(),
+                    close_reason: None,
+                });
+            }
             repository
                 .create_checkpoint(&CreateCheckpointInput {
                     flow_run_id: flow_run.id,
@@ -187,39 +224,25 @@ where
                     external_ref_payload: Some(json!({ "prompt": wait.prompt })),
                 })
                 .await?;
-            repository
-                .update_flow_run(&UpdateFlowRunInput {
-                    flow_run_id: flow_run.id,
-                    status: {
-                        ensure_flow_run_transition(
-                            flow_run.status,
-                            domain::FlowRunStatus::WaitingHuman,
-                            "persist_flow_waiting_human",
-                        )?;
-                        domain::FlowRunStatus::WaitingHuman
-                    },
-                    output_payload: answer_output_payload,
-                    error_payload: None,
-                    finished_at: None,
-                })
-                .await?;
-            answer_presentation_events = append_ready_answer_presentation_prefix(
-                repository,
-                flow_run.id,
-                compiled_plan,
-                outcome,
-            )
-            .await?;
+            stream_events.extend(
+                append_ready_answer_presentation_prefix(
+                    repository,
+                    flow_run.id,
+                    compiled_plan,
+                    outcome,
+                )
+                .await?,
+            );
+            let waiting_event =
+                debug_stream_events::waiting_human(flow_run.id, waiting_node_run.id, &wait.node_id);
             runtime_event_persister::persist_runtime_event_payload(
                 repository,
                 flow_run.id,
-                &debug_stream_events::waiting_human(
-                    flow_run.id,
-                    waiting_node_run.id,
-                    &wait.node_id,
-                ),
+                &waiting_event,
             )
             .await?;
+            stream_events.push(waiting_event);
+            close_reason = Some(crate::ports::RuntimeEventCloseReason::WaitingHuman);
         }
         orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(wait) => {
             let snapshot = outcome
@@ -233,16 +256,55 @@ where
                 flow_run.id,
                 compiled_plan,
                 outcome,
-                base_started_at + Duration::seconds(outcome.node_traces.len() as i64),
+                OffsetDateTime::now_utc(),
             )
             .await?
             .unwrap_or_else(|| json!({}));
+            let (checkpoint_status, checkpoint_reason) =
+                if wait.callback_kind == "data_model_side_effect_confirmation" {
+                    (
+                        "waiting_data_model_side_effect_confirmation",
+                        "等待 Data Model 写入确认",
+                    )
+                } else {
+                    ("waiting_callback", "等待 callback 回填")
+                };
+            let updated = repository
+                .update_flow_run_if_status(
+                    &UpdateFlowRunInput {
+                        flow_run_id: flow_run.id,
+                        status: {
+                            ensure_flow_run_transition(
+                                flow_run.status,
+                                domain::FlowRunStatus::WaitingCallback,
+                                "persist_flow_waiting_callback",
+                            )?;
+                            domain::FlowRunStatus::WaitingCallback
+                        },
+                        output_payload: answer_output_payload,
+                        error_payload: None,
+                        finished_at: None,
+                    },
+                    flow_run.status,
+                )
+                .await?;
+            if updated.is_none() {
+                let detail = repository
+                    .get_application_run_detail(application_id, flow_run.id)
+                    .await?
+                    .ok_or_else(|| anyhow!("persisted flow run detail not found"))?;
+                return Ok(PersistedFlowDebugOutcome {
+                    detail,
+                    stream_events: Vec::new(),
+                    close_reason: None,
+                });
+            }
             repository
                 .create_checkpoint(&CreateCheckpointInput {
                     flow_run_id: flow_run.id,
                     node_run_id: Some(waiting_node_run.id),
-                    status: "waiting_callback".to_string(),
-                    reason: "等待 callback 回填".to_string(),
+                    status: checkpoint_status.to_string(),
+                    reason: checkpoint_reason.to_string(),
                     locator_payload: CheckpointLocatorPayload::from_snapshot(
                         &wait.node_id,
                         snapshot,
@@ -261,40 +323,29 @@ where
                     external_ref_payload: Some(wait.request_payload.clone()),
                 })
                 .await?;
-            repository
-                .update_flow_run(&UpdateFlowRunInput {
-                    flow_run_id: flow_run.id,
-                    status: {
-                        ensure_flow_run_transition(
-                            flow_run.status,
-                            domain::FlowRunStatus::WaitingCallback,
-                            "persist_flow_waiting_callback",
-                        )?;
-                        domain::FlowRunStatus::WaitingCallback
-                    },
-                    output_payload: answer_output_payload,
-                    error_payload: None,
-                    finished_at: None,
-                })
-                .await?;
-            answer_presentation_events = append_ready_answer_presentation_prefix(
-                repository,
+            stream_events.extend(
+                append_ready_answer_presentation_prefix(
+                    repository,
+                    flow_run.id,
+                    compiled_plan,
+                    outcome,
+                )
+                .await?,
+            );
+            let waiting_event = debug_stream_events::waiting_callback_with_task(
                 flow_run.id,
-                compiled_plan,
-                outcome,
-            )
-            .await?;
+                waiting_node_run.id,
+                &wait.node_id,
+                &callback_task,
+            );
             runtime_event_persister::persist_runtime_event_payload(
                 repository,
                 flow_run.id,
-                &debug_stream_events::waiting_callback_with_task(
-                    flow_run.id,
-                    waiting_node_run.id,
-                    &wait.node_id,
-                    &callback_task,
-                ),
+                &waiting_event,
             )
             .await?;
+            stream_events.push(waiting_event);
+            close_reason = Some(crate::ports::RuntimeEventCloseReason::WaitingCallback);
         }
         orchestration_runtime::execution_state::ExecutionStopReason::Completed => {
             ensure_flow_run_transition(
@@ -322,16 +373,19 @@ where
                     .ok_or_else(|| anyhow!("persisted flow run detail not found"))?;
                 return Ok(PersistedFlowDebugOutcome {
                     detail,
-                    answer_presentation_events: Vec::new(),
+                    stream_events: Vec::new(),
+                    close_reason: None,
                 });
             }
-            answer_presentation_events = append_answer_presentation_suffix(
-                repository,
-                flow_run.id,
-                answer_node_id(outcome),
-                &output_payload,
-            )
-            .await?;
+            stream_events.extend(
+                append_answer_presentation_suffix(
+                    repository,
+                    flow_run.id,
+                    answer_node_id(outcome),
+                    &output_payload,
+                )
+                .await?,
+            );
             repository
                 .append_run_event(&AppendRunEventInput {
                     flow_run_id: flow_run.id,
@@ -340,12 +394,15 @@ where
                     payload: output_payload.clone(),
                 })
                 .await?;
+            let terminal_event = debug_stream_events::flow_finished(flow_run.id, output_payload);
             runtime_event_persister::persist_runtime_event_payload(
                 repository,
                 flow_run.id,
-                &debug_stream_events::flow_finished(flow_run.id, output_payload),
+                &terminal_event,
             )
             .await?;
+            stream_events.push(terminal_event);
+            close_reason = Some(crate::ports::RuntimeEventCloseReason::Finished);
         }
         orchestration_runtime::execution_state::ExecutionStopReason::Failed(failure) => {
             ensure_flow_run_transition(
@@ -374,16 +431,19 @@ where
                     .ok_or_else(|| anyhow!("persisted flow run detail not found"))?;
                 return Ok(PersistedFlowDebugOutcome {
                     detail,
-                    answer_presentation_events: Vec::new(),
+                    stream_events: Vec::new(),
+                    close_reason: None,
                 });
             }
-            answer_presentation_events = append_answer_presentation_suffix(
-                repository,
-                flow_run.id,
-                answer_node_id(outcome),
-                &output_payload,
-            )
-            .await?;
+            stream_events.extend(
+                append_answer_presentation_suffix(
+                    repository,
+                    flow_run.id,
+                    answer_node_id(outcome),
+                    &output_payload,
+                )
+                .await?,
+            );
             repository
                 .append_run_event(&AppendRunEventInput {
                     flow_run_id: flow_run.id,
@@ -392,12 +452,15 @@ where
                     payload: error_payload.clone(),
                 })
                 .await?;
+            let terminal_event = debug_stream_events::flow_failed(flow_run.id, error_payload);
             runtime_event_persister::persist_runtime_event_payload(
                 repository,
                 flow_run.id,
-                &debug_stream_events::flow_failed(flow_run.id, error_payload),
+                &terminal_event,
             )
             .await?;
+            stream_events.push(terminal_event);
+            close_reason = Some(crate::ports::RuntimeEventCloseReason::Failed);
         }
     }
 
@@ -407,7 +470,8 @@ where
         .ok_or_else(|| anyhow!("persisted flow run detail not found"))?;
     Ok(PersistedFlowDebugOutcome {
         detail,
-        answer_presentation_events,
+        stream_events,
+        close_reason,
     })
 }
 

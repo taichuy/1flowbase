@@ -57,7 +57,7 @@ pub mod trace_projection;
 pub(crate) use provider_invoker::test_support;
 
 use self::{
-    compile_context::ensure_compiled_plan_runnable_for_node,
+    compile_context::{ensure_compiled_plan_runnable, ensure_compiled_plan_runnable_for_node},
     debug_variable_cache::{persist_debug_variable_cache_entries, public_node_variable_cache},
     inputs::{
         build_compiled_plan_input, build_complete_flow_run_input, build_complete_node_run_input,
@@ -68,7 +68,7 @@ use self::{
     persistence::{
         checkpoint_node_id, checkpoint_snapshot_from_record, next_node_started_at,
         persist_flow_debug_outcome, persist_preview_events, PersistFlowDebugOutcomeInput,
-        WaitingNodeResumeUpdate,
+        PreparedNodeRuns, WaitingNodeResumeUpdate,
     },
     provider_invoker::{
         freeze_failover_queue_routes, is_expected_runtime_event_stream_closed_error,
@@ -258,15 +258,50 @@ struct RuntimeProviderInvoker<R, H> {
     workspace_id: Uuid,
     provider_secret_master_key: String,
     live_provider_events: Option<LiveProviderStreamEventSender>,
-    persist_events: Option<mpsc::UnboundedSender<ProviderStreamEvent>>,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
     flow_run_id: Option<Uuid>,
     active_node_id: Option<String>,
     active_node_run_id: Option<Uuid>,
     api_node_id: Option<String>,
     provider_install_root: Option<PathBuf>,
+    flow_execution_context: Option<Arc<RuntimeFlowExecutionContext>>,
     answer_presentation:
         Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
+}
+
+struct RuntimeFlowExecutionContext {
+    active_node: Mutex<Option<RuntimeActiveNode>>,
+    data_model: RuntimeDataModelExecutionContext,
+}
+
+#[derive(Clone)]
+struct RuntimeActiveNode {
+    node_id: String,
+    node_run_id: Uuid,
+}
+
+struct RuntimeDataModelExecutionContext {
+    actor: domain::ActorContext,
+    application_id: Uuid,
+    draft_id: Uuid,
+    flow_run_id: Uuid,
+    runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+}
+
+struct ResumeExecutionSegmentInput<'a> {
+    actor: &'a domain::ActorContext,
+    application: &'a domain::ApplicationRecord,
+    flow_run: &'a domain::FlowRunRecord,
+    compiled_plan: &'a orchestration_runtime::compiled_plan::CompiledPlan,
+    snapshot: &'a orchestration_runtime::execution_state::CheckpointSnapshot,
+    waiting_node_id: &'a str,
+    waiting_node_run_id: Option<Uuid>,
+    resume_payload: &'a Value,
+}
+
+struct ResumeExecutionSegmentOutput {
+    outcome: orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+    prepared_node_runs: PreparedNodeRuns,
 }
 
 pub struct OrchestrationRuntimeService<R, H> {
@@ -361,16 +396,36 @@ where
         &self,
         plan: &orchestration_runtime::compiled_plan::CompiledPlan,
         variable_pool: &serde_json::Map<String, Value>,
-    ) -> orchestration_runtime::execution_engine::ExecutionRuntimeContext {
+    ) -> Result<orchestration_runtime::execution_engine::ExecutionRuntimeContext> {
         let context =
             orchestration_runtime::execution_engine::ExecutionRuntimeContext::from_plan_input(
                 plan,
                 variable_pool,
-            );
-        match &self.llm_routing_counter_store {
+            )?;
+        Ok(match &self.llm_routing_counter_store {
             Some(store) => context.with_llm_routing_counter_store(store.clone()),
             None => context,
-        }
+        })
+    }
+
+    fn runtime_flow_execution_context(
+        &self,
+        actor: domain::ActorContext,
+        application_id: Uuid,
+        draft_id: Uuid,
+        flow_run_id: Uuid,
+        active_node: Option<RuntimeActiveNode>,
+    ) -> Arc<RuntimeFlowExecutionContext> {
+        Arc::new(RuntimeFlowExecutionContext {
+            active_node: Mutex::new(active_node),
+            data_model: RuntimeDataModelExecutionContext {
+                actor,
+                application_id,
+                draft_id,
+                flow_run_id,
+                runtime_engine: self.runtime_engine.clone(),
+            },
+        })
     }
 
     fn runtime_invoker(&self, workspace_id: Uuid) -> RuntimeProviderInvoker<R, H> {
@@ -380,13 +435,13 @@ where
             workspace_id,
             provider_secret_master_key: self.provider_secret_master_key.clone(),
             live_provider_events: None,
-            persist_events: None,
             runtime_event_stream: self.runtime_event_stream.clone(),
             flow_run_id: None,
             active_node_id: None,
             active_node_run_id: None,
             api_node_id: self.api_node_id.clone(),
             provider_install_root: self.provider_install_root.clone(),
+            flow_execution_context: None,
             answer_presentation: None,
         }
     }
@@ -402,15 +457,85 @@ where
             workspace_id,
             provider_secret_master_key: self.provider_secret_master_key.clone(),
             live_provider_events: Some(live_provider_events),
-            persist_events: None,
             runtime_event_stream: self.runtime_event_stream.clone(),
             flow_run_id: None,
             active_node_id: None,
             active_node_run_id: None,
             api_node_id: self.api_node_id.clone(),
             provider_install_root: self.provider_install_root.clone(),
+            flow_execution_context: None,
             answer_presentation: None,
         }
+    }
+
+    async fn resume_execution_segment(
+        &self,
+        input: ResumeExecutionSegmentInput<'_>,
+    ) -> Result<ResumeExecutionSegmentOutput>
+    where
+        R: crate::ports::FileManagementRepository,
+    {
+        let flow_execution_context = self.runtime_flow_execution_context(
+            input.actor.clone(),
+            input.application.id,
+            input.flow_run.draft_id,
+            input.flow_run.id,
+            input
+                .waiting_node_run_id
+                .map(|node_run_id| RuntimeActiveNode {
+                    node_id: input.waiting_node_id.to_string(),
+                    node_run_id,
+                }),
+        );
+        let lifecycle = live_debug_run::PersistedNodeLifecycle::new(
+            self,
+            input.flow_run.id,
+            flow_execution_context.clone(),
+        );
+        let invoker = self
+            .runtime_invoker(input.application.workspace_id)
+            .for_flow_run(input.flow_run.id)
+            .with_flow_execution_context(flow_execution_context);
+        let answer_presentation = answer_presentation::AnswerPresentationCursor::from_plan(
+            input.compiled_plan,
+        )
+        .map(|mut cursor| {
+            for node_id in &input.compiled_plan.topological_order {
+                if node_id == input.waiting_node_id {
+                    break;
+                }
+                if let Some(output_payload) = input.snapshot.variable_pool.get(node_id) {
+                    let _ = cursor.complete_node_with_run_id(node_id, None, output_payload);
+                }
+            }
+            Arc::new(tokio::sync::Mutex::new(cursor))
+        });
+        let invoker = match answer_presentation {
+            Some(answer_presentation) => invoker.with_answer_presentation(answer_presentation),
+            None => invoker,
+        };
+        let mut runtime_context =
+            self.execution_runtime_context(input.compiled_plan, &input.snapshot.variable_pool)?;
+        if let Some(http_file_persister) = self.http_response_file_persister(input.actor.clone()) {
+            runtime_context =
+                runtime_context.with_http_response_file_persister(Arc::new(http_file_persister));
+        }
+
+        let outcome = orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context_and_lifecycle(
+            input.compiled_plan,
+            input.snapshot,
+            input.waiting_node_id,
+            input.resume_payload,
+            runtime_context,
+            &invoker,
+            &lifecycle,
+        )
+        .await?;
+
+        Ok(ResumeExecutionSegmentOutput {
+            outcome,
+            prepared_node_runs: lifecycle.prepared_node_runs()?,
+        })
     }
 
     async fn build_compile_context(
@@ -793,7 +918,10 @@ where
     pub async fn resume_flow_run(
         &self,
         command: ResumeFlowRunCommand,
-    ) -> Result<domain::ApplicationRunDetail> {
+    ) -> Result<domain::ApplicationRunDetail>
+    where
+        R: crate::ports::FileManagementRepository,
+    {
         let context = self
             .load_application_run_context(command.actor_user_id, command.application_id)
             .await?;
@@ -812,7 +940,7 @@ where
             .get_application_run_detail(command.application_id, command.flow_run_id)
             .await?
             .ok_or_else(|| anyhow!("flow run detail not found"))?;
-        let application = context.application;
+        let ApplicationRunContext { actor, application } = context;
         let compiled_plan_id = flow_run
             .compiled_plan_id
             .ok_or_else(|| anyhow!("flow run compiled plan is not attached"))?;
@@ -823,6 +951,7 @@ where
             .ok_or_else(|| anyhow!("compiled plan not found"))?;
         let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
             serde_json::from_value(compiled_record.plan.clone())?;
+        ensure_compiled_plan_runnable(&compiled_plan)?;
         let snapshot = checkpoint_snapshot_from_record(&checkpoint)?;
         let waiting_node_id = checkpoint_node_id(&checkpoint)?;
         let resume_patch = command
@@ -831,18 +960,6 @@ where
             .and_then(|payload| payload.get(&waiting_node_id))
             .cloned()
             .ok_or_else(|| anyhow!("resume payload is missing node input for {waiting_node_id}"))?;
-        let runtime_context =
-            self.execution_runtime_context(&compiled_plan, &snapshot.variable_pool);
-        let outcome =
-            orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context(
-                &compiled_plan,
-                &snapshot,
-                &waiting_node_id,
-                &resume_patch,
-                runtime_context,
-                &self.runtime_invoker(application.workspace_id),
-            )
-            .await?;
         let waiting_node_resume = if let Some(node_run_id) = checkpoint.node_run_id {
             let waiting_node = current_detail
                 .node_runs
@@ -852,13 +969,25 @@ where
             Some(WaitingNodeResumeUpdate {
                 node_run_id,
                 from_status: waiting_node.status,
-                output_payload: resume_patch,
+                output_payload: resume_patch.clone(),
                 metrics_payload: json!({ "resumed": true }),
                 debug_payload: json!({}),
             })
         } else {
             None
         };
+        let execution = self
+            .resume_execution_segment(ResumeExecutionSegmentInput {
+                actor: &actor,
+                application: &application,
+                flow_run: &flow_run,
+                compiled_plan: &compiled_plan,
+                snapshot: &snapshot,
+                waiting_node_id: &waiting_node_id,
+                waiting_node_run_id: checkpoint.node_run_id,
+                resume_payload: &resume_patch,
+            })
+            .await?;
 
         self.persist_flow_debug_outcome(PersistFlowDebugOutcomeInput {
             scope_id: application.workspace_id,
@@ -867,7 +996,8 @@ where
             application_id: command.application_id,
             flow_run: &flow_run,
             compiled_plan: Some(&compiled_plan),
-            outcome: &outcome,
+            outcome: &execution.outcome,
+            prepared_node_runs: Some(&execution.prepared_node_runs),
             trigger_event_type: "flow_run_resumed",
             trigger_event_payload: json!({
                 "checkpoint_id": checkpoint.id,
@@ -882,7 +1012,10 @@ where
     pub async fn complete_callback_task(
         &self,
         mut command: CompleteCallbackTaskCommand,
-    ) -> Result<domain::ApplicationRunDetail> {
+    ) -> Result<domain::ApplicationRunDetail>
+    where
+        R: crate::ports::FileManagementRepository,
+    {
         command.response_payload = escape_json_nul_characters(command.response_payload);
         let context = self
             .load_application_run_context(command.actor_user_id, command.application_id)
@@ -930,6 +1063,7 @@ where
             .ok_or_else(|| anyhow!("compiled plan not found"))?;
         let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
             serde_json::from_value(compiled_record.plan.clone())?;
+        ensure_compiled_plan_runnable(&compiled_plan)?;
         let callback_task = self
             .repository
             .complete_callback_task(&CompleteCallbackTaskInput {
@@ -954,24 +1088,23 @@ where
         }
         let snapshot = checkpoint_snapshot_from_record(&checkpoint)?;
         let waiting_node_id = checkpoint_node_id(&checkpoint)?;
-        let runtime_context =
-            self.execution_runtime_context(&compiled_plan, &snapshot.variable_pool);
-        let outcome =
-            orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context(
-                &compiled_plan,
-                &snapshot,
-                &waiting_node_id,
-                &command.response_payload,
-                runtime_context,
-                &self.runtime_invoker(application.workspace_id),
-            )
-            .await?;
-
         let waiting_node = detail
             .node_runs
             .iter()
             .find(|record| record.id == callback_task.node_run_id)
             .ok_or_else(|| anyhow!("waiting node run not found for callback task"))?;
+        let execution = self
+            .resume_execution_segment(ResumeExecutionSegmentInput {
+                actor: &actor,
+                application: &application,
+                flow_run: &flow_run,
+                compiled_plan: &compiled_plan,
+                snapshot: &snapshot,
+                waiting_node_id: &waiting_node_id,
+                waiting_node_run_id: Some(callback_task.node_run_id),
+                resume_payload: &command.response_payload,
+            })
+            .await?;
         let waiting_node_output_payload = if callback_task.callback_kind == "llm_tool_calls" {
             waiting_node.output_payload.clone()
         } else {
@@ -988,7 +1121,8 @@ where
             application_id: command.application_id,
             flow_run: &flow_run,
             compiled_plan: Some(&compiled_plan),
-            outcome: &outcome,
+            outcome: &execution.outcome,
+            prepared_node_runs: Some(&execution.prepared_node_runs),
             trigger_event_type: "flow_run_resumed",
             trigger_event_payload: json!({
                 "callback_task_id": callback_task.id,
@@ -1023,7 +1157,10 @@ where
         checkpoint: &domain::CheckpointRecord,
         flow_run: &domain::FlowRunRecord,
         compiled_plan: &orchestration_runtime::compiled_plan::CompiledPlan,
-    ) -> Result<domain::ApplicationRunDetail> {
+    ) -> Result<domain::ApplicationRunDetail>
+    where
+        R: crate::ports::FileManagementRepository,
+    {
         let waiting_node_id = checkpoint_node_id(checkpoint)?;
         let node = compiled_plan
             .nodes
@@ -1104,17 +1241,17 @@ where
         }
 
         let snapshot = checkpoint_snapshot_from_record(checkpoint)?;
-        let runtime_context =
-            self.execution_runtime_context(compiled_plan, &snapshot.variable_pool);
-        let outcome =
-            orchestration_runtime::execution_engine::resume_flow_debug_run_with_runtime_context(
+        let resumed_execution = self
+            .resume_execution_segment(ResumeExecutionSegmentInput {
+                actor,
+                application,
+                flow_run,
                 compiled_plan,
-                &snapshot,
-                &waiting_node_id,
-                &execution.output_payload,
-                runtime_context,
-                &self.runtime_invoker(application.workspace_id),
-            )
+                snapshot: &snapshot,
+                waiting_node_id: &waiting_node_id,
+                waiting_node_run_id: Some(callback_task.node_run_id),
+                resume_payload: &execution.output_payload,
+            })
             .await?;
         let side_effect_receipt = execution
             .metrics_payload
@@ -1129,7 +1266,8 @@ where
             application_id: command.application_id,
             flow_run,
             compiled_plan: Some(compiled_plan),
-            outcome: &outcome,
+            outcome: &resumed_execution.outcome,
+            prepared_node_runs: Some(&resumed_execution.prepared_node_runs),
             trigger_event_type: "data_model_side_effect_confirmed",
             trigger_event_payload: json!({
                 "callback_task_id": callback_task.id,
@@ -1168,7 +1306,7 @@ where
         let flow_run_id = input.flow_run.id;
         let persisted = persist_flow_debug_outcome(&self.repository, input).await?;
         if let Some(stream) = &self.runtime_event_stream {
-            for event in &persisted.answer_presentation_events {
+            for event in &persisted.stream_events {
                 let mut stream_event = event.clone();
                 stream_event.persist_required = false;
                 if let Err(error) = stream.append(flow_run_id, stream_event).await {
@@ -1183,6 +1321,25 @@ where
                             flow_run_id = %flow_run_id,
                             error = %error,
                             "failed to append answer presentation event to stream"
+                        );
+                    }
+                }
+            }
+            if let Some(reason) = persisted.close_reason {
+                if let Err(error) = stream.close_run(flow_run_id, reason).await {
+                    if is_expected_runtime_event_stream_closed_error(&error) {
+                        tracing::debug!(
+                            flow_run_id = %flow_run_id,
+                            reason = ?reason,
+                            error = %error,
+                            "runtime event stream close skipped because stream is closed"
+                        );
+                    } else {
+                        tracing::warn!(
+                            flow_run_id = %flow_run_id,
+                            reason = ?reason,
+                            error = %error,
+                            "failed to close runtime event stream after persisted outcome"
                         );
                     }
                 }

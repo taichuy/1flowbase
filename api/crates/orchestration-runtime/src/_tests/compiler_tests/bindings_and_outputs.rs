@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn execution_contract_rejects_unsupported_node_type_missing_from_legacy_issues() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    document["graph"]["nodes"][1]["type"] = json!("knowledge_retrieval");
+
+    let mut plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+        .expect("unsupported node should remain representable as a compile issue");
+    assert!(plan
+        .compile_issues
+        .iter()
+        .any(|issue| issue.code == CompileIssueCode::UnsupportedNodeType));
+    plan.compile_issues.clear();
+
+    let error = ensure_plan_execution_contract(&plan)
+        .expect_err("legacy plan must revalidate executable node types when loaded");
+
+    assert!(error.to_string().contains("knowledge_retrieval"));
+}
+
+#[test]
 fn compile_rejects_answer_presentation_reversing_real_dependency_order() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);
@@ -175,6 +195,97 @@ fn compile_state_write_extracts_templated_value_dependencies() {
         plan.nodes["node-env-update"].outputs[0].value_type,
         "string"
     );
+}
+
+#[test]
+fn compile_reports_selector_source_outside_connected_upstream_graph() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    document["graph"]["nodes"]
+        .as_array_mut()
+        .expect("sample graph nodes should be an array")
+        .push(json!({
+            "id": "node-disconnected",
+            "type": "template_transform",
+            "alias": "Disconnected",
+            "description": "",
+            "containerId": null,
+            "position": { "x": 0, "y": 240 },
+            "configVersion": 1,
+            "config": {},
+            "bindings": {
+                "template": { "kind": "templated_text", "value": "hidden" }
+            },
+            "outputs": [{ "key": "text", "title": "Text", "valueType": "string" }]
+        }));
+    document["graph"]["nodes"][1]["bindings"]["prompt_messages"]["value"][0]["content"]["value"] =
+        json!("{{node-disconnected.text}}");
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+        .expect("invalid selector scope should be reported as a compile issue");
+
+    assert!(plan.compile_issues.iter().any(|issue| {
+        issue.node_id == "node-llm"
+            && issue.message.contains("node-disconnected")
+            && issue.message.contains("not reachable")
+    }));
+}
+
+#[test]
+fn compile_reports_selector_field_missing_from_upstream_output_contract() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    document["graph"]["nodes"]
+        .as_array_mut()
+        .expect("sample graph nodes should be an array")
+        .insert(
+            1,
+            json!({
+                "id": "node-transform",
+                "type": "template_transform",
+                "alias": "Transform",
+                "description": "",
+                "containerId": null,
+                "position": { "x": 240, "y": 0 },
+                "configVersion": 1,
+                "config": {},
+                "bindings": {
+                    "template": { "kind": "templated_text", "value": "{{node-start.query}}" }
+                },
+                "outputs": [{ "key": "text", "title": "Text", "valueType": "string" }]
+            }),
+        );
+    document["graph"]["nodes"][2]["bindings"]["prompt_messages"]["value"][0]["content"]["value"] =
+        json!("{{node-transform.missing}}");
+    document["graph"]["edges"] = json!([
+        {
+            "id": "edge-start-transform",
+            "source": "node-start",
+            "target": "node-transform",
+            "sourceHandle": null,
+            "targetHandle": null,
+            "containerId": null,
+            "points": []
+        },
+        {
+            "id": "edge-transform-llm",
+            "source": "node-transform",
+            "target": "node-llm",
+            "sourceHandle": null,
+            "targetHandle": null,
+            "containerId": null,
+            "points": []
+        }
+    ]);
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+        .expect("invalid selector output should be reported as a compile issue");
+
+    assert!(plan.compile_issues.iter().any(|issue| {
+        issue.node_id == "node-llm"
+            && issue.message.contains("node-transform.missing")
+            && issue.message.contains("output contract")
+    }));
 }
 
 #[test]
@@ -406,9 +517,16 @@ fn compile_reports_invalid_llm_context_selector() {
 fn compile_reports_incompatible_llm_context_schema() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);
+    document["graph"]["nodes"][0]["config"]["input_fields"] = json!([{
+        "key": "context",
+        "label": "Context",
+        "inputType": "json",
+        "valueType": "array",
+        "required": false
+    }]);
     document["graph"]["nodes"][1]["config"]["context_policy"] = json!({
         "integration_context": "enabled",
-        "context_selector": ["node-llm", "text"]
+        "context_selector": ["node-start", "context"]
     });
 
     let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())

@@ -19,12 +19,19 @@ pub enum AnswerPresentationSegment {
 
 impl AnswerPresentationPlan {
     pub fn from_plan(plan: &CompiledPlan) -> Option<Self> {
-        let answer_node = plan
-            .topological_order
+        Self::candidates_from_plan(plan).into_iter().last()
+    }
+
+    pub fn candidates_from_plan(plan: &CompiledPlan) -> Vec<Self> {
+        plan.topological_order
             .iter()
-            .rev()
             .filter_map(|node_id| plan.nodes.get(node_id))
-            .find(|node| node.node_type == "answer")?;
+            .filter(|node| node.node_type == "answer")
+            .filter_map(Self::from_answer_node)
+            .collect()
+    }
+
+    fn from_answer_node(answer_node: &CompiledNode) -> Option<Self> {
         let answer_output_key = first_output_key(answer_node);
         let binding = answer_node
             .bindings
@@ -55,36 +62,36 @@ impl AnswerPresentationPlan {
 }
 
 pub fn validate_answer_presentation(plan: &CompiledPlan) -> Vec<CompileIssue> {
-    let Some(presentation) = AnswerPresentationPlan::from_plan(plan) else {
-        return Vec::new();
-    };
     let mut issues = Vec::new();
-    let outputs = presentation.node_output_segments();
-    let mut seen = BTreeSet::new();
 
-    for (_, node_id, output_key) in &outputs {
-        if !seen.insert(((*node_id).to_string(), (*output_key).to_string())) {
-            issues.push(CompileIssue {
-                node_id: presentation.answer_node_id.clone(),
-                code: CompileIssueCode::DuplicateAnswerPresentationReference,
-                message: format!(
-                    "answer presentation references {node_id}.{output_key} more than once"
-                ),
-            });
-        }
-    }
+    for presentation in AnswerPresentationPlan::candidates_from_plan(plan) {
+        let outputs = presentation.node_output_segments();
+        let mut seen = BTreeSet::new();
 
-    for (position, (_, left_node_id, _)) in outputs.iter().enumerate() {
-        for (_, right_node_id, _) in outputs.iter().skip(position + 1) {
-            if depends_on(plan, left_node_id, right_node_id) {
+        for (_, node_id, output_key) in &outputs {
+            if !seen.insert(((*node_id).to_string(), (*output_key).to_string())) {
                 issues.push(CompileIssue {
                     node_id: presentation.answer_node_id.clone(),
-                    code: CompileIssueCode::InvalidAnswerPresentationOrder,
+                    code: CompileIssueCode::DuplicateAnswerPresentationReference,
                     message: format!(
-                        "answer presentation places {left_node_id} before its dependency {right_node_id}"
+                        "answer presentation references {node_id}.{output_key} more than once"
                     ),
                 });
-                break;
+            }
+        }
+
+        for (position, (_, left_node_id, _)) in outputs.iter().enumerate() {
+            for (_, right_node_id, _) in outputs.iter().skip(position + 1) {
+                if depends_on(plan, left_node_id, right_node_id) {
+                    issues.push(CompileIssue {
+                        node_id: presentation.answer_node_id.clone(),
+                        code: CompileIssueCode::InvalidAnswerPresentationOrder,
+                        message: format!(
+                            "answer presentation places {left_node_id} before its dependency {right_node_id}"
+                        ),
+                    });
+                    break;
+                }
             }
         }
     }

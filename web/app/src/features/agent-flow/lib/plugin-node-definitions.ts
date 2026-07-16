@@ -43,8 +43,10 @@ export type NodePickerOption =
 const UNRELEASED_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
   'human_input',
   'iteration',
+  'knowledge_retrieval',
   'loop',
   'parameter_extractor',
+  'question_classifier',
   'tool'
 ]);
 

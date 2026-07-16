@@ -220,6 +220,7 @@ pub(super) struct VisibleInternalLlmToolOutput {
     pub(super) text: String,
     pub(super) provider_events: Vec<ProviderStreamEvent>,
     pub(super) route_events: Vec<Value>,
+    pub(super) variable_pool: Map<String, Value>,
 }
 
 pub(super) enum VisibleInternalLlmToolBranchExecution {
@@ -271,6 +272,7 @@ pub(super) enum VisibleInternalLlmToolRemainingExecution {
         visible_transcript: String,
         provider_events: Vec<ProviderStreamEvent>,
         route_events: Vec<Value>,
+        variable_pool: Map<String, Value>,
     },
     Waiting(Box<LlmToolCallbackWait>),
     Failed {
