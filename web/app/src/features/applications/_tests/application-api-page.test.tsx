@@ -38,7 +38,7 @@ const publicApi = vi.hoisted(() => ({
   saveApplicationApiMapping: vi.fn(),
   fetchApplicationApiPublication: vi.fn(),
   publishApplicationApiVersion: vi.fn(),
-  setApplicationApiEnabled: vi.fn(),
+  unpublishApplicationApiVersion: vi.fn(),
   fetchApplicationApiDocsCatalog: vi.fn(),
   fetchApplicationApiDocsCategoryOperations: vi.fn(),
   fetchApplicationApiDocsOperationSpec: vi.fn(),
@@ -153,45 +153,89 @@ describe('ApplicationApiPage', () => {
     await appI18n.changeLanguage('en_US');
   });
 
-  test('renders API section shell with status, docs panel, and publish action', async () => {
+  test('AC-005 draft state shows a single publish switch without a separate warning alert', async () => {
     renderWithProviders(<ApplicationApiPage application={application} />);
 
-    expect(await screen.findByText('请先发布公开 API')).toBeInTheDocument();
+    const statusCard = await screen.findByRole('region', {
+      name: '公开 API 状态'
+    });
+    const publishSwitch = within(statusCard).getByRole('switch');
+    expect(publishSwitch).not.toBeChecked();
+
+    // Single-switch mind model: the draft state is expressed by the switch,
+    // not a duplicated warning alert with its own publish button.
+    expect(screen.queryByText('请先发布公开 API')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '发布当前版本' })
+    ).not.toBeInTheDocument();
+
     expect(
       screen.getByRole('button', { name: 'API 密钥' })
     ).toBeInTheDocument();
-    expect(screen.queryByText('API Keys')).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('完整 token 只在创建后显示一次。')
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: '创建 Key' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('tab', { name: 'API Keys' })
-    ).not.toBeInTheDocument();
+    expect(screen.getByText('docs explorer')).toBeInTheDocument();
     expect(
       screen.queryByRole('tab', { name: 'API 文档' })
     ).not.toBeInTheDocument();
-    expect(screen.getByText('docs explorer')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('tab', { name: 'Native API' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('tab', { name: 'OpenAI Compatible' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('tab', { name: 'Anthropic Compatible' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('tab', { name: 'Mapping' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('tab', { name: 'Debug' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: '发布当前版本' })
-    ).toBeInTheDocument();
+  });
+
+  test('AC-005 toggling the switch on publishes the current version', async () => {
+    publicApi.publishApplicationApiVersion.mockResolvedValue({
+      id: 'publication-1',
+      version_sequence: 1,
+      api_enabled: true,
+      mapping_snapshot: mapping,
+      created_at: '2026-05-09T00:00:00Z',
+      updated_at: '2026-05-09T00:00:00Z'
+    });
+
+    renderWithProviders(<ApplicationApiPage application={application} />);
+
+    const statusCard = await screen.findByRole('region', {
+      name: '公开 API 状态'
+    });
+    fireEvent.click(within(statusCard).getByRole('switch'));
+
+    await waitFor(() => {
+      expect(publicApi.publishApplicationApiVersion).toHaveBeenCalledWith(
+        'app-1',
+        mapping,
+        'csrf-123'
+      );
+    });
+    expect(publicApi.unpublishApplicationApiVersion).not.toHaveBeenCalled();
+  });
+
+  test('AC-005 toggling the switch off reverts to draft after confirmation', async () => {
+    publicApi.fetchApplicationApiPublication.mockResolvedValue({
+      id: 'publication-1',
+      version_sequence: 1,
+      api_enabled: true,
+      mapping_snapshot: mapping,
+      created_at: '2026-05-09T00:00:00Z',
+      updated_at: '2026-05-09T00:00:00Z'
+    });
+    publicApi.unpublishApplicationApiVersion.mockResolvedValue(undefined);
+
+    renderWithProviders(<ApplicationApiPage application={application} />);
+
+    const statusCard = await screen.findByRole('region', {
+      name: '公开 API 状态'
+    });
+    const publishSwitch = within(statusCard).getByRole('switch');
+    expect(publishSwitch).toBeChecked();
+
+    fireEvent.click(publishSwitch);
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: '退回草稿' }));
+
+    await waitFor(() => {
+      expect(publicApi.unpublishApplicationApiVersion).toHaveBeenCalledWith(
+        'app-1',
+        'csrf-123'
+      );
+    });
+    expect(publicApi.publishApplicationApiVersion).not.toHaveBeenCalled();
   });
 
   test('does not duplicate endpoint summaries above the API docs panel', async () => {

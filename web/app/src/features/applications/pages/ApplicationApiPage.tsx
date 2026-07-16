@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Result } from 'antd';
+import { App, Result } from 'antd';
 import { useTranslation } from 'react-i18next';
 
+import { i18nText } from '../../../shared/i18n/text';
 import { useAuthStore } from '../../../state/auth-store';
 import {
   applicationDetailQueryKey,
@@ -13,7 +14,7 @@ import {
   fetchApplicationApiMapping,
   fetchApplicationApiPublication,
   publishApplicationApiVersion,
-  setApplicationApiEnabled
+  unpublishApplicationApiVersion
 } from '../api/public-api';
 import { ApplicationApiDocsPanel } from '../components/api/ApplicationApiDocsPanel';
 import { ApplicationApiKeysPanel } from '../components/api/ApplicationApiKeysPanel';
@@ -26,6 +27,7 @@ export function ApplicationApiPage({
   application: ApplicationDetail;
 }) {
   const { t } = useTranslation('applications');
+  const { modal } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
   const docsToolbarId = `application-api-docs-toolbar-${application.id}`;
@@ -55,11 +57,20 @@ export function ApplicationApiPage({
     },
     onSuccess: invalidatePublication
   });
-  const statusMutation = useMutation({
-    mutationFn: (enabled: boolean) =>
-      setApplicationApiEnabled(application.id, enabled, csrfToken),
+  const revertToDraftMutation = useMutation({
+    mutationFn: () => unpublishApplicationApiVersion(application.id, csrfToken),
     onSuccess: invalidatePublication
   });
+
+  const confirmRevertToDraft = () => {
+    modal.confirm({
+      title: i18nText('applications', 'auto.revert_to_draft'),
+      content: i18nText('applications', 'auto.revert_to_draft_confirm_content'),
+      okText: i18nText('applications', 'auto.revert_to_draft'),
+      cancelText: i18nText('applications', 'auto.cancel'),
+      onOk: () => revertToDraftMutation.mutateAsync()
+    });
+  };
 
   if (!publication && publicationQuery.isLoading) {
     return <Result status="info" title={t('auto.loading_public_api_status')} />;
@@ -69,8 +80,14 @@ export function ApplicationApiPage({
     <div className="application-api-page">
       <ApplicationApiStatusBar
         publication={publication}
-        loading={statusMutation.isPending}
-        onToggleEnabled={(enabled) => statusMutation.mutate(enabled)}
+        loading={publishMutation.isPending || revertToDraftMutation.isPending}
+        onTogglePublished={(published) => {
+          if (published) {
+            publishMutation.mutate();
+          } else {
+            confirmRevertToDraft();
+          }
+        }}
         toolbar={
           <div
             id={docsToolbarId}
@@ -85,21 +102,6 @@ export function ApplicationApiPage({
           variant="embedded"
         />
       </ApplicationApiStatusBar>
-      {!publication ? (
-        <Alert
-          type="warning"
-          showIcon
-          message={t('auto.publish_public_api_required')}
-          action={
-            <Button
-              type="primary"
-              loading={publishMutation.isPending || mappingQuery.isLoading}
-              onClick={() => publishMutation.mutate()}
-            >
-              {t('auto.publish_current_version')}</Button>
-          }
-        />
-      ) : null}
       <ApplicationApiDocsPanel
         applicationId={application.id}
         toolbarPortalId={docsToolbarId}

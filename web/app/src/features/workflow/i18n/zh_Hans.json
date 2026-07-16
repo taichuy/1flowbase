@@ -25,6 +25,7 @@
     "workflow_test_run_form_parameters": "Form 参数",
     "workflow_test_run_body_parameters": "Body 参数",
     "workflow_action_bar": "Workflow 操作栏",
+    "more_publish_actions": "更多发布操作",
     "workflow_trigger_delivery": "Trigger Delivery",
     "workflow_trigger_delivery_source": "触发来源",
     "workflow_trigger_delivery_run_id": "Run ID",

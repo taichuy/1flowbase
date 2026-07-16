@@ -1,10 +1,19 @@
 import {
   CodeOutlined,
+  DownOutlined,
   HistoryOutlined,
   IssuesCloseOutlined,
   SaveOutlined
 } from '@ant-design/icons';
-import { Badge, Button, Space, Tag, Tooltip, Typography } from 'antd';
+import {
+  Badge,
+  Button,
+  Dropdown,
+  Space,
+  Tag,
+  Tooltip,
+  Typography
+} from 'antd';
 import type { ReactNode } from 'react';
 
 import { i18nText } from '../../../shared/i18n/text';
@@ -17,10 +26,16 @@ interface WorkflowOverlayProps {
   saveDisabled: boolean;
   saveLoading: boolean;
   testRunAction: ReactNode;
+  published: boolean;
+  publishDisabled: boolean;
+  publishLoading: boolean;
+  revertLoading: boolean;
   onOpenEnvironmentVariables: () => void;
   onOpenHistory: () => void;
   onOpenIssues: () => void;
   onSaveDraft: () => void;
+  onPublish: () => void;
+  onRevertToDraft: () => void;
 }
 
 export function WorkflowOverlay({
@@ -31,10 +46,16 @@ export function WorkflowOverlay({
   saveDisabled,
   saveLoading,
   testRunAction,
+  published,
+  publishDisabled,
+  publishLoading,
+  revertLoading,
   onOpenEnvironmentVariables,
   onOpenHistory,
   onOpenIssues,
-  onSaveDraft
+  onSaveDraft,
+  onPublish,
+  onRevertToDraft
 }: WorkflowOverlayProps) {
   const statusTag = {
     idle: { color: 'default', label: i18nText('agentFlow', 'auto.free') },
@@ -80,6 +101,38 @@ export function WorkflowOverlay({
             onClick={onSaveDraft}
           />
         </Tooltip>
+        <Space.Compact>
+          <Button
+            autoInsertSpace={false}
+            type="primary"
+            disabled={publishDisabled}
+            loading={publishLoading}
+            onClick={onPublish}
+          >
+            {i18nText('agentFlow', 'auto.publish')}
+          </Button>
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                {
+                  key: 'revert_to_draft',
+                  label: i18nText('applications', 'auto.revert_to_draft'),
+                  disabled: !published,
+                  onClick: onRevertToDraft
+                }
+              ]
+            }}
+          >
+            <Button
+              aria-label={i18nText('workflow', 'auto.more_publish_actions')}
+              autoInsertSpace={false}
+              type="primary"
+              icon={<DownOutlined />}
+              loading={revertLoading}
+            />
+          </Dropdown>
+        </Space.Compact>
         <Button
           aria-label={i18nText('agentFlow', 'auto.historical_version')}
           icon={<HistoryOutlined />}

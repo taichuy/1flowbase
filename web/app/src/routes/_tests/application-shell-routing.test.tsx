@@ -105,7 +105,7 @@ const publicApi = vi.hoisted(() => ({
   fetchApplicationApiMapping: vi.fn(),
   fetchApplicationApiPublication: vi.fn(),
   publishApplicationApiVersion: vi.fn(),
-  setApplicationApiEnabled: vi.fn(),
+  unpublishApplicationApiVersion: vi.fn(),
   fetchWorkflowScheduleTrigger: vi.fn(),
   saveWorkflowScheduleTrigger: vi.fn(),
   fetchApplicationApiDocsCatalog: vi.fn(),
@@ -296,7 +296,7 @@ describe('application shell routing', () => {
     publicApi.fetchApplicationApiPublication.mockReset();
     publicApi.fetchApplicationApiPublication.mockResolvedValue(null);
     publicApi.publishApplicationApiVersion.mockReset();
-    publicApi.setApplicationApiEnabled.mockReset();
+    publicApi.unpublishApplicationApiVersion.mockReset();
     publicApi.fetchWorkflowScheduleTrigger.mockReset();
     publicApi.fetchWorkflowScheduleTrigger.mockResolvedValue(null);
     publicApi.saveWorkflowScheduleTrigger.mockReset();

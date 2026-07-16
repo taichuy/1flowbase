@@ -1,4 +1,8 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient
+} from '@tanstack/react-query';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { App, Button, Typography } from 'antd';
 import {
@@ -21,9 +25,17 @@ import type {
 import { useAuthStore } from '../../../state/auth-store';
 import { i18nText } from '../../../shared/i18n/text';
 import {
+  applicationDetailQueryKey,
   applicationEnvironmentVariablesQueryKey,
   replaceApplicationEnvironmentVariables
 } from '../../applications/api/applications';
+import {
+  applicationApiPublicationQueryKey,
+  fetchApplicationApiMapping,
+  fetchApplicationApiPublication,
+  publishApplicationApiVersion,
+  unpublishApplicationApiVersion
+} from '../../applications/api/public-api';
 import {
   orchestrationQueryKey,
   updateVersion
@@ -88,7 +100,7 @@ export function WorkflowCanvasFrame({
   saveDraftOverride,
   restoreVersionOverride
 }: WorkflowCanvasFrameProps) {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -238,6 +250,67 @@ export function WorkflowCanvasFrame({
     }
   });
 
+  const publicationQuery = useQuery({
+    queryKey: applicationApiPublicationQueryKey(applicationId),
+    queryFn: () => fetchApplicationApiPublication(applicationId),
+    retry: false
+  });
+  const isPublished = Boolean(publicationQuery.data);
+
+  function invalidatePublication() {
+    void queryClient.invalidateQueries({
+      queryKey: applicationApiPublicationQueryKey(applicationId)
+    });
+    void queryClient.invalidateQueries({
+      queryKey: applicationDetailQueryKey(applicationId)
+    });
+  }
+
+  const publishMutation = useMutation({
+    mutationFn: async () => {
+      if (!csrfToken) {
+        throw new Error('missing csrf token');
+      }
+
+      const mapping = await fetchApplicationApiMapping(applicationId);
+      return publishApplicationApiVersion(applicationId, mapping, csrfToken);
+    },
+    onSuccess() {
+      invalidatePublication();
+      message.success(i18nText('agentFlow', 'auto.posted_successfully'));
+    },
+    onError() {
+      message.error(i18nText('agentFlow', 'auto.publishing_failed'));
+    }
+  });
+
+  const revertToDraftMutation = useMutation({
+    mutationFn: () => {
+      if (!csrfToken) {
+        throw new Error('missing csrf token');
+      }
+
+      return unpublishApplicationApiVersion(applicationId, csrfToken);
+    },
+    onSuccess() {
+      invalidatePublication();
+      message.success(i18nText('applications', 'auto.revert_to_draft_success'));
+    },
+    onError() {
+      message.error(i18nText('applications', 'auto.revert_to_draft_failed'));
+    }
+  });
+
+  function confirmRevertToDraft() {
+    modal.confirm({
+      title: i18nText('applications', 'auto.revert_to_draft'),
+      content: i18nText('applications', 'auto.revert_to_draft_confirm_content'),
+      okText: i18nText('applications', 'auto.revert_to_draft'),
+      cancelText: i18nText('applications', 'auto.cancel'),
+      onOk: () => revertToDraftMutation.mutateAsync()
+    });
+  }
+
   function openHistory() {
     setEnvironmentVariablesOpen(false);
     setPanelState({ historyOpen: true });
@@ -302,6 +375,10 @@ export function WorkflowCanvasFrame({
         issueErrorCount={issueErrorCount}
         saveDisabled={autosaveStatus === 'saving'}
         saveLoading={autosaveStatus === 'saving'}
+        published={isPublished}
+        publishDisabled={publishMutation.isPending || issueErrorCount > 0}
+        publishLoading={publishMutation.isPending}
+        revertLoading={revertToDraftMutation.isPending}
         testRunAction={
           <WorkflowTestRunPanel
             applicationId={applicationId}
@@ -325,6 +402,8 @@ export function WorkflowCanvasFrame({
         onSaveDraft={() => {
           void draftSync.saveNow();
         }}
+        onPublish={() => publishMutation.mutate()}
+        onRevertToDraft={confirmRevertToDraft}
       />
       {activeContainerId ? (
         <div className="agent-flow-editor__breadcrumb">
