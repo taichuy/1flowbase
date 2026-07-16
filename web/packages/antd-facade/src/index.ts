@@ -465,3 +465,6 @@ function readRecordValue(
 function hasKeys(value: object): boolean {
   return Object.keys(value).length > 0;
 }
+
+export { h, Fragment } from './jsx-runtime';
+export type { JsxChild, JsxFacadeComponent } from './jsx-runtime';

@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+pub mod data_capabilities;
+
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
@@ -207,12 +209,12 @@ pub struct DispatchFrontstageActionBody {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct FrontstageCapabilityInput {
-    actor_user_id: Uuid,
-    workspace_id: Uuid,
-    page_id: Uuid,
-    tab_id: Uuid,
-    params: Value,
+pub(crate) struct FrontstageCapabilityInput {
+    pub(crate) actor_user_id: Uuid,
+    pub(crate) workspace_id: Uuid,
+    pub(crate) page_id: Uuid,
+    pub(crate) tab_id: Uuid,
+    pub(crate) params: Value,
 }
 
 fn deserialize_present_optional<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
@@ -277,6 +279,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_post(dispatch_frontstage_action, Authenticated),
         )
         .route(
+            "/frontstage/:workspace_id/data-capabilities",
+            console_get(
+                data_capabilities::list_frontstage_data_capabilities,
+                Authenticated,
+            ),
+        )
+        .route(
             "/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref",
             console_get(get_frontstage_block_code, Authenticated)
                 .put(save_frontstage_block_code, Authenticated),
@@ -293,8 +302,17 @@ fn frontstage_query_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel,
         "frontstage_page_tab_query",
         "frontstage.page_tab.get",
     ))?;
+    data_capabilities::register_data_model_query_capabilities(
+        &mut registry,
+        "frontstage_page_tab_query",
+    )?;
 
     let mut kernel = ResourceActionKernel::new(registry);
+    data_capabilities::register_data_model_query_handlers(
+        &mut kernel,
+        "frontstage_page_tab_query",
+        state.clone(),
+    )?;
     kernel.register_json_handler(
         "frontstage_page_tab_query",
         "frontstage.page_tab.get",
@@ -338,8 +356,17 @@ fn frontstage_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel
         "frontstage_page_tab_action",
         "frontstage.page_tab.document.save",
     ))?;
+    data_capabilities::register_data_model_action_capabilities(
+        &mut registry,
+        "frontstage_page_tab_action",
+    )?;
 
     let mut kernel = ResourceActionKernel::new(registry);
+    data_capabilities::register_data_model_action_handlers(
+        &mut kernel,
+        "frontstage_page_tab_action",
+        state.clone(),
+    )?;
     kernel.register_json_handler(
         "frontstage_page_tab_action",
         "frontstage.page_tab.document.save",
@@ -894,7 +921,7 @@ pub async fn save_frontstage_block_code(
     Ok(Json(ApiSuccess::new(to_block_code_response(code))))
 }
 
-fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
+pub(crate) fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(raw)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }

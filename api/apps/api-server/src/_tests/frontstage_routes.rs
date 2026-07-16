@@ -25,6 +25,7 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
     assert_eq!(
         routes,
         BTreeSet::from([
+            ("GET", "/api/console/frontstage/:workspace_id/data-capabilities"),
             ("GET", "/api/console/frontstage/:workspace_id/pages"),
             ("POST", "/api/console/frontstage/:workspace_id/pages"),
             ("POST", "/api/console/frontstage/:workspace_id/pages/groups",),

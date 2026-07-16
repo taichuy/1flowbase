@@ -277,3 +277,41 @@ export function saveFrontstageBlockCode(
     baseUrl
   });
 }
+
+export interface ConsoleFrontstageDataCapabilityField {
+  code: string;
+  title: string;
+  field_kind: string;
+  is_required: boolean;
+  is_writable: boolean;
+}
+
+export interface ConsoleFrontstageDataCapabilityModel {
+  code: string;
+  scope_kind: string;
+  fields: ConsoleFrontstageDataCapabilityField[];
+}
+
+export interface ConsoleFrontstageDataCapabilityDescriptor {
+  id: string;
+  kind: string;
+  params_schema: unknown;
+  result_schema: unknown;
+}
+
+export interface ConsoleFrontstageDataCapabilities {
+  queries: ConsoleFrontstageDataCapabilityDescriptor[];
+  actions: ConsoleFrontstageDataCapabilityDescriptor[];
+  models: ConsoleFrontstageDataCapabilityModel[];
+}
+
+export function listFrontstageDataCapabilities(
+  workspaceId: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstageDataCapabilities> {
+  return apiFetch<ConsoleFrontstageDataCapabilities>({
+    path: `/api/console/frontstage/${workspaceId}/data-capabilities`,
+    method: 'GET',
+    baseUrl
+  });
+}

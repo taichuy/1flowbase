@@ -6,7 +6,8 @@
   "dependencies": {
     "@1flowbase/block-renderer": "workspace:*",
     "@1flowbase/block-sdk": "workspace:*",
-    "@1flowbase/page-protocol": "workspace:*"
+    "@1flowbase/page-protocol": "workspace:*",
+    "sucrase": "^3.35.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
