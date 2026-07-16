@@ -9,6 +9,7 @@ mod data_sources_routes;
 mod error_response_tests;
 mod file_management_routes;
 mod frontend_block_catalog_routes;
+mod frontstage_data_capability_routes;
 mod frontstage_routes;
 mod host_extensions;
 mod host_infrastructure;

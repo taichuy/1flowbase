@@ -160,4 +160,20 @@ impl RuntimeModelRegistry {
                     .cloned()
             })
     }
+
+    pub fn list_available_for_workspace(&self, workspace_id: uuid::Uuid) -> Vec<ModelMetadata> {
+        let guard = self.models.read().expect("runtime registry poisoned");
+        let mut models = guard
+            .values()
+            .flatten()
+            .filter(|model| model.availability == RuntimeDataModelAvailability::Available)
+            .filter(|model| match model.metadata.scope_kind {
+                domain::DataModelScopeKind::Workspace => model.metadata.scope_id == workspace_id,
+                domain::DataModelScopeKind::System => true,
+            })
+            .map(|model| model.metadata.clone())
+            .collect::<Vec<_>>();
+        models.sort_by(|left, right| left.model_code.cmp(&right.model_code));
+        models
+    }
 }

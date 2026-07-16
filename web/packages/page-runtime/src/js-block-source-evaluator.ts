@@ -9,8 +9,10 @@ import {
 import {
   transformJsBlockSource,
   type JsBlockInjectedModuleSource,
+  type JsBlockSourceTransformResult,
   type JsBlockSourceTransformSuccess
 } from './js-block-source-transform';
+import { compileJsBlockJsxSource } from './js-block-jsx-compile';
 import type { JsBlockRunError } from './js-block-worker-runtime';
 
 export type JsBlockInjectedModuleMap = Partial<
@@ -60,9 +62,7 @@ export function evaluateJsBlockSource(
 ): JsBlockSourceEvaluationResult {
   const compiledSource =
     typeof input.source === 'string'
-      ? transformJsBlockSource(input.source, {
-          allowedImports: Object.keys(input.modules)
-        })
+      ? compileAndTransformSource(input.source, Object.keys(input.modules))
       : input.source;
 
   if (!compiledSource.ok) {
@@ -154,6 +154,18 @@ export async function renderJsBlockSource(
     compiledSource: evaluation.compiledSource,
     schema: validation.schema
   };
+}
+
+function compileAndTransformSource(
+  source: string,
+  allowedImports: string[]
+): JsBlockSourceTransformResult {
+  const jsxResult = compileJsBlockJsxSource(source);
+  if (!jsxResult.ok) {
+    return { ok: false, errors: jsxResult.errors };
+  }
+
+  return transformJsBlockSource(jsxResult.code, { allowedImports });
 }
 
 function createEvaluator(
