@@ -25,6 +25,7 @@
     "workflow_test_run_form_parameters": "Form parameters",
     "workflow_test_run_body_parameters": "Body parameters",
     "workflow_action_bar": "Workflow actions",
+    "more_publish_actions": "More publish actions",
     "workflow_trigger_delivery": "Trigger Delivery",
     "workflow_trigger_delivery_source": "Trigger source",
     "workflow_trigger_delivery_run_id": "Run ID",

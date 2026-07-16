@@ -123,7 +123,6 @@
     "manage_tags_named": "Manage Tags-{{value1}}",
     "percentile_ninety_five_duration": "P95 time consuming",
     "full_token_shown_once": "The full token is only displayed once after creation.",
-    "publish_public_api_required": "Please publish the public API first",
     "total_runs": "Total number of runs",
     "id_copied": "ID copied",
     "real_node_count": "Real number of nodes",
@@ -158,7 +157,6 @@
     "request_count": "Number of requests",
     "new_tag_name": "New label name",
     "average_tool_callback": "Average tool pullback",
-    "publish_current_version": "Release current version",
     "enter_application": "Enter the application",
     "metric_object": "indicator object",
     "application_deleted": "App deleted",
@@ -301,6 +299,8 @@
     "revert_to_draft": "Revert to draft",
     "revert_to_draft_confirm_content": "Reverting stops this application from serving traffic: the public API stops responding, the extension endpoint is unregistered, and schedule dispatch stops. You can publish again at any time.",
     "revert_to_draft_success": "Reverted to draft",
-    "revert_to_draft_failed": "Failed to revert to draft"
+    "revert_to_draft_failed": "Failed to revert to draft",
+    "publication_published": "Published",
+    "publication_draft": "Draft"
   }
 }

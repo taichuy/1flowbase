@@ -123,7 +123,6 @@
     "manage_tags_named": "管理标签-{{value1}}",
     "percentile_ninety_five_duration": "P95 耗时",
     "full_token_shown_once": "完整 token 只在创建后显示一次。",
-    "publish_public_api_required": "请先发布公开 API",
     "total_runs": "运行总数",
     "id_copied": "已复制 ID",
     "real_node_count": "真实节点数",
@@ -158,7 +157,6 @@
     "request_count": "请求数",
     "new_tag_name": "新标签名称",
     "average_tool_callback": "平均工具回调",
-    "publish_current_version": "发布当前版本",
     "enter_application": "进入应用",
     "metric_object": "指标对象",
     "application_deleted": "已删除应用",
@@ -301,6 +299,8 @@
     "revert_to_draft": "退回草稿",
     "revert_to_draft_confirm_content": "退回后该应用停止对外提供服务：公开 API 不再响应、扩展接口取消注册、定时任务停止调度。可随时重新发布。",
     "revert_to_draft_success": "已退回草稿",
-    "revert_to_draft_failed": "退回草稿失败"
+    "revert_to_draft_failed": "退回草稿失败",
+    "publication_published": "已发布",
+    "publication_draft": "草稿"
   }
 }
