@@ -59,3 +59,34 @@ async fn runtime_profile_reports_runner_unreachable_without_failing_request() {
         false
     );
 }
+
+#[tokio::test]
+async fn ac_006_runtime_profile_cache_keeps_locale_resolution_request_scoped() {
+    let (app, cookie) = test_app_with_runtime_profiles(
+        sample_api_profile("host_same"),
+        Some(sample_runner_profile("host_same")),
+        &["settings_feature.access.system.system-runtime"],
+        None,
+    )
+    .await;
+
+    let english = get_json(
+        &app,
+        "/api/console/system/runtime-profile?locale=en_US",
+        &cookie,
+    )
+    .await;
+    let chinese = get_json(
+        &app,
+        "/api/console/system/runtime-profile?locale=zh_Hans",
+        &cookie,
+    )
+    .await;
+
+    assert_eq!(english["data"]["locale_meta"]["resolved_locale"], "en_US");
+    assert_eq!(chinese["data"]["locale_meta"]["resolved_locale"], "zh_Hans");
+    assert_eq!(
+        english["data"]["runtime_targets"],
+        chinese["data"]["runtime_targets"]
+    );
+}

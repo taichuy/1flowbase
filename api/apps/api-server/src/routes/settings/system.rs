@@ -16,6 +16,7 @@ use crate::{
     middleware::require_session::require_session,
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    runtime_profile_client::RuntimeProfileSnapshotCache,
 };
 
 pub use super::release_status::{
@@ -345,16 +346,20 @@ pub async fn get_runtime_profile(
             .collect(),
     });
 
-    let api_profile = state.api_runtime_profile.collect_runtime_profile().await?;
-    let runner_profile = state
-        .plugin_runner_system
-        .fetch_runtime_profile()
-        .await
-        .ok();
+    let profiles = RuntimeProfileSnapshotCache::new(
+        state.infrastructure.cache_store(),
+        state.infrastructure.distributed_lock(),
+        state.api_runtime_profile.clone(),
+        state.plugin_runner_system.clone(),
+        state.api_node_id.clone(),
+        state.process_started_at,
+    )
+    .get_or_refresh()
+    .await?;
     Ok(Json(ApiSuccess::new(merge_runtime_profiles(
         locale,
-        api_profile,
-        runner_profile,
+        profiles.api_profile,
+        profiles.runner_profile,
         state.api_node_id.clone(),
         state.provider_install_root.clone(),
         state.host_extension_dropin_root.clone(),

@@ -269,7 +269,7 @@ export function SystemRuntimePanel() {
 
   if (runtimeQuery.isLoading) {
     return (
-      <SettingsSectionSurface>
+      <SettingsSectionSurface heightMode="fill">
         <Flex justify="center" className="system-runtime-panel__loading">
           <Spin />
         </Flex>
@@ -279,7 +279,7 @@ export function SystemRuntimePanel() {
 
   if (runtimeQuery.isError && !profile) {
     return (
-      <SettingsSectionSurface>
+      <SettingsSectionSurface heightMode="fill">
         <Alert
           type="error"
           showIcon
@@ -299,7 +299,7 @@ export function SystemRuntimePanel() {
 
   if (!profile) {
     return (
-      <SettingsSectionSurface>
+      <SettingsSectionSurface heightMode="fill">
         <Empty description={i18nText('settings', 'auto.runtime_data_yet')} />
       </SettingsSectionSurface>
     );
@@ -327,7 +327,7 @@ export function SystemRuntimePanel() {
       : i18nText('settings', 'auto.runtime_collecting');
 
   return (
-    <SettingsSectionSurface>
+    <SettingsSectionSurface heightMode="fill">
       <div className="system-runtime-panel">
         <section
           className="system-runtime-panel__section"
@@ -413,6 +413,64 @@ export function SystemRuntimePanel() {
 
         <section
           className="system-runtime-panel__section"
+          aria-labelledby="runtime-environment-title"
+        >
+          <Flex align="center" justify="space-between" gap={12} wrap="wrap">
+            <Flex align="center" gap={8}>
+              <GlobalOutlined className="system-runtime-panel__section-icon" />
+              <Typography.Title level={5} id="runtime-environment-title">
+                {i18nText('settings', 'auto.runtime_environment')}
+              </Typography.Title>
+            </Flex>
+            <Select
+              aria-label={i18nText('settings', 'auto.runtime_target')}
+              value={selectedTargetId}
+              onChange={setSelectedTargetId}
+              options={profile.runtime_targets.map((target) => ({
+                value: target.target_id,
+                label: serviceLabel(target.target_id),
+                disabled: !target.reachable
+              }))}
+              popupMatchSelectWidth={false}
+            />
+          </Flex>
+          <Descriptions
+            className="system-runtime-panel__environment-details"
+            size="small"
+            layout="vertical"
+            column={{ xs: 1, sm: 1, lg: 3 }}
+            items={[
+              {
+                key: 'process-memory',
+                label: i18nText('settings', 'auto.process_memory'),
+                children: metrics
+                  ? formatBytes(metrics.memory.process_bytes)
+                  : '—'
+              },
+              {
+                key: 'plugin-root',
+                label: i18nText('settings', 'auto.plugin_install_path'),
+                children: (
+                  <Typography.Text code>
+                    {profile.provider_install_root}
+                  </Typography.Text>
+                )
+              },
+              {
+                key: 'host-extension-root',
+                label: i18nText('settings', 'auto.host_extension_path'),
+                children: (
+                  <Typography.Text code>
+                    {profile.host_extension_dropin_root}
+                  </Typography.Text>
+                )
+              }
+            ]}
+          />
+        </section>
+
+        <section
+          className="system-runtime-panel__section"
           aria-labelledby="runtime-monitor-title"
         >
           <Flex align="center" justify="space-between" gap={12} wrap="wrap">
@@ -426,22 +484,9 @@ export function SystemRuntimePanel() {
                 text={liveStatus}
               />
             </Flex>
-            <Flex align="center" gap={8} wrap="wrap">
-              <Typography.Text type="secondary">
-                {i18nText('settings', 'auto.last_two_minutes')}
-              </Typography.Text>
-              <Select
-                aria-label={i18nText('settings', 'auto.runtime_target')}
-                value={selectedTargetId}
-                onChange={setSelectedTargetId}
-                options={profile.runtime_targets.map((target) => ({
-                  value: target.target_id,
-                  label: serviceLabel(target.target_id),
-                  disabled: !target.reachable
-                }))}
-                popupMatchSelectWidth={false}
-              />
-            </Flex>
+            <Typography.Text type="secondary">
+              {i18nText('settings', 'auto.last_two_minutes')}
+            </Typography.Text>
           </Flex>
 
           {runtimeQuery.isRefetchError ? (
@@ -530,66 +575,6 @@ export function SystemRuntimePanel() {
           ) : (
             <Empty description={i18nText('settings', 'auto.unavailable')} />
           )}
-        </section>
-
-        <section
-          className="system-runtime-panel__section"
-          aria-labelledby="runtime-environment-title"
-        >
-          <Flex align="center" gap={8}>
-            <GlobalOutlined className="system-runtime-panel__section-icon" />
-            <Typography.Title level={5} id="runtime-environment-title">
-              {i18nText('settings', 'auto.runtime_environment')}
-            </Typography.Title>
-          </Flex>
-          <Descriptions
-            size="small"
-            column={{ xs: 1, sm: 2, lg: 4 }}
-            items={[
-              {
-                key: 'current-locale',
-                label: i18nText('settings', 'auto.current_language'),
-                children: profile.locale_meta.resolved_locale
-              },
-              {
-                key: 'fallback-locale',
-                label: i18nText('settings', 'auto.fallback_language'),
-                children: profile.locale_meta.fallback_locale
-              },
-              {
-                key: 'supported-locales',
-                label: i18nText('settings', 'auto.supported_languages'),
-                children: profile.locale_meta.supported_locales.join(', ')
-              },
-              {
-                key: 'process-memory',
-                label: i18nText('settings', 'auto.process_memory'),
-                children: metrics
-                  ? formatBytes(metrics.memory.process_bytes)
-                  : '—'
-              },
-              {
-                key: 'plugin-root',
-                label: i18nText('settings', 'auto.plugin_install_path'),
-                children: (
-                  <Typography.Text code>
-                    {profile.provider_install_root}
-                  </Typography.Text>
-                ),
-                span: 2
-              },
-              {
-                key: 'host-extension-root',
-                label: i18nText('settings', 'auto.host_extension_path'),
-                children: (
-                  <Typography.Text code>
-                    {profile.host_extension_dropin_root}
-                  </Typography.Text>
-                ),
-                span: 2
-              }
-            ]}
-          />
         </section>
 
         {profile.topology.relationship === 'runner_unreachable' ? (

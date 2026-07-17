@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const echartsMock = vi.hoisted(() => ({
@@ -177,12 +177,45 @@ describe('SystemRuntimePanel', () => {
     vi.useRealTimers();
   });
 
-  test('ac_001 renders a compact overview and live monitor without fill stretching', async () => {
+  test('ac_001 fills the settings viewport so the surface body owns scrolling', async () => {
     renderPanel();
 
     expect(await screen.findByText('运行概览')).toBeInTheDocument();
     expect(screen.getByText('资源监控')).toBeInTheDocument();
-    expect(screen.getByTestId('settings-section-surface')).not.toHaveClass(
+    const overviewSection = screen.getByText('运行概览').closest('section');
+    const environmentSection = screen.getByText('运行环境').closest('section');
+    const monitorSection = screen.getByText('资源监控').closest('section');
+
+    expect(overviewSection).not.toBeNull();
+    expect(environmentSection).not.toBeNull();
+    expect(monitorSection).not.toBeNull();
+    expect(
+      overviewSection!.compareDocumentPosition(environmentSection!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      environmentSection!.compareDocumentPosition(monitorSection!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      within(environmentSection!).getByRole('combobox', { name: '运行目标' })
+    ).toBeInTheDocument();
+    expect(within(environmentSection!).queryByText('当前语言')).toBeNull();
+    expect(within(environmentSection!).queryByText('回退语言')).toBeNull();
+    expect(within(environmentSection!).queryByText('支持语言')).toBeNull();
+    expect(
+      within(environmentSection!).getByText('进程内存')
+    ).toBeInTheDocument();
+    expect(
+      within(environmentSection!).getByText('插件安装路径')
+    ).toBeInTheDocument();
+    expect(
+      within(environmentSection!).getByText('宿主扩展路径')
+    ).toBeInTheDocument();
+    expect(
+      within(monitorSection!).queryByRole('combobox', { name: '运行目标' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('settings-section-surface')).toHaveClass(
       'settings-section-surface--fill'
     );
     expect(
