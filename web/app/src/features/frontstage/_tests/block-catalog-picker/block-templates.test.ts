@@ -132,26 +132,21 @@ describe('frontstage block templates', () => {
     const snippetsByTemplateId = {
       blank: [
         'ctx.data.query',
-        'ctx.data.create',
-        'ctx.data.update',
-        'ctx.data.delete',
         'ctx.patch',
         'ctx.events.emit',
         'ctx.actions.invoke'
       ],
       'data-table': ['ctx.data.query', 'ctx.patch', 'ctx.events.emit'],
-      'create-form': ['ctx.data.create', 'ctx.patch', 'ctx.actions.invoke'],
+      'create-form': ['ctx.actions.invoke', 'ctx.patch', 'ctx.events.emit'],
       'edit-form': [
         'ctx.data.query',
-        'ctx.data.update',
         'ctx.patch',
         'ctx.actions.invoke'
       ],
       'search-table': [
         'ctx.data.query',
-        'ctx.data.delete',
         'ctx.patch',
-        'ctx.actions.invoke'
+        'ctx.events.emit'
       ]
     } satisfies Record<
       (typeof FRONTSTAGE_BUILT_IN_JS_BLOCK_TEMPLATES)[number]['id'],
@@ -188,9 +183,8 @@ describe('frontstage block templates', () => {
     expect(code).toContain('initialState');
     expect(code).toContain('async render(ctx)');
     expect(code).toContain('ctx.data.query');
-    expect(code).toContain('ctx.data.create');
-    expect(code).toContain('ctx.data.update');
-    expect(code).toContain('ctx.data.delete');
+    expect(code).toContain("ctx.data.query('frontstage.data_model.record.list'");
+    expect(code).toContain("ctx.actions.invoke('frontstage.data_model.record.create'");
   });
 
   test('runs the generated blank JS block through the default worker executor', async () => {
