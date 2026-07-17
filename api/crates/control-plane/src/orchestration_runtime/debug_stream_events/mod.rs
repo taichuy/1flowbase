@@ -50,6 +50,23 @@ pub fn flow_finished(run_id: Uuid, output: serde_json::Value) -> RuntimeEventPay
     }
 }
 
+pub fn flow_incomplete(run_id: Uuid, output: serde_json::Value) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: "flow_incomplete".to_string(),
+        source: RuntimeEventSource::Runtime,
+        durability: RuntimeEventDurability::DurableRequired,
+        persist_required: true,
+        trace_visible: true,
+        payload: json!({
+            "type": "flow_incomplete",
+            "run_id": run_id,
+            "status": "incomplete",
+            "reason": "output_limit",
+            "output": output,
+        }),
+    }
+}
+
 pub fn flow_failed(run_id: Uuid, error_payload: serde_json::Value) -> RuntimeEventPayload {
     let error = error_payload
         .get("message")

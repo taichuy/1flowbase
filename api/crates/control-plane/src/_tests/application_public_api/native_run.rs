@@ -151,6 +151,17 @@ fn native_run_request_validates_public_native_fields() {
 }
 
 #[test]
+fn d1_ac_009_native_run_request_rejects_unknown_fields_before_execution() {
+    let mut payload = native_request(json!("any-provider/any-model"));
+    payload["unrecognized_native_option"] = json!(true);
+
+    assert!(
+        serde_json::from_value::<NativeRunRequest>(payload).is_err(),
+        "D1-AC-009: Native ingress must reject an unknown field instead of silently dropping it"
+    );
+}
+
+#[test]
 fn native_run_request_accepts_expand_id_and_title() {
     let mut payload = native_request(json!("any-provider/any-model"));
     payload["expand_id"] = json!("external-user-123");
@@ -191,13 +202,11 @@ fn native_run_request_rejects_invalid_public_native_fields() {
 }
 
 #[test]
-fn native_run_request_ignores_legacy_user_id_field() {
+fn native_run_request_rejects_legacy_user_id_field() {
     let mut payload = native_request(json!("any-provider/any-model"));
     payload["user_id"] = json!("external-user-123");
 
-    let accepted: NativeRunRequest = serde_json::from_value(payload).unwrap();
-
-    assert!(accepted.expand_id.is_none());
+    assert!(serde_json::from_value::<NativeRunRequest>(payload).is_err());
 }
 
 #[tokio::test]

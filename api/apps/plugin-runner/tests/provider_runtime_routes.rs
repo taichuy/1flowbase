@@ -327,7 +327,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: outbound_only
@@ -406,7 +406,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: outbound_only
@@ -485,7 +485,7 @@ async fn request_json(app: &Router, method: Method, uri: &str, body: Value) -> (
         .clone()
         .oneshot(
             Request::builder()
-                .method(method)
+                .method(method.clone())
                 .uri(uri)
                 .header("content-type", "application/json")
                 .body(Body::from(body.to_string()))
@@ -496,7 +496,12 @@ async fn request_json(app: &Router, method: Method, uri: &str, body: Value) -> (
 
     let status = response.status();
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let payload = serde_json::from_slice(&body).unwrap();
+    let payload = serde_json::from_slice(&body).unwrap_or_else(|error| {
+        panic!(
+            "{method} {uri} returned a non-JSON response ({status}): {error}; body={}",
+            String::from_utf8_lossy(&body)
+        )
+    });
     (status, payload)
 }
 
@@ -564,6 +569,7 @@ async fn provider_runner_exposes_and_cleans_active_stream_snapshot() {
     let invoke_body = json!({
         "plugin_id": plugin_id,
         "input": {
+            "contract_version": "1flowbase.provider/v2",
             "provider_instance_id": "instance-active",
             "provider_code": "fixture_provider",
             "protocol": "openai_compatible",
@@ -638,6 +644,7 @@ async fn provider_runner_reload_is_not_blocked_by_running_invocation() {
             json!({
                 "plugin_id": invoke_plugin_id,
                 "input": {
+                    "contract_version": "1flowbase.provider/v2",
                     "provider_instance_id": "instance-reload",
                     "provider_code": "fixture_provider",
                     "protocol": "openai_compatible",
@@ -699,6 +706,7 @@ async fn provider_runner_cleans_active_stream_snapshot_after_error() {
         json!({
             "plugin_id": load_payload["plugin_id"],
             "input": {
+                "contract_version": "1flowbase.provider/v2",
                 "provider_instance_id": "instance-error",
                 "provider_code": "fixture_provider",
                 "protocol": "openai_compatible",
@@ -739,6 +747,7 @@ async fn stateful_provider_runtime_route_reuses_worker_process_between_invokes()
     let invoke_body = json!({
         "plugin_id": load_payload["plugin_id"],
         "input": {
+            "contract_version": "1flowbase.provider/v2",
             "provider_instance_id": "instance-1",
             "provider_code": "fixture_provider",
             "protocol": "openai_compatible",
@@ -836,6 +845,7 @@ async fn provider_runtime_routes_cover_load_reload_validate_list_models_and_invo
         json!({
             "plugin_id": load_payload["plugin_id"],
             "input": {
+                "contract_version": "1flowbase.provider/v2",
                 "provider_instance_id": "instance-1",
                 "provider_code": "fixture_provider",
                 "protocol": "openai_compatible",
@@ -964,6 +974,7 @@ async fn provider_runtime_routes_rejects_legacy_invoke_payload() {
         json!({
             "plugin_id": load_payload["plugin_id"],
             "input": {
+                "contract_version": "1flowbase.provider/v2",
                 "provider_instance_id": "instance-1",
                 "provider_code": "fixture_provider",
                 "protocol": "openai_compatible",

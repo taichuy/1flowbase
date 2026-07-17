@@ -2,7 +2,7 @@ use super::*;
 use crate::node_error_policy::ERROR_BRANCH_SOURCE_HANDLE;
 
 #[tokio::test]
-async fn failed_llm_public_text_is_available_to_downstream_answer_contract() {
+async fn failed_llm_does_not_expose_error_text_to_downstream_answer_contract() {
     let (invoker, _captured_inputs) = sequential_tool_invoker(vec![
         final_llm_response("first answer"),
         ProviderInvocationResult {
@@ -39,21 +39,19 @@ async fn failed_llm_public_text_is_available_to_downstream_answer_contract() {
     match outcome.stop_reason {
         ExecutionStopReason::Failed(ref failure) => {
             assert_eq!(failure.node_id, "node-llm-2");
-            assert_eq!(
-                outcome.variable_pool["node-llm-2"]["text"],
-                failure.error_payload["message"]
-            );
-            assert_eq!(
-                outcome.variable_pool["node-answer"]["answer"],
-                json!("first answer\n----\nprovider invocation finished with error")
-            );
+            assert!(!outcome.variable_pool.contains_key("node-llm-2"));
+            assert!(!outcome.variable_pool.contains_key("node-answer"));
+            assert!(outcome
+                .node_traces
+                .iter()
+                .all(|trace| trace.node_id != "node-answer"));
         }
-        other => panic!("expected failed stop reason after answer, got {other:?}"),
+        other => panic!("expected failed stop reason before answer, got {other:?}"),
     }
 }
 
 #[tokio::test]
-async fn failed_llm_with_compiled_edges_activates_terminal_answer() {
+async fn failed_llm_with_compiled_edges_does_not_activate_terminal_answer() {
     let mut plan = llm_answer_plan();
     plan.edges = vec![
         CompiledEdge {
@@ -87,13 +85,57 @@ async fn failed_llm_with_compiled_edges_activates_terminal_answer() {
     match outcome.stop_reason {
         ExecutionStopReason::Failed(ref failure) => {
             assert_eq!(failure.node_id, "node-llm");
-            assert_eq!(
-                outcome.variable_pool["node-answer"]["answer"],
-                failure.error_payload["message"]
-            );
+            assert!(!outcome.variable_pool.contains_key("node-llm"));
+            assert!(!outcome.variable_pool.contains_key("node-answer"));
+            assert!(outcome
+                .node_traces
+                .iter()
+                .all(|trace| trace.node_id != "node-answer"));
         }
-        other => panic!("expected failed stop reason after terminal answer, got {other:?}"),
+        other => panic!("expected failed stop reason before terminal answer, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn d1_ac_001_provider_failure_without_explicit_error_policy_does_not_materialize_answer() {
+    let mut plan = llm_answer_plan();
+    plan.edges = vec![
+        CompiledEdge {
+            edge_id: "edge-start-llm".to_string(),
+            source: "node-start".to_string(),
+            target: "node-llm".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+        CompiledEdge {
+            edge_id: "edge-llm-answer".to_string(),
+            source: "node-llm".to_string(),
+            target: "node-answer".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+    ];
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": "hello" } }),
+        &StubProviderInvoker {
+            fail: true,
+            captured_input: Arc::new(Mutex::new(None)),
+            final_content: String::new(),
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Failed(_)
+    ));
+    assert!(
+        !outcome.variable_pool.contains_key("node-answer"),
+        "D1-AC-001: a provider failure cannot synthesize a public Answer without an explicit error policy"
+    );
 }
 
 #[tokio::test]
@@ -191,8 +233,8 @@ async fn failed_llm_with_error_branch_policy_activates_only_error_branch() {
         "answer_template".to_string(),
         CompiledBinding {
             kind: "templated_text".to_string(),
-            selector_paths: vec![vec!["node-llm".to_string(), "text".to_string()]],
-            raw_value: json!("handled: {{ node-llm.text }}"),
+            selector_paths: Vec::new(),
+            raw_value: json!("handled: provider unavailable"),
         },
     )]);
     plan.nodes
@@ -214,7 +256,7 @@ async fn failed_llm_with_error_branch_policy_activates_only_error_branch() {
     assert!(!outcome.variable_pool.contains_key("node-answer"));
     assert_eq!(
         outcome.variable_pool["node-error-answer"]["answer"],
-        json!("handled: invalid api_key")
+        json!("handled: provider unavailable")
     );
     assert_eq!(
         outcome
@@ -227,7 +269,7 @@ async fn failed_llm_with_error_branch_policy_activates_only_error_branch() {
 }
 
 #[tokio::test]
-async fn failed_llm_with_inactive_later_branch_activates_terminal_answer() {
+async fn failed_llm_with_inactive_later_branch_still_stops_before_terminal_answer() {
     let mut plan = llm_answer_plan();
     plan.topological_order = vec![
         "node-start".to_string(),
@@ -357,13 +399,15 @@ async fn failed_llm_with_inactive_later_branch_activates_terminal_answer() {
     match outcome.stop_reason {
         ExecutionStopReason::Failed(ref failure) => {
             assert_eq!(failure.node_id, "node-llm");
-            assert_eq!(
-                outcome.variable_pool["node-answer"]["answer"],
-                failure.error_payload["message"]
-            );
+            assert!(!outcome.variable_pool.contains_key("node-llm"));
+            assert!(!outcome.variable_pool.contains_key("node-answer"));
             assert!(!outcome.variable_pool.contains_key("node-plugin"));
+            assert!(outcome
+                .node_traces
+                .iter()
+                .all(|trace| trace.node_id != "node-answer"));
         }
-        other => panic!("expected failed stop reason after active terminal answer, got {other:?}"),
+        other => panic!("expected failed stop reason before active terminal answer, got {other:?}"),
     }
 }
 

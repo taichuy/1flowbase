@@ -5,6 +5,13 @@ use super::super::protocol_mappers::{
 };
 use super::super::*;
 use super::support::*;
+use crate::{
+    app_state::ApiState,
+    routes::application_public_api::sse::{
+        send_native_runtime_event_stream, IncludeWorkflowEvents,
+    },
+};
+use axum::response::IntoResponse;
 use control_plane::{
     application_public_api::native::{AnswerProjectionSegment, NativeRequiredAction},
     ports::{
@@ -12,9 +19,51 @@ use control_plane::{
     },
 };
 use serde_json::json;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use uuid::Uuid;
+
+async fn native_sse_body_from_replay(
+    base_state: &ApiState,
+    run: NativeRunResult,
+    replay: Vec<RuntimeEventEnvelope>,
+    from_sequence: Option<i64>,
+) -> String {
+    let runtime_event_stream = Arc::new(
+        ReplayBeforeFallbackRuntimeEventStream::with_closed_subscription_replay(
+            replay,
+            Vec::new(),
+            RuntimeEventCloseReason::Incomplete,
+        ),
+    );
+    let mut state = base_state.clone();
+    state.runtime_event_stream = runtime_event_stream;
+    let (sender, mut receiver) = mpsc::channel(32);
+
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        send_native_runtime_event_stream(
+            Arc::new(state),
+            run,
+            IncludeWorkflowEvents::None,
+            from_sequence,
+            None,
+            sender,
+        ),
+    )
+    .await
+    .expect("Native SSE replay should stop at an incomplete terminal");
+
+    let mut events = Vec::new();
+    while let Some(event) = receiver.recv().await {
+        events.push(event);
+    }
+    let response = axum::response::sse::Sse::new(tokio_stream::iter(events)).into_response();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("Native SSE response body should be readable");
+    String::from_utf8(body.to_vec()).expect("Native SSE response body should be UTF-8")
+}
 
 #[test]
 fn live_answer_chunks_claim_the_same_coalesced_durable_delta_once() {
@@ -229,6 +278,54 @@ fn live_answer_chunks_are_not_treated_as_cumulative_snapshots() {
     assert!(stats.claim_runtime_event(&mut first));
     assert!(stats.claim_runtime_event(&mut second));
     assert_eq!(second.text.as_deref(), Some("ab"));
+}
+
+#[tokio::test]
+async fn d1_ac_007_native_sse_initial_and_durable_replay_keep_incomplete_distinct_from_completed() {
+    let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let mut run = native_run();
+    run.status = NativeRunStatus::Incomplete;
+    run.answer = Some("partial output at the limit".to_string());
+
+    let initial_stream = native_sse_body_from_replay(
+        &base_state,
+        run.clone(),
+        vec![
+            RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
+            RuntimeEventEnvelope::new(
+                run.id,
+                2,
+                debug_stream_events::flow_incomplete(
+                    run.id,
+                    json!({ "answer": "partial output at the limit" }),
+                ),
+            ),
+        ],
+        None,
+    )
+    .await;
+    let replay_stream = native_sse_body_from_replay(
+        &base_state,
+        run.clone(),
+        vec![RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            debug_stream_events::flow_incomplete(
+                run.id,
+                json!({ "answer": "partial output at the limit" }),
+            ),
+        )],
+        Some(1),
+    )
+    .await;
+
+    for body in [initial_stream, replay_stream] {
+        assert_eq!(body.matches("event: run.incomplete").count(), 1, "{body}");
+        assert!(body.contains("\"status\":\"incomplete\""), "{body}");
+        assert!(body.contains("partial output at the limit"), "{body}");
+        assert!(!body.contains("event: run.completed"), "{body}");
+        assert!(!body.contains("\"status\":\"succeeded\""), "{body}");
+    }
 }
 
 #[tokio::test]

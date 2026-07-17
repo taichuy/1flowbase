@@ -94,7 +94,12 @@ pub fn ensure_flow_run_transition(
     to: domain::FlowRunStatus,
     action: &'static str,
 ) -> Result<(), ControlPlaneError> {
-    if from == domain::FlowRunStatus::Queued && to == domain::FlowRunStatus::Failed {
+    if from == domain::FlowRunStatus::Queued
+        && matches!(
+            to,
+            domain::FlowRunStatus::Failed | domain::FlowRunStatus::Incomplete
+        )
+    {
         return Ok(());
     }
 
@@ -117,6 +122,9 @@ pub fn ensure_flow_run_transition(
             domain::FlowRunStatus::Succeeded
         ) | (
             domain::FlowRunStatus::Running,
+            domain::FlowRunStatus::Incomplete
+        ) | (
+            domain::FlowRunStatus::Running,
             domain::FlowRunStatus::Failed
         ) | (
             domain::FlowRunStatus::Running,
@@ -135,6 +143,9 @@ pub fn ensure_flow_run_transition(
             domain::FlowRunStatus::Succeeded
         ) | (
             domain::FlowRunStatus::WaitingHuman,
+            domain::FlowRunStatus::Incomplete
+        ) | (
+            domain::FlowRunStatus::WaitingHuman,
             domain::FlowRunStatus::Failed
         ) | (
             domain::FlowRunStatus::WaitingHuman,
@@ -150,6 +161,9 @@ pub fn ensure_flow_run_transition(
             domain::FlowRunStatus::Succeeded
         ) | (
             domain::FlowRunStatus::WaitingCallback,
+            domain::FlowRunStatus::Incomplete
+        ) | (
+            domain::FlowRunStatus::WaitingCallback,
             domain::FlowRunStatus::Failed
         ) | (
             domain::FlowRunStatus::WaitingCallback,
@@ -160,6 +174,9 @@ pub fn ensure_flow_run_transition(
         ) | (
             domain::FlowRunStatus::Paused,
             domain::FlowRunStatus::Cancelled
+        ) | (
+            domain::FlowRunStatus::Paused,
+            domain::FlowRunStatus::Incomplete
         )
     );
 

@@ -39,7 +39,8 @@ where
         orchestration_runtime::execution_state::ExecutionStopReason::Failed(failure) => {
             Some((failure.node_id.as_str(), domain::NodeRunStatus::Failed))
         }
-        orchestration_runtime::execution_state::ExecutionStopReason::Completed => None,
+        orchestration_runtime::execution_state::ExecutionStopReason::Completed
+        | orchestration_runtime::execution_state::ExecutionStopReason::Incomplete(_) => None,
     };
     let mut waiting_node_run = None;
     let mut stream_events = Vec::new();

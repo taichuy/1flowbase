@@ -150,6 +150,7 @@ fn debug_snapshot_completeness(status: domain::FlowRunStatus) -> &'static str {
         | domain::FlowRunStatus::WaitingCallback
         | domain::FlowRunStatus::WaitingHuman
         | domain::FlowRunStatus::Paused
+        | domain::FlowRunStatus::Incomplete
         | domain::FlowRunStatus::Failed
         | domain::FlowRunStatus::Cancelled => "partial",
     }

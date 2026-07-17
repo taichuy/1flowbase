@@ -1390,6 +1390,10 @@ where
                 "public_run_succeeded",
                 "application_public_api.run_succeeded",
             ),
+            domain::FlowRunStatus::Incomplete => (
+                "public_run_incomplete",
+                "application_public_api.run_incomplete",
+            ),
             domain::FlowRunStatus::Failed => {
                 ("public_run_failed", "application_public_api.run_failed")
             }

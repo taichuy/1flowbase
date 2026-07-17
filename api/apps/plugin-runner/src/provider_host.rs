@@ -14,7 +14,7 @@ use plugin_framework::{
     provider_contract::{
         ModelDiscoveryMode, ProviderBalanceResult, ProviderInvocationInput,
         ProviderInvocationResult, ProviderModelDescriptor, ProviderStdioMethod,
-        ProviderStdioRequest, ProviderStreamEvent,
+        ProviderStdioRequest, ProviderStreamEvent, PROVIDER_CONTRACT_V2,
     },
     PluginRuntimeLimits,
 };
@@ -607,10 +607,7 @@ impl ProviderHost {
             live_events,
         } = invocation;
 
-        let wire_input = input.to_provider_wire_value(
-            &loaded.package.manifest.contract_version,
-            &loaded.package.manifest.runtime.capabilities,
-        )?;
+        let wire_input = current_provider_wire_input(&loaded, &input)?;
         let _lease =
             Self::acquire_active_invocation_lease(&active_invocation_leases, &input).await?;
         Self::register_active_stream(&active_streams, invocation_id.clone(), &plugin_id, &input)
@@ -660,6 +657,21 @@ impl ProviderHost {
     }
 }
 
+fn current_provider_wire_input(
+    loaded: &LoadedProviderPackage,
+    input: &ProviderInvocationInput,
+) -> FrameworkResult<Value> {
+    if loaded.package.manifest.contract_version != PROVIDER_CONTRACT_V2 {
+        return Err(PluginFrameworkError::invalid_provider_contract(format!(
+            "unsupported provider package contract: expected {PROVIDER_CONTRACT_V2}, found {}",
+            loaded.package.manifest.contract_version
+        )));
+    }
+
+    serde_json::to_value(input)
+        .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))
+}
+
 mod operations;
 
 use operations::{
@@ -671,7 +683,7 @@ use operations::{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use plugin_framework::provider_contract::NativeModelRequestContext;
+    use plugin_framework::provider_contract::NativePromptBlock;
     use std::{
         fs,
         path::{Path, PathBuf},
@@ -716,6 +728,19 @@ mod tests {
         }
 
         fn write_provider_package_with_runtime_timeout(&self, display_name: &str, timeout_ms: u64) {
+            self.write_provider_package_with_contract(
+                display_name,
+                timeout_ms,
+                PROVIDER_CONTRACT_V2,
+            );
+        }
+
+        fn write_provider_package_with_contract(
+            &self,
+            display_name: &str,
+            timeout_ms: u64,
+            contract_version: &str,
+        ) {
             self.write(
                 "manifest.yaml",
                 &format!(
@@ -735,7 +760,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: {contract_version}
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: none
@@ -822,7 +847,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: none
@@ -988,23 +1013,58 @@ done
         panic!("expected {count} active provider stream(s)");
     }
 
-    #[tokio::test]
-    async fn ac_006_v1_capability_gate_fails_before_starting_provider_process() {
+    #[test]
+    fn d1_ac_011_current_provider_package_serializes_typed_input_without_projection() {
         let package = TempProviderPackage::new();
         let mut host = ProviderHost::default();
         let summary = host.load(package.path().to_str().unwrap()).unwrap();
         let mut input = invocation_input("fixture-model");
-        input.request_context = NativeModelRequestContext {
-            end_user_reference: Some("external-user-123".to_string()),
-        };
+        input.system = vec![NativePromptBlock::text("current typed system")];
+        input
+            .model_parameters
+            .insert("max_output_tokens".to_string(), json!(512));
+
+        let loaded = host
+            .loaded_package(&summary.plugin_id)
+            .expect("current provider package should be loaded");
+        let wire_input = current_provider_wire_input(loaded, &input)
+            .expect("current provider package should receive direct typed input");
+
+        assert_eq!(
+            wire_input["contract_version"],
+            json!("1flowbase.provider/v2")
+        );
+        assert_eq!(wire_input["system"][0]["type"], json!("text"));
+        assert_eq!(
+            wire_input["model_parameters"]["max_output_tokens"],
+            json!(512)
+        );
+        assert!(wire_input["model_parameters"].get("max_tokens").is_none());
+    }
+
+    #[tokio::test]
+    async fn d1_ac_011_non_current_provider_package_is_rejected_before_starting_provider_process() {
+        let package = TempProviderPackage::new();
+        package.write_provider_package_with_contract(
+            "Legacy Provider",
+            30_000,
+            "1flowbase.provider/v1",
+        );
+        let mut host = ProviderHost::default();
+        let summary = host.load(package.path().to_str().unwrap()).unwrap();
 
         let error = host
-            .invoke_stream(&summary.plugin_id, input)
+            .invoke_stream(&summary.plugin_id, invocation_input("fixture-model"))
             .await
             .unwrap_err();
 
-        assert!(error.to_string().contains("end_user_reference"));
+        assert!(error
+            .to_string()
+            .contains("unsupported provider package contract"));
         assert!(host.active_stream_snapshot().await.streams.is_empty());
+        assert!(lock_provider_worker_registry(&host.provider_workers)
+            .expect("provider worker registry should be available")
+            .is_empty());
     }
 
     #[tokio::test]

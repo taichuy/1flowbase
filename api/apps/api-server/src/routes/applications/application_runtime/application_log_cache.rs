@@ -41,7 +41,7 @@ pub(super) fn summary_page_cache_ttl(page: i64) -> Duration {
 }
 
 fn is_terminal_status_str(status: &str) -> bool {
-    matches!(status, "succeeded" | "failed" | "cancelled")
+    matches!(status, "succeeded" | "incomplete" | "failed" | "cancelled")
 }
 
 pub(super) fn summary_page_cacheable(response: &FlowRunSummaryPageResponse) -> bool {

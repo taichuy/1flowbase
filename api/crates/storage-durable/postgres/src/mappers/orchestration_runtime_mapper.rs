@@ -796,6 +796,7 @@ pub fn parse_flow_run_status(value: &str) -> Result<domain::FlowRunStatus> {
         "waiting_human" => Ok(domain::FlowRunStatus::WaitingHuman),
         "paused" => Ok(domain::FlowRunStatus::Paused),
         "succeeded" => Ok(domain::FlowRunStatus::Succeeded),
+        "incomplete" => Ok(domain::FlowRunStatus::Incomplete),
         "failed" => Ok(domain::FlowRunStatus::Failed),
         "cancelled" => Ok(domain::FlowRunStatus::Cancelled),
         _ => Err(anyhow!("unknown flow run status: {value}")),

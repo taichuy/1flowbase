@@ -12,20 +12,16 @@ use crate::{
 };
 
 use super::{
-    branching::activate_downstream_nodes, can_continue_to_terminal_template_nodes,
-    first_output_key, project_node_variable_payload,
+    branching::activate_downstream_nodes, first_output_key, project_node_variable_payload,
 };
 
 pub(super) struct NodeErrorPolicyApplication<'a> {
     pub(super) plan: &'a CompiledPlan,
-    pub(super) failed_node_index: usize,
     pub(super) active_node_ids: &'a mut BTreeSet<String>,
     pub(super) variable_pool: &'a mut Map<String, Value>,
-    pub(super) pending_failure: &'a mut Option<NodeExecutionFailure>,
     pub(super) node: &'a CompiledNode,
     pub(super) output_payload: &'a Value,
     pub(super) error_payload: Value,
-    pub(super) allow_terminal_template_fallback: bool,
 }
 
 pub(super) fn apply_node_error_policy(
@@ -33,14 +29,11 @@ pub(super) fn apply_node_error_policy(
 ) -> Result<Option<NodeExecutionFailure>> {
     let NodeErrorPolicyApplication {
         plan,
-        failed_node_index,
         active_node_ids,
         variable_pool,
-        pending_failure,
         node,
         output_payload,
         error_payload,
-        allow_terminal_template_fallback,
     } = application;
     let failure = NodeExecutionFailure {
         node_id: node.node_id.clone(),
@@ -74,27 +67,7 @@ pub(super) fn apply_node_error_policy(
 
             Ok(Some(failure))
         }
-        NodeErrorPolicy::None => {
-            if allow_terminal_template_fallback {
-                variable_pool.insert(
-                    node.node_id.clone(),
-                    project_node_variable_payload(node, output_payload)?,
-                );
-                let mut next_active_node_ids = active_node_ids.clone();
-                activate_downstream_nodes(plan, &mut next_active_node_ids, node, None);
-                if can_continue_to_terminal_template_nodes(
-                    plan,
-                    failed_node_index,
-                    &next_active_node_ids,
-                ) {
-                    *active_node_ids = next_active_node_ids;
-                    *pending_failure = Some(failure);
-                    return Ok(None);
-                }
-            }
-
-            Ok(Some(failure))
-        }
+        NodeErrorPolicy::None => Ok(Some(failure)),
     }
 }
 

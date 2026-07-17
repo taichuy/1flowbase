@@ -620,6 +620,7 @@ pub(super) async fn append_compatible_resume_terminal_event(
     };
     let close_reason = match run.status {
         NativeRunStatus::Succeeded => control_plane::ports::RuntimeEventCloseReason::Finished,
+        NativeRunStatus::Incomplete => control_plane::ports::RuntimeEventCloseReason::Incomplete,
         NativeRunStatus::Failed => control_plane::ports::RuntimeEventCloseReason::Failed,
         NativeRunStatus::Cancelled => control_plane::ports::RuntimeEventCloseReason::Cancelled,
         NativeRunStatus::Waiting => control_plane::ports::RuntimeEventCloseReason::WaitingCallback,
@@ -760,7 +761,12 @@ fn is_ignored_waiting_callback(
 pub(super) fn is_public_terminal_runtime_event(event_type: &str) -> bool {
     matches!(
         event_type,
-        "flow_finished" | "flow_failed" | "flow_cancelled" | "waiting_human" | "waiting_callback"
+        "flow_finished"
+            | "flow_incomplete"
+            | "flow_failed"
+            | "flow_cancelled"
+            | "waiting_human"
+            | "waiting_callback"
     )
 }
 

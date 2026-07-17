@@ -879,6 +879,7 @@ fn is_terminal_application_run_log_status(status: domain::FlowRunStatus) -> bool
     matches!(
         status,
         domain::FlowRunStatus::Succeeded
+            | domain::FlowRunStatus::Incomplete
             | domain::FlowRunStatus::Failed
             | domain::FlowRunStatus::Cancelled
     )

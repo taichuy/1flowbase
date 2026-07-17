@@ -411,6 +411,66 @@ where
             stream_events.push(terminal_event);
             close_reason = Some(crate::ports::RuntimeEventCloseReason::Finished);
         }
+        orchestration_runtime::execution_state::ExecutionStopReason::Incomplete(_) => {
+            ensure_flow_run_transition(
+                flow_run.status,
+                domain::FlowRunStatus::Incomplete,
+                "persist_flow_incomplete",
+            )?;
+            let output_payload = final_flow_output_payload(outcome);
+            let updated = repository
+                .update_flow_run_if_status(
+                    &UpdateFlowRunInput {
+                        flow_run_id: flow_run.id,
+                        status: domain::FlowRunStatus::Incomplete,
+                        output_payload: output_payload.clone(),
+                        error_payload: None,
+                        finished_at: Some(OffsetDateTime::now_utc()),
+                    },
+                    flow_run.status,
+                )
+                .await?;
+            if updated.is_none() {
+                let persisted_flow_run = repository
+                    .get_flow_run(application_id, flow_run.id)
+                    .await?
+                    .ok_or_else(|| anyhow!("persisted flow run not found"))?;
+                return Ok(PersistedFlowDebugOutcome {
+                    flow_run: persisted_flow_run,
+                    stream_events: Vec::new(),
+                    close_reason: None,
+                });
+            }
+            stream_events.extend(
+                append_answer_presentation_suffix(
+                    repository,
+                    flow_run.id,
+                    compiled_plan,
+                    outcome,
+                    prepared_node_runs,
+                    answer_node_id(outcome),
+                    &output_payload,
+                )
+                .await?,
+            );
+            repository
+                .append_run_event(&AppendRunEventInput {
+                    flow_run_id: flow_run.id,
+                    node_run_id: None,
+                    event_type: "flow_run_incomplete".to_string(),
+                    payload: output_payload.clone(),
+                })
+                .await?;
+            let terminal_event = debug_stream_events::flow_incomplete(flow_run.id, output_payload);
+            runtime_event_persister::persist_runtime_event_payload(
+                repository,
+                flow_run.id,
+                &terminal_event,
+            )
+            .await?;
+            stream_events.push(terminal_event);
+            close_reason = Some(crate::ports::RuntimeEventCloseReason::Incomplete);
+        }
         orchestration_runtime::execution_state::ExecutionStopReason::Failed(failure) => {
             ensure_flow_run_transition(
                 flow_run.status,

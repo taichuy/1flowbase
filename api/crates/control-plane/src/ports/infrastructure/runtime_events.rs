@@ -128,6 +128,7 @@ impl RuntimeEventStreamPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeEventCloseReason {
     Finished,
+    Incomplete,
     Failed,
     Cancelled,
     WaitingHuman,

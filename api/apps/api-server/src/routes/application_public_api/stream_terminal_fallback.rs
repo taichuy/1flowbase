@@ -72,6 +72,9 @@ pub(crate) fn terminal_runtime_event_from_native_run(
         NativeRunStatus::Succeeded => {
             debug_stream_events::flow_finished(run.id, terminal_output_payload(run))
         }
+        NativeRunStatus::Incomplete => {
+            debug_stream_events::flow_incomplete(run.id, terminal_output_payload(run))
+        }
         NativeRunStatus::Failed => {
             debug_stream_events::flow_failed(run.id, terminal_error_payload(run))
         }
@@ -89,7 +92,10 @@ pub(crate) async fn enrich_terminal_runtime_event_with_durable_answer(
     run: &NativeRunResult,
     mut event: RuntimeEventEnvelope,
 ) -> RuntimeEventEnvelope {
-    if !matches!(event.event_type.as_str(), "flow_finished" | "flow_failed") {
+    if !matches!(
+        event.event_type.as_str(),
+        "flow_finished" | "flow_incomplete" | "flow_failed"
+    ) {
         return event;
     }
     if !terminal_answer_deltas_from_payload(&event.payload).is_empty()
@@ -137,7 +143,10 @@ pub(crate) async fn recover_terminal_answer_deltas_from_durable_runtime_events(
     }
 
     for record in records.iter().rev() {
-        if !matches!(record.event_type.as_str(), "flow_finished" | "flow_failed") {
+        if !matches!(
+            record.event_type.as_str(),
+            "flow_finished" | "flow_incomplete" | "flow_failed"
+        ) {
             continue;
         }
         let deltas =
@@ -598,7 +607,7 @@ fn put_terminal_answer_in_payload(event_type: &str, payload: &mut Value, answer:
     let Some(object) = payload.as_object_mut() else {
         return;
     };
-    if event_type == "flow_finished" {
+    if matches!(event_type, "flow_finished" | "flow_incomplete") {
         let output = object.entry("output").or_insert_with(|| json!({}));
         if !output.is_object() {
             *output = json!({});
@@ -657,6 +666,17 @@ mod tests {
 
         assert_eq!(event.event_type, "flow_finished");
         assert_eq!(event.payload["output"]["answer"], json!("done"));
+    }
+
+    #[test]
+    fn d1_ac_007_terminal_fallback_maps_incomplete_native_run_to_flow_incomplete() {
+        let event =
+            terminal_runtime_event_from_native_run(&native_run(NativeRunStatus::Incomplete))
+                .expect("incomplete run should synthesize a terminal runtime event");
+
+        assert_eq!(event.event_type, "flow_incomplete");
+        assert_eq!(event.payload["status"], json!("incomplete"));
+        assert_ne!(event.event_type, "flow_finished");
     }
 
     #[test]

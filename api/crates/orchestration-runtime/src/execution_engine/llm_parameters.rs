@@ -18,20 +18,27 @@ pub(super) fn resolve_model_parameters(
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,
     variable_pool: &Map<String, Value>,
-) -> ResolvedLlmModelParameters {
+) -> Result<ResolvedLlmModelParameters, Value> {
+    if let Some(field) = legacy_max_tokens_field(&node.config) {
+        return Err(json!({
+            "error_code": "unsupported_model_parameter",
+            "message": "max_tokens is unsupported; use max_output_tokens",
+            "field": field,
+        }));
+    }
     let mut parameters = build_configured_model_parameters(&node.config);
     if llm_follows_external_reasoning(&node.config) {
         apply_external_reasoning_parameters(&mut parameters, runtime, variable_pool);
     }
 
-    let configured_max_output_tokens = parameters.get("max_tokens").and_then(parameter_u64);
+    let configured_max_output_tokens = parameters.get("max_output_tokens").and_then(parameter_u64);
     let (effective_max_output_tokens, max_output_tokens_source) =
-        if parameters.contains_key("max_tokens") {
+        if parameters.contains_key("max_output_tokens") {
             (configured_max_output_tokens, "llm_node")
         } else if llm_follows_external_max_output_tokens(&node.config) {
             match external_max_output_tokens(variable_pool) {
                 Some(max_output_tokens) => {
-                    parameters.insert("max_tokens".to_string(), json!(max_output_tokens));
+                    parameters.insert("max_output_tokens".to_string(), json!(max_output_tokens));
                     (Some(max_output_tokens), "external_request")
                 }
                 None => (None, "provider_default"),
@@ -40,11 +47,27 @@ pub(super) fn resolve_model_parameters(
             (None, "provider_default")
         };
 
-    ResolvedLlmModelParameters {
+    Ok(ResolvedLlmModelParameters {
         values: parameters,
         effective_max_output_tokens,
         max_output_tokens_source,
+    })
+}
+
+fn legacy_max_tokens_field(config: &Value) -> Option<&'static str> {
+    if config.get("max_tokens").is_some() {
+        return Some("max_tokens");
     }
+    config
+        .get("llm_parameters")
+        .and_then(Value::as_object)
+        .and_then(|parameters| parameters.get("items"))
+        .and_then(Value::as_object)
+        .and_then(|items| {
+            items
+                .contains_key("max_tokens")
+                .then_some("llm_parameters.items.max_tokens")
+        })
 }
 
 pub(super) fn build_configured_model_parameters(config: &Value) -> BTreeMap<String, Value> {
@@ -72,7 +95,7 @@ pub(super) fn build_configured_model_parameters(config: &Value) -> BTreeMap<Stri
         "top_p",
         "presence_penalty",
         "frequency_penalty",
-        "max_tokens",
+        "max_output_tokens",
         "seed",
     ]
     .into_iter()

@@ -236,6 +236,10 @@ fn native_sse_payload_for_runtime_event(
             "run.completed",
             native_terminal_payload(initial_run, &envelope, "succeeded"),
         ),
+        "flow_incomplete" => (
+            "run.incomplete",
+            native_terminal_payload(initial_run, &envelope, "incomplete"),
+        ),
         "flow_failed" => (
             "run.failed",
             NativeSsePayload {
@@ -327,7 +331,12 @@ fn native_required_action_payload(
 fn is_public_terminal_runtime_event(event_type: &str) -> bool {
     matches!(
         event_type,
-        "flow_finished" | "flow_failed" | "flow_cancelled" | "waiting_human" | "waiting_callback"
+        "flow_finished"
+            | "flow_incomplete"
+            | "flow_failed"
+            | "flow_cancelled"
+            | "waiting_human"
+            | "waiting_callback"
     )
 }
 
@@ -712,6 +721,30 @@ mod tests {
 
         assert_eq!(event_name, "message.delta");
         assert_eq!(payload["delta"], json!("answer presentation"));
+    }
+
+    #[test]
+    fn d1_ac_007_native_sse_projects_incomplete_without_completed_terminal() {
+        let mut run = native_run();
+        run.status = control_plane::application_public_api::native::NativeRunStatus::Incomplete;
+        let event = RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            debug_stream_events::flow_incomplete(
+                run.id,
+                json!({ "answer": "partial output at the limit" }),
+            ),
+        );
+
+        let (event_name, payload) =
+            native_sse_payload_for_runtime_event(&run, IncludeWorkflowEvents::None, event)
+                .expect("incomplete terminal should be projected to Native SSE");
+        let payload = serde_json::to_value(payload).expect("payload serializes");
+
+        assert_eq!(event_name, "run.incomplete");
+        assert_eq!(payload["status"], json!("incomplete"));
+        assert_eq!(payload["answer"], json!("partial output at the limit"));
+        assert_ne!(event_name, "run.completed");
     }
 
     #[tokio::test]

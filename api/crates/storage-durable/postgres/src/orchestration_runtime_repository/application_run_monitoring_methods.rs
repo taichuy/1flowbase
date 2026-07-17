@@ -797,7 +797,7 @@ fn application_run_monitoring_logs_query(select_sql: &str) -> String {
             where application_id = $1
               and ($2::timestamptz is null or started_at >= $2)
               and ($3::timestamptz is null or started_at < $3)
-              and status in ('succeeded', 'failed', 'cancelled')
+              and status in ('succeeded', 'incomplete', 'failed', 'cancelled')
               and {visible_filter}
         )
         {select_sql}

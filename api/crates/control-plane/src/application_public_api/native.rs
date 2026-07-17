@@ -33,6 +33,7 @@ use crate::ports::{
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NativeRunRequest {
     pub query: String,
     #[serde(
@@ -197,6 +198,7 @@ pub enum NativeRunStatus {
     Running,
     Waiting,
     Succeeded,
+    Incomplete,
     Failed,
     Cancelled,
 }

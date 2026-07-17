@@ -1446,3 +1446,56 @@ async fn migration_smoke_creates_system_default_upgrade_ledger() {
     assert!(item_status_check.contains("skipped"));
     assert!(item_status_check.contains("failed"));
 }
+
+#[tokio::test]
+async fn migration_smoke_keeps_active_run_statuses_when_adding_incomplete() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let schema: String = sqlx::query_scalar("select current_schema()")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    for (table, constraint) in [
+        ("flow_runs", "flow_runs_status_check"),
+        (
+            "application_run_log_summaries",
+            "application_run_log_summaries_status_check",
+        ),
+    ] {
+        let status_check: String = sqlx::query_scalar(
+            r#"
+            select pg_get_constraintdef(c.oid)
+            from pg_constraint c
+            join pg_class r on r.oid = c.conrelid
+            join pg_namespace n on n.oid = r.relnamespace
+            where n.nspname = $1
+              and r.relname = $2
+              and c.conname = $3
+            "#,
+        )
+        .bind(&schema)
+        .bind(table)
+        .bind(constraint)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        for expected_status in [
+            "queued",
+            "running",
+            "waiting_callback",
+            "waiting_human",
+            "paused",
+            "succeeded",
+            "incomplete",
+            "failed",
+            "cancelled",
+        ] {
+            assert!(
+                status_check.contains(expected_status),
+                "{table}.{constraint} must allow {expected_status}"
+            );
+        }
+    }
+}

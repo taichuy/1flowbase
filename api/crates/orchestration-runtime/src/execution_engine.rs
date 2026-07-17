@@ -24,8 +24,9 @@ use crate::{
         LlmRoutingMode,
     },
     execution_state::{
-        CheckpointSnapshot, ExecutionStopReason, FlowDebugExecutionOutcome, NodeExecutionFailure,
-        NodeExecutionTrace, PendingCallbackTask, PendingHumanInput,
+        CheckpointSnapshot, ExecutionIncompleteReason, ExecutionStopReason,
+        FlowDebugExecutionOutcome, NodeExecutionFailure, NodeExecutionTrace, PendingCallbackTask,
+        PendingHumanInput,
     },
     node_errors::build_node_type_not_implemented_error_payload,
     output_schema::value_is_llm_context_messages,
@@ -594,14 +595,11 @@ where
                 if let Some(error_payload) = execution.error_payload {
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
-                        failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
-                        pending_failure: &mut pending_failure,
                         node,
                         output_payload: &execution.output_payload,
                         error_payload,
-                        allow_terminal_template_fallback: true,
                     })? {
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
@@ -660,14 +658,11 @@ where
                 if let Some(error_payload) = execution.error_payload {
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
-                        failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
-                        pending_failure: &mut pending_failure,
                         node,
                         output_payload: &execution.output_payload,
                         error_payload,
-                        allow_terminal_template_fallback: false,
                     })? {
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
@@ -704,14 +699,11 @@ where
                 if let Some(error_payload) = execution.error_payload {
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
-                        failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
-                        pending_failure: &mut pending_failure,
                         node,
                         output_payload: &execution.output_payload,
                         error_payload,
-                        allow_terminal_template_fallback: false,
                     })? {
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
@@ -896,14 +888,11 @@ where
                 if let Some(error_payload) = execution.error_payload {
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
-                        failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
-                        pending_failure: &mut pending_failure,
                         node,
                         output_payload: &execution.output_payload,
                         error_payload,
-                        allow_terminal_template_fallback: false,
                     })? {
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
@@ -937,14 +926,11 @@ where
                 if let Some(error_payload) = execution.error_payload {
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
-                        failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
-                        pending_failure: &mut pending_failure,
                         node,
                         output_payload: &execution.output_payload,
                         error_payload,
-                        allow_terminal_template_fallback: false,
                     })? {
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
@@ -1004,11 +990,28 @@ where
     }
 
     Ok(FlowDebugExecutionOutcome {
-        stop_reason: ExecutionStopReason::Completed,
+        stop_reason: successful_flow_stop_reason(&node_traces),
         variable_pool,
         checkpoint_snapshot: None,
         node_traces,
     })
+}
+
+fn successful_flow_stop_reason(node_traces: &[NodeExecutionTrace]) -> ExecutionStopReason {
+    let reached_output_limit = node_traces.iter().any(|trace| {
+        trace.node_type == "llm"
+            && trace
+                .output_payload
+                .get("finish_reason")
+                .and_then(Value::as_str)
+                == Some("length")
+    });
+
+    if reached_output_limit {
+        ExecutionStopReason::Incomplete(ExecutionIncompleteReason::OutputLimit)
+    } else {
+        ExecutionStopReason::Completed
+    }
 }
 
 pub async fn execute_llm_node<I>(

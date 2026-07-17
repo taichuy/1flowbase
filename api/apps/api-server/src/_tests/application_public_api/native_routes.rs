@@ -541,6 +541,23 @@ async fn native_run_route_rejects_legacy_user_id_field() {
 }
 
 #[tokio::test]
+async fn d1_ac_009_native_run_route_rejects_unknown_fields_before_run_creation() {
+    let app = test_app().await;
+    let token = setup_published_native_app(&app, "Native Route Unknown Field App").await;
+    let mut body = native_run_body(json!("provider/model:any-public-string"));
+    body["unrecognized_native_option"] = json!(true);
+
+    let response = post_native_run(&app, &token, body).await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let payload = response_json(response).await;
+    assert_eq!(payload["code"], json!("body"));
+    assert!(payload["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("unknown field")));
+}
+
+#[tokio::test]
 async fn native_run_route_rejects_non_string_model_json_values() {
     let app = test_app().await;
     let token = setup_published_native_app(&app, "Native Route Invalid Model App").await;
