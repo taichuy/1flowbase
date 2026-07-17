@@ -511,6 +511,22 @@ pub struct CreateCallbackTaskInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct CallbackResumeWaitingNode {
+    pub id: Uuid,
+    pub status: domain::NodeRunStatus,
+    pub output_payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct CallbackResumeContext {
+    pub flow_run: domain::FlowRunRecord,
+    pub callback_task: domain::CallbackTaskRecord,
+    pub checkpoint: domain::CheckpointRecord,
+    pub waiting_node: CallbackResumeWaitingNode,
+    pub next_node_started_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
 pub struct CompleteCallbackTaskInput {
     pub callback_task_id: Uuid,
     pub response_payload: serde_json::Value,
@@ -682,6 +698,14 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<Option<domain::CallbackTaskRecord>> {
         let _ = callback_task_id;
         anyhow::bail!("get_callback_task not implemented")
+    }
+    async fn get_callback_resume_context(
+        &self,
+        application_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> anyhow::Result<Option<CallbackResumeContext>> {
+        let _ = (application_id, callback_task_id);
+        anyhow::bail!("get_callback_resume_context not implemented")
     }
     async fn complete_callback_task(
         &self,
@@ -886,6 +910,11 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         flow_run_id: Uuid,
         after_sequence: i64,
     ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>>;
+    async fn get_runtime_event_sequence_for_callback_task(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> anyhow::Result<Option<i64>>;
     async fn list_runtime_event_backfill_page(
         &self,
         flow_run_id: Uuid,

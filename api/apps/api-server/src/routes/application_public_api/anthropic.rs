@@ -27,6 +27,7 @@ use control_plane::application_public_api::{
     },
     run_service::{
         ApplicationPublishedRunControlRepository, ListWaitingCallbackPublishedRunsInput,
+        PublishedRunPendingCallback,
     },
 };
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
@@ -443,12 +444,7 @@ async fn resume_anthropic_tool_call(
             .await
             .map_err(native::service_error)?;
 
-    Ok(
-        control_plane::application_public_api::run_service::native_result_from_run_detail(
-            &result.detail,
-            native::published_run_metadata(&result.detail.flow_run),
-        ),
-    )
+    Ok(result.run)
 }
 
 fn anthropic_tool_resume_response_payload(tool_results: Value) -> Value {
@@ -728,21 +724,20 @@ async fn resolve_plain_anthropic_tool_resume(
         .map_err(native::service_error)?;
 
     for waiting_run_id in waiting_run_ids.iter().rev() {
-        let Some(detail) = state
+        let Some(callback_task) = state
             .store
-            .get_published_run_detail(actor.application_id, *waiting_run_id)
+            .get_published_run_stream_state(actor.application_id, *waiting_run_id)
             .await
             .map_err(native::service_error)?
+            .and_then(|stream_state| stream_state.latest_pending_callback)
         else {
             continue;
         };
-        for callback_task in detail.callback_tasks.iter().rev() {
-            if anthropic_raw_tool_results_match_callback_task(raw_results, callback_task) {
-                return Ok(Some(AnthropicToolResumeRequest {
-                    callback_task_id: callback_task.id,
-                    tool_results: anthropic_raw_tool_results_payload(raw_results),
-                }));
-            }
+        if anthropic_raw_tool_results_match_callback_task(raw_results, &callback_task) {
+            return Ok(Some(AnthropicToolResumeRequest {
+                callback_task_id: callback_task.id,
+                tool_results: anthropic_raw_tool_results_payload(raw_results),
+            }));
         }
     }
 
@@ -785,23 +780,22 @@ async fn resolve_embedded_anthropic_encoded_tool_resume(
         .map_err(native::service_error)?;
 
     for waiting_run_id in waiting_run_ids.iter().rev() {
-        let Some(detail) = state
+        let Some(callback_task) = state
             .store
-            .get_published_run_detail(actor.application_id, *waiting_run_id)
+            .get_published_run_stream_state(actor.application_id, *waiting_run_id)
             .await
             .map_err(native::service_error)?
+            .and_then(|stream_state| stream_state.latest_pending_callback)
         else {
             continue;
         };
-        for callback_task in detail.callback_tasks.iter().rev() {
-            if let Some(tool_results) =
-                anthropic_decoded_tool_results_for_callback(&decoded_results, callback_task)
-            {
-                return Ok(Some(AnthropicToolResumeRequest {
-                    callback_task_id: callback_task.id,
-                    tool_results,
-                }));
-            }
+        if let Some(tool_results) =
+            anthropic_decoded_tool_results_for_callback(&decoded_results, &callback_task)
+        {
+            return Ok(Some(AnthropicToolResumeRequest {
+                callback_task_id: callback_task.id,
+                tool_results,
+            }));
         }
     }
 
@@ -847,16 +841,14 @@ fn anthropic_decoded_tool_results_in_request(
 
 fn anthropic_decoded_tool_results_for_callback(
     decoded_results: &[AnthropicDecodedToolResult],
-    callback_task: &domain::CallbackTaskRecord,
+    callback_task: &PublishedRunPendingCallback,
 ) -> Option<Value> {
-    if callback_task.status != domain::CallbackTaskStatus::Pending
-        || callback_task.callback_kind != "llm_tool_calls"
-    {
+    if callback_task.callback_kind != "llm_tool_calls" {
         return None;
     }
     let tool_calls = callback_task
-        .request_payload
-        .get("tool_calls")
+        .tool_calls
+        .as_ref()
         .and_then(Value::as_array)?;
     let tool_call_ids = tool_calls
         .iter()
@@ -924,23 +916,22 @@ async fn anthropic_plain_stdout_resume_request_for_route(
         .map_err(native::service_error)?;
 
     for waiting_run_id in waiting_run_ids.iter().rev() {
-        let Some(detail) = state
+        let Some(callback_task) = state
             .store
-            .get_published_run_detail(actor.application_id, *waiting_run_id)
+            .get_published_run_stream_state(actor.application_id, *waiting_run_id)
             .await
             .map_err(native::service_error)?
+            .and_then(|stream_state| stream_state.latest_pending_callback)
         else {
             continue;
         };
-        for callback_task in detail.callback_tasks.iter().rev() {
-            if let Some(tool_results) =
-                anthropic_plain_stdout_tool_results_for_callback(&candidate, callback_task)
-            {
-                return Ok(Some(AnthropicToolResumeRequest {
-                    callback_task_id: callback_task.id,
-                    tool_results,
-                }));
-            }
+        if let Some(tool_results) =
+            anthropic_plain_stdout_tool_results_for_callback(&candidate, &callback_task)
+        {
+            return Ok(Some(AnthropicToolResumeRequest {
+                callback_task_id: callback_task.id,
+                tool_results,
+            }));
         }
     }
 
@@ -981,18 +972,12 @@ fn anthropic_plain_stdout_resume_candidate(
 
 fn anthropic_raw_tool_results_match_callback_task(
     raw_results: &[AnthropicRawToolResult],
-    callback_task: &domain::CallbackTaskRecord,
+    callback_task: &PublishedRunPendingCallback,
 ) -> bool {
-    if callback_task.status != domain::CallbackTaskStatus::Pending
-        || callback_task.callback_kind != "llm_tool_calls"
-    {
+    if callback_task.callback_kind != "llm_tool_calls" {
         return false;
     }
-    let Some(tool_calls) = callback_task
-        .request_payload
-        .get("tool_calls")
-        .and_then(Value::as_array)
-    else {
+    let Some(tool_calls) = callback_task.tool_calls.as_ref().and_then(Value::as_array) else {
         return false;
     };
     let tool_call_ids = tool_calls
@@ -1021,16 +1006,14 @@ fn anthropic_raw_tool_results_payload(raw_results: &[AnthropicRawToolResult]) ->
 
 fn anthropic_plain_stdout_tool_results_for_callback(
     candidate: &AnthropicPlainStdoutResumeCandidate,
-    callback_task: &domain::CallbackTaskRecord,
+    callback_task: &PublishedRunPendingCallback,
 ) -> Option<Value> {
-    if callback_task.status != domain::CallbackTaskStatus::Pending
-        || callback_task.callback_kind != "llm_tool_calls"
-    {
+    if callback_task.callback_kind != "llm_tool_calls" {
         return None;
     }
     let tool_calls = callback_task
-        .request_payload
-        .get("tool_calls")
+        .tool_calls
+        .as_ref()
         .and_then(Value::as_array)?;
     let tool_call_ids = tool_calls
         .iter()

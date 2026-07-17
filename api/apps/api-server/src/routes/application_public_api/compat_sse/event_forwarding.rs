@@ -255,19 +255,11 @@ async fn durable_sequence_for_ignored_waiting_callback(
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
 ) -> Option<i64> {
     let ignored_task_id = ignored_waiting_callback_task_id?;
-    let records = state.store.list_runtime_events(run_id, 0).await.ok()?;
-    records
-        .into_iter()
-        .filter(|record| {
-            record
-                .payload
-                .get("callback_task_id")
-                .and_then(Value::as_str)
-                .and_then(|value| uuid::Uuid::parse_str(value).ok())
-                == Some(ignored_task_id)
-        })
-        .map(|record| record.sequence)
-        .max()
+    state
+        .store
+        .get_runtime_event_sequence_for_callback_task(run_id, ignored_task_id)
+        .await
+        .ok()?
 }
 
 fn log_compatible_sse_closed(
@@ -621,10 +613,9 @@ async fn send_compatible_sse_events(
 
 pub(super) async fn append_compatible_resume_terminal_event(
     state: &ApiState,
-    detail: &domain::ApplicationRunDetail,
+    run: &NativeRunResult,
 ) {
-    let run = native_result_from_run_detail(detail, resume_metadata_from_detail(detail));
-    let Some(event) = terminal_runtime_event_from_native_run(&run) else {
+    let Some(event) = terminal_runtime_event_from_native_run(run) else {
         return;
     };
     let close_reason = match run.status {
@@ -653,22 +644,6 @@ fn runtime_event_payload_from_envelope(envelope: RuntimeEventEnvelope) -> Runtim
         trace_visible: envelope.trace_visible,
         payload: envelope.payload,
     }
-}
-
-fn resume_metadata_from_detail(detail: &domain::ApplicationRunDetail) -> Value {
-    json!({
-        "external_user": detail.flow_run.external_user,
-        "external_conversation_id": detail.flow_run.external_conversation_id,
-        "external_trace_id": detail.flow_run.external_trace_id,
-        "compatibility_mode": detail.flow_run.compatibility_mode,
-        "idempotency_key": detail.flow_run.idempotency_key,
-        "request": {
-            "conversation": {
-                "id": detail.flow_run.external_conversation_id,
-                "user": detail.flow_run.external_user,
-            }
-        }
-    })
 }
 
 struct CompatibleTerminalFallback<'a, F> {

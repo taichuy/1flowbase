@@ -267,7 +267,7 @@ impl ApplicationPublishedCallbackConsumer for RecordingCallbackConsumer {
     async fn complete_published_callback(
         &self,
         input: CompletePublishedCallbackInput,
-    ) -> anyhow::Result<domain::ApplicationRunDetail> {
+    ) -> anyhow::Result<domain::FlowRunRecord> {
         self.calls
             .lock()
             .expect("recording callback consumer mutex poisoned")
@@ -278,9 +278,9 @@ impl ApplicationPublishedCallbackConsumer for RecordingCallbackConsumer {
             .await?
             .expect("callback task should exist");
         self.repository
-            .get_published_run_detail(input.application_id, callback_task.flow_run_id)
+            .get_published_flow_run(callback_task.flow_run_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("published run detail should exist"))
+            .ok_or_else(|| anyhow::anyhow!("published run should exist"))
     }
 }
 

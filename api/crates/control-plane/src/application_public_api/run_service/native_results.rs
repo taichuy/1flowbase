@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 use crate::application_public_api::native::{self, NativeRunResult, NativeRunStatus};
 
-use super::repository_contracts::PublishedRunStreamState;
+use super::repository_contracts::{PublishedRunPendingCallback, PublishedRunStreamState};
 
 pub fn native_result_from_flow_run(
     flow_run: &domain::FlowRunRecord,
@@ -139,10 +139,7 @@ pub fn native_result_from_run_stream_state(
         }))
     });
     result.error = native_error_from_payload(stream_state.error_payload.as_ref());
-    apply_pending_callback_task(
-        &mut result,
-        stream_state.latest_pending_callback_task.as_ref(),
-    );
+    apply_pending_callback_state(&mut result, stream_state.latest_pending_callback.as_ref());
     result
 }
 
@@ -172,6 +169,36 @@ fn apply_pending_callback_task(
     }
 }
 
+fn apply_pending_callback_state(
+    result: &mut NativeRunResult,
+    callback: Option<&PublishedRunPendingCallback>,
+) {
+    let Some(callback) = callback else {
+        return;
+    };
+    let action_type = if callback.callback_kind == "llm_tool_calls" {
+        "submit_tool_outputs"
+    } else {
+        "callback"
+    };
+    let mut payload = json!({
+        "callback_task_id": callback.id,
+        "callback_kind": callback.callback_kind,
+        "flow_run_id": callback.flow_run_id,
+        "node_run_id": callback.node_run_id,
+    });
+    if callback.callback_kind == "llm_tool_calls" {
+        payload["tool_calls"] = callback.tool_calls.clone().unwrap_or(Value::Null);
+        result.tool_calls = callback.tool_calls.clone();
+    } else if let Some(request_payload) = &callback.request_payload {
+        payload["request_payload"] = request_payload.clone();
+    }
+    result.required_action = Some(native::NativeRequiredAction {
+        action_type: action_type.to_string(),
+        payload,
+    });
+}
+
 fn native_required_action_from_callback_task(
     task: &domain::CallbackTaskRecord,
 ) -> native::NativeRequiredAction {
@@ -180,20 +207,24 @@ fn native_required_action_from_callback_task(
     } else {
         "callback"
     };
+    let mut payload = json!({
+        "callback_task_id": task.id,
+        "callback_kind": task.callback_kind,
+        "flow_run_id": task.flow_run_id,
+        "node_run_id": task.node_run_id,
+    });
+    if task.callback_kind == "llm_tool_calls" {
+        payload["tool_calls"] = task
+            .request_payload
+            .get("tool_calls")
+            .cloned()
+            .unwrap_or(Value::Null);
+    } else {
+        payload["request_payload"] = task.request_payload.clone();
+    }
     native::NativeRequiredAction {
         action_type: action_type.to_string(),
-        payload: json!({
-            "callback_task_id": task.id,
-            "callback_kind": task.callback_kind,
-            "flow_run_id": task.flow_run_id,
-            "node_run_id": task.node_run_id,
-            "request_payload": task.request_payload,
-            "tool_calls": task
-                .request_payload
-                .get("tool_calls")
-                .cloned()
-                .unwrap_or(Value::Null),
-        }),
+        payload,
     }
 }
 

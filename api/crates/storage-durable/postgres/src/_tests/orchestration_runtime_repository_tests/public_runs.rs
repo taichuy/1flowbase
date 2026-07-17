@@ -232,7 +232,10 @@ async fn published_run_stream_state_projects_status_usage_and_latest_pending_cal
                 flow_run_id: run.id,
                 node_run_id: node_run.id,
                 callback_kind: "llm_tool_calls".to_string(),
-                request_payload: json!({ "tool_calls": [{ "id": "toolu_latest" }] }),
+                request_payload: json!({
+                    "tool_calls": [{ "id": "toolu_latest" }],
+                    "large_unrelated_request": "must not be projected"
+                }),
                 external_ref_payload: None,
             },
         )
@@ -268,12 +271,14 @@ async fn published_run_stream_state_projects_status_usage_and_latest_pending_cal
         Some(json!({ "prompt_tokens": 999, "completion_tokens": 999 }))
     );
     assert_ne!(first_pending.id, latest_pending.id);
+    let pending_callback = stream_state
+        .latest_pending_callback
+        .expect("latest pending callback should be projected");
+    assert_eq!(pending_callback.id, latest_pending.id);
+    assert_eq!(pending_callback.request_payload, None);
     assert_eq!(
-        stream_state
-            .latest_pending_callback_task
-            .expect("latest pending callback should be projected")
-            .id,
-        latest_pending.id
+        pending_callback.tool_calls,
+        Some(json!([{ "id": "toolu_latest" }]))
     );
     assert!(wrong_application.is_none());
 }

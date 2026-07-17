@@ -790,8 +790,11 @@ impl PgControlPlaneStore {
             Self::replace_application_run_conversation_message_items_projection(&mut tx, &flow_run)
                 .await?;
         } else {
-            Self::delete_application_run_conversation_message_items_projection(&mut tx, flow_run.id)
-                .await?;
+            Self::delete_application_run_conversation_message_items_projection(
+                &mut tx,
+                flow_run.id,
+            )
+            .await?;
         }
         tx.commit().await?;
 
@@ -861,12 +864,10 @@ impl PgControlPlaneStore {
 
         if let Some(row) = row {
             let flow_run = map_flow_run_record(row)?;
-            Self::upsert_visible_application_run_log_summary_projection(&mut tx, &flow_run)
-                .await?;
+            Self::upsert_visible_application_run_log_summary_projection(&mut tx, &flow_run).await?;
             if is_terminal_application_run_log_status(flow_run.status) {
                 Self::replace_application_run_conversation_message_items_projection(
-                    &mut tx,
-                    &flow_run,
+                    &mut tx, &flow_run,
                 )
                 .await?;
             } else {
@@ -1027,9 +1028,16 @@ impl PgControlPlaneStore {
                 node_run_id,
                 callback_kind,
                 status,
-                request_payload,
+                case
+                    when callback_kind = 'llm_tool_calls'
+                    then jsonb_build_object('tool_calls', request_payload -> 'tool_calls')
+                    else request_payload
+                end as request_payload,
                 response_payload,
-                external_ref_payload,
+                case
+                    when callback_kind = 'llm_tool_calls' then null
+                    else external_ref_payload
+                end as external_ref_payload,
                 created_at,
                 completed_at
             "#,
@@ -1091,9 +1099,16 @@ impl PgControlPlaneStore {
                 node_run_id,
                 callback_kind,
                 status,
-                request_payload,
+                case
+                    when callback_kind = 'llm_tool_calls'
+                    then jsonb_build_object('tool_calls', request_payload -> 'tool_calls')
+                    else request_payload
+                end as request_payload,
                 response_payload,
-                external_ref_payload,
+                case
+                    when callback_kind = 'llm_tool_calls' then null
+                    else external_ref_payload
+                end as external_ref_payload,
                 created_at,
                 completed_at
             "#,
@@ -1105,7 +1120,11 @@ impl PgControlPlaneStore {
         .await?;
 
         let Some(row) = row else {
-            if self.get_callback_task(input.callback_task_id).await?.is_some() {
+            if self
+                .get_callback_task(input.callback_task_id)
+                .await?
+                .is_some()
+            {
                 return Err(ControlPlaneError::Conflict("callback_task_not_pending").into());
             }
             return Err(ControlPlaneError::NotFound("callback_task").into());
@@ -1113,6 +1132,4 @@ impl PgControlPlaneStore {
 
         map_callback_task_record(row)
     }
-
-
 }

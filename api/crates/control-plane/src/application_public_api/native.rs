@@ -487,20 +487,20 @@ where
         }
 
         let metadata = durable_metadata_from_flow_run(&flow_run);
-        if let Some(detail) = self
+        let initial_run = super::run_service::native_result_from_flow_run(&flow_run, metadata);
+        if let Some(stream_state) = self
             .repository
-            .get_published_run_detail(actor.application_id, flow_run.id)
+            .get_published_run_stream_state(actor.application_id, flow_run.id)
             .await
             .map_err(|_| NativeRunValidationError::NotFound)?
         {
-            return Ok(super::run_service::native_result_from_run_detail(
-                &detail, metadata,
+            return Ok(super::run_service::native_result_from_run_stream_state(
+                &initial_run,
+                &stream_state,
             ));
         }
 
-        Ok(super::run_service::native_result_from_flow_run(
-            &flow_run, metadata,
-        ))
+        Ok(initial_run)
     }
 
     pub async fn cancel_native_run(
@@ -681,7 +681,7 @@ fn build_run_metadata(request: &NativeRunRequest) -> Value {
     })
 }
 
-fn durable_metadata_from_flow_run(flow_run: &domain::FlowRunRecord) -> Value {
+pub(super) fn durable_metadata_from_flow_run(flow_run: &domain::FlowRunRecord) -> Value {
     json!({
         "title": flow_run.title,
         "expand_id": flow_run.external_user,

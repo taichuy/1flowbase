@@ -1,5 +1,6 @@
 use super::*;
 use crate::application_public_api::callback_resume;
+use serde_json::json;
 
 #[async_trait]
 impl ApplicationJsDependencySelectionRepository for ApplicationPublicApiTestRepository {
@@ -326,7 +327,16 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
             .expect("application public api test repo mutex poisoned")
             .callback_tasks
             .get(&callback_task_id)
-            .cloned())
+            .cloned()
+            .map(|mut task| {
+                if task.callback_kind == "llm_tool_calls" {
+                    task.request_payload = json!({
+                        "tool_calls": task.request_payload.get("tool_calls").cloned()
+                    });
+                    task.external_ref_payload = None;
+                }
+                task
+            }))
     }
 
     async fn get_published_run_stream_state(
@@ -361,7 +371,7 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
                 output_usage: node_run.output_payload.get("usage").cloned(),
             })
             .collect();
-        let latest_pending_callback_task = inner
+        let latest_pending_callback = inner
             .callback_tasks
             .values()
             .filter(|task| {
@@ -373,61 +383,24 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
                     .cmp(&right.created_at)
                     .then(left.id.cmp(&right.id))
             })
-            .cloned();
+            .map(|task| run_service::PublishedRunPendingCallback {
+                id: task.id,
+                flow_run_id: task.flow_run_id,
+                node_run_id: task.node_run_id,
+                callback_kind: task.callback_kind.clone(),
+                request_payload: (task.callback_kind != "llm_tool_calls")
+                    .then(|| task.request_payload.clone()),
+                tool_calls: (task.callback_kind == "llm_tool_calls")
+                    .then(|| task.request_payload.get("tool_calls").cloned())
+                    .flatten(),
+            });
 
         Ok(Some(run_service::PublishedRunStreamState {
             status: flow_run.status,
             output_payload: flow_run.output_payload.clone(),
             error_payload: flow_run.error_payload.clone(),
             node_usages,
-            latest_pending_callback_task,
-        }))
-    }
-
-    async fn get_published_run_detail(
-        &self,
-        application_id: Uuid,
-        flow_run_id: Uuid,
-    ) -> Result<Option<domain::ApplicationRunDetail>> {
-        let inner = self
-            .inner
-            .lock()
-            .expect("application public api test repo mutex poisoned");
-        let Some(flow_run) = inner
-            .flow_runs
-            .get(&flow_run_id)
-            .filter(|run| {
-                run.application_id == application_id
-                    && run.run_mode == domain::FlowRunMode::PublishedApiRun
-            })
-            .cloned()
-        else {
-            return Ok(None);
-        };
-        let mut callback_tasks = inner
-            .callback_tasks
-            .values()
-            .filter(|task| task.flow_run_id == flow_run_id)
-            .cloned()
-            .collect::<Vec<_>>();
-        callback_tasks.sort_by(|left, right| {
-            left.created_at
-                .cmp(&right.created_at)
-                .then(left.id.cmp(&right.id))
-        });
-
-        Ok(Some(domain::ApplicationRunDetail {
-            flow_run,
-            node_runs: Vec::new(),
-            checkpoints: Vec::new(),
-            callback_tasks,
-            events: inner
-                .run_events
-                .get(&flow_run_id)
-                .cloned()
-                .unwrap_or_default(),
-            stitched_trace: Vec::new(),
-            subagent_traces: Vec::new(),
+            latest_pending_callback,
         }))
     }
 }

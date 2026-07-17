@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::{
     api_keys::ApplicationApiKeyService,
+    native::{durable_metadata_from_flow_run, NativeRunResult},
     run_service::{
         ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
     },
@@ -77,7 +78,7 @@ pub struct CompletePublishedCallbackInput {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResumePublishedCallbackResult {
-    pub detail: domain::ApplicationRunDetail,
+    pub run: NativeRunResult,
     pub attempt: domain::FlowRunCallbackResumeAttemptRecord,
 }
 
@@ -200,7 +201,7 @@ where
             .await;
 
         match result {
-            Ok(detail) => {
+            Ok(flow_run) => {
                 let finished = self
                     .repository
                     .finish_published_callback_resume_attempt(
@@ -233,8 +234,9 @@ where
                         .unwrap_or_else(OffsetDateTime::now_utc),
                 )
                 .await?;
+                let run = self.native_result_for_flow_run(&flow_run).await?;
                 Ok(ResumePublishedCallbackResult {
-                    detail,
+                    run,
                     attempt: finished,
                 })
             }
@@ -292,12 +294,39 @@ where
         if callback_task.status != domain::CallbackTaskStatus::Completed {
             return Err(ControlPlaneError::Conflict("callback_task_not_completed").into());
         }
-        let detail = self
+        let flow_run = self
             .repository
-            .get_published_run_detail(actor.application_id, attempt.flow_run_id)
+            .get_published_flow_run(attempt.flow_run_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        Ok(ResumePublishedCallbackResult { detail, attempt })
+        if !published_run_belongs_to_actor(&flow_run, actor.application_id, actor.api_key_id) {
+            return Err(
+                ControlPlaneError::PermissionDenied("application_public_callback_resume").into(),
+            );
+        }
+        let run = self.native_result_for_flow_run(&flow_run).await?;
+        Ok(ResumePublishedCallbackResult { run, attempt })
+    }
+
+    async fn native_result_for_flow_run(
+        &self,
+        flow_run: &domain::FlowRunRecord,
+    ) -> Result<NativeRunResult> {
+        let initial_run = super::run_service::native_result_from_flow_run(
+            flow_run,
+            durable_metadata_from_flow_run(flow_run),
+        );
+        let Some(stream_state) = self
+            .repository
+            .get_published_run_stream_state(flow_run.application_id, flow_run.id)
+            .await?
+        else {
+            return Ok(initial_run);
+        };
+        Ok(super::run_service::native_result_from_run_stream_state(
+            &initial_run,
+            &stream_state,
+        ))
     }
 
     async fn append_resume_event(
@@ -469,7 +498,7 @@ pub trait ApplicationPublishedCallbackConsumer: Send + Sync {
     async fn complete_published_callback(
         &self,
         input: CompletePublishedCallbackInput,
-    ) -> Result<domain::ApplicationRunDetail>;
+    ) -> Result<domain::FlowRunRecord>;
 }
 
 #[async_trait]
@@ -492,8 +521,8 @@ where
     async fn complete_published_callback(
         &self,
         input: CompletePublishedCallbackInput,
-    ) -> Result<domain::ApplicationRunDetail> {
-        self.complete_callback_task(CompleteCallbackTaskCommand {
+    ) -> Result<domain::FlowRunRecord> {
+        self.complete_callback_task_run(CompleteCallbackTaskCommand {
             actor_user_id: input.actor_user_id,
             application_id: input.application_id,
             callback_task_id: input.callback_task_id,

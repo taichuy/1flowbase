@@ -45,6 +45,7 @@ struct InMemoryOrchestrationRuntimeState {
     file_tables_by_id: HashMap<Uuid, domain::FileTableRecord>,
     status_after_next_get: Option<(Uuid, domain::FlowRunStatus)>,
     status_before_next_flow_update: Option<(Uuid, domain::FlowRunStatus)>,
+    application_run_detail_read_count: usize,
 }
 
 #[derive(Clone)]
@@ -55,6 +56,20 @@ pub(crate) struct InMemoryOrchestrationRuntimeRepository {
 }
 
 impl InMemoryOrchestrationRuntimeRepository {
+    pub(super) fn reset_application_run_detail_read_count(&self) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .application_run_detail_read_count = 0;
+    }
+
+    pub(super) fn application_run_detail_read_count(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .application_run_detail_read_count
+    }
+
     fn main_instance_key(workspace_id: Uuid, provider_code: &str) -> (Uuid, String) {
         (workspace_id, provider_code.to_string())
     }

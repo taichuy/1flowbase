@@ -17,7 +17,6 @@ use control_plane::{
         },
         compat::openai::response_id_from_run_id,
         native::{NativeRunResult, NativeRunStatus, NativeUsage},
-        run_service::native_result_from_run_detail,
     },
     orchestration_runtime::{
         debug_stream_events, OrchestrationRuntimeService, StartPublishedFlowRunCommand,
@@ -525,7 +524,7 @@ where
         .await
         {
             Ok(result) => {
-                append_compatible_resume_terminal_event(&background_state, &result.detail).await;
+                append_compatible_resume_terminal_event(&background_state, &result.run).await;
             }
             Err(error) => {
                 let _ = background_state

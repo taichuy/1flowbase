@@ -624,12 +624,7 @@ async fn resume_openai_tool_call(
             .await
             .map_err(native::service_error)?;
 
-    Ok(
-        control_plane::application_public_api::run_service::native_result_from_run_detail(
-            &result.detail,
-            native::published_run_metadata(&result.detail.flow_run),
-        ),
-    )
+    Ok(result.run)
 }
 
 async fn prepare_openai_tool_resume(

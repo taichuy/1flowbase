@@ -39,7 +39,8 @@ pub use native_results::{
 pub use repository_contracts::{
     ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
     CancelPublishedFlowRunInput, CreatePublishedFlowRunResult,
-    ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunStreamState,
+    ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunPendingCallback,
+    PublishedRunStreamState,
 };
 use run_input::{
     compiled_plan_start_node_id, freeze_run_input_environment, generate_external_conversation_id,

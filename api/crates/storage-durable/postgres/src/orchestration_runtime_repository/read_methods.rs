@@ -1,4 +1,111 @@
 impl PgControlPlaneStore {
+    async fn get_callback_resume_context(
+        &self,
+        application_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> Result<Option<CallbackResumeContext>> {
+        let callback_task_row = sqlx::query(
+            r#"
+            select
+                id,
+                flow_run_id,
+                node_run_id,
+                callback_kind,
+                status,
+                case
+                    when callback_kind = 'llm_tool_calls'
+                    then jsonb_build_object('tool_calls', request_payload -> 'tool_calls')
+                    else request_payload
+                end as request_payload,
+                response_payload,
+                case
+                    when callback_kind = 'llm_tool_calls' then null
+                    else external_ref_payload
+                end as external_ref_payload,
+                created_at,
+                completed_at
+            from flow_run_callback_tasks
+            where id = $1
+            "#,
+        )
+        .bind(callback_task_id)
+        .fetch_optional(self.pool())
+        .await?;
+        let Some(callback_task) = callback_task_row
+            .map(map_callback_task_record)
+            .transpose()?
+        else {
+            return Ok(None);
+        };
+        let Some(flow_run) =
+            fetch_flow_run_for_application(self, application_id, callback_task.flow_run_id).await?
+        else {
+            return Ok(None);
+        };
+        let checkpoint_row = sqlx::query(
+            r#"
+            select
+                id,
+                flow_run_id,
+                node_run_id,
+                status,
+                reason,
+                locator_payload,
+                variable_snapshot,
+                null::jsonb as external_ref_payload,
+                created_at
+            from flow_run_checkpoints
+            where flow_run_id = $1
+              and node_run_id = $2
+            order by created_at desc, id desc
+            limit 1
+            "#,
+        )
+        .bind(flow_run.id)
+        .bind(callback_task.node_run_id)
+        .fetch_optional(self.pool())
+        .await?;
+        let checkpoint = checkpoint_row
+            .map(map_checkpoint_record)
+            .ok_or_else(|| anyhow!("checkpoint not found for callback task"))?;
+        let waiting_node_row = sqlx::query(
+            r#"
+            select id, status, output_payload
+            from node_runs
+            where id = $1
+              and flow_run_id = $2
+            "#,
+        )
+        .bind(callback_task.node_run_id)
+        .bind(flow_run.id)
+        .fetch_optional(self.pool())
+        .await?;
+        let waiting_node_row = waiting_node_row
+            .ok_or_else(|| anyhow!("waiting node run not found for callback task"))?;
+        let latest_node_started_at = sqlx::query_scalar::<_, Option<OffsetDateTime>>(
+            "select max(started_at) from node_runs where flow_run_id = $1",
+        )
+        .bind(flow_run.id)
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(Some(CallbackResumeContext {
+            flow_run,
+            callback_task,
+            checkpoint,
+            waiting_node: CallbackResumeWaitingNode {
+                id: waiting_node_row.get("id"),
+                status: crate::mappers::orchestration_runtime_mapper::parse_node_run_status(
+                    waiting_node_row.get::<String, _>("status").as_str(),
+                )?,
+                output_payload: waiting_node_row.get("output_payload"),
+            },
+            next_node_started_at: latest_node_started_at
+                .map(|started_at| started_at + Duration::seconds(1))
+                .unwrap_or_else(OffsetDateTime::now_utc),
+        }))
+    }
+
     async fn list_runtime_spans(
         &self,
         flow_run_id: Uuid,
@@ -68,6 +175,29 @@ impl PgControlPlaneStore {
         .await?;
 
         rows.into_iter().map(map_runtime_event_record).collect()
+    }
+
+    async fn get_runtime_event_sequence_for_callback_task(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> Result<Option<i64>> {
+        sqlx::query_scalar(
+            r#"
+            select sequence
+            from runtime_events
+            where flow_run_id = $1
+              and payload ? 'callback_task_id'
+              and payload ->> 'callback_task_id' = $2
+            order by sequence desc
+            limit 1
+            "#,
+        )
+        .bind(flow_run_id)
+        .bind(callback_task_id.to_string())
+        .fetch_optional(self.pool())
+        .await
+        .map_err(Into::into)
     }
 
     async fn list_runtime_event_backfill_page(
@@ -652,7 +782,7 @@ impl PgControlPlaneStore {
             from ordered
             where rn between $3 and $4
             order by rn asc
-            "#
+            "#,
         )
         .bind(application_id)
         .bind(&input.external_conversation_id)
@@ -717,7 +847,7 @@ impl PgControlPlaneStore {
             select rn, total
             from ordered
             where id = $3
-            "#
+            "#,
         )
         .bind(application_id)
         .bind(external_conversation_id)
@@ -847,20 +977,27 @@ impl PgControlPlaneStore {
     }
 }
 
-
 fn push_model_provider_request_log_filters<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
     input: &'a control_plane::ports::ListModelProviderRequestLogsPageInput,
 ) {
-    query.push(" where logs.scope_id = ").push_bind(input.scope_id);
+    query
+        .push(" where logs.scope_id = ")
+        .push_bind(input.scope_id);
     if let Some(application_name) = input.application_name.as_deref() {
-        query.push(" and logs.application_name = ").push_bind(application_name);
+        query
+            .push(" and logs.application_name = ")
+            .push_bind(application_name);
     }
     if let Some(provider_instance_id) = input.provider_instance_id {
-        query.push(" and logs.provider_instance_id = ").push_bind(provider_instance_id);
+        query
+            .push(" and logs.provider_instance_id = ")
+            .push_bind(provider_instance_id);
     }
     if let Some(model_id) = input.model_id.as_deref() {
-        query.push(" and logs.upstream_model_id = ").push_bind(model_id);
+        query
+            .push(" and logs.upstream_model_id = ")
+            .push_bind(model_id);
     }
     if let Some(status) = input.status.as_deref() {
         query.push(" and logs.status = ").push_bind(status);
@@ -869,10 +1006,14 @@ fn push_model_provider_request_log_filters<'a>(
         query.push(" and coalesce(logs.output_tokens, 0) = 0");
     }
     if let Some(started_after) = input.started_after {
-        query.push(" and logs.started_at >= ").push_bind(started_after);
+        query
+            .push(" and logs.started_at >= ")
+            .push_bind(started_after);
     }
     if let Some(started_before) = input.started_before {
-        query.push(" and logs.started_at <= ").push_bind(started_before);
+        query
+            .push(" and logs.started_at <= ")
+            .push_bind(started_before);
     }
 }
 

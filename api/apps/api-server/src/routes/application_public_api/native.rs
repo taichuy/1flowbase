@@ -35,7 +35,7 @@ use control_plane::{
     ports::AuthRepository,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tracing::error;
@@ -457,24 +457,6 @@ pub(crate) fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse 
     }
 }
 
-pub(crate) fn published_run_metadata(flow_run: &domain::FlowRunRecord) -> Value {
-    json!({
-        "title": flow_run.title,
-        "expand_id": flow_run.external_user,
-        "external_user": flow_run.external_user,
-        "external_conversation_id": flow_run.external_conversation_id,
-        "external_trace_id": flow_run.external_trace_id,
-        "compatibility_mode": flow_run.compatibility_mode,
-        "idempotency_key": flow_run.idempotency_key,
-        "request": {
-            "conversation": {
-                "id": flow_run.external_conversation_id,
-                "user": flow_run.external_user,
-            }
-        }
-    })
-}
-
 pub(crate) async fn execute_blocking_native_run(
     state: Arc<ApiState>,
     bearer_token: String,
@@ -790,10 +772,7 @@ pub async fn resume_native_run(
             })
             .await
             .map_err(service_error)?;
-    let run = control_plane::application_public_api::run_service::native_result_from_run_detail(
-        &result.detail,
-        published_run_metadata(&result.detail.flow_run),
-    );
+    let run = result.run;
 
     Ok(Json(ApiSuccess::new(to_native_run_response(run))).into_response())
 }

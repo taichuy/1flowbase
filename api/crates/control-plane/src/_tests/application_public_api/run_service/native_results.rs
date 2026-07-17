@@ -2,7 +2,7 @@ use control_plane::application_public_api::{
     native::{NativeRunStatus, NativeUsage},
     run_service::{
         native_result_from_flow_run, native_result_from_run_stream_state, PublishedRunNodeUsage,
-        PublishedRunStreamState,
+        PublishedRunPendingCallback, PublishedRunStreamState,
     },
 };
 use serde_json::json;
@@ -137,7 +137,14 @@ fn native_result_from_stream_state_preserves_usage_and_pending_tool_callback_con
             metrics_usage: Some(json!({ "input_tokens": 21, "output_tokens": 8 })),
             output_usage: Some(json!({ "prompt_tokens": 999, "completion_tokens": 999 })),
         }],
-        latest_pending_callback_task: Some(callback_task.clone()),
+        latest_pending_callback: Some(PublishedRunPendingCallback {
+            id: callback_task.id,
+            flow_run_id: callback_task.flow_run_id,
+            node_run_id: callback_task.node_run_id,
+            callback_kind: callback_task.callback_kind.clone(),
+            request_payload: None,
+            tool_calls: callback_task.request_payload.get("tool_calls").cloned(),
+        }),
     };
 
     let result = native_result_from_run_stream_state(&initial, &stream_state);

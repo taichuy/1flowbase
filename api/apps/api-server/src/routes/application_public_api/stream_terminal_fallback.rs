@@ -216,12 +216,6 @@ fn waiting_callback_payload(run: &NativeRunResult) -> Option<RuntimeEventPayload
         .get("callback_kind")
         .cloned()
         .unwrap_or(Value::Null);
-    let tool_calls = run
-        .tool_calls
-        .clone()
-        .or_else(|| action.payload.get("tool_calls").cloned())
-        .unwrap_or(Value::Null);
-
     Some(RuntimeEventPayload {
         event_type: "waiting_callback".to_string(),
         source: RuntimeEventSource::Runtime,
@@ -239,12 +233,6 @@ fn waiting_callback_payload(run: &NativeRunResult) -> Option<RuntimeEventPayload
                 .get("node_run_id")
                 .cloned()
                 .unwrap_or(Value::Null),
-            "request_payload": action
-                .payload
-                .get("request_payload")
-                .cloned()
-                .unwrap_or(Value::Null),
-            "tool_calls": tool_calls,
             "required_action": action,
         }),
     })
@@ -697,7 +685,10 @@ mod tests {
 
         assert_eq!(event.event_type, "waiting_callback");
         assert_eq!(event.payload["callback_kind"], json!("llm_tool_calls"));
-        assert_eq!(event.payload["tool_calls"][0]["name"], json!("Read"));
+        assert_eq!(
+            event.payload["required_action"]["payload"]["tool_calls"][0]["name"],
+            json!("Read")
+        );
     }
 
     #[test]

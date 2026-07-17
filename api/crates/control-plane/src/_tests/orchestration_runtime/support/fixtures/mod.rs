@@ -25,6 +25,14 @@ pub struct SeededWaitingCallbackRun {
 }
 
 impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemoryProviderRuntime> {
+    pub fn reset_application_run_detail_read_count(&self) {
+        self.repository.reset_application_run_detail_read_count();
+    }
+
+    pub fn application_run_detail_read_count(&self) -> usize {
+        self.repository.application_run_detail_read_count()
+    }
+
     pub fn for_tests() -> Self {
         let repository = InMemoryOrchestrationRuntimeRepository::with_permissions(vec![
             "application.view.all",

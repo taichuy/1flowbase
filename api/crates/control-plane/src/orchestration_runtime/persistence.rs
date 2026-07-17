@@ -73,7 +73,7 @@ pub(super) struct PersistFlowDebugOutcomeInput<'a> {
 }
 
 pub(super) struct PersistedFlowDebugOutcome {
-    pub(super) detail: domain::ApplicationRunDetail,
+    pub(super) flow_run: domain::FlowRunRecord,
     pub(super) stream_events: Vec<crate::ports::RuntimeEventPayload>,
     pub(super) close_reason: Option<crate::ports::RuntimeEventCloseReason>,
 }
@@ -199,12 +199,12 @@ where
                 )
                 .await?;
             if updated.is_none() {
-                let detail = repository
-                    .get_application_run_detail(application_id, flow_run.id)
+                let persisted_flow_run = repository
+                    .get_flow_run(application_id, flow_run.id)
                     .await?
-                    .ok_or_else(|| anyhow!("persisted flow run detail not found"))?;
+                    .ok_or_else(|| anyhow!("persisted flow run not found"))?;
                 return Ok(PersistedFlowDebugOutcome {
-                    detail,
+                    flow_run: persisted_flow_run,
                     stream_events: Vec::new(),
                     close_reason: None,
                 });
@@ -290,16 +290,18 @@ where
                 )
                 .await?;
             if updated.is_none() {
-                let detail = repository
-                    .get_application_run_detail(application_id, flow_run.id)
+                let persisted_flow_run = repository
+                    .get_flow_run(application_id, flow_run.id)
                     .await?
-                    .ok_or_else(|| anyhow!("persisted flow run detail not found"))?;
+                    .ok_or_else(|| anyhow!("persisted flow run not found"))?;
                 return Ok(PersistedFlowDebugOutcome {
-                    detail,
+                    flow_run: persisted_flow_run,
                     stream_events: Vec::new(),
                     close_reason: None,
                 });
             }
+            let external_ref_payload =
+                (wait.callback_kind != "llm_tool_calls").then(|| wait.request_payload.clone());
             repository
                 .create_checkpoint(&CreateCheckpointInput {
                     flow_run_id: flow_run.id,
@@ -312,7 +314,7 @@ where
                     )
                     .into_json(),
                     variable_snapshot: Value::Object(snapshot.variable_pool.clone()),
-                    external_ref_payload: Some(wait.request_payload.clone()),
+                    external_ref_payload: external_ref_payload.clone(),
                 })
                 .await?;
             let callback_task = repository
@@ -321,7 +323,7 @@ where
                     node_run_id: waiting_node_run.id,
                     callback_kind: wait.callback_kind.clone(),
                     request_payload: wait.request_payload.clone(),
-                    external_ref_payload: Some(wait.request_payload.clone()),
+                    external_ref_payload,
                 })
                 .await?;
             stream_events.extend(
@@ -369,12 +371,12 @@ where
                 )
                 .await?;
             if updated.is_none() {
-                let detail = repository
-                    .get_application_run_detail(application_id, flow_run.id)
+                let persisted_flow_run = repository
+                    .get_flow_run(application_id, flow_run.id)
                     .await?
-                    .ok_or_else(|| anyhow!("persisted flow run detail not found"))?;
+                    .ok_or_else(|| anyhow!("persisted flow run not found"))?;
                 return Ok(PersistedFlowDebugOutcome {
-                    detail,
+                    flow_run: persisted_flow_run,
                     stream_events: Vec::new(),
                     close_reason: None,
                 });
@@ -430,12 +432,12 @@ where
                 )
                 .await?;
             if updated.is_none() {
-                let detail = repository
-                    .get_application_run_detail(application_id, flow_run.id)
+                let persisted_flow_run = repository
+                    .get_flow_run(application_id, flow_run.id)
                     .await?
-                    .ok_or_else(|| anyhow!("persisted flow run detail not found"))?;
+                    .ok_or_else(|| anyhow!("persisted flow run not found"))?;
                 return Ok(PersistedFlowDebugOutcome {
-                    detail,
+                    flow_run: persisted_flow_run,
                     stream_events: Vec::new(),
                     close_reason: None,
                 });
@@ -472,12 +474,12 @@ where
         }
     }
 
-    let detail = repository
-        .get_application_run_detail(application_id, flow_run.id)
+    let persisted_flow_run = repository
+        .get_flow_run(application_id, flow_run.id)
         .await?
-        .ok_or_else(|| anyhow!("persisted flow run detail not found"))?;
+        .ok_or_else(|| anyhow!("persisted flow run not found"))?;
     Ok(PersistedFlowDebugOutcome {
-        detail,
+        flow_run: persisted_flow_run,
         stream_events,
         close_reason,
     })

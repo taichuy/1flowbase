@@ -145,6 +145,17 @@ pub fn waiting_callback_with_task(
         .get("tool_calls")
         .cloned()
         .unwrap_or(Value::Null);
+    let mut action_payload = json!({
+        "callback_task_id": task.id,
+        "callback_kind": task.callback_kind,
+        "flow_run_id": task.flow_run_id,
+        "node_run_id": task.node_run_id,
+    });
+    if task.callback_kind == "llm_tool_calls" {
+        action_payload["tool_calls"] = tool_calls;
+    } else {
+        action_payload["request_payload"] = task.request_payload.clone();
+    }
 
     RuntimeEventPayload {
         event_type: "waiting_callback".to_string(),
@@ -160,18 +171,9 @@ pub fn waiting_callback_with_task(
             "status": "waiting_callback",
             "callback_task_id": task.id,
             "callback_kind": task.callback_kind,
-            "request_payload": task.request_payload,
-            "tool_calls": tool_calls,
             "required_action": {
                 "action_type": action_type,
-                "payload": {
-                    "callback_task_id": task.id,
-                    "callback_kind": task.callback_kind,
-                    "flow_run_id": task.flow_run_id,
-                    "node_run_id": task.node_run_id,
-                    "request_payload": task.request_payload,
-                    "tool_calls": tool_calls,
-                }
+                "payload": action_payload,
             }
         }),
     }

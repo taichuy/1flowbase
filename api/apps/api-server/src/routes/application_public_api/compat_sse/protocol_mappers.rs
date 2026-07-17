@@ -988,6 +988,13 @@ fn llm_tool_calls(payload: &Value) -> Option<Vec<&Value>> {
                 .get("request_payload")
                 .and_then(|request| request.get("tool_calls"))
                 .and_then(Value::as_array)
+        })
+        .or_else(|| {
+            payload
+                .get("required_action")
+                .and_then(|action| action.get("payload"))
+                .and_then(|action_payload| action_payload.get("tool_calls"))
+                .and_then(Value::as_array)
         })?;
 
     external_llm_tool_call_values(calls)

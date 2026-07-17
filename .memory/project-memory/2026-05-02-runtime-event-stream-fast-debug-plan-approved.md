@@ -18,8 +18,8 @@ match_when:
   - 设计 RuntimeEventStream、LocalRuntimeEventStream、Redis Streams provider 或缓存类 HostExtension
   - 执行 docs/superpowers/plans/2026-05-02-runtime-event-stream-fast-debug.md
 created_at: 2026-05-02 08
-updated_at: 2026-07-17 08
-last_verified_at: 2026-07-17 08
+updated_at: 2026-07-17 11
+last_verified_at: 2026-07-17 11
 decision_policy: verify_before_decision
 scope:
   - api/crates/control-plane
@@ -80,6 +80,14 @@ Dify 预览体验的关键不是所有状态都先落库，而是先建立实时
 - lifecycle / terminal 已成功落库后，其 RuntimeEventStream 投递副本降级为 `Ephemeral + persist_required=false`，避免 16 MiB ring 被已 durable 的大 payload 填成全不可淘汰，也避免 debug persister 重复写入。
 - `flow_run.status`、audit、billing 继续走原 durable 路径；Redis 仍只作为未来 `RuntimeEventStream` HostExtension provider，不进入 Core 直连依赖。
 - 任务级验证覆盖 LocalRuntimeEventStream、Native/compatible SSE 无轮询与关闭补偿、compatible protocol projection、runtime-event batch、callback resume exactly-once。既有 NUL callback fixture 在未改动 HEAD 同样因 `invalid provider_code` 留下 `Pending`，记录为本任务外既有测试问题。
+
+## 2026-07-17 Callback 热路径收敛
+
+- callback resume 新增 `CallbackResumeContext` 轻量投影，只读取目标 flow、callback、对应最新 checkpoint、waiting node 必要字段和下一节点时间标量；published callback 不再读取完整 `ApplicationRunDetail`，普通调试 callback 只在需要返回详情时于完成后读取一次。
+- published run 状态统一读取 `PublishedRunStreamState`。LLM callback 只投影 `tool_calls`，不把完整 request 或 `external_ref_payload` 解码回进程；`waiting_callback` 事件只保留一份必要 action payload。
+- compatible SSE 忽略 callback 的 durable cursor 改为标量查询，并由 `runtime_events_flow_callback_sequence_idx` 表达式索引支撑，不再加载完整 runtime event 历史。
+- checkpoint 仍按 callback 持久化当前变量快照，因此 durable 容量保持线性增长；本轮消除的是每次 callback 重读全部历史造成的近似 O(n²) 解码与复制。后续若容量成为问题，再单独评估 snapshot artifact 化。
+- 显式 RSS 门禁使用 200 个 callback、每个 3 MiB checkpoint：baseline `18,812,928` bytes，peak `40,652,800` bytes，growth `21,839,872` bytes，低于 `192 MiB` 上限。callback 定向测试、PostgreSQL 投影/cursor 测试、Anthropic/Claude 51 项协议回归与 Rust 静态门禁均通过。
 
 ## 决策背后动机
 
