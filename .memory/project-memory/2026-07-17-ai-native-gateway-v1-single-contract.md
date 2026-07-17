@@ -39,11 +39,12 @@ scope:
 - 保留并直接落入 V1：Provider failure/Answer 隔离、strict TranslationReport、唯一 `max_output_tokens`、Operation Binding、Compact/CountTokens、context candidate + CAS。
 - 当前 dev 已存在的 Provider v1/v2 双 contract 也要收敛；主仓和官方插件同步升级，不保留运行时 bridge。
 - 历史用户内容不得重写；部署 rollback 依靠代码/schema 安全，不依靠另一套 contract mode。
-- 本地 `codex/1303-*` 只作算法和测试证据，不整包合入 V3 路径、类型或 adapter。
+- 旧 `codex/1303-*` worktree 与本地分支已经回收；历史 SHA 只留在 Issue 评论中审计，后续实现不依赖这些 V3 候选。
 
 ## 当前开发状态
 
-- 当前集成基线为 `dev@455764916`，无 V3 产品代码进入 dev。
+- 当前集成基线为 `dev@2c88db595`，无 V3 产品代码进入 dev。
+- `/home/taichuy/git/1flowbase_git_workspace` 已清空；下一 Delivery 从最新 `dev` 新建干净 worktree。
 - 下一可控结果是 #1358：直接修复 `/api/agent/v1/runs` terminal/result 单真值并证明 429 不成功化。
 - 若出现第二套 canonical contract、run/terminal/context 真值，或两次连续 Delivery 未减少 Root AC，停止并重新进入 `problem-framing`。
 
