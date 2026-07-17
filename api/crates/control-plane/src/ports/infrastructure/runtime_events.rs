@@ -101,11 +101,6 @@ impl RuntimeEventEnvelope {
     }
 }
 
-pub struct RuntimeEventSubscription {
-    pub replay: Vec<RuntimeEventEnvelope>,
-    pub live_events: mpsc::UnboundedReceiver<RuntimeEventEnvelope>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeEventOverflowBehavior {
     DropOldEphemeralKeepRequired,
@@ -138,6 +133,18 @@ pub enum RuntimeEventCloseReason {
     WaitingHuman,
     WaitingCallback,
     Expired,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeEventClosure {
+    pub reason: RuntimeEventCloseReason,
+    pub final_sequence: i64,
+}
+
+pub struct RuntimeEventSubscription {
+    pub replay: Vec<RuntimeEventEnvelope>,
+    pub live_events: mpsc::UnboundedReceiver<RuntimeEventEnvelope>,
+    pub closure: watch::Receiver<Option<RuntimeEventClosure>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

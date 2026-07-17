@@ -57,9 +57,11 @@ impl RuntimeEventStream for RecordingRuntimeEventStream {
         _from_sequence: Option<i64>,
     ) -> Result<RuntimeEventSubscription> {
         let (_sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (_closure_sender, closure) = tokio::sync::watch::channel(None);
         Ok(RuntimeEventSubscription {
             replay: self.events(),
             live_events: receiver,
+            closure,
         })
     }
 

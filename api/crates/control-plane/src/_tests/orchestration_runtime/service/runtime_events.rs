@@ -1,4 +1,216 @@
 use super::*;
+use crate::orchestration_runtime::debug_stream_events;
+use control_plane::ports::{
+    RuntimeEventClosure, RuntimeEventStreamPolicy, RuntimeEventSubscription, RuntimeEventTrimPolicy,
+};
+use std::sync::Mutex;
+
+#[test]
+fn streaming_deltas_request_history_without_requiring_ephemeral_delivery() {
+    let node_run_id = Uuid::now_v7();
+    let provider_delta = debug_stream_events::text_delta("node-llm", node_run_id, "A".into());
+    let answer_delta =
+        debug_stream_events::answer_reasoning_delta("node-answer", "B".into(), 0, None, None, None);
+
+    for event in [provider_delta, answer_delta] {
+        assert_eq!(event.durability, RuntimeEventDurability::Ephemeral);
+        assert!(event.persist_required);
+    }
+}
+
+#[derive(Default)]
+struct OpenTestRuntimeEventStream {
+    events: Mutex<Vec<RuntimeEventEnvelope>>,
+    subscribers: Mutex<Vec<tokio::sync::mpsc::UnboundedSender<RuntimeEventEnvelope>>>,
+    closure: Mutex<Option<RuntimeEventClosure>>,
+}
+
+#[async_trait::async_trait]
+impl RuntimeEventStream for OpenTestRuntimeEventStream {
+    async fn open_run(
+        &self,
+        _run_id: Uuid,
+        _policy: RuntimeEventStreamPolicy,
+    ) -> anyhow::Result<()> {
+        *self
+            .closure
+            .lock()
+            .expect("closure lock should be available") = None;
+        Ok(())
+    }
+
+    async fn append(
+        &self,
+        run_id: Uuid,
+        event: RuntimeEventPayload,
+    ) -> anyhow::Result<RuntimeEventEnvelope> {
+        let envelope = {
+            let mut events = self.events.lock().expect("events lock should be available");
+            let envelope = RuntimeEventEnvelope::new(run_id, events.len() as i64 + 1, event);
+            events.push(envelope.clone());
+            envelope
+        };
+        self.subscribers
+            .lock()
+            .expect("subscribers lock should be available")
+            .retain(|sender| sender.send(envelope.clone()).is_ok());
+        Ok(envelope)
+    }
+
+    async fn subscribe(
+        &self,
+        _run_id: Uuid,
+        from_sequence: Option<i64>,
+    ) -> anyhow::Result<RuntimeEventSubscription> {
+        let replay = self
+            .events
+            .lock()
+            .expect("events lock should be available")
+            .iter()
+            .filter(|event| from_sequence.is_none_or(|sequence| event.sequence > sequence))
+            .cloned()
+            .collect();
+        let closure = *self
+            .closure
+            .lock()
+            .expect("closure lock should be available");
+        let (_closure_sender, closure_receiver) = tokio::sync::watch::channel(closure);
+        let (sender, live_events) = tokio::sync::mpsc::unbounded_channel();
+        if closure.is_none() {
+            self.subscribers
+                .lock()
+                .expect("subscribers lock should be available")
+                .push(sender);
+        }
+        Ok(RuntimeEventSubscription {
+            replay,
+            live_events,
+            closure: closure_receiver,
+        })
+    }
+
+    async fn replay(
+        &self,
+        _run_id: Uuid,
+        from_sequence: Option<i64>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<RuntimeEventEnvelope>> {
+        Ok(self
+            .events
+            .lock()
+            .expect("events lock should be available")
+            .iter()
+            .filter(|event| from_sequence.is_none_or(|sequence| event.sequence > sequence))
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn close_run(
+        &self,
+        _run_id: Uuid,
+        reason: RuntimeEventCloseReason,
+    ) -> anyhow::Result<()> {
+        let final_sequence = self
+            .events
+            .lock()
+            .expect("events lock should be available")
+            .last()
+            .map(|event| event.sequence)
+            .unwrap_or(0);
+        *self
+            .closure
+            .lock()
+            .expect("closure lock should be available") = Some(RuntimeEventClosure {
+            reason,
+            final_sequence,
+        });
+        self.subscribers
+            .lock()
+            .expect("subscribers lock should be available")
+            .clear();
+        Ok(())
+    }
+
+    async fn trim(&self, _run_id: Uuid, _policy: RuntimeEventTrimPolicy) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn runtime_debug_event_persister_flushes_delta_batch_on_time_window() {
+    let repository =
+        crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let stream = std::sync::Arc::new(OpenTestRuntimeEventStream::default());
+    let run_id = Uuid::now_v7();
+    let node_run_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let handle = control_plane::orchestration_runtime::spawn_runtime_debug_event_persister(
+        repository.clone(),
+        stream.clone(),
+        run_id,
+    );
+    stream
+        .append(
+            run_id,
+            debug_stream_events::text_delta("node-llm", node_run_id, "及时落盘".into()),
+        )
+        .await
+        .unwrap();
+
+    let persisted = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+        loop {
+            let events = repository.list_runtime_events(run_id, 0).await.unwrap();
+            if !events.is_empty() {
+                break events;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("delta batch should flush while the runtime stream remains open");
+
+    assert_eq!(persisted.len(), 1);
+    assert_eq!(persisted[0].payload["text"], "及时落盘");
+    stream
+        .close_run(run_id, RuntimeEventCloseReason::Finished)
+        .await
+        .unwrap();
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn durably_persisted_lifecycle_event_is_not_queued_for_persistence_again() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_application_with_flow("Lifecycle Persistence Owner")
+        .await;
+    let stream =
+        std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+    let service = service.with_runtime_event_stream(stream.clone());
+
+    service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({ "node-start": { "query": "hello" } }),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+
+    let flow_started = stream
+        .events()
+        .into_iter()
+        .find(|event| event.event_type == "flow_started")
+        .expect("flow_started should be delivered to the runtime stream");
+    assert!(!flow_started.persist_required);
+    assert_eq!(flow_started.durability, RuntimeEventDurability::Ephemeral);
+}
 
 #[tokio::test]
 async fn runtime_event_persister_coalesces_text_delta_runtime_events() {

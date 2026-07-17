@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
 use serde_json::{json, Value};
-use tokio::task::JoinHandle;
+use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -11,6 +11,89 @@ use crate::ports::{
     AppendRuntimeEventInput, OrchestrationRuntimeRepository, RuntimeEventCloseReason,
     RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventStream,
 };
+
+pub(super) const RUNTIME_EVENT_PERSISTENCE_QUEUE_CAPACITY: usize = 64;
+const RUNTIME_EVENT_BATCH_MAX_BYTES: usize = 64 * 1024;
+const RUNTIME_EVENT_BATCH_MAX_DELAY: Duration = Duration::from_millis(20);
+
+#[derive(Default)]
+struct RuntimeEventPersistenceBatch {
+    events: Vec<RuntimeEventEnvelope>,
+    payload_bytes: usize,
+}
+
+impl RuntimeEventPersistenceBatch {
+    fn push(&mut self, event: RuntimeEventEnvelope) {
+        self.payload_bytes = self
+            .payload_bytes
+            .saturating_add(event.payload.to_string().len());
+        self.events.push(event);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.events.is_empty()
+    }
+
+    fn reached_byte_limit(&self) -> bool {
+        self.payload_bytes >= RUNTIME_EVENT_BATCH_MAX_BYTES
+    }
+
+    fn contains_terminal(&self) -> bool {
+        self.events
+            .iter()
+            .any(|event| is_terminal_runtime_event(&event.event_type))
+    }
+
+    fn take(&mut self) -> Vec<RuntimeEventEnvelope> {
+        self.payload_bytes = 0;
+        std::mem::take(&mut self.events)
+    }
+}
+
+pub(super) fn spawn_batched_runtime_event_persister<R>(
+    repository: R,
+    mut receiver: mpsc::Receiver<RuntimeEventEnvelope>,
+) -> JoinHandle<Result<()>>
+where
+    R: OrchestrationRuntimeRepository + Send + Sync + 'static,
+{
+    tokio::spawn(async move {
+        let start = tokio::time::Instant::now() + RUNTIME_EVENT_BATCH_MAX_DELAY;
+        let mut flush_interval = tokio::time::interval_at(start, RUNTIME_EVENT_BATCH_MAX_DELAY);
+        let mut batch = RuntimeEventPersistenceBatch::default();
+
+        loop {
+            tokio::select! {
+                maybe_event = receiver.recv() => {
+                    let Some(event) = maybe_event else {
+                        persist_runtime_event_batch(&repository, &mut batch).await?;
+                        return Ok(());
+                    };
+                    batch.push(event);
+                    if batch.reached_byte_limit() {
+                        persist_runtime_event_batch(&repository, &mut batch).await?;
+                    }
+                }
+                _ = flush_interval.tick(), if !batch.is_empty() => {
+                    persist_runtime_event_batch(&repository, &mut batch).await?;
+                }
+            }
+        }
+    })
+}
+
+async fn persist_runtime_event_batch<R>(
+    repository: &R,
+    batch: &mut RuntimeEventPersistenceBatch,
+) -> Result<()>
+where
+    R: OrchestrationRuntimeRepository,
+{
+    if batch.is_empty() {
+        return Ok(());
+    }
+    persist_runtime_debug_stream_events(repository, batch.take()).await
+}
 
 pub async fn persist_runtime_event_payload<R>(
     repository: &R,
@@ -67,7 +150,8 @@ where
                 Some(pending)
                     if pending.run_id == event.run_id
                         && pending.node_run_id == node_run_id
-                        && pending.event_type == event.event_type =>
+                        && pending.event_type == event.event_type
+                        && pending.has_same_projection_identity(&event) =>
                 {
                     pending.text.push_str(text);
                     pending.sequence_end = event.sequence;
@@ -85,6 +169,8 @@ where
                         event_type: event.event_type.clone(),
                         content_type: event.content_type.clone(),
                         source: event.source,
+                        node_id: event.payload.get("node_id").cloned(),
+                        presentation: event.payload.get("presentation").cloned(),
                         text: text.to_string(),
                         content_refs: Vec::new(),
                         artifact_refs: Vec::new(),
@@ -185,21 +271,31 @@ where
             return;
         };
 
-        let mut batch = Vec::new();
+        let mut batch = RuntimeEventPersistenceBatch::default();
         for event in subscription.replay {
             if push_debug_event_for_persistence(&repository, &mut batch, run_id, event).await {
                 return;
             }
         }
 
+        let start = tokio::time::Instant::now() + RUNTIME_EVENT_BATCH_MAX_DELAY;
+        let mut flush_interval = tokio::time::interval_at(start, RUNTIME_EVENT_BATCH_MAX_DELAY);
         loop {
-            let Some(event) = subscription.live_events.recv().await else {
-                let _ = flush_debug_event_batch(&repository, &mut batch, run_id).await;
-                return;
-            };
-
-            if push_debug_event_for_persistence(&repository, &mut batch, run_id, event).await {
-                return;
+            tokio::select! {
+                maybe_event = subscription.live_events.recv() => {
+                    let Some(event) = maybe_event else {
+                        let _ = flush_debug_event_batch(&repository, &mut batch, run_id).await;
+                        return;
+                    };
+                    if push_debug_event_for_persistence(&repository, &mut batch, run_id, event).await {
+                        return;
+                    }
+                }
+                _ = flush_interval.tick(), if !batch.is_empty() => {
+                    if flush_debug_event_batch(&repository, &mut batch, run_id).await {
+                        return;
+                    }
+                }
             }
         }
     })
@@ -232,7 +328,7 @@ pub async fn wait_for_runtime_debug_event_persister(
 
 async fn push_debug_event_for_persistence<R>(
     repository: &R,
-    batch: &mut Vec<RuntimeEventEnvelope>,
+    batch: &mut RuntimeEventPersistenceBatch,
     run_id: Uuid,
     event: RuntimeEventEnvelope,
 ) -> bool
@@ -240,16 +336,8 @@ where
     R: OrchestrationRuntimeRepository,
 {
     let is_terminal = is_terminal_runtime_event(&event.event_type);
-    let is_stream_delta = is_stream_delta_event(&event.event_type);
-    if is_stream_delta
-        && batch
-            .last()
-            .is_some_and(|previous| previous.event_type != event.event_type)
-    {
-        flush_debug_event_batch(repository, batch, run_id).await;
-    }
     batch.push(event);
-    if is_terminal || !is_stream_delta {
+    if is_terminal || batch.reached_byte_limit() {
         return flush_debug_event_batch(repository, batch, run_id).await || is_terminal;
     }
     false
@@ -257,7 +345,7 @@ where
 
 async fn flush_debug_event_batch<R>(
     repository: &R,
-    batch: &mut Vec<RuntimeEventEnvelope>,
+    batch: &mut RuntimeEventPersistenceBatch,
     run_id: Uuid,
 ) -> bool
 where
@@ -267,10 +355,8 @@ where
         return false;
     }
 
-    let has_terminal = batch
-        .iter()
-        .any(|event| is_terminal_runtime_event(&event.event_type));
-    let events = std::mem::take(batch);
+    let has_terminal = batch.contains_terminal();
+    let events = batch.take();
     if let Err(error) = persist_runtime_debug_stream_events(repository, events).await {
         warn!(
             flow_run_id = %run_id,
@@ -302,6 +388,8 @@ struct PendingStreamDelta {
     event_type: String,
     content_type: Option<String>,
     source: crate::ports::RuntimeEventSource,
+    node_id: Option<Value>,
+    presentation: Option<Value>,
     text: String,
     content_refs: Vec<String>,
     artifact_refs: Vec<String>,
@@ -311,6 +399,11 @@ struct PendingStreamDelta {
 }
 
 impl PendingStreamDelta {
+    fn has_same_projection_identity(&self, event: &RuntimeEventEnvelope) -> bool {
+        self.node_id.as_ref() == event.payload.get("node_id")
+            && self.presentation.as_ref() == event.payload.get("presentation")
+    }
+
     fn merge_metadata(&mut self, event: &RuntimeEventEnvelope) {
         collect_string_field(&event.payload, "text_ref", &mut self.content_refs);
         collect_string_field(&event.payload, "content_ref", &mut self.content_refs);
@@ -379,36 +472,45 @@ fn flush_pending_delta(
     let original_bytes = pending.original_bytes.unwrap_or(stored_bytes);
     let content_refs = pending.content_refs;
     let artifact_refs = pending.artifact_refs;
+    let mut payload = json!({
+        "type": event_type.clone(),
+        "event_type": event_type.clone(),
+        "node_run_id": node_run_id,
+        "text": pending.text,
+        "content_type": pending.content_type,
+        "stream_sequence": pending.sequence_end,
+        "sequence_start": pending.sequence_start,
+        "sequence_end": pending.sequence_end,
+        "event_ids": pending.event_ids,
+        "truncated": pending.truncated,
+        "truncation": {
+            "truncated": pending.truncated,
+            "reason": pending.truncation_reason,
+            "original_bytes": original_bytes,
+            "stored_bytes": stored_bytes,
+        },
+        "content_refs": content_refs.clone(),
+        "artifact_refs": artifact_refs.clone(),
+        "refs": {
+            "content": content_refs,
+            "artifacts": artifact_refs,
+        },
+    });
+    if let Some(object) = payload.as_object_mut() {
+        if let Some(node_id) = pending.node_id {
+            object.insert("node_id".to_string(), node_id);
+        }
+        if let Some(presentation) = pending.presentation {
+            object.insert("presentation".to_string(), presentation);
+        }
+    }
 
     runtime_events.push(build_runtime_event_input(
         pending.run_id,
         pending.node_run_id,
-        event_type.clone(),
+        event_type,
         pending.source,
-        json!({
-            "type": event_type.clone(),
-            "event_type": event_type,
-            "node_run_id": node_run_id,
-            "text": pending.text,
-            "content_type": pending.content_type,
-            "stream_sequence": pending.sequence_end,
-            "sequence_start": pending.sequence_start,
-            "sequence_end": pending.sequence_end,
-            "event_ids": pending.event_ids,
-            "truncated": pending.truncated,
-            "truncation": {
-                "truncated": pending.truncated,
-                "reason": pending.truncation_reason,
-                "original_bytes": original_bytes,
-                "stored_bytes": stored_bytes,
-            },
-            "content_refs": content_refs.clone(),
-            "artifact_refs": artifact_refs.clone(),
-            "refs": {
-                "content": content_refs,
-                "artifacts": artifact_refs,
-            },
-        }),
+        payload,
     ));
 }
 

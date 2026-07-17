@@ -413,7 +413,8 @@ async fn compatible_streaming_routes_emit_terminal_fallback_after_runtime_stream
 }
 
 #[tokio::test]
-async fn compatible_streaming_routes_emit_terminal_fallback_when_runtime_stream_stays_open() {
+async fn compatible_streaming_routes_do_not_poll_durable_terminal_while_runtime_stream_stays_open()
+{
     let (app, _) = test_app_with_runtime_event_stream(Arc::new(
         NeverCloseDropTerminalRuntimeEventStream::new(),
     ))
@@ -430,13 +431,13 @@ async fn compatible_streaming_routes_emit_terminal_fallback_when_runtime_stream_
     assert_eq!(openai.status(), StatusCode::OK);
 
     let openai_body = timeout(
-        Duration::from_secs(5),
+        Duration::from_millis(900),
         to_bytes(openai.into_body(), usize::MAX),
     )
-    .await
-    .expect("OpenAI compatible SSE should finish from durable terminal polling")
-    .unwrap();
-    let openai_body = String::from_utf8(openai_body.to_vec()).unwrap();
+    .await;
 
-    assert!(openai_body.contains("[DONE]"), "{openai_body}");
+    assert!(
+        openai_body.is_err(),
+        "OpenAI compatible SSE should wait for an ephemeral close signal instead of polling durable state"
+    );
 }

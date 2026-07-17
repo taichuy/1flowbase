@@ -5,7 +5,7 @@ use control_plane::{
     application_public_api::native::NativeRunStatus,
     ports::{
         AppendRuntimeEventInput, OrchestrationRuntimeRepository, RuntimeEventCloseReason,
-        RuntimeEventPayload, RuntimeEventStream, RuntimeEventStreamPolicy,
+        RuntimeEventClosure, RuntimeEventPayload, RuntimeEventStream, RuntimeEventStreamPolicy,
         RuntimeEventSubscription, RuntimeEventTrimPolicy,
     },
 };
@@ -18,18 +18,11 @@ use uuid::Uuid;
 pub(super) struct ReplayBeforeFallbackRuntimeEventStream {
     events: Vec<RuntimeEventEnvelope>,
     subscription_replay: Vec<RuntimeEventEnvelope>,
+    subscription_closure: Option<RuntimeEventClosure>,
     live_senders: Mutex<Vec<mpsc::UnboundedSender<RuntimeEventEnvelope>>>,
 }
 
 impl ReplayBeforeFallbackRuntimeEventStream {
-    pub(super) fn new(events: Vec<RuntimeEventEnvelope>) -> Self {
-        Self {
-            events,
-            subscription_replay: Vec::new(),
-            live_senders: Mutex::new(Vec::new()),
-        }
-    }
-
     pub(super) fn with_subscription_replay(
         subscription_replay: Vec<RuntimeEventEnvelope>,
         events: Vec<RuntimeEventEnvelope>,
@@ -37,6 +30,29 @@ impl ReplayBeforeFallbackRuntimeEventStream {
         Self {
             events,
             subscription_replay,
+            subscription_closure: None,
+            live_senders: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub(super) fn with_closed_subscription_replay(
+        subscription_replay: Vec<RuntimeEventEnvelope>,
+        events: Vec<RuntimeEventEnvelope>,
+        reason: RuntimeEventCloseReason,
+    ) -> Self {
+        let final_sequence = subscription_replay
+            .iter()
+            .chain(events.iter())
+            .map(|event| event.sequence)
+            .max()
+            .unwrap_or(0);
+        Self {
+            events,
+            subscription_replay,
+            subscription_closure: Some(RuntimeEventClosure {
+                reason,
+                final_sequence,
+            }),
             live_senders: Mutex::new(Vec::new()),
         }
     }
@@ -66,13 +82,17 @@ impl RuntimeEventStream for ReplayBeforeFallbackRuntimeEventStream {
         _from_sequence: Option<i64>,
     ) -> anyhow::Result<RuntimeEventSubscription> {
         let (sender, live_events) = mpsc::unbounded_channel();
-        self.live_senders
-            .lock()
-            .expect("live sender lock poisoned")
-            .push(sender);
+        let (_closure_sender, closure) = tokio::sync::watch::channel(self.subscription_closure);
+        if self.subscription_closure.is_none() {
+            self.live_senders
+                .lock()
+                .expect("live sender lock poisoned")
+                .push(sender);
+        }
         Ok(RuntimeEventSubscription {
             replay: self.subscription_replay.clone(),
             live_events,
+            closure,
         })
     }
 

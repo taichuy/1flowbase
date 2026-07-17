@@ -32,6 +32,28 @@ fn required_text_delta(index: usize) -> RuntimeEventPayload {
     }
 }
 
+fn blob_event(size: usize, durability: RuntimeEventDurability) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: "debug_blob".to_string(),
+        source: RuntimeEventSource::Runtime,
+        durability,
+        persist_required: durability != RuntimeEventDurability::Ephemeral,
+        trace_visible: true,
+        payload: json!({ "blob": "x".repeat(size) }),
+    }
+}
+
+fn persist_requested_ephemeral_blob(size: usize) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: "debug_blob".to_string(),
+        source: RuntimeEventSource::Runtime,
+        durability: RuntimeEventDurability::Ephemeral,
+        persist_required: true,
+        trace_visible: true,
+        payload: json!({ "blob": "x".repeat(size) }),
+    }
+}
+
 #[tokio::test]
 async fn local_runtime_event_stream_assigns_monotonic_sequence() {
     let stream = LocalRuntimeEventStream::new();
@@ -160,6 +182,91 @@ async fn local_runtime_event_stream_overflow_preserves_required_events() {
     assert!(sequences.contains(&2));
     assert!(sequences.contains(&4));
     assert!(!sequences.contains(&3));
+}
+
+#[tokio::test]
+async fn local_runtime_event_stream_byte_budget_evicts_old_ephemeral_events() {
+    let stream = LocalRuntimeEventStream::new();
+    let run_id = Uuid::now_v7();
+    let policy = RuntimeEventStreamPolicy {
+        max_events: 10,
+        max_bytes: 3_000,
+        ..RuntimeEventStreamPolicy::debug_default()
+    };
+
+    stream.open_run(run_id, policy).await.unwrap();
+    stream
+        .append(run_id, blob_event(1_800, RuntimeEventDurability::Ephemeral))
+        .await
+        .unwrap();
+    let retained = stream
+        .append(run_id, blob_event(1_800, RuntimeEventDurability::Ephemeral))
+        .await
+        .unwrap();
+
+    let retained_entries = stream.list_ephemeral_entries().await.unwrap();
+    assert_eq!(retained_entries.len(), 1);
+    assert_eq!(retained_entries[0].metadata["sequence"], retained.sequence);
+}
+
+#[tokio::test]
+async fn local_runtime_event_stream_can_evict_ephemeral_history_waiting_for_persistence() {
+    let stream = LocalRuntimeEventStream::new();
+    let run_id = Uuid::now_v7();
+    let policy = RuntimeEventStreamPolicy {
+        max_events: 10,
+        max_bytes: 3_000,
+        ..RuntimeEventStreamPolicy::debug_default()
+    };
+
+    stream.open_run(run_id, policy).await.unwrap();
+    stream
+        .append(run_id, persist_requested_ephemeral_blob(1_800))
+        .await
+        .unwrap();
+    let retained = stream
+        .append(run_id, persist_requested_ephemeral_blob(1_800))
+        .await
+        .unwrap();
+
+    let replay = stream.replay(run_id, Some(1), 10).await.unwrap();
+    assert_eq!(replay.len(), 1);
+    assert_eq!(replay[0].sequence, retained.sequence);
+    assert!(replay[0].persist_required);
+}
+
+#[tokio::test]
+async fn local_runtime_event_stream_byte_budget_rejects_required_overflow() {
+    let stream = LocalRuntimeEventStream::new();
+    let run_id = Uuid::now_v7();
+    let policy = RuntimeEventStreamPolicy {
+        max_events: 10,
+        max_bytes: 3_000,
+        ..RuntimeEventStreamPolicy::debug_default()
+    };
+
+    stream.open_run(run_id, policy).await.unwrap();
+    stream
+        .append(
+            run_id,
+            blob_event(1_800, RuntimeEventDurability::DurableRequired),
+        )
+        .await
+        .unwrap();
+    let error = stream
+        .append(
+            run_id,
+            blob_event(1_800, RuntimeEventDurability::DurableRequired),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("runtime event stream byte capacity exceeded"));
+    let replay = stream.replay(run_id, Some(0), 10).await.unwrap();
+    assert_eq!(replay.len(), 1);
+    assert_eq!(replay[0].sequence, 1);
 }
 
 #[tokio::test]
@@ -359,6 +466,37 @@ async fn local_runtime_event_stream_close_wakes_live_subscription() {
         .await
         .expect("close_run should wake live subscribers");
     assert!(closed.is_none());
+
+    subscription
+        .closure
+        .changed()
+        .await
+        .expect("close_run should publish a typed closure");
+    let closure = *subscription.closure.borrow();
+    assert_eq!(closure.unwrap().reason, RuntimeEventCloseReason::Finished);
+    assert_eq!(closure.unwrap().final_sequence, 0);
+}
+
+#[tokio::test]
+async fn local_runtime_event_stream_subscribe_after_close_exposes_typed_closure_snapshot() {
+    let stream = LocalRuntimeEventStream::new();
+    let run_id = Uuid::now_v7();
+
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    stream.append(run_id, heartbeat()).await.unwrap();
+    stream
+        .close_run(run_id, RuntimeEventCloseReason::WaitingCallback)
+        .await
+        .unwrap();
+
+    let subscription = stream.subscribe(run_id, Some(1)).await.unwrap();
+    let closure = (*subscription.closure.borrow()).unwrap();
+
+    assert_eq!(closure.reason, RuntimeEventCloseReason::WaitingCallback);
+    assert_eq!(closure.final_sequence, 1);
 }
 
 #[test]

@@ -168,10 +168,12 @@ impl RuntimeEventStream for FakeInfrastructure {
         _from_sequence: Option<i64>,
     ) -> anyhow::Result<RuntimeEventSubscription> {
         let (_sender, receiver) = mpsc::unbounded_channel();
+        let (_closure_sender, closure) = tokio::sync::watch::channel(None);
 
         Ok(RuntimeEventSubscription {
             replay: vec![],
             live_events: receiver,
+            closure,
         })
     }
 

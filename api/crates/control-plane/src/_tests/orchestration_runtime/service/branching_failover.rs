@@ -222,7 +222,10 @@ async fn selected_answer_branch_projects_reasoning_before_text_exactly_once() {
             delta: "先分析".to_string(),
         },
         ProviderStreamEvent::TextDelta {
-            delta: "最终回答".to_string(),
+            delta: "最终".to_string(),
+        },
+        ProviderStreamEvent::TextDelta {
+            delta: "回答".to_string(),
         },
     ]);
     let stream =

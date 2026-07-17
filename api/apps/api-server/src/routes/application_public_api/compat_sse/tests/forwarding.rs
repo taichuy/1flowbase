@@ -1,4 +1,3 @@
-use super::super::event_forwarding::advance_durable_cursor_for_forwarded_event;
 use super::super::protocol_mappers::{
     anthropic_delta_payload, openai_delta_chunk_payload, openai_finish_chunk_payload,
     openai_response_function_call_output_items, openai_tool_call_chunk_payload,
@@ -8,58 +7,96 @@ use super::super::*;
 use super::support::*;
 use control_plane::{
     application_public_api::native::{AnswerProjectionSegment, NativeRequiredAction},
-    ports::{RuntimeEventDurability, RuntimeEventPayload, RuntimeEventSource},
+    ports::{
+        RuntimeEventCloseReason, RuntimeEventDurability, RuntimeEventPayload, RuntimeEventSource,
+    },
 };
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-#[tokio::test]
-async fn forwarded_answer_delta_advances_matching_durable_cursor() {
+#[test]
+fn live_answer_chunks_claim_the_same_coalesced_durable_delta_once() {
     let run = native_run();
     let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
-    let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
-    seed_flow_run_for_compat_sse_test(&base_state, &run).await;
-    append_compat_sse_runtime_event(
-        &base_state,
+    let mut first = RuntimeEventEnvelope::new(
         run.id,
-        "text_delta",
-        json!({
-            "type": "text_delta",
-            "node_id": "node-answer",
-            "text": "prior node answer",
-            "presentation": {
-                "kind": "answer",
-                "answer_node_id": "node-answer",
-                "source_node_id": "node-llm",
-                "source_output_key": "text",
-                "segment_index": 0
-            }
-        }),
-    )
-    .await;
-    let event = RuntimeEventEnvelope::new(
-        run.id,
-        7,
+        1,
         debug_stream_events::answer_text_delta(
             "node-answer",
-            "prior node answer".to_string(),
+            "最终".to_string(),
             0,
             Some("node-llm"),
             Some(node_run_id),
             Some("text"),
         ),
     );
-    let mut durable_sequence = 0;
-
-    advance_durable_cursor_for_forwarded_event(&base_state, run.id, &event, &mut durable_sequence)
-        .await;
-
-    assert!(
-        durable_sequence > 0,
-        "forwarded answer delta should mark matching durable record as consumed"
+    let mut second = RuntimeEventEnvelope::new(
+        run.id,
+        2,
+        debug_stream_events::answer_text_delta(
+            "node-answer",
+            "回答".to_string(),
+            0,
+            Some("node-llm"),
+            Some(node_run_id),
+            Some("text"),
+        ),
     );
+    let mut durable = RuntimeEventEnvelope::new(
+        run.id,
+        3,
+        debug_stream_events::answer_text_delta(
+            "node-answer",
+            "最终回答".to_string(),
+            0,
+            Some("node-llm"),
+            Some(node_run_id),
+            Some("text"),
+        ),
+    );
+    durable.payload["event_ids"] = json!([format!("{}:1", run.id), format!("{}:2", run.id)]);
+    let mut stats = CompatibleStreamStats::default();
+
+    assert!(stats.claim_runtime_event(&mut first));
+    assert!(stats.claim_runtime_event(&mut second));
+    assert!(!stats.claim_runtime_event(&mut durable));
+}
+
+#[test]
+fn live_answer_chunks_are_not_treated_as_cumulative_snapshots() {
+    let run = native_run();
+    let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
+    let mut first = RuntimeEventEnvelope::new(
+        run.id,
+        1,
+        debug_stream_events::answer_text_delta(
+            "node-answer",
+            "a".to_string(),
+            0,
+            Some("node-llm"),
+            Some(node_run_id),
+            Some("text"),
+        ),
+    );
+    let mut second = RuntimeEventEnvelope::new(
+        run.id,
+        2,
+        debug_stream_events::answer_text_delta(
+            "node-answer",
+            "ab".to_string(),
+            0,
+            Some("node-llm"),
+            Some(node_run_id),
+            Some("text"),
+        ),
+    );
+    let mut stats = CompatibleStreamStats::default();
+
+    assert!(stats.claim_runtime_event(&mut first));
+    assert!(stats.claim_runtime_event(&mut second));
+    assert_eq!(second.text.as_deref(), Some("ab"));
 }
 
 #[tokio::test]
@@ -135,13 +172,14 @@ async fn anthropic_live_flow_started_is_not_duplicated_by_durable_drain() {
     .await;
 
     let runtime_event_stream = Arc::new(
-        ReplayBeforeFallbackRuntimeEventStream::with_subscription_replay(
+        ReplayBeforeFallbackRuntimeEventStream::with_closed_subscription_replay(
             vec![RuntimeEventEnvelope::new(
                 run.id,
                 1,
                 debug_stream_events::flow_started(run.id),
             )],
             Vec::new(),
+            RuntimeEventCloseReason::WaitingCallback,
         ),
     );
     let state = Arc::new(ApiState {

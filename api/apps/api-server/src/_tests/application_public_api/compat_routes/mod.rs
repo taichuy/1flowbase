@@ -28,16 +28,16 @@ use time::OffsetDateTime;
 use tokio::time::{timeout, Duration};
 use tower::ServiceExt;
 
-struct DropTerminalRuntimeEventStream {
+pub(super) struct DropTerminalRuntimeEventStream {
     inner: LocalRuntimeEventStream,
 }
 
-struct NeverCloseDropTerminalRuntimeEventStream {
+pub(super) struct NeverCloseDropTerminalRuntimeEventStream {
     inner: DropTerminalRuntimeEventStream,
 }
 
 impl DropTerminalRuntimeEventStream {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             inner: LocalRuntimeEventStream::new(),
         }
@@ -45,7 +45,7 @@ impl DropTerminalRuntimeEventStream {
 }
 
 impl NeverCloseDropTerminalRuntimeEventStream {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             inner: DropTerminalRuntimeEventStream::new(),
         }
@@ -382,7 +382,7 @@ async fn test_app_with_state() -> (Router, std::sync::Arc<crate::app_state::ApiS
     (app, state)
 }
 
-async fn test_app_with_runtime_event_stream(
+pub(super) async fn test_app_with_runtime_event_stream(
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
 ) -> (Router, Arc<ApiState>) {
     let (base_state, _) = test_api_state_with_database_url().await;

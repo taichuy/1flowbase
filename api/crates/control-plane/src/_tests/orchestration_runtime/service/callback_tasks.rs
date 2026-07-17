@@ -298,6 +298,25 @@ async fn callback_resume_does_not_repeat_final_live_answer_presentation() {
         })
         .await
         .unwrap();
+    let waiting_presentation = service
+        .list_runtime_events(waiting.flow_run.id, 0)
+        .await
+        .into_iter()
+        .filter(|event| event.event_type == "text_delta")
+        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
+        .filter_map(|event| event.payload["text"].as_str().map(str::to_string))
+        .collect::<String>();
+    let waiting_streamed_presentation = stream
+        .events()
+        .into_iter()
+        .filter(|event| event.event_type == "text_delta")
+        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
+        .filter_map(|event| event.payload["text"].as_str().map(str::to_string))
+        .collect::<String>();
+    assert_eq!(
+        waiting_presentation, "我先检查文件。",
+        "streamed waiting presentation: {waiting_streamed_presentation}"
+    );
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
@@ -331,7 +350,10 @@ async fn callback_resume_does_not_repeat_final_live_answer_presentation() {
         .filter_map(|event| event.payload["text"].as_str())
         .collect::<String>();
     let expected_presentation = format!("我先检查文件。{final_answer}");
-    assert_eq!(presentation_text, expected_presentation);
+    assert_eq!(
+        presentation_text, expected_presentation,
+        "persisted Answer Presentation events: {presentation_events:#?}"
+    );
     assert_eq!(
         presentation_text.matches(final_answer).count(),
         1,

@@ -1,4 +1,4 @@
-use std::{convert::Infallible, sync::Arc, time::Duration};
+use std::{convert::Infallible, sync::Arc};
 
 use axum::response::sse::Event;
 use control_plane::{
@@ -379,56 +379,45 @@ pub async fn send_native_runtime_event_stream(
         }
     }
 
-    let mut durable_terminal_check = tokio::time::interval(Duration::from_millis(500));
-    durable_terminal_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    loop {
-        tokio::select! {
-            maybe_event = subscription.live_events.recv() => {
-                let Some(event) = maybe_event else {
-                    break;
-                };
-                if is_ignored_waiting_callback(&event, ignored_waiting_callback_task_id) {
-                    continue;
-                }
-                let event_type = event.event_type.clone();
-                let is_terminal = is_public_terminal_runtime_event(&event_type);
-                let is_answer_delta = is_answer_presentation_delta(&event);
-                if is_terminal && !emitted_answer_delta {
-                    let answer_events =
-                        terminal_answer_delta_sse_events(&initial_run, include_workflow_events, &event);
-                    emitted_answer_delta |= !answer_events.is_empty();
-                    if !send_native_sse_events(&sender, answer_events).await {
-                        return;
-                    }
-                }
-                let sse = runtime_event_to_native_sse(&initial_run, include_workflow_events, event);
-                emitted_public_event |= sse.is_some();
-                emitted_answer_delta |= is_answer_delta && sse.is_some();
-                if !send_native_sse_event(&sender, sse).await {
-                    return;
-                }
-                if is_terminal {
-                    return;
-                }
-            }
-            _ = durable_terminal_check.tick() => {
-                if emit_native_terminal_fallback(NativeTerminalFallback {
-                    state: &state,
-                    initial_run: &initial_run,
-                    include_workflow_events,
-                    sender: &sender,
-                    emitted_public_event,
-                    emitted_answer_delta,
-                    trigger: "durable_poll",
-                    warn_if_not_terminal: false,
-                    ignored_waiting_callback_task_id,
-                })
-                .await
-                {
-                    return;
-                }
+    while let Some(event) = subscription.live_events.recv().await {
+        if is_ignored_waiting_callback(&event, ignored_waiting_callback_task_id) {
+            continue;
+        }
+        let event_type = event.event_type.clone();
+        let is_terminal = is_public_terminal_runtime_event(&event_type);
+        let is_answer_delta = is_answer_presentation_delta(&event);
+        if is_terminal && !emitted_answer_delta {
+            let answer_events =
+                terminal_answer_delta_sse_events(&initial_run, include_workflow_events, &event);
+            emitted_answer_delta |= !answer_events.is_empty();
+            if !send_native_sse_events(&sender, answer_events).await {
+                return;
             }
         }
+        let sse = runtime_event_to_native_sse(&initial_run, include_workflow_events, event);
+        emitted_public_event |= sse.is_some();
+        emitted_answer_delta |= is_answer_delta && sse.is_some();
+        if !send_native_sse_event(&sender, sse).await {
+            return;
+        }
+        if is_terminal {
+            return;
+        }
+    }
+
+    match *subscription.closure.borrow() {
+        Some(closure) => debug!(
+            flow_run_id = %initial_run.id,
+            application_id = %initial_run.application_id,
+            close_reason = ?closure.reason,
+            final_sequence = closure.final_sequence,
+            "native public API runtime event stream closed"
+        ),
+        None => warn!(
+            flow_run_id = %initial_run.id,
+            application_id = %initial_run.application_id,
+            "native public API runtime event receiver ended without a close signal"
+        ),
     }
 
     emit_native_terminal_fallback(NativeTerminalFallback {

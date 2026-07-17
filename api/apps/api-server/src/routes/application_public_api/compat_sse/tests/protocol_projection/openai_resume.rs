@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn openai_chat_durable_waiting_callback_fallback_drains_text_delta_first() {
+async fn openai_chat_replayed_waiting_callback_drains_text_delta_first() {
     let mut run = native_run();
     let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
     let callback_task_id = Uuid::from_u128(0x66666666666666666666666666666666);
@@ -57,7 +57,9 @@ async fn openai_chat_durable_waiting_callback_fallback_drains_text_delta_first()
             },
         ),
     ];
-    let runtime_event_stream = Arc::new(ReplayBeforeFallbackRuntimeEventStream::new(stream_events));
+    let runtime_event_stream = Arc::new(
+        ReplayBeforeFallbackRuntimeEventStream::with_subscription_replay(stream_events, Vec::new()),
+    );
     let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let state = Arc::new(ApiState {
         store: base_state.store.clone(),

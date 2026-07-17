@@ -1,4 +1,9 @@
-use std::{collections::HashSet, convert::Infallible, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::Infallible,
+    sync::Arc,
+    time::Duration,
+};
 
 use axum::response::{
     sse::{Event, KeepAlive, Sse},
@@ -67,12 +72,13 @@ struct CompatibleStreamStats {
     emitted_text_content: bool,
     emitted_reasoning_content: bool,
     forwarded_event_identities: HashSet<CompatiblePublicEventIdentity>,
+    forwarded_answer_chunks: HashSet<CompatiblePublicEventChunkIdentity>,
+    forwarded_answer_text: HashMap<CompatiblePublicEventIdentity, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct CompatiblePublicEventIdentity {
     event_type: String,
-    text: Option<String>,
     node_id: Option<String>,
     answer_node_id: Option<String>,
     segment_index: Option<String>,
@@ -81,16 +87,62 @@ struct CompatiblePublicEventIdentity {
     source_output_key: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CompatiblePublicEventChunkIdentity {
+    projection: CompatiblePublicEventIdentity,
+    text: String,
+}
+
 impl CompatibleStreamStats {
     fn emitted_content(&self) -> bool {
         self.emitted_content_bytes > 0
     }
 
-    fn claim_runtime_event(&mut self, event: &RuntimeEventEnvelope) -> bool {
+    fn claim_runtime_event(&mut self, event: &mut RuntimeEventEnvelope) -> bool {
         let Some(identity) = compatible_public_event_identity(event) else {
             return true;
         };
-        self.forwarded_event_identities.insert(identity)
+        if !is_answer_presentation_delta(event) {
+            return self.forwarded_event_identities.insert(identity);
+        }
+        let Some(text) = event.text.as_deref().filter(|text| !text.is_empty()) else {
+            return true;
+        };
+        let is_batched_durable_delta = event
+            .payload
+            .get("event_ids")
+            .and_then(Value::as_array)
+            .is_some();
+        let forwarded = self
+            .forwarded_answer_text
+            .entry(identity.clone())
+            .or_default();
+        if is_batched_durable_delta && !forwarded.is_empty() {
+            if text.starts_with(forwarded.as_str()) {
+                let suffix = text[forwarded.len()..].to_string();
+                if suffix.is_empty() {
+                    return false;
+                }
+                *forwarded = text.to_string();
+                event.text = Some(suffix.clone());
+                if let Some(payload) = event.payload.as_object_mut() {
+                    payload.insert("text".to_string(), Value::String(suffix));
+                }
+                return true;
+            }
+            if forwarded.starts_with(text) {
+                return false;
+            }
+        }
+        let chunk = CompatiblePublicEventChunkIdentity {
+            projection: identity,
+            text: text.to_string(),
+        };
+        if !self.forwarded_answer_chunks.insert(chunk) {
+            return false;
+        }
+        forwarded.push_str(text);
+        true
     }
 
     fn record_sent_runtime_event(
@@ -148,7 +200,6 @@ fn compatible_public_event_identity(
     if event.event_type == "flow_started" {
         return Some(CompatiblePublicEventIdentity {
             event_type: event.event_type.clone(),
-            text: None,
             node_id: None,
             answer_node_id: None,
             segment_index: None,
@@ -164,7 +215,6 @@ fn compatible_public_event_identity(
     let presentation = event.payload.get("presentation");
     Some(CompatiblePublicEventIdentity {
         event_type: event.event_type.clone(),
-        text: event.text.clone(),
         node_id: event
             .payload
             .get("node_id")

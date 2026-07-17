@@ -1,3 +1,7 @@
+use super::compat_routes::{
+    test_app_with_runtime_event_stream, DropTerminalRuntimeEventStream,
+    NeverCloseDropTerminalRuntimeEventStream,
+};
 use crate::_tests::support::{login_and_capture_cookie, test_app};
 use axum::{
     body::{to_bytes, Body},
@@ -5,6 +9,7 @@ use axum::{
     Router,
 };
 use serde_json::{json, Value};
+use std::sync::Arc;
 use tokio::time::{timeout, Duration};
 use tower::ServiceExt;
 
@@ -205,4 +210,63 @@ async fn native_streaming_default_hides_workflow_and_debug_internals() {
     assert!(!body.contains("node_started"), "{body}");
     assert!(!body.contains("debug_payload"), "{body}");
     assert!(!body.contains("node_run_id"), "{body}");
+}
+
+#[tokio::test]
+async fn native_streaming_emits_terminal_fallback_after_runtime_stream_closes() {
+    let (app, _) =
+        test_app_with_runtime_event_stream(Arc::new(DropTerminalRuntimeEventStream::new())).await;
+    let token = setup_published_native_app(&app, "Native Dropped Terminal Stream App").await;
+
+    let (_, body) = post_streaming_run(&app, &token, json!({})).await;
+
+    assert!(
+        body.contains("event: run.completed")
+            || body.contains("event: run.failed")
+            || body.contains("event: run.cancelled"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn native_streaming_does_not_poll_durable_terminal_while_runtime_stream_stays_open() {
+    let (app, _) = test_app_with_runtime_event_stream(Arc::new(
+        NeverCloseDropTerminalRuntimeEventStream::new(),
+    ))
+    .await;
+    let token = setup_published_native_app(&app, "Native Stuck Runtime Stream App").await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/agent/v1/runs")
+                .header("authorization", format!("Bearer {token}"))
+                .header("accept", "text/event-stream")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "query": "Keep the runtime stream open",
+                        "response_mode": "streaming",
+                        "stream_options": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = timeout(
+        Duration::from_millis(900),
+        to_bytes(response.into_body(), usize::MAX),
+    )
+    .await;
+
+    assert!(
+        body.is_err(),
+        "native SSE should wait for an ephemeral close signal instead of polling durable state"
+    );
 }

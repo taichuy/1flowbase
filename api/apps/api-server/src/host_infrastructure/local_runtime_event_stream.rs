@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
-        atomic::{AtomicBool, AtomicI64, Ordering},
+        atomic::{AtomicI64, Ordering},
         Arc, Mutex,
     },
 };
@@ -10,7 +10,7 @@ use anyhow::{anyhow, Result};
 use control_plane::ports::{
     ensure_ephemeral_payload_size, ephemeral_metadata_size_bytes, EphemeralEntrySnapshot,
     EphemeralEntryValueSnapshot, EphemeralInspectionCapabilities, EphemeralValueRevealMode,
-    RuntimeEventCloseReason, RuntimeEventDurability, RuntimeEventEnvelope,
+    RuntimeEventCloseReason, RuntimeEventClosure, RuntimeEventDurability, RuntimeEventEnvelope,
     RuntimeEventOverflowBehavior, RuntimeEventPayload, RuntimeEventStream,
     RuntimeEventStreamPolicy, RuntimeEventSubscription, RuntimeEventTrimPolicy,
 };
@@ -30,14 +30,18 @@ pub struct LocalRuntimeEventStream {
 
 struct LocalRunEventStream {
     next_sequence: AtomicI64,
-    ring: Mutex<VecDeque<RuntimeEventEnvelope>>,
+    ring: Mutex<RetainedRuntimeEvents>,
     broadcaster: broadcast::Sender<RuntimeEventEnvelope>,
-    closed_sender: watch::Sender<bool>,
+    closed_sender: watch::Sender<Option<RuntimeEventClosure>>,
     policy: RuntimeEventStreamPolicy,
-    closed: AtomicBool,
-    close_reason: Mutex<Option<RuntimeEventCloseReason>>,
     closed_at: Mutex<Option<OffsetDateTime>>,
     last_event_at: Mutex<OffsetDateTime>,
+}
+
+#[derive(Default)]
+struct RetainedRuntimeEvents {
+    events: VecDeque<RuntimeEventEnvelope>,
+    bytes: usize,
 }
 
 impl Default for LocalRuntimeEventStream {
@@ -142,7 +146,7 @@ impl LocalRuntimeEventStream {
             key,
             inspection_path: vec![event.run_id.to_string(), event.sequence.to_string()],
             entry_kind: "runtime_event".to_string(),
-            status: if run.closed.load(Ordering::SeqCst) {
+            status: if run.is_closed() {
                 "closed".to_string()
             } else {
                 "open".to_string()
@@ -162,27 +166,21 @@ impl LocalRuntimeEventStream {
 impl LocalRunEventStream {
     fn new(policy: RuntimeEventStreamPolicy, broadcast_capacity: usize) -> Self {
         let (broadcaster, _) = broadcast::channel(broadcast_capacity);
-        let (closed_sender, _) = watch::channel(false);
+        let (closed_sender, _) = watch::channel(None);
         let now = OffsetDateTime::now_utc();
         Self {
             next_sequence: AtomicI64::new(1),
-            ring: Mutex::new(VecDeque::new()),
+            ring: Mutex::new(RetainedRuntimeEvents::default()),
             broadcaster,
             closed_sender,
             policy,
-            closed: AtomicBool::new(false),
-            close_reason: Mutex::new(None),
             closed_at: Mutex::new(None),
             last_event_at: Mutex::new(now),
         }
     }
 
     fn retention_duration(&self) -> TimeDuration {
-        match *self
-            .close_reason
-            .lock()
-            .expect("runtime event close reason lock poisoned")
-        {
+        match self.closed_sender.borrow().map(|closure| closure.reason) {
             Some(RuntimeEventCloseReason::WaitingHuman)
             | Some(RuntimeEventCloseReason::WaitingCallback) => WAITING_RUN_RETENTION,
             Some(_) => self.policy.ttl,
@@ -208,6 +206,10 @@ impl LocalRunEventStream {
         now >= self.retention_deadline()
     }
 
+    fn is_closed(&self) -> bool {
+        self.closed_sender.borrow().is_some()
+    }
+
     fn replay_from_ring(
         &self,
         from_sequence: Option<i64>,
@@ -216,7 +218,7 @@ impl LocalRunEventStream {
         let requested_sequence = from_sequence.unwrap_or(0);
         let ring = self.ring.lock().expect("runtime event ring lock poisoned");
 
-        if let Some(front) = ring.front() {
+        if let Some(front) = ring.events.front() {
             if requested_sequence < front.sequence - 1 {
                 return Err(anyhow!("runtime event replay expired"));
             }
@@ -225,6 +227,7 @@ impl LocalRunEventStream {
         }
 
         Ok(ring
+            .events
             .iter()
             .filter(|event| event.sequence > requested_sequence)
             .take(limit)
@@ -234,34 +237,73 @@ impl LocalRunEventStream {
 
     fn events_after_sequence(&self, sequence: i64, limit: usize) -> Vec<RuntimeEventEnvelope> {
         let ring = self.ring.lock().expect("runtime event ring lock poisoned");
-        ring.iter()
+        ring.events
+            .iter()
             .filter(|event| event.sequence > sequence)
             .take(limit)
             .cloned()
             .collect()
     }
 
-    fn trim_overflow(&self, ring: &mut VecDeque<RuntimeEventEnvelope>) {
+    fn retained_event_size(event: &RuntimeEventEnvelope) -> Result<usize> {
+        serde_json::to_vec(event)
+            .map(|serialized| serialized.len())
+            .map_err(Into::into)
+    }
+
+    fn remove_retained_event(ring: &mut RetainedRuntimeEvents, index: usize) -> Result<()> {
+        if let Some(event) = ring.events.remove(index) {
+            let removed_bytes = Self::retained_event_size(&event)?;
+            ring.bytes = ring.bytes.saturating_sub(removed_bytes);
+        }
+        Ok(())
+    }
+
+    fn make_room_for(&self, ring: &mut RetainedRuntimeEvents, incoming_bytes: usize) -> Result<()> {
         match self.policy.overflow_behavior {
             RuntimeEventOverflowBehavior::DropOldEphemeralKeepRequired => {
-                while ring.len() > self.policy.max_events {
-                    if let Some(index) = ring.iter().position(|event| !is_required_event(event)) {
-                        ring.remove(index);
-                    } else {
-                        break;
-                    }
+                while ring.events.len() >= self.policy.max_events
+                    || ring.bytes.saturating_add(incoming_bytes) > self.policy.max_bytes
+                {
+                    let Some(index) = ring
+                        .events
+                        .iter()
+                        .position(|event| !is_required_event(event))
+                    else {
+                        let capacity = if ring.events.len() >= self.policy.max_events {
+                            "event"
+                        } else {
+                            "byte"
+                        };
+                        return Err(anyhow!("runtime event stream {capacity} capacity exceeded"));
+                    };
+                    Self::remove_retained_event(ring, index)?;
                 }
             }
         }
+        Ok(())
+    }
+
+    fn trim_to_policy(&self, ring: &mut RetainedRuntimeEvents) -> Result<()> {
+        while ring.events.len() > self.policy.max_events || ring.bytes > self.policy.max_bytes {
+            let Some(index) = ring
+                .events
+                .iter()
+                .position(|event| !is_required_event(event))
+            else {
+                break;
+            };
+            Self::remove_retained_event(ring, index)?;
+        }
+        Ok(())
     }
 }
 
 fn is_required_event(event: &RuntimeEventEnvelope) -> bool {
-    event.persist_required
-        || matches!(
-            event.durability,
-            RuntimeEventDurability::DurableRequired | RuntimeEventDurability::AuditRequired
-        )
+    matches!(
+        event.durability,
+        RuntimeEventDurability::DurableRequired | RuntimeEventDurability::AuditRequired
+    )
 }
 
 fn send_retained_after_sequence(
@@ -288,7 +330,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             .lock()
             .expect("runtime event stream runs lock poisoned");
         match runs.get(&run_id) {
-            Some(run) if run.closed.load(Ordering::SeqCst) => {
+            Some(run) if run.is_closed() => {
                 runs.insert(
                     run_id,
                     Arc::new(LocalRunEventStream::new(policy, self.broadcast_capacity)),
@@ -315,17 +357,20 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
 
         let envelope = {
             let mut ring = run.ring.lock().expect("runtime event ring lock poisoned");
-            if run.closed.load(Ordering::SeqCst) {
+            if run.is_closed() {
                 return Err(anyhow!("runtime event stream is closed"));
             }
 
-            let sequence = run.next_sequence.fetch_add(1, Ordering::SeqCst);
+            let sequence = run.next_sequence.load(Ordering::SeqCst);
             let envelope = RuntimeEventEnvelope::new(run_id, sequence, event);
+            let retained_bytes = LocalRunEventStream::retained_event_size(&envelope)?;
+            run.make_room_for(&mut ring, retained_bytes)?;
+            run.next_sequence.store(sequence + 1, Ordering::SeqCst);
             *run.last_event_at
                 .lock()
                 .expect("runtime event last event lock poisoned") = envelope.occurred_at;
-            ring.push_back(envelope.clone());
-            run.trim_overflow(&mut ring);
+            ring.bytes = ring.bytes.saturating_add(retained_bytes);
+            ring.events.push_back(envelope.clone());
             envelope
         };
 
@@ -340,6 +385,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
     ) -> Result<RuntimeEventSubscription> {
         let run = self.run(run_id)?;
         let mut live_receiver = run.broadcaster.subscribe();
+        let closure = run.closed_sender.subscribe();
         let replay = run.replay_from_ring(from_sequence, usize::MAX)?;
         let mut last_sent_sequence = replay
             .last()
@@ -347,21 +393,23 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             .unwrap_or_else(|| from_sequence.unwrap_or(0));
         let (sender, live_events) = mpsc::unbounded_channel();
 
-        if run.closed.load(Ordering::SeqCst) {
+        if closure.borrow().is_some() {
             drop(sender);
             return Ok(RuntimeEventSubscription {
                 replay,
                 live_events,
+                closure,
             });
         }
 
         let live_run = Arc::clone(&run);
-        let mut closed_receiver = run.closed_sender.subscribe();
-        if *closed_receiver.borrow() {
+        let mut closed_receiver = closure.clone();
+        if closed_receiver.borrow().is_some() {
             drop(sender);
             return Ok(RuntimeEventSubscription {
                 replay,
                 live_events,
+                closure,
             });
         }
 
@@ -369,7 +417,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             loop {
                 tokio::select! {
                     changed = closed_receiver.changed() => {
-                        if changed.is_err() || *closed_receiver.borrow() {
+                        if changed.is_err() || closed_receiver.borrow().is_some() {
                             let _ = send_retained_after_sequence(
                                 &live_run,
                                 &sender,
@@ -417,6 +465,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         Ok(RuntimeEventSubscription {
             replay,
             live_events,
+            closure,
         })
     }
 
@@ -432,14 +481,15 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
     async fn close_run(&self, run_id: Uuid, reason: RuntimeEventCloseReason) -> Result<()> {
         let run = self.run(run_id)?;
         let _ring = run.ring.lock().expect("runtime event ring lock poisoned");
-        if !run.closed.swap(true, Ordering::SeqCst) {
-            *run.close_reason
-                .lock()
-                .expect("runtime event close reason lock poisoned") = Some(reason);
+        if !run.is_closed() {
+            let final_sequence = run.next_sequence.load(Ordering::SeqCst) - 1;
             *run.closed_at
                 .lock()
                 .expect("runtime event closed_at lock poisoned") = Some(OffsetDateTime::now_utc());
-            let _ = run.closed_sender.send(true);
+            run.closed_sender.send_replace(Some(RuntimeEventClosure {
+                reason,
+                final_sequence,
+            }));
         }
         Ok(())
     }
@@ -448,13 +498,18 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         let run = self.run(run_id)?;
         if let Some(before_sequence) = policy.before_sequence {
             let mut ring = run.ring.lock().expect("runtime event ring lock poisoned");
-            ring.retain(|event| {
+            ring.events.retain(|event| {
                 event.sequence >= before_sequence
                     || (policy.keep_required && is_required_event(event))
             });
-            if ring.len() > run.policy.max_events {
-                run.trim_overflow(&mut ring);
-            }
+            ring.bytes = ring
+                .events
+                .iter()
+                .map(LocalRunEventStream::retained_event_size)
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .sum();
+            run.trim_to_policy(&mut ring)?;
         }
         Ok(())
     }
@@ -477,7 +532,8 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         for run in runs {
             let ring = run.ring.lock().expect("runtime event ring lock poisoned");
             entries.extend(
-                ring.iter()
+                ring.events
+                    .iter()
                     .map(|event| Self::event_snapshot(event, &run, now))
                     .collect::<Vec<_>>(),
             );
@@ -510,6 +566,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         };
         let ring = run.ring.lock().expect("runtime event ring lock poisoned");
         let Some(event) = ring
+            .events
             .iter()
             .find(|event| event.sequence == sequence)
             .cloned()

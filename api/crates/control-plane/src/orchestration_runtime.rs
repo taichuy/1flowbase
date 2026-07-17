@@ -29,8 +29,8 @@ use crate::{
         AppendRunEventInput, ApplicationJsDependencySelectionRepository, ApplicationRepository,
         CacheStore, CompleteCallbackTaskInput, FlowRepository, ModelDefinitionRepository,
         ModelProviderRepository, NodeContributionRepository, OrchestrationRuntimeRepository,
-        PluginRepository, ProviderRuntimePort, RuntimeEventEnvelope, RuntimeEventStream, TaskQueue,
-        UpdateFlowRunInput, UpdateNodeRunInput,
+        PluginRepository, ProviderRuntimePort, RuntimeEventDurability, RuntimeEventEnvelope,
+        RuntimeEventStream, TaskQueue, UpdateFlowRunInput, UpdateNodeRunInput,
     },
     state_transition::{ensure_flow_run_transition, ensure_node_run_transition},
 };
@@ -1309,6 +1309,7 @@ where
             for event in &persisted.stream_events {
                 let mut stream_event = event.clone();
                 stream_event.persist_required = false;
+                stream_event.durability = RuntimeEventDurability::Ephemeral;
                 if let Err(error) = stream.append(flow_run_id, stream_event).await {
                     if is_expected_runtime_event_stream_closed_error(&error) {
                         tracing::debug!(
