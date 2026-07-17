@@ -43,6 +43,7 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 
 type RuntimeTarget = SettingsSystemRuntimeProfile['runtime_targets'][number];
 type RuntimeMetrics = NonNullable<RuntimeTarget['metrics']>;
+type RuntimeHost = SettingsSystemRuntimeProfile['hosts'][number];
 
 function usePageVisibility() {
   const [visible, setVisible] = useState(
@@ -140,14 +141,25 @@ function scopeLabel(scope: RuntimeMetrics['cpu']['scope_kind']) {
   }
 }
 
-function pointFromMetrics(metrics: RuntimeMetrics): RuntimeMetricPoint {
+function pointFromMetrics(
+  metrics: RuntimeMetrics,
+  host: RuntimeHost | undefined,
+  relatedProcessMemoryComplete: boolean
+): RuntimeMetricPoint {
   return {
     capturedAt: metrics.captured_at_unix_milliseconds,
     cpuUsagePercent: metrics.cpu.usage_percent,
-    memoryUsagePercent: usagePercent(
+    environmentMemoryUsagePercent: usagePercent(
       metrics.memory.used_bytes,
       metrics.memory.total_bytes
     ),
+    hostRelatedProcessBytes:
+      relatedProcessMemoryComplete && host ? host.related_process_bytes : null,
+    hostRelatedProcessCount:
+      relatedProcessMemoryComplete && host ? host.related_process_count : null,
+    targetRelatedProcessBytes: metrics.memory.related_process_bytes,
+    targetRelatedProcessCount: metrics.memory.related_process_count,
+    rootProcessBytes: metrics.memory.process_bytes,
     networkReceivedBytesPerSecond: metrics.network.received_bytes_per_second,
     networkTransmittedBytesPerSecond:
       metrics.network.transmitted_bytes_per_second,
@@ -239,13 +251,29 @@ export function SystemRuntimePanel() {
         if (!target.reachable || !target.metrics) {
           return;
         }
-        const point = pointFromMetrics(target.metrics);
+        const host = profile.hosts.find(
+          (entry) => entry.host_fingerprint === target.host_fingerprint
+        );
+        const point = pointFromMetrics(
+          target.metrics,
+          host,
+          profile.related_process_memory_complete
+        );
         const existing = current[target.target_id] ?? [];
-        if (existing.at(-1)?.capturedAt === point.capturedAt) {
+        const latest = existing.at(-1);
+        if (
+          latest?.capturedAt === point.capturedAt &&
+          latest.hostRelatedProcessBytes === point.hostRelatedProcessBytes &&
+          latest.hostRelatedProcessCount === point.hostRelatedProcessCount
+        ) {
           return;
         }
         const cutoff = point.capturedAt - HISTORY_WINDOW_MILLISECONDS;
-        next[target.target_id] = [...existing, point]
+        const historyBeforePoint =
+          latest?.capturedAt === point.capturedAt
+            ? existing.slice(0, -1)
+            : existing;
+        next[target.target_id] = [...historyBeforePoint, point]
           .filter((entry) => entry.capturedAt >= cutoff)
           .slice(-MAX_HISTORY_POINTS);
         changed = true;
@@ -315,6 +343,20 @@ export function SystemRuntimePanel() {
   const selectedHost = profile.hosts.find(
     (host) => host.host_fingerprint === selectedTarget?.host_fingerprint
   );
+  const selectedHostProcessSummaries = selectedHost
+    ? profile.runtime_targets.flatMap((target) =>
+        target.reachable &&
+        target.metrics &&
+        target.host_fingerprint === selectedHost.host_fingerprint
+          ? [
+              {
+                targetId: target.target_id,
+                relatedProcessCount: target.metrics.memory.related_process_count
+              }
+            ]
+          : []
+      )
+    : [];
   const metrics = selectedTarget?.metrics ?? null;
   const points = histories[selectedTargetId] ?? [];
   const memoryPercent = metrics
@@ -638,27 +680,75 @@ export function SystemRuntimePanel() {
               </div>
 
               <div className="system-runtime-panel__chart-panel">
-                <Segmented<RuntimeMetricKind>
-                  aria-label={i18nText('settings', 'auto.runtime_metric')}
-                  value={metricKind}
-                  onChange={setMetricKind}
-                  options={[
-                    {
-                      label: i18nText('settings', 'auto.network_traffic'),
-                      value: 'network'
-                    },
-                    {
-                      label: i18nText('settings', 'auto.disk_io'),
-                      value: 'disk_io'
-                    },
-                    { label: 'CPU', value: 'cpu' },
-                    {
-                      label: i18nText('settings', 'auto.memory'),
-                      value: 'memory'
-                    }
-                  ]}
+                <div className="system-runtime-panel__chart-toolbar">
+                  <Segmented<RuntimeMetricKind>
+                    aria-label={i18nText('settings', 'auto.runtime_metric')}
+                    value={metricKind}
+                    onChange={setMetricKind}
+                    options={[
+                      {
+                        label: i18nText('settings', 'auto.network_traffic'),
+                        value: 'network'
+                      },
+                      {
+                        label: i18nText('settings', 'auto.disk_io'),
+                        value: 'disk_io'
+                      },
+                      { label: 'CPU', value: 'cpu' },
+                      {
+                        label: i18nText('settings', 'auto.environment_memory'),
+                        value: 'environment_memory'
+                      },
+                      {
+                        label: i18nText('settings', 'auto.process_memory'),
+                        value: 'process_memory'
+                      }
+                    ]}
+                  />
+                  {metricKind === 'process_memory' ? (
+                    <div
+                      aria-label={i18nText(
+                        'settings',
+                        'auto.related_process_memory'
+                      )}
+                      className="system-runtime-panel__process-summary"
+                      role="group"
+                    >
+                      {selectedHostProcessSummaries.map((summary) => (
+                        <Tag
+                          className="system-runtime-panel__process-summary-tag"
+                          key={summary.targetId}
+                        >
+                          {i18nText(
+                            'settings',
+                            'auto.runtime_target_process_count',
+                            {
+                              value1: serviceLabel(summary.targetId),
+                              value2: summary.relatedProcessCount
+                            }
+                          )}
+                        </Tag>
+                      ))}
+                      {profile.related_process_memory_complete &&
+                      selectedHost ? (
+                        <Tag className="system-runtime-panel__process-summary-tag system-runtime-panel__process-summary-tag--total">
+                          {i18nText(
+                            'settings',
+                            'auto.same_host_process_total',
+                            {
+                              value1: selectedHost.related_process_count
+                            }
+                          )}
+                        </Tag>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                <RuntimeMetricsChart
+                  kind={metricKind}
+                  points={points}
+                  targetLabel={serviceLabel(selectedTargetId)}
                 />
-                <RuntimeMetricsChart kind={metricKind} points={points} />
               </div>
             </>
           ) : (

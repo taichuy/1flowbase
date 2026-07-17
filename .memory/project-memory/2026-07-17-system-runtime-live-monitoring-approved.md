@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: system-runtime-live-monitoring-approved
-summary: 用户确认并已实现 system runtime 平衡方案：2 秒 HTTP polling、前端 120 秒易失窗口、API Server / Plugin Runner 独立采集；target snapshot 使用 HostInfrastructure CacheStore 做 1 秒新鲜度、10 秒保留；内存主指标扩展为同宿主相关运行目标及后代进程 RSS 合计，并保留根进程 RSS 与 cgroup 内存构成。
+summary: 用户确认并已实现 system runtime 平衡方案：2 秒 HTTP polling、前端 120 秒易失窗口、API Server / Plugin Runner 独立采集；target snapshot 使用 HostInfrastructure CacheStore 做 1 秒新鲜度、10 秒保留；内存主指标扩展为同宿主相关运行目标及后代进程 RSS 合计，并新增环境内存、三线进程内存趋势与常驻运行目标进程摘要。
 keywords:
   - system-runtime
   - runtime-profile
@@ -17,8 +17,8 @@ match_when:
   - 讨论宿主或容器资源实时采集、持久化边界或外部监控依赖
   - 修改 runtime-profile 的 runtime_targets 或资源指标合同
 created_at: 2026-07-17 13
-updated_at: 2026-07-17 18
-last_verified_at: 2026-07-17 18
+updated_at: 2026-07-17 22
+last_verified_at: 2026-07-17 22
 decision_policy: verify_before_decision
 scope:
   - api/crates/runtime-profile
@@ -32,7 +32,7 @@ scope:
 
 ## 谁在做什么
 
-用户已确认平衡方案并授权直接实现；AI 已完成 `/settings/system-runtime` 紧凑重构、API Server / Plugin Runner 独立运行目标、前端实时曲线、基于 HostInfrastructure ephemeral contract 的可观察 target snapshot 缓存，以及相关进程内存聚合。定向自动化与真实 API 取证已完成，当前视觉确认、提交和 push 仍待用户完成。
+用户已确认平衡方案并授权直接实现；AI 已完成 `/settings/system-runtime` 紧凑重构、API Server / Plugin Runner 独立运行目标、前端实时曲线、基于 HostInfrastructure ephemeral contract 的可观察 target snapshot 缓存，以及相关进程内存聚合。在用户进一步确认后，内存报表已拆分为“环境内存”与“进程内存”，后者使用同宿主合计、当前目标进程树和根进程 RSS 三条曲线；API Server / Plugin Runner 名称和当前进程数已常驻在图表右上角，图例同步显示当前运行目标名称。定向自动化、TypeScript 与 i18n hygiene 已通过，本轮视觉确认与提交待用户完成。
 
 ## 为什么这样做
 
@@ -64,6 +64,11 @@ scope:
 - 页面内存主值按“同宿主相关进程合计 → 当前目标进程树 → 根进程 RSS”分层展示，避免把单 PID RSS 误解为服务总占用。
 - Linux cgroup 范围额外返回 `anon / file / kernel / shmem` 构成；宿主范围不伪造 cgroup 构成。
 - PSS 和亚秒级插件峰值不进入当前 2 秒主曲线；需要公平共享页计量或 OOM 峰值归因时，再进入低频 PSS 或专用 cgroup 方案。
+- 保留原有宿主 / cgroup 内存使用率曲线，页签显示名调整为“环境内存”；旁边新增“进程内存”页签。
+- 进程内存报表纵轴使用 MB，同时展示“同宿主相关进程合计 / 当前目标进程树 / 根进程 RSS”；tooltip 同时展示内存值和进程数。
+- 当 `related_process_memory_complete=false` 时，同宿主合计曲线记录为空点而不冒充完整总量；当前目标与根进程曲线继续可观察。
+- 进程内存工具栏右上角常驻显示选中宿主上的运行目标名称与各自进程数，完整采集时再显示同宿主合计；不再依赖会因 2 秒轮询而消失的 Tooltip 来承载当前身份。
+- 进程内存图例使用“API Server / Plugin Runner 进程树”和“API Server / Plugin Runner 根进程 RSS”语义，切换运行目标时同步更新；本轮不新增真实 OS 子进程名、PID 或命令行字段。
 
 ## 截止日期
 

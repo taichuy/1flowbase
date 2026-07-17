@@ -421,4 +421,104 @@ describe('SystemRuntimePanel', () => {
       expect(option?.series?.[1]?.data).toEqual([1]);
     });
   });
+
+  test('ac_011 separates environment memory from the related process memory trend', async () => {
+    renderPanel();
+
+    await screen.findByText('资源监控');
+    expect(screen.getByText('环境内存')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('进程内存'));
+    expect(screen.getByText('API Server · 2 个进程')).toBeInTheDocument();
+    expect(screen.getByText('Plugin Runner · 3 个进程')).toBeInTheDocument();
+    expect(screen.getByText('同宿主合计 · 5 个进程')).toBeInTheDocument();
+
+    await waitFor(() => {
+      const option = echartsMock.chart.setOption.mock.calls
+        .map((call) => call[0])
+        .reverse()
+        .find(
+          (candidate) =>
+            Array.isArray(candidate?.series) &&
+            candidate.series[0]?.name === '同宿主相关进程合计'
+        ) as
+        | {
+            yAxis?: { name?: string };
+            series?: Array<{
+              name?: string;
+              data?: unknown[];
+              tooltip?: {
+                valueFormatter?: (value: unknown, dataIndex: number) => string;
+              };
+            }>;
+          }
+        | undefined;
+
+      expect(option?.yAxis?.name).toBe('MB');
+      expect(option?.series?.map((series) => series.name)).toEqual([
+        '同宿主相关进程合计',
+        'API Server 进程树',
+        'API Server 根进程 RSS'
+      ]);
+      expect(option?.series?.[0]?.data).toEqual([768]);
+      expect(option?.series?.[1]?.data).toEqual([320]);
+      expect(option?.series?.[2]?.data).toEqual([256]);
+      expect(option?.series?.[0]?.tooltip?.valueFormatter?.(768, 0)).toBe(
+        '768 MB · 5 个进程'
+      );
+      expect(option?.series?.[1]?.tooltip?.valueFormatter?.(320, 0)).toBe(
+        '320 MB · 2 个进程'
+      );
+      expect(option?.series?.[2]?.tooltip?.valueFormatter?.(256, 0)).toBe(
+        '256 MB · 1 个进程'
+      );
+    });
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '运行目标' }));
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'Plugin Runner' })
+    );
+    await waitFor(() => {
+      const option = echartsMock.chart.setOption.mock.calls
+        .map((call) => call[0])
+        .reverse()
+        .find(
+          (candidate) =>
+            Array.isArray(candidate?.series) &&
+            candidate.series[1]?.name === 'Plugin Runner 进程树'
+        ) as { series?: Array<{ name?: string }> } | undefined;
+
+      expect(option?.series?.map((series) => series.name)).toEqual([
+        '同宿主相关进程合计',
+        'Plugin Runner 进程树',
+        'Plugin Runner 根进程 RSS'
+      ]);
+    });
+  });
+
+  test('ac_012 leaves a gap in the host process total when collection is incomplete', async () => {
+    const profile = runtimeProfile();
+    profile.related_process_memory_complete = false;
+    systemRuntimeApi.fetchSettingsSystemRuntimeProfile.mockResolvedValue(
+      profile
+    );
+    renderPanel();
+
+    await screen.findByText('资源监控');
+    fireEvent.click(screen.getByText('进程内存'));
+
+    await waitFor(() => {
+      const option = echartsMock.chart.setOption.mock.calls
+        .map((call) => call[0])
+        .reverse()
+        .find(
+          (candidate) =>
+            Array.isArray(candidate?.series) &&
+            candidate.series[0]?.name === '同宿主相关进程合计'
+        ) as { series?: Array<{ data?: unknown[] }> } | undefined;
+
+      expect(option?.series?.[0]?.data).toEqual([null]);
+      expect(option?.series?.[1]?.data).toEqual([320]);
+      expect(option?.series?.[2]?.data).toEqual([256]);
+    });
+  });
 });
