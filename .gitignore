@@ -65,3 +65,4 @@ web/app/.env.*.local
 .agents/skills/fuck-my-shit-mountain/*
 docker/1flowbase.code-workspace
 docs/private/*
+docs/ziliao/*
