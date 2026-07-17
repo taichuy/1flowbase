@@ -857,7 +857,10 @@ async fn application_api_publication_route_unpublish_reverts_to_draft_and_allows
     assert_eq!(republish.status(), StatusCode::CREATED);
     let republish_payload = response_json(republish).await;
     assert_eq!(republish_payload["data"]["active"].as_bool(), Some(true));
-    assert_eq!(republish_payload["data"]["api_enabled"].as_bool(), Some(true));
+    assert_eq!(
+        republish_payload["data"]["api_enabled"].as_bool(),
+        Some(true)
+    );
 }
 
 #[tokio::test]

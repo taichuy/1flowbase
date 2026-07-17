@@ -362,12 +362,10 @@ where
             .ok_or(ControlPlaneError::NotFound("publication"))?;
 
         self.repository
-            .deactivate_application_publication_versions(
-                &DeactivateApplicationPublicationsInput {
-                    actor_user_id: command.actor_user_id,
-                    application_id: application.id,
-                },
-            )
+            .deactivate_application_publication_versions(&DeactivateApplicationPublicationsInput {
+                actor_user_id: command.actor_user_id,
+                application_id: application.id,
+            })
             .await
     }
 }
