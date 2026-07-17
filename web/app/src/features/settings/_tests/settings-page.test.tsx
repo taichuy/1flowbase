@@ -661,6 +661,98 @@ describe('SettingsPage', () => {
           },
           services: ['api-server', 'plugin-runner']
         }
+      ],
+      runtime_targets: [
+        {
+          target_id: 'api-server',
+          reachable: true,
+          host_fingerprint: 'host-1',
+          metrics: {
+            captured_at_unix_milliseconds: 1_752_745_600_000,
+            sample_interval_milliseconds: 2000,
+            cpu: {
+              availability: 'available',
+              scope_kind: 'host',
+              usage_percent: 12.5,
+              logical_count: 8,
+              limit_cores: 8
+            },
+            memory: {
+              availability: 'available',
+              scope_kind: 'host',
+              total_bytes: 17179869184,
+              available_bytes: 8589934592,
+              used_bytes: 8589934592,
+              process_bytes: 1073741824
+            },
+            storage: {
+              availability: 'available',
+              scope_kind: 'runtime_visible',
+              mount_point: '/',
+              file_system: 'overlay',
+              total_bytes: 68719476736,
+              available_bytes: 51539607552,
+              used_bytes: 17179869184
+            },
+            network: {
+              availability: 'available',
+              scope_kind: 'runtime_visible',
+              received_bytes_per_second: 2048,
+              transmitted_bytes_per_second: 1024
+            },
+            disk_io: {
+              availability: 'available',
+              scope_kind: 'runtime_visible',
+              read_bytes_per_second: 4096,
+              written_bytes_per_second: 8192
+            }
+          }
+        },
+        {
+          target_id: 'plugin-runner',
+          reachable: true,
+          host_fingerprint: 'host-1',
+          metrics: {
+            captured_at_unix_milliseconds: 1_752_745_600_000,
+            sample_interval_milliseconds: 2000,
+            cpu: {
+              availability: 'available',
+              scope_kind: 'host',
+              usage_percent: 8.5,
+              logical_count: 8,
+              limit_cores: 8
+            },
+            memory: {
+              availability: 'available',
+              scope_kind: 'host',
+              total_bytes: 17179869184,
+              available_bytes: 8589934592,
+              used_bytes: 8589934592,
+              process_bytes: 536870912
+            },
+            storage: {
+              availability: 'available',
+              scope_kind: 'runtime_visible',
+              mount_point: '/',
+              file_system: 'overlay',
+              total_bytes: 68719476736,
+              available_bytes: 51539607552,
+              used_bytes: 17179869184
+            },
+            network: {
+              availability: 'available',
+              scope_kind: 'runtime_visible',
+              received_bytes_per_second: 1024,
+              transmitted_bytes_per_second: 512
+            },
+            disk_io: {
+              availability: 'available',
+              scope_kind: 'runtime_visible',
+              read_bytes_per_second: 2048,
+              written_bytes_per_second: 4096
+            }
+          }
+        }
       ]
     });
     fileManagementApi.fetchSettingsFileStorages.mockResolvedValue([
@@ -1534,7 +1626,8 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe('/settings/system-runtime');
     });
-    expect(await screen.findByText('部署概览')).toBeInTheDocument();
+    expect(await screen.findByText('运行概览')).toBeInTheDocument();
+    expect(screen.getByText('资源监控')).toBeInTheDocument();
     expect(screen.getByText('同机部署')).toBeInTheDocument();
     expect(screen.getByText('zh_Hans')).toBeInTheDocument();
     expect(screen.getByText('API Server')).toBeInTheDocument();

@@ -384,7 +384,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         provider_runtime,
         process_started_at,
         runtime_activity,
-        api_runtime_profile: Arc::new(HostApiRuntimeProfileCollector),
+        api_runtime_profile: Arc::new(HostApiRuntimeProfileCollector::new(process_started_at)?),
         plugin_runner_system: Arc::new(HttpPluginRunnerSystemClient::new(
             config.plugin_runner_internal_base_url.clone(),
         )),

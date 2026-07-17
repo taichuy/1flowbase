@@ -16,6 +16,18 @@ async fn runtime_profile_merges_same_host_services() {
     let payload = get_json(&app, "/api/console/system/runtime-profile", &cookie).await;
     assert_eq!(payload["data"]["topology"]["relationship"], "same_host");
     assert_eq!(payload["data"]["hosts"].as_array().unwrap().len(), 1);
+    let runtime_targets = payload["data"]["runtime_targets"].as_array().unwrap();
+    assert_eq!(runtime_targets.len(), 2);
+    assert_eq!(runtime_targets[0]["target_id"], "api-server");
+    assert_eq!(runtime_targets[1]["target_id"], "plugin-runner");
+    assert_eq!(
+        runtime_targets[0]["metrics"]["cpu"]["availability"],
+        "available"
+    );
+    assert_eq!(
+        runtime_targets[0]["metrics"]["network"]["received_bytes_per_second"],
+        2048.0
+    );
     assert_eq!(
         payload["data"]["locale_meta"]["source"],
         "user_preferred_locale"

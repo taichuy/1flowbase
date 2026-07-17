@@ -19,10 +19,7 @@ struct StaticApiRuntimeProfileCollector {
 
 #[async_trait]
 impl ApiRuntimeProfilePort for StaticApiRuntimeProfileCollector {
-    async fn collect_runtime_profile(
-        &self,
-        _process_started_at: OffsetDateTime,
-    ) -> anyhow::Result<RuntimeProfile> {
+    async fn collect_runtime_profile(&self) -> anyhow::Result<RuntimeProfile> {
         Ok(self.profile.clone())
     }
 }
@@ -282,7 +279,7 @@ async fn test_app_with_runtime_profile_state(
 pub async fn test_app_with_database_url() -> (Router, String) {
     test_app_with_runtime_profile_state(
         OffsetDateTime::now_utc(),
-        Arc::new(HostApiRuntimeProfileCollector),
+        Arc::new(HostApiRuntimeProfileCollector::new(OffsetDateTime::now_utc()).unwrap()),
         Arc::new(StubPluginRunnerSystemClient {
             result: Err("plugin runner unavailable".to_string()),
         }),
@@ -297,7 +294,7 @@ pub async fn test_app() -> Router {
 pub(crate) async fn test_api_state_with_database_url() -> (Arc<ApiState>, String) {
     test_state_with_runtime_profile_state(
         OffsetDateTime::now_utc(),
-        Arc::new(HostApiRuntimeProfileCollector),
+        Arc::new(HostApiRuntimeProfileCollector::new(OffsetDateTime::now_utc()).unwrap()),
         Arc::new(StubPluginRunnerSystemClient {
             result: Err("plugin runner unavailable".to_string()),
         }),

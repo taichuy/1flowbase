@@ -1,508 +1,605 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+import {
+  CloudServerOutlined,
+  ClusterOutlined,
+  DashboardOutlined,
+  ExclamationCircleOutlined,
+  GlobalOutlined
+} from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
-  Table,
-  Tag,
-  Typography,
-  Space,
-  Spin,
+  Badge,
+  Descriptions,
   Empty,
-  Flex
+  Flex,
+  Progress,
+  Segmented,
+  Select,
+  Spin,
+  Tag,
+  Typography
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import {
-  CheckCircleFilled,
-  CloseCircleFilled,
-  InfoCircleOutlined,
-  EnvironmentOutlined,
-  GlobalOutlined,
-  CloudServerOutlined,
-  ClusterOutlined,
-  ExclamationCircleOutlined
-} from '@ant-design/icons';
 
+import { i18nText } from '../../../shared/i18n/text';
 import {
   fetchSettingsSystemRuntimeProfile,
   settingsSystemRuntimeQueryKey
 } from '../api/system-runtime';
 import type { SettingsSystemRuntimeProfile } from '../api/system-runtime';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
-import { i18nText } from '../../../shared/i18n/text';
+import {
+  RuntimeMetricsChart,
+  type RuntimeMetricKind,
+  type RuntimeMetricPoint
+} from './system-runtime/RuntimeMetricsChart';
+import './system-runtime/system-runtime-panel.css';
 
-/* ── helpers ────────────────────────────────────── */
+const POLL_INTERVAL_MILLISECONDS = 2_000;
+const HISTORY_WINDOW_MILLISECONDS = 120_000;
+const MAX_HISTORY_POINTS = 60;
+const MAX_CONSECUTIVE_FAILURES = 3;
 
-function getRelationshipLabel(relationship: string) {
+type RuntimeTarget = SettingsSystemRuntimeProfile['runtime_targets'][number];
+type RuntimeMetrics = NonNullable<RuntimeTarget['metrics']>;
+
+function usePageVisibility() {
+  const [visible, setVisible] = useState(
+    () =>
+      typeof document === 'undefined' || document.visibilityState !== 'hidden'
+  );
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setVisible(document.visibilityState !== 'hidden');
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+  return visible;
+}
+
+function relationshipLabel(relationship: string) {
   switch (relationship) {
     case 'same_host':
-      return {
-        color: '#00ab73' as const,
-        label: i18nText("settings", "auto.deployment_same_machine"),
-        icon: CloudServerOutlined
-      };
+      return i18nText('settings', 'auto.deployment_same_machine');
     case 'split_host':
-      return {
-        color: '#1677ff' as const,
-        label: i18nText("settings", "auto.extension_deployment"),
-        icon: ClusterOutlined
-      };
+      return i18nText('settings', 'auto.extension_deployment');
     case 'runner_unreachable':
-      return {
-        color: '#ff4d4f' as const,
-        label: i18nText("settings", "auto.runner_is_unreachable"),
-        icon: ExclamationCircleOutlined
-      };
+      return i18nText('settings', 'auto.runner_is_unreachable');
     default:
-      return {
-        color: '#86909c' as const,
-        label: relationship,
-        icon: InfoCircleOutlined
-      };
+      return relationship;
   }
 }
 
-function getReachabilityMeta(reachable: boolean) {
-  return reachable
-    ? { color: '#00ab73' as const, label: i18nText("settings", "auto.running"), icon: CheckCircleFilled }
-    : { color: '#ff4d4f' as const, label: i18nText("settings", "auto.not_reachable"), icon: CloseCircleFilled };
+function serviceLabel(targetId: string) {
+  if (targetId === 'api-server') {
+    return 'API Server';
+  }
+  if (targetId === 'plugin-runner') {
+    return 'Plugin Runner';
+  }
+  return targetId;
 }
 
-function formatMemory(value: number) {
-  return `${value.toFixed(1)} GB`;
+function formatBytes(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return '—';
+  }
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let normalized = Math.max(0, value);
+  let unitIndex = 0;
+  while (normalized >= 1024 && unitIndex < units.length - 1) {
+    normalized /= 1024;
+    unitIndex += 1;
+  }
+  const digits =
+    normalized >= 100 || unitIndex === 0 ? 0 : normalized >= 10 ? 1 : 2;
+  return `${normalized.toFixed(digits)} ${units[unitIndex]}`;
 }
 
-/* ── data shapes for the host table ──────────────── */
-
-interface HostTableRow {
-  key: string;
-  fingerprint: string;
-  platform: string;
-  cpu: string;
-  memoryTotal: string;
-  memoryAvail: string;
-  memoryUsage: number; // 0-1 ratio
-  services: string[];
+function formatRate(value: number | null | undefined) {
+  return value === null || value === undefined
+    ? '—'
+    : `${formatBytes(value)}/s`;
 }
 
-function buildHostRows(profile: SettingsSystemRuntimeProfile): HostTableRow[] {
-  return profile.hosts.map((h) => ({
-    key: h.host_fingerprint,
-    fingerprint: h.host_fingerprint,
-    platform: `${h.platform.os}/${h.platform.arch}${h.platform.libc ? `/${h.platform.libc}` : ''}`,
-    cpu: i18nText("settings", "auto.core", { value1: h.cpu.logical_count }),
-    memoryTotal: formatMemory(h.memory.total_gb),
-    memoryAvail: formatMemory(h.memory.available_gb),
-    memoryUsage:
-      h.memory.total_gb > 0 ? 1 - h.memory.available_gb / h.memory.total_gb : 0,
-    services: h.services
-  }));
+function usagePercent(
+  used: number | null | undefined,
+  total: number | null | undefined
+) {
+  if (used === null || used === undefined || !total || total <= 0) {
+    return null;
+  }
+  return Math.min(100, Math.max(0, (used / total) * 100));
 }
 
-/* ── columns ────────────────────────────────────── */
+function availabilityText(availability: RuntimeMetrics['cpu']['availability']) {
+  switch (availability) {
+    case 'warming_up':
+      return i18nText('settings', 'auto.runtime_sampling');
+    case 'stale':
+      return i18nText('settings', 'auto.runtime_sample_stale');
+    case 'unavailable':
+      return i18nText('settings', 'auto.unavailable');
+    default:
+      return null;
+  }
+}
 
-const hostColumns: ColumnsType<HostTableRow> = [
-  {
-    title: i18nText("settings", "auto.fingerprint"),
-    dataIndex: 'fingerprint',
-    key: 'fingerprint',
-    width: 140,
-    render: (v: string) => (
-      <Typography.Text code copyable style={{ fontSize: 12 }}>
-        {v.slice(0, 12)}…
+function scopeLabel(scope: RuntimeMetrics['cpu']['scope_kind']) {
+  switch (scope) {
+    case 'cgroup':
+      return i18nText('settings', 'auto.runtime_scope_cgroup');
+    case 'host':
+      return i18nText('settings', 'auto.runtime_scope_host');
+    default:
+      return i18nText('settings', 'auto.runtime_scope_visible');
+  }
+}
+
+function pointFromMetrics(metrics: RuntimeMetrics): RuntimeMetricPoint {
+  return {
+    capturedAt: metrics.captured_at_unix_milliseconds,
+    cpuUsagePercent: metrics.cpu.usage_percent,
+    memoryUsagePercent: usagePercent(
+      metrics.memory.used_bytes,
+      metrics.memory.total_bytes
+    ),
+    networkReceivedBytesPerSecond: metrics.network.received_bytes_per_second,
+    networkTransmittedBytesPerSecond:
+      metrics.network.transmitted_bytes_per_second,
+    diskReadBytesPerSecond: metrics.disk_io.read_bytes_per_second,
+    diskWrittenBytesPerSecond: metrics.disk_io.written_bytes_per_second
+  };
+}
+
+function MetricGauge({
+  label,
+  percent,
+  availability,
+  detail
+}: {
+  label: string;
+  percent: number | null;
+  availability: RuntimeMetrics['cpu']['availability'];
+  detail: string;
+}) {
+  const display =
+    percent === null
+      ? (availabilityText(availability) ?? '—')
+      : `${percent.toFixed(1)}%`;
+  return (
+    <div className="system-runtime-panel__metric-gauge">
+      <Typography.Text className="system-runtime-panel__metric-label">
+        {label}
       </Typography.Text>
-    )
-  },
-  {
-    title: i18nText("settings", "auto.platform"),
-    dataIndex: 'platform',
-    key: 'platform',
-    width: 180
-  },
-  {
-    title: 'CPU',
-    dataIndex: 'cpu',
-    key: 'cpu',
-    width: 80
-  },
-  {
-    title: i18nText("settings", "auto.memory"),
-    key: 'memory',
-    width: 200,
-    render: (_: unknown, record: HostTableRow) => (
-      <Space size={12}>
-        <Flex vertical gap={2} style={{ minWidth: 80 }}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {i18nText("settings", "auto.total")}{record.memoryTotal}
-          </Typography.Text>
-          <Typography.Text style={{ fontSize: 12 }}>
-            {i18nText("settings", "auto.available")}{record.memoryAvail}
-          </Typography.Text>
-        </Flex>
-        <div
-          style={{
-            width: 60,
-            height: 4,
-            background: '#f0f0f0',
-            borderRadius: 2,
-            overflow: 'hidden'
-          }}
-        >
-          <div
-            style={{
-              width: `${Math.round(record.memoryUsage * 100)}%`,
-              height: '100%',
-              background:
-                record.memoryUsage > 0.85
-                  ? '#ff4d4f'
-                  : record.memoryUsage > 0.65
-                    ? '#faad14'
-                    : '#00ab73',
-              borderRadius: 2,
-              transition: 'width 0.3s'
-            }}
-          />
-        </div>
-      </Space>
-    )
-  },
-  {
-    title: i18nText("settings", "auto.hosting_services"),
-    key: 'services',
-    width: 180,
-    render: (_: unknown, record: HostTableRow) => (
-      <Space size={4} wrap>
-        {record.services.map((s) => (
-          <Tag key={s} color="default" style={{ fontSize: 11 }}>
-            {s}
-          </Tag>
-        ))}
-        {record.services.length === 0 && (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            —
-          </Typography.Text>
-        )}
-      </Space>
-    )
-  }
-];
-
-/* ── component ──────────────────────────────────── */
+      <Progress
+        type="circle"
+        percent={percent ?? 0}
+        size={78}
+        strokeColor="#00ab73"
+        trailColor="#e8edea"
+        strokeWidth={8}
+        format={() => display}
+      />
+      <Typography.Text
+        type="secondary"
+        className="system-runtime-panel__metric-detail"
+      >
+        {detail}
+      </Typography.Text>
+    </div>
+  );
+}
 
 export function SystemRuntimePanel() {
+  const pageVisible = usePageVisibility();
+  const consecutiveFailuresRef = useRef(0);
+  const [pollingStopped, setPollingStopped] = useState(false);
   const runtimeQuery = useQuery({
     queryKey: settingsSystemRuntimeQueryKey,
-    queryFn: fetchSettingsSystemRuntimeProfile
+    queryFn: async () => {
+      try {
+        const profile = await fetchSettingsSystemRuntimeProfile();
+        consecutiveFailuresRef.current = 0;
+        setPollingStopped(false);
+        return profile;
+      } catch (error) {
+        consecutiveFailuresRef.current += 1;
+        if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
+          setPollingStopped(true);
+        }
+        throw error;
+      }
+    },
+    enabled: pageVisible && !pollingStopped,
+    retry: false,
+    refetchInterval:
+      pageVisible && !pollingStopped ? POLL_INTERVAL_MILLISECONDS : false,
+    refetchIntervalInBackground: false
   });
-
   const profile = runtimeQuery.data;
-  const relationshipMeta = profile
-    ? getRelationshipLabel(profile.topology.relationship)
-    : null;
-  /* ── loading ── */
+  const [selectedTargetId, setSelectedTargetId] = useState('api-server');
+  const [metricKind, setMetricKind] = useState<RuntimeMetricKind>('network');
+  const [histories, setHistories] = useState<
+    Record<string, RuntimeMetricPoint[]>
+  >({});
+
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+    setHistories((current) => {
+      let changed = false;
+      const next = { ...current };
+      profile.runtime_targets.forEach((target) => {
+        if (!target.reachable || !target.metrics) {
+          return;
+        }
+        const point = pointFromMetrics(target.metrics);
+        const existing = current[target.target_id] ?? [];
+        if (existing.at(-1)?.capturedAt === point.capturedAt) {
+          return;
+        }
+        const cutoff = point.capturedAt - HISTORY_WINDOW_MILLISECONDS;
+        next[target.target_id] = [...existing, point]
+          .filter((entry) => entry.capturedAt >= cutoff)
+          .slice(-MAX_HISTORY_POINTS);
+        changed = true;
+      });
+      return changed ? next : current;
+    });
+  }, [profile]);
+
+  const reachableTargets = useMemo(
+    () => profile?.runtime_targets.filter((target) => target.reachable) ?? [],
+    [profile]
+  );
+  useEffect(() => {
+    if (
+      reachableTargets.length > 0 &&
+      !reachableTargets.some((target) => target.target_id === selectedTargetId)
+    ) {
+      setSelectedTargetId(reachableTargets[0].target_id);
+    }
+  }, [reachableTargets, selectedTargetId]);
+
   if (runtimeQuery.isLoading) {
     return (
-      <SettingsSectionSurface heightMode="fill">
-        <Flex justify="center" style={{ padding: '64px 0' }}>
+      <SettingsSectionSurface>
+        <Flex justify="center" className="system-runtime-panel__loading">
           <Spin />
         </Flex>
       </SettingsSectionSurface>
     );
   }
 
-  /* ── error ── */
-  if (runtimeQuery.isError) {
+  if (runtimeQuery.isError && !profile) {
     return (
-      <SettingsSectionSurface heightMode="fill">
+      <SettingsSectionSurface>
         <Alert
           type="error"
           showIcon
-          message={i18nText("settings", "auto.runtime_information_loading_failed")}
+          message={i18nText(
+            'settings',
+            'auto.runtime_information_loading_failed'
+          )}
           description={
             runtimeQuery.error instanceof Error
               ? runtimeQuery.error.message
-              : i18nText("settings", "auto.try_again_later")
+              : i18nText('settings', 'auto.try_again_later')
           }
         />
       </SettingsSectionSurface>
     );
   }
 
-  /* ── no data ── */
   if (!profile) {
     return (
-      <SettingsSectionSurface heightMode="fill">
-        <Empty description={i18nText("settings", "auto.runtime_data_yet")} />
+      <SettingsSectionSurface>
+        <Empty description={i18nText('settings', 'auto.runtime_data_yet')} />
       </SettingsSectionSurface>
     );
   }
 
-  /* ── services ── */
-  const servicesToRender = [
-    {
-      key: 'api_server',
-      label: 'API Server',
-      data: profile.services.api_server
-    },
-    {
-      key: 'plugin_runner',
-      label: 'Plugin Runner',
-      data: profile.services.plugin_runner
-    }
+  const services = [
+    profile.services.api_server,
+    profile.services.plugin_runner
   ];
+  const selectedTarget = profile.runtime_targets.find(
+    (target) => target.target_id === selectedTargetId
+  );
+  const metrics = selectedTarget?.metrics ?? null;
+  const points = histories[selectedTargetId] ?? [];
+  const memoryPercent = metrics
+    ? usagePercent(metrics.memory.used_bytes, metrics.memory.total_bytes)
+    : null;
+  const storagePercent = metrics
+    ? usagePercent(metrics.storage.used_bytes, metrics.storage.total_bytes)
+    : null;
+  const liveStatus = !pageVisible
+    ? i18nText('settings', 'auto.runtime_collection_paused')
+    : pollingStopped
+      ? i18nText('settings', 'auto.runtime_collection_stopped')
+      : i18nText('settings', 'auto.runtime_collecting');
 
-  const hostRows = buildHostRows(profile);
-
-  /* ── render ── */
   return (
-    <SettingsSectionSurface heightMode="fill">
-      {/* ════════════════════════════════════════════════
-         部署概览
-         ════════════════════════════════════════════════ */}
-      <div style={{ marginBottom: 32 }}>
-        <Flex align="center" gap={8} style={{ marginBottom: 14 }}>
-          <InfoCircleOutlined style={{ color: '#00ab73', fontSize: 15 }} />
-          <Typography.Text strong style={{ fontSize: 14 }}>
-            {i18nText("settings", "auto.deployment_overview")}</Typography.Text>
-        </Flex>
-
-        <Flex
-          wrap="wrap"
-          style={{
-            background: '#fafafa',
-            borderRadius: 8,
-            border: '1px solid #f0f0f0',
-            padding: '20px 24px'
-          }}
+    <SettingsSectionSurface>
+      <div className="system-runtime-panel">
+        <section
+          className="system-runtime-panel__section"
+          aria-labelledby="runtime-overview-title"
         >
-          {/* 部署关系 */}
-          <Flex
-            align="flex-start"
-            gap={10}
-            style={{
-              minWidth: 160,
-              paddingRight: 32,
-              borderRight: '1px solid #f0f0f0'
-            }}
-          >
-            <EnvironmentOutlined
-              style={{ color: '#86909c', fontSize: 14, marginTop: 2 }}
-            />
-            <div>
-              <Typography.Text
-                type="secondary"
-                style={{ fontSize: 12, display: 'block', marginBottom: 4 }}
-              >
-                {i18nText("settings", "auto.deployment_relationship")}</Typography.Text>
-              {relationshipMeta ? (
-                <Space size={6}>
-                  <relationshipMeta.icon
-                    style={{ color: relationshipMeta.color, fontSize: 13 }}
-                  />
-                  <Typography.Text
-                    style={{ fontSize: 13, color: relationshipMeta.color }}
-                  >
-                    {relationshipMeta.label}
-                  </Typography.Text>
-                </Space>
-              ) : (
-                <Typography.Text>—</Typography.Text>
-              )}
-            </div>
+          <Flex align="center" justify="space-between" gap={12} wrap="wrap">
+            <Flex align="center" gap={8}>
+              <CloudServerOutlined className="system-runtime-panel__section-icon" />
+              <Typography.Title level={5} id="runtime-overview-title">
+                {i18nText('settings', 'auto.runtime_overview')}
+              </Typography.Title>
+            </Flex>
+            <Tag icon={<ClusterOutlined />}>
+              {relationshipLabel(profile.topology.relationship)}
+            </Tag>
           </Flex>
 
-          {/* 当前语言 */}
-          <Flex
-            align="flex-start"
-            gap={10}
-            style={{
-              minWidth: 140,
-              padding: '0 32px',
-              borderRight: '1px solid #f0f0f0'
-            }}
-          >
-            <GlobalOutlined
-              style={{ color: '#86909c', fontSize: 14, marginTop: 2 }}
-            />
-            <div>
-              <Typography.Text
-                type="secondary"
-                style={{ fontSize: 12, display: 'block', marginBottom: 4 }}
-              >
-                {i18nText("settings", "auto.current_language")}</Typography.Text>
-              <Typography.Text style={{ fontSize: 13 }}>
-                {profile.locale_meta.resolved_locale}
-              </Typography.Text>
-            </div>
-          </Flex>
-
-          {/* 回退语言 */}
-          <Flex
-            align="flex-start"
-            gap={10}
-            style={{
-              minWidth: 120,
-              padding: '0 32px',
-              borderRight: '1px solid #f0f0f0'
-            }}
-          >
-            <GlobalOutlined
-              style={{ color: '#86909c', fontSize: 14, marginTop: 2 }}
-            />
-            <div>
-              <Typography.Text
-                type="secondary"
-                style={{ fontSize: 12, display: 'block', marginBottom: 4 }}
-              >
-                {i18nText("settings", "auto.fallback_language")}</Typography.Text>
-              <Typography.Text style={{ fontSize: 13 }}>
-                {profile.locale_meta.fallback_locale}
-              </Typography.Text>
-            </div>
-          </Flex>
-
-          {/* 支持语言 */}
-          <Flex
-            align="flex-start"
-            gap={10}
-            style={{ minWidth: 180, paddingLeft: 32 }}
-          >
-            <GlobalOutlined
-              style={{ color: '#86909c', fontSize: 14, marginTop: 2 }}
-            />
-            <div>
-              <Typography.Text
-                type="secondary"
-                style={{ fontSize: 12, display: 'block', marginBottom: 4 }}
-              >
-                {i18nText("settings", "auto.supported_languages")}</Typography.Text>
-              <Typography.Text style={{ fontSize: 13 }}>
-                {profile.locale_meta.supported_locales.join(', ')}
-              </Typography.Text>
-            </div>
-          </Flex>
-        </Flex>
-      </div>
-
-      {/* ════════════════════════════════════════════════
-         服务状态
-         ════════════════════════════════════════════════ */}
-      <div style={{ marginBottom: 32 }}>
-        <Flex align="center" gap={8} style={{ marginBottom: 14 }}>
-          <CloudServerOutlined style={{ color: '#00ab73', fontSize: 15 }} />
-          <Typography.Text strong style={{ fontSize: 14 }}>
-            {i18nText("settings", "auto.service_status")}</Typography.Text>
-        </Flex>
-
-        <Flex gap={16} wrap="wrap">
-          {servicesToRender.map((svc) => {
-            const reachMeta = getReachabilityMeta(svc.data.reachable);
-            const leftBorder = svc.data.reachable ? '#00ab73' : '#ff4d4f';
-            return (
-              <div
-                key={svc.key}
-                style={{
-                  flex: '1 1 300px',
-                  border: '1px solid #f0f0f0',
-                  borderRadius: 8,
-                  padding: '18px 20px',
-                  borderLeft: `3px solid ${leftBorder}`,
-                  background: '#fff'
-                }}
-              >
-                <Flex
-                  align="center"
-                  justify="space-between"
-                  style={{ marginBottom: 12 }}
+          <div className="system-runtime-panel__service-list" role="table">
+            {services.map((service) => {
+              const host = profile.hosts.find(
+                (entry) => entry.host_fingerprint === service.host_fingerprint
+              );
+              return (
+                <div
+                  className="system-runtime-panel__service-row"
+                  key={service.service}
+                  role="row"
                 >
-                  <Typography.Text strong style={{ fontSize: 14 }}>
-                    {svc.label}
-                  </Typography.Text>
-                  <Space size={6}>
-                    <reachMeta.icon
-                      style={{ color: reachMeta.color, fontSize: 13 }}
+                  <div
+                    className="system-runtime-panel__service-name"
+                    role="cell"
+                  >
+                    <Typography.Text strong>
+                      {serviceLabel(service.service)}
+                    </Typography.Text>
+                    <Badge
+                      color={service.reachable ? '#19b36b' : '#fb565b'}
+                      text={
+                        service.reachable
+                          ? i18nText('settings', 'auto.running')
+                          : i18nText('settings', 'auto.not_reachable')
+                      }
                     />
-                    <Typography.Text
-                      style={{ color: reachMeta.color, fontSize: 12 }}
-                    >
-                      {reachMeta.label}
+                  </div>
+                  <div role="cell">
+                    <Typography.Text type="secondary">
+                      {i18nText('settings', 'auto.version')}
                     </Typography.Text>
-                  </Space>
-                </Flex>
+                    <Typography.Text>{service.version ?? '—'}</Typography.Text>
+                  </div>
+                  <div role="cell">
+                    <Typography.Text type="secondary">
+                      {i18nText('settings', 'auto.platform')}
+                    </Typography.Text>
+                    <Typography.Text>
+                      {host
+                        ? `${host.platform.os}/${host.platform.arch}${host.platform.libc ? `/${host.platform.libc}` : ''}`
+                        : '—'}
+                    </Typography.Text>
+                  </div>
+                  <div role="cell">
+                    <Typography.Text type="secondary">
+                      CPU / {i18nText('settings', 'auto.memory')}
+                    </Typography.Text>
+                    <Typography.Text>
+                      {host
+                        ? `${host.cpu.logical_count} · ${formatBytes(host.memory.total_bytes)}`
+                        : '—'}
+                    </Typography.Text>
+                  </div>
+                  <Typography.Text
+                    code
+                    className="system-runtime-panel__fingerprint"
+                    role="cell"
+                  >
+                    {service.host_fingerprint?.slice(0, 16) ?? '—'}
+                  </Typography.Text>
+                </div>
+              );
+            })}
+          </div>
+        </section>
 
-                <Flex gap={24} wrap="wrap">
+        <section
+          className="system-runtime-panel__section"
+          aria-labelledby="runtime-monitor-title"
+        >
+          <Flex align="center" justify="space-between" gap={12} wrap="wrap">
+            <Flex align="center" gap={8}>
+              <DashboardOutlined className="system-runtime-panel__section-icon" />
+              <Typography.Title level={5} id="runtime-monitor-title">
+                {i18nText('settings', 'auto.resource_monitoring')}
+              </Typography.Title>
+              <Badge
+                color={pageVisible && !pollingStopped ? '#00ab73' : '#7b8982'}
+                text={liveStatus}
+              />
+            </Flex>
+            <Flex align="center" gap={8} wrap="wrap">
+              <Typography.Text type="secondary">
+                {i18nText('settings', 'auto.last_two_minutes')}
+              </Typography.Text>
+              <Select
+                aria-label={i18nText('settings', 'auto.runtime_target')}
+                value={selectedTargetId}
+                onChange={setSelectedTargetId}
+                options={profile.runtime_targets.map((target) => ({
+                  value: target.target_id,
+                  label: serviceLabel(target.target_id),
+                  disabled: !target.reachable
+                }))}
+                popupMatchSelectWidth={false}
+              />
+            </Flex>
+          </Flex>
+
+          {runtimeQuery.isRefetchError ? (
+            <Alert
+              type="warning"
+              showIcon
+              message={i18nText(
+                'settings',
+                'auto.runtime_information_loading_failed'
+              )}
+            />
+          ) : null}
+
+          {metrics ? (
+            <>
+              <div className="system-runtime-panel__metric-strip">
+                <MetricGauge
+                  label={i18nText('settings', 'auto.cpu_usage')}
+                  percent={metrics.cpu.usage_percent}
+                  availability={metrics.cpu.availability}
+                  detail={`${metrics.cpu.limit_cores.toFixed(1)} vCPU · ${scopeLabel(metrics.cpu.scope_kind)}`}
+                />
+                <MetricGauge
+                  label={i18nText('settings', 'auto.memory_usage')}
+                  percent={memoryPercent}
+                  availability={metrics.memory.availability}
+                  detail={`${formatBytes(metrics.memory.used_bytes)} / ${formatBytes(metrics.memory.total_bytes)}`}
+                />
+                <MetricGauge
+                  label={i18nText('settings', 'auto.storage_usage')}
+                  percent={storagePercent}
+                  availability={metrics.storage.availability}
+                  detail={`${metrics.storage.mount_point ?? '—'} · ${formatBytes(metrics.storage.total_bytes)}`}
+                />
+                <div className="system-runtime-panel__throughput">
+                  <Typography.Text className="system-runtime-panel__metric-label">
+                    {i18nText('settings', 'auto.current_throughput')}
+                  </Typography.Text>
                   <div>
-                    <Typography.Text
-                      type="secondary"
-                      style={{
-                        fontSize: 11,
-                        display: 'block',
-                        marginBottom: 2
-                      }}
-                    >
-                      {i18nText("settings", "auto.version")}</Typography.Text>
-                    <Typography.Text style={{ fontSize: 13 }}>
-                      {svc.data.version ?? '—'}
+                    <Typography.Text type="secondary">
+                      {i18nText('settings', 'auto.network_traffic')}
+                    </Typography.Text>
+                    <Typography.Text>
+                      ↓ {formatRate(metrics.network.received_bytes_per_second)}{' '}
+                      · ↑{' '}
+                      {formatRate(metrics.network.transmitted_bytes_per_second)}
                     </Typography.Text>
                   </div>
                   <div>
-                    <Typography.Text
-                      type="secondary"
-                      style={{
-                        fontSize: 11,
-                        display: 'block',
-                        marginBottom: 2
-                      }}
-                    >
-                      {i18nText("settings", "auto.status")}</Typography.Text>
-                    <Typography.Text style={{ fontSize: 13 }}>
-                      {svc.data.status ?? '—'}
+                    <Typography.Text type="secondary">
+                      {i18nText('settings', 'auto.disk_io')}
+                    </Typography.Text>
+                    <Typography.Text>
+                      R {formatRate(metrics.disk_io.read_bytes_per_second)} · W{' '}
+                      {formatRate(metrics.disk_io.written_bytes_per_second)}
                     </Typography.Text>
                   </div>
-                  <div>
-                    <Typography.Text
-                      type="secondary"
-                      style={{
-                        fontSize: 11,
-                        display: 'block',
-                        marginBottom: 2
-                      }}
-                    >
-                      {i18nText("settings", "auto.host_fingerprint")}</Typography.Text>
-                    <Typography.Text code style={{ fontSize: 12 }}>
-                      {svc.data.host_fingerprint?.slice(0, 16) ?? i18nText("settings", "auto.unknown")}
-                    </Typography.Text>
-                  </div>
-                </Flex>
+                  <Tag>{scopeLabel(metrics.network.scope_kind)}</Tag>
+                </div>
               </div>
-            );
-          })}
-        </Flex>
-      </div>
 
-      {/* ════════════════════════════════════════════════
-         宿主机
-         ════════════════════════════════════════════════ */}
-      <div>
-        <Flex align="center" gap={8} style={{ marginBottom: 14 }}>
-          <ClusterOutlined style={{ color: '#00ab73', fontSize: 15 }} />
-          <Typography.Text strong style={{ fontSize: 14 }}>
-            {i18nText("settings", "auto.host")}</Typography.Text>
-          <Tag style={{ marginLeft: 4, fontSize: 11, lineHeight: '20px' }}>
-            {hostRows.length}
-          </Tag>
-        </Flex>
+              <div className="system-runtime-panel__chart-panel">
+                <Segmented<RuntimeMetricKind>
+                  aria-label={i18nText('settings', 'auto.runtime_metric')}
+                  value={metricKind}
+                  onChange={setMetricKind}
+                  options={[
+                    {
+                      label: i18nText('settings', 'auto.network_traffic'),
+                      value: 'network'
+                    },
+                    {
+                      label: i18nText('settings', 'auto.disk_io'),
+                      value: 'disk_io'
+                    },
+                    { label: 'CPU', value: 'cpu' },
+                    {
+                      label: i18nText('settings', 'auto.memory'),
+                      value: 'memory'
+                    }
+                  ]}
+                />
+                <RuntimeMetricsChart kind={metricKind} points={points} />
+              </div>
+            </>
+          ) : (
+            <Empty description={i18nText('settings', 'auto.unavailable')} />
+          )}
+        </section>
 
-        {hostRows.length > 0 ? (
-          <Table<HostTableRow>
-            columns={hostColumns}
-            dataSource={hostRows}
-            pagination={false}
+        <section
+          className="system-runtime-panel__section"
+          aria-labelledby="runtime-environment-title"
+        >
+          <Flex align="center" gap={8}>
+            <GlobalOutlined className="system-runtime-panel__section-icon" />
+            <Typography.Title level={5} id="runtime-environment-title">
+              {i18nText('settings', 'auto.runtime_environment')}
+            </Typography.Title>
+          </Flex>
+          <Descriptions
             size="small"
-            bordered
-            style={{ fontSize: 13 }}
+            column={{ xs: 1, sm: 2, lg: 4 }}
+            items={[
+              {
+                key: 'current-locale',
+                label: i18nText('settings', 'auto.current_language'),
+                children: profile.locale_meta.resolved_locale
+              },
+              {
+                key: 'fallback-locale',
+                label: i18nText('settings', 'auto.fallback_language'),
+                children: profile.locale_meta.fallback_locale
+              },
+              {
+                key: 'supported-locales',
+                label: i18nText('settings', 'auto.supported_languages'),
+                children: profile.locale_meta.supported_locales.join(', ')
+              },
+              {
+                key: 'process-memory',
+                label: i18nText('settings', 'auto.process_memory'),
+                children: metrics
+                  ? formatBytes(metrics.memory.process_bytes)
+                  : '—'
+              },
+              {
+                key: 'plugin-root',
+                label: i18nText('settings', 'auto.plugin_install_path'),
+                children: (
+                  <Typography.Text code>
+                    {profile.provider_install_root}
+                  </Typography.Text>
+                ),
+                span: 2
+              },
+              {
+                key: 'host-extension-root',
+                label: i18nText('settings', 'auto.host_extension_path'),
+                children: (
+                  <Typography.Text code>
+                    {profile.host_extension_dropin_root}
+                  </Typography.Text>
+                ),
+                span: 2
+              }
+            ]}
           />
-        ) : (
-          <Empty description={i18nText("settings", "auto.currently_host_information_display")} />
-        )}
+        </section>
+
+        {profile.topology.relationship === 'runner_unreachable' ? (
+          <Alert
+            type="warning"
+            showIcon
+            icon={<ExclamationCircleOutlined />}
+            message={i18nText('settings', 'auto.runner_is_unreachable')}
+          />
+        ) : null}
       </div>
     </SettingsSectionSurface>
   );

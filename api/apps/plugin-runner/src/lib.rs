@@ -56,19 +56,39 @@ pub struct HealthResponse {
     pub version: &'static str,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AppState {
     provider_host: Arc<RwLock<ProviderHost>>,
     capability_host: Arc<RwLock<CapabilityHost>>,
     data_source_host: Arc<RwLock<DataSourceHost>>,
+    runtime_profile_collector: Arc<runtime_profile::RuntimeProfileCollector>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        let started_at = *STARTED_AT.get_or_init(OffsetDateTime::now_utc);
+        Self {
+            provider_host: Arc::new(RwLock::new(ProviderHost::default())),
+            capability_host: Arc::new(RwLock::new(CapabilityHost::default())),
+            data_source_host: Arc::new(RwLock::new(DataSourceHost::default())),
+            runtime_profile_collector: Arc::new(
+                runtime_profile::RuntimeProfileCollector::new(
+                    "plugin-runner",
+                    env!("CARGO_PKG_VERSION"),
+                    started_at,
+                    "ok",
+                )
+                .expect("plugin runner runtime profile collector must initialize"),
+            ),
+        }
+    }
 }
 
 impl AppState {
     pub fn with_capability_host(capability_host: CapabilityHost) -> Self {
         Self {
-            provider_host: Arc::new(RwLock::new(ProviderHost::default())),
             capability_host: Arc::new(RwLock::new(capability_host)),
-            data_source_host: Arc::new(RwLock::new(DataSourceHost::default())),
+            ..Self::default()
         }
     }
 }
@@ -209,15 +229,14 @@ async fn health() -> Json<HealthResponse> {
 }
 
 async fn system_runtime_profile(
+    State(state): State<AppState>,
 ) -> Result<Json<runtime_profile::RuntimeProfile>, (StatusCode, Json<ErrorResponse>)> {
-    runtime_profile::collect_runtime_profile(
-        "plugin-runner",
-        env!("CARGO_PKG_VERSION"),
-        *STARTED_AT.get_or_init(OffsetDateTime::now_utc),
-        "ok",
-    )
-    .map(Json)
-    .map_err(map_internal_error)
+    let collector = state.runtime_profile_collector.clone();
+    tokio::task::spawn_blocking(move || collector.collect())
+        .await
+        .map_err(map_internal_error)?
+        .map(Json)
+        .map_err(map_internal_error)
 }
 
 async fn load_provider(

@@ -21,6 +21,7 @@ import {
   styleBoundaryNodeContributions
 } from './scene-fixtures';
 import { SettingsMcpManagementStyleBoundaryScene } from './SettingsMcpManagementStyleBoundaryScene';
+import { SettingsSystemRuntimeStyleBoundaryScene } from './SettingsSystemRuntimeStyleBoundaryScene';
 import { useAuthStore } from '../state/auth-store';
 import type { StyleBoundaryRuntimeScene } from './types';
 
@@ -47,7 +48,10 @@ function renderShellScene(pathname: string, page: ReactNode) {
   return <AppShellFrame pathname={pathname}>{page}</AppShellFrame>;
 }
 
-function renderRouterScene(pathname: string, options: { authenticated?: boolean } = {}) {
+function renderRouterScene(
+  pathname: string,
+  options: { authenticated?: boolean } = {}
+) {
   seedStyleBoundaryCommonFetch();
   if (options.authenticated === false) {
     useAuthStore.getState().setAnonymous();
@@ -177,6 +181,10 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
   'page.settings-applications': () => {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/applications');
+  },
+  'page.settings-system-runtime': () => {
+    seedStyleBoundarySettingsFetch();
+    return <SettingsSystemRuntimeStyleBoundaryScene />;
   },
   'page.settings-mcp-management': () => {
     seedStyleBoundarySettingsFetch();
