@@ -1,4 +1,7 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use crate::_tests::support::{
     login_and_capture_cookie, test_api_state_with_database_url, test_app,
@@ -13,6 +16,8 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 const DEBUG_SESSION_ID: &str = "application-runtime-debug-session";
+pub(crate) const PROVIDER_MARKER_LIKE_OUTPUT: &str =
+    "<think>provider marker</think><tool_call>marker</tool_call>\n\n---\n\n下面是美化后内容\n\nvisible marker output";
 
 fn create_provider_fixture(root: &Path) {
     fs::create_dir_all(root.join("provider")).unwrap();
@@ -46,6 +51,15 @@ config_schema:
   - key: api_key
     type: secret
     required: true
+  - key: test_invoke_ready_path
+    type: string
+    required: false
+  - key: test_invoke_release_path
+    type: string
+    required: false
+  - key: test_response_text
+    type: string
+    required: false
 "#,
     )
     .unwrap();
@@ -74,7 +88,22 @@ switch (request.method) {
     break;
   case 'invoke': {
     const query = request.input?.messages?.[0]?.content ?? "";
-    const text = "reply:" + query;
+    const configuredText = request.input?.provider_config?.test_response_text;
+    const text = typeof configuredText === "string" ? configuredText : "reply:" + query;
+    const readyPath = request.input?.provider_config?.test_invoke_ready_path;
+    const releasePath = request.input?.provider_config?.test_invoke_release_path;
+    if (typeof readyPath === "string" && typeof releasePath === "string") {
+      process.stdout.write(JSON.stringify({ type: "text_delta", delta: "partial" }) + "\n");
+      fs.writeFileSync(readyPath, "ready");
+      const deadline = Date.now() + 10_000;
+      while (!fs.existsSync(releasePath)) {
+        if (Date.now() >= deadline) {
+          process.stderr.write("test invoke gate timed out");
+          process.exit(1);
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+      }
+    }
     const lines = [
       ...Array.from(text.padEnd(70, "."), (delta) => ({ type: "text_delta", delta })),
       { type: "usage_snapshot", usage: { input_tokens: 5, output_tokens: 7, total_tokens: 12 } },
@@ -132,10 +161,71 @@ capabilities:
     fs::write(root.join("scripts/demo.sh"), "echo demo").unwrap();
 }
 
-pub(super) async fn create_ready_provider_instance(
+pub(crate) async fn create_ready_provider_instance(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
+) -> String {
+    create_provider_instance(app, cookie, csrf, None, None).await
+}
+
+pub(crate) struct ProviderInvocationGate {
+    ready_path: PathBuf,
+    release_path: PathBuf,
+}
+
+impl ProviderInvocationGate {
+    fn new() -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "application-runtime-provider-gate-{}",
+            uuid::Uuid::now_v7()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        Self {
+            ready_path: root.join("ready"),
+            release_path: root.join("release"),
+        }
+    }
+
+    pub(crate) fn is_ready(&self) -> bool {
+        self.ready_path.exists()
+    }
+
+    pub(crate) fn release(&self) {
+        let _ = fs::write(&self.release_path, "release");
+    }
+}
+
+impl Drop for ProviderInvocationGate {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+pub(crate) async fn create_gated_provider_instance(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+) -> (String, ProviderInvocationGate) {
+    let gate = ProviderInvocationGate::new();
+    let instance_id = create_provider_instance(app, cookie, csrf, Some(&gate), None).await;
+    (instance_id, gate)
+}
+
+pub(crate) async fn create_marker_output_provider_instance(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+) -> String {
+    create_provider_instance(app, cookie, csrf, None, Some(PROVIDER_MARKER_LIKE_OUTPUT)).await
+}
+
+async fn create_provider_instance(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    invocation_gate: Option<&ProviderInvocationGate>,
+    response_text: Option<&str>,
 ) -> String {
     let package_root = std::env::temp_dir().join(format!(
         "application-runtime-provider-{}",
@@ -184,6 +274,20 @@ pub(super) async fn create_ready_provider_instance(
         assert_eq!(response.status(), StatusCode::OK);
     }
 
+    let mut config = json!({
+        "base_url": "https://api.example.com",
+        "api_key": "super-secret"
+    });
+    if let Some(invocation_gate) = invocation_gate {
+        config["test_invoke_ready_path"] = json!(invocation_gate.ready_path.display().to_string());
+        config["test_invoke_release_path"] =
+            json!(invocation_gate.release_path.display().to_string());
+    }
+    if let Some(response_text) = response_text {
+        config["test_response_text"] = json!(response_text);
+    }
+    let display_name = format!("Fixture Runtime {}", uuid::Uuid::now_v7());
+
     let create = app
         .clone()
         .oneshot(
@@ -196,14 +300,11 @@ pub(super) async fn create_ready_provider_instance(
                 .body(Body::from(
                     json!({
                         "installation_id": installation_id,
-                        "display_name": "Fixture Runtime",
+                        "display_name": display_name,
                         "configured_models": [
                             { "model_id": "fixture_chat", "enabled": true }
                         ],
-                        "config": {
-                            "base_url": "https://api.example.com",
-                            "api_key": "super-secret"
-                        }
+                        "config": config
                     })
                     .to_string(),
                 ))

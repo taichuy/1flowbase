@@ -34,7 +34,6 @@ async fn start_native_run_does_not_trust_request_compatibility_mode_for_anthropi
             "user": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
         },
         "response_mode": "blocking",
-        "compatibility_mode": "anthropic-messages-v1",
         "execution": {
             "compatibility_mode": "anthropic-messages-v1"
         },

@@ -644,7 +644,6 @@ async fn published_run_control_lists_waiting_callback_runs_for_conversation() {
                 api_key_id,
                 external_user: "claude-user".to_string(),
                 external_conversation_id: "session-1".to_string(),
-                compatibility_mode: "anthropic-messages-v1".to_string(),
             },
         )
         .await

@@ -373,10 +373,7 @@ fn is_stream_delta_event(event_type: &str) -> bool {
 }
 
 fn is_terminal_runtime_event(event_type: &str) -> bool {
-    matches!(
-        event_type,
-        "flow_finished" | "flow_failed" | "flow_cancelled" | "waiting_human" | "waiting_callback"
-    )
+    RuntimeEventCloseReason::from_terminal_event_type(event_type).is_some()
 }
 
 struct PendingStreamDelta {

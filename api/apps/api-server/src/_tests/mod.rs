@@ -36,6 +36,11 @@ mod settings_feature_explicit_namespace_routes;
 mod settings_feature_members_routes;
 mod settings_feature_roles_routes;
 pub(crate) mod support;
+
+pub(crate) use application::{
+    create_gated_provider_instance, create_marker_output_provider_instance,
+    create_ready_provider_instance, ProviderInvocationGate, PROVIDER_MARKER_LIKE_OUTPUT,
+};
 mod system_routes;
 mod workflow_schedule_worker;
 mod workspace_routes;

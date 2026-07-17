@@ -11,6 +11,7 @@ use control_plane::{
     },
     orchestration_runtime::{
         debug_artifacts::is_runtime_debug_artifact_preview, debug_stream_events,
+        FinalizePublishedRunMissingStreamTerminalCommand, OrchestrationRuntimeService,
     },
     ports::{
         FileManagementRepository, GetRuntimeDebugArtifactInput, OrchestrationRuntimeRepository,
@@ -21,7 +22,7 @@ use serde_json::{json, Value};
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::app_state::ApiState;
+use crate::{app_state::ApiState, provider_runtime::ApiProviderRuntime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TerminalAnswerDeltaKind {
@@ -39,20 +40,8 @@ pub(crate) async fn load_latest_native_run_for_terminal_fallback(
     state: &ApiState,
     initial_run: &NativeRunResult,
 ) -> NativeRunResult {
-    match state
-        .store
-        .get_published_run_stream_state(initial_run.application_id, initial_run.id)
-        .await
-    {
-        Ok(Some(stream_state)) => native_result_from_run_stream_state(initial_run, &stream_state),
-        Ok(None) => {
-            warn!(
-                flow_run_id = %initial_run.id,
-                application_id = %initial_run.application_id,
-                "compatible/native stream closed without terminal event and no durable run state was found"
-            );
-            initial_run.clone()
-        }
+    match load_latest_native_run_strict(state, initial_run).await {
+        Ok(run) => run,
         Err(error) => {
             warn!(
                 flow_run_id = %initial_run.id,
@@ -63,6 +52,79 @@ pub(crate) async fn load_latest_native_run_for_terminal_fallback(
             initial_run.clone()
         }
     }
+}
+
+/// Resolves a confirmed producer EOF to the durable winner before an API adapter projects it.
+/// Callers must use this only after execution has ended or a runtime stream closed without a
+/// terminal event; transport failures and client disconnects are not EOF evidence.
+pub(crate) async fn recover_missing_stream_terminal_winner(
+    state: &ApiState,
+    initial_run: &NativeRunResult,
+) -> anyhow::Result<NativeRunResult> {
+    let current = load_latest_native_run_strict(state, initial_run).await?;
+    if !matches!(
+        current.status,
+        NativeRunStatus::Queued | NativeRunStatus::Running
+    ) {
+        return Ok(current);
+    }
+
+    let recovery_service = OrchestrationRuntimeService::new(
+        state.store.clone(),
+        ApiProviderRuntime::new(state.provider_runtime.clone()),
+        state.runtime_engine.clone(),
+        state.provider_secret_master_key.clone(),
+    )
+    .with_runtime_event_stream(state.runtime_event_stream.clone());
+    let recovery_result = recovery_service
+        .finalize_published_run_missing_stream_terminal(
+            FinalizePublishedRunMissingStreamTerminalCommand {
+                application_id: initial_run.application_id,
+                flow_run_id: initial_run.id,
+            },
+        )
+        .await;
+
+    // Live publication can fail after the durable transaction commits (for example a stream
+    // already closed). The fresh durable winner, rather than that delivery error, is the source
+    // of truth for the fallback projection.
+    let winner = load_latest_native_run_strict(state, initial_run).await?;
+    if !matches!(
+        winner.status,
+        NativeRunStatus::Queued | NativeRunStatus::Running
+    ) {
+        if let Err(error) = recovery_result {
+            warn!(
+                flow_run_id = %initial_run.id,
+                application_id = %initial_run.application_id,
+                error = %error,
+                "published stream EOF recovery committed a durable winner but could not publish its live terminal"
+            );
+        }
+        return Ok(winner);
+    }
+
+    match recovery_result {
+        Ok(_) => Err(anyhow::anyhow!(
+            "published stream EOF recovery returned a nonterminal durable winner"
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+async fn load_latest_native_run_strict(
+    state: &ApiState,
+    initial_run: &NativeRunResult,
+) -> anyhow::Result<NativeRunResult> {
+    let stream_state = state
+        .store
+        .get_published_run_stream_state(initial_run.application_id, initial_run.id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("published run stream state not found"))?;
+    Ok(native_result_from_run_stream_state(
+        initial_run,
+        &stream_state,
+    ))
 }
 
 pub(crate) fn terminal_runtime_event_from_native_run(

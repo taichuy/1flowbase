@@ -13,13 +13,6 @@ enum AnthropicMessageStopReason {
 }
 
 impl AnthropicMessageStopReason {
-    fn from_provider_finish_payload(payload: &Value) -> Self {
-        match payload.get("reason").and_then(Value::as_str) {
-            Some("length") => Self::MaxTokens,
-            _ => Self::EndTurn,
-        }
-    }
-
     fn as_str(self) -> &'static str {
         match self {
             Self::EndTurn => "end_turn",
@@ -101,49 +94,67 @@ impl AnthropicStreamMapper {
                 events
             }
             "text_delta" | "reasoning_delta" => Vec::new(),
-            "finish" => {
-                self.terminal_stop_reason =
-                    AnthropicMessageStopReason::from_provider_finish_payload(&envelope.payload);
-                Vec::new()
-            }
-            "flow_finished" => self.anthropic_terminal_events(initial_run, &envelope.payload),
-            "waiting_callback" => {
-                if let Some(events) =
-                    self.anthropic_tool_use_events(&envelope.payload, initial_run.usage.as_ref())
-                {
-                    events
-                } else if payload_has_only_internal_llm_tool_calls(&envelope.payload) {
-                    self.anthropic_terminal_events(initial_run, &envelope.payload)
-                } else {
-                    required_action_not_supported_anthropic_sse()
-                }
-            }
-            "waiting_human" => required_action_not_supported_anthropic_sse(),
-            "flow_failed" => {
-                if terminal_answer_text(initial_run, &envelope.payload).is_some() {
-                    self.anthropic_terminal_events(initial_run, &envelope.payload)
-                } else {
-                    vec![event_json_sse(
-                        "error",
-                        json!({
-                            "type": "error",
-                            "error": {
-                                "type": "api_error",
-                                "message": runtime_error_message(&envelope.payload)
-                            }
-                        }),
-                    )]
-                }
-            }
-            "flow_cancelled" => {
+            "finish" => Vec::new(),
+            "flow_finished" => {
                 self.terminal_stop_reason = AnthropicMessageStopReason::EndTurn;
-                self.anthropic_stop_events(initial_run.usage.as_ref())
+                self.anthropic_terminal_events(initial_run, &envelope.payload)
             }
+            "flow_incomplete" => {
+                self.terminal_stop_reason = AnthropicMessageStopReason::MaxTokens;
+                self.anthropic_terminal_events(initial_run, &envelope.payload)
+            }
+            "waiting_callback" | "waiting_human" => required_action_not_supported_anthropic_sse(),
+            "flow_failed" => self.anthropic_failed_events(initial_run, &envelope.payload),
+            "flow_cancelled" => self.anthropic_cancelled_events(),
             _ => Vec::new(),
         }
     }
 
     fn anthropic_terminal_events(
+        &mut self,
+        initial_run: &NativeRunResult,
+        payload: &Value,
+    ) -> Vec<Result<Event, Infallible>> {
+        let mut events = self.anthropic_terminal_content_events(initial_run, payload);
+        events.extend(self.anthropic_stop_events(initial_run.usage.as_ref()));
+        events
+    }
+
+    fn anthropic_failed_events(
+        &mut self,
+        initial_run: &NativeRunResult,
+        _payload: &Value,
+    ) -> Vec<Result<Event, Infallible>> {
+        let mut events = self.close_active_anthropic_content_block();
+        events.push(event_json_sse(
+            "error",
+            json!({
+                "type": "error",
+                "error": {
+                    "type": "api_error",
+                    "message": canonical_runtime_error_message(initial_run)
+                }
+            }),
+        ));
+        events
+    }
+
+    fn anthropic_cancelled_events(&mut self) -> Vec<Result<Event, Infallible>> {
+        let mut events = self.close_active_anthropic_content_block();
+        events.push(event_json_sse(
+            "error",
+            json!({
+                "type": "error",
+                "error": {
+                    "type": "invalid_request_error",
+                    "message": "published run cancelled"
+                }
+            }),
+        ));
+        events
+    }
+
+    fn anthropic_terminal_content_events(
         &mut self,
         initial_run: &NativeRunResult,
         payload: &Value,
@@ -164,7 +175,6 @@ impl AnthropicStreamMapper {
                 _ => {}
             }
         }
-        events.extend(self.anthropic_stop_events(initial_run.usage.as_ref()));
         events
     }
 
@@ -211,6 +221,7 @@ impl AnthropicStreamMapper {
         events
     }
 
+    #[cfg(test)]
     pub(in crate::routes::application_public_api::compat_sse) fn anthropic_tool_use_events(
         &mut self,
         payload: &Value,

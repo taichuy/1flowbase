@@ -21,6 +21,10 @@ use super::{
     callback_resume::ApplicationPublishedCallbackAttemptRepository,
     conversations::ApplicationPublicConversationRepository,
     mapping::ApplicationApiMappingConfig,
+    protocol_translation::{
+        TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol,
+        TranslationReport, TranslationSafeRepresentation,
+    },
     run_service::{
         ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
         ApplicationPublishedRunService,
@@ -70,14 +74,6 @@ pub struct NativeRunRequest {
     pub request_context: NativeModelRequestContext,
     #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
     pub title: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
-    pub compatibility_mode: Option<String>,
-    // Protocol mappers set this after deserialization; public Native JSON cannot own wire policy.
-    #[serde(skip)]
-    pub protocol_compatibility_mode: Option<String>,
-    // Protocol mappers set this after deserialization; public Native JSON cannot own run-control policy.
-    #[serde(skip)]
-    pub protocol_request_kind: Option<NativeProtocolRequestKind>,
     #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
     pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
 }
@@ -94,9 +90,365 @@ impl NativeRunRequest {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NativeProtocolRequestKind {
-    AnthropicToolResultContinuation,
+/// Native is an adapter boundary too: it accepts only the public Native wire
+/// shape and emits a non-durable field-decision receipt before the request
+/// crosses into the published-run service.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeRequestTranslationError {
+    pub code: &'static str,
+    pub message: String,
+    pub report: TranslationReport,
+}
+
+impl NativeRequestTranslationError {
+    fn rejected(
+        code: &'static str,
+        message: impl Into<String>,
+        source_path: &str,
+        kind: TranslationDecisionKind,
+        reason: &'static str,
+        effective_value: TranslationSafeRepresentation,
+        mut report: TranslationReport,
+    ) -> Self {
+        report.record(source_path, None, kind, Some(reason), effective_value);
+        Self {
+            code,
+            message: message.into(),
+            report,
+        }
+    }
+}
+
+pub fn translate_native_run_request(
+    value: Value,
+) -> std::result::Result<TranslatedNativeRunRequest, NativeRequestTranslationError> {
+    let mut report = TranslationReport::new(TranslationProtocol::Native);
+    let object = match value.as_object() {
+        Some(object) => object,
+        None => {
+            return Err(NativeRequestTranslationError::rejected(
+                "body",
+                "Native request body must be an object",
+                "$",
+                TranslationDecisionKind::Rejected,
+                "Native request body must be an object",
+                TranslationSafeRepresentation::Present,
+                report,
+            ));
+        }
+    };
+
+    for field in object.keys() {
+        let path = format!("$.{field}");
+        match field.as_str() {
+            "query" | "system" | "model" | "inputs" | "history" | "attachments"
+            | "conversation" | "expand_id" | "response_mode" | "stream_options" | "execution"
+            | "metadata" | "request_context" | "title" => {}
+            "compatibility_mode" => {
+                return Err(NativeRequestTranslationError::rejected(
+                    "compatibility_mode",
+                    "compatibility_mode is not supported by the Native API",
+                    &path,
+                    TranslationDecisionKind::Unsupported,
+                    "this field has no public Native canonical owner",
+                    TranslationSafeRepresentation::Redacted,
+                    report,
+                ));
+            }
+            "client_protocol_envelope" => {
+                return Err(NativeRequestTranslationError::rejected(
+                    "client_protocol_envelope",
+                    "client_protocol_envelope is not supported by the Native API",
+                    &path,
+                    TranslationDecisionKind::Unsupported,
+                    "this field has no public Native canonical owner",
+                    TranslationSafeRepresentation::Redacted,
+                    report,
+                ));
+            }
+            "user_id" => {
+                return Err(NativeRequestTranslationError::rejected(
+                    "user_id",
+                    "user_id is not a Native request field",
+                    &path,
+                    TranslationDecisionKind::Rejected,
+                    "legacy user alias has no Native canonical owner",
+                    TranslationSafeRepresentation::Redacted,
+                    report,
+                ));
+            }
+            _ => {
+                return Err(NativeRequestTranslationError::rejected(
+                    "body",
+                    "unknown Native request field",
+                    &path,
+                    TranslationDecisionKind::Rejected,
+                    "unknown Native request field",
+                    TranslationSafeRepresentation::Redacted,
+                    report,
+                ));
+            }
+        }
+    }
+
+    record_required_native_string(object, "query", "$.query", "$.query", &mut report)?;
+    record_optional_native_system(object, &mut report)?;
+    record_optional_native_string(object, "model", "$.model", "$.model", &mut report)?;
+    record_optional_native_object(object, "inputs", "$.inputs", "$.inputs", &mut report)?;
+    record_optional_native_array(object, "history", "$.history", "$.history", &mut report)?;
+    record_optional_native_array(
+        object,
+        "attachments",
+        "$.attachments",
+        "$.attachments",
+        &mut report,
+    )?;
+    record_optional_native_object(
+        object,
+        "conversation",
+        "$.conversation",
+        "$.conversation",
+        &mut report,
+    )?;
+    record_optional_native_string(
+        object,
+        "expand_id",
+        "$.expand_id",
+        "$.expand_id",
+        &mut report,
+    )?;
+    record_optional_native_string(
+        object,
+        "response_mode",
+        "$.response_mode",
+        "$.response_mode",
+        &mut report,
+    )?;
+    record_optional_native_object(
+        object,
+        "stream_options",
+        "$.stream_options",
+        "$.stream_options",
+        &mut report,
+    )?;
+    record_optional_native_object(
+        object,
+        "execution",
+        "$.execution",
+        "$.execution",
+        &mut report,
+    )?;
+    record_optional_native_object(object, "metadata", "$.metadata", "$.metadata", &mut report)?;
+    record_optional_native_object(
+        object,
+        "request_context",
+        "$.request_context",
+        "$.request_context",
+        &mut report,
+    )?;
+    record_optional_native_string(object, "title", "$.title", "$.title", &mut report)?;
+
+    let request = serde_json::from_value::<NativeRunRequest>(value).map_err(|_| {
+        NativeRequestTranslationError::rejected(
+            "body",
+            "Native request does not match the public contract",
+            "$.body",
+            TranslationDecisionKind::Rejected,
+            "Native request does not match the public contract",
+            TranslationSafeRepresentation::Redacted,
+            report.clone(),
+        )
+    })?;
+    Ok(TranslatedNativeRunRequest { request, report })
+}
+
+fn record_required_native_string(
+    object: &Map<String, Value>,
+    field: &'static str,
+    source_path: &'static str,
+    target_path: &'static str,
+    report: &mut TranslationReport,
+) -> std::result::Result<(), NativeRequestTranslationError> {
+    if object.get(field).is_some_and(Value::is_string) {
+        report.record(
+            source_path,
+            Some(target_path),
+            TranslationDecisionKind::Exact,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
+        return Ok(());
+    }
+    Err(NativeRequestTranslationError::rejected(
+        field,
+        format!("{field} must be a string"),
+        source_path,
+        TranslationDecisionKind::Rejected,
+        "required Native text field must be a string",
+        if object.contains_key(field) {
+            TranslationSafeRepresentation::Present
+        } else {
+            TranslationSafeRepresentation::Absent
+        },
+        report.clone(),
+    ))
+}
+
+fn record_optional_native_string(
+    object: &Map<String, Value>,
+    field: &'static str,
+    source_path: &'static str,
+    target_path: &'static str,
+    report: &mut TranslationReport,
+) -> std::result::Result<(), NativeRequestTranslationError> {
+    match object.get(field) {
+        Some(value) if value.is_string() => {
+            report.record(
+                source_path,
+                Some(target_path),
+                TranslationDecisionKind::Exact,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+            Ok(())
+        }
+        Some(_) => Err(NativeRequestTranslationError::rejected(
+            field,
+            format!("{field} must be a string"),
+            source_path,
+            TranslationDecisionKind::Rejected,
+            "optional Native text field must be a string",
+            TranslationSafeRepresentation::Present,
+            report.clone(),
+        )),
+        None => {
+            report.record(
+                source_path,
+                Some(target_path),
+                TranslationDecisionKind::Defaulted,
+                Some("Native default"),
+                TranslationSafeRepresentation::Defaulted,
+            );
+            Ok(())
+        }
+    }
+}
+
+fn record_optional_native_object(
+    object: &Map<String, Value>,
+    field: &'static str,
+    source_path: &'static str,
+    target_path: &'static str,
+    report: &mut TranslationReport,
+) -> std::result::Result<(), NativeRequestTranslationError> {
+    match object.get(field) {
+        Some(value) if value.is_object() => {
+            report.record(
+                source_path,
+                Some(target_path),
+                TranslationDecisionKind::Exact,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+            Ok(())
+        }
+        Some(_) => Err(NativeRequestTranslationError::rejected(
+            field,
+            format!("{field} must be an object"),
+            source_path,
+            TranslationDecisionKind::Rejected,
+            "optional Native object field must be an object",
+            TranslationSafeRepresentation::Present,
+            report.clone(),
+        )),
+        None => {
+            report.record(
+                source_path,
+                Some(target_path),
+                TranslationDecisionKind::Defaulted,
+                Some("empty Native object"),
+                TranslationSafeRepresentation::Defaulted,
+            );
+            Ok(())
+        }
+    }
+}
+
+fn record_optional_native_array(
+    object: &Map<String, Value>,
+    field: &'static str,
+    source_path: &'static str,
+    target_path: &'static str,
+    report: &mut TranslationReport,
+) -> std::result::Result<(), NativeRequestTranslationError> {
+    match object.get(field) {
+        Some(value) if value.is_array() => {
+            report.record(
+                source_path,
+                Some(target_path),
+                TranslationDecisionKind::Exact,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+            Ok(())
+        }
+        Some(_) => Err(NativeRequestTranslationError::rejected(
+            field,
+            format!("{field} must be an array"),
+            source_path,
+            TranslationDecisionKind::Rejected,
+            "optional Native array field must be an array",
+            TranslationSafeRepresentation::Present,
+            report.clone(),
+        )),
+        None => {
+            report.record(
+                source_path,
+                Some(target_path),
+                TranslationDecisionKind::Defaulted,
+                Some("empty Native array"),
+                TranslationSafeRepresentation::Defaulted,
+            );
+            Ok(())
+        }
+    }
+}
+
+fn record_optional_native_system(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> std::result::Result<(), NativeRequestTranslationError> {
+    match object.get("system") {
+        Some(Value::String(_)) | Some(Value::Array(_)) => {
+            report.record(
+                "$.system",
+                Some("$.system"),
+                TranslationDecisionKind::Exact,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+            Ok(())
+        }
+        Some(_) => Err(NativeRequestTranslationError::rejected(
+            "system",
+            "system must be text or prompt blocks",
+            "$.system",
+            TranslationDecisionKind::Rejected,
+            "Native system must be text or prompt blocks",
+            TranslationSafeRepresentation::Present,
+            report.clone(),
+        )),
+        None => {
+            report.record(
+                "$.system",
+                Some("$.system"),
+                TranslationDecisionKind::Defaulted,
+                Some("empty Native system"),
+                TranslationSafeRepresentation::Defaulted,
+            );
+            Ok(())
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -571,6 +923,18 @@ where
                     .await
                     .map_err(|_| NativeRunValidationError::InvalidMapping)?;
             }
+            self.repository
+                .append_published_run_event(&crate::ports::AppendRunEventInput {
+                    flow_run_id: cancelled.id,
+                    node_run_id: None,
+                    event_type: "flow_cancelled".to_string(),
+                    payload: json!({
+                        "code": "cancelled",
+                        "message": "published run cancelled",
+                    }),
+                })
+                .await
+                .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         }
 
         Ok(super::run_service::native_result_from_flow_run(
@@ -654,7 +1018,6 @@ where
 }
 
 fn build_run_metadata(request: &NativeRunRequest) -> Value {
-    let compatibility_mode = request.protocol_compatibility_mode.clone();
     let idempotency_key = string_field(&request.execution, "idempotency_key");
     let external_user = request
         .expand_id
@@ -670,7 +1033,6 @@ fn build_run_metadata(request: &NativeRunRequest) -> Value {
         "metadata": request.metadata.as_value(),
         "title": title,
         "expand_id": external_user,
-        "compatibility_mode": compatibility_mode,
         "idempotency_key": idempotency_key,
         "external_user": external_user,
         "external_conversation_id": external_conversation_id,
@@ -690,7 +1052,6 @@ pub(super) fn durable_metadata_from_flow_run(flow_run: &domain::FlowRunRecord) -
         "external_user": flow_run.external_user,
         "external_conversation_id": flow_run.external_conversation_id,
         "external_trace_id": flow_run.external_trace_id,
-        "compatibility_mode": flow_run.compatibility_mode,
         "idempotency_key": flow_run.idempotency_key,
         "request": {
             "conversation": {
@@ -850,7 +1211,6 @@ mod tests {
 
         assert!(mapped.node_input_payload["start"].get("model").is_none());
         assert_eq!(mapped.metadata["model"], json!("unlisted-model"));
-        assert_eq!(mapped.metadata["compatibility_mode"], json!(null));
         assert_eq!(mapped.metadata["idempotency_key"], json!("idem-1"));
         assert_eq!(mapped.metadata["external_trace_id"], json!("trace-1"));
     }

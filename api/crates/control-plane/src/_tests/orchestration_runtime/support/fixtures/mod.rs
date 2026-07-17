@@ -513,6 +513,71 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             .force_flow_run_status_before_next_flow_update(flow_run_id, status);
     }
 
+    pub async fn force_stream_terminal_failure_before_next_flow_update(&self, flow_run_id: Uuid) {
+        self.repository
+            .force_stream_terminal_failure_before_next_flow_update(flow_run_id);
+    }
+
+    pub async fn force_flow_run_mode(&self, flow_run_id: Uuid, run_mode: domain::FlowRunMode) {
+        self.repository.force_flow_run_mode(flow_run_id, run_mode);
+    }
+
+    pub async fn fail_next_runtime_event_append(&self) {
+        self.repository.fail_next_runtime_event_append();
+    }
+
+    pub async fn fail_next_published_stream_terminal_projection(&self) {
+        self.repository
+            .fail_next_published_stream_terminal_projection();
+    }
+
+    pub async fn seed_published_running_run_with_output(
+        &self,
+        seeded: &SeededPreviewApplication,
+        output_payload: Value,
+    ) -> domain::FlowRunRecord {
+        let flow_run = OrchestrationRuntimeRepository::create_flow_run(
+            &self.repository,
+            &CreateFlowRunInput {
+                actor_user_id: seeded.actor_user_id,
+                application_id: seeded.application_id,
+                flow_id: seeded.flow_id,
+                flow_draft_id: Uuid::now_v7(),
+                compiled_plan_id: Uuid::now_v7(),
+                debug_session_id: String::new(),
+                flow_schema_version: "1flowbase.flow/v2".to_string(),
+                document_hash: "stream-terminal-recovery-test".to_string(),
+                run_mode: domain::FlowRunMode::PublishedApiRun,
+                target_node_id: None,
+                title: "Published streaming run".to_string(),
+                status: domain::FlowRunStatus::Running,
+                input_payload: json!({}),
+                started_at: time::OffsetDateTime::now_utc(),
+                api_key_id: Some(Uuid::now_v7()),
+                publication_version_id: Some(Uuid::now_v7()),
+                external_user: None,
+                external_conversation_id: None,
+                external_trace_id: None,
+                compatibility_mode: None,
+                idempotency_key: None,
+            },
+        )
+        .await
+        .expect("seed published running run should succeed");
+        OrchestrationRuntimeRepository::update_flow_run(
+            &self.repository,
+            &UpdateFlowRunInput {
+                flow_run_id: flow_run.id,
+                status: domain::FlowRunStatus::Running,
+                output_payload,
+                error_payload: None,
+                finished_at: None,
+            },
+        )
+        .await
+        .expect("seed published partial output should succeed")
+    }
+
     pub async fn mark_external_opaque_boundary(
         &self,
         flow_run_id: Uuid,

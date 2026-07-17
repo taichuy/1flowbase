@@ -541,9 +541,59 @@ async fn native_run_route_rejects_legacy_user_id_field() {
 }
 
 #[tokio::test]
+async fn d2_ac_007_native_run_route_rejects_compatibility_mode_before_run_creation() {
+    let (app, state) = test_app_with_state().await;
+    let token =
+        setup_published_native_app(&app, "Native Route Compatibility Mode Rejection App").await;
+    let before = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let mut body = native_run_body(json!("provider/model:any-public-string"));
+    body["compatibility_mode"] = json!("native-v1");
+
+    let response = post_native_run(&app, &token, body).await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let payload = response_json(response).await;
+    assert_eq!(payload["code"], json!("compatibility_mode"));
+    let after = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    assert_eq!(after, before);
+}
+
+#[tokio::test]
+async fn d2_ac_007_native_run_persists_no_compatibility_mode() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_native_app(&app, "Native Route Canonical Contract App").await;
+    let mut body = native_run_body(json!("provider/model:any-public-string"));
+    body["response_mode"] = json!("manual");
+
+    let response = post_native_run(&app, &token, body).await;
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let payload = response_json(response).await;
+    let run_id = Uuid::parse_str(payload["data"]["id"].as_str().unwrap()).unwrap();
+    let mode = sqlx::query_scalar::<_, Option<String>>(
+        "select compatibility_mode from flow_runs where id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(mode, None);
+}
+
+#[tokio::test]
 async fn d1_ac_009_native_run_route_rejects_unknown_fields_before_run_creation() {
-    let app = test_app().await;
+    let (app, state) = test_app_with_state().await;
     let token = setup_published_native_app(&app, "Native Route Unknown Field App").await;
+    let before = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
     let mut body = native_run_body(json!("provider/model:any-public-string"));
     body["unrecognized_native_option"] = json!(true);
 
@@ -554,7 +604,12 @@ async fn d1_ac_009_native_run_route_rejects_unknown_fields_before_run_creation()
     assert_eq!(payload["code"], json!("body"));
     assert!(payload["message"]
         .as_str()
-        .is_some_and(|message| message.contains("unknown field")));
+        .is_some_and(|message| message.contains("unknown Native request field")));
+    let after = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    assert_eq!(after, before);
 }
 
 #[tokio::test]

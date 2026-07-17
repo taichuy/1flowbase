@@ -4,9 +4,11 @@ use control_plane::application_public_api::{
         ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
     },
     native::{
-        ApplicationNativeRunService, CancelNativeRunCommand, CreateNativeRunCommand,
-        GetNativeRunCommand, NativeRunRequest, NativeRunStatus, NativeRunValidationError,
+        translate_native_run_request, ApplicationNativeRunService, CancelNativeRunCommand,
+        CreateNativeRunCommand, GetNativeRunCommand, NativeRunRequest, NativeRunStatus,
+        NativeRunValidationError,
     },
+    protocol_translation::{TranslationDecisionKind, TranslationProtocol},
     publications::{ApplicationPublicationService, PublishApplicationCommand},
     ApplicationPublicApiTestHarness,
 };
@@ -148,6 +150,50 @@ fn native_run_request_validates_public_native_fields() {
     assert_eq!(accepted.stream_options["include_usage"], json!(true));
     assert_eq!(accepted.execution["timeout_seconds"], json!(30));
     assert_eq!(accepted.metadata["request_id"], json!("req-1"));
+}
+
+#[test]
+fn d2_ac_001_native_adapter_records_supported_and_defaulted_fields_without_request_copy() {
+    let sentinel = "D2-NATIVE-SENTINEL-MUST-NOT-REACH-RECEIPT";
+    let translated = translate_native_run_request(json!({
+        "query": sentinel,
+        "inputs": { "priority": "high" }
+    }))
+    .expect("Native public fields should translate into the canonical request");
+
+    assert_eq!(translated.report.protocol, TranslationProtocol::Native);
+    assert!(translated
+        .report
+        .has_decision("$.query", TranslationDecisionKind::Exact));
+    assert!(translated
+        .report
+        .has_decision("$.inputs", TranslationDecisionKind::Exact));
+    assert!(translated
+        .report
+        .has_decision("$.model", TranslationDecisionKind::Defaulted));
+    assert!(!serde_json::to_string(&translated.report)
+        .expect("receipt should serialize")
+        .contains(sentinel));
+}
+
+#[test]
+fn d2_ac_001_native_adapter_rejects_unknown_and_legacy_capability_fields_with_receipts() {
+    let mut unknown = native_request(json!("any-provider/any-model"));
+    unknown["unrecognized_native_option"] = json!(true);
+    let unknown_error = translate_native_run_request(unknown)
+        .expect_err("unknown Native fields must not reach run creation");
+    assert!(unknown_error.report.has_decision(
+        "$.unrecognized_native_option",
+        TranslationDecisionKind::Rejected
+    ));
+
+    let mut legacy_capability = native_request(json!("any-provider/any-model"));
+    legacy_capability["compatibility_mode"] = json!("native-v1");
+    let capability_error = translate_native_run_request(legacy_capability)
+        .expect_err("legacy contract modes have no Native canonical owner");
+    assert!(capability_error
+        .report
+        .has_decision("$.compatibility_mode", TranslationDecisionKind::Unsupported));
 }
 
 #[test]
@@ -402,4 +448,13 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
         .unwrap();
 
     assert_eq!(cancelled.status, NativeRunStatus::Cancelled);
+    assert!(
+        cancelled.answer.is_none(),
+        "cancelled runs never expose an Answer"
+    );
+    let error = cancelled
+        .error
+        .expect("cancelled runs expose a canonical safe cancellation error");
+    assert_eq!(error.code, "cancelled");
+    assert_eq!(error.message, "published run cancelled");
 }

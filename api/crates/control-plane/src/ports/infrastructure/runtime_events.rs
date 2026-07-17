@@ -136,6 +136,27 @@ pub enum RuntimeEventCloseReason {
     Expired,
 }
 
+impl RuntimeEventCloseReason {
+    /// Maps the canonical terminal event to its only valid stream closure meaning.
+    pub fn from_terminal_event_type(event_type: &str) -> Option<Self> {
+        match event_type {
+            "flow_finished" => Some(Self::Finished),
+            "flow_incomplete" => Some(Self::Incomplete),
+            "flow_failed" => Some(Self::Failed),
+            "flow_cancelled" => Some(Self::Cancelled),
+            "waiting_human" => Some(Self::WaitingHuman),
+            "waiting_callback" => Some(Self::WaitingCallback),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppendTerminalIfMissingAndCloseOutcome {
+    Appended,
+    ExistingTerminal,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RuntimeEventClosure {
     pub reason: RuntimeEventCloseReason,
@@ -163,6 +184,14 @@ pub trait RuntimeEventStream: Send + Sync {
         run_id: Uuid,
         event: RuntimeEventPayload,
     ) -> anyhow::Result<RuntimeEventEnvelope>;
+
+    /// Atomically claims the sole terminal event for one open runtime stream and closes it.
+    /// Implementations must not compose this from independent replay, append, and close calls.
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        run_id: Uuid,
+        event: RuntimeEventPayload,
+    ) -> anyhow::Result<AppendTerminalIfMissingAndCloseOutcome>;
 
     async fn subscribe(
         &self,

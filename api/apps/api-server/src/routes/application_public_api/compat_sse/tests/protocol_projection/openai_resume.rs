@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn openai_chat_replayed_waiting_callback_drains_text_delta_first() {
+async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_returns_unsupported() {
     let mut run = native_run();
     let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
     let callback_task_id = Uuid::from_u128(0x66666666666666666666666666666666);
@@ -121,13 +121,16 @@ async fn openai_chat_replayed_waiting_callback_drains_text_delta_first() {
     let body = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(body.contains("prior node answer"), "{body}");
-    assert!(body.contains("lookup_next"), "{body}");
-    assert!(body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
-    assert!(body.contains("[DONE]"), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("lookup_next"), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"length\""), "{body}");
+    assert!(!body.contains("[DONE]"), "{body}");
 }
 
 #[tokio::test]
-async fn openai_chat_waiting_internal_llm_tool_callback_finishes_without_tool_calls() {
+async fn openai_chat_waiting_internal_llm_tool_callback_is_explicitly_unsupported() {
     let mut run = native_run();
     let callback_task_id = Uuid::from_u128(0x12121212121212121212121212121212);
     run.status = NativeRunStatus::Waiting;
@@ -176,10 +179,12 @@ async fn openai_chat_waiting_internal_llm_tool_callback_finishes_without_tool_ca
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("\"finish_reason\":\"stop\""), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
     assert!(!body.contains("\"tool_calls\""), "{body}");
-    assert!(!body.contains("required_action_not_supported"), "{body}");
-    assert!(body.contains("[DONE]"), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"length\""), "{body}");
+    assert!(!body.contains("[DONE]"), "{body}");
 }
 
 #[tokio::test]
@@ -228,7 +233,7 @@ async fn terminal_answer_recovery_prefers_durable_answer_presentation() {
 }
 
 #[tokio::test]
-async fn openai_chat_resume_replay_terminal_drains_durable_text_before_tool_call() {
+async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_unsupported() {
     let mut run = native_run();
     let node_run_id = Uuid::from_u128(0x77777777777777777777777777777777);
     let previous_callback_task_id = Uuid::from_u128(0x88888888888888888888888888888888);
@@ -401,16 +406,11 @@ async fn openai_chat_resume_replay_terminal_drains_durable_text_before_tool_call
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    let text_index = body.find("prior node answer").unwrap_or_else(|| {
-        panic!("resume stream should include prior LLM text before tool call: {body}")
-    });
-    let tool_index = body
-        .find("lookup_next")
-        .unwrap_or_else(|| panic!("resume stream should include next tool call: {body}"));
-    assert!(
-        text_index < tool_index,
-        "prior LLM text should be projected before the next tool call: {body}"
-    );
-    assert!(body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
-    assert!(body.contains("[DONE]"), "{body}");
+    assert!(body.contains("prior node answer"), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("lookup_next"), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"length\""), "{body}");
+    assert!(!body.contains("[DONE]"), "{body}");
 }

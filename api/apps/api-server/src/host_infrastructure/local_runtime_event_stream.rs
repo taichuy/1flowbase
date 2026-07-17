@@ -8,9 +8,10 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use control_plane::ports::{
-    ensure_ephemeral_payload_size, ephemeral_metadata_size_bytes, EphemeralEntrySnapshot,
-    EphemeralEntryValueSnapshot, EphemeralInspectionCapabilities, EphemeralValueRevealMode,
-    RuntimeEventCloseReason, RuntimeEventClosure, RuntimeEventDurability, RuntimeEventEnvelope,
+    ensure_ephemeral_payload_size, ephemeral_metadata_size_bytes,
+    AppendTerminalIfMissingAndCloseOutcome, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
+    EphemeralInspectionCapabilities, EphemeralValueRevealMode, RuntimeEventCloseReason,
+    RuntimeEventClosure, RuntimeEventDurability, RuntimeEventEnvelope,
     RuntimeEventOverflowBehavior, RuntimeEventPayload, RuntimeEventStream,
     RuntimeEventStreamPolicy, RuntimeEventSubscription, RuntimeEventTrimPolicy,
 };
@@ -376,6 +377,78 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
 
         let _ = run.broadcaster.send(envelope.clone());
         Ok(envelope)
+    }
+
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        run_id: Uuid,
+        event: RuntimeEventPayload,
+    ) -> Result<AppendTerminalIfMissingAndCloseOutcome> {
+        let incoming_reason = RuntimeEventCloseReason::from_terminal_event_type(&event.event_type)
+            .ok_or_else(|| {
+                anyhow!("runtime event stream terminal append requires a terminal event")
+            })?;
+        ensure_ephemeral_payload_size(&event.payload)?;
+        let run = self.run(run_id)?;
+
+        let (outcome, appended_event) = {
+            // `ring` is the stream's serialization point for append and close. Holding it for
+            // the terminal scan, optional append, and closure prevents concurrent EOF recovery
+            // retries from observing the same missing terminal.
+            let mut ring = run.ring.lock().expect("runtime event ring lock poisoned");
+            let existing_terminal_reason = ring.events.iter().find_map(|retained| {
+                RuntimeEventCloseReason::from_terminal_event_type(&retained.event_type)
+            });
+
+            if run.is_closed() {
+                if existing_terminal_reason.is_some() {
+                    return Ok(AppendTerminalIfMissingAndCloseOutcome::ExistingTerminal);
+                }
+                return Err(anyhow!(
+                    "runtime event stream is closed without a terminal event"
+                ));
+            }
+
+            let (outcome, appended_event, close_reason) =
+                if let Some(existing_reason) = existing_terminal_reason {
+                    (
+                        AppendTerminalIfMissingAndCloseOutcome::ExistingTerminal,
+                        None,
+                        existing_reason,
+                    )
+                } else {
+                    let sequence = run.next_sequence.load(Ordering::SeqCst);
+                    let envelope = RuntimeEventEnvelope::new(run_id, sequence, event);
+                    let retained_bytes = LocalRunEventStream::retained_event_size(&envelope)?;
+                    run.make_room_for(&mut ring, retained_bytes)?;
+                    run.next_sequence.store(sequence + 1, Ordering::SeqCst);
+                    *run.last_event_at
+                        .lock()
+                        .expect("runtime event last event lock poisoned") = envelope.occurred_at;
+                    ring.bytes = ring.bytes.saturating_add(retained_bytes);
+                    ring.events.push_back(envelope.clone());
+                    (
+                        AppendTerminalIfMissingAndCloseOutcome::Appended,
+                        Some(envelope),
+                        incoming_reason,
+                    )
+                };
+
+            let final_sequence = run.next_sequence.load(Ordering::SeqCst) - 1;
+            *run.closed_at
+                .lock()
+                .expect("runtime event closed_at lock poisoned") = Some(OffsetDateTime::now_utc());
+            run.closed_sender.send_replace(Some(RuntimeEventClosure {
+                reason: close_reason,
+                final_sequence,
+            }));
+            (outcome, appended_event)
+        };
+
+        if let Some(envelope) = appended_event {
+            let _ = run.broadcaster.send(envelope);
+        }
+        Ok(outcome)
     }
 
     async fn subscribe(

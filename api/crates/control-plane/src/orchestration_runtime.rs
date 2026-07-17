@@ -54,7 +54,10 @@ mod persistence;
 mod provider_invoker;
 mod runtime_event_persister;
 pub mod scheduler_admission;
+mod stream_terminal_recovery;
 pub mod trace_projection;
+
+pub use stream_terminal_recovery::FinalizePublishedRunMissingStreamTerminalCommand;
 
 #[cfg(test)]
 pub(crate) use provider_invoker::test_support;

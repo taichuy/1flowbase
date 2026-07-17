@@ -1,6 +1,8 @@
 use control_plane::application_public_api::compat::openai::{
-    map_chat_completion_request, map_response_request, OpenAiCompatError,
+    map_chat_completion_request, map_response_request, translate_chat_completion_request,
+    translate_response_request, OpenAiCompatError,
 };
+use control_plane::application_public_api::protocol_translation::TranslationDecisionKind;
 use serde_json::{json, Value};
 
 fn base_request() -> Value {
@@ -15,9 +17,12 @@ fn base_request() -> Value {
 }
 
 fn assert_unsupported_feature(request: Value, param: &str) {
-    let error = map_chat_completion_request(request).unwrap_err();
+    let error = translate_chat_completion_request(request).unwrap_err();
 
-    assert_openai_unsupported_feature(error, param);
+    assert_openai_unsupported_feature(error.clone(), param);
+    assert!(error
+        .report
+        .has_decision(&format!("$.{param}"), TranslationDecisionKind::Unsupported));
 }
 
 fn assert_openai_unsupported_feature(error: OpenAiCompatError, param: &str) {
@@ -28,6 +33,50 @@ fn assert_openai_unsupported_feature(error: OpenAiCompatError, param: &str) {
         error.message,
         format!("{param} is not supported by this endpoint")
     );
+}
+
+#[test]
+fn d2_ac_001_chat_translation_receipt_decides_each_safe_field_without_prompt_copy() {
+    let sentinel_prompt = "D2-SENTINEL-PROMPT-MUST-NOT-REACH-RECEIPT";
+    let translated = translate_chat_completion_request(json!({
+        "model": "gpt-compatible",
+        "messages": [{"role": "user", "content": sentinel_prompt}],
+        "max_completion_tokens": 512,
+        "stream": false
+    }))
+    .expect("supported Chat fields should translate");
+
+    assert_eq!(translated.request.query, sentinel_prompt);
+    assert!(translated
+        .report
+        .has_decision("$.model", TranslationDecisionKind::Exact));
+    assert!(translated
+        .report
+        .has_decision("$.messages[0].content", TranslationDecisionKind::Normalized));
+    assert!(translated.report.has_decision(
+        "$.max_completion_tokens",
+        TranslationDecisionKind::Normalized
+    ));
+    assert!(translated
+        .report
+        .has_decision("$.stream", TranslationDecisionKind::Normalized));
+    assert!(!serde_json::to_string(&translated.report)
+        .expect("receipt should serialize")
+        .contains(sentinel_prompt));
+}
+
+#[test]
+fn d2_ac_001_chat_unknown_field_is_rejected_with_a_safe_receipt() {
+    let mut request = base_request();
+    request["unmapped_top_level_option"] = json!(true);
+
+    let error = translate_chat_completion_request(request)
+        .expect_err("unknown Chat field must not be silently dropped");
+
+    assert!(error.report.has_decision(
+        "$.unmapped_top_level_option",
+        TranslationDecisionKind::Rejected
+    ));
 }
 
 #[test]
@@ -211,7 +260,7 @@ fn model_maps_exactly_without_validation() {
 }
 
 #[test]
-fn tools_map_to_native_compatibility_inputs_and_metadata() {
+fn d2_ac_007_chat_tools_are_unsupported_with_a_translation_receipt() {
     let mut request = base_request();
     request["tools"] = json!([
         {
@@ -222,26 +271,20 @@ fn tools_map_to_native_compatibility_inputs_and_metadata() {
             }
         }
     ]);
-    request["tool_choice"] = json!({"type": "function", "function": {"name": "lookup_order"}});
 
-    let native = map_chat_completion_request(request).unwrap();
-
-    assert_eq!(
-        native.inputs.as_value()["tools"][0]["name"],
-        json!("lookup_order")
-    );
-    assert_eq!(
-        native.inputs.as_value()["tool_choice"]["function"]["name"],
-        json!("lookup_order")
-    );
-    assert_eq!(
-        native.metadata.as_value()["compatibility"]["tool_choice"]["function"]["name"],
-        json!("lookup_order")
-    );
+    assert_unsupported_feature(request, "tools");
 }
 
 #[test]
-fn tool_messages_map_to_native_history() {
+fn d2_ac_007_chat_tool_choice_is_unsupported_with_a_translation_receipt() {
+    let mut request = base_request();
+    request["tool_choice"] = json!({"type": "function", "function": {"name": "lookup_order"}});
+
+    assert_unsupported_feature(request, "tool_choice");
+}
+
+#[test]
+fn d2_ac_007_chat_tool_messages_are_unsupported_with_a_translation_receipt() {
     let mut request = base_request();
     request["messages"] = json!([
         {"role": "user", "content": "Find order"},
@@ -259,43 +302,107 @@ fn tool_messages_map_to_native_history() {
         {"role": "tool", "tool_call_id": "call_123", "content": "{\"status\":\"shipped\"}"}
     ]);
 
-    let native = map_chat_completion_request(request).unwrap();
+    let error = translate_chat_completion_request(request)
+        .expect_err("tool messages have no D2 canonical owner");
 
-    assert_eq!(native.query, "Find order");
-    assert_eq!(
-        native.history,
-        vec![
-            json!({
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [
-                    {
-                        "id": "call_123",
-                        "type": "function",
-                        "function": {"name": "lookup_order", "arguments": "{\"order_id\":\"order_123\"}"}
-                    }
-                ]
-            }),
-            json!({
-                "role": "tool",
-                "content": "{\"status\":\"shipped\"}",
-                "tool_call_id": "call_123"
-            })
-        ]
-    );
+    assert_openai_unsupported_feature(error.clone(), "messages");
+    assert!(error.report.has_decision(
+        "$.messages[1].tool_calls",
+        TranslationDecisionKind::Unsupported
+    ));
 }
 
 #[test]
-fn legacy_function_call_maps_to_native_compatibility_inputs() {
+fn d2_ac_007_chat_legacy_function_call_is_unsupported_with_a_translation_receipt() {
     let mut request = base_request();
     request["function_call"] = json!({"name": "lookup_order"});
 
-    let native = map_chat_completion_request(request).unwrap();
+    assert_unsupported_feature(request, "function_call");
+}
 
-    assert_eq!(
-        native.inputs.as_value()["tool_choice"]["name"],
-        json!("lookup_order")
-    );
+#[test]
+fn d2_ac_007_responses_nested_unsupported_content_has_a_field_receipt() {
+    let error = translate_response_request(json!({
+        "model": "gpt-compatible",
+        "input": [{
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_file", "file_id": "file_123"}]
+        }]
+    }))
+    .expect_err("input_file has no D2 canonical owner");
+
+    assert_openai_unsupported_feature(error.clone(), "input");
+    assert!(error.report.has_decision(
+        "$.input[0].content[0].type",
+        TranslationDecisionKind::Unsupported
+    ));
+}
+
+#[test]
+fn d2_ac_001_chat_content_part_unknown_field_is_rejected_with_its_own_receipt() {
+    let error = translate_chat_completion_request(json!({
+        "model": "gpt-compatible",
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "text",
+                "text": "hello",
+                "unexpected": "must not reach canonical history"
+            }]
+        }]
+    }))
+    .expect_err("an unknown content-part field has no canonical owner");
+
+    assert!(error.report.has_decision(
+        "$.messages[0].content[0].unexpected",
+        TranslationDecisionKind::Rejected
+    ));
+}
+
+#[test]
+fn d2_ac_001_responses_content_part_unknown_field_is_rejected_with_its_own_receipt() {
+    let error = translate_response_request(json!({
+        "model": "gpt-compatible",
+        "input": [{
+            "type": "message",
+            "role": "user",
+            "content": [{
+                "type": "input_text",
+                "text": "hello",
+                "unexpected": "must not reach canonical history"
+            }]
+        }]
+    }))
+    .expect_err("an unknown Responses content-part field has no canonical owner");
+
+    assert!(error.report.has_decision(
+        "$.input[0].content[0].unexpected",
+        TranslationDecisionKind::Rejected
+    ));
+}
+
+#[test]
+fn d2_ac_001_openai_image_source_unknown_field_is_rejected_before_canonical_history() {
+    let error = translate_chat_completion_request(json!({
+        "model": "gpt-compatible",
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "image_url",
+                "image_url": {
+                    "url": "https://example.com/cat.png",
+                    "unexpected": "raw compat payload"
+                }
+            }]
+        }]
+    }))
+    .expect_err("untyped image source fields must not reach canonical history");
+
+    assert!(error.report.has_decision(
+        "$.messages[0].content[0].image_url.unexpected",
+        TranslationDecisionKind::Rejected
+    ));
 }
 
 #[test]

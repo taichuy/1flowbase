@@ -25,23 +25,8 @@ pub(super) fn to_anthropic_count_tokens_response(request: &Value) -> AnthropicCo
 
 pub(super) fn anthropic_count_input_tokens(request: &Value) -> u64 {
     let mut tokens = 0_u64;
-    for key in [
-        "system",
-        "messages",
-        "tools",
-        "tool_choice",
-        "thinking",
-        "container",
-        "context_management",
-    ] {
+    for key in ["system", "messages"] {
         tokens = tokens.saturating_add(anthropic_value_token_estimate(request.get(key)));
-    }
-    if request
-        .get("tools")
-        .and_then(Value::as_array)
-        .is_some_and(|tools| !tools.is_empty())
-    {
-        tokens = tokens.saturating_add(500);
     }
     tokens.max(1)
 }

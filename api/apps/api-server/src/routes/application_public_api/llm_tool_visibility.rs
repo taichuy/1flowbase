@@ -16,23 +16,6 @@ pub(crate) fn external_llm_tool_call_values(calls: &[Value]) -> Option<Vec<&Valu
     (!calls.is_empty()).then_some(calls)
 }
 
-pub(crate) fn payload_has_only_internal_llm_tool_calls(payload: &Value) -> bool {
-    let Some(calls) = payload
-        .get("tool_calls")
-        .and_then(Value::as_array)
-        .or_else(|| {
-            payload
-                .get("request_payload")
-                .and_then(|request| request.get("tool_calls"))
-                .and_then(Value::as_array)
-        })
-    else {
-        return false;
-    };
-
-    !calls.is_empty() && external_llm_tool_call_values(calls).is_none()
-}
-
 fn llm_tool_call_is_internal(call: &Value) -> bool {
     call.get("type").and_then(Value::as_str) == Some(VISIBLE_INTERNAL_LLM_TOOL_TYPE)
         || call.get("origin").and_then(Value::as_str) == Some(VISIBLE_INTERNAL_LLM_TOOL_TYPE)

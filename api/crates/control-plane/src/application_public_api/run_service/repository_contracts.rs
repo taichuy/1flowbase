@@ -47,7 +47,6 @@ pub struct ListWaitingCallbackPublishedRunsInput {
     pub api_key_id: Uuid,
     pub external_user: String,
     pub external_conversation_id: String,
-    pub compatibility_mode: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,8 +1,9 @@
 use control_plane::application_public_api::compat::anthropic::{
-    map_messages_request, AnthropicCompatError,
+    map_messages_request, translate_messages_request, AnthropicCompatError,
 };
 use control_plane::application_public_api::{
     mapping::ApplicationApiMappingConfig, native::NativeInputMapper,
+    protocol_translation::TranslationDecisionKind,
 };
 use plugin_framework::provider_contract::NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY;
 use serde_json::{json, Value};
@@ -19,15 +20,32 @@ fn base_request() -> Value {
     })
 }
 
-fn assert_unsupported_feature(request: Value) {
-    let error = map_messages_request(request).unwrap_err();
+fn assert_unsupported_feature(request: Value, path: &str) {
+    let error = translate_messages_request(request).unwrap_err();
 
-    assert_anthropic_unsupported_feature(error);
+    assert_anthropic_unsupported_feature(error.clone());
+    assert!(error
+        .report
+        .has_decision(path, TranslationDecisionKind::Unsupported));
 }
 
 fn assert_anthropic_unsupported_feature(error: AnthropicCompatError) {
     assert_eq!(error.error_type, "unsupported_feature");
     assert!(error.message.contains("is not supported by this endpoint"));
+}
+
+#[test]
+fn d2_ac_007_context_management_is_unsupported_before_native_run_creation() {
+    let mut request = base_request();
+    request["context_management"] = json!({"edits": []});
+
+    let error = translate_messages_request(request)
+        .expect_err("context management has no D2 canonical owner");
+
+    assert_anthropic_unsupported_feature(error.clone());
+    assert!(error
+        .report
+        .has_decision("$.context_management", TranslationDecisionKind::Unsupported));
 }
 
 #[test]
@@ -244,7 +262,7 @@ fn one_m_model_suffix_maps_to_native_model_and_anthropic_beta() {
 }
 
 #[test]
-fn tools_are_accepted_for_agent_framework_compatibility() {
+fn d2_ac_007_anthropic_tools_are_unsupported_with_a_translation_receipt() {
     let mut request = base_request();
     request["tools"] = json!([
         {
@@ -254,35 +272,22 @@ fn tools_are_accepted_for_agent_framework_compatibility() {
         }
     ]);
 
-    let native = map_messages_request(request).unwrap();
-
-    assert_eq!(native.query, "Final question");
-    assert_eq!(native.model.as_deref(), Some("claude-compatible-custom"));
-    assert_eq!(
-        native.inputs.as_value()["tools"][0]["name"],
-        json!("lookup_order")
-    );
+    assert_unsupported_feature(request, "$.tools");
 }
 
 #[test]
-fn tool_choice_is_accepted_for_agent_framework_compatibility() {
+fn d2_ac_007_anthropic_tool_choice_is_unsupported_with_a_translation_receipt() {
     let mut request = base_request();
     request["tool_choice"] = json!({
         "type": "tool",
         "name": "lookup_order"
     });
 
-    let native = map_messages_request(request).unwrap();
-
-    assert_eq!(native.query, "Final question");
-    assert_eq!(
-        native.inputs.as_value()["tool_choice"]["name"],
-        json!("lookup_order")
-    );
+    assert_unsupported_feature(request, "$.tool_choice");
 }
 
 #[test]
-fn tool_use_and_tool_result_blocks_map_to_native_history_and_query() {
+fn d2_ac_007_anthropic_tool_blocks_are_unsupported_with_a_translation_receipt() {
     let mut request = base_request();
     request["messages"] = json!([
         {"role": "user", "content": "Find order"},
@@ -309,27 +314,7 @@ fn tool_use_and_tool_result_blocks_map_to_native_history_and_query() {
         }
     ]);
 
-    let native = map_messages_request(request).unwrap();
-
-    assert_eq!(native.query, "Order found");
-    assert_eq!(
-        native.history,
-        vec![
-            json!({"role": "user", "content": "Find order"}),
-            json!({
-                "role": "assistant",
-                "content": "",
-                "content_blocks": [
-                    {
-                        "type": "tool_use",
-                        "id": "toolu_123",
-                        "name": "lookup_order",
-                        "input": {"order_id": "order_123"}
-                    }
-                ]
-            })
-        ]
-    );
+    assert_unsupported_feature(request, "$.messages[1].content[0].type");
 }
 
 #[test]
@@ -370,8 +355,97 @@ fn last_user_multimodal_content_maps_query_text_and_preserves_media_blocks() {
 }
 
 #[test]
-fn last_user_mixed_tool_result_and_text_uses_visible_text_as_query() {
-    let native = map_messages_request(json!({
+fn d2_ac_001_anthropic_text_block_unknown_field_is_rejected_with_its_own_receipt() {
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible-custom",
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "text",
+                "text": "hello",
+                "unexpected": "must not reach canonical history"
+            }]
+        }]
+    }))
+    .expect_err("unknown Anthropic text-block fields must be rejected");
+
+    assert!(error.report.has_decision(
+        "$.messages[0].content[0].unexpected",
+        TranslationDecisionKind::Rejected
+    ));
+}
+
+#[test]
+fn d2_ac_001_anthropic_media_source_unknown_field_is_rejected_before_canonical_history() {
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible-custom",
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": "aW1hZ2U=",
+                    "unexpected": "raw compat payload"
+                }
+            }]
+        }]
+    }))
+    .expect_err("unknown Anthropic media source fields must be rejected");
+
+    assert!(error.report.has_decision(
+        "$.messages[0].content[0].source.unexpected",
+        TranslationDecisionKind::Rejected
+    ));
+}
+
+#[test]
+fn d2_ac_001_anthropic_cache_control_unknown_field_is_rejected_with_its_own_receipt() {
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible-custom",
+        "system": [{
+            "type": "text",
+            "text": "Use the support playbook.",
+            "cache_control": {
+                "type": "ephemeral",
+                "unexpected": "raw compat payload"
+            }
+        }],
+        "messages": [{"role": "user", "content": "hello"}]
+    }))
+    .expect_err("unknown cache-control fields must be rejected");
+
+    assert!(error.report.has_decision(
+        "$.system[0].cache_control.unexpected",
+        TranslationDecisionKind::Rejected
+    ));
+}
+
+#[test]
+fn d2_ac_001_anthropic_marker_rejection_replaces_preliminary_decision_for_the_same_path() {
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible-custom",
+        "messages": [{
+            "role": "user",
+            "content": "Your task is to create a detailed summary of the conversation so far"
+        }]
+    }))
+    .expect_err("Claude Code control markers have no canonical owner");
+
+    let decisions = error
+        .report
+        .decisions
+        .iter()
+        .filter(|decision| decision.source_path == "$.messages[0].content")
+        .collect::<Vec<_>>();
+    assert_eq!(decisions.len(), 1, "a source path has one final decision");
+    assert_eq!(decisions[0].kind, TranslationDecisionKind::Unsupported);
+}
+
+#[test]
+fn d2_ac_007_mixed_tool_result_and_text_is_unsupported_with_a_translation_receipt() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "messages": [
             {"role": "user", "content": "uploads/agent-flow-preview-debug.png 描述一下这幅图说什么？"},
@@ -398,16 +472,14 @@ fn last_user_mixed_tool_result_and_text_uses_visible_text_as_query() {
                 ]
             }
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(native.query, "帮我找找这个代码位置");
-    assert!(!native.query.contains("old image output"));
+    assert_unsupported_feature(request, "$.messages[1].content[0].type");
 }
 
 #[test]
-fn assistant_thinking_history_is_ignored_for_claude_code_replay() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_thinking_history_is_unsupported_with_a_translation_receipt() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "messages": [
             {"role": "user", "content": "hi ?"},
@@ -425,22 +497,14 @@ fn assistant_thinking_history_is_ignored_for_claude_code_replay() {
             },
             {"role": "user", "content": "next question"}
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(native.query, "next question");
-    assert_eq!(
-        native.history,
-        vec![
-            json!({"role": "user", "content": "hi ?"}),
-            json!({"role": "assistant", "content": "Hello!"})
-        ]
-    );
+    assert_unsupported_feature(request, "$.messages[1].content[0].type");
 }
 
 #[test]
-fn claude_code_compact_summary_request_marks_control_metadata() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_claude_code_compact_summary_marker_is_unsupported() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
             "user_id": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
@@ -452,22 +516,14 @@ fn claude_code_compact_summary_request_marks_control_metadata() {
                 "content": "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.\n\nYour task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.\n\nIMPORTANT: Do NOT use any tools. You MUST respond with ONLY the <summary>...</summary> block as your text output."
             }
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(
-        native.metadata.as_value()["compatibility"]["claude_code_control"],
-        json!("compact_summary")
-    );
-    assert_eq!(
-        native.inputs.as_value()["compatibility"]["claude_code_control"],
-        json!("compact_summary")
-    );
+    assert_unsupported_feature(request, "$.messages[1].content");
 }
 
 #[test]
-fn claude_code_session_title_request_marks_control_metadata() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_claude_code_title_marker_is_unsupported() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "system": "x-anthropic-billing-header: cc_version=2.1.141.831; cc_entrypoint=cli; cch=a143a;\n\nYou are Claude Code, Anthropic's official CLI for Claude.\n\nGenerate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this coding session. Return JSON with a single \"title\" field.",
         "metadata": {
@@ -476,22 +532,14 @@ fn claude_code_session_title_request_marks_control_metadata() {
         "messages": [
             {"role": "user", "content": "uploads/image-1.png 帮我看看这导航栏代码是在哪来的？"}
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(
-        native.metadata.as_value()["compatibility"]["claude_code_control"],
-        json!("session_title")
-    );
-    assert_eq!(
-        native.inputs.as_value()["compatibility"]["claude_code_control"],
-        json!("session_title")
-    );
+    assert_unsupported_feature(request, "$.system");
 }
 
 #[test]
-fn claude_code_away_summary_request_marks_control_metadata() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_claude_code_away_summary_marker_is_unsupported() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
             "user_id": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
@@ -502,22 +550,14 @@ fn claude_code_away_summary_request_marks_control_metadata() {
                 "content": "The user stepped away and is coming back. Write exactly 1-3 short sentences. Start by stating the high-level task — what they are building or debugging, not implementation details. Next: the concrete next step. Skip status reports and commit recaps."
             }
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(
-        native.metadata.as_value()["compatibility"]["claude_code_control"],
-        json!("away_summary")
-    );
-    assert_eq!(
-        native.inputs.as_value()["compatibility"]["claude_code_control"],
-        json!("away_summary")
-    );
+    assert_unsupported_feature(request, "$.messages[0].content");
 }
 
 #[test]
-fn claude_code_compact_resume_request_without_transcript_marks_control_metadata() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_claude_code_compact_resume_marker_is_unsupported() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
             "user_id": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
@@ -528,22 +568,14 @@ fn claude_code_compact_resume_request_without_transcript_marks_control_metadata(
                 "content": "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n- user asked where uploads/image-1.png is implemented\n\nContinue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with \"I'll continue\" or similar. Pick up the last task as if the break never happened."
             }
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(
-        native.metadata.as_value()["compatibility"]["claude_code_control"],
-        json!("compact_resume")
-    );
-    assert_eq!(
-        native.inputs.as_value()["compatibility"]["claude_code_control"],
-        json!("compact_resume")
-    );
+    assert_unsupported_feature(request, "$.messages[0].content");
 }
 
 #[test]
-fn claude_code_compact_resume_history_is_marked_hidden_from_conversation() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_claude_code_compact_resume_history_marker_is_unsupported() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
             "user_id": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
@@ -556,27 +588,9 @@ fn claude_code_compact_resume_history_is_marked_hidden_from_conversation() {
             {"role": "assistant", "content": "已恢复上下文。"},
             {"role": "user", "content": "那你帮我拉一下最新代码"}
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(native.query, "那你帮我拉一下最新代码");
-    assert_eq!(native.history.len(), 2);
-    assert_eq!(
-        native.history[0]["metadata"]["hidden_from_conversation"],
-        json!(true)
-    );
-    assert_eq!(
-        native.history[0]["metadata"]["claude_code_control"],
-        json!("compact_resume")
-    );
-    assert_eq!(
-        native.history[1]["metadata"]["hidden_from_conversation"],
-        json!(true)
-    );
-    assert_eq!(
-        native.history[1]["metadata"]["claude_code_control"],
-        json!("compact_resume")
-    );
+    assert_unsupported_feature(request, "$.messages[0].content");
 }
 
 #[test]
@@ -597,5 +611,5 @@ fn computer_use_returns_unsupported_feature() {
         {"role": "user", "content": "What is on screen?"}
     ]);
 
-    assert_unsupported_feature(request);
+    assert_unsupported_feature(request, "$.messages[0].content[0].type");
 }

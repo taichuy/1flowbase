@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn anthropic_waiting_callback_maps_to_tool_use_block() {
+fn anthropic_tool_use_wire_helper_encodes_callback_block() {
     let callback_task_id = Uuid::from_u128(0xcccccccccccccccccccccccccccccccc);
     let blocks = anthropic_tool_use_blocks_from_waiting_payload(&json!({
         "callback_kind": "llm_tool_calls",
@@ -26,7 +26,7 @@ fn anthropic_waiting_callback_maps_to_tool_use_block() {
 }
 
 #[tokio::test]
-async fn anthropic_waiting_internal_llm_tool_callback_streams_text_without_tool_use() {
+async fn anthropic_waiting_internal_llm_tool_callback_is_explicitly_unsupported() {
     let mut run = native_run();
     let callback_task_id = Uuid::from_u128(0x56565656565656565656565656565656);
     run.status = NativeRunStatus::Waiting;
@@ -77,11 +77,11 @@ async fn anthropic_waiting_internal_llm_tool_callback_streams_text_without_tool_
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("visible internal LLM output"), "{body}");
-    assert!(body.contains("\"type\":\"text_delta\""), "{body}");
-    assert!(body.contains("\"stop_reason\":\"end_turn\""), "{body}");
+    assert!(body.contains("event: error"), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("visible internal LLM output"), "{body}");
     assert!(!body.contains("\"type\":\"tool_use\""), "{body}");
-    assert!(!body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("event: message_stop"), "{body}");
 }
 
 #[tokio::test]
@@ -153,8 +153,9 @@ async fn anthropic_text_stream_follows_claude_messages_event_order() {
 }
 
 #[tokio::test]
-async fn ac_002_anthropic_length_finish_maps_to_max_tokens_stop_reason() {
-    let run = native_run();
+async fn d2_ac_004_anthropic_incomplete_uses_canonical_terminal_not_provider_finish() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Incomplete;
     let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
     let mut events = mapper.runtime_event_to_sse(
         &run,
@@ -173,7 +174,7 @@ async fn ac_002_anthropic_length_finish_maps_to_max_tokens_stop_reason() {
                 trace_visible: true,
                 payload: json!({
                     "type": "finish",
-                    "reason": "length"
+                    "reason": "stop"
                 }),
             },
         ),
@@ -183,7 +184,7 @@ async fn ac_002_anthropic_length_finish_maps_to_max_tokens_stop_reason() {
         RuntimeEventEnvelope::new(
             run.id,
             3,
-            debug_stream_events::flow_finished(run.id, json!({ "answer": "" })),
+            debug_stream_events::flow_incomplete(run.id, json!({ "answer": "" })),
         ),
     ));
 
@@ -198,7 +199,7 @@ async fn ac_002_anthropic_length_finish_maps_to_max_tokens_stop_reason() {
 }
 
 #[tokio::test]
-async fn anthropic_waiting_callback_streams_tool_input_json_delta() {
+async fn anthropic_tool_use_wire_helper_serializes_input_json() {
     let callback_task_id = Uuid::from_u128(0xcccccccccccccccccccccccccccccccc);
     let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
     let events = mapper

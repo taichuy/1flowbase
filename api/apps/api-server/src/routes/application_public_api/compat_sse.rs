@@ -9,24 +9,28 @@ use axum::response::{
     sse::{Event, KeepAlive, Sse},
     IntoResponse, Response,
 };
+#[cfg(test)]
+use control_plane::application_public_api::{
+    callback_resume::ResumePublishedCallbackCommand, native::NativeRunStatus,
+};
 use control_plane::{
     application_public_api::{
-        callback_resume::{
-            ApplicationPublishedCallbackResumeService, PublishedCallbackResumeTarget,
-            ResumePublishedCallbackCommand,
-        },
         compat::openai::response_id_from_run_id,
-        native::{NativeRunResult, NativeRunStatus, NativeUsage},
+        native::{NativeRunResult, NativeUsage},
     },
     orchestration_runtime::{
         debug_stream_events, OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
-    ports::{OrchestrationRuntimeRepository, RuntimeEventEnvelope, RuntimeEventPayload},
+    ports::{OrchestrationRuntimeRepository, RuntimeEventEnvelope},
 };
 use serde_json::{json, Value};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
+#[cfg(test)]
+use crate::routes::application_public_api::tool_callback_ids::{
+    encode_anthropic_callback_tool_use_id, encode_openai_callback_tool_call_id,
+};
 use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,
@@ -34,12 +38,9 @@ use crate::{
         native::{service_error, NativeApiError},
         stream_terminal_fallback::{
             enrich_terminal_runtime_event_with_durable_answer,
-            load_latest_native_run_for_terminal_fallback, terminal_answer_deltas_from_payload,
-            terminal_answer_text_from_payload, terminal_runtime_event_from_native_run,
-            TerminalAnswerDelta, TerminalAnswerDeltaKind,
-        },
-        tool_callback_ids::{
-            encode_anthropic_callback_tool_use_id, encode_openai_callback_tool_call_id,
+            load_latest_native_run_for_terminal_fallback, recover_missing_stream_terminal_winner,
+            terminal_answer_deltas_from_payload, terminal_answer_text_from_payload,
+            terminal_runtime_event_from_native_run, TerminalAnswerDelta, TerminalAnswerDeltaKind,
         },
     },
 };
@@ -49,13 +50,12 @@ mod protocol_mappers;
 #[cfg(test)]
 mod tests;
 
-use event_forwarding::{
-    append_compatible_resume_terminal_event, is_answer_presentation_delta,
-    send_compatible_runtime_event_stream,
-};
+use event_forwarding::{is_answer_presentation_delta, send_compatible_runtime_event_stream};
+#[cfg(test)]
+use protocol_mappers::anthropic_completed_run_to_sse;
 use protocol_mappers::{
-    anthropic_completed_run_to_sse, terminal_answer_deltas_from_run_or_payload,
-    AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper,
+    terminal_answer_deltas_from_run_or_payload, AnthropicStreamMapper, OpenAiChatStreamMapper,
+    OpenAiResponseStreamMapper,
 };
 
 type CompatRunSseStream = tokio_stream::wrappers::ReceiverStream<Result<Event, Infallible>>;
@@ -174,7 +174,10 @@ impl CompatibleStreamStats {
             return;
         }
 
-        if !matches!(event.event_type.as_str(), "flow_finished" | "flow_failed") {
+        if !matches!(
+            event.event_type.as_str(),
+            "flow_finished" | "flow_incomplete"
+        ) {
             return;
         }
         for delta in terminal_answer_deltas_from_run_or_payload(run, &event.payload) {
@@ -276,6 +279,7 @@ pub(crate) async fn start_openai_response_stream(
     .await
 }
 
+#[cfg(test)]
 pub(crate) async fn start_openai_chat_resume_stream(
     state: Arc<ApiState>,
     run: NativeRunResult,
@@ -289,24 +293,6 @@ pub(crate) async fn start_openai_chat_resume_stream(
         run,
         command,
         OPENAI_CHAT_SSE_PROJECTION,
-        move |run, envelope| mapper.runtime_event_to_sse(run, envelope),
-    )
-    .await
-}
-
-pub(crate) async fn start_openai_response_resume_stream(
-    state: Arc<ApiState>,
-    run: NativeRunResult,
-    model: String,
-    previous_response_id: Option<String>,
-    command: ResumePublishedCallbackCommand,
-) -> Result<Response, NativeApiError> {
-    let mut mapper = OpenAiResponseStreamMapper::new(model, previous_response_id, true);
-    start_compatible_resume_stream(
-        state,
-        run,
-        command,
-        OPENAI_RESPONSES_SSE_PROJECTION,
         move |run, envelope| mapper.runtime_event_to_sse(run, envelope),
     )
     .await
@@ -327,27 +313,7 @@ pub(crate) async fn start_anthropic_run_stream(
     .await
 }
 
-pub(crate) async fn start_anthropic_resume_stream(
-    state: Arc<ApiState>,
-    run: NativeRunResult,
-    model: String,
-    command: ResumePublishedCallbackCommand,
-) -> Result<Response, NativeApiError> {
-    let mut mapper = AnthropicStreamMapper::new(model);
-    start_compatible_resume_stream(
-        state,
-        run,
-        command,
-        ANTHROPIC_SSE_PROJECTION,
-        move |run, envelope| mapper.runtime_event_to_sse(run, envelope),
-    )
-    .await
-}
-
-pub(crate) fn completed_anthropic_stream(run: NativeRunResult, model: String) -> Response {
-    completed_compatible_stream(anthropic_completed_run_to_sse(&run, &model))
-}
-
+#[cfg(test)]
 fn completed_compatible_stream(events: Vec<Result<Event, Infallible>>) -> Response {
     Sse::new(tokio_stream::iter(events))
         .keep_alive(
@@ -356,6 +322,33 @@ fn completed_compatible_stream(events: Vec<Result<Event, Infallible>>) -> Respon
                 .text("heartbeat"),
         )
         .into_response()
+}
+
+#[cfg(test)]
+fn unsupported_compatible_resume_stream(sse_projection: &str) -> Response {
+    const MESSAGE: &str = "compatible streaming callback resume is not supported";
+    let payload = if sse_projection == ANTHROPIC_SSE_PROJECTION {
+        json!({
+            "type": "error",
+            "error": {
+                "type": "invalid_request_error",
+                "message": MESSAGE,
+            }
+        })
+    } else {
+        json!({
+            "error": {
+                "message": MESSAGE,
+                "type": "invalid_request_error",
+                "code": "unsupported_feature",
+            }
+        })
+    };
+    let event = Event::default()
+        .event("error")
+        .json_data(payload)
+        .expect("compatible unsupported-resume error should serialize");
+    completed_compatible_stream(vec![Ok(event)])
 }
 
 async fn start_compatible_run_stream<F>(
@@ -398,6 +391,7 @@ where
     ));
 
     let background_state = state.clone();
+    let background_run = run.clone();
     tokio::spawn(async move {
         let runtime_service = OrchestrationRuntimeService::new(
             background_state.store.clone(),
@@ -415,34 +409,27 @@ where
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         if let Err(runtime_error) = runtime_service
             .start_published_flow_run(StartPublishedFlowRunCommand {
-                application_id: run.application_id,
-                flow_run_id: run.id,
+                application_id: background_run.application_id,
+                flow_run_id: background_run.id,
             })
             .await
         {
             warn!(
-                flow_run_id = %run.id,
-                application_id = %run.application_id,
+                flow_run_id = %background_run.id,
+                application_id = %background_run.application_id,
                 error = %runtime_error,
                 "compatible public API streamed run failed"
             );
-            let _ = background_state
-                .runtime_event_stream
-                .append(
-                    run.id,
-                    debug_stream_events::flow_failed(
-                        run.id,
-                        json!({ "message": runtime_error.to_string() }),
-                    ),
-                )
-                .await;
-            let _ = background_state
-                .runtime_event_stream
-                .close_run(
-                    run.id,
-                    control_plane::ports::RuntimeEventCloseReason::Failed,
-                )
-                .await;
+            if let Err(recovery_error) =
+                recover_missing_stream_terminal_winner(&background_state, &background_run).await
+            {
+                warn!(
+                    flow_run_id = %background_run.id,
+                    application_id = %background_run.application_id,
+                    error = %recovery_error,
+                    "failed to recover the durable winner after compatible streaming execution ended"
+                );
+            }
         }
     });
 
@@ -464,121 +451,24 @@ where
         .into_response())
 }
 
+#[cfg(test)]
 async fn start_compatible_resume_stream<F>(
-    state: Arc<ApiState>,
-    run: NativeRunResult,
-    command: ResumePublishedCallbackCommand,
+    _state: Arc<ApiState>,
+    _run: NativeRunResult,
+    _command: ResumePublishedCallbackCommand,
     sse_projection: &'static str,
-    mut mapper: F,
-) -> Result<Response, NativeApiError>
-where
-    F: FnMut(&NativeRunResult, RuntimeEventEnvelope) -> Vec<Result<Event, Infallible>>
-        + Send
-        + 'static,
-{
-    state
-        .runtime_event_stream
-        .open_run(
-            run.id,
-            control_plane::ports::RuntimeEventStreamPolicy::debug_default(),
-        )
-        .await
-        .map_err(service_error)?;
-    let resume_started = state
-        .runtime_event_stream
-        .append(run.id, debug_stream_events::flow_started(run.id))
-        .await
-        .map_err(service_error)?;
-
-    let (sender, receiver) = mpsc::channel(32);
-    let (resume_done_sender, resume_done_receiver) = oneshot::channel::<()>();
-    let resume_done_guard_sender = sender.clone();
-    tokio::spawn(async move {
-        let _ = resume_done_receiver.await;
-        drop(resume_done_guard_sender);
-    });
-    tokio::spawn(send_compatible_runtime_event_stream(
-        state.clone(),
-        run.clone(),
-        sse_projection,
-        Some(resume_started.sequence.saturating_sub(1)),
-        Some(callback_task_id_from_resume_command(&command)),
-        sender,
-        move |run, envelope| mapper(run, envelope),
-    ));
-
-    let background_state = state.clone();
-    tokio::spawn(async move {
-        let runtime_service = OrchestrationRuntimeService::new(
-            background_state.store.clone(),
-            ApiProviderRuntime::new(background_state.provider_runtime.clone()),
-            background_state.runtime_engine.clone(),
-            background_state.provider_secret_master_key.clone(),
-        )
-        .with_node_artifact_context(
-            background_state.api_node_id.clone(),
-            background_state.provider_install_root.clone(),
-        )
-        .with_file_storage_registry(background_state.file_storage_registry.clone())
-        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
-        .with_provider_request_log_queue(background_state.infrastructure.task_queue())
-        .with_runtime_event_stream(background_state.runtime_event_stream.clone());
-        match ApplicationPublishedCallbackResumeService::new(
-            background_state.store.clone(),
-            runtime_service,
-        )
-        .with_last_used_cache(background_state.infrastructure.cache_store())
-        .resume_callback(command)
-        .await
-        {
-            Ok(result) => {
-                append_compatible_resume_terminal_event(&background_state, &result.run).await;
-            }
-            Err(error) => {
-                let _ = background_state
-                    .runtime_event_stream
-                    .append(
-                        run.id,
-                        debug_stream_events::flow_failed(
-                            run.id,
-                            json!({ "message": error.to_string() }),
-                        ),
-                    )
-                    .await;
-                let _ = background_state
-                    .runtime_event_stream
-                    .close_run(
-                        run.id,
-                        control_plane::ports::RuntimeEventCloseReason::Failed,
-                    )
-                    .await;
-            }
-        }
-        let _ = resume_done_sender.send(());
-    });
-
-    Ok(Sse::new(CompatRunSseStream::new(receiver))
-        .keep_alive(
-            KeepAlive::new()
-                .interval(Duration::from_secs(10))
-                .text("heartbeat"),
-        )
-        .into_response())
-}
-
-fn callback_task_id_from_resume_command(command: &ResumePublishedCallbackCommand) -> uuid::Uuid {
-    match &command.target {
-        PublishedCallbackResumeTarget::FlowRun {
-            callback_task_id, ..
-        }
-        | PublishedCallbackResumeTarget::CallbackTask { callback_task_id } => *callback_task_id,
-    }
+    _mapper: F,
+) -> Result<Response, NativeApiError> {
+    // Retain the protocol entry point, but callback continuation is explicitly unsupported for
+    // compatible streams. It must not rewrite a durable WaitingCallback winner as failure.
+    Ok(unsupported_compatible_resume_stream(sse_projection))
 }
 
 pub(crate) fn openai_chat_completion_id_from_run_id(run_id: uuid::Uuid) -> String {
     format!("chatcmpl-{run_id}")
 }
 
+#[cfg(test)]
 pub(crate) fn openai_chat_completion_id_from_callback_task(
     run_id: uuid::Uuid,
     callback_task_id: uuid::Uuid,

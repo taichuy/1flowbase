@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn start_anthropic_run_cancels_previous_waiting_callback_in_same_conversation() {
+async fn start_anthropic_run_does_not_dispatch_by_legacy_protocol_mode() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Anthropic Session App");
@@ -45,11 +45,11 @@ async fn start_anthropic_run_cancels_previous_waiting_callback_in_same_conversat
         .await
         .unwrap()
         .expect("callback task should remain durable");
-    assert_eq!(first_run.status, domain::FlowRunStatus::Cancelled);
-    assert_eq!(callback_task.status, domain::CallbackTaskStatus::Cancelled);
+    assert_eq!(first_run.status, domain::FlowRunStatus::WaitingCallback);
+    assert_eq!(callback_task.status, domain::CallbackTaskStatus::Pending);
     let first_run_events = repository.run_event_types(first.id);
-    assert!(first_run_events.contains(&"public_run_cancelled".to_string()));
-    assert!(first_run_events.contains(&"public_run_callback_cancelled".to_string()));
+    assert!(!first_run_events.contains(&"public_run_cancelled".to_string()));
+    assert!(!first_run_events.contains(&"public_run_callback_cancelled".to_string()));
 }
 
 #[tokio::test]
@@ -188,7 +188,7 @@ async fn start_anthropic_tool_result_continuation_keeps_parent_waiting_callback_
     let continuation = service
         .start_native_run(CreateNativeRunCommand {
             bearer_token: token,
-            request: anthropic_tool_result_continuation_request(
+            request: anthropic_request(
                 "-rw-r--r-- 1 Lw 197121 17907 Jun 12 15:25 uploads/test-01.png",
             ),
         })
@@ -374,7 +374,7 @@ async fn start_anthropic_compact_resume_run_keeps_parent_waiting_callback_alive(
 }
 
 #[tokio::test]
-async fn start_anthropic_compact_resume_run_cancels_previous_control_waiting_callback_only() {
+async fn start_anthropic_compact_resume_run_does_not_dispatch_by_prompt_marker() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application =
@@ -439,15 +439,18 @@ async fn start_anthropic_compact_resume_run_cancels_previous_control_waiting_cal
         .await
         .unwrap()
         .expect("old control callback task should remain durable");
-    assert_eq!(old_control_run.status, domain::FlowRunStatus::Cancelled);
+    assert_eq!(
+        old_control_run.status,
+        domain::FlowRunStatus::WaitingCallback
+    );
     assert_eq!(
         old_control_callback.status,
-        domain::CallbackTaskStatus::Cancelled
+        domain::CallbackTaskStatus::Pending
     );
     let parent_run_events = repository.run_event_types(parent.id);
     assert!(!parent_run_events.contains(&"public_run_cancelled".to_string()));
     assert!(!parent_run_events.contains(&"public_run_callback_cancelled".to_string()));
     let old_control_events = repository.run_event_types(old_control.id);
-    assert!(old_control_events.contains(&"public_run_cancelled".to_string()));
-    assert!(old_control_events.contains(&"public_run_callback_cancelled".to_string()));
+    assert!(!old_control_events.contains(&"public_run_cancelled".to_string()));
+    assert!(!old_control_events.contains(&"public_run_callback_cancelled".to_string()));
 }

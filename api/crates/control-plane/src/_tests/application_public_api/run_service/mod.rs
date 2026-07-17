@@ -3,10 +3,7 @@ use control_plane::application_public_api::{
     mapping::{
         ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
     },
-    native::{
-        CreateNativeRunCommand, NativeProtocolRequestKind, NativeRunRequest,
-        NativeRunValidationError,
-    },
+    native::{CreateNativeRunCommand, NativeRunRequest, NativeRunValidationError},
     publications::{ApplicationPublicationService, PublishApplicationCommand},
     run_service::{ApplicationPublishedRunControlRepository, ApplicationPublishedRunService},
     ApplicationPublicApiTestHarness,
@@ -42,26 +39,22 @@ fn native_request(response_mode: &str, idempotency_key: Option<&str>) -> NativeR
         "metadata": {
             "trace_id": "trace-1",
             "request_id": "req-1"
-        },
-        "compatibility_mode": "native-v1"
+        }
     }))
     .unwrap()
 }
 
 fn anthropic_request(query: &str) -> NativeRunRequest {
-    let mut request: NativeRunRequest = serde_json::from_value(json!({
+    serde_json::from_value(json!({
         "query": query,
         "model": "public-model/pass-through",
         "conversation": {
             "id": "3e7058c2-3120-4222-bb14-c99ec85e1c0f",
             "user": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
         },
-        "response_mode": "streaming",
-        "compatibility_mode": "anthropic-messages-v1"
+        "response_mode": "streaming"
     }))
-    .unwrap();
-    request.protocol_compatibility_mode = Some("anthropic-messages-v1".to_string());
-    request
+    .unwrap()
 }
 
 fn anthropic_subagent_request(query: &str) -> NativeRunRequest {
@@ -84,13 +77,6 @@ Notes:\n\
 - Do NOT Write report/summary/findings/analysis .md files. Return findings directly as your final assistant message — the parent agent reads your text output, not files you create."
             .to_string(),
     )];
-    request
-}
-
-fn anthropic_tool_result_continuation_request(query: &str) -> NativeRunRequest {
-    let mut request = anthropic_request(query);
-    request.protocol_request_kind =
-        Some(NativeProtocolRequestKind::AnthropicToolResultContinuation);
     request
 }
 
