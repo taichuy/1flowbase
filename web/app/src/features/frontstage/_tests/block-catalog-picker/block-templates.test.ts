@@ -72,7 +72,7 @@ describe('frontstage block templates', () => {
       'edit-form',
       'search-table'
     ]);
-    expect(nextTemplates[0].title).toBe('Blank JS Block');
+    expect(nextTemplates[0].title).toBe('JSX 示例区块');
   });
 
   test('creates built-in JS block source by stable template id', () => {
@@ -82,8 +82,8 @@ describe('frontstage block templates', () => {
         templateId: template.id
       });
 
-      expect(code).toContain("@1flowbase/block-sdk");
-      expect(code).toContain("@1flowbase/block-renderer/antd-facade");
+      expect(code).toContain('@1flowbase/block-sdk');
+      expect(code).toContain('@1flowbase/block-renderer/antd-facade');
       expect(code).toContain('defineBlock');
       expect(code).toContain(`blockId: '${templateInput.blockId}'`);
       expect(code).toContain(`codeRef: '${templateInput.codeRef}'`);
@@ -102,7 +102,9 @@ describe('frontstage block templates', () => {
         ...templateInput,
         templateId: 'unknown-template' as FrontstageBuiltInJsBlockTemplateId
       })
-    ).toThrow('Unknown FrontStage built-in JS block template: unknown-template');
+    ).toThrow(
+      'Unknown FrontStage built-in JS block template: unknown-template'
+    );
   });
 
   test('keeps the legacy blank generator compatible with the unified generator', () => {
@@ -130,24 +132,11 @@ describe('frontstage block templates', () => {
 
   test('keeps data, state, event, and action examples inside the matching templates', () => {
     const snippetsByTemplateId = {
-      blank: [
-        'ctx.data.query',
-        'ctx.patch',
-        'ctx.events.emit',
-        'ctx.actions.invoke'
-      ],
+      blank: [],
       'data-table': ['ctx.data.query', 'ctx.patch', 'ctx.events.emit'],
       'create-form': ['ctx.actions.invoke', 'ctx.patch', 'ctx.events.emit'],
-      'edit-form': [
-        'ctx.data.query',
-        'ctx.patch',
-        'ctx.actions.invoke'
-      ],
-      'search-table': [
-        'ctx.data.query',
-        'ctx.patch',
-        'ctx.events.emit'
-      ]
+      'edit-form': ['ctx.data.query', 'ctx.patch', 'ctx.actions.invoke'],
+      'search-table': ['ctx.data.query', 'ctx.patch', 'ctx.events.emit']
     } satisfies Record<
       (typeof FRONTSTAGE_BUILT_IN_JS_BLOCK_TEMPLATES)[number]['id'],
       string[]
@@ -165,26 +154,25 @@ describe('frontstage block templates', () => {
     }
   });
 
-  test('creates a complete blank JS block skeleton with the selected block refs', () => {
+  test('creates a minimal JSX example block with the selected block refs', () => {
     const code = createBlankJsBlockTemplateCode({
       blockId: 'frontstage-js-block-1',
       codeRef: 'frontstage-js-block-1-code',
       contributionCode: 'frontstage.js-ui-block'
     });
 
-    expect(code).toContain("@1flowbase/block-sdk");
-    expect(code).toContain("@1flowbase/block-renderer/antd-facade");
+    expect(code).toContain('@1flowbase/block-sdk');
+    expect(code).toContain('@1flowbase/block-renderer/antd-facade');
     expect(code).toContain('defineBlock');
     expect(code).toContain("blockId: 'frontstage-js-block-1'");
     expect(code).toContain("codeRef: 'frontstage-js-block-1-code'");
     expect(code).toContain("contributionCode: 'frontstage.js-ui-block'");
     expect(code).toContain("id: 'frontstage-js-block-1'");
-    expect(code).toContain("title: 'Blank JS Block'");
-    expect(code).toContain('initialState');
-    expect(code).toContain('async render(ctx)');
-    expect(code).toContain('ctx.data.query');
-    expect(code).toContain("ctx.data.query('frontstage.data_model.record.list'");
-    expect(code).toContain("ctx.actions.invoke('frontstage.data_model.record.create'");
+    expect(code).toContain("title: 'JSX 示例区块'");
+    expect(code).toContain('render()');
+    expect(code).toContain('<Title>JSX 示例区块</Title>');
+    expect(code).not.toContain('ctx.data.query');
+    expect(code).not.toContain('ctx.actions.invoke');
   });
 
   test('runs the generated blank JS block through the default worker executor', async () => {
@@ -204,7 +192,7 @@ describe('frontstage block templates', () => {
         blockId: 'frontstage-js-block-1',
         source,
         props: {},
-        state: { error: 'Template error' },
+        state: {},
         contextSnapshot: {
           workspace: { id: 'workspace-1' },
           application: { id: 'application-1' },
@@ -228,17 +216,13 @@ describe('frontstage block templates', () => {
           children: [
             {
               primitive: 'Title',
-              props: { children: 'Blank JS Block' }
+              props: { children: 'JSX 示例区块' }
             },
             {
               primitive: 'Text',
               props: {
-                children: 'Start from this built-in blank JS Block skeleton.'
+                children: '点击区块右上角的编辑图标修改这段 JSX。'
               }
-            },
-            {
-              primitive: 'Alert',
-              props: { type: 'error', message: 'Template error' }
             }
           ]
         }

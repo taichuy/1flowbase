@@ -15,8 +15,8 @@ match_when:
   - 引入 JSX 编译或修改 js-block-source-transform
   - 改造 Tab/页面/区块设计态交互
 created_at: 2026-07-16 00
-updated_at: 2026-07-16 00
-last_verified_at: 2026-07-16 00
+updated_at: 2026-07-17 18
+last_verified_at: 2026-07-17 18
 decision_policy: verify_before_decision
 source_issue: "#1297"
 scope:
@@ -40,6 +40,8 @@ scope:
 3. 每次 dispatch 在后端重查 tab 可见性（get_page_detail）+ runtime scope grant，写操作复用 runtime_engine ACL；沙箱边界不变。
 4. JSX 编译选 sucrase（纯文本转换，Worker 内可跑），jsx pragma 指向 antd-facade 新增 h() 工厂，产出现有 UI Schema，插在 import 白名单 transform 之前。
 
-## 进度（2026-07-16）
+## 进度（2026-07-17）
 - #1298 后端已实现并通过 5 个新集成测试（frontstage_data_capability_routes.rs）；api-client 已加 listFrontstageDataCapabilities。
-- #1299/#1300/#1301 未开始。
+- #1299 已接入 sucrase + facade `h()` 真 JSX 管线，并将内置模板转为 JSX；当前默认模板进一步收敛为无数据调用、无副作用的最小示例。
+- #1300 三级选择边界与晶莹蓝基线已实现。用户于 2026-07-17 18 进一步确认紧凑修正：页面标题单行约 44px，移除伪区块空画布和常驻同步状态，“创建区块”直接生成官方默认 JSX 区块，成功后选中但不自动打开编辑器，区块工具条直接显示配置与 JSX 编辑图标。该修正已在当前工作树实现，待用户视觉验收，尚未提交 / push。
+- #1301 尚未实现，继续作为 Monaco 前言与类型注入的独立任务。

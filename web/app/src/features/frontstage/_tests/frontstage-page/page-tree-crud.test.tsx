@@ -573,7 +573,7 @@ describe('FrontStagePage - page tree CRUD', () => {
       await createPagePromise;
     });
 
-    expect(screen.getByText('页面树已同步')).toBeInTheDocument();
+    expect(screen.queryByText('保存中')).not.toBeInTheDocument();
     expect(screen.queryByText('页面 新建 1')).not.toBeInTheDocument();
   });
 
@@ -613,7 +613,7 @@ describe('FrontStagePage - page tree CRUD', () => {
         });
       });
       await waitFor(() => {
-        expect(screen.getByText('页面树已同步')).toBeInTheDocument();
+        expect(screen.queryByText('保存中')).not.toBeInTheDocument();
       });
       expect(screen.getAllByText('页面-已重命名').length).toBeGreaterThan(0);
 

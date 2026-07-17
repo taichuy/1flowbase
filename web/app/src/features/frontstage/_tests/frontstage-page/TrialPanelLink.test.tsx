@@ -79,7 +79,7 @@ function createPageContent(blocks?: Array<Record<string, unknown>>) {
       title: 'Landing',
       kind: 'page' as const,
       parentId: null,
-      rank: '001000',
+      rank: '001000'
     },
     schema: { rootUid: 'root-1', payload: { blocks: payload } },
     root: { uid: 'root-1', payload: { blocks: payload } }
@@ -92,9 +92,7 @@ function renderFrontStagePage() {
       <FrontStagePage
         workspaceId="workspace-1"
         pageId="page-1"
-        initialPageTree={[
-          { id: 'page-1', title: '页面 page-1', kind: 'page' }
-        ]}
+        initialPageTree={[{ id: 'page-1', title: '页面 page-1', kind: 'page' }]}
         pageContent={createPageContent()}
       />
     </AppProviders>
@@ -151,20 +149,16 @@ describe('FrontStagePage trial panel link', () => {
     });
   });
 
-  test('opens JS Block Trial panel from the Write JavaScript drawer', async () => {
+  test('opens JS Block Trial panel from the JSX code drawer', async () => {
     authenticate();
     renderFrontStagePage();
 
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
-    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'JS Block 试运行' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '区块代码' }));
+    fireEvent.click(screen.getByRole('button', { name: 'JS Block 试运行' }));
 
-    expect(
-      await screen.findByText('JS 区块试运行')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('JS 区块试运行')).toBeInTheDocument();
   }, 10000);
 
   test('closes JS Block Trial panel when exiting design mode', async () => {
@@ -173,22 +167,16 @@ describe('FrontStagePage trial panel link', () => {
 
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
-    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'JS Block 试运行' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '区块代码' }));
+    fireEvent.click(screen.getByRole('button', { name: 'JS Block 试运行' }));
 
-    expect(
-      await screen.findByText('JS 区块试运行')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('JS 区块试运行')).toBeInTheDocument();
 
     // Exit design mode — Drawer should close
     exitDesignMode();
 
     await waitFor(() => {
-      expect(
-        screen.queryByText('JS 区块试运行')
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText('JS 区块试运行')).not.toBeInTheDocument();
     });
   }, 20_000);
 });

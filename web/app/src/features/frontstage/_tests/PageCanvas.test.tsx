@@ -13,7 +13,7 @@ function createPageContent(
       title: 'Landing',
       kind: 'page',
       parentId: null,
-      rank: '001000',
+      rank: '001000'
     },
     schema: {
       rootUid: 'root-1',
@@ -52,9 +52,7 @@ describe('PageCanvas', () => {
     render(<PageCanvas content={undefined} />);
 
     expect(screen.getByText('未选择页面内容')).toBeInTheDocument();
-    expect(
-      screen.getByText('选择页面后将显示页面预览。')
-    ).toBeInTheDocument();
+    expect(screen.getByText('选择页面后将显示页面预览。')).toBeInTheDocument();
   });
 
   test('renders page title and empty content placeholder', () => {
@@ -62,6 +60,18 @@ describe('PageCanvas', () => {
 
     expect(screen.getByText('Landing')).toBeInTheDocument();
     expect(screen.getByText('页面内容为空')).toBeInTheDocument();
+  });
+
+  test('#1300 renders a compact design empty state instead of a block-like Ant Empty surface', () => {
+    const { container } = render(
+      <PageCanvas content={createPageContent()} isDesignMode />
+    );
+
+    expect(screen.getByText('页面内容为空')).toBeInTheDocument();
+    expect(container.querySelector('.ant-empty')).not.toBeInTheDocument();
+    expect(
+      container.querySelector('[style*="dashed"]')
+    ).not.toBeInTheDocument();
   });
 
   test('renders blocks sorted by order — each block shows loading placeholder', () => {
@@ -95,8 +105,9 @@ describe('PageCanvas', () => {
 
     // All blocks show "区块加载中..." when no runtime session available
     expect(
-      within(screen.getByTestId('page-canvas-render-slots'))
-        .getAllByText('区块加载中...')
+      within(screen.getByTestId('page-canvas-render-slots')).getAllByText(
+        '区块加载中...'
+      )
     ).toHaveLength(2);
   });
 
@@ -122,9 +133,7 @@ describe('PageCanvas', () => {
       />
     );
 
-    const slots = within(
-      screen.getByTestId('page-canvas-render-slots')
-    );
+    const slots = within(screen.getByTestId('page-canvas-render-slots'));
     expect(slots.getByText('区块加载中...')).toBeInTheDocument();
   });
 
@@ -154,9 +163,7 @@ describe('PageCanvas', () => {
     );
 
     // In design mode, block containers have role="button"
-    const slots = within(
-      screen.getByTestId('page-canvas-render-slots')
-    );
+    const slots = within(screen.getByTestId('page-canvas-render-slots'));
 
     fireEvent.click(slots.getByRole('button', { name: '区块 hero' }));
 

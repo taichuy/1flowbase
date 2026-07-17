@@ -11,8 +11,7 @@ function createCatalogBlockInput(
     throw new Error('Catalog entry is missing a code template.');
   }
 
-  const blockNumber = blockIndex + 1;
-  const blockId = `frontstage-js-block-${blockNumber}`;
+  const blockId = `frontstage-js-block-${crypto.randomUUID()}`;
 
   return {
     id: blockId,

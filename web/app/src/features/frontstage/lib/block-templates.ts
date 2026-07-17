@@ -29,8 +29,8 @@ export type CreateBlankJsBlockTemplateCodeInput = Omit<
 export const FRONTSTAGE_BUILT_IN_JS_BLOCK_TEMPLATES = [
   {
     id: 'blank',
-    title: 'Blank JS Block',
-    description: 'Start from a minimal JS Block skeleton.'
+    title: 'JSX 示例区块',
+    description: '从最小、可运行的 JSX 示例开始。'
   },
   {
     id: 'data-table',
@@ -105,39 +105,17 @@ function createBlankTemplateCode(
   input: CreateFrontstageBuiltInJsBlockTemplateCodeInput
 ): string {
   return `${createTemplateHeader(input)}
-import { Alert, Stack, Text, Title } from '@1flowbase/block-renderer/antd-facade';
+import { Stack, Text, Title } from '@1flowbase/block-renderer/antd-facade';
 
 export default defineBlock({
   id: ${quoteJsString(input.blockId)},
-  title: 'Blank JS Block',
-  initialState: {
-    error: null
-  },
+  title: 'JSX 示例区块',
 
-  async render(ctx) {
-    const error = typeof ctx.state.error === 'string' ? ctx.state.error : null;
-
-    if (ctx.props.__example === true) {
-      // Reads go through ctx.data.query, writes through ctx.actions.invoke.
-      // Pass the data model code via params.model.
-      const result = await ctx.data.query('frontstage.data_model.record.list', {
-        model: 'orders',
-        page: 1,
-        page_size: 20
-      });
-      ctx.patch({ records: result.items });
-      ctx.events.emit('blank.loaded', { count: result.items.length });
-      await ctx.actions.invoke('frontstage.data_model.record.create', {
-        model: 'orders',
-        values: { title: 'created-from-blank' }
-      });
-    }
-
+  render() {
     return (
       <Stack>
-        <Title>Blank JS Block</Title>
-        <Text>Start from this built-in blank JS Block skeleton.</Text>
-        {error ? <Alert type="error" message={error} /> : null}
+        <Title>JSX 示例区块</Title>
+        <Text>点击区块右上角的编辑图标修改这段 JSX。</Text>
       </Stack>
     );
   }
