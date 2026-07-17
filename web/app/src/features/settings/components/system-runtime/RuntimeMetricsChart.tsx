@@ -40,6 +40,10 @@ function timeLabel(timestamp: number) {
   });
 }
 
+function kilobytesPerSecond(value: number | null) {
+  return value === null ? null : Number((value / 1024).toFixed(2));
+}
+
 function seriesFor(kind: RuntimeMetricKind, points: RuntimeMetricPoint[]) {
   if (kind === 'cpu') {
     return [
@@ -73,7 +77,9 @@ function seriesFor(kind: RuntimeMetricKind, points: RuntimeMetricPoint[]) {
         smooth: true,
         showSymbol: false,
         connectNulls: false,
-        data: points.map((point) => point.diskReadBytesPerSecond)
+        data: points.map((point) =>
+          kilobytesPerSecond(point.diskReadBytesPerSecond)
+        )
       },
       {
         name: i18nText('settings', 'auto.written_rate'),
@@ -82,7 +88,9 @@ function seriesFor(kind: RuntimeMetricKind, points: RuntimeMetricPoint[]) {
         showSymbol: false,
         connectNulls: false,
         lineStyle: { type: 'dashed' as const },
-        data: points.map((point) => point.diskWrittenBytesPerSecond)
+        data: points.map((point) =>
+          kilobytesPerSecond(point.diskWrittenBytesPerSecond)
+        )
       }
     ];
   }
@@ -93,7 +101,9 @@ function seriesFor(kind: RuntimeMetricKind, points: RuntimeMetricPoint[]) {
       smooth: true,
       showSymbol: false,
       connectNulls: false,
-      data: points.map((point) => point.networkReceivedBytesPerSecond)
+      data: points.map((point) =>
+        kilobytesPerSecond(point.networkReceivedBytesPerSecond)
+      )
     },
     {
       name: i18nText('settings', 'auto.transmitted_rate'),
@@ -102,7 +112,9 @@ function seriesFor(kind: RuntimeMetricKind, points: RuntimeMetricPoint[]) {
       showSymbol: false,
       connectNulls: false,
       lineStyle: { type: 'dashed' as const },
-      data: points.map((point) => point.networkTransmittedBytesPerSecond)
+      data: points.map((point) =>
+        kilobytesPerSecond(point.networkTransmittedBytesPerSecond)
+      )
     }
   ];
 }
@@ -140,7 +152,7 @@ export function RuntimeMetricsChart({
       },
       yAxis: {
         type: 'value',
-        name: percentage ? '%' : 'B/s',
+        name: percentage ? '%' : 'KB/s',
         min: 0,
         max: percentage ? 100 : undefined,
         nameTextStyle: { color: '#7b8982', fontSize: 11 },

@@ -1,5 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const echartsMock = vi.hoisted(() => ({
@@ -313,5 +320,30 @@ describe('SystemRuntimePanel', () => {
 
     expect(echartsMock.init).toHaveBeenCalledTimes(1);
     expect(echartsMock.chart.setOption.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  test('ac_005 plots throughput charts in KB/s', async () => {
+    renderPanel();
+
+    await screen.findByText('资源监控');
+    await waitFor(() => {
+      const option = echartsMock.chart.setOption.mock.calls
+        .map((call) => call[0])
+        .reverse()
+        .find(
+          (candidate) =>
+            Array.isArray(candidate?.series) &&
+            candidate.series[0]?.data?.length === 1
+        ) as
+        | {
+            yAxis?: { name?: string };
+            series?: Array<{ data?: unknown[] }>;
+          }
+        | undefined;
+
+      expect(option?.yAxis?.name).toBe('KB/s');
+      expect(option?.series?.[0]?.data).toEqual([2]);
+      expect(option?.series?.[1]?.data).toEqual([1]);
+    });
   });
 });
