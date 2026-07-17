@@ -714,7 +714,15 @@ function createStyleBoundaryRuntimeMetrics(
       total_bytes: 4_294_967_296,
       available_bytes: 3_221_225_472,
       used_bytes: 1_073_741_824,
-      process_bytes: processBytes
+      process_bytes: processBytes,
+      related_process_bytes: processBytes,
+      related_process_count: 1,
+      cgroup_composition: {
+        anonymous_bytes: 536_870_912,
+        file_bytes: 268_435_456,
+        kernel_bytes: 67_108_864,
+        shared_memory_bytes: 16_777_216
+      }
     },
     storage: {
       availability: 'available',
@@ -775,6 +783,7 @@ export function seedStyleBoundarySettingsFetch() {
             supported_locales: ['zh_Hans', 'en_US']
           },
           topology: { relationship: 'same_host' },
+          related_process_memory_complete: true,
           services: {
             api_server: {
               reachable: true,
@@ -801,6 +810,8 @@ export function seedStyleBoundarySettingsFetch() {
                 rust_target_triple: 'x86_64-unknown-linux-musl'
               },
               cpu: { logical_count: 8 },
+              related_process_bytes: 402_653_184,
+              related_process_count: 2,
               memory: {
                 total_bytes: 4_294_967_296,
                 total_gb: 4,

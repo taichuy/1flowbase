@@ -153,6 +153,17 @@ pub struct SystemRuntimeMemoryMetricsResponse {
     pub available_bytes: u64,
     pub used_bytes: u64,
     pub process_bytes: u64,
+    pub related_process_bytes: u64,
+    pub related_process_count: u64,
+    pub cgroup_composition: Option<SystemRuntimeCgroupMemoryCompositionResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SystemRuntimeCgroupMemoryCompositionResponse {
+    pub anonymous_bytes: Option<u64>,
+    pub file_bytes: Option<u64>,
+    pub kernel_bytes: Option<u64>,
+    pub shared_memory_bytes: Option<u64>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -216,6 +227,16 @@ impl From<&runtime_profile::RuntimeMetricsSnapshot> for SystemRuntimeMetricsResp
                 available_bytes: value.memory.available_bytes,
                 used_bytes: value.memory.used_bytes,
                 process_bytes: value.memory.process_bytes,
+                related_process_bytes: value.memory.related_process_bytes,
+                related_process_count: value.memory.related_process_count,
+                cgroup_composition: value.memory.cgroup_composition.as_ref().map(|composition| {
+                    SystemRuntimeCgroupMemoryCompositionResponse {
+                        anonymous_bytes: composition.anonymous_bytes,
+                        file_bytes: composition.file_bytes,
+                        kernel_bytes: composition.kernel_bytes,
+                        shared_memory_bytes: composition.shared_memory_bytes,
+                    }
+                }),
             },
             storage: SystemRuntimeStorageMetricsResponse {
                 availability: value.storage.availability.into(),
@@ -256,6 +277,8 @@ pub struct SystemRuntimeHostResponse {
     pub platform: SystemRuntimePlatformResponse,
     pub cpu: SystemRuntimeCpuResponse,
     pub memory: SystemRuntimeMemoryResponse,
+    pub related_process_bytes: u64,
+    pub related_process_count: u64,
     pub services: Vec<String>,
 }
 
@@ -264,6 +287,7 @@ pub struct SystemRuntimeProfileResponse {
     pub api_node_id: String,
     pub provider_install_root: String,
     pub host_extension_dropin_root: String,
+    pub related_process_memory_complete: bool,
     pub locale_meta: LocaleMetaResponse,
     pub topology: SystemRuntimeTopologyResponse,
     pub services: SystemRuntimeServicesResponse,
@@ -398,16 +422,21 @@ fn merge_runtime_profiles(
 
     let hosts = match runner_profile.as_ref() {
         Some(profile) if profile.host_fingerprint == api_profile.host_fingerprint => {
-            vec![host_from_profile(
+            vec![host_from_profiles(
                 &api_profile,
+                &[&api_profile, profile],
                 vec!["api-server", "plugin-runner"],
             )]
         }
         Some(profile) => vec![
-            host_from_profile(&api_profile, vec!["api-server"]),
-            host_from_profile(profile, vec!["plugin-runner"]),
+            host_from_profiles(&api_profile, &[&api_profile], vec!["api-server"]),
+            host_from_profiles(profile, &[profile], vec!["plugin-runner"]),
         ],
-        None => vec![host_from_profile(&api_profile, vec!["api-server"])],
+        None => vec![host_from_profiles(
+            &api_profile,
+            &[&api_profile],
+            vec!["api-server"],
+        )],
     };
     let runtime_targets = vec![
         runtime_target_from_profile(&api_profile),
@@ -421,6 +450,7 @@ fn merge_runtime_profiles(
         api_node_id,
         provider_install_root,
         host_extension_dropin_root,
+        related_process_memory_complete: runner_profile.is_some(),
         locale_meta: locale_meta.into(),
         topology: SystemRuntimeTopologyResponse { relationship },
         services: SystemRuntimeServicesResponse {
@@ -453,7 +483,20 @@ fn unreachable_runner_target() -> SystemRuntimeTargetResponse {
     }
 }
 
-fn host_from_profile(profile: &RuntimeProfile, services: Vec<&str>) -> SystemRuntimeHostResponse {
+fn host_from_profiles(
+    profile: &RuntimeProfile,
+    related_profiles: &[&RuntimeProfile],
+    services: Vec<&str>,
+) -> SystemRuntimeHostResponse {
+    let (related_process_bytes, related_process_count) =
+        related_profiles
+            .iter()
+            .fold((0_u64, 0_u64), |(bytes, count), related_profile| {
+                (
+                    bytes.saturating_add(related_profile.metrics.memory.related_process_bytes),
+                    count.saturating_add(related_profile.metrics.memory.related_process_count),
+                )
+            });
     SystemRuntimeHostResponse {
         host_fingerprint: profile.host_fingerprint.clone(),
         platform: SystemRuntimePlatformResponse {
@@ -473,6 +516,8 @@ fn host_from_profile(profile: &RuntimeProfile, services: Vec<&str>) -> SystemRun
             process_bytes: profile.memory.process_bytes,
             process_gb: profile.memory.process_gb,
         },
+        related_process_bytes,
+        related_process_count,
         services: services.into_iter().map(str::to_string).collect(),
     }
 }

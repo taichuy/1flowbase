@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import {
   CloudServerOutlined,
@@ -165,7 +165,7 @@ function MetricGauge({
   label: string;
   percent: number | null;
   availability: RuntimeMetrics['cpu']['availability'];
-  detail: string;
+  detail: ReactNode;
 }) {
   const display =
     percent === null
@@ -312,6 +312,9 @@ export function SystemRuntimePanel() {
   const selectedTarget = profile.runtime_targets.find(
     (target) => target.target_id === selectedTargetId
   );
+  const selectedHost = profile.hosts.find(
+    (host) => host.host_fingerprint === selectedTarget?.host_fingerprint
+  );
   const metrics = selectedTarget?.metrics ?? null;
   const points = histories[selectedTargetId] ?? [];
   const memoryPercent = metrics
@@ -441,11 +444,44 @@ export function SystemRuntimePanel() {
             column={{ xs: 1, sm: 1, lg: 3 }}
             items={[
               {
-                key: 'process-memory',
-                label: i18nText('settings', 'auto.process_memory'),
-                children: metrics
-                  ? formatBytes(metrics.memory.process_bytes)
-                  : '—'
+                key: 'related-process-memory',
+                label: i18nText('settings', 'auto.related_process_memory'),
+                children:
+                  metrics && selectedHost ? (
+                    <div className="system-runtime-panel__process-memory">
+                      <span className="system-runtime-panel__process-memory-summary">
+                        <Typography.Text strong>
+                          {formatBytes(selectedHost.related_process_bytes)}
+                        </Typography.Text>
+                        <Typography.Text type="secondary">
+                          {i18nText('settings', 'auto.process_count', {
+                            value1: selectedHost.related_process_count
+                          })}
+                        </Typography.Text>
+                      </span>
+                      <Typography.Text type="secondary">
+                        {i18nText('settings', 'auto.current_target_memory')}{' '}
+                        {formatBytes(metrics.memory.related_process_bytes)} ·{' '}
+                        {i18nText('settings', 'auto.process_count', {
+                          value1: metrics.memory.related_process_count
+                        })}
+                      </Typography.Text>
+                      <Typography.Text type="secondary">
+                        {i18nText('settings', 'auto.root_process_rss')}{' '}
+                        {formatBytes(metrics.memory.process_bytes)}
+                      </Typography.Text>
+                      {!profile.related_process_memory_complete ? (
+                        <Typography.Text type="warning">
+                          {i18nText(
+                            'settings',
+                            'auto.related_process_memory_partial'
+                          )}
+                        </Typography.Text>
+                      ) : null}
+                    </div>
+                  ) : (
+                    '—'
+                  )
               },
               {
                 key: 'plugin-root',
@@ -513,7 +549,60 @@ export function SystemRuntimePanel() {
                   label={i18nText('settings', 'auto.memory_usage')}
                   percent={memoryPercent}
                   availability={metrics.memory.availability}
-                  detail={`${formatBytes(metrics.memory.used_bytes)} / ${formatBytes(metrics.memory.total_bytes)}`}
+                  detail={
+                    <>
+                      <span>
+                        {formatBytes(metrics.memory.used_bytes)} /{' '}
+                        {formatBytes(metrics.memory.total_bytes)}
+                      </span>
+                      {metrics.memory.scope_kind === 'cgroup' &&
+                      metrics.memory.cgroup_composition ? (
+                        <span className="system-runtime-panel__memory-composition">
+                          <span className="system-runtime-panel__memory-composition-label">
+                            {i18nText('settings', 'auto.memory_composition')}
+                          </span>
+                          {metrics.memory.cgroup_composition.anonymous_bytes !==
+                          null ? (
+                            <span>
+                              {i18nText('settings', 'auto.anonymous_memory')}{' '}
+                              {formatBytes(
+                                metrics.memory.cgroup_composition
+                                  .anonymous_bytes
+                              )}
+                            </span>
+                          ) : null}
+                          {metrics.memory.cgroup_composition.file_bytes !==
+                          null ? (
+                            <span>
+                              {i18nText('settings', 'auto.file_memory')}{' '}
+                              {formatBytes(
+                                metrics.memory.cgroup_composition.file_bytes
+                              )}
+                            </span>
+                          ) : null}
+                          {metrics.memory.cgroup_composition.kernel_bytes !==
+                          null ? (
+                            <span>
+                              {i18nText('settings', 'auto.kernel_memory')}{' '}
+                              {formatBytes(
+                                metrics.memory.cgroup_composition.kernel_bytes
+                              )}
+                            </span>
+                          ) : null}
+                          {metrics.memory.cgroup_composition
+                            .shared_memory_bytes !== null ? (
+                            <span>
+                              {i18nText('settings', 'auto.shared_memory')}{' '}
+                              {formatBytes(
+                                metrics.memory.cgroup_composition
+                                  .shared_memory_bytes
+                              )}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : null}
+                    </>
+                  }
                 />
                 <MetricGauge
                   label={i18nText('settings', 'auto.storage_usage')}

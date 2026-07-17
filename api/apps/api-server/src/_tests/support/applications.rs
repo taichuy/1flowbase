@@ -31,6 +31,11 @@ pub async fn seed_workspace(database_url: &str, workspace_name: &str) -> Uuid {
 
 pub(super) fn sample_runtime_profile(service: &str, host_fingerprint: &str) -> RuntimeProfile {
     let captured_at = OffsetDateTime::from_unix_timestamp(1_700_000_120).unwrap();
+    let (related_process_bytes, related_process_count) = match service {
+        "api-server" => (320 * 1024 * 1024, 2),
+        "plugin-runner" => (448 * 1024 * 1024, 3),
+        _ => (256 * 1024 * 1024, 1),
+    };
     RuntimeProfile {
         host_fingerprint: host_fingerprint.to_string(),
         platform: RuntimePlatform {
@@ -68,6 +73,9 @@ pub(super) fn sample_runtime_profile(service: &str, host_fingerprint: &str) -> R
                 available_bytes: 8 * 1024 * 1024 * 1024,
                 used_bytes: 8 * 1024 * 1024 * 1024,
                 process_bytes: 256 * 1024 * 1024,
+                related_process_bytes,
+                related_process_count,
+                cgroup_composition: None,
             },
             storage: RuntimeStorageMetrics {
                 availability: RuntimeMetricAvailability::Available,

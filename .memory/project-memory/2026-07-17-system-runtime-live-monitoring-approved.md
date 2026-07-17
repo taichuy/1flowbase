@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: system-runtime-live-monitoring-approved
-summary: 用户确认并已实现 system runtime 平衡方案：2 秒 HTTP polling、前端 120 秒易失窗口、API Server / Plugin Runner 独立采集；target snapshot 使用 HostInfrastructure CacheStore 做 1 秒新鲜度、10 秒保留，并通过 DistributedLock 合并并发刷新及接入内存观察。
+summary: 用户确认并已实现 system runtime 平衡方案：2 秒 HTTP polling、前端 120 秒易失窗口、API Server / Plugin Runner 独立采集；target snapshot 使用 HostInfrastructure CacheStore 做 1 秒新鲜度、10 秒保留；内存主指标扩展为同宿主相关运行目标及后代进程 RSS 合计，并保留根进程 RSS 与 cgroup 内存构成。
 keywords:
   - system-runtime
   - runtime-profile
@@ -17,8 +17,8 @@ match_when:
   - 讨论宿主或容器资源实时采集、持久化边界或外部监控依赖
   - 修改 runtime-profile 的 runtime_targets 或资源指标合同
 created_at: 2026-07-17 13
-updated_at: 2026-07-17 15
-last_verified_at: 2026-07-17 15
+updated_at: 2026-07-17 18
+last_verified_at: 2026-07-17 18
 decision_policy: verify_before_decision
 scope:
   - api/crates/runtime-profile
@@ -32,7 +32,7 @@ scope:
 
 ## 谁在做什么
 
-用户已确认平衡方案并授权直接实现；AI 已完成 `/settings/system-runtime` 紧凑重构、API Server / Plugin Runner 独立运行目标、前端实时曲线，以及基于 HostInfrastructure ephemeral contract 的可观察 target snapshot 缓存。定向自动化与浏览器视口验证已完成，当前尚未提交或 push。
+用户已确认平衡方案并授权直接实现；AI 已完成 `/settings/system-runtime` 紧凑重构、API Server / Plugin Runner 独立运行目标、前端实时曲线、基于 HostInfrastructure ephemeral contract 的可观察 target snapshot 缓存，以及相关进程内存聚合。定向自动化与真实 API 取证已完成，当前视觉确认、提交和 push 仍待用户完成。
 
 ## 为什么这样做
 
@@ -59,6 +59,11 @@ scope:
 - ECharts 宿主显式保持可收缩；从 2048px 缩到 1400px / 1200px 时，chart、canvas 和滚动 body 同步收窄，不产生横向衍生。
 - 页面信息顺序固定为“运行概览 → 运行环境 → 资源监控”；运行目标下拉归属运行环境，监控标题只显示采集状态和最近 2 分钟窗口。
 - 运行环境移除当前语言、回退语言、支持语言，仅保留进程内存、插件安装路径与宿主扩展路径；使用 Ant Design Descriptions 纵向标签布局，桌面三列、窄屏单列，长路径在容器内换行。
+- 每个运行目标刷新可见进程表，排除线程后递归统计根进程及后代进程 RSS；返回根进程 RSS、目标相关进程 RSS 和进程数量。
+- 同一 `host_fingerprint` 的 API Server / Plugin Runner 相关进程值只在后端合计；不同宿主不求和，Runner 不可达时通过 `related_process_memory_complete=false` 明确标记部分数据。
+- 页面内存主值按“同宿主相关进程合计 → 当前目标进程树 → 根进程 RSS”分层展示，避免把单 PID RSS 误解为服务总占用。
+- Linux cgroup 范围额外返回 `anon / file / kernel / shmem` 构成；宿主范围不伪造 cgroup 构成。
+- PSS 和亚秒级插件峰值不进入当前 2 秒主曲线；需要公平共享页计量或 OOM 峰值归因时，再进入低频 PSS 或专用 cgroup 方案。
 
 ## 截止日期
 

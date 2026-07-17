@@ -797,7 +797,16 @@
     "read_rate": "读取速率",
     "written_rate": "写入速率",
     "runtime_environment": "运行环境",
-    "process_memory": "进程内存",
+    "related_process_memory": "相关进程内存",
+    "related_process_memory_partial": "部分运行目标不可用",
+    "current_target_memory": "当前目标",
+    "root_process_rss": "根进程 RSS",
+    "process_count": "{{value1}} 个进程",
+    "memory_composition": "内存构成",
+    "anonymous_memory": "匿名",
+    "file_memory": "文件",
+    "kernel_memory": "内核",
+    "shared_memory": "共享",
     "plugin_install_path": "插件安装路径",
     "host_extension_path": "宿主扩展路径"
   }

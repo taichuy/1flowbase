@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -44,6 +45,17 @@ pub struct RuntimeMemoryMetrics {
     pub available_bytes: u64,
     pub used_bytes: u64,
     pub process_bytes: u64,
+    pub related_process_bytes: u64,
+    pub related_process_count: u64,
+    pub cgroup_composition: Option<RuntimeCgroupMemoryComposition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeCgroupMemoryComposition {
+    pub anonymous_bytes: Option<u64>,
+    pub file_bytes: Option<u64>,
+    pub kernel_bytes: Option<u64>,
+    pub shared_memory_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -96,6 +108,65 @@ pub(crate) struct RuntimeMetricSampler {
     last_snapshot: Option<RuntimeMetricsSnapshot>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RuntimeProcessMemorySample {
+    pub(crate) pid: sysinfo::Pid,
+    pub(crate) parent_pid: Option<sysinfo::Pid>,
+    pub(crate) resident_bytes: u64,
+    pub(crate) is_thread: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct RuntimeRelatedProcessMemorySummary {
+    pub(crate) root_process_bytes: u64,
+    pub(crate) related_process_bytes: u64,
+    pub(crate) related_process_count: u64,
+}
+
+pub(crate) fn summarize_related_process_memory(
+    root_pid: sysinfo::Pid,
+    samples: &[RuntimeProcessMemorySample],
+) -> RuntimeRelatedProcessMemorySummary {
+    let root_process_bytes = samples
+        .iter()
+        .find(|sample| sample.pid == root_pid && !sample.is_thread)
+        .map(|sample| sample.resident_bytes)
+        .unwrap_or_default();
+    let mut related_pids = HashSet::from([root_pid]);
+
+    loop {
+        let previous_count = related_pids.len();
+        for sample in samples.iter().filter(|sample| !sample.is_thread) {
+            if sample
+                .parent_pid
+                .is_some_and(|parent_pid| related_pids.contains(&parent_pid))
+            {
+                related_pids.insert(sample.pid);
+            }
+        }
+        if related_pids.len() == previous_count {
+            break;
+        }
+    }
+
+    let related_process_bytes = samples
+        .iter()
+        .filter(|sample| !sample.is_thread && related_pids.contains(&sample.pid))
+        .fold(0_u64, |total, sample| {
+            total.saturating_add(sample.resident_bytes)
+        });
+    let related_process_count = samples
+        .iter()
+        .filter(|sample| !sample.is_thread && related_pids.contains(&sample.pid))
+        .count() as u64;
+
+    RuntimeRelatedProcessMemorySummary {
+        root_process_bytes,
+        related_process_bytes,
+        related_process_count,
+    }
+}
+
 impl RuntimeMetricSampler {
     pub(crate) fn new() -> Self {
         Self {
@@ -124,28 +195,32 @@ impl RuntimeMetricSampler {
 
         self.system.refresh_cpu_usage();
         self.system.refresh_memory();
-        if let Some(pid) = self.current_pid {
-            let pids = [pid];
-            self.system.refresh_processes_specifics(
-                ProcessesToUpdate::Some(&pids),
-                false,
-                ProcessRefreshKind::nothing()
-                    .with_memory()
-                    .with_cpu()
-                    .with_disk_usage(),
-            );
-        }
+        self.system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing().with_memory(),
+        );
         self.networks.refresh(true);
         self.disks.refresh(true);
 
         let logical_count = self.system.cpus().len() as u64;
-        let process_bytes = self
+        let process_samples = self
+            .system
+            .processes()
+            .values()
+            .map(|process| RuntimeProcessMemorySample {
+                pid: process.pid(),
+                parent_pid: process.parent(),
+                resident_bytes: process.memory(),
+                is_thread: process.thread_kind().is_some(),
+            })
+            .collect::<Vec<_>>();
+        let process_memory = self
             .current_pid
-            .and_then(|pid| self.system.process(pid))
-            .map(|process| process.memory())
+            .map(|pid| summarize_related_process_memory(pid, &process_samples))
             .unwrap_or_default();
         let cgroup = CgroupSnapshot::current(logical_count);
-        let memory = memory_metrics(&self.system, process_bytes, cgroup.as_ref());
+        let memory = memory_metrics(&self.system, process_memory, cgroup.as_ref());
         let cpu = cpu_metrics(
             &self.system,
             logical_count,
@@ -252,7 +327,7 @@ pub(crate) fn cpu_metrics(
 
 fn memory_metrics(
     system: &System,
-    process_bytes: u64,
+    process_memory: RuntimeRelatedProcessMemorySummary,
     cgroup: Option<&CgroupSnapshot>,
 ) -> RuntimeMemoryMetrics {
     let host_total = system.total_memory();
@@ -266,15 +341,16 @@ fn memory_metrics(
             .memory_limit_bytes
             .unwrap_or(host_total)
             .min(host_total);
-        (total > 0).then_some((used.min(total), total))
+        (total > 0).then_some((used.min(total), total, snapshot.memory_composition.clone()))
     });
-    let (scope_kind, used_bytes, total_bytes, available_bytes) =
-        if let Some((used, total)) = cgroup_memory {
+    let (scope_kind, used_bytes, total_bytes, available_bytes, cgroup_composition) =
+        if let Some((used, total, composition)) = cgroup_memory {
             (
                 RuntimeMetricScopeKind::Cgroup,
                 used,
                 total,
                 total.saturating_sub(used),
+                composition,
             )
         } else {
             (
@@ -282,6 +358,7 @@ fn memory_metrics(
                 host_total.saturating_sub(host_available),
                 host_total,
                 host_available,
+                None,
             )
         };
 
@@ -295,7 +372,10 @@ fn memory_metrics(
         total_bytes,
         available_bytes,
         used_bytes,
-        process_bytes,
+        process_bytes: process_memory.root_process_bytes,
+        related_process_bytes: process_memory.related_process_bytes,
+        related_process_count: process_memory.related_process_count,
+        cgroup_composition,
     }
 }
 
@@ -417,6 +497,7 @@ pub(crate) struct CgroupSnapshot {
     pub(crate) cpu_limit_cores: Option<f64>,
     pub(crate) memory_used_bytes: Option<u64>,
     pub(crate) memory_limit_bytes: Option<u64>,
+    pub(crate) memory_composition: Option<RuntimeCgroupMemoryComposition>,
 }
 
 impl CgroupSnapshot {
@@ -432,6 +513,9 @@ impl CgroupSnapshot {
         let cpu_limit_cores = read_cpu_limit(&root, logical_count);
         let memory_used_bytes = read_u64(&root.join("memory.current"));
         let memory_limit_bytes = read_limit(&root.join("memory.max"));
+        let memory_composition = fs::read_to_string(root.join("memory.stat"))
+            .ok()
+            .and_then(|value| parse_cgroup_memory_stat(&value));
         let scoped = cgroup_scope_detected(
             is_container_environment(&cgroup_membership),
             cpu_limit_cores,
@@ -445,6 +529,7 @@ impl CgroupSnapshot {
             cpu_limit_cores,
             memory_used_bytes,
             memory_limit_bytes,
+            memory_composition,
         })
     }
 
@@ -452,6 +537,29 @@ impl CgroupSnapshot {
     fn current(_logical_count: u64) -> Option<Self> {
         None
     }
+}
+
+pub(crate) fn parse_cgroup_memory_stat(value: &str) -> Option<RuntimeCgroupMemoryComposition> {
+    let read_value = |key: &str| {
+        value.lines().find_map(|line| {
+            let mut parts = line.split_whitespace();
+            (parts.next()? == key)
+                .then(|| parts.next()?.parse::<u64>().ok())
+                .flatten()
+        })
+    };
+    let composition = RuntimeCgroupMemoryComposition {
+        anonymous_bytes: read_value("anon"),
+        file_bytes: read_value("file"),
+        kernel_bytes: read_value("kernel"),
+        shared_memory_bytes: read_value("shmem"),
+    };
+
+    (composition.anonymous_bytes.is_some()
+        || composition.file_bytes.is_some()
+        || composition.kernel_bytes.is_some()
+        || composition.shared_memory_bytes.is_some())
+    .then_some(composition)
 }
 
 #[cfg(target_os = "linux")]

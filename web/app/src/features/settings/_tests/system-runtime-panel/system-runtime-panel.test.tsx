@@ -43,7 +43,12 @@ vi.mock('../../api/system-runtime', () => systemRuntimeApi);
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { SystemRuntimePanel } from '../../components/SystemRuntimePanel';
 
-function runtimeMetrics(cpuUsagePercent: number, capturedAt: string) {
+function runtimeMetrics(
+  cpuUsagePercent: number,
+  capturedAt: string,
+  relatedProcessBytes: number,
+  relatedProcessCount: number
+) {
   return {
     captured_at_unix_milliseconds: Date.parse(capturedAt),
     sample_interval_milliseconds: 2000,
@@ -60,7 +65,15 @@ function runtimeMetrics(cpuUsagePercent: number, capturedAt: string) {
       total_bytes: 4_294_967_296,
       available_bytes: 3_221_225_472,
       used_bytes: 1_073_741_824,
-      process_bytes: 268_435_456
+      process_bytes: 268_435_456,
+      related_process_bytes: relatedProcessBytes,
+      related_process_count: relatedProcessCount,
+      cgroup_composition: {
+        anonymous_bytes: 536_870_912,
+        file_bytes: 268_435_456,
+        kernel_bytes: 67_108_864,
+        shared_memory_bytes: 16_777_216
+      }
     },
     storage: {
       availability: 'available',
@@ -91,6 +104,7 @@ function runtimeProfile(sampleIndex = 0) {
   return {
     provider_install_root: '/opt/1flowbase/plugins',
     host_extension_dropin_root: '/opt/1flowbase/plugins/host-extension/dropins',
+    related_process_memory_complete: true,
     locale_meta: {
       requested_locale: null,
       resolved_locale: 'zh_Hans',
@@ -125,6 +139,8 @@ function runtimeProfile(sampleIndex = 0) {
           rust_target_triple: 'x86_64-unknown-linux-musl'
         },
         cpu: { logical_count: 8 },
+        related_process_bytes: 805_306_368,
+        related_process_count: 5,
         memory: {
           total_bytes: 4_294_967_296,
           total_gb: 4,
@@ -141,13 +157,13 @@ function runtimeProfile(sampleIndex = 0) {
         target_id: 'api-server',
         reachable: true,
         host_fingerprint: 'host-1',
-        metrics: runtimeMetrics(12.5 + sampleIndex, capturedAt)
+        metrics: runtimeMetrics(12.5 + sampleIndex, capturedAt, 335_544_320, 2)
       },
       {
         target_id: 'plugin-runner',
         reachable: true,
         host_fingerprint: 'host-1',
-        metrics: runtimeMetrics(37.5 + sampleIndex, capturedAt)
+        metrics: runtimeMetrics(37.5 + sampleIndex, capturedAt, 469_762_048, 3)
       }
     ]
   };
@@ -211,7 +227,7 @@ describe('SystemRuntimePanel', () => {
     expect(within(environmentSection!).queryByText('回退语言')).toBeNull();
     expect(within(environmentSection!).queryByText('支持语言')).toBeNull();
     expect(
-      within(environmentSection!).getByText('进程内存')
+      within(environmentSection!).getByText('相关进程内存')
     ).toBeInTheDocument();
     expect(
       within(environmentSection!).getByText('插件安装路径')
@@ -231,6 +247,65 @@ describe('SystemRuntimePanel', () => {
     expect(
       screen.getByRole('img', { name: '运行资源实时曲线' })
     ).toBeInTheDocument();
+  });
+
+  test('ac_009 shows the host total with the selected target process breakdown', async () => {
+    renderPanel();
+
+    const environmentSection = (await screen.findByText('运行环境')).closest(
+      'section'
+    );
+    expect(environmentSection).not.toBeNull();
+    expect(within(environmentSection!).getByText('768 MB')).toBeInTheDocument();
+    expect(
+      within(environmentSection!).getByText('5 个进程')
+    ).toBeInTheDocument();
+    expect(
+      within(environmentSection!).getByText('当前目标 320 MB · 2 个进程')
+    ).toBeInTheDocument();
+    expect(
+      within(environmentSection!).getByText('根进程 RSS 256 MB')
+    ).toBeInTheDocument();
+
+    fireEvent.mouseDown(
+      within(environmentSection!).getByRole('combobox', {
+        name: '运行目标'
+      })
+    );
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'Plugin Runner' })
+    );
+
+    expect(within(environmentSection!).getByText('768 MB')).toBeInTheDocument();
+    expect(
+      within(environmentSection!).getByText('当前目标 448 MB · 3 个进程')
+    ).toBeInTheDocument();
+    expect(
+      within(environmentSection!).getByText('根进程 RSS 256 MB')
+    ).toBeInTheDocument();
+  });
+
+  test('ac_010 explains cgroup memory composition without treating it as process RSS', async () => {
+    renderPanel();
+
+    await screen.findByText('资源监控');
+    expect(screen.getByText('内存构成')).toBeInTheDocument();
+    expect(screen.getByText('匿名 512 MB')).toBeInTheDocument();
+    expect(screen.getByText('文件 256 MB')).toBeInTheDocument();
+    expect(screen.getByText('内核 64.0 MB')).toBeInTheDocument();
+    expect(screen.getByText('共享 16.0 MB')).toBeInTheDocument();
+  });
+
+  test('shows related process memory as partial when a runtime target is unreachable', async () => {
+    const profile = runtimeProfile();
+    profile.related_process_memory_complete = false;
+    systemRuntimeApi.fetchSettingsSystemRuntimeProfile.mockResolvedValue(
+      profile
+    );
+
+    renderPanel();
+
+    expect(await screen.findByText('部分运行目标不可用')).toBeInTheDocument();
   });
 
   test('ac_003 polls every two seconds and pauses while hidden', async () => {

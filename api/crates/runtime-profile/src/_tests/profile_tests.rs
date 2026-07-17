@@ -34,6 +34,8 @@ fn ac_002_runtime_profile_collector_warms_up_before_reporting_rates() {
         RuntimeMetricAvailability::Available
     );
     assert!(first.metrics.memory.total_bytes > 0);
+    assert!(first.metrics.memory.related_process_bytes >= first.metrics.memory.process_bytes);
+    assert!(first.metrics.memory.related_process_count >= 1);
 
     thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL + Duration::from_millis(50));
 

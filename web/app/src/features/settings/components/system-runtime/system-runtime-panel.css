@@ -39,6 +39,17 @@
   min-width: 0;
 }
 
+.system-runtime-panel__process-memory {
+  display: grid;
+  gap: 2px;
+}
+
+.system-runtime-panel__process-memory-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
 .system-runtime-panel__environment-details .ant-typography code {
   overflow-wrap: anywhere;
 }
@@ -118,10 +129,23 @@
 }
 
 .system-runtime-panel__metric-detail {
+  display: grid;
+  gap: 4px;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.system-runtime-panel__memory-composition {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 8px;
+}
+
+.system-runtime-panel__memory-composition-label {
+  width: 100%;
 }
 
 .system-runtime-panel__throughput {

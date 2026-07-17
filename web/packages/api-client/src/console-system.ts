@@ -73,6 +73,8 @@ export interface ConsoleSystemRuntimeHost {
   platform: ConsoleSystemRuntimePlatform;
   cpu: ConsoleSystemRuntimeCpu;
   memory: ConsoleSystemRuntimeMemory;
+  related_process_bytes: number;
+  related_process_count: number;
   services: string[];
 }
 
@@ -102,6 +104,16 @@ export interface ConsoleSystemRuntimeMemoryMetrics {
   available_bytes: number;
   used_bytes: number;
   process_bytes: number;
+  related_process_bytes: number;
+  related_process_count: number;
+  cgroup_composition: ConsoleSystemRuntimeCgroupMemoryComposition | null;
+}
+
+export interface ConsoleSystemRuntimeCgroupMemoryComposition {
+  anonymous_bytes: number | null;
+  file_bytes: number | null;
+  kernel_bytes: number | null;
+  shared_memory_bytes: number | null;
 }
 
 export interface ConsoleSystemRuntimeStorageMetrics {
@@ -148,6 +160,7 @@ export interface ConsoleSystemRuntimeTarget {
 export interface ConsoleSystemRuntimeProfile {
   provider_install_root: string;
   host_extension_dropin_root: string;
+  related_process_memory_complete: boolean;
   locale_meta: ConsoleSystemRuntimeLocaleMeta;
   topology: ConsoleSystemRuntimeTopology;
   services: ConsoleSystemRuntimeServices;

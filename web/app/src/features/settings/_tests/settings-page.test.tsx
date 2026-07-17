@@ -623,6 +623,7 @@ describe('SettingsPage', () => {
       topology: {
         relationship: 'same_host'
       },
+      related_process_memory_complete: true,
       services: {
         api_server: {
           reachable: true,
@@ -651,6 +652,8 @@ describe('SettingsPage', () => {
           cpu: {
             logical_count: 8
           },
+          related_process_bytes: 1610612736,
+          related_process_count: 2,
           memory: {
             total_bytes: 17179869184,
             total_gb: 16,
@@ -683,7 +686,10 @@ describe('SettingsPage', () => {
               total_bytes: 17179869184,
               available_bytes: 8589934592,
               used_bytes: 8589934592,
-              process_bytes: 1073741824
+              process_bytes: 1073741824,
+              related_process_bytes: 1073741824,
+              related_process_count: 1,
+              cgroup_composition: null
             },
             storage: {
               availability: 'available',
@@ -728,7 +734,10 @@ describe('SettingsPage', () => {
               total_bytes: 17179869184,
               available_bytes: 8589934592,
               used_bytes: 8589934592,
-              process_bytes: 536870912
+              process_bytes: 536870912,
+              related_process_bytes: 536870912,
+              related_process_count: 1,
+              cgroup_composition: null
             },
             storage: {
               availability: 'available',
@@ -1629,8 +1638,9 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('运行概览')).toBeInTheDocument();
     expect(screen.getByText('资源监控')).toBeInTheDocument();
     expect(screen.getByText('同机部署')).toBeInTheDocument();
-    expect(screen.getByText('zh_Hans')).toBeInTheDocument();
-    expect(screen.getByText('API Server')).toBeInTheDocument();
+    expect(screen.queryByText('zh_Hans')).not.toBeInTheDocument();
+    expect(screen.getByText('相关进程内存')).toBeInTheDocument();
+    expect(screen.getAllByText('API Server').length).toBeGreaterThan(0);
     expect(screen.getByText('Plugin Runner')).toBeInTheDocument();
     expect(
       systemRuntimeApi.fetchSettingsSystemRuntimeProfile
