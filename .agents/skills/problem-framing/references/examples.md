@@ -49,3 +49,18 @@
 用户：“统一 frontend/backend defaults。”
 
 先读取 `domain-matrix.md`，区分前端展示 fallback、后端默认值、已落库设置和 runtime contract。三个方向都必须说明 source of truth、历史数据影响和验收证据；不要因为名称相同就假设它们是同一概念。
+
+## Plan Shape Selection
+
+普通任务即使同时修改 API、状态和 UI，只要能由一个连贯结果闭环，仍使用 Single Issue。例如“列表支持服务端排序并在当前页面展示”只有一个用户结果，不按 frontend/backend 拆树。
+
+长计划只有在存在多个可独立集成结果时使用 Issue Tree。例如 AI Gateway V3 可以按纵向结果组织：
+
+```text
+[Root：V3 可上线并可回滚]
+  ├─ [Delivery：Generate 端到端]
+  ├─ [Delivery：Compact 与 context transaction]
+  └─ [Delivery：双栈 rollout 与 rollback]
+```
+
+“先定义类型 → 再写 mapper → 再做 storage → 再补测试”是实现步骤，不是 Delivery Map。
