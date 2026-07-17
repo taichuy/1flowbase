@@ -98,28 +98,29 @@ describe('FrontstagePageTabs', () => {
   test('AC-005 restores the selected tab from the URL and navigates on tab change', async () => {
     const utils = renderTabs('tab-2');
 
-    expect(await screen.findByRole('tab', { name: '详情' })).toHaveAttribute(
+    expect(await screen.findByRole('tab', { name: /详情/ })).toHaveAttribute(
       'aria-selected',
       'true'
     );
-    fireEvent.click(screen.getByRole('tab', { name: '概览' }));
+    fireEvent.click(screen.getByRole('tab', { name: /概览/ }));
     expect(utils).toHaveBeenCalledWith('tab-1');
   });
 
-  test('shows one tab only in UI mode and clearly reports last-tab deletion rejection', async () => {
+  test('shows one tab only in UI mode and disables last-tab deletion in the settings dialog', async () => {
     pageTabsApi.fetchFrontstagePageTabs.mockResolvedValueOnce([
       { id: 'tab-1', page_id: 'page-1', title: '概览', rank: '001000', is_default: true }
     ]);
-    pageTabsApi.deleteFrontstagePageTab.mockRejectedValueOnce(
-      new Error('page must keep at least one tab')
-    );
     renderTabs();
 
-    expect(await screen.findByRole('tab', { name: '概览' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '删除当前标签页' }));
+    expect(await screen.findByRole('tab', { name: /概览/ })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: '配置标签页' })[0]);
 
+    const deleteButton = await screen.findByRole('button', {
+      name: /删除当前标签页/
+    });
+    expect(deleteButton).toBeDisabled();
     expect(
-      await screen.findByText('page must keep at least one tab')
+      screen.getByText('页面至少保留一个标签页，最后一个标签页不可删除。')
     ).toBeInTheDocument();
   });
 
@@ -148,28 +149,29 @@ describe('FrontstagePageTabs', () => {
   test('AC-002 wires UI mode tab create, rename, move, and delete actions', async () => {
     const utils = renderTabs('tab-2');
 
-    await screen.findByRole('tab', { name: '详情' });
-    fireEvent.change(screen.getByRole('textbox', { name: '标签页名称' }), {
-      target: { value: '分析' }
-    });
+    await screen.findByRole('tab', { name: /详情/ });
     fireEvent.click(screen.getByRole('button', { name: '新建标签页' }));
     await waitFor(() => {
       expect(pageTabsApi.createFrontstagePageTab).toHaveBeenCalledWith(
         'workspace-1',
         'page-1',
-        { title: '分析', rank: '003000' },
+        { title: null, rank: '003000' },
         'csrf-123'
       );
     });
     expect(utils).toHaveBeenCalledWith('tab-3');
 
-    fireEvent.change(screen.getByRole('textbox', { name: '标签页名称' }), {
-      target: { value: '明细' }
+    // Open the settings dialog for the active tab (tab-2).
+    const configureButtons = screen.getAllByRole('button', {
+      name: '配置标签页'
     });
-    fireEvent.click(screen.getByRole('button', { name: '重命名当前标签页' }));
-    fireEvent.click(screen.getByRole('button', { name: '前移当前标签页' }));
-    fireEvent.click(screen.getByRole('button', { name: '删除当前标签页' }));
+    fireEvent.click(configureButtons[configureButtons.length - 1]);
 
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: '标签页名称' }),
+      { target: { value: '明细' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: '重命名当前标签页' }));
     await waitFor(() => {
       expect(pageTabsApi.renameFrontstagePageTab).toHaveBeenCalledWith(
         'workspace-1',
@@ -178,6 +180,15 @@ describe('FrontstagePageTabs', () => {
         { title: '明细' },
         'csrf-123'
       );
+    });
+
+    // Re-open the dialog: rename success closes it.
+    const reopenButtons = screen.getAllByRole('button', { name: '配置标签页' });
+    fireEvent.click(reopenButtons[reopenButtons.length - 1]);
+    fireEvent.click(
+      await screen.findByRole('button', { name: /前移当前标签页/ })
+    );
+    await waitFor(() => {
       expect(pageTabsApi.moveFrontstagePageTab).toHaveBeenCalledWith(
         'workspace-1',
         'page-1',
@@ -185,6 +196,11 @@ describe('FrontstagePageTabs', () => {
         { rank: '000000' },
         'csrf-123'
       );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /删除当前标签页/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '确 定' }));
+    await waitFor(() => {
       expect(pageTabsApi.deleteFrontstagePageTab).toHaveBeenCalledWith(
         'workspace-1',
         'page-1',

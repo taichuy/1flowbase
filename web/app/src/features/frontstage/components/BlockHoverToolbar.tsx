@@ -12,6 +12,7 @@ import { Button, Divider, Popconfirm, Popover, Space, Typography, message } from
 import type { CSSProperties, FC } from 'react';
 import { useState } from 'react';
 import { i18nText } from '../../../shared/i18n/text';
+import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 
 type BlockHoverToolbarProps = {
   blockId: string;
@@ -32,9 +33,9 @@ const toolbarStyle: CSSProperties = {
   right: 10,
   zIndex: 10,
   background: '#fff',
-  border: '1px solid #d9f7e8',
+  border: `1px solid ${FRONTSTAGE_DESIGN_BLUE.toolbarBorder}`,
   borderRadius: 8,
-  boxShadow: '0 10px 28px rgba(16, 185, 129, 0.12)',
+  boxShadow: FRONTSTAGE_DESIGN_BLUE.toolbarShadow,
   padding: 3,
   transition: 'opacity 0.15s ease'
 };

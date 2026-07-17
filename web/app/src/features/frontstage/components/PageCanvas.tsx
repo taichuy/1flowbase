@@ -25,6 +25,7 @@ import type {
 import type { FrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
 import { i18nText } from '../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
+import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
@@ -117,7 +118,7 @@ const blockFrameBaseStyle: CSSProperties = {
   borderRadius: 8,
   background: '#fff',
   overflow: 'hidden',
-  boxShadow: '0 14px 40px rgba(15, 118, 110, 0.04)'
+  boxShadow: '0 14px 40px rgba(37, 99, 235, 0.05)'
 };
 
 const blockLabelStyle: CSSProperties = {
@@ -126,8 +127,8 @@ const blockLabelStyle: CSSProperties = {
   left: 14,
   zIndex: 2,
   borderRadius: 6,
-  background: '#ecfdf5',
-  color: '#00a86b',
+  background: FRONTSTAGE_DESIGN_BLUE.labelBg,
+  color: FRONTSTAGE_DESIGN_BLUE.labelText,
   fontSize: 12,
   lineHeight: '20px',
   padding: '0 8px'
@@ -151,17 +152,17 @@ function RenderPlanSlot({
   if (isDesignMode) {
     if (isSelected) {
       borderStyle = {
-        border: '2px solid #00c875',
-        background: '#fbfffd'
+        border: `2px solid ${FRONTSTAGE_DESIGN_BLUE.borderSelected}`,
+        background: FRONTSTAGE_DESIGN_BLUE.bgSelected
       };
     } else if (isHovered) {
       borderStyle = {
-        border: '1px solid #66e0ad',
-        background: '#fbfffd'
+        border: `1px solid ${FRONTSTAGE_DESIGN_BLUE.borderHover}`,
+        background: FRONTSTAGE_DESIGN_BLUE.bgHover
       };
     } else {
       borderStyle = {
-        border: '1px solid #b7ebd3'
+        border: `1px solid ${FRONTSTAGE_DESIGN_BLUE.borderIdle}`
       };
     }
   } else {
@@ -361,8 +362,10 @@ export const PageCanvas: FC<PageCanvasProps> = ({
       {renderPlan.isEmpty ? (
         <div
           style={{
-            background: isDesignMode ? '#fbfffd' : '#fafafa',
-            border: isDesignMode ? '1px dashed #86efc1' : '1px solid #f0f0f0',
+            background: isDesignMode ? FRONTSTAGE_DESIGN_BLUE.bgDashed : '#fafafa',
+            border: isDesignMode
+              ? `1px dashed ${FRONTSTAGE_DESIGN_BLUE.dashed}`
+              : '1px solid #f0f0f0',
             borderRadius: 8,
             padding: 32,
             textAlign: 'center'

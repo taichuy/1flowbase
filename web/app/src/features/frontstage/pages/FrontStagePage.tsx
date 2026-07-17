@@ -20,6 +20,7 @@ import { AddBlockCatalogPickerDrawer } from '../components/AddBlockCatalogPicker
 import { BlockCodeEditorDrawer } from '../components/BlockCodeEditorDrawer';
 import { BlockConfigurationDrawer } from '../components/BlockConfigurationDrawer';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
+import { DesignHoverFrame } from '../components/DesignHoverFrame';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import { PageCanvas } from '../components/PageCanvas';
@@ -38,6 +39,7 @@ import {
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
 import { createFrontstageBlockConfigurationModel } from '../lib/block-configuration';
+import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import {
   createFrontstagePageDocument,
@@ -1074,12 +1076,27 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       <>
         <section className="frontstage-page-workspace">
           <header className="frontstage-page-workspace__header">
-            <Typography.Title
-              className="frontstage-page-workspace__title"
-              level={3}
+            <DesignHoverFrame
+              active={canEditPageTree && Boolean(selectedPageId)}
+              configureLabel={i18nText('frontstage', 'design.configure_page')}
+              onConfigure={() => {
+                const node = selectedPageId
+                  ? findNodeById(pageTree, selectedPageId)
+                  : null;
+                if (node) {
+                  handleRenameNode(node);
+                }
+              }}
+              style={{ display: 'block', padding: '8px 72px 8px 12px' }}
             >
-              {pageLabel}
-            </Typography.Title>
+              <Typography.Title
+                className="frontstage-page-workspace__title"
+                level={3}
+                style={{ marginBottom: 0 }}
+              >
+                {pageLabel}
+              </Typography.Title>
+            </DesignHoverFrame>
           </header>
           <Divider style={{ margin: 0 }} />
           <div className="frontstage-page-workspace__body">
@@ -1172,8 +1189,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                 style={{
                   marginTop: 20,
                   borderStyle: 'dashed',
-                  borderColor: '#20d48a',
-                  color: '#00a86b'
+                  borderColor: FRONTSTAGE_DESIGN_BLUE.dashed,
+                  color: FRONTSTAGE_DESIGN_BLUE.primary
                 }}
               >
                 {i18nText("frontstage", "auto.add_block_button")}</Button>
