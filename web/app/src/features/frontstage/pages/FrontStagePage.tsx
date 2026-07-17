@@ -39,7 +39,6 @@ import {
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
 import { createFrontstageBlockConfigurationModel } from '../lib/block-configuration';
-import { createBlankJsBlockTemplateCode } from '../lib/block-templates';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import {
@@ -1032,18 +1031,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       }
 
       const codeRef = createdBlock.codeRef;
-      const code = createBlankJsBlockTemplateCode({
-        blockId: createdBlock.id,
-        codeRef,
-        contributionCode: entry.contributionCode
-      });
 
       await saveFrontstageBlockCode(
         workspaceId,
         selectedPageId ?? sourceContent.page.id,
         {
           codeRef,
-          code
+          code: codeTemplate.source
         },
         requireCsrfToken(csrfToken)
       );

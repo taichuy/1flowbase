@@ -136,9 +136,13 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
                 reg.permission_secrets,
                 reg.ui_capabilities
             from frontend_block_catalog reg
-            inner join plugin_assignments pa
+            inner join plugin_installations installation
+                on installation.id = reg.installation_id
+            left join plugin_assignments pa
                 on pa.workspace_id = $1
                and pa.installation_id = reg.installation_id
+            where installation.source_kind = 'builtin'
+               or pa.installation_id is not null
             order by reg.title asc, reg.contribution_code asc
             "#,
         )

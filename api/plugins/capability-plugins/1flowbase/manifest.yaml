@@ -1,0 +1,135 @@
+manifest_version: 1
+plugin_id: 1flowbase@1.0.0
+version: 1.0.0
+vendor: 1flowbase
+display_name: 1flowbase Built-in Frontstage Blocks
+description: System-owned frontend block containers available in every workspace.
+source_kind: builtin
+trust_level: verified_official
+consumption_kind: capability_plugin
+execution_mode: declarative_only
+slot_codes:
+  - frontend_block
+binding_targets:
+  - workspace
+selection_mode: auto_activate
+minimum_host_version: 0.2.6
+contract_version: 1flowbase.capability/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: none
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: index.js
+block_contributions:
+  - contribution_code: frontstage.js-ui-block
+    title: JSX 区块
+    runtime: iframe
+    entry: index.js
+    code_template: |
+      import { defineBlock } from '@1flowbase/block-sdk';
+      import { Stack, Text, Title } from '@1flowbase/block-renderer/antd-facade';
+
+      export default defineBlock({
+        title: 'JSX 示例区块',
+
+        render() {
+          return (
+            <Stack>
+              <Title>JSX 示例区块</Title>
+              <Text>点击区块右上角的编辑图标修改这段 JSX。</Text>
+            </Stack>
+          );
+        }
+      });
+    code_template_version: 1.0.0
+    code_template_language: tsx
+    code_modules:
+      - source: "@1flowbase/block-sdk"
+        type_declarations: |
+          declare module '@1flowbase/block-sdk' {
+            export interface BlockContext {
+              readonly props: Readonly<Record<string, unknown>>;
+              readonly state: Readonly<Record<string, unknown>>;
+              patch(next: Record<string, unknown>): void;
+              readonly data: {
+                query<T = unknown>(queryId: string, input?: unknown): Promise<T>;
+              };
+              readonly actions: {
+                invoke<T = unknown>(actionId: string, input?: unknown): Promise<T>;
+              };
+              readonly events: {
+                emit(eventName: string, payload?: unknown): void;
+              };
+            }
+            export interface BlockDefinitionInput {
+              readonly id?: string;
+              readonly title?: string;
+              readonly initialState?: Readonly<Record<string, unknown>>;
+              readonly setup?: (ctx: BlockContext) => void | Promise<void>;
+              readonly render: (ctx: BlockContext) => unknown;
+              readonly dispose?: (ctx: BlockContext) => void | Promise<void>;
+            }
+            export declare function defineBlock(definition: BlockDefinitionInput): Readonly<BlockDefinitionInput>;
+          }
+      - source: "@1flowbase/block-renderer/antd-facade"
+        type_declarations: |
+          declare module '@1flowbase/block-renderer/antd-facade' {
+            export interface FacadeProps {
+              readonly key?: unknown;
+              readonly props?: unknown;
+              readonly style?: unknown;
+              readonly permissions?: unknown;
+              readonly children?: unknown;
+              readonly [key: string]: unknown;
+            }
+            export type FacadeComponent = (props?: FacadeProps | string | number | boolean | null) => unknown;
+            export const Stack: FacadeComponent;
+            export const Inline: FacadeComponent;
+            export const Grid: FacadeComponent;
+            export const Divider: FacadeComponent;
+            export const Text: FacadeComponent;
+            export const Title: FacadeComponent;
+            export const Caption: FacadeComponent;
+            export const Badge: FacadeComponent;
+            export const Table: FacadeComponent;
+            export const Descriptions: FacadeComponent;
+            export const Empty: FacadeComponent;
+            export const Alert: FacadeComponent;
+            export const Form: FacadeComponent;
+            export const FormItem: FacadeComponent;
+            export const Input: FacadeComponent;
+            export const Textarea: FacadeComponent;
+            export const Select: FacadeComponent;
+            export const Checkbox: FacadeComponent;
+            export const Switch: FacadeComponent;
+            export const DatePicker: FacadeComponent;
+            export const NumberInput: FacadeComponent;
+            export const Button: FacadeComponent;
+            export const IconButton: FacadeComponent;
+            export const Modal: FacadeComponent;
+          }
+    context_contract:
+      primitives:
+        - text
+        - image
+        - link
+        - button
+        - rich_text
+        - data_record
+      input_schema:
+        type: object
+        additionalProperties: true
+    permissions:
+      network: none
+      storage: none
+      secrets: none
+    ui_capabilities:
+      - responsive
+      - configurable
+      - theming
+      - data_binding

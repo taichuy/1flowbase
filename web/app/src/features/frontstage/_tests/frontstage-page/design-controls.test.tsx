@@ -724,10 +724,10 @@ describe('FrontStagePage - design controls', () => {
     expect(blockCodeApi.saveFrontstageBlockCode).toHaveBeenCalledWith(
       'workspace-1',
       'page-1',
-      expect.objectContaining({
+      {
         codeRef: block.codeRef,
-        code: expect.stringContaining('<Title>JSX 示例区块</Title>')
-      }),
+        code: PLUGIN_CODE_TEMPLATE
+      },
       'csrf-123'
     );
   });

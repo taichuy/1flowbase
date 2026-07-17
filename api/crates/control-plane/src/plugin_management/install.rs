@@ -22,6 +22,11 @@ pub struct InstallUploadedPluginCommand {
     pub package_bytes: Vec<u8>,
 }
 
+pub struct EnsureBuiltinPluginCommand {
+    pub actor_user_id: Uuid,
+    pub package_root: String,
+}
+
 pub struct UpgradeLatestPluginFamilyCommand {
     pub actor_user_id: Uuid,
     pub provider_code: String,
@@ -361,6 +366,116 @@ where
         + FrontendBlockCatalogRepository,
     H: ProviderRuntimePort,
 {
+    pub async fn ensure_builtin_plugin(
+        &self,
+        command: EnsureBuiltinPluginCommand,
+    ) -> Result<domain::PluginInstallationRecord> {
+        let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
+        ensure_root_actor(&actor)?;
+
+        let package_root = Path::new(&command.package_root);
+        let manifest = load_plugin_manifest(package_root)?;
+        if manifest.source_kind != "builtin"
+            || manifest.trust_level != "verified_official"
+            || manifest.consumption_kind != PluginConsumptionKind::CapabilityPlugin
+            || manifest.execution_mode != PluginExecutionMode::DeclarativeOnly
+            || manifest.selection_mode != "auto_activate"
+            || !manifest
+                .binding_targets
+                .iter()
+                .any(|target| target == "workspace")
+            || !manifest
+                .slot_codes
+                .iter()
+                .any(|slot| slot == "frontend_block")
+        {
+            return Err(ControlPlaneError::InvalidInput("builtin_plugin_manifest").into());
+        }
+
+        let provider_code = manifest
+            .plugin_code()
+            .map_err(map_framework_error)?
+            .to_string();
+        let plugin_id = manifest
+            .versioned_plugin_id()
+            .map_err(map_framework_error)?;
+        let installation_id = self
+            .repository
+            .list_installations()
+            .await?
+            .into_iter()
+            .find(|installation| installation.plugin_id == plugin_id)
+            .map(|installation| installation.id)
+            .unwrap_or_else(Uuid::now_v7);
+        let install_path = self
+            .install_root
+            .join("installed")
+            .join(&provider_code)
+            .join(&manifest.version);
+        let mut staged_installation =
+            filesystem::StagedArtifactPath::prepare_directory(package_root, &install_path)?;
+        let manifest_fingerprint =
+            compute_manifest_fingerprint(&staged_installation.staged_path().join("manifest.yaml"))
+                .await
+                .map_err(map_framework_error)?;
+        staged_installation.activate()?;
+
+        let installation_input = UpsertPluginInstallationInput {
+            installation_id,
+            provider_code,
+            plugin_id,
+            plugin_version: manifest.version.clone(),
+            contract_version: manifest.contract_version.clone(),
+            protocol: manifest.runtime.protocol.clone(),
+            display_name: manifest.display_name.clone(),
+            source_kind: "builtin".to_string(),
+            trust_level: "verified_official".to_string(),
+            verification_status: domain::PluginVerificationStatus::Valid,
+            desired_state: domain::PluginDesiredState::ActiveRequested,
+            artifact_status: domain::PluginArtifactStatus::Ready,
+            runtime_status: domain::PluginRuntimeStatus::Active,
+            availability_status: domain::PluginAvailabilityStatus::Available,
+            package_path: None,
+            installed_path: install_path.display().to_string(),
+            checksum: None,
+            manifest_fingerprint: Some(manifest_fingerprint),
+            signature_status: Some("builtin".to_string()),
+            signature_algorithm: None,
+            signing_key_id: None,
+            last_load_error: None,
+            metadata_json: json!({
+                "install_kind": "builtin_bootstrap",
+                "selection_mode": manifest.selection_mode,
+                "block_contributions": manifest
+                    .block_contributions
+                    .iter()
+                    .map(|entry| entry.contribution_code.clone())
+                    .collect::<Vec<_>>(),
+            }),
+            actor_user_id: command.actor_user_id,
+        };
+        let installation_result = commit_prepared_installation(
+            &self.repository,
+            &self.node_id,
+            installation_input,
+            &manifest,
+            None,
+        )
+        .await;
+        let installation = match installation_result {
+            Ok(installation) => {
+                staged_installation.finish();
+                installation
+            }
+            Err(error) => {
+                let _ = staged_installation.rollback();
+                return Err(error);
+            }
+        };
+
+        Ok(installation)
+    }
+
     pub async fn install_plugin(
         &self,
         command: InstallPluginCommand,

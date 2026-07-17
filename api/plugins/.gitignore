@@ -3,6 +3,8 @@
 !README.md
 !host-extensions/
 !host-extensions/**
+!capability-plugins/
+!capability-plugins/**
 !sets/
 !sets/**
 !templates/

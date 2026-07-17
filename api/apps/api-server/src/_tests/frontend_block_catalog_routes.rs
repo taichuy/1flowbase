@@ -1,4 +1,9 @@
-use crate::_tests::support::{login_and_capture_cookie, test_app_with_database_url};
+use crate::{
+    _tests::support::{
+        login_and_capture_cookie, test_api_state_with_database_url, test_app_with_database_url,
+    },
+    provider_runtime::ApiProviderRuntime,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -107,7 +112,113 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
 }
 
 #[tokio::test]
-async fn frontend_block_catalog_route_lists_only_assigned_workspace_blocks() {
+async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
+    let (app, _) = test_app_with_database_url().await;
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/frontend-blocks")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let entries = payload["data"].as_array().unwrap();
+    let jsx_block = entries
+        .iter()
+        .find(|entry| {
+            entry["provider_code"] == "1flowbase"
+                && entry["contribution_code"] == "frontstage.js-ui-block"
+        })
+        .expect("system bootstrap must register the built-in JSX block");
+
+    assert_eq!(jsx_block["code_template_language"], "tsx");
+    assert!(jsx_block["code_template"]
+        .as_str()
+        .is_some_and(|source| source.contains("<Stack>")));
+    assert_eq!(
+        jsx_block["code_modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|module| module["source"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            "@1flowbase/block-sdk",
+            "@1flowbase/block-renderer/antd-facade"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn builtin_jsx_block_bootstrap_is_idempotent() {
+    let (state, database_url) = test_api_state_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    let actor_user_id: Uuid =
+        sqlx::query_scalar("select id from users where account = 'root' limit 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let workspace_id: Uuid =
+        sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    control_plane::plugin_management::PluginManagementService::new(
+        state.store.clone(),
+        ApiProviderRuntime::new(state.provider_runtime.clone()),
+        state.official_plugin_source.clone(),
+        state.provider_install_root.clone(),
+    )
+    .with_node_id(state.api_node_id.clone())
+    .ensure_builtin_plugin(
+        control_plane::plugin_management::EnsureBuiltinPluginCommand {
+            actor_user_id,
+            package_root: crate::builtin_jsx_block_package_root()
+                .unwrap()
+                .display()
+                .to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let installation_count: i64 = sqlx::query_scalar(
+        "select count(*) from plugin_installations where provider_code = '1flowbase'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let catalog_count: i64 = sqlx::query_scalar(
+        "select count(*) from frontend_block_catalog where provider_code = '1flowbase' and contribution_code = 'frontstage.js-ui-block'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let assignment_count: i64 = sqlx::query_scalar(
+        "select count(*) from plugin_assignments where workspace_id = $1 and provider_code = '1flowbase'",
+    )
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(installation_count, 1);
+    assert_eq!(catalog_count, 1);
+    assert_eq!(assignment_count, 0);
+}
+
+#[tokio::test]
+async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_blocks() {
     let (app, database_url) = test_app_with_database_url().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     seed_frontend_block(&database_url, false).await;
@@ -130,24 +241,28 @@ async fn frontend_block_catalog_route_lists_only_assigned_workspace_blocks() {
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     let entries = payload["data"].as_array().unwrap();
 
-    assert_eq!(entries.len(), 1);
+    assert_eq!(entries.len(), 2);
+    let entry = entries
+        .iter()
+        .find(|entry| entry["contribution_code"] == "hero_banner")
+        .expect("assigned fixture block must be visible");
+    assert!(!entries
+        .iter()
+        .any(|entry| { entry["provider_code"] == "fixture_frontend_blocks_hidden" }));
+    assert_eq!(entry["contribution_code"].as_str(), Some("hero_banner"));
+    assert_eq!(entry["runtime"].as_str(), Some("iframe"));
     assert_eq!(
-        entries[0]["contribution_code"].as_str(),
-        Some("hero_banner")
-    );
-    assert_eq!(entries[0]["runtime"].as_str(), Some("iframe"));
-    assert_eq!(
-        entries[0]["code_template"].as_str(),
+        entry["code_template"].as_str(),
         Some("export default function HeroBanner() { return <section>Hero</section>; }")
     );
-    assert_eq!(entries[0]["code_template_version"].as_str(), Some("1.0.0"));
-    assert_eq!(entries[0]["code_template_language"].as_str(), Some("tsx"));
+    assert_eq!(entry["code_template_version"].as_str(), Some("1.0.0"));
+    assert_eq!(entry["code_template_language"].as_str(), Some("tsx"));
     assert_eq!(
-        entries[0]["code_modules"][0]["source"].as_str(),
+        entry["code_modules"][0]["source"].as_str(),
         Some("@1flowbase/block-sdk")
     );
     assert_eq!(
-        entries[0]["context_contract"]["primitives"][0].as_str(),
+        entry["context_contract"]["primitives"][0].as_str(),
         Some("text")
     );
 }

@@ -311,6 +311,17 @@ describe('SectionPageLayout', () => {
     expect(screen.queryByText('不会显示的内容')).not.toBeInTheDocument();
   });
 
+  test('renders page content when navigation and sidebar are both absent', async () => {
+    renderInRouter(
+      <SectionPageLayout navItems={[]} activeKey="">
+        <section>顶栏直接页面内容</section>
+      </SectionPageLayout>
+    );
+
+    expect(await screen.findByText('顶栏直接页面内容')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
   test('renders custom sidebar content when navItems is empty', async () => {
     renderInRouter(
       <SectionPageLayout

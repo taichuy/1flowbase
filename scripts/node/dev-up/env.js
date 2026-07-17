@@ -133,7 +133,19 @@ function ensureServiceEnvFile(service, { logImpl = log } = {}) {
   }
 
   fs.mkdirSync(path.dirname(service.envFile), { recursive: true });
-  fs.copyFileSync(service.envExampleFile, service.envFile);
+  let content = fs.readFileSync(service.envExampleFile, "utf8");
+  for (const [key, value] of Object.entries(service.envSeedOverrides || {})) {
+    if (!value) {
+      continue;
+    }
+
+    const envLine = `${key}=${value}`;
+    const existingLine = new RegExp(`^${key}=.*$`, "mu");
+    content = existingLine.test(content)
+      ? content.replace(existingLine, envLine)
+      : `${content.trimEnd()}\n${envLine}\n`;
+  }
+  fs.writeFileSync(service.envFile, content, "utf8");
   logImpl(
     `已创建 ${path.relative(service.repoRoot || process.cwd(), service.envFile)}`,
   );

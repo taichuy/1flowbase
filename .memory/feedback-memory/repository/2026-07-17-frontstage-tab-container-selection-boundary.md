@@ -2,7 +2,7 @@
 memory_type: feedback
 feedback_category: repository
 topic: 前台设计模式的页面与标签页选择边界
-summary: 前台设计模式中，页面、标签页与真实区块的选择边界必须与语义对象一致。页面标题区保持紧凑，空标签页不渲染成伪区块；创建区块直接生成可运行的默认 JSX 示例，选中区块时分开显示配置与 JSX 编辑图标。
+summary: 前台设计模式中，页面、标签页与真实区块的选择边界必须与语义对象一致；通用 JSX 区块是系统内置、始终可用的基础执行容器，未来组件能力通过受控导入模块扩展，不做前端 fallback。
 keywords:
   - frontstage
   - design mode
@@ -14,13 +14,15 @@ keywords:
   - empty canvas
   - default JSX block
   - code editor
+  - builtin JSX block
+  - controlled imports
 match_when:
   - 调整前台设计模式的页面、标签页或区块层级
   - 调整标签页选中态、拖拽入口或配置入口
   - 设计页面级与标签页级配置边界
 created_at: 2026-07-17 17
-updated_at: 2026-07-17 18
-last_verified_at: 2026-07-17 18
+updated_at: 2026-07-17 22
+last_verified_at: 2026-07-17 22
 decision_policy: direct_reference
 scope:
   - web/app/src/features/frontstage
@@ -45,6 +47,10 @@ scope:
 空标签页不渲染带大面积背景和虚线边框的“空画布”，因为它会被误认为已创建的区块。设计态空内容只保留轻量空提示和一个创建入口；真实区块出现后才显示区块边框。
 
 “创建区块”的主操作直接创建一个带有最小、可运行 JSX 示例的默认 JS 区块，不先弹出区块目录选择抽屉。选中真实区块后，工具条将“区块配置”和“编辑 JSX”作为两个相邻的紧凑图标，不把两者混在一个更多菜单中。
+
+直接创建流程不能只在前端测试中 mock 官方 JS 区块 Catalog entry。用户验收前必须用真实 `GET /api/console/frontend-blocks` 证明运行库已注册官方默认贡献；注册缺失时应修复后端插件 / Catalog 投影链路，不得用前端 fallback 或手工插库伪造可用项。
+
+通用 JSX 区块应由系统内置并保持稳定身份，它负责承载用户可编辑 JSX；`block-sdk`、`antd-facade` 和未来完成沙箱适配的组件是该区块的受控导入模块。不要把每个可导入组件再注册成一种区块类型，也不要开放未经适配的任意包导入。
 
 ## 原因
 
