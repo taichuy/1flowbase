@@ -57,7 +57,8 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
             "env": {},
             "node-start": {
                 "query": "Summarize the incident",
-                "priority": "high"
+                "priority": "high",
+                "system": []
             }
         })
     );
@@ -128,6 +129,50 @@ async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtim
     assert!(flow_run.input_payload["sys"]
         .get("reasoning_effort")
         .is_none());
+}
+
+#[tokio::test]
+async fn ac_004_start_native_run_freezes_external_max_output_tokens_for_runtime() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Published Native Token App");
+    let token = issue_key(&harness, application.id).await;
+    save_start_model_catalog(&repository, &application).await;
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let service = ApplicationPublishedRunService::new(repository.clone());
+
+    let result = service
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request: native_request_with_model_parameters(
+                "gpt-5.4",
+                json!({ "max_output_tokens": 32000 }),
+            ),
+        })
+        .await
+        .unwrap();
+    let flow_run = repository
+        .get_flow_run(application.id, result.id)
+        .await
+        .unwrap()
+        .expect("published flow run should be durable");
+
+    assert_eq!(
+        flow_run.input_payload["sys"]["model_parameters"]["max_output_tokens"],
+        json!(32000)
+    );
+    assert_eq!(
+        flow_run.input_payload["node-start"]["max_output_tokens"],
+        json!(32000)
+    );
 }
 
 #[tokio::test]
@@ -285,6 +330,42 @@ async fn start_native_run_rejects_unsupported_reasoning_effort() {
         result,
         Err(NativeRunValidationError::InvalidModelParameters(
             "execution.model_parameters.reasoning.effort"
+        ))
+    );
+}
+
+#[tokio::test]
+async fn ac_004_start_native_run_rejects_max_output_tokens_over_model_limit() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Published Native Output App");
+    let token = issue_key(&harness, application.id).await;
+    save_start_model_catalog(&repository, &application).await;
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let service = ApplicationPublishedRunService::new(repository.clone());
+
+    let result = service
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request: native_request_with_model_parameters(
+                "gpt-5.4",
+                json!({ "max_output_tokens": 32001 }),
+            ),
+        })
+        .await;
+
+    assert_eq!(
+        result,
+        Err(NativeRunValidationError::InvalidModelParameters(
+            "execution.model_parameters.max_output_tokens"
         ))
     );
 }

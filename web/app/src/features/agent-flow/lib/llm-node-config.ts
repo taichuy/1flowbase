@@ -36,6 +36,10 @@ export interface LlmNodeExternalReasoningPolicy {
   follow_external_reasoning: boolean;
 }
 
+export interface LlmNodeExternalModelParameterPolicy {
+  follow_external_max_output_tokens: boolean;
+}
+
 export type LlmInternalLlmNodePolicy = 'forbidden' | 'allowed';
 
 export type LlmExternalToolPolicy = 'forbidden' | 'inherited';
@@ -63,6 +67,11 @@ export const DEFAULT_LLM_CONTEXT_POLICY: LlmNodeContextPolicy = {
 export const DEFAULT_LLM_EXTERNAL_REASONING_POLICY: LlmNodeExternalReasoningPolicy =
   {
     follow_external_reasoning: false
+  };
+
+export const DEFAULT_LLM_EXTERNAL_MODEL_PARAMETER_POLICY: LlmNodeExternalModelParameterPolicy =
+  {
+    follow_external_max_output_tokens: true
   };
 
 export const DEFAULT_LLM_PARAMETERS: LlmNodeParameters = {
@@ -289,6 +298,21 @@ export function getLlmExternalReasoningPolicy(
   return {
     follow_external_reasoning:
       externalReasoningPolicy.follow_external_reasoning === true
+  };
+}
+
+export function getLlmExternalModelParameterPolicy(
+  config: Record<string, unknown>
+): LlmNodeExternalModelParameterPolicy {
+  const externalModelParameterPolicy = config.external_model_parameter_policy;
+
+  if (!isRecord(externalModelParameterPolicy)) {
+    return DEFAULT_LLM_EXTERNAL_MODEL_PARAMETER_POLICY;
+  }
+
+  return {
+    follow_external_max_output_tokens:
+      externalModelParameterPolicy.follow_external_max_output_tokens !== false
   };
 }
 

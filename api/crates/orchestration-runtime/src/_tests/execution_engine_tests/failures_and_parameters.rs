@@ -522,6 +522,163 @@ async fn llm_runtime_maps_external_reasoning_parameters_for_bailian_runtime() {
 }
 
 #[tokio::test]
+async fn ac_005_llm_runtime_follows_external_max_output_tokens_by_default() {
+    let plan = base_plan();
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: Arc::new(Mutex::new(None)),
+        final_content: "ok".to_string(),
+    };
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": { "query": "hello" },
+            "sys": {
+                "model_parameters": {
+                    "max_output_tokens": 32768
+                }
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let captured_input = invoker
+        .captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+
+    assert_eq!(
+        captured_input.model_parameters.get("max_tokens"),
+        Some(&json!(32768))
+    );
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["effective_max_output_tokens"],
+        json!(32768)
+    );
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["max_output_tokens_source"],
+        json!("external_request")
+    );
+}
+
+#[tokio::test]
+async fn ac_005_llm_runtime_can_disable_external_max_output_tokens_and_trace_provider_default() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config = json!({
+        "external_model_parameter_policy": {
+            "follow_external_max_output_tokens": false
+        }
+    });
+    let (invoker, captured_inputs) = sequential_tool_invoker(vec![ProviderInvocationResult {
+        final_content: Some("ok".to_string()),
+        finish_reason: Some(ProviderFinishReason::Stop),
+        provider_metadata: json!({
+            "effective_max_output_tokens": 4096
+        }),
+        ..ProviderInvocationResult::default()
+    }]);
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": { "query": "hello" },
+            "sys": {
+                "model_parameters": {
+                    "max_output_tokens": 32768
+                }
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let captured_inputs = captured_inputs
+        .lock()
+        .expect("captured inputs mutex poisoned");
+    assert!(!captured_inputs[0]
+        .model_parameters
+        .contains_key("max_tokens"));
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["effective_max_output_tokens"],
+        json!(4096)
+    );
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["max_output_tokens_source"],
+        json!("provider_default")
+    );
+}
+
+#[tokio::test]
+async fn ac_006_llm_runtime_keeps_enabled_node_max_tokens_over_external_limit() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config = json!({
+        "llm_parameters": {
+            "schema_version": "1.0.0",
+            "items": {
+                "max_tokens": { "enabled": true, "value": 8192 }
+            }
+        },
+        "external_model_parameter_policy": {
+            "follow_external_max_output_tokens": true
+        }
+    });
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: Arc::new(Mutex::new(None)),
+        final_content: "ok".to_string(),
+    };
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": { "query": "hello" },
+            "sys": {
+                "model_parameters": {
+                    "max_output_tokens": 32768
+                }
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let captured_input = invoker
+        .captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+
+    assert_eq!(
+        captured_input.model_parameters.get("max_tokens"),
+        Some(&json!(8192))
+    );
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["effective_max_output_tokens"],
+        json!(8192)
+    );
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["max_output_tokens_source"],
+        json!("llm_node")
+    );
+}
+
+#[tokio::test]
 async fn llm_json_schema_response_exposes_structured_output_only_when_declared() {
     let mut plan = base_plan();
     let llm = plan

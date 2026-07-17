@@ -709,6 +709,10 @@ function buildPreviewValue(
     return startInputField.defaultValue;
   }
 
+  if (node?.type === 'start' && outputKey === 'max_output_tokens') {
+    return null;
+  }
+
   const output = node
     ? getNodeVariableOutputs(node).find((entry) => entry.key === outputKey)
     : undefined;

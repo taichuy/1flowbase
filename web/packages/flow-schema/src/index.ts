@@ -545,6 +545,9 @@ export function createDefaultAgentFlowDocument({
             external_reasoning_policy: {
               follow_external_reasoning: false
             },
+            external_model_parameter_policy: {
+              follow_external_max_output_tokens: true
+            },
             visible_internal_llm_tools_enabled: false,
             visible_internal_llm_tools: [],
             response_format: {

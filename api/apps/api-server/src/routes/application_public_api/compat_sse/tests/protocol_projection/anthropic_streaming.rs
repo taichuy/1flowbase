@@ -153,6 +153,51 @@ async fn anthropic_text_stream_follows_claude_messages_event_order() {
 }
 
 #[tokio::test]
+async fn ac_002_anthropic_length_finish_maps_to_max_tokens_stop_reason() {
+    let run = native_run();
+    let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
+    let mut events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
+    );
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            RuntimeEventPayload {
+                event_type: "finish".to_string(),
+                source: RuntimeEventSource::Provider,
+                durability: RuntimeEventDurability::DurableRequired,
+                persist_required: true,
+                trace_visible: true,
+                payload: json!({
+                    "type": "finish",
+                    "reason": "length"
+                }),
+            },
+        ),
+    ));
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            3,
+            debug_stream_events::flow_finished(run.id, json!({ "answer": "" })),
+        ),
+    ));
+
+    let response = completed_compatible_stream(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(body.contains("\"stop_reason\":\"max_tokens\""), "{body}");
+    assert!(!body.contains("\"stop_reason\":\"end_turn\""), "{body}");
+}
+
+#[tokio::test]
 async fn anthropic_waiting_callback_streams_tool_input_json_delta() {
     let callback_task_id = Uuid::from_u128(0xcccccccccccccccccccccccccccccccc);
     let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());

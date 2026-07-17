@@ -177,6 +177,13 @@ pub fn map_messages_request(request: Value) -> Result<NativeRunRequest, Anthropi
         "request_context": NativeModelRequestContext { end_user_reference },
         "compatibility_mode": ANTHROPIC_MESSAGES_COMPATIBILITY_MODE
     });
+    if let Some(max_output_tokens) = anthropic_max_output_tokens(object)? {
+        native["execution"] = serde_json::json!({
+            "model_parameters": {
+                "max_output_tokens": max_output_tokens
+            }
+        });
+    }
     if !system_parts.is_empty() {
         native["system"] = serde_json::to_value(system_parts)
             .map_err(|_| AnthropicCompatError::invalid("failed to build Native system prompt"))?;
@@ -199,6 +206,19 @@ pub fn map_messages_request(request: Value) -> Result<NativeRunRequest, Anthropi
             Some(NativeProtocolRequestKind::AnthropicToolResultContinuation);
     }
     Ok(request)
+}
+
+fn anthropic_max_output_tokens(
+    object: &serde_json::Map<String, Value>,
+) -> Result<Option<u64>, AnthropicCompatError> {
+    object
+        .get("max_tokens")
+        .map(|value| {
+            value.as_u64().filter(|value| *value > 0).ok_or_else(|| {
+                AnthropicCompatError::invalid("max_tokens must be a positive integer")
+            })
+        })
+        .transpose()
 }
 
 fn normalize_anthropic_model_for_native(model: &str) -> (String, Option<&'static str>) {

@@ -11,7 +11,7 @@ keywords:
   - sse
   - exactly once
 created_at: 2026-07-16 12
-updated_at: 2026-07-17 13
+updated_at: 2026-07-17 17
 last_verified_at: 2026-07-17 13
 decision_policy: verify_before_decision
 status: delivered
@@ -62,3 +62,11 @@ AI 按用户要求修复 Claude Code 经 AionUI 调用 1flowbase 时的续聊上
 ## 截止日期与动机
 
 2026-07-16 已交付；动机是继续坚持 `Anthropic -> AI Native -> Anthropic`，让图拓扑、持久化 replay 和客户端 UI 都不能建立第二份协议真值。
+
+## 2026-07-17 输出 Token 决策
+
+- Anthropic `max_tokens` 先映射为 Native `execution.model_parameters.max_output_tokens`，再冻结到 `sys.model_parameters.max_output_tokens` 与 Start `max_output_tokens`；供应商字段不成为宿主真值。
+- LLM 节点的 `external_model_parameter_policy.follow_external_max_output_tokens` 默认开启；运行时优先级为节点显式 `max_tokens`、外部 `max_output_tokens`、供应商兜底，节点显式值不自动修改策略开关。
+- LLM trace 记录 `effective_max_output_tokens` 与 `max_output_tokens_source`；Anthropic 插件把实际发送值写入 provider metadata，因此缺省 `4096` 也可复盘。
+- Anthropic provider 的可选 `max_tokens` 默认关闭，插件版本升级为 `0.1.19`；兼容 SSE 将 runtime `length` 映射为 Anthropic `stop_reason=max_tokens`。
+- Claude Code 客户端 meta 消息继续完整落库与展示，不隐藏、不清洗。

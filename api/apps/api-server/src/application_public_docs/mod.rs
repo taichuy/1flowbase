@@ -333,7 +333,7 @@ impl DocTextResolver {
                 DocsLocale::ZhHans,
             ) => "流式返回选项，include_workflow_events=public 会启用公开工作流事件。",
             ("application_public_api.native.create_run.request.execution", DocsLocale::ZhHans) => {
-                "发布运行的执行选项。支持 model_parameters.reasoning 作为运行时 reasoning 偏好。"
+                "发布运行的执行选项。支持 model_parameters.max_output_tokens 与 model_parameters.reasoning 作为运行时大语言模型参数。"
             }
             ("application_public_api.native.create_run.request.metadata", DocsLocale::ZhHans) => {
                 "调用方元数据，会随公开运行持久化。"
@@ -398,7 +398,7 @@ impl DocTextResolver {
                 "Streaming options. include_workflow_events=public enables public workflow events."
             }
             ("application_public_api.native.create_run.request.execution", DocsLocale::EnUs) => {
-                "Execution options for the published run. Supports model_parameters.reasoning as runtime reasoning preference."
+                "Execution options for the published run. Supports model_parameters.max_output_tokens and model_parameters.reasoning as runtime language-model parameters."
             }
             ("application_public_api.native.create_run.request.metadata", DocsLocale::EnUs) => {
                 "Caller metadata persisted with the public run."

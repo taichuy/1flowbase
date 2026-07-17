@@ -556,9 +556,10 @@ describe('NodeDetailPanel', () => {
       );
 
       const policyRows = screen.getAllByTestId('node-policy-row');
-      expect(policyRows).toHaveLength(3);
+      expect(policyRows).toHaveLength(4);
       expect(policyRows[0]).toHaveTextContent('推理强度');
-      expect(policyRows[1]).toHaveTextContent('失败重试');
+      expect(policyRows[1]).toHaveTextContent('跟随外部最大输出 Token');
+      expect(policyRows[2]).toHaveTextContent('失败重试');
       expect(screen.getByLabelText('使用外部传入推理强度')).toBeInTheDocument();
       expect(
         screen.getByRole('switch', { name: '失败重试' })
@@ -691,6 +692,45 @@ describe('NodeDetailPanel', () => {
             config: expect.objectContaining({
               external_reasoning_policy: {
                 follow_external_reasoning: true
+              }
+            })
+          })
+        ])
+      );
+    },
+    NODE_DETAIL_PANEL_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-007 writes the external max output tokens strategy from the policy group',
+    async () => {
+      let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+
+      renderWithProviders(
+        <AgentFlowEditorStoreProvider initialState={createInitialState()}>
+          <DocumentObserver
+            onChange={(document) => {
+              latestDocument = document;
+            }}
+          />
+          <SelectionSeed nodeId="node-llm" />
+          <NodeConfigTab />
+        </AgentFlowEditorStoreProvider>
+      );
+
+      const followSwitch = screen.getByRole('switch', {
+        name: '跟随外部最大输出 Token'
+      });
+      expect(followSwitch).toBeChecked();
+      fireEvent.click(followSwitch);
+
+      expect(latestDocument.graph.nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'node-llm',
+            config: expect.objectContaining({
+              external_model_parameter_policy: {
+                follow_external_max_output_tokens: false
               }
             })
           })

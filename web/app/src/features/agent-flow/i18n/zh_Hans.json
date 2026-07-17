@@ -45,6 +45,8 @@
     "add_tool_registration": "添加工具",
     "save_tool": "保存工具",
     "follow_external_reasoning": "推理强度",
+    "follow_external_max_output_tokens": "跟随外部最大输出 Token",
+    "follow_external_max_output_tokens_help": "使用外部请求的最大输出 Token；LLM 节点显式开启的 max_tokens 优先。",
     "system_variable_model_parameters": "模型运行参数",
     "edit_model": "编辑模型",
     "save_model": "保存模型",

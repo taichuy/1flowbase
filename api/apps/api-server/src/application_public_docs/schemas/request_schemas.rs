@@ -65,6 +65,10 @@ pub(super) fn native_create_run_schema(docs: &DocTextResolver) -> Value {
                     "model_parameters": {
                         "type": "object",
                         "properties": {
+                            "max_output_tokens": {
+                                "type": "integer",
+                                "minimum": 1
+                            },
                             "reasoning": {
                                 "type": "object",
                                 "properties": {

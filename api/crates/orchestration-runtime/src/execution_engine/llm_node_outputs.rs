@@ -288,7 +288,7 @@ pub(super) fn build_llm_debug_facts(
     if let Some(invocation_debug_context) = invocation_debug_context {
         debug.insert(
             "llm_context".to_string(),
-            invocation_debug_context.to_payload(),
+            invocation_debug_context.to_payload(result),
         );
     }
 

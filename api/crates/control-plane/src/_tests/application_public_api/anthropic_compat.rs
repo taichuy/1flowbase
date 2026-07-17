@@ -110,6 +110,16 @@ fn last_user_text_maps_to_native_query() {
 }
 
 #[test]
+fn ac_003_anthropic_max_tokens_maps_to_native_max_output_tokens() {
+    let native = map_messages_request(base_request()).unwrap();
+
+    assert_eq!(
+        native.execution["model_parameters"]["max_output_tokens"],
+        json!(512)
+    );
+}
+
+#[test]
 fn prior_messages_map_to_native_history() {
     let native = map_messages_request(base_request()).unwrap();
 

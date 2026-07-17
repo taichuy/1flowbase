@@ -6,12 +6,35 @@ enum AnthropicContentBlockKind {
     Thinking,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AnthropicMessageStopReason {
+    EndTurn,
+    MaxTokens,
+}
+
+impl AnthropicMessageStopReason {
+    fn from_provider_finish_payload(payload: &Value) -> Self {
+        match payload.get("reason").and_then(Value::as_str) {
+            Some("length") => Self::MaxTokens,
+            _ => Self::EndTurn,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::EndTurn => "end_turn",
+            Self::MaxTokens => "max_tokens",
+        }
+    }
+}
+
 pub(in crate::routes::application_public_api::compat_sse) struct AnthropicStreamMapper {
     model: String,
     next_content_index: u32,
     active_content: Option<AnthropicContentBlockKind>,
     emitted_reasoning_delta: bool,
     emitted_text_delta: bool,
+    terminal_stop_reason: AnthropicMessageStopReason,
 }
 
 impl AnthropicStreamMapper {
@@ -22,6 +45,7 @@ impl AnthropicStreamMapper {
             active_content: None,
             emitted_reasoning_delta: false,
             emitted_text_delta: false,
+            terminal_stop_reason: AnthropicMessageStopReason::EndTurn,
         }
     }
 
@@ -77,6 +101,11 @@ impl AnthropicStreamMapper {
                 events
             }
             "text_delta" | "reasoning_delta" => Vec::new(),
+            "finish" => {
+                self.terminal_stop_reason =
+                    AnthropicMessageStopReason::from_provider_finish_payload(&envelope.payload);
+                Vec::new()
+            }
             "flow_finished" => self.anthropic_terminal_events(initial_run, &envelope.payload),
             "waiting_callback" => {
                 if let Some(events) =
@@ -106,7 +135,10 @@ impl AnthropicStreamMapper {
                     )]
                 }
             }
-            "flow_cancelled" => self.anthropic_stop_events(initial_run.usage.as_ref()),
+            "flow_cancelled" => {
+                self.terminal_stop_reason = AnthropicMessageStopReason::EndTurn;
+                self.anthropic_stop_events(initial_run.usage.as_ref())
+            }
             _ => Vec::new(),
         }
     }
@@ -159,6 +191,7 @@ impl AnthropicStreamMapper {
         usage: Option<&NativeUsage>,
     ) -> Vec<Result<Event, Infallible>> {
         let mut events = Vec::new();
+        let stop_reason = self.terminal_stop_reason.as_str();
         if self.active_content.is_none() && self.next_content_index == 0 {
             events.extend(self.ensure_anthropic_content_block(AnthropicContentBlockKind::Text));
         }
@@ -167,7 +200,7 @@ impl AnthropicStreamMapper {
             "message_delta",
             json!({
                 "type": "message_delta",
-                "delta": {"stop_reason": "end_turn"},
+                "delta": {"stop_reason": stop_reason},
                 "usage": anthropic_message_delta_usage_payload(usage)
             }),
         ));
