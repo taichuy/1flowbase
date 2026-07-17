@@ -1,4 +1,4 @@
 interface:
   display_name: "Problem Framing"
-  short_description: "先分析现状与隐藏因果，再用三个方向完成需求对齐和决策收敛"
-  default_prompt: "使用 $problem-framing 先分析现状与真正需求，再给出保守、平衡、激进三个方向和最终建议。"
+  short_description: "对齐结果与验收，选择 Single Issue 或长计划 Issue Tree"
+  default_prompt: "使用 $problem-framing 对齐目标、成功标准与停止条件，并选择 Single Issue 或长计划 Issue Tree。"

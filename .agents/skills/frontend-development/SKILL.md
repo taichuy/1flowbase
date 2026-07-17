@@ -74,7 +74,7 @@ description: "Use for 1flowbase frontend implementation in web/: building, fixin
 - 交付说明必须包含 context capsule：做了什么、在哪里、关键决策 / gotchas、后续扩展入口；只写可检索指针，不复制代码或重述完整 diff。
 - 若 issue / handoff 有 `AC-001` 这类验收点，交付时标明已覆盖、未覆盖和延后到 QA / CI 的点。
 - 当前本地开发分支优先跑与本次 UI / contract / state 改动直接相关的 `tsc`、定向 consumer test、局部 page-debug / screenshot 或单文件 lint。
-- 完整 frontend lint / build / full style-boundary / i18n hygiene / verify-repo 默认交给 beta / CI / 专门质量工作区；需要本地提前跑时，必须在对齐 / L3 issue / handoff 阶段先说明证据收益和成本。实现期临时发现时默认标为未验证，除非缺少该证据会影响继续实现安全性或当前任务完成判断。
+- 完整 frontend lint / build / full style-boundary / i18n hygiene / verify-repo 默认交给 beta / CI / 专门质量工作区；需要本地提前跑时，必须在对齐 / 已批准计划 / handoff 阶段先说明证据收益和成本。实现期临时发现时默认标为未验证，除非缺少该证据会影响继续实现安全性或当前任务完成判断。
 
 ## Common Mistakes
 
