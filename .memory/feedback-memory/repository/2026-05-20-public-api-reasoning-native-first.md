@@ -2,7 +2,7 @@
 memory_type: feedback
 feedback_category: repository
 topic: public-api-reasoning-native-first
-summary: 应用接入 API 以 1flowbase Native API / runtime event 为唯一真值层，外部映射协议必须先诚实翻译为 AI Native 再渲染到模型供应商；不得静默丢字段、把失败降级为内容或成功终态。
+summary: 应用接入 API 以单一 1flowbase Native contract / runtime event 为唯一真值层；外部协议版本只存在于 adapter 边界，不建立 V1/V3 内部双栈；不得静默丢字段、把失败降级为内容或成功终态。
 keywords:
   - application public api
   - application api docs
@@ -18,8 +18,8 @@ keywords:
   - silent drop
   - terminal failure
 created_at: 2026-05-20 19
-updated_at: 2026-07-17 15
-last_verified_at: 2026-07-17 15
+updated_at: 2026-07-17 23
+last_verified_at: 2026-07-17 23
 decision_policy: direct_reference
 scope:
   - api/apps/api-server/src/routes/application_public_api
@@ -34,6 +34,8 @@ scope:
 修改应用接入 API 的思考过程、流式输出、会话续接或兼容协议映射时，先确认 1flowbase Native API / runtime event stream 是否表达了真实语义；`reasoning_delta` / `<think>` 是用户可见结果的一部分，不能被当成内部噪音删除。持久化 `answer`、Native terminal snapshot 和 blocking 响应保留 `<think>...</think>` 原文；如果流式终端兜底或 completed 投影只能从持久化 `answer` 重建事件，则按 Native runtime 已有语义恢复为 `reasoning_delta` + `text_delta`，再由 OpenAI Chat Completions、OpenAI Responses、Anthropic 等兼容接口投影成各自协议字段。兼容接口只能作为 Native 请求与事件的协议投影同步维护。
 
 协议转换固定遵循“外部映射协议 → AI Native（唯一语义真值）→ 模型供应商协议”。每个外部已提供字段都必须有明确处置：进入 Native、等价模拟、受限 transport envelope，或显式拒绝；不得静默丢弃。Provider / transport failure、`response.failed`、协议错误和缺失合法 terminal 不得写入 assistant / Answer 文本，也不得因为已有 partial answer 而渲染为正常 completed / stop；partial output 可以保留，但最终失败事实必须保持。
+
+Public API 的 `/v1`、Provider wire 版本和供应商 `/v1beta` 等属于边界协议标识，不应扩散成多套内部 canonical request/result/terminal。项目尚未形成真实兼容承诺时，直接原位重构当前 Native contract，并同步升级所有官方 Provider 消费方；不要用 V1/V3 mode、双 reader、双写或 adapter 长期维持两套语义。运行终态与 contract 版本是不同概念，不能因取消版本双栈而删除失败、未完成、取消等结果真值。
 
 ## 原因
 
