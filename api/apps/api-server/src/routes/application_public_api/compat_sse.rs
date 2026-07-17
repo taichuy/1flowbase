@@ -73,6 +73,7 @@ struct CompatibleStreamStats {
     forwarded_event_identities: HashSet<CompatiblePublicEventIdentity>,
     forwarded_answer_chunks: HashSet<CompatiblePublicEventChunkIdentity>,
     forwarded_answer_text: HashMap<CompatiblePublicEventIdentity, String>,
+    durable_answer_text: HashMap<CompatiblePublicEventIdentity, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -116,21 +117,28 @@ impl CompatibleStreamStats {
             .forwarded_answer_text
             .entry(identity.clone())
             .or_default();
-        if is_batched_durable_delta && !forwarded.is_empty() {
-            if text.starts_with(forwarded.as_str()) {
-                let suffix = text[forwarded.len()..].to_string();
+        if is_batched_durable_delta {
+            // Durable batches can split the live stream at different boundaries. Reconcile the
+            // cumulative durable prefix instead of comparing each batch with the full live text.
+            let durable = self
+                .durable_answer_text
+                .entry(identity.clone())
+                .or_default();
+            durable.push_str(text);
+            if forwarded.starts_with(durable.as_str()) {
+                return false;
+            }
+            if durable.starts_with(forwarded.as_str()) {
+                let suffix = durable[forwarded.len()..].to_string();
                 if suffix.is_empty() {
                     return false;
                 }
-                *forwarded = text.to_string();
+                forwarded.push_str(&suffix);
                 event.text = Some(suffix.clone());
                 if let Some(payload) = event.payload.as_object_mut() {
                     payload.insert("text".to_string(), Value::String(suffix));
                 }
                 return true;
-            }
-            if forwarded.starts_with(text) {
-                return false;
             }
         }
         let chunk = CompatiblePublicEventChunkIdentity {

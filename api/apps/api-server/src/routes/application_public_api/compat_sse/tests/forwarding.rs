@@ -65,6 +65,138 @@ fn live_answer_chunks_claim_the_same_coalesced_durable_delta_once() {
 }
 
 #[test]
+fn live_answer_chunks_claim_multiple_coalesced_durable_deltas_once() {
+    let run = native_run();
+    let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
+    let chunks = [
+        "现在三层",
+        "的现状清楚了。关键发现：",
+        "\n- 页面层已接 DesignHoverFrame，需换",
+        "蓝。\n- 区块层：#66e",
+        "0ad / #00c875，",
+        "统一重构。",
+    ];
+    let mut live = chunks
+        .iter()
+        .enumerate()
+        .map(|(index, text)| {
+            RuntimeEventEnvelope::new(
+                run.id,
+                index as i64 + 1,
+                debug_stream_events::answer_text_delta(
+                    "node-answer",
+                    (*text).to_string(),
+                    0,
+                    Some("node-llm"),
+                    Some(node_run_id),
+                    Some("text"),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut stats = CompatibleStreamStats::default();
+
+    for event in &mut live {
+        assert!(stats.claim_runtime_event(event));
+    }
+
+    let durable_batches = [
+        (vec![0], chunks[0].to_string()),
+        (vec![1, 2], format!("{}{}", chunks[1], chunks[2])),
+        (vec![3], chunks[3].to_string()),
+        (vec![4, 5], format!("{}{}", chunks[4], chunks[5])),
+    ];
+    let replayed = durable_batches
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, (source_indexes, text))| {
+            let mut durable = RuntimeEventEnvelope::new(
+                run.id,
+                index as i64 + 100,
+                debug_stream_events::answer_text_delta(
+                    "node-answer",
+                    text,
+                    0,
+                    Some("node-llm"),
+                    Some(node_run_id),
+                    Some("text"),
+                ),
+            );
+            durable.payload["event_ids"] = json!(source_indexes
+                .into_iter()
+                .map(|source_index| live[source_index].event_id.clone())
+                .collect::<Vec<_>>());
+            stats
+                .claim_runtime_event(&mut durable)
+                .then_some(durable.text.unwrap_or_default())
+        })
+        .collect::<String>();
+
+    assert!(replayed.is_empty(), "durable replay leaked: {replayed}");
+}
+
+#[test]
+fn live_answer_prefix_claims_only_missing_suffix_across_durable_batches() {
+    let run = native_run();
+    let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
+    let chunks = ["实时", "前缀", "补齐", "完成"];
+    let mut source_events = chunks
+        .iter()
+        .enumerate()
+        .map(|(index, text)| {
+            RuntimeEventEnvelope::new(
+                run.id,
+                index as i64 + 1,
+                debug_stream_events::answer_text_delta(
+                    "node-answer",
+                    (*text).to_string(),
+                    0,
+                    Some("node-llm"),
+                    Some(node_run_id),
+                    Some("text"),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut stats = CompatibleStreamStats::default();
+    assert!(stats.claim_runtime_event(&mut source_events[0]));
+    assert!(stats.claim_runtime_event(&mut source_events[1]));
+
+    let durable_batches = [
+        (vec![0], chunks[0].to_string()),
+        (vec![1, 2], format!("{}{}", chunks[1], chunks[2])),
+        (vec![3], chunks[3].to_string()),
+    ];
+    let reconciled = durable_batches
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, (source_indexes, text))| {
+            let mut durable = RuntimeEventEnvelope::new(
+                run.id,
+                index as i64 + 100,
+                debug_stream_events::answer_text_delta(
+                    "node-answer",
+                    text,
+                    0,
+                    Some("node-llm"),
+                    Some(node_run_id),
+                    Some("text"),
+                ),
+            );
+            durable.payload["event_ids"] = json!(source_indexes
+                .into_iter()
+                .map(|source_index| source_events[source_index].event_id.clone())
+                .collect::<Vec<_>>());
+            stats
+                .claim_runtime_event(&mut durable)
+                .then_some(durable.text.unwrap_or_default())
+        })
+        .collect::<String>();
+
+    assert_eq!(reconciled, "补齐完成");
+}
+
+#[test]
 fn live_answer_chunks_are_not_treated_as_cumulative_snapshots() {
     let run = native_run();
     let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
