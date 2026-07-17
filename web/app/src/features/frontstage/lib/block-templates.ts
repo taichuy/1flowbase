@@ -29,8 +29,8 @@ export type CreateBlankJsBlockTemplateCodeInput = Omit<
 export const FRONTSTAGE_BUILT_IN_JS_BLOCK_TEMPLATES = [
   {
     id: 'blank',
-    title: 'Blank JS Block',
-    description: 'Start from a minimal JS Block skeleton.'
+    title: 'JSX 示例区块',
+    description: '从最小、可运行的 JSX 示例开始。'
   },
   {
     id: 'data-table',
@@ -105,42 +105,19 @@ function createBlankTemplateCode(
   input: CreateFrontstageBuiltInJsBlockTemplateCodeInput
 ): string {
   return `${createTemplateHeader(input)}
-import { Alert, Stack, Text, Title } from '@1flowbase/block-renderer/antd-facade';
+import { Stack, Text, Title } from '@1flowbase/block-renderer/antd-facade';
 
 export default defineBlock({
   id: ${quoteJsString(input.blockId)},
-  title: 'Blank JS Block',
-  initialState: {
-    error: null
-  },
+  title: 'JSX 示例区块',
 
-  async render(ctx) {
-    const error = typeof ctx.state.error === 'string' ? ctx.state.error : null;
-
-    if (ctx.props.__example === true) {
-      const records = await ctx.data.query('data_model_code', {
-        page: 1,
-        pageSize: 20
-      });
-      const created = await ctx.data.create('data_model_code', {});
-      await ctx.data.update('data_model_code', created.id, {});
-      await ctx.data.delete('data_model_code', created.id);
-      ctx.patch({ records });
-      ctx.events.emit('blank.loaded', { count: records.length });
-      await ctx.actions.invoke('blank.refresh', { codeRef: ${quoteJsString(
-        input.codeRef
-      )} });
-    }
-
-    return Stack({
-      children: [
-        Title({ children: 'Blank JS Block' }),
-        Text({
-          children: 'Start from this built-in blank JS Block skeleton.'
-        }),
-        error ? Alert({ props: { type: 'error', message: error } }) : null
-      ]
-    });
+  render() {
+    return (
+      <Stack>
+        <Title>JSX 示例区块</Title>
+        <Text>点击区块右上角的编辑图标修改这段 JSX。</Text>
+      </Stack>
+    );
   }
 });
 `;
@@ -163,39 +140,37 @@ export default defineBlock({
     const rows = Array.isArray(ctx.state.rows) ? ctx.state.rows : [];
 
     if (ctx.props.__example === true) {
-      const records = await ctx.data.query('orders', {
+      const result = await ctx.data.query('frontstage.data_model.record.list', {
+        model: 'orders',
         page: 1,
-        pageSize: 20
+        page_size: 20
       });
-      const nextRows = Array.isArray(records) ? records : [];
+      const nextRows = Array.isArray(result.items) ? result.items : [];
       ctx.patch({ rows: nextRows });
       ctx.events.emit('orders.loaded', { count: nextRows.length });
     }
 
-    return Stack({
-      children: [
-        Title({ children: 'Data Table' }),
-        Text({ children: 'Query records and render them in a table.' }),
-        Table({
-          props: {
-            rowKey: 'id',
-            columns: [
-              { key: 'name', title: 'Name', dataIndex: 'name' },
-              { key: 'status', title: 'Status', dataIndex: 'status' }
-            ],
-            dataSource: rows
-          },
-          permissions: { data: ['query'], events: ['orders.loaded'] }
-        }),
-        Button({
-          props: {
-            children: 'Refresh',
-            actionId: 'orders.refresh',
-            actionPayload: { codeRef: ${quoteJsString(input.codeRef)} }
-          }
-        })
-      ]
-    });
+    return (
+      <Stack>
+        <Title>Data Table</Title>
+        <Text>Query records and render them in a table.</Text>
+        <Table
+          rowKey="id"
+          columns={[
+            { key: 'name', title: 'Name', dataIndex: 'name' },
+            { key: 'status', title: 'Status', dataIndex: 'status' }
+          ]}
+          dataSource={rows}
+          permissions={{ data: ['query'], events: ['orders.loaded'] }}
+        />
+        <Button
+          actionId="frontstage.data_model.record.list"
+          actionPayload={{ model: 'orders', page: 1, page_size: 20 }}
+        >
+          Refresh
+        </Button>
+      </Stack>
+    );
   }
 });
 `;
@@ -222,39 +197,36 @@ export default defineBlock({
 
     if (ctx.props.__example === true) {
       ctx.patch({ draft: { ...draft, status: 'ready' } });
-      const created = await ctx.data.create('orders', draft);
-      await ctx.actions.invoke('orders.created', { id: created.id });
+      const created = await ctx.actions.invoke('frontstage.data_model.record.create', {
+        model: 'orders',
+        values: draft
+      });
+      ctx.events.emit('orders.created', { id: created.record.id });
     }
 
-    return Stack({
-      children: [
-        Title({ children: 'Create Form' }),
-        Text({ children: 'Collect values and create a record.' }),
-        Form({
-          props: { layout: 'vertical' },
-          permissions: { data: ['create'], actions: ['orders.created'] },
-          children: [
-            FormItem({
-              props: { name: 'name', label: 'Name' },
-              children: [Input({ props: { value: draft.name } })]
-            }),
-            FormItem({
-              props: { name: 'status', label: 'Status' },
-              children: [Input({ props: { value: draft.status } })]
-            })
-          ]
-        }),
-        Button({
-          props: {
-            children: 'Create',
-            actionId: 'orders.create',
-            actionPayload: { contributionCode: ${quoteJsString(
-              input.contributionCode
-            )} }
-          }
-        })
-      ]
-    });
+    return (
+      <Stack>
+        <Title>Create Form</Title>
+        <Text>Collect values and create a record.</Text>
+        <Form
+          layout="vertical"
+          permissions={{ actions: ['frontstage.data_model.record.create'] }}
+        >
+          <FormItem name="name" label="Name">
+            <Input value={draft.name} />
+          </FormItem>
+          <FormItem name="status" label="Status">
+            <Input value={draft.status} />
+          </FormItem>
+        </Form>
+        <Button
+          actionId="frontstage.data_model.record.create"
+          actionPayload={{ model: 'orders', values: draft }}
+        >
+          Create
+        </Button>
+      </Stack>
+    );
   }
 });
 
@@ -282,44 +254,45 @@ export default defineBlock({
     const recordId = typeof ctx.params.recordId === 'string' ? ctx.params.recordId : 'record-id';
 
     if (ctx.props.__example === true) {
-      const loaded = await ctx.data.query('orders', {
-        where: { id: recordId }
+      const loaded = await ctx.data.query('frontstage.data_model.record.get', {
+        model: 'orders',
+        record_id: recordId
       });
-      const nextRecord = isRecord(loaded) ? loaded : {};
+      const nextRecord = isRecord(loaded.record) ? loaded.record : {};
       ctx.patch({ record: nextRecord });
-      await ctx.data.update('orders', recordId, nextRecord);
-      await ctx.actions.invoke('orders.saved', { id: recordId });
+      await ctx.actions.invoke('frontstage.data_model.record.update', {
+        model: 'orders',
+        record_id: recordId,
+        values: nextRecord
+      });
     }
 
-    return Stack({
-      children: [
-        Title({ children: 'Edit Form' }),
-        Text({ children: 'Load a record and submit updates.' }),
-        Form({
-          props: { layout: 'vertical' },
-          permissions: { data: ['query', 'update'] },
-          children: [
-            FormItem({
-              props: { name: 'name', label: 'Name' },
-              children: [Input({ props: { value: record.name } })]
-            }),
-            FormItem({
-              props: { name: 'status', label: 'Status' },
-              children: [Input({ props: { value: record.status } })]
-            })
-          ]
-        }),
-        Button({
-          props: {
-            children: 'Save',
-            actionId: 'orders.save',
-            actionPayload: { id: recordId, codeRef: ${quoteJsString(
-              input.codeRef
-            )} }
-          }
-        })
-      ]
-    });
+    return (
+      <Stack>
+        <Title>Edit Form</Title>
+        <Text>Load a record and submit updates.</Text>
+        <Form
+          layout="vertical"
+          permissions={{
+            data: ['query'],
+            actions: ['frontstage.data_model.record.update']
+          }}
+        >
+          <FormItem name="name" label="Name">
+            <Input value={record.name} />
+          </FormItem>
+          <FormItem name="status" label="Status">
+            <Input value={record.status} />
+          </FormItem>
+        </Form>
+        <Button
+          actionId="frontstage.data_model.record.update"
+          actionPayload={{ model: 'orders', record_id: recordId, values: record }}
+        >
+          Save
+        </Button>
+      </Stack>
+    );
   }
 });
 
@@ -349,54 +322,43 @@ export default defineBlock({
 
     if (ctx.props.__example === true) {
       ctx.patch({ query });
-      const records = await ctx.data.query('orders', {
-        filter: { keyword: query },
+      const result = await ctx.data.query('frontstage.data_model.record.list', {
+        model: 'orders',
+        filter: { name: { $contains: query } },
         page: 1,
-        pageSize: 20
+        page_size: 20
       });
-      const nextRows = Array.isArray(records) ? records : [];
+      const nextRows = Array.isArray(result.items) ? result.items : [];
       ctx.patch({ rows: nextRows });
-      await ctx.actions.invoke('orders.search', { query });
-      if (nextRows.length > 0) {
-        await ctx.data.delete('orders', nextRows[0].id);
-      }
+      ctx.events.emit('orders.search', { query });
     }
 
-    return Stack({
-      children: [
-        Title({ children: 'Search Table' }),
-        Text({ children: 'Search records and handle row actions.' }),
-        Form({
-          props: { layout: 'inline' },
-          children: [
-            FormItem({
-              props: { name: 'query', label: 'Keyword' },
-              children: [Input({ props: { value: query } })]
-            }),
-            Button({
-              props: {
-                children: 'Search',
-                actionId: 'orders.search',
-                actionPayload: { contributionCode: ${quoteJsString(
-                  input.contributionCode
-                )} }
-              }
-            })
-          ]
-        }),
-        Table({
-          props: {
-            rowKey: 'id',
-            columns: [
-              { key: 'name', title: 'Name', dataIndex: 'name' },
-              { key: 'status', title: 'Status', dataIndex: 'status' }
-            ],
-            dataSource: rows
-          },
-          permissions: { data: ['query', 'delete'], actions: ['orders.search'] }
-        })
-      ]
-    });
+    return (
+      <Stack>
+        <Title>Search Table</Title>
+        <Text>Search records and handle row actions.</Text>
+        <Form layout="inline">
+          <FormItem name="query" label="Keyword">
+            <Input value={query} />
+          </FormItem>
+          <Button
+            actionId="frontstage.data_model.record.list"
+            actionPayload={{ model: 'orders', page: 1, page_size: 20 }}
+          >
+            Search
+          </Button>
+        </Form>
+        <Table
+          rowKey="id"
+          columns={[
+            { key: 'name', title: 'Name', dataIndex: 'name' },
+            { key: 'status', title: 'Status', dataIndex: 'status' }
+          ]}
+          dataSource={rows}
+          permissions={{ data: ['query'], events: ['orders.search'] }}
+        />
+      </Stack>
+    );
   }
 });
 `;

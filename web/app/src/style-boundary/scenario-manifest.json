@@ -153,6 +153,12 @@
       "web/app/src/features/frontstage/components/FrontStagePageTreeSidebar.tsx",
       "web/app/src/features/frontstage/components/frontstage-page-tree-sidebar.css",
       "web/app/src/features/frontstage/components/PageCanvas.tsx",
+      "web/app/src/features/frontstage/components/BlockHoverToolbar.tsx",
+      "web/app/src/features/frontstage/components/FrontstagePageTabs.tsx",
+      "web/app/src/features/frontstage/components/frontstage-page-tabs.css",
+      "web/app/src/features/frontstage/components/FrontstageNodeActionButton.tsx",
+      "web/app/src/features/frontstage/components/frontstage-node-action-button.css",
+      "web/app/src/features/frontstage/lib/design-mode-theme.ts",
       "web/app/src/app/router.tsx",
       "web/app/src/style-boundary/registry.tsx"
     ],

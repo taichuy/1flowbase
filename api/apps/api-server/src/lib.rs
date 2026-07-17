@@ -339,16 +339,23 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         Arc::new(official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
             resolved_official_mcp_bundle_source,
         ));
-    control_plane::plugin_management::PluginManagementService::new(
+    let plugin_management = control_plane::plugin_management::PluginManagementService::new(
         store.clone(),
         ApiProviderRuntime::new(provider_runtime.clone()),
         official_plugin_source.clone(),
         config.provider_install_root.clone(),
     )
     .with_node_id(config.api_node_id.clone())
-    .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions)
-    .reconcile_all_installations()
-    .await?;
+    .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
+    plugin_management
+        .ensure_builtin_plugin(
+            control_plane::plugin_management::EnsureBuiltinPluginCommand {
+                actor_user_id: bootstrap_result.root_user_id,
+                package_root: builtin_jsx_block_package_root()?.display().to_string(),
+            },
+        )
+        .await?;
+    plugin_management.reconcile_all_installations().await?;
     let mut prepared_host_extensions = prepare_host_extensions_at_startup(
         &store,
         &config.api_node_id,
@@ -434,6 +441,18 @@ fn api_workspace_root() -> Result<PathBuf> {
     ))
 }
 
+fn builtin_jsx_block_package_root() -> Result<PathBuf> {
+    let package_root = api_workspace_root()?.join("plugins/capability-plugins/1flowbase");
+    if package_root.join("manifest.yaml").is_file() {
+        return Ok(package_root);
+    }
+
+    Err(anyhow!(
+        "builtin JSX block package manifest was not found at {}",
+        package_root.join("manifest.yaml").display()
+    ))
+}
+
 pub async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
@@ -467,7 +486,10 @@ pub fn init_tracing() {
 
 #[cfg(test)]
 mod tests {
-    use super::{api_workspace_root, parse_bind_addr, DEFAULT_API_SERVER_ADDR};
+    use super::{
+        api_workspace_root, builtin_jsx_block_package_root, parse_bind_addr,
+        DEFAULT_API_SERVER_ADDR,
+    };
 
     #[test]
     fn parse_bind_addr_uses_new_default_api_port() {
@@ -488,6 +510,13 @@ mod tests {
         let root = api_workspace_root().unwrap();
 
         assert!(root.join("plugins/host-extensions").is_dir());
+    }
+
+    #[test]
+    fn api_workspace_root_contains_builtin_jsx_block_package() {
+        let package_root = builtin_jsx_block_package_root().unwrap();
+
+        assert!(package_root.join("manifest.yaml").is_file());
     }
 }
 

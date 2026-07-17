@@ -367,6 +367,12 @@ where
         for installation in &installations {
             self.ensure_model_provider_target(installation)?;
         }
+        if installations
+            .iter()
+            .any(|installation| installation.source_kind == "builtin")
+        {
+            return Err(ControlPlaneError::Conflict("builtin_plugin_immutable").into());
+        }
 
         let current_installation_id = self
             .repository

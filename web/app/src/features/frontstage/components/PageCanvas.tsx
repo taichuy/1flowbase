@@ -12,19 +12,16 @@ import type { FrontstagePageContent } from '../api/page-content';
 import { BlockHoverToolbar } from './BlockHoverToolbar';
 import { RestrictedBlockRuntimePreview } from './RestrictedBlockRuntimePreview';
 import type { FrontstagePageCanvasRuntimeSessionEntry } from '../hooks/use-frontstage-page-canvas-runtime-sessions';
-import {
-  createFrontstagePageDocument
-} from '../lib/page-document';
+import { createFrontstagePageDocument } from '../lib/page-document';
 import {
   createFrontstagePageRenderPlan,
   type FrontstageBlockRenderPlanItem
 } from '../lib/page-canvas/render-plan';
-import type {
-  FrontstagePageCanvasRuntimeSourceState
-} from '../lib/page-canvas/runtime-source';
+import type { FrontstagePageCanvasRuntimeSourceState } from '../lib/page-canvas/runtime-source';
 import type { FrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
 import { i18nText } from '../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
+import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
@@ -61,13 +58,18 @@ type PageCanvasProps = {
   toolbarDisabled?: boolean;
   showTitle?: boolean;
   onResponsiveLayoutSave?: (
-    layouts: Record<string, Record<string, { x: number; y: number; w: number; h: number }>>
+    layouts: Record<
+      string,
+      Record<string, { x: number; y: number; w: number; h: number }>
+    >
   ) => void;
 };
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 function formatPageTitle(content: FrontstagePageContent): string {
-  return content.page.title?.trim() || i18nText("frontstage", "auto.unnamed_page");
+  return (
+    content.page.title?.trim() || i18nText('frontstage', 'auto.unnamed_page')
+  );
 }
 
 function findRuntimeSessionEntryForSlot({
@@ -117,7 +119,7 @@ const blockFrameBaseStyle: CSSProperties = {
   borderRadius: 8,
   background: '#fff',
   overflow: 'hidden',
-  boxShadow: '0 14px 40px rgba(15, 118, 110, 0.04)'
+  boxShadow: '0 14px 40px rgba(37, 99, 235, 0.05)'
 };
 
 const blockLabelStyle: CSSProperties = {
@@ -126,8 +128,8 @@ const blockLabelStyle: CSSProperties = {
   left: 14,
   zIndex: 2,
   borderRadius: 6,
-  background: '#ecfdf5',
-  color: '#00a86b',
+  background: FRONTSTAGE_DESIGN_BLUE.labelBg,
+  color: FRONTSTAGE_DESIGN_BLUE.labelText,
   fontSize: 12,
   lineHeight: '20px',
   padding: '0 8px'
@@ -151,17 +153,17 @@ function RenderPlanSlot({
   if (isDesignMode) {
     if (isSelected) {
       borderStyle = {
-        border: '2px solid #00c875',
-        background: '#fbfffd'
+        border: `2px solid ${FRONTSTAGE_DESIGN_BLUE.borderSelected}`,
+        background: FRONTSTAGE_DESIGN_BLUE.bgSelected
       };
     } else if (isHovered) {
       borderStyle = {
-        border: '1px solid #66e0ad',
-        background: '#fbfffd'
+        border: `1px solid ${FRONTSTAGE_DESIGN_BLUE.borderHover}`,
+        background: FRONTSTAGE_DESIGN_BLUE.bgHover
       };
     } else {
       borderStyle = {
-        border: '1px solid #b7ebd3'
+        border: `1px solid ${FRONTSTAGE_DESIGN_BLUE.borderIdle}`
       };
     }
   } else {
@@ -182,12 +184,12 @@ function RenderPlanSlot({
       return (
         <div
           style={{
-            padding: isDesignMode
-              ? '48px clamp(16px, 5vw, 72px) 28px'
-              : 12
+            padding: isDesignMode ? '48px clamp(16px, 5vw, 72px) 28px' : 12
           }}
         >
-          <RestrictedBlockRuntimePreview snapshot={runtimeSessionEntry.snapshot} />
+          <RestrictedBlockRuntimePreview
+            snapshot={runtimeSessionEntry.snapshot}
+          />
         </div>
       );
     }
@@ -198,8 +200,11 @@ function RenderPlanSlot({
           <Alert
             type="error"
             showIcon
-            message={i18nText("frontstage", "auto.runtime_preview_unavailable")}
-            description={i18nText("frontstage", "auto.restricted_runtime_session_create_failed")}
+            message={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
+            description={i18nText(
+              'frontstage',
+              'auto.restricted_runtime_session_create_failed'
+            )}
           />
         </div>
       );
@@ -217,8 +222,8 @@ function RenderPlanSlot({
       >
         <Typography.Text type="secondary" style={{ fontSize: 13 }}>
           {runtimeSessionEntry?.status === 'skipped'
-            ? i18nText("frontstage", "auto.block_skipped_run")
-            : i18nText("frontstage", "auto.block_loading")}
+            ? i18nText('frontstage', 'auto.block_skipped_run')
+            : i18nText('frontstage', 'auto.block_loading')}
         </Typography.Text>
       </div>
     );
@@ -233,7 +238,13 @@ function RenderPlanSlot({
         transition: 'border-color 0.15s, background 0.15s'
       }}
       data-testid={`block-slot-${item.blockId}`}
-      aria-label={isDesignMode ? i18nText("frontstage", "auto.block_with_id", { value1: item.blockId }) : undefined}
+      aria-label={
+        isDesignMode
+          ? i18nText('frontstage', 'auto.block_with_id', {
+              value1: item.blockId
+            })
+          : undefined
+      }
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={handleSelect}
@@ -246,7 +257,11 @@ function RenderPlanSlot({
         }
       }}
     >
-      {isDesignMode ? <span style={blockLabelStyle}>{i18nText("frontstage", "auto.js_block")}</span> : null}
+      {isDesignMode ? (
+        <span style={blockLabelStyle}>
+          {i18nText('frontstage', 'auto.js_block')}
+        </span>
+      ) : null}
       {renderBlockContent()}
 
       {isDesignMode && designActions && isToolbarVisible && (
@@ -304,11 +319,21 @@ export const PageCanvas: FC<PageCanvasProps> = ({
 
   if (isLoading) {
     return (
-      <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6, padding: 12 }}>
+      <div
+        style={{
+          background: '#fafafa',
+          border: '1px solid #f0f0f0',
+          borderRadius: 6,
+          padding: 12
+        }}
+      >
         <Space direction="vertical" size={4}>
-          <Typography.Text strong>{i18nText("frontstage", "auto.page_content_loading")}</Typography.Text>
+          <Typography.Text strong>
+            {i18nText('frontstage', 'auto.page_content_loading')}
+          </Typography.Text>
           <Typography.Text type="secondary">
-            {i18nText("frontstage", "auto.reading_page_content_and_blocks")}</Typography.Text>
+            {i18nText('frontstage', 'auto.reading_page_content_and_blocks')}
+          </Typography.Text>
         </Space>
       </div>
     );
@@ -323,12 +348,13 @@ export const PageCanvas: FC<PageCanvasProps> = ({
       <Alert
         type="error"
         showIcon
-        message={i18nText("frontstage", "auto.page_content_load_failed")}
-        description={i18nText("frontstage", "auto.network_retry")}
+        message={i18nText('frontstage', 'auto.page_content_load_failed')}
+        description={i18nText('frontstage', 'auto.network_retry')}
         action={
           onRetry ? (
             <Button size="small" onClick={onRetry}>
-              {i18nText("frontstage", "auto.retry")}</Button>
+              {i18nText('frontstage', 'auto.retry')}
+            </Button>
           ) : null
         }
       />
@@ -341,9 +367,12 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         image={Empty.PRESENTED_IMAGE_SIMPLE}
         description={
           <Space direction="vertical" size={2}>
-            <Typography.Text>{i18nText("frontstage", "auto.no_page_content_selected")}</Typography.Text>
+            <Typography.Text>
+              {i18nText('frontstage', 'auto.no_page_content_selected')}
+            </Typography.Text>
             <Typography.Text type="secondary">
-              {i18nText("frontstage", "auto.page_preview_after_select")}</Typography.Text>
+              {i18nText('frontstage', 'auto.page_preview_after_select')}
+            </Typography.Text>
           </Space>
         }
       />
@@ -358,11 +387,24 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         </Typography.Title>
       ) : null}
 
-      {renderPlan.isEmpty ? (
+      {renderPlan.isEmpty && isDesignMode ? (
+        <div
+          data-testid="page-canvas-design-empty-state"
+          style={{
+            minHeight: 28,
+            display: 'flex',
+            alignItems: 'center'
+          }}
+        >
+          <Typography.Text type="secondary">
+            {i18nText('frontstage', 'auto.page_content_empty')}
+          </Typography.Text>
+        </div>
+      ) : renderPlan.isEmpty ? (
         <div
           style={{
-            background: isDesignMode ? '#fbfffd' : '#fafafa',
-            border: isDesignMode ? '1px dashed #86efc1' : '1px solid #f0f0f0',
+            background: '#fafafa',
+            border: '1px solid #f0f0f0',
             borderRadius: 8,
             padding: 32,
             textAlign: 'center'
@@ -371,7 +413,9 @@ export const PageCanvas: FC<PageCanvasProps> = ({
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={
-              <Typography.Text type="secondary">{i18nText("frontstage", "auto.page_content_empty")}</Typography.Text>
+              <Typography.Text type="secondary">
+                {i18nText('frontstage', 'auto.page_content_empty')}
+              </Typography.Text>
             }
           />
         </div>

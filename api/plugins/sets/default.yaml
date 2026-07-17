@@ -8,4 +8,5 @@ host_extensions:
   - official.file-management-host
   - official.runtime-orchestration-host
 runtime_extensions: []
-capability_plugins: []
+capability_plugins:
+  - 1flowbase

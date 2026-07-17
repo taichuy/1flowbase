@@ -148,7 +148,7 @@ async fn frontend_block_code_template_migration_backfills_existing_rows() {
 }
 
 #[tokio::test]
-async fn frontend_block_catalog_repository_lists_only_assigned_workspace_blocks() {
+async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_blocks() {
     let (store, workspace, actor) = seed_store().await;
     let installation = PluginRepository::upsert_installation(
         &store,
@@ -223,6 +223,24 @@ async fn frontend_block_catalog_repository_lists_only_assigned_workspace_blocks(
             .unwrap()
             .is_empty()
     );
+
+    sqlx::query("update plugin_installations set source_kind = 'builtin' where id = $1")
+        .bind(installation.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let builtin_entries =
+        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&store, workspace.id)
+            .await
+            .unwrap();
+    assert_eq!(builtin_entries.len(), 1);
+    assert_eq!(builtin_entries[0].contribution_code, "hero_banner");
+
+    sqlx::query("update plugin_installations set source_kind = 'uploaded' where id = $1")
+        .bind(installation.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
 
     PluginRepository::create_assignment(
         &store,

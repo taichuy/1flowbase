@@ -1,3 +1,4 @@
+import { MenuOutlined } from '@ant-design/icons';
 import {
   Alert,
   App as AntdApp,
@@ -6,9 +7,10 @@ import {
   Drawer,
   Empty,
   Form,
+  Tooltip,
   Typography
 } from 'antd';
-import type { FC } from 'react';
+import type { CSSProperties, FC } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
@@ -16,10 +18,10 @@ import { useAuthStore } from '../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-mode-store';
 import { saveFrontstageBlockCode } from '../api/block-code';
 import type { FrontstagePageContent } from '../api/page-content';
-import { AddBlockCatalogPickerDrawer } from '../components/AddBlockCatalogPickerDrawer';
 import { BlockCodeEditorDrawer } from '../components/BlockCodeEditorDrawer';
 import { BlockConfigurationDrawer } from '../components/BlockConfigurationDrawer';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
+import { FrontstageNodeActionButton } from '../components/FrontstageNodeActionButton';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import { PageCanvas } from '../components/PageCanvas';
@@ -28,7 +30,6 @@ import { useFrontstageBlockCode } from '../hooks/use-frontstage-block-code';
 import { useFrontstagePageCanvasRuntimeSessions } from '../hooks/use-frontstage-page-canvas-runtime-sessions';
 import { useFrontstagePageCanvasRuntimeSources } from '../hooks/use-frontstage-page-canvas-runtime-sources';
 import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-content-save';
-import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 import {
   appendFrontstageBlock,
   createFrontstageBlockCompositionState,
@@ -38,6 +39,7 @@ import {
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
 import { createFrontstageBlockConfigurationModel } from '../lib/block-configuration';
+import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import {
   createFrontstagePageDocument,
@@ -61,8 +63,14 @@ import {
   createCatalogBlockInput,
   findMatchingFrontstageBlockCatalogEntry
 } from './frontstage-page/block-catalog-helpers';
-import { requireCsrfToken, toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
-import { DEFAULT_JS_BLOCK_TRIAL_LIMITS, DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
+import {
+  requireCsrfToken,
+  toDisplayErrorMessage
+} from './frontstage-page/page-action-helpers';
+import {
+  DEFAULT_JS_BLOCK_TRIAL_LIMITS,
+  DESIGN_MODE_PERMISSION
+} from './frontstage-page/page-constants';
 import type { FrontStagePageProps } from './frontstage-page/page-props';
 import {
   PageTreeFormModal,
@@ -80,6 +88,8 @@ import {
   type PageTreeOperationStatus
 } from './frontstage-page/page-tree-operations';
 import './frontstage-page.css';
+
+const DEFAULT_JS_BLOCK_CATALOG_ENTRY_ID = '1flowbase:frontstage.js-ui-block';
 
 export const FrontStagePage: FC<FrontStagePageProps> = ({
   workspaceId,
@@ -138,7 +148,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     useState<FrontstagePageContent | null>(null);
   const [isBlockSavePending, setIsBlockSavePending] = useState(false);
   const [blockSaveError, setBlockSaveError] = useState<string | null>(null);
-  const [isAddBlockPickerOpen, setIsAddBlockPickerOpen] = useState(false);
   const [pageTree, setPageTree] = useState<FrontStageTreeNode[]>(() =>
     normalizePageTree(initialPageTree ?? [])
   );
@@ -251,10 +260,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     !hasPageContentLoadError &&
     !isPageContentSavePending;
   const operationStatusText = isOperationPending
-    ? i18nText("frontstage", "auto.saving")
-    : hasOperationError
-      ? i18nText("frontstage", "auto.operation_failed")
-      : i18nText("frontstage", "auto.page_tree_synced");
+    ? i18nText('frontstage', 'auto.saving')
+    : i18nText('frontstage', 'auto.operation_failed');
 
   const canEnterDesignMode = useMemo(() => {
     return (
@@ -358,7 +365,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     setIsBlockCodeEditorOpen(false);
     setIsBlockConfigurationOpen(false);
     setIsJsBlockTrialPanelOpen(false);
-    setIsAddBlockPickerOpen(false);
     setBlockSaveError(null);
   }, [selectedPageId]);
 
@@ -369,7 +375,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         setIsBlockCodeEditorOpen(false);
         setIsBlockConfigurationOpen(false);
         setIsJsBlockTrialPanelOpen(false);
-        setIsAddBlockPickerOpen(false);
         return null;
       }
 
@@ -416,7 +421,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       setIsBlockCodeEditorOpen(false);
       setIsBlockConfigurationOpen(false);
       setIsJsBlockTrialPanelOpen(false);
-      setIsAddBlockPickerOpen(false);
     }
   }, [canEnterDesignMode, isDesignMode]);
 
@@ -453,11 +457,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const selectedPageLabel = selectedPageDisplayTitle
     ? selectedPageDisplayTitle
     : selectedPageId
-      ? i18nText("frontstage", "auto.page_with_id", { value1: selectedPageId })
+      ? i18nText('frontstage', 'auto.page_with_id', { value1: selectedPageId })
       : null;
   const pageLabel = selectedPageLabel
     ? selectedPageLabel
-    : i18nText("frontstage", "auto.default_home_page_notice");
+    : i18nText('frontstage', 'auto.default_home_page_notice');
 
   const saveBlockComposition = useCallback(
     async (
@@ -549,29 +553,33 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   if (initialPageTree === undefined && isPageTreeLoading) {
     return (
       <SectionPageLayout
-        pageTitle={i18nText("frontstage", "auto.frontstage")}
+        pageTitle={i18nText('frontstage', 'auto.frontstage')}
         navItems={[]}
         activeKey=""
         contentWidth="wide"
         heightMode="viewport"
         sidebarContent={
           <Typography.Text type="secondary" style={{ paddingInline: 16 }}>
-            {i18nText("frontstage", "auto.page_tree_loading")}</Typography.Text>
+            {i18nText('frontstage', 'auto.page_tree_loading')}
+          </Typography.Text>
         }
       >
         <section className="frontstage-page-workspace">
           <header className="frontstage-page-workspace__header">
             <Typography.Title
               className="frontstage-page-workspace__title"
-              level={3}
+              level={4}
             >
-              {i18nText("frontstage", "auto.page_tree_loading_ellipsis")}</Typography.Title>
+              {i18nText('frontstage', 'auto.page_tree_loading_ellipsis')}
+            </Typography.Title>
           </header>
           <Divider style={{ margin: 0 }} />
           <div className="frontstage-page-workspace__body">
             <Empty
               description={
-                <Typography.Text>{i18nText("frontstage", "auto.page_tree_loading_wait")}</Typography.Text>
+                <Typography.Text>
+                  {i18nText('frontstage', 'auto.page_tree_loading_wait')}
+                </Typography.Text>
               }
             />
           </div>
@@ -583,23 +591,25 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   if (initialPageTree === undefined && hasPageTreeLoadError) {
     return (
       <SectionPageLayout
-        pageTitle={i18nText("frontstage", "auto.frontstage")}
+        pageTitle={i18nText('frontstage', 'auto.frontstage')}
         navItems={[]}
         activeKey=""
         contentWidth="wide"
         heightMode="viewport"
         sidebarContent={
           <Typography.Text type="secondary" style={{ paddingInline: 16 }}>
-            {i18nText("frontstage", "auto.page_tree_unavailable")}</Typography.Text>
+            {i18nText('frontstage', 'auto.page_tree_unavailable')}
+          </Typography.Text>
         }
       >
         <section className="frontstage-page-workspace">
           <header className="frontstage-page-workspace__header">
             <Typography.Title
               className="frontstage-page-workspace__title"
-              level={3}
+              level={4}
             >
-              {i18nText("frontstage", "auto.page_tree_load_failed")}</Typography.Title>
+              {i18nText('frontstage', 'auto.page_tree_load_failed')}
+            </Typography.Title>
           </header>
           <Divider style={{ margin: 0 }} />
           <div className="frontstage-page-workspace__body">
@@ -607,11 +617,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               description={
                 <Typography.Text>
-                  {i18nText("frontstage", "auto.page_tree_load_failed_retry")}</Typography.Text>
+                  {i18nText('frontstage', 'auto.page_tree_load_failed_retry')}
+                </Typography.Text>
               }
             >
               <Button type="primary" onClick={onRetryLoadPageTree}>
-                {i18nText("frontstage", "auto.retry")}</Button>
+                {i18nText('frontstage', 'auto.retry')}
+              </Button>
             </Empty>
           </div>
         </section>
@@ -622,14 +634,15 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const renderPageTreeErrorBanner = hasPageTreeLoadError ? (
     <Alert
       style={{ marginBottom: 12 }}
-      message={i18nText("frontstage", "auto.page_tree_load_failed")}
-      description={i18nText("frontstage", "auto.page_tree_load_failed_recover")}
+      message={i18nText('frontstage', 'auto.page_tree_load_failed')}
+      description={i18nText('frontstage', 'auto.page_tree_load_failed_recover')}
       type="error"
       showIcon
       action={
         onRetryLoadPageTree ? (
           <Button size="small" onClick={() => onRetryLoadPageTree()}>
-            {i18nText("frontstage", "auto.retry")}</Button>
+            {i18nText('frontstage', 'auto.retry')}
+          </Button>
         ) : null
       }
     />
@@ -663,7 +676,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       initialTitle: '',
       initialIcon: '',
       initialTooltip: '',
-      title: nodeKind === 'page' ? i18nText("frontstage", "auto.add_page") : i18nText("frontstage", "auto.add_group")
+      title:
+        nodeKind === 'page'
+          ? i18nText('frontstage', 'auto.add_page')
+          : i18nText('frontstage', 'auto.add_group')
     });
   };
 
@@ -727,11 +743,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     }
 
     modal.confirm({
-      title: i18nText("frontstage", "auto.delete_node"),
+      title: i18nText('frontstage', 'auto.delete_node'),
       content: getDeleteConfirmMessage(node),
-      okText: i18nText("frontstage", "auto.delete"),
+      okText: i18nText('frontstage', 'auto.delete'),
       okButtonProps: { danger: true },
-      cancelText: i18nText("frontstage", "auto.cancel"),
+      cancelText: i18nText('frontstage', 'auto.cancel'),
       onOk: async () => {
         await runPageTreeOperation(async () => {
           await onDeletePageNode?.(nodeId);
@@ -815,7 +831,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       initialTitle: node.title ?? '',
       initialIcon: node.icon ?? '',
       initialTooltip: node.tooltip ?? '',
-      title: i18nText("frontstage", "auto.edit_node")
+      title: i18nText('frontstage', 'auto.edit_node')
     });
   };
 
@@ -827,7 +843,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       kind: 'tooltip',
       nodeId,
       initialTooltip: currentTooltip ?? '',
-      title: i18nText("frontstage", "auto.edit_description")
+      title: i18nText('frontstage', 'auto.edit_description')
     });
   };
 
@@ -953,28 +969,31 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     onNavigatePage?.(nodeId);
   };
 
-  const handleAddBlock = () => {
-    if (!canAddBlock) {
+  const handleAddBlock = async () => {
+    const sourceContent = activePageContent;
+    if (!canAddBlock || !sourceContent || !blockCompositionState) {
       return;
     }
 
-    setBlockSaveError(null);
-    pageContentSave.clearError();
-    setIsAddBlockPickerOpen(true);
-  };
+    if (blockCatalog.error) {
+      setBlockSaveError(toDisplayErrorMessage(blockCatalog.error));
+      return;
+    }
 
-  const handleSelectBlockCatalogEntry = async (
-    entry: NormalizedFrontstageBlockCatalogEntry
-  ) => {
-    const sourceContent = activePageContent;
-    if (!canAddBlock || !sourceContent || !blockCompositionState) {
+    const entry = blockCatalog.items.find(
+      (item) => item.id === DEFAULT_JS_BLOCK_CATALOG_ENTRY_ID
+    );
+    if (!entry) {
+      setBlockSaveError(
+        i18nText('frontstage', 'auto.no_available_block_catalog_entries')
+      );
       return;
     }
 
     const codeTemplate = entry.codeCapabilities?.template;
     if (!codeTemplate) {
       setBlockSaveError(
-        i18nText("frontstage", "auto.catalog_entry_missing_code_template")
+        i18nText('frontstage', 'auto.catalog_entry_missing_code_template')
       );
       return;
     }
@@ -991,6 +1010,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     setIsBlockSavePending(true);
     setBlockSaveError(null);
     pageContentSave.clearError();
+    let persistedContent: FrontstagePageContent | null = null;
 
     try {
       const input = createFrontstagePageDocumentSaveInput(
@@ -998,6 +1018,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         nextCompositionState.document
       );
       const nextContent = await pageContentSave.save(input);
+      persistedContent = nextContent;
       const createdBlock =
         nextCompositionState.document.blocks.find(
           (block) => block.id === nextCompositionState.selectedBlockId
@@ -1023,9 +1044,25 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
 
       setSavedPageContent(nextContent);
       setSelectedBlockId(nextCompositionState.selectedBlockId);
-      setIsAddBlockPickerOpen(false);
     } catch (error) {
-      setBlockSaveError(toDisplayErrorMessage(error));
+      let errorMessage = toDisplayErrorMessage(error);
+      if (persistedContent) {
+        try {
+          const rollbackInput = createFrontstagePageDocumentSaveInput(
+            sourceContent,
+            blockCompositionState.document
+          );
+          const rollbackContent = await pageContentSave.save(rollbackInput);
+          setSavedPageContent(rollbackContent);
+        } catch (rollbackError) {
+          setSavedPageContent(persistedContent);
+          errorMessage = `${errorMessage}; ${i18nText(
+            'frontstage',
+            'auto.operation_failed'
+          )}: ${toDisplayErrorMessage(rollbackError)}`;
+        }
+      }
+      setBlockSaveError(errorMessage);
     } finally {
       setIsBlockSavePending(false);
     }
@@ -1062,6 +1099,97 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       onSelectPage={handleSelectPage}
     />
   );
+  const selectedPageNode = selectedPageId
+    ? findNodeById(pageTree, selectedPageId)
+    : null;
+  const frontstageTabContent = (
+    <>
+      {canEnterDesignMode && isDesignMode && isPageContentSavePending ? (
+        <Typography.Text
+          type="secondary"
+          style={{ marginBottom: 12, display: 'block' }}
+        >
+          {i18nText('frontstage', 'auto.block_saving')}
+        </Typography.Text>
+      ) : null}
+      {canEnterDesignMode && isDesignMode && pageContentSaveError ? (
+        <Alert
+          style={{ marginBottom: 12 }}
+          message={i18nText('frontstage', 'auto.block_save_failed')}
+          description={pageContentSaveError}
+          type="error"
+          showIcon
+        />
+      ) : null}
+      <PageCanvas
+        content={
+          selectedPageLabel && hasLoadedSelectedPageContent
+            ? displayedPageContent
+            : undefined
+        }
+        isLoading={Boolean(selectedPageLabel && isPageContentLoading)}
+        hasError={Boolean(selectedPageLabel && hasPageContentLoadError)}
+        isPermissionDenied={Boolean(
+          selectedPageLabel && isPageContentPermissionDenied
+        )}
+        selectedBlockId={
+          canEnterDesignMode && isDesignMode ? selectedBlockId : null
+        }
+        onSelectBlock={
+          canEnterDesignMode && isDesignMode
+            ? (blockId) => {
+                setSelectedBlockId((currentBlockId) =>
+                  currentBlockId === blockId ? null : blockId
+                );
+              }
+            : undefined
+        }
+        onRetry={onRetryLoadPageContent}
+        runtimeSourceState={pageCanvasRuntimeSources.sourceState}
+        runtimeRunPlanState={pageCanvasRuntimeRunPlanState}
+        runtimeSessionEntries={pageCanvasRuntimeSessions.entries}
+        isDesignMode={canEnterDesignMode && isDesignMode}
+        designActions={designActions}
+        toolbarDisabled={isPageContentSavePending}
+        onResponsiveLayoutSave={
+          canEnterDesignMode && isDesignMode
+            ? (layouts) => {
+                if (!blockCompositionState || !activePageContent) return;
+                let next = blockCompositionState;
+                for (const [blockId, blockLayouts] of Object.entries(layouts)) {
+                  next = updateFrontstageBlockLayout(
+                    next,
+                    blockId,
+                    blockLayouts
+                  );
+                }
+                void saveBlockComposition(activePageContent, next);
+              }
+            : undefined
+        }
+        showTitle={false}
+      />
+      {canEnterDesignMode && isDesignMode ? (
+        <Button
+          size="middle"
+          aria-label={i18nText('frontstage', 'auto.create_block')}
+          onClick={() => {
+            void handleAddBlock();
+          }}
+          disabled={!canAddBlock || blockCatalog.loading}
+          loading={isBlockSavePending}
+          style={{
+            marginTop: 12,
+            borderStyle: 'dashed',
+            borderColor: FRONTSTAGE_DESIGN_BLUE.dashed,
+            color: FRONTSTAGE_DESIGN_BLUE.primary
+          }}
+        >
+          {i18nText('frontstage', 'auto.add_block_button')}
+        </Button>
+      ) : null}
+    </>
+  );
 
   return (
     <SectionPageLayout
@@ -1072,46 +1200,60 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       sidebarContent={showSidebar ? frontstageSidebar : undefined}
     >
       <>
-        <section className="frontstage-page-workspace">
+        <section
+          className={[
+            'frontstage-page-workspace',
+            canEditPageTree && selectedPageNode
+              ? 'frontstage-page-workspace--design-selected'
+              : null
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          data-testid="frontstage-page-workspace"
+          data-design-selected={
+            canEditPageTree && selectedPageNode ? 'true' : 'false'
+          }
+          style={
+            canEditPageTree && selectedPageNode
+              ? ({
+                  '--frontstage-design-page-border':
+                    FRONTSTAGE_DESIGN_BLUE.borderSelected,
+                  '--frontstage-design-page-halo': FRONTSTAGE_DESIGN_BLUE.halo
+                } as CSSProperties)
+              : undefined
+          }
+        >
           <header className="frontstage-page-workspace__header">
             <Typography.Title
               className="frontstage-page-workspace__title"
-              level={3}
+              level={4}
             >
               {pageLabel}
             </Typography.Title>
+            {canEditPageTree && selectedPageNode ? (
+              <div className="frontstage-page-workspace__page-action">
+                <Tooltip
+                  title={i18nText('frontstage', 'design.configure_page')}
+                >
+                  <FrontstageNodeActionButton
+                    aria-label={i18nText('frontstage', 'design.configure_page')}
+                    disabled={isOperationPending}
+                    icon={<MenuOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleRenameNode(selectedPageNode);
+                    }}
+                  />
+                </Tooltip>
+              </div>
+            ) : null}
           </header>
           <Divider style={{ margin: 0 }} />
           <div className="frontstage-page-workspace__body">
             {renderPageTreeErrorBanner}
-
-            {selectedPageId && tabId && onNavigateTab ? (
-              <FrontstagePageTabs
-                workspaceId={workspaceId}
-                pageId={selectedPageId}
-                tabId={tabId}
-                isDesignMode={canEnterDesignMode && isDesignMode}
-                onNavigateTab={onNavigateTab}
-              />
-            ) : null}
-
-            {canEnterDesignMode && isDesignMode && isPageContentSavePending ? (
-              <Typography.Text
-                type="secondary"
-                style={{ marginBottom: 12, display: 'block' }}
-              >
-                {i18nText("frontstage", "auto.block_saving")}</Typography.Text>
-            ) : null}
-            {canEnterDesignMode && isDesignMode && pageContentSaveError ? (
-              <Alert
-                style={{ marginBottom: 12 }}
-                message={i18nText("frontstage", "auto.block_save_failed")}
-                description={pageContentSaveError}
-                type="error"
-                showIcon
-              />
-            ) : null}
-            {canEnterDesignMode && isDesignMode ? (
+            {canEnterDesignMode &&
+            isDesignMode &&
+            (isOperationPending || hasOperationError) ? (
               <Typography.Text
                 type={hasOperationError ? 'danger' : 'secondary'}
                 style={{ marginBottom: 12, display: 'block' }}
@@ -1119,68 +1261,22 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                 {operationStatusText}
               </Typography.Text>
             ) : null}
-            <PageCanvas
-              content={
-                selectedPageLabel && hasLoadedSelectedPageContent
-                  ? displayedPageContent
-                  : undefined
-              }
-              isLoading={Boolean(selectedPageLabel && isPageContentLoading)}
-              hasError={Boolean(selectedPageLabel && hasPageContentLoadError)}
-              isPermissionDenied={Boolean(
-                selectedPageLabel && isPageContentPermissionDenied
-              )}
-              selectedBlockId={
-                canEnterDesignMode && isDesignMode ? selectedBlockId : null
-              }
-              onSelectBlock={
-                canEnterDesignMode && isDesignMode
-                  ? (blockId) => {
-                      setSelectedBlockId((currentBlockId) =>
-                        currentBlockId === blockId ? null : blockId
-                      );
-                    }
-                  : undefined
-              }
-              onRetry={onRetryLoadPageContent}
-              runtimeSourceState={pageCanvasRuntimeSources.sourceState}
-              runtimeRunPlanState={pageCanvasRuntimeRunPlanState}
-              runtimeSessionEntries={pageCanvasRuntimeSessions.entries}
-              isDesignMode={canEnterDesignMode && isDesignMode}
-              designActions={designActions}
-              toolbarDisabled={isPageContentSavePending}
-              onResponsiveLayoutSave={
-                canEnterDesignMode && isDesignMode
-                  ? (layouts) => {
-                      if (!blockCompositionState || !activePageContent) return;
-                      let next = blockCompositionState;
-                      for (const [blockId, blockLayouts] of Object.entries(layouts)) {
-                        next = updateFrontstageBlockLayout(next, blockId, blockLayouts);
-                      }
-                      void saveBlockComposition(activePageContent, next);
-                    }
-                  : undefined
-              }
-              showTitle={false}
-            />
-            {canEnterDesignMode && isDesignMode ? (
-              <Button
-                size="middle"
-                aria-label={i18nText("frontstage", "auto.create_block")}
-                onClick={handleAddBlock}
-                disabled={!canAddBlock}
-                style={{
-                  marginTop: 20,
-                  borderStyle: 'dashed',
-                  borderColor: '#20d48a',
-                  color: '#00a86b'
-                }}
+            {selectedPageId && tabId && onNavigateTab ? (
+              <FrontstagePageTabs
+                workspaceId={workspaceId}
+                pageId={selectedPageId}
+                tabId={tabId}
+                isDesignMode={canEnterDesignMode && isDesignMode}
+                onNavigateTab={onNavigateTab}
               >
-                {i18nText("frontstage", "auto.add_block_button")}</Button>
-            ) : null}
+                {frontstageTabContent}
+              </FrontstagePageTabs>
+            ) : (
+              frontstageTabContent
+            )}
           </div>
           <Drawer
-            title={i18nText("frontstage", "auto.js_block_trial_run")}
+            title={i18nText('frontstage', 'auto.js_block_trial_run')}
             open={isJsBlockTrialPanelOpen}
             onClose={() => setIsJsBlockTrialPanelOpen(false)}
             width={600}
@@ -1212,19 +1308,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             void handleSubmitPageTreeForm();
           }}
         />
-        {canEnterDesignMode && isDesignMode ? (
-          <AddBlockCatalogPickerDrawer
-            open={isAddBlockPickerOpen}
-            items={blockCatalog.items}
-            loading={blockCatalog.loading}
-            error={blockCatalog.error}
-            saving={isPageContentSavePending}
-            onSelect={(entry) => {
-              void handleSelectBlockCatalogEntry(entry);
-            }}
-            onClose={() => setIsAddBlockPickerOpen(false)}
-          />
-        ) : null}
         <BlockCodeEditorDrawer
           open={isBlockCodeEditorOpen && canShowSelectedBlockActions}
           onClose={() => setIsBlockCodeEditorOpen(false)}

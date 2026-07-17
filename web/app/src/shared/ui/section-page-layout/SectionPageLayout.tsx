@@ -58,7 +58,7 @@ export function SectionPageLayout({
     <Layout className={layoutClassName} data-testid="section-page-layout">
       {!hasSidebar ? (
         <Layout.Content className="section-page-layout__content">
-          {emptyState ?? null}
+          {emptyState ?? children}
         </Layout.Content>
       ) : (
         <Layout className="section-page-layout__shell">

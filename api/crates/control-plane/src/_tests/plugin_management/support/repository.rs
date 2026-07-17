@@ -79,6 +79,15 @@ impl MemoryPluginManagementRepository {
         *self.fail_installation_catalog_commit.write().await = true;
     }
 
+    pub(crate) async fn mark_installation_builtin(&self, installation_id: Uuid) {
+        self.installations
+            .write()
+            .await
+            .get_mut(&installation_id)
+            .expect("test installation must exist")
+            .source_kind = "builtin".to_string();
+    }
+
     pub(crate) async fn artifact_snapshot_update_count(&self) -> usize {
         self.artifact_snapshot_updates.read().await.len()
     }

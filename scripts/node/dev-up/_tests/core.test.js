@@ -129,6 +129,40 @@ test('getServiceDefinitions reads frontend env from web app env file', () => {
   assert.equal(buildServiceEnv(services['plugin-runner'], {}).PLUGIN_RUNNER_ADDR, '0.0.0.0:7901');
 });
 
+test('dev-up seeds a new web env from existing worktree port configuration', () => {
+  const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-web-env-'));
+  const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
+  const webAppDir = path.join(tempRepoRoot, 'web', 'app');
+  fs.mkdirSync(apiServerDir, { recursive: true });
+  fs.mkdirSync(webAppDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(apiServerDir, '.env'),
+    [
+      'API_SERVER_ADDR=0.0.0.0:7900',
+      'PLUGIN_RUNNER_ADDR=0.0.0.0:7901',
+      'VITE_DEV_SERVER_PORT=3200',
+      'VITE_API_PROXY_TARGET=http://127.0.0.1:7900',
+    ].join('\n')
+  );
+  fs.writeFileSync(
+    path.join(webAppDir, '.env.example'),
+    [
+      'VITE_DEV_SERVER_PORT=3100',
+      'VITE_API_PROXY_TARGET=http://127.0.0.1:7800',
+    ].join('\n')
+  );
+
+  const services = getServiceDefinitions(tempRepoRoot);
+
+  assert.equal(services.web.port, 3200);
+  assert.equal(ensureServiceEnvFile(services.web), true);
+  assert.equal(buildServiceEnv(services.web, {}).VITE_DEV_SERVER_PORT, '3200');
+  assert.equal(
+    buildServiceEnv(services.web, {}).VITE_API_PROXY_TARGET,
+    'http://127.0.0.1:7900'
+  );
+});
+
 test('getServiceDefinitions gives cargo services extra startup time for cold cargo builds', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const services = getServiceDefinitions(repoRoot);

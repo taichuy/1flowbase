@@ -493,7 +493,7 @@ node_contributions: []
 
     assert!(error
         .to_string()
-        .contains("source_kind must be one of official_registry, mirror_registry, uploaded, filesystem_dropin"));
+        .contains("source_kind must be one of builtin, official_registry, mirror_registry, uploaded, filesystem_dropin"));
 }
 
 #[test]

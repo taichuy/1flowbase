@@ -101,6 +101,10 @@ function getServiceDefinitions(repoRoot) {
       startupTimeoutMs: FRONTEND_COLD_STARTUP_TIMEOUT_MS,
       envFile: webAppEnvFile,
       envExampleFile: webAppEnvExampleFile,
+      envSeedOverrides: {
+        VITE_DEV_SERVER_PORT: localEnv.VITE_DEV_SERVER_PORT,
+        VITE_API_PROXY_TARGET: localEnv.VITE_API_PROXY_TARGET,
+      },
       logFile: path.join(paths.logDir, 'web.log'),
       pidFile: path.join(paths.pidDir, 'web.json'),
     },

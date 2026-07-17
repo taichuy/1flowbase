@@ -257,6 +257,7 @@ fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> 
         &manifest.source_kind,
         "source_kind",
         &[
+            "builtin",
             "official_registry",
             "mirror_registry",
             "uploaded",

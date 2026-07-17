@@ -30,6 +30,7 @@ api/plugins/
 - The plugin source workspace owns HostExtension source manifests and templates.
 - RuntimeExtension packages continue to use `plugin-runner`.
 - CapabilityPlugin packages remain workspace-selectable abilities.
+- `capability-plugins/1flowbase` is the Boot Core-owned exception: its system JSX block is visible in every workspace without assignment and cannot be deleted through plugin management.
 
 ## Data Source Plugin Rules
 

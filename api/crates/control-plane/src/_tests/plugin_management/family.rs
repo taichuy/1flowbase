@@ -518,6 +518,53 @@ async fn plugin_management_service_deletes_provider_family_with_instances_and_ar
 }
 
 #[tokio::test]
+async fn plugin_management_service_rejects_deleting_a_system_builtin_family() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("plugin-delete-builtin-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let installation_id = seed_test_installation(
+        &repository,
+        &install_root,
+        "builtin_frontstage",
+        "1.0.0",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    repository.mark_installation_builtin(installation_id).await;
+
+    let error = service
+        .delete_family(DeletePluginFamilyCommand {
+            actor_user_id: repository.actor.user_id,
+            provider_code: "builtin_frontstage".into(),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        error.downcast_ref::<crate::errors::ControlPlaneError>(),
+        Some(crate::errors::ControlPlaneError::Conflict(
+            "builtin_plugin_immutable"
+        ))
+    ));
+    assert!(repository
+        .get_installation(installation_id)
+        .await
+        .unwrap()
+        .is_some());
+    assert!(repository.list_tasks().await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn plugin_management_service_installs_enables_assigns_and_lists_tasks() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
