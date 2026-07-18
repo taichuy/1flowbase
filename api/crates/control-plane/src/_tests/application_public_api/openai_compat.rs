@@ -1,6 +1,10 @@
 use control_plane::application_public_api::compat::openai::{
     map_chat_completion_request, map_response_request, translate_chat_completion_request,
-    translate_response_request, OpenAiCompatError,
+    translate_response_request, translate_response_request_with_context, OpenAiCompatError,
+    OpenAiResponsesEndpoint, OpenAiResponsesRequestContext,
+};
+use control_plane::application_public_api::native::{
+    CompactionProfile, CompactionResultRequirement, NativeExecutionOperation,
 };
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationSafeRepresentation,
@@ -16,6 +20,40 @@ fn base_request() -> Value {
             {"role": "user", "content": "Final question"}
         ]
     })
+}
+
+fn codex_compaction_metadata(implementation: &str) -> Value {
+    json!({
+        "request_kind": "compaction",
+        "compaction": {
+            "trigger": "manual",
+            "reason": "user_requested",
+            "implementation": implementation,
+            "phase": "standalone_turn",
+            "strategy": "memento"
+        }
+    })
+}
+
+fn responses_request(input: Value) -> Value {
+    json!({
+        "model": "gpt-compatible",
+        "input": input
+    })
+}
+
+fn assert_compaction_operation(
+    request: &control_plane::application_public_api::native::NativeRunRequest,
+    profile: CompactionProfile,
+    result_requirement: CompactionResultRequirement,
+) {
+    let intent = request
+        .execution
+        .operation()
+        .compaction_intent()
+        .expect("Codex compaction evidence must select a compact operation");
+    assert_eq!(intent.profile(), profile);
+    assert_eq!(intent.result_requirement(), result_requirement);
 }
 
 fn assert_unsupported_feature(request: Value, param: &str) {
@@ -1104,4 +1142,135 @@ fn d2_f1_openai_defined_container_receipts_remain_unique_on_nested_rejection() {
         assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
         assert_eq!(decisions[0].kind, kind);
     }
+}
+
+#[test]
+fn k1_codex_compaction_profiles_select_closed_operations_and_result_requirements() {
+    let local = translate_response_request_with_context(
+        responses_request(json!([{"role": "user", "content": "earlier turn"}])),
+        OpenAiResponsesRequestContext::new(OpenAiResponsesEndpoint::Responses)
+            .with_captured_codex_turn_metadata(codex_compaction_metadata("responses")),
+    )
+    .expect("Codex local compaction metadata should be explicit enough to classify");
+    assert_compaction_operation(
+        &local.request,
+        CompactionProfile::LocalSummary,
+        CompactionResultRequirement::Generate,
+    );
+
+    let legacy = translate_response_request_with_context(
+        responses_request(json!([{"role": "user", "content": "retained user turn"}])),
+        OpenAiResponsesRequestContext::new(OpenAiResponsesEndpoint::ResponsesCompact)
+            .with_captured_codex_turn_metadata(codex_compaction_metadata("responses_compact")),
+    )
+    .expect("Codex legacy compact endpoint should select its dedicated profile");
+    assert_compaction_operation(
+        &legacy.request,
+        CompactionProfile::ResponsesCompact,
+        CompactionResultRequirement::ResponseItems,
+    );
+
+    let v2 = translate_response_request_with_context(
+        responses_request(json!([
+            {"role": "user", "content": "retained user turn"},
+            {"type": "compaction_trigger"}
+        ])),
+        OpenAiResponsesRequestContext::new(OpenAiResponsesEndpoint::Responses)
+            .with_captured_codex_turn_metadata(codex_compaction_metadata(
+                "responses_compaction_v2",
+            )),
+    )
+    .expect("Codex V2 trigger and metadata should select the opaque V2 profile");
+    assert_compaction_operation(
+        &v2.request,
+        CompactionProfile::ResponsesCompactionV2,
+        CompactionResultRequirement::CompletedOpaqueCompactionItem,
+    );
+}
+
+#[test]
+fn k1_ordinary_summary_and_uncaptured_client_compaction_stay_generate() {
+    let ordinary_summary = translate_response_request(responses_request(json!(
+        "Summarize the previous discussion for a teammate."
+    )))
+    .expect("ordinary summarization text remains a Generate request");
+    assert_eq!(
+        ordinary_summary.request.execution.operation(),
+        &NativeExecutionOperation::Generate
+    );
+
+    let regular_metadata = translate_response_request(json!({
+        "model": "gpt-compatible",
+        "input": "Summarize the previous discussion for a teammate.",
+        "metadata": {"trace_id": "client-local-summary"}
+    }))
+    .expect("regular OpenAI metadata is not captured Codex compaction evidence");
+    assert_eq!(
+        regular_metadata.request.execution.operation(),
+        &NativeExecutionOperation::Generate
+    );
+}
+
+#[test]
+fn k1_unknown_or_malformed_captured_codex_profile_is_never_guessed() {
+    let unknown = translate_response_request_with_context(
+        responses_request(json!([{"role": "user", "content": "retained user turn"}])),
+        OpenAiResponsesRequestContext::responses()
+            .with_captured_codex_turn_metadata(codex_compaction_metadata("future_compaction")),
+    )
+    .expect_err("an unknown Codex compaction profile must be typed unsupported");
+    assert_eq!(unknown.code, "unsupported_compaction_profile");
+    assert!(unknown.report.has_decision(
+        "$.ingress.x-codex-turn-metadata.compaction.implementation",
+        TranslationDecisionKind::Unsupported
+    ));
+
+    let malformed = translate_response_request_with_context(
+        responses_request(json!([{"role": "user", "content": "retained user turn"}])),
+        OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
+            "request_kind": "compaction",
+            "compaction": {"implementation": false}
+        })),
+    )
+    .expect_err("malformed captured Codex metadata must not become a compaction fallback");
+    assert_eq!(malformed.code, "invalid_request");
+    assert!(malformed.report.has_decision(
+        "$.ingress.x-codex-turn-metadata",
+        TranslationDecisionKind::Rejected
+    ));
+}
+
+#[test]
+fn k1_compaction_metadata_stays_behind_the_authenticated_ingress_boundary() {
+    let error = translate_response_request(json!({
+        "model": "gpt-compatible",
+        "input": "Summarize the previous discussion for a teammate.",
+        "metadata": {
+            "trace_id": "client-supplied",
+            "compaction": codex_compaction_metadata("responses")
+        }
+    }))
+    .expect_err("ordinary body metadata must never become captured Codex evidence");
+    assert_eq!(error.code, "invalid_request");
+    assert!(error
+        .report
+        .has_decision("$.metadata.<unknown>[0]", TranslationDecisionKind::Rejected));
+    assert!(!error
+        .report
+        .has_decision("$.ingress.endpoint", TranslationDecisionKind::Exact));
+}
+
+#[test]
+fn k1_remote_profiles_do_not_fallback_to_local_summary_on_mismatched_evidence() {
+    let error = translate_response_request_with_context(
+        responses_request(json!([{"role": "user", "content": "retained user turn"}])),
+        OpenAiResponsesRequestContext::responses()
+            .with_captured_codex_turn_metadata(codex_compaction_metadata("responses_compact")),
+    )
+    .expect_err("legacy remote metadata on the normal endpoint must not downgrade to local");
+    assert_eq!(error.code, "invalid_request");
+    assert!(error.report.has_decision(
+        "$.ingress.compaction_evidence",
+        TranslationDecisionKind::Rejected
+    ));
 }

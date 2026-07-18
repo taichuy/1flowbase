@@ -4,13 +4,15 @@ use plugin_framework::provider_contract::{NativeModelRequestContext, NativePromp
 use serde_json::{Map, Value};
 
 use super::{
-    chat_max_output_tokens, openai_message_content, reject_unknown_chat_fields,
-    reject_unknown_response_fields, response_max_output_tokens, response_stream_mode,
-    responses_input_to_native_run_input, system_from_parts, validate_chat_message_fields,
-    validate_responses_input, OpenAiCompatError,
+    chat_max_output_tokens, classify_response_operation, openai_message_content,
+    reject_unknown_chat_fields, reject_unknown_response_fields, response_max_output_tokens,
+    response_stream_mode, responses_input_to_native_run_input, system_from_parts,
+    validate_chat_message_fields, validate_responses_input, OpenAiCompatError,
+    OpenAiResponsesRequestContext,
 };
 use crate::application_public_api::native::{
-    NativeExecution, NativeObject, NativeRequestMetadata, NativeRunRequest,
+    CompactionProfile, NativeExecution, NativeExecutionOperation, NativeObject,
+    NativeRequestMetadata, NativeRunRequest,
 };
 use crate::application_public_api::protocol_translation::{
     TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol, TranslationReport,
@@ -154,7 +156,10 @@ pub fn translate_chat_completion_request(
     };
     let conversation = openai_conversation(object, &mut report)?;
     let metadata = openai_metadata(object, &mut report)?;
-    let execution = native_execution(chat_max_output_tokens(object, &mut report)?);
+    let execution = native_execution(
+        chat_max_output_tokens(object, &mut report)?,
+        NativeExecutionOperation::Generate,
+    );
     let request = NativeRunRequest {
         query,
         system: system_from_parts(system_parts)
@@ -184,13 +189,24 @@ pub fn translate_chat_completion_request(
 pub fn translate_response_request(
     request: Value,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
+    translate_response_request_with_context(request, OpenAiResponsesRequestContext::responses())
+}
+
+pub fn translate_response_request_with_context(
+    request: Value,
+    context: OpenAiResponsesRequestContext,
+) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
     let object = openai_request_object(&request, &mut report)?;
     reject_unknown_response_fields(object, &mut report)?;
     let model = required_openai_string(object, "model", &mut report)?;
     let input = required_openai_value(object, "input", &mut report)?;
-    validate_responses_input(input, &mut report)?;
-    let input_mapping = responses_input_to_native_run_input(input)
+    let operation = classify_response_operation(object, &context, &mut report)?;
+    let is_v2_compaction = operation
+        .compaction_intent()
+        .is_some_and(|intent| intent.profile() == CompactionProfile::ResponsesCompactionV2);
+    validate_responses_input(input, is_v2_compaction, &mut report)?;
+    let input_mapping = responses_input_to_native_run_input(input, is_v2_compaction)
         .map_err(|error| error.with_report(report.clone()))?;
     let query = input_mapping.query;
     let history = input_mapping.history;
@@ -239,7 +255,7 @@ pub fn translate_response_request(
     let response_mode = response_stream_mode(object, &mut report)?;
     let conversation = openai_conversation(object, &mut report)?;
     let metadata = openai_metadata(object, &mut report)?;
-    let execution = native_execution(response_max_output_tokens(object, &mut report)?);
+    let execution = native_execution(response_max_output_tokens(object, &mut report)?, operation);
     let request = NativeRunRequest {
         query,
         system: system.map(NativePromptBlock::text).into_iter().collect(),
@@ -487,9 +503,14 @@ fn openai_metadata(
     Ok(NativeRequestMetadata::default())
 }
 
-fn native_execution(max_output_tokens: Option<u64>) -> NativeExecution {
-    max_output_tokens
+fn native_execution(
+    max_output_tokens: Option<u64>,
+    operation: NativeExecutionOperation,
+) -> NativeExecution {
+    let mut execution = max_output_tokens
         .and_then(NonZeroU64::new)
         .map(NativeExecution::with_max_output_tokens)
-        .unwrap_or_default()
+        .unwrap_or_default();
+    execution.set_operation(operation);
+    execution
 }

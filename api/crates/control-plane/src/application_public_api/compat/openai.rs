@@ -59,6 +59,16 @@ impl OpenAiCompatError {
         }
     }
 
+    fn unsupported_compaction_profile() -> Self {
+        Self {
+            message: "Codex compaction profile is not supported by this endpoint".to_string(),
+            error_type: "invalid_request_error".to_string(),
+            param: Some("x-codex-turn-metadata.compaction.implementation".to_string()),
+            code: "unsupported_compaction_profile".to_string(),
+            report: TranslationReport::new(TranslationProtocol::OpenAiResponses),
+        }
+    }
+
     fn with_report(mut self, report: TranslationReport) -> Self {
         if report.ensure_consistent().is_err() {
             return Self::translation_invariant(report);
@@ -68,9 +78,14 @@ impl OpenAiCompatError {
     }
 }
 
+mod compaction;
 mod request_translation;
 
-pub use request_translation::{translate_chat_completion_request, translate_response_request};
+pub use compaction::{OpenAiResponsesEndpoint, OpenAiResponsesRequestContext};
+pub use request_translation::{
+    translate_chat_completion_request, translate_response_request,
+    translate_response_request_with_context,
+};
 
 pub fn map_chat_completion_request(request: Value) -> Result<NativeRunRequest, OpenAiCompatError> {
     translate_chat_completion_request(request).map(|translated| translated.request)
@@ -672,9 +687,10 @@ fn response_max_output_tokens(
 
 fn validate_responses_input(
     input: &Value,
+    is_v2_compaction: bool,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
-    validate_responses_input_items(input, report).map_err(|error| {
+    validate_responses_input_items(input, is_v2_compaction, report).map_err(|error| {
         if !report.has_decision("$.input", TranslationDecisionKind::Rejected) {
             report.record(
                 "$.input",
@@ -690,6 +706,7 @@ fn validate_responses_input(
 
 fn validate_responses_input_items(
     input: &Value,
+    is_v2_compaction: bool,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
     if input.is_string() {
@@ -716,6 +733,7 @@ fn validate_responses_input_items(
         );
     };
     let mut has_user_message = false;
+    let mut has_compaction_trigger = false;
     for (index, item) in items.iter().enumerate() {
         let item_path = format!("$.input[{index}]");
         let Some(object) = item.as_object() else {
@@ -731,13 +749,6 @@ fn validate_responses_input_items(
                     .with_report(report.clone()),
             );
         };
-        report.record(
-            &item_path,
-            Some("$.query,$.history"),
-            TranslationDecisionKind::Normalized,
-            None,
-            TranslationSafeRepresentation::Redacted,
-        );
         let type_path = format!("$.input[{index}].type");
         let item_type = match object.get("type") {
             Some(Value::String(item_type)) => Some(item_type.as_str()),
@@ -765,6 +776,49 @@ fn validate_responses_input_items(
                 None
             }
         };
+        if item_type == Some("compaction_trigger") && is_v2_compaction {
+            let unknown_fields = object
+                .keys()
+                .filter(|field| field.as_str() != "type")
+                .collect::<Vec<_>>();
+            if report.record_anonymous_unknown_fields(
+                &item_path,
+                unknown_fields,
+                TranslationDecisionKind::Rejected,
+                "unknown V2 compaction trigger field",
+                TranslationSafeRepresentation::Present,
+            ) > 0
+            {
+                return Err(OpenAiCompatError::invalid(
+                    "input",
+                    "unknown V2 compaction trigger field",
+                )
+                .with_report(report.clone()));
+            }
+            report.record(
+                &item_path,
+                Some("$.execution.operation"),
+                TranslationDecisionKind::Exact,
+                None,
+                TranslationSafeRepresentation::Present,
+            );
+            report.record(
+                &type_path,
+                Some("$.execution.operation"),
+                TranslationDecisionKind::Exact,
+                None,
+                TranslationSafeRepresentation::Present,
+            );
+            has_compaction_trigger = true;
+            continue;
+        }
+        report.record(
+            &item_path,
+            Some("$.query,$.history"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
         if !matches!(item_type, None | Some("message")) {
             let kind = if matches!(
                 item_type,
@@ -906,7 +960,7 @@ fn validate_responses_input_items(
         }
         validate_responses_content_parts(content, index, report)?;
     }
-    if !has_user_message {
+    if !has_user_message && !(is_v2_compaction && has_compaction_trigger) {
         report.record(
             "$.input",
             None,
@@ -1335,6 +1389,7 @@ fn validate_openai_image_url_value(
 
 fn responses_input_to_native_run_input(
     input: &Value,
+    is_v2_compaction: bool,
 ) -> Result<ResponsesInputMapping, OpenAiCompatError> {
     if let Some(text) = input.as_str() {
         return Ok(ResponsesInputMapping {
@@ -1349,12 +1404,34 @@ fn responses_input_to_native_run_input(
         .ok_or_else(|| OpenAiCompatError::invalid("input", "input must be text or messages"))?;
     let last_user_index = items
         .iter()
-        .rposition(|item| item.get("role").and_then(Value::as_str).unwrap_or("user") == "user")
-        .ok_or_else(|| OpenAiCompatError::invalid("input", "user input is required"))?;
+        .enumerate()
+        .filter_map(|(index, item)| {
+            (!is_v2_compaction || !compaction::is_compaction_trigger_item(item))
+                .then_some((index, item))
+        })
+        .filter(|(_, item)| item.get("role").and_then(Value::as_str).unwrap_or("user") == "user")
+        .map(|(index, _)| index)
+        .last();
+    let Some(last_user_index) = last_user_index else {
+        if is_v2_compaction {
+            return Ok(ResponsesInputMapping {
+                query: String::new(),
+                history: Vec::new(),
+                system_parts: Vec::new(),
+            });
+        }
+        return Err(OpenAiCompatError::invalid(
+            "input",
+            "user input is required",
+        ));
+    };
 
     let mut history = Vec::new();
     let mut system_parts = Vec::new();
     for (index, item) in items.iter().enumerate() {
+        if is_v2_compaction && compaction::is_compaction_trigger_item(item) {
+            continue;
+        }
         let message = responses_input_message(item)?;
         if index == last_user_index {
             if let Some(content_blocks) = message.content_blocks {

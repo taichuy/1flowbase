@@ -35,9 +35,13 @@ use crate::ports::{
     ApplicationRepository, AuthRepository, CacheStore,
 };
 
+mod compaction;
 mod metadata;
 mod model_parameters;
 
+pub use compaction::{
+    CompactionIntent, CompactionProfile, CompactionResultRequirement, NativeExecutionOperation,
+};
 pub use metadata::NativeRequestMetadata;
 pub use model_parameters::{
     NativeExecution, NativeExecutionModelParameters, NativeReasoningParameters,

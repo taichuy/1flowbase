@@ -3,7 +3,7 @@ use std::num::NonZeroU64;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
-use super::NativeObject;
+use super::{NativeExecutionOperation, NativeObject};
 use crate::application_public_api::protocol_translation::{
     anonymous_unknown_source_paths, TranslationDecisionKind, TranslationReport,
     TranslationSafeRepresentation,
@@ -19,6 +19,7 @@ pub struct NativeExecution {
     opaque: NativeObject,
     idempotency_key: Option<String>,
     model_parameters: Option<NativeExecutionModelParameters>,
+    operation: NativeExecutionOperation,
 }
 
 impl NativeExecution {
@@ -28,6 +29,7 @@ impl NativeExecution {
         let mut opaque = Map::new();
         let mut idempotency_key = None;
         let mut model_parameters = None;
+        let mut operation = NativeExecutionOperation::default();
         for (field, value) in object {
             match field.as_str() {
                 "idempotency_key" => {
@@ -41,6 +43,10 @@ impl NativeExecution {
                 "model_parameters" => {
                     model_parameters = Some(NativeExecutionModelParameters::from_value(value)?);
                 }
+                "operation" => {
+                    operation = serde_json::from_value(value.clone())
+                        .map_err(|_| NativeExecutionParseError::operation())?;
+                }
                 "compatibility_mode" => {
                     return Err(NativeExecutionParseError::compatibility_mode());
                 }
@@ -53,6 +59,7 @@ impl NativeExecution {
             opaque: NativeObject::from_map(opaque),
             idempotency_key,
             model_parameters,
+            operation,
         })
     }
 
@@ -63,6 +70,7 @@ impl NativeExecution {
             model_parameters: Some(NativeExecutionModelParameters::with_max_output_tokens(
                 max_output_tokens,
             )),
+            operation: NativeExecutionOperation::default(),
         }
     }
 
@@ -72,6 +80,14 @@ impl NativeExecution {
 
     pub(crate) fn idempotency_key(&self) -> Option<&str> {
         self.idempotency_key.as_deref()
+    }
+
+    pub fn operation(&self) -> &NativeExecutionOperation {
+        &self.operation
+    }
+
+    pub(crate) fn set_operation(&mut self, operation: NativeExecutionOperation) {
+        self.operation = operation;
     }
 
     pub(crate) fn as_value(&self) -> Value {
@@ -86,6 +102,13 @@ impl NativeExecution {
             execution.insert(
                 "model_parameters".to_string(),
                 model_parameters.canonical_value(),
+            );
+        }
+        if !self.operation.is_generate() {
+            execution.insert(
+                "operation".to_string(),
+                serde_json::to_value(&self.operation)
+                    .expect("Native execution operation must serialize"),
             );
         }
         Value::Object(execution)
@@ -103,6 +126,13 @@ impl NativeExecution {
             execution.insert(
                 "model_parameters".to_string(),
                 model_parameters.fingerprint_value(),
+            );
+        }
+        if !self.operation.is_generate() {
+            execution.insert(
+                "operation".to_string(),
+                serde_json::to_value(&self.operation)
+                    .expect("Native execution operation must serialize"),
             );
         }
         Value::Object(execution)
@@ -433,6 +463,17 @@ impl NativeExecutionParseError {
         }
     }
 
+    fn operation() -> Self {
+        Self {
+            source_paths: vec!["$.execution.operation".to_string()],
+            code: "invalid_execution_operation",
+            message: "execution operation must be a supported typed operation",
+            reason: "Native execution operation must be a supported typed operation",
+            decision_kind: TranslationDecisionKind::Rejected,
+            effective_value: TranslationSafeRepresentation::Present,
+        }
+    }
+
     pub(super) fn source_paths(&self) -> &[String] {
         &self.source_paths
     }
@@ -496,6 +537,15 @@ pub(super) fn record_native_execution_receipts(
             TranslationDecisionKind::Exact,
             None,
             TranslationSafeRepresentation::Redacted,
+        );
+    }
+    if !execution.operation.is_generate() {
+        report.record(
+            "$.execution.operation",
+            Some("$.execution.operation"),
+            TranslationDecisionKind::Exact,
+            None,
+            TranslationSafeRepresentation::Present,
         );
     }
     let Some(model_parameters) = execution.model_parameters() else {
