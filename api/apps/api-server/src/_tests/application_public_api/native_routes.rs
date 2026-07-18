@@ -1,10 +1,14 @@
 use crate::_tests::support::{
     login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config,
 };
+use crate::routes::application_public_api::native::parse_native_run_request;
 use axum::{
-    body::{to_bytes, Body},
+    body::{to_bytes, Body, Bytes},
     http::{Request, StatusCode},
     Router,
+};
+use control_plane::application_public_api::protocol_translation::{
+    TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
 };
 use control_plane::ports::{
     CreateCallbackTaskInput, CreateNodeRunInput, OrchestrationRuntimeRepository, UpdateFlowRunInput,
@@ -17,6 +21,29 @@ use uuid::Uuid;
 async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&body).unwrap()
+}
+
+#[test]
+fn d2_ac_001_native_malformed_json_has_one_safe_adapter_receipt() {
+    let sentinel = "D2-NATIVE-MALFORMED-JSON-MUST-NOT-REACH-RECEIPT";
+    let error = parse_native_run_request(Bytes::from(format!("{{\"raw\":\"{sentinel}\"")))
+        .expect_err("malformed Native JSON must be rejected by the adapter boundary");
+
+    assert_eq!(error.report.protocol, TranslationProtocol::Native);
+    assert_eq!(error.report.decisions.len(), 1);
+    let decision = &error.report.decisions[0];
+    assert_eq!(decision.source_path, "$.body");
+    assert_eq!(decision.kind, TranslationDecisionKind::Rejected);
+    assert_eq!(
+        decision.effective_value,
+        TranslationSafeRepresentation::Present
+    );
+    assert!(
+        !serde_json::to_string(&error.report)
+            .expect("receipt should serialize")
+            .contains(sentinel),
+        "malformed JSON must not be retained in the receipt"
+    );
 }
 
 async fn create_application(app: &Router, cookie: &str, csrf: &str, name: &str) -> String {
@@ -154,8 +181,8 @@ fn native_run_body(model: Value) -> Value {
         ],
         "attachments": [
             {
-                "type": "file",
-                "id": "file-1",
+                "source": "upload_file_id",
+                "value": "file-1",
                 "name": "screenshot.png"
             }
         ],
@@ -170,7 +197,7 @@ fn native_run_body(model: Value) -> Value {
             "timeout_seconds": 30
         },
         "metadata": {
-            "request_id": "req-1"
+            "trace_id": "trace-native-route-1"
         }
     })
 }
@@ -565,6 +592,66 @@ async fn d2_ac_007_native_run_route_rejects_compatibility_mode_before_run_creati
 }
 
 #[tokio::test]
+async fn d2_f1_native_run_route_rejects_execution_compatibility_mode_before_run_creation() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_native_app(
+        &app,
+        "Native Route Execution Compatibility Mode Rejection App",
+    )
+    .await;
+    let before = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let mut body = native_run_body(json!("provider/model:any-public-string"));
+    body["execution"]["compatibility_mode"] = json!("native-v1");
+
+    let response = post_native_run(&app, &token, body).await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let payload = response_json(response).await;
+    assert_eq!(payload["code"], json!("compatibility_mode"));
+    let after = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    assert_eq!(after, before);
+}
+
+#[tokio::test]
+async fn d2_f1_native_run_route_rejects_unknown_metadata_before_fingerprint_or_response_echo() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_native_app(&app, "Native Route Typed Metadata Rejection App").await;
+    let before = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let sentinel = "D2-F1-NATIVE-ROUTE-METADATA-SECRET";
+    let mut body = native_run_body(json!("provider/model:any-public-string"));
+    body["metadata"] = json!({
+        "trace_id": "trace-native-route-1",
+        sentinel: "must-not-reach-fingerprint-or-response"
+    });
+
+    let response = post_native_run(&app, &token, body).await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let payload = response_json(response).await;
+    assert_eq!(payload["code"], json!("metadata"));
+    assert!(
+        !serde_json::to_string(&payload)
+            .expect("error response serializes")
+            .contains(sentinel),
+        "unknown metadata must not echo in the initial response"
+    );
+    let after = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    assert_eq!(after, before);
+}
+
+#[tokio::test]
 async fn d2_ac_007_native_run_persists_no_compatibility_mode() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_native_app(&app, "Native Route Canonical Contract App").await;
@@ -610,6 +697,68 @@ async fn d1_ac_009_native_run_route_rejects_unknown_fields_before_run_creation()
         .await
         .unwrap();
     assert_eq!(after, before);
+}
+
+#[tokio::test]
+async fn d2_ac_001_native_model_parameter_unknown_rejects_before_conversation_or_run_creation() {
+    let (app, state) = test_app_with_state().await;
+    let token =
+        setup_published_native_app(&app, "Native Route Model Parameter Rejection App").await;
+    let application_conversations_before =
+        sqlx::query_scalar::<_, i64>("select count(*) from application_conversations")
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+    let public_conversations_before =
+        sqlx::query_scalar::<_, i64>("select count(*) from application_public_conversations")
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+    let flow_runs_before = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let node_runs_before = sqlx::query_scalar::<_, i64>("select count(*) from node_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let mut body = native_run_body(json!("provider/model:any-public-string"));
+    body["conversation"]["user"] = json!("model-parameter-user");
+    body["execution"]["model_parameters"] = json!({"context_window": 128000});
+
+    let response = post_native_run(&app, &token, body).await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let payload = response_json(response).await;
+    assert_eq!(payload["code"], json!("invalid_model_parameters"));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from application_conversations")
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap(),
+        application_conversations_before
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from application_public_conversations")
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap(),
+        public_conversations_before
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap(),
+        flow_runs_before
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from node_runs")
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap(),
+        node_runs_before
+    );
 }
 
 #[tokio::test]

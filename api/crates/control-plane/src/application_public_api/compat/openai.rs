@@ -28,6 +28,16 @@ pub struct OpenAiPreviousResponseContext {
 }
 
 impl OpenAiCompatError {
+    fn translation_invariant(report: TranslationReport) -> Self {
+        Self {
+            message: "translation receipt invariant violated".to_string(),
+            error_type: "server_error".to_string(),
+            param: None,
+            code: "translation_invariant".to_string(),
+            report,
+        }
+    }
+
     fn invalid(param: &'static str, message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -50,6 +60,9 @@ impl OpenAiCompatError {
     }
 
     fn with_report(mut self, report: TranslationReport) -> Self {
+        if report.ensure_consistent().is_err() {
+            return Self::translation_invariant(report);
+        }
         self.report = report;
         self
     }
@@ -89,21 +102,8 @@ fn reject_unknown_chat_fields(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
-    for field in object.keys() {
-        if matches!(
-            field.as_str(),
-            "model"
-                | "messages"
-                | "stream"
-                | "user"
-                | "metadata"
-                | "max_completion_tokens"
-                | "max_tokens"
-        ) {
-            continue;
-        }
-        let path = format!("$.{field}");
-        if matches!(
+    for field in object.keys().filter(|field| {
+        matches!(
             field.as_str(),
             "audio"
                 | "modalities"
@@ -120,23 +120,56 @@ fn reject_unknown_chat_fields(
                 | "seed"
                 | "stop"
                 | "stream_options"
-        ) {
-            report.record(
-                &path,
-                None,
-                TranslationDecisionKind::Unsupported,
-                Some("this field has no current canonical owner"),
-                TranslationSafeRepresentation::Redacted,
-            );
-            return Err(OpenAiCompatError::unsupported(field).with_report(report.clone()));
-        }
+        )
+    }) {
+        let path = format!("$.{field}");
         report.record(
             &path,
             None,
-            TranslationDecisionKind::Rejected,
-            Some("unknown OpenAI Chat field"),
-            TranslationSafeRepresentation::Redacted,
+            TranslationDecisionKind::Unsupported,
+            Some("this field has no current canonical owner"),
+            TranslationSafeRepresentation::Present,
         );
+        return Err(OpenAiCompatError::unsupported(field).with_report(report.clone()));
+    }
+    let unknown_fields = object
+        .keys()
+        .filter(|field| {
+            !matches!(
+                field.as_str(),
+                "model"
+                    | "messages"
+                    | "stream"
+                    | "user"
+                    | "metadata"
+                    | "max_completion_tokens"
+                    | "max_tokens"
+                    | "audio"
+                    | "modalities"
+                    | "tools"
+                    | "tool_choice"
+                    | "function_call"
+                    | "parallel_tool_calls"
+                    | "response_format"
+                    | "reasoning_effort"
+                    | "temperature"
+                    | "top_p"
+                    | "presence_penalty"
+                    | "frequency_penalty"
+                    | "seed"
+                    | "stop"
+                    | "stream_options"
+            )
+        })
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        "$",
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown OpenAI Chat field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
         return Err(
             OpenAiCompatError::invalid("body", "unknown OpenAI Chat field")
                 .with_report(report.clone()),
@@ -150,45 +183,84 @@ fn validate_chat_message_fields(
     index: usize,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
-    let object = message
-        .as_object()
-        .ok_or_else(|| OpenAiCompatError::invalid("messages", "message must be an object"))?;
-    for field in object.keys() {
+    let message_path = format!("$.messages[{index}]");
+    let Some(object) = message.as_object() else {
+        report.record(
+            &message_path,
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("OpenAI Chat messages must be objects"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(
+            OpenAiCompatError::invalid("messages", "message must be an object")
+                .with_report(report.clone()),
+        );
+    };
+    report.record(
+        &message_path,
+        Some("$.query,$.history,$.system"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
+    let unknown_fields = object
+        .keys()
+        .filter(|field| {
+            !matches!(
+                field.as_str(),
+                "role" | "content" | "tool_calls" | "tool_call_id" | "name"
+            )
+        })
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        &message_path,
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown OpenAI Chat message field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
+            OpenAiCompatError::invalid("messages", "unknown OpenAI Chat message field")
+                .with_report(report.clone()),
+        );
+    }
+    for field in object
+        .keys()
+        .filter(|field| matches!(field.as_str(), "tool_calls" | "tool_call_id" | "name"))
+    {
         let path = format!("$.messages[{index}].{field}");
-        if matches!(field.as_str(), "role" | "content") {
-            continue;
-        }
-        let kind = if matches!(field.as_str(), "tool_calls" | "tool_call_id" | "name") {
-            TranslationDecisionKind::Unsupported
-        } else {
-            TranslationDecisionKind::Rejected
-        };
         report.record(
             &path,
             None,
-            kind,
-            Some(if kind == TranslationDecisionKind::Unsupported {
-                "tool and named-message semantics have no current canonical owner"
-            } else {
-                "unknown OpenAI Chat message field"
-            }),
-            TranslationSafeRepresentation::Redacted,
+            TranslationDecisionKind::Unsupported,
+            Some("tool and named-message semantics have no current canonical owner"),
+            TranslationSafeRepresentation::Present,
         );
-        let error = if kind == TranslationDecisionKind::Unsupported {
-            OpenAiCompatError::unsupported("messages")
-        } else {
-            OpenAiCompatError::invalid("messages", "unknown OpenAI Chat message field")
-        };
-        return Err(error.with_report(report.clone()));
+        return Err(OpenAiCompatError::unsupported("messages").with_report(report.clone()));
     }
-    let role = object
-        .get("role")
-        .and_then(Value::as_str)
-        .ok_or_else(|| OpenAiCompatError::invalid("messages", "message role is required"))?;
-    if !matches!(role, "system" | "developer" | "user" | "assistant") {
-        let path = format!("$.messages[{index}].role");
+    let role_path = format!("$.messages[{index}].role");
+    let Some(role) = object.get("role").and_then(Value::as_str) else {
         report.record(
-            &path,
+            &role_path,
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("OpenAI Chat message role must be text"),
+            if object.contains_key("role") {
+                TranslationSafeRepresentation::Present
+            } else {
+                TranslationSafeRepresentation::Absent
+            },
+        );
+        return Err(
+            OpenAiCompatError::invalid("messages", "message role is required")
+                .with_report(report.clone()),
+        );
+    };
+    if !matches!(role, "system" | "developer" | "user" | "assistant") {
+        report.record(
+            &role_path,
             None,
             TranslationDecisionKind::Rejected,
             Some("unsupported OpenAI Chat message role"),
@@ -199,6 +271,13 @@ fn validate_chat_message_fields(
                 .with_report(report.clone()),
         );
     }
+    report.record(
+        &role_path,
+        Some("$.query,$.history,$.system"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Present,
+    );
     if !object.contains_key("content") {
         let path = format!("$.messages[{index}].content");
         report.record(
@@ -213,14 +292,23 @@ fn validate_chat_message_fields(
                 .with_report(report.clone()),
         );
     }
-    validate_openai_content_parts(
-        object.get("content").expect("content exists"),
-        index,
-        report,
-    )
+    let content = object.get("content").expect("content exists");
+    if matches!(content, Value::String(_) | Value::Array(_)) {
+        report.record(
+            &format!("$.messages[{index}].content"),
+            Some("$.query,$.history,$.system"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
+    }
+    if matches!(role, "system" | "developer") {
+        reject_chat_system_media(content, index, report)?;
+    }
+    validate_openai_content_parts(content, index, report)
 }
 
-fn validate_openai_content_parts(
+fn reject_chat_system_media(
     content: &Value,
     message_index: usize,
     report: &mut TranslationReport,
@@ -229,9 +317,73 @@ fn validate_openai_content_parts(
         return Ok(());
     };
     for (part_index, part) in parts.iter().enumerate() {
-        let object = part.as_object().ok_or_else(|| {
-            OpenAiCompatError::invalid("messages", "content part must be an object")
-        })?;
+        let Some(part) = part.as_object() else {
+            continue;
+        };
+        if !matches!(
+            part.get("type").and_then(Value::as_str),
+            Some("image_url" | "input_image")
+        ) {
+            continue;
+        }
+        let type_path = format!("$.messages[{message_index}].content[{part_index}].type");
+        report.record(
+            &type_path,
+            None,
+            TranslationDecisionKind::Unsupported,
+            Some("system and developer media has no current canonical owner"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(OpenAiCompatError::unsupported("messages").with_report(report.clone()));
+    }
+    Ok(())
+}
+
+fn validate_openai_content_parts(
+    content: &Value,
+    message_index: usize,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
+    let Some(parts) = content.as_array() else {
+        if content.is_string() {
+            return Ok(());
+        }
+        let path = format!("$.messages[{message_index}].content");
+        report.record(
+            &path,
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("Chat message content must be text or content parts"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(OpenAiCompatError::invalid(
+            "messages",
+            "content must be text or content parts",
+        )
+        .with_report(report.clone()));
+    };
+    for (part_index, part) in parts.iter().enumerate() {
+        let part_path = format!("$.messages[{message_index}].content[{part_index}]");
+        let Some(object) = part.as_object() else {
+            report.record(
+                &part_path,
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("Chat content parts must be objects"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(
+                OpenAiCompatError::invalid("messages", "content part must be an object")
+                    .with_report(report.clone()),
+            );
+        };
+        report.record(
+            &part_path,
+            Some("$.query,$.history"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
         let type_path = format!("$.messages[{message_index}].content[{part_index}].type");
         let part_type = object
             .get("type")
@@ -247,11 +399,7 @@ fn validate_openai_content_parts(
                     TranslationSafeRepresentation::Present,
                 );
                 validate_openai_supported_content_part(
-                    object,
-                    &format!("$.messages[{message_index}].content[{part_index}]"),
-                    part_type,
-                    "messages",
-                    report,
+                    object, &part_path, part_type, "messages", report,
                 )?;
             }
             "input_audio" | "file" | "input_file" => {
@@ -270,7 +418,11 @@ fn validate_openai_content_parts(
                     None,
                     TranslationDecisionKind::Rejected,
                     Some("unknown OpenAI Chat content type"),
-                    TranslationSafeRepresentation::Present,
+                    if object.contains_key("type") {
+                        TranslationSafeRepresentation::Present
+                    } else {
+                        TranslationSafeRepresentation::Absent
+                    },
                 );
                 return Err(
                     OpenAiCompatError::invalid("messages", "unknown content type")
@@ -350,31 +502,18 @@ fn reject_unknown_response_fields(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
-    for field in object.keys() {
-        if matches!(
-            field.as_str(),
-            "model"
-                | "input"
-                | "instructions"
-                | "stream"
-                | "user"
-                | "metadata"
-                | "max_output_tokens"
-                | "store"
-        ) {
-            if field == "store" {
-                report.record(
-                    "$.store",
-                    None,
-                    TranslationDecisionKind::Dropped,
-                    Some("OpenAI server-side storage is not a Native run semantic"),
-                    TranslationSafeRepresentation::Present,
-                );
-            }
-            continue;
-        }
-        let path = format!("$.{field}");
-        let kind = if matches!(
+    if object.contains_key("store") {
+        report.record(
+            "$.store",
+            None,
+            TranslationDecisionKind::Unsupported,
+            Some("OpenAI server-side storage is not a Native run semantic"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(OpenAiCompatError::unsupported("store").with_report(report.clone()));
+    }
+    for field in object.keys().filter(|field| {
+        matches!(
             field.as_str(),
             "previous_response_id"
                 | "tools"
@@ -387,28 +526,57 @@ fn reject_unknown_response_fields(
                 | "include"
                 | "max_tool_calls"
                 | "truncation"
-        ) {
-            TranslationDecisionKind::Unsupported
-        } else {
-            TranslationDecisionKind::Rejected
-        };
+        )
+    }) {
+        let path = format!("$.{field}");
         report.record(
             &path,
             None,
-            kind,
-            Some(if kind == TranslationDecisionKind::Unsupported {
-                "this field has no current canonical owner"
-            } else {
-                "unknown OpenAI Responses field"
-            }),
-            TranslationSafeRepresentation::Redacted,
+            TranslationDecisionKind::Unsupported,
+            Some("this field has no current canonical owner"),
+            TranslationSafeRepresentation::Present,
         );
-        let error = if kind == TranslationDecisionKind::Unsupported {
-            OpenAiCompatError::unsupported(field)
-        } else {
+        return Err(OpenAiCompatError::unsupported(field).with_report(report.clone()));
+    }
+    let unknown_fields = object
+        .keys()
+        .filter(|field| {
+            !matches!(
+                field.as_str(),
+                "model"
+                    | "input"
+                    | "instructions"
+                    | "stream"
+                    | "user"
+                    | "metadata"
+                    | "max_output_tokens"
+                    | "store"
+                    | "previous_response_id"
+                    | "tools"
+                    | "tool_choice"
+                    | "parallel_tool_calls"
+                    | "response_format"
+                    | "text"
+                    | "reasoning"
+                    | "background"
+                    | "include"
+                    | "max_tool_calls"
+                    | "truncation"
+            )
+        })
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        "$",
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown OpenAI Responses field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
             OpenAiCompatError::invalid("body", "unknown OpenAI Responses field")
-        };
-        return Err(error.with_report(report.clone()));
+                .with_report(report.clone()),
+        );
     }
     Ok(())
 }
@@ -464,47 +632,6 @@ fn response_stream_mode(
     }
 }
 
-fn response_metadata(
-    object: &Map<String, Value>,
-    report: &mut TranslationReport,
-) -> Result<Value, OpenAiCompatError> {
-    match object.get("metadata") {
-        Some(Value::Object(_)) => {
-            report.record(
-                "$.metadata",
-                Some("$.metadata"),
-                TranslationDecisionKind::Exact,
-                None,
-                TranslationSafeRepresentation::Redacted,
-            );
-            Ok(object.get("metadata").cloned().unwrap_or_else(|| json!({})))
-        }
-        Some(_) => {
-            report.record(
-                "$.metadata",
-                None,
-                TranslationDecisionKind::Rejected,
-                Some("metadata must be an object"),
-                TranslationSafeRepresentation::Present,
-            );
-            Err(
-                OpenAiCompatError::invalid("metadata", "metadata must be an object")
-                    .with_report(report.clone()),
-            )
-        }
-        None => {
-            report.record(
-                "$.metadata",
-                Some("$.metadata"),
-                TranslationDecisionKind::Defaulted,
-                Some("empty metadata"),
-                TranslationSafeRepresentation::Defaulted,
-            );
-            Ok(json!({}))
-        }
-    }
-}
-
 fn response_max_output_tokens(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
@@ -547,6 +674,24 @@ fn validate_responses_input(
     input: &Value,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
+    validate_responses_input_items(input, report).map_err(|error| {
+        if !report.has_decision("$.input", TranslationDecisionKind::Rejected) {
+            report.record(
+                "$.input",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("Responses input contains invalid items"),
+                TranslationSafeRepresentation::Present,
+            );
+        }
+        error.with_report(report.clone())
+    })
+}
+
+fn validate_responses_input_items(
+    input: &Value,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
     if input.is_string() {
         report.record(
             "$.input",
@@ -557,23 +702,70 @@ fn validate_responses_input(
         );
         return Ok(());
     }
-    let items = input
-        .as_array()
-        .ok_or_else(|| OpenAiCompatError::invalid("input", "input must be text or messages"))?;
-    report.record(
-        "$.input",
-        Some("$.query,$.history"),
-        TranslationDecisionKind::Normalized,
-        None,
-        TranslationSafeRepresentation::Redacted,
-    );
+    let Some(items) = input.as_array() else {
+        report.record(
+            "$.input",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("Responses input must be text or messages"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(
+            OpenAiCompatError::invalid("input", "input must be text or messages")
+                .with_report(report.clone()),
+        );
+    };
+    let mut has_user_message = false;
     for (index, item) in items.iter().enumerate() {
-        let object = item.as_object().ok_or_else(|| {
-            OpenAiCompatError::invalid("input", "input message must be an object")
-        })?;
-        let item_type = object.get("type").and_then(Value::as_str);
+        let item_path = format!("$.input[{index}]");
+        let Some(object) = item.as_object() else {
+            report.record(
+                &item_path,
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("Responses input items must be objects"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(
+                OpenAiCompatError::invalid("input", "input message must be an object")
+                    .with_report(report.clone()),
+            );
+        };
+        report.record(
+            &item_path,
+            Some("$.query,$.history"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
+        let type_path = format!("$.input[{index}].type");
+        let item_type = match object.get("type") {
+            Some(Value::String(item_type)) => Some(item_type.as_str()),
+            Some(_) => {
+                report.record(
+                    &type_path,
+                    None,
+                    TranslationDecisionKind::Rejected,
+                    Some("Responses input item type must be text"),
+                    TranslationSafeRepresentation::Present,
+                );
+                return Err(
+                    OpenAiCompatError::invalid("input", "input item type must be text")
+                        .with_report(report.clone()),
+                );
+            }
+            None => {
+                report.record(
+                    &type_path,
+                    Some("$.input[].type"),
+                    TranslationDecisionKind::Defaulted,
+                    Some("message is the default Responses input item type"),
+                    TranslationSafeRepresentation::Defaulted,
+                );
+                None
+            }
+        };
         if !matches!(item_type, None | Some("message")) {
-            let path = format!("$.input[{index}].type");
             let kind = if matches!(
                 item_type,
                 Some("function_call")
@@ -586,7 +778,7 @@ fn validate_responses_input(
                 TranslationDecisionKind::Rejected
             };
             report.record(
-                &path,
+                &type_path,
                 None,
                 kind,
                 Some("Responses continuation and tool items have no current canonical owner"),
@@ -599,28 +791,63 @@ fn validate_responses_input(
             };
             return Err(error.with_report(report.clone()));
         }
-        for field in object.keys() {
-            if matches!(field.as_str(), "type" | "role" | "content") {
-                continue;
-            }
-            let path = format!("$.input[{index}].{field}");
+        if item_type.is_some() {
             report.record(
-                &path,
+                &type_path,
+                Some("$.input[].type"),
+                TranslationDecisionKind::Exact,
                 None,
-                TranslationDecisionKind::Rejected,
-                Some("unknown Responses input field"),
-                TranslationSafeRepresentation::Redacted,
+                TranslationSafeRepresentation::Present,
             );
+        }
+        let unknown_fields = object
+            .keys()
+            .filter(|field| !matches!(field.as_str(), "type" | "role" | "content"))
+            .collect::<Vec<_>>();
+        if report.record_anonymous_unknown_fields(
+            &item_path,
+            unknown_fields,
+            TranslationDecisionKind::Rejected,
+            "unknown Responses input field",
+            TranslationSafeRepresentation::Present,
+        ) > 0
+        {
             return Err(
                 OpenAiCompatError::invalid("input", "unknown Responses input field")
                     .with_report(report.clone()),
             );
         }
-        let role = object.get("role").and_then(Value::as_str).unwrap_or("user");
+        let role_path = format!("$.input[{index}].role");
+        let role_was_explicit = object.contains_key("role");
+        let role = match object.get("role") {
+            Some(Value::String(role)) => role.as_str(),
+            Some(_) => {
+                report.record(
+                    &role_path,
+                    None,
+                    TranslationDecisionKind::Rejected,
+                    Some("Responses message role must be text"),
+                    TranslationSafeRepresentation::Present,
+                );
+                return Err(
+                    OpenAiCompatError::invalid("input", "message role must be text")
+                        .with_report(report.clone()),
+                );
+            }
+            None => {
+                report.record(
+                    &role_path,
+                    Some("$.query,$.history"),
+                    TranslationDecisionKind::Defaulted,
+                    Some("user is the default Responses message role"),
+                    TranslationSafeRepresentation::Defaulted,
+                );
+                "user"
+            }
+        };
         if !matches!(role, "system" | "developer" | "user" | "assistant") {
-            let path = format!("$.input[{index}].role");
             report.record(
-                &path,
+                &role_path,
                 None,
                 TranslationDecisionKind::Rejected,
                 Some("unsupported Responses message role"),
@@ -631,6 +858,20 @@ fn validate_responses_input(
                     .with_report(report.clone()),
             );
         }
+        if role_was_explicit {
+            report.record(
+                &role_path,
+                Some(if matches!(role, "system" | "developer") {
+                    "$.system"
+                } else {
+                    "$.query,$.history"
+                }),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Present,
+            );
+        }
+        has_user_message |= role == "user";
         if !object.contains_key("content") {
             let path = format!("$.input[{index}].content");
             report.record(
@@ -646,18 +887,75 @@ fn validate_responses_input(
             );
         }
         let content_path = format!("$.input[{index}].content");
+        let content = object.get("content").expect("content exists");
+        if matches!(content, Value::String(_) | Value::Array(_)) {
+            report.record(
+                &content_path,
+                Some(if matches!(role, "system" | "developer") {
+                    "$.system"
+                } else {
+                    "$.query,$.history"
+                }),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+        }
+        if matches!(role, "system" | "developer") {
+            reject_responses_system_media(content, index, report)?;
+        }
+        validate_responses_content_parts(content, index, report)?;
+    }
+    if !has_user_message {
         report.record(
-            &content_path,
-            Some("$.query,$.history"),
-            TranslationDecisionKind::Normalized,
+            "$.input",
             None,
+            TranslationDecisionKind::Rejected,
+            Some("Responses input requires a user message"),
             TranslationSafeRepresentation::Redacted,
         );
-        validate_responses_content_parts(
-            object.get("content").expect("content exists"),
-            index,
-            report,
-        )?;
+        return Err(
+            OpenAiCompatError::invalid("input", "user input is required")
+                .with_report(report.clone()),
+        );
+    }
+    report.record(
+        "$.input",
+        Some("$.query,$.history"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
+    Ok(())
+}
+
+fn reject_responses_system_media(
+    content: &Value,
+    message_index: usize,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
+    let Some(parts) = content.as_array() else {
+        return Ok(());
+    };
+    for (part_index, part) in parts.iter().enumerate() {
+        let Some(part) = part.as_object() else {
+            continue;
+        };
+        if !matches!(
+            part.get("type").and_then(Value::as_str),
+            Some("image_url" | "input_image")
+        ) {
+            continue;
+        }
+        let type_path = format!("$.input[{message_index}].content[{part_index}].type");
+        report.record(
+            &type_path,
+            None,
+            TranslationDecisionKind::Unsupported,
+            Some("Responses system and developer media has no current canonical owner"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(OpenAiCompatError::unsupported("input").with_report(report.clone()));
     }
     Ok(())
 }
@@ -687,10 +985,11 @@ fn validate_responses_content_parts(
     };
 
     for (part_index, part) in parts.iter().enumerate() {
+        let part_path = format!("$.input[{message_index}].content[{part_index}]");
         let type_path = format!("$.input[{message_index}].content[{part_index}].type");
         let Some(object) = part.as_object() else {
             report.record(
-                &type_path,
+                &part_path,
                 None,
                 TranslationDecisionKind::Rejected,
                 Some("input content part must be an object"),
@@ -702,6 +1001,13 @@ fn validate_responses_content_parts(
             )
             .with_report(report.clone()));
         };
+        report.record(
+            &part_path,
+            Some("$.query,$.history"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
         let part_type = object
             .get("type")
             .and_then(Value::as_str)
@@ -716,11 +1022,7 @@ fn validate_responses_content_parts(
                     TranslationSafeRepresentation::Present,
                 );
                 validate_openai_supported_content_part(
-                    object,
-                    &format!("$.input[{message_index}].content[{part_index}]"),
-                    part_type,
-                    "input",
-                    report,
+                    object, &part_path, part_type, "input", report,
                 )?;
             }
             "input_audio" | "file" | "input_file" => {
@@ -739,7 +1041,11 @@ fn validate_responses_content_parts(
                     None,
                     TranslationDecisionKind::Rejected,
                     Some("unknown OpenAI Responses content type"),
-                    TranslationSafeRepresentation::Present,
+                    if object.contains_key("type") {
+                        TranslationSafeRepresentation::Present
+                    } else {
+                        TranslationSafeRepresentation::Absent
+                    },
                 );
                 return Err(OpenAiCompatError::invalid(
                     "input",
@@ -775,7 +1081,11 @@ fn validate_openai_supported_content_part(
                     None,
                     TranslationDecisionKind::Rejected,
                     Some("text content parts require text"),
-                    TranslationSafeRepresentation::Absent,
+                    if object.contains_key("text") {
+                        TranslationSafeRepresentation::Present
+                    } else {
+                        TranslationSafeRepresentation::Absent
+                    },
                 );
                 return Err(OpenAiCompatError::invalid(
                     error_param,
@@ -865,33 +1175,32 @@ fn reject_unknown_openai_content_part_fields(
     error_param: &'static str,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
-    for field in object.keys() {
-        if allowed_fields.contains(&field.as_str()) {
-            continue;
-        }
-        let path = format!("{part_path}.{field}");
-        let kind = if field == "file_id" {
-            TranslationDecisionKind::Unsupported
-        } else {
-            TranslationDecisionKind::Rejected
-        };
-        report.record(
-            &path,
-            None,
-            kind,
-            Some(if kind == TranslationDecisionKind::Unsupported {
-                "file-backed image input has no current canonical owner"
-            } else {
-                "unknown OpenAI content-part field"
-            }),
-            TranslationSafeRepresentation::Redacted,
-        );
-        let error = if kind == TranslationDecisionKind::Unsupported {
-            OpenAiCompatError::unsupported(error_param)
-        } else {
+    let unknown_fields = object
+        .keys()
+        .filter(|field| !allowed_fields.contains(&field.as_str()) && field.as_str() != "file_id")
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        part_path,
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown OpenAI content-part field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
             OpenAiCompatError::invalid(error_param, "unknown OpenAI content-part field")
-        };
-        return Err(error.with_report(report.clone()));
+                .with_report(report.clone()),
+        );
+    }
+    if object.contains_key("file_id") && !allowed_fields.contains(&"file_id") {
+        report.record(
+            &format!("{part_path}.file_id"),
+            None,
+            TranslationDecisionKind::Unsupported,
+            Some("file-backed image input has no current canonical owner"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(OpenAiCompatError::unsupported(error_param).with_report(report.clone()));
     }
     Ok(())
 }
@@ -925,18 +1234,25 @@ fn validate_openai_image_url_value(
             TranslationSafeRepresentation::Redacted,
         ),
         Value::Object(image) => {
-            for field in image.keys() {
-                if matches!(field.as_str(), "url" | "detail") {
-                    continue;
-                }
-                let path = format!("{image_path}.{field}");
-                report.record(
-                    &path,
-                    None,
-                    TranslationDecisionKind::Rejected,
-                    Some("unknown OpenAI image_url field"),
-                    TranslationSafeRepresentation::Redacted,
-                );
+            report.record(
+                image_path,
+                Some("$.history[].content_blocks[].image_url.url"),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+            let unknown_fields = image
+                .keys()
+                .filter(|field| !matches!(field.as_str(), "url" | "detail"))
+                .collect::<Vec<_>>();
+            if report.record_anonymous_unknown_fields(
+                image_path,
+                unknown_fields,
+                TranslationDecisionKind::Rejected,
+                "unknown OpenAI image_url field",
+                TranslationSafeRepresentation::Present,
+            ) > 0
+            {
                 return Err(OpenAiCompatError::invalid(
                     error_param,
                     "unknown OpenAI image_url field",
@@ -949,7 +1265,11 @@ fn validate_openai_image_url_value(
                     None,
                     TranslationDecisionKind::Rejected,
                     Some("image_url.url must be text"),
-                    TranslationSafeRepresentation::Absent,
+                    if image.contains_key("url") {
+                        TranslationSafeRepresentation::Present
+                    } else {
+                        TranslationSafeRepresentation::Absent
+                    },
                 );
                 return Err(
                     OpenAiCompatError::invalid(error_param, "image_url.url must be text")
@@ -1013,24 +1333,15 @@ fn validate_openai_image_url_value(
     Ok(())
 }
 
-fn responses_conversation(object: &Map<String, Value>) -> Value {
-    let mut conversation = Map::new();
-    if let Some(user) = object
-        .get("user")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        conversation.insert("user".to_string(), Value::String(user.to_string()));
-    }
-    Value::Object(conversation)
-}
-
-fn responses_input_to_query_and_history(
+fn responses_input_to_native_run_input(
     input: &Value,
-) -> Result<(String, Vec<Value>), OpenAiCompatError> {
+) -> Result<ResponsesInputMapping, OpenAiCompatError> {
     if let Some(text) = input.as_str() {
-        return Ok((text.to_string(), Vec::new()));
+        return Ok(ResponsesInputMapping {
+            query: text.to_string(),
+            history: Vec::new(),
+            system_parts: Vec::new(),
+        });
     }
 
     let items = input
@@ -1038,10 +1349,11 @@ fn responses_input_to_query_and_history(
         .ok_or_else(|| OpenAiCompatError::invalid("input", "input must be text or messages"))?;
     let last_user_index = items
         .iter()
-        .rposition(|item| item.get("role").and_then(Value::as_str) == Some("user"))
+        .rposition(|item| item.get("role").and_then(Value::as_str).unwrap_or("user") == "user")
         .ok_or_else(|| OpenAiCompatError::invalid("input", "user input is required"))?;
 
     let mut history = Vec::new();
+    let mut system_parts = Vec::new();
     for (index, item) in items.iter().enumerate() {
         let message = responses_input_message(item)?;
         if index == last_user_index {
@@ -1052,7 +1364,18 @@ fn responses_input_to_query_and_history(
                     "content_blocks": content_blocks,
                 }));
             }
-            return Ok((message.content, history));
+            return Ok(ResponsesInputMapping {
+                query: message.content,
+                history,
+                system_parts,
+            });
+        }
+
+        if matches!(message.role.as_str(), "system" | "developer") {
+            if !message.content.trim().is_empty() {
+                system_parts.push(message.content);
+            }
+            continue;
         }
 
         let mut history_entry = serde_json::json!({
@@ -1069,6 +1392,13 @@ fn responses_input_to_query_and_history(
         "input",
         "user input is required",
     ))
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ResponsesInputMapping {
+    query: String,
+    history: Vec<Value>,
+    system_parts: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1453,7 +1783,7 @@ mod tests {
         assert_eq!(request.model.as_deref(), Some("deepseek-v4-flash"));
         assert_eq!(request.response_mode.as_deref(), Some("streaming"));
         assert_eq!(request.conversation["user"], json!("external-user-1"));
-        assert_eq!(request.metadata["trace_id"], json!("trace-responses"));
+        assert_eq!(request.metadata.trace_id(), Some("trace-responses"));
     }
 
     #[test]

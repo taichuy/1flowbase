@@ -1,12 +1,17 @@
-use serde_json::{json, Value};
+use std::num::NonZeroU64;
+
+use plugin_framework::provider_contract::{NativeModelRequestContext, NativePromptBlock};
+use serde_json::{Map, Value};
 
 use super::{
     chat_max_output_tokens, openai_message_content, reject_unknown_chat_fields,
-    reject_unknown_response_fields, response_max_output_tokens, response_metadata,
-    response_stream_mode, responses_conversation, responses_input_to_query_and_history,
-    system_from_parts, validate_chat_message_fields, validate_responses_input, OpenAiCompatError,
+    reject_unknown_response_fields, response_max_output_tokens, response_stream_mode,
+    responses_input_to_native_run_input, system_from_parts, validate_chat_message_fields,
+    validate_responses_input, OpenAiCompatError,
 };
-use crate::application_public_api::native::NativeRunRequest;
+use crate::application_public_api::native::{
+    NativeExecution, NativeObject, NativeRequestMetadata, NativeRunRequest,
+};
 use crate::application_public_api::protocol_translation::{
     TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol, TranslationReport,
     TranslationSafeRepresentation,
@@ -16,25 +21,34 @@ pub fn translate_chat_completion_request(
     request: Value,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiChat);
-    let object = request
-        .as_object()
-        .ok_or_else(|| OpenAiCompatError::invalid("body", "request body must be an object"))?;
+    let object = openai_request_object(&request, &mut report)?;
     reject_unknown_chat_fields(object, &mut report)?;
-    let model = object
-        .get("model")
-        .and_then(Value::as_str)
-        .ok_or_else(|| OpenAiCompatError::invalid("model", "model is required"))?;
-    report.record(
-        "$.model",
-        Some("$.model"),
-        TranslationDecisionKind::Exact,
-        None,
-        TranslationSafeRepresentation::Present,
-    );
-    let messages = object
-        .get("messages")
-        .and_then(Value::as_array)
-        .ok_or_else(|| OpenAiCompatError::invalid("messages", "messages is required"))?;
+    let model = required_openai_string(object, "model", &mut report)?;
+    let messages = required_openai_array(object, "messages", &mut report)?;
+
+    for (index, message) in messages.iter().enumerate() {
+        validate_chat_message_fields(message, index, &mut report).map_err(|error| {
+            report.record(
+                "$.messages",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("Chat messages contain an invalid message"),
+                TranslationSafeRepresentation::Present,
+            );
+            error.with_report(report.clone())
+        })?;
+    }
+    let last_user_index = messages
+        .iter()
+        .rposition(|message| message.get("role").and_then(Value::as_str) == Some("user"))
+        .ok_or_else(|| {
+            reject_openai_required_field(
+                &mut report,
+                "messages",
+                "user message is required",
+                TranslationSafeRepresentation::Present,
+            )
+        })?;
     report.record(
         "$.messages",
         Some("$.query,$.history,$.system"),
@@ -42,19 +56,13 @@ pub fn translate_chat_completion_request(
         None,
         TranslationSafeRepresentation::Redacted,
     );
-
-    let last_user_index = messages
-        .iter()
-        .rposition(|message| message.get("role").and_then(Value::as_str) == Some("user"))
-        .ok_or_else(|| OpenAiCompatError::invalid("messages", "user message is required"))?;
     let mut system_parts = Vec::new();
     let mut history = Vec::new();
     for (index, message) in messages.iter().enumerate() {
-        validate_chat_message_fields(message, index, &mut report)?;
         let role = message
             .get("role")
             .and_then(Value::as_str)
-            .ok_or_else(|| OpenAiCompatError::invalid("messages", "message role is required"))?;
+            .expect("validated Chat message has a role");
         let role_path = format!("$.messages[{index}].role");
         report.record(
             &role_path,
@@ -77,9 +85,6 @@ pub fn translate_chat_completion_request(
             continue;
         }
         if matches!(role, "system" | "developer") {
-            if content.content_blocks.is_some() {
-                return Err(OpenAiCompatError::unsupported("messages").with_report(report));
-            }
             if !content.trim().is_empty() {
                 system_parts.push(content.text);
             }
@@ -124,6 +129,13 @@ pub fn translate_chat_completion_request(
             None
         }
         Some(_) => {
+            report.record(
+                "$.stream",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("stream must be a boolean"),
+                TranslationSafeRepresentation::Present,
+            );
             return Err(
                 OpenAiCompatError::invalid("stream", "stream must be a boolean")
                     .with_report(report),
@@ -140,80 +152,32 @@ pub fn translate_chat_completion_request(
             None
         }
     };
-    let conversation = object
-        .get("user")
-        .and_then(Value::as_str)
-        .map(|user| serde_json::json!({ "user": user }))
-        .unwrap_or_else(|| serde_json::json!({}));
-    if object.contains_key("user") {
-        report.record(
-            "$.user",
-            Some("$.conversation.user"),
-            TranslationDecisionKind::Exact,
-            None,
-            TranslationSafeRepresentation::Redacted,
-        );
-    }
-    let metadata = match object.get("metadata") {
-        Some(Value::Object(_)) => {
-            report.record(
-                "$.metadata",
-                Some("$.metadata"),
-                TranslationDecisionKind::Exact,
-                None,
-                TranslationSafeRepresentation::Redacted,
-            );
-            object.get("metadata").cloned().unwrap_or_else(|| json!({}))
-        }
-        Some(_) => {
-            return Err(
-                OpenAiCompatError::invalid("metadata", "metadata must be an object")
-                    .with_report(report),
-            );
-        }
-        None => {
-            report.record(
-                "$.metadata",
-                Some("$.metadata"),
-                TranslationDecisionKind::Defaulted,
-                Some("empty metadata"),
-                TranslationSafeRepresentation::Defaulted,
-            );
-            json!({})
-        }
+    let conversation = openai_conversation(object, &mut report)?;
+    let metadata = openai_metadata(object, &mut report)?;
+    let execution = native_execution(chat_max_output_tokens(object, &mut report)?);
+    let request = NativeRunRequest {
+        query,
+        system: system_from_parts(system_parts)
+            .map(NativePromptBlock::text)
+            .into_iter()
+            .collect(),
+        model: Some(model),
+        inputs: NativeObject::default(),
+        history,
+        attachments: Vec::new(),
+        conversation,
+        expand_id: None,
+        response_mode,
+        stream_options: NativeObject::default(),
+        execution,
+        metadata,
+        request_context: NativeModelRequestContext::default(),
+        title: None,
+        client_protocol_envelope: None,
     };
-    let execution = match chat_max_output_tokens(object, &mut report)? {
-        Some(max_output_tokens) => json!({
-            "model_parameters": { "max_output_tokens": max_output_tokens }
-        }),
-        None => json!({}),
-    };
-
-    let mut native = serde_json::json!({
-        "query": query,
-        "model": model,
-        "inputs": {},
-        "history": history,
-        "conversation": conversation,
-        "response_mode": response_mode,
-        "metadata": metadata,
-        "execution": execution,
-    }
-    );
-    if let Some(system) = system_from_parts(system_parts) {
-        native["system"] = Value::String(system);
-    }
-    if response_mode.is_none() {
-        native
-            .as_object_mut()
-            .expect("native request object")
-            .remove("response_mode");
-    }
-
-    let request: NativeRunRequest = serde_json::from_value(native).map_err(|_| {
-        OpenAiCompatError::invalid("body", "failed to build Native request")
-            .with_report(report.clone())
-    })?;
+    report
+        .ensure_consistent()
+        .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
     Ok(TranslatedNativeRunRequest { request, report })
 }
 
@@ -221,28 +185,16 @@ pub fn translate_response_request(
     request: Value,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
-    let object = request
-        .as_object()
-        .ok_or_else(|| OpenAiCompatError::invalid("body", "request body must be an object"))?;
+    let object = openai_request_object(&request, &mut report)?;
     reject_unknown_response_fields(object, &mut report)?;
-    let model = object
-        .get("model")
-        .and_then(Value::as_str)
-        .ok_or_else(|| OpenAiCompatError::invalid("model", "model is required"))?;
-    report.record(
-        "$.model",
-        Some("$.model"),
-        TranslationDecisionKind::Exact,
-        None,
-        TranslationSafeRepresentation::Present,
-    );
-    let input = object
-        .get("input")
-        .ok_or_else(|| OpenAiCompatError::invalid("input", "input is required"))?;
+    let model = required_openai_string(object, "model", &mut report)?;
+    let input = required_openai_value(object, "input", &mut report)?;
     validate_responses_input(input, &mut report)?;
-    let (query, history) = responses_input_to_query_and_history(input)
+    let input_mapping = responses_input_to_native_run_input(input)
         .map_err(|error| error.with_report(report.clone()))?;
-    let system = match object.get("instructions") {
+    let query = input_mapping.query;
+    let history = input_mapping.history;
+    let instructions = match object.get("instructions") {
         Some(Value::String(value)) if !value.trim().is_empty() => {
             report.record(
                 "$.instructions",
@@ -264,55 +216,280 @@ pub fn translate_response_request(
             None
         }
         Some(_) => {
+            report.record(
+                "$.instructions",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("instructions must be text"),
+                TranslationSafeRepresentation::Present,
+            );
             return Err(
                 OpenAiCompatError::invalid("instructions", "instructions must be text")
                     .with_report(report),
             );
         }
     };
+    let system = system_from_parts(
+        instructions
+            .into_iter()
+            .chain(input_mapping.system_parts)
+            .collect(),
+    );
 
     let response_mode = response_stream_mode(object, &mut report)?;
-    let conversation = responses_conversation(object);
-    if object.contains_key("user") {
+    let conversation = openai_conversation(object, &mut report)?;
+    let metadata = openai_metadata(object, &mut report)?;
+    let execution = native_execution(response_max_output_tokens(object, &mut report)?);
+    let request = NativeRunRequest {
+        query,
+        system: system.map(NativePromptBlock::text).into_iter().collect(),
+        model: Some(model),
+        inputs: NativeObject::default(),
+        history,
+        attachments: Vec::new(),
+        conversation,
+        expand_id: None,
+        response_mode,
+        stream_options: NativeObject::default(),
+        execution,
+        metadata,
+        request_context: NativeModelRequestContext::default(),
+        title: None,
+        client_protocol_envelope: None,
+    };
+    report
+        .ensure_consistent()
+        .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
+    Ok(TranslatedNativeRunRequest { request, report })
+}
+
+fn openai_request_object<'a>(
+    request: &'a Value,
+    report: &mut TranslationReport,
+) -> Result<&'a Map<String, Value>, OpenAiCompatError> {
+    let Some(object) = request.as_object() else {
         report.record(
+            "$.body",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("request body must be an object"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(
+            OpenAiCompatError::invalid("body", "request body must be an object")
+                .with_report(report.clone()),
+        );
+    };
+    Ok(object)
+}
+
+fn required_openai_string(
+    object: &Map<String, Value>,
+    field: &'static str,
+    report: &mut TranslationReport,
+) -> Result<String, OpenAiCompatError> {
+    match object.get(field) {
+        Some(Value::String(value)) => {
+            report.record(
+                &format!("$.{field}"),
+                Some(&format!("$.{field}")),
+                TranslationDecisionKind::Exact,
+                None,
+                TranslationSafeRepresentation::Present,
+            );
+            Ok(value.clone())
+        }
+        Some(_) => Err(reject_openai_required_field(
+            report,
+            field,
+            &format!("{field} is required and must be text"),
+            TranslationSafeRepresentation::Present,
+        )),
+        None => Err(reject_openai_required_field(
+            report,
+            field,
+            &format!("{field} is required and must be text"),
+            TranslationSafeRepresentation::Absent,
+        )),
+    }
+}
+
+fn required_openai_array<'a>(
+    object: &'a Map<String, Value>,
+    field: &'static str,
+    report: &mut TranslationReport,
+) -> Result<&'a Vec<Value>, OpenAiCompatError> {
+    match object.get(field) {
+        Some(Value::Array(values)) => Ok(values),
+        Some(_) => Err(reject_openai_required_field(
+            report,
+            field,
+            &format!("{field} is required"),
+            TranslationSafeRepresentation::Present,
+        )),
+        None => Err(reject_openai_required_field(
+            report,
+            field,
+            &format!("{field} is required"),
+            TranslationSafeRepresentation::Absent,
+        )),
+    }
+}
+
+fn required_openai_value<'a>(
+    object: &'a Map<String, Value>,
+    field: &'static str,
+    report: &mut TranslationReport,
+) -> Result<&'a Value, OpenAiCompatError> {
+    object.get(field).ok_or_else(|| {
+        reject_openai_required_field(
+            report,
+            field,
+            &format!("{field} is required"),
+            TranslationSafeRepresentation::Absent,
+        )
+    })
+}
+
+fn reject_openai_required_field(
+    report: &mut TranslationReport,
+    field: &'static str,
+    reason: &str,
+    effective_value: TranslationSafeRepresentation,
+) -> OpenAiCompatError {
+    report.record(
+        &format!("$.{field}"),
+        None,
+        TranslationDecisionKind::Rejected,
+        Some(reason),
+        effective_value,
+    );
+    OpenAiCompatError::invalid(field, reason).with_report(report.clone())
+}
+
+fn openai_conversation(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> Result<NativeObject, OpenAiCompatError> {
+    let mut conversation = NativeObject::default();
+    match object.get("user") {
+        Some(Value::String(user)) if !user.trim().is_empty() => {
+            report.record(
+                "$.user",
+                Some("$.conversation.user"),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+            conversation.insert_string("user", user.trim());
+        }
+        Some(_) => {
+            report.record(
+                "$.user",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("user must be non-empty text"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(
+                OpenAiCompatError::invalid("user", "user must be non-empty text")
+                    .with_report(report.clone()),
+            );
+        }
+        None => report.record(
             "$.user",
             Some("$.conversation.user"),
+            TranslationDecisionKind::Defaulted,
+            Some("no external user"),
+            TranslationSafeRepresentation::Defaulted,
+        ),
+    }
+    Ok(conversation)
+}
+
+fn openai_metadata(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> Result<NativeRequestMetadata, OpenAiCompatError> {
+    let Some(metadata) = object.get("metadata") else {
+        report.record(
+            "$.metadata",
+            Some("$.metadata"),
+            TranslationDecisionKind::Defaulted,
+            Some("empty metadata"),
+            TranslationSafeRepresentation::Defaulted,
+        );
+        return Ok(NativeRequestMetadata::default());
+    };
+    let Some(metadata) = metadata.as_object() else {
+        report.record(
+            "$.metadata",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("metadata must be an object"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(
+            OpenAiCompatError::invalid("metadata", "metadata must be an object")
+                .with_report(report.clone()),
+        );
+    };
+    report.record(
+        "$.metadata",
+        Some("$.metadata"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
+    let unknown_fields = metadata
+        .keys()
+        .filter(|field| field.as_str() != "trace_id")
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        "$.metadata",
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "OpenAI metadata field has no canonical owner",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
+            OpenAiCompatError::invalid("metadata", "unsupported OpenAI metadata field")
+                .with_report(report.clone()),
+        );
+    }
+    if let Some(value) = metadata.get("trace_id") {
+        if !value.is_string() {
+            report.record(
+                "$.metadata.trace_id",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("OpenAI metadata trace_id must be text"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(OpenAiCompatError::invalid(
+                "metadata",
+                "OpenAI metadata trace_id must be text",
+            )
+            .with_report(report.clone()));
+        }
+        report.record(
+            "$.metadata.trace_id",
+            Some("$.metadata.trace_id"),
             TranslationDecisionKind::Exact,
             None,
             TranslationSafeRepresentation::Redacted,
         );
+        return Ok(NativeRequestMetadata::with_trace_id(Some(
+            value.as_str().expect("validated text metadata").to_owned(),
+        )));
     }
-    let metadata = response_metadata(object, &mut report)?;
-    let execution = match response_max_output_tokens(object, &mut report)? {
-        Some(max_output_tokens) => json!({
-            "model_parameters": { "max_output_tokens": max_output_tokens }
-        }),
-        None => json!({}),
-    };
+    Ok(NativeRequestMetadata::default())
+}
 
-    let mut native = serde_json::json!({
-        "query": query,
-        "model": model,
-        "inputs": {},
-        "history": history,
-        "conversation": conversation,
-        "response_mode": response_mode,
-        "metadata": metadata,
-        "execution": execution,
-    });
-    if let Some(system) = system {
-        native["system"] = Value::String(system);
-    }
-    if response_mode.is_none() {
-        native
-            .as_object_mut()
-            .expect("native request object")
-            .remove("response_mode");
-    }
-
-    let request: NativeRunRequest = serde_json::from_value(native).map_err(|_| {
-        OpenAiCompatError::invalid("body", "failed to build Native request")
-            .with_report(report.clone())
-    })?;
-    Ok(TranslatedNativeRunRequest { request, report })
+fn native_execution(max_output_tokens: Option<u64>) -> NativeExecution {
+    max_output_tokens
+        .and_then(NonZeroU64::new)
+        .map(NativeExecution::with_max_output_tokens)
+        .unwrap_or_default()
 }

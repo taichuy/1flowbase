@@ -21,7 +21,10 @@ use control_plane::application_public_api::{
         ApplicationNativeRunService, CreateNativeRunCommand, NativeRunRequest, NativeRunResult,
         NativeRunStatus, NativeRunValidationError,
     },
-    protocol_translation::{TranslationProtocol, TranslationReport},
+    protocol_translation::{
+        TranslationDecisionKind, TranslationProtocol, TranslationReport,
+        TranslationSafeRepresentation,
+    },
     publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
 };
 use plugin_framework::provider_contract::ClientProtocolEnvelope;
@@ -85,7 +88,7 @@ pub async fn create_chat_completion(
             return Err(error.into());
         }
     };
-    let value = match parse_openai_json_body(body) {
+    let value = match parse_openai_json_body(body, TranslationProtocol::OpenAiChat) {
         Ok(value) => value,
         Err(error) => {
             warn_openai_route_error(
@@ -178,7 +181,7 @@ pub async fn create_response(
             return Err(error.into());
         }
     };
-    let value = match parse_openai_json_body(body) {
+    let value = match parse_openai_json_body(body, TranslationProtocol::OpenAiResponses) {
         Ok(value) => value,
         Err(error) => {
             warn_openai_route_error(
@@ -364,14 +367,25 @@ fn openai_client_protocol_envelope_from_headers(
     )
 }
 
-fn parse_openai_json_body(body: Bytes) -> Result<Value, OpenAiRouteError> {
+fn parse_openai_json_body(
+    body: Bytes,
+    protocol: TranslationProtocol,
+) -> Result<Value, OpenAiRouteError> {
     serde_json::from_slice::<Value>(&body).map_err(|_| {
+        let mut report = TranslationReport::new(protocol);
+        report.record(
+            "$.body",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("invalid JSON body"),
+            TranslationSafeRepresentation::Present,
+        );
         OpenAiCompatError {
             message: "invalid JSON body".to_string(),
             error_type: "invalid_request_error".to_string(),
             param: Some("body".to_string()),
             code: "invalid_request".to_string(),
-            report: TranslationReport::new(TranslationProtocol::OpenAiChat),
+            report,
         }
         .into()
     })

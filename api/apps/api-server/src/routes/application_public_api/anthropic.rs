@@ -18,7 +18,10 @@ use control_plane::application_public_api::{
         ApplicationNativeRunService, CreateNativeRunCommand, NativeRunRequest, NativeRunResult,
         NativeRunStatus, NativeRunValidationError,
     },
-    protocol_translation::{TranslationProtocol, TranslationReport},
+    protocol_translation::{
+        TranslationDecisionKind, TranslationProtocol, TranslationReport,
+        TranslationSafeRepresentation,
+    },
 };
 use plugin_framework::provider_contract::ClientProtocolEnvelope;
 use serde::Serialize;
@@ -230,10 +233,18 @@ fn anthropic_token(headers: &HeaderMap) -> Result<String, native::NativeApiError
 
 fn parse_anthropic_json_body(body: Bytes) -> Result<Value, AnthropicRouteError> {
     serde_json::from_slice::<Value>(&body).map_err(|_| {
+        let mut report = TranslationReport::new(TranslationProtocol::AnthropicMessages);
+        report.record(
+            "$.body",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("invalid JSON body"),
+            TranslationSafeRepresentation::Present,
+        );
         AnthropicCompatError {
             message: "invalid JSON body".to_string(),
             error_type: "invalid_request".to_string(),
-            report: TranslationReport::new(TranslationProtocol::AnthropicMessages),
+            report,
         }
         .into()
     })

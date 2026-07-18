@@ -945,11 +945,25 @@ async fn provider_error_after_live_delta_drains_runtime_event_stream_forwarding(
         .unwrap();
 
     assert_eq!(failed_detail.flow_run.status, domain::FlowRunStatus::Failed);
-    assert!(failed_detail.flow_run.error_payload.is_some_and(|payload| {
-        payload["message"]
-            .as_str()
-            .is_some_and(|message| message.contains("provider failed after live events"))
-    }));
+    let error_payload = failed_detail
+        .flow_run
+        .error_payload
+        .as_ref()
+        .expect("provider failure must retain its canonical error");
+    assert_eq!(
+        error_payload["error_code"],
+        json!("provider_invalid_response")
+    );
+    assert_eq!(
+        error_payload["message"],
+        json!("provider returned an invalid response")
+    );
+    assert!(
+        !error_payload
+            .to_string()
+            .contains("provider failed after live events"),
+        "raw provider error text must not become durable public error content"
+    );
     let event_types = stream
         .events()
         .into_iter()
@@ -970,7 +984,7 @@ async fn provider_error_after_live_delta_drains_runtime_event_stream_forwarding(
 }
 
 #[tokio::test]
-async fn provider_error_after_live_delta_exposes_error_text_to_answer_contract() {
+async fn provider_error_after_live_delta_keeps_failure_out_of_answer_contract() {
     let service = OrchestrationRuntimeService::for_tests_with_live_events_then_error(vec![
         plugin_framework::provider_contract::ProviderStreamEvent::TextDelta {
             delta: "partial before error".to_string(),
@@ -1002,22 +1016,27 @@ async fn provider_error_after_live_delta_exposes_error_text_to_answer_contract()
         .unwrap();
 
     assert_eq!(failed_detail.flow_run.status, domain::FlowRunStatus::Failed);
-    assert_eq!(
-        failed_detail.flow_run.output_payload["answer"],
-        json!("provider failed after live events")
+    assert!(
+        failed_detail
+            .flow_run
+            .output_payload
+            .get("answer")
+            .is_none(),
+        "provider failure text must not become an Answer"
     );
     let llm_node = node_run(&failed_detail, "node-llm");
     assert_eq!(llm_node.status, domain::NodeRunStatus::Failed);
-    assert_eq!(
-        llm_node.output_payload["text"],
-        json!("provider failed after live events")
-    );
+    assert!(llm_node.output_payload.get("text").is_none());
     assert!(llm_node.output_payload.get("usage").is_none());
     assert!(llm_node.output_payload.get("tool_calls").is_none());
     assert_eq!(
-        node_run(&failed_detail, "node-answer").status,
-        domain::NodeRunStatus::Succeeded
+        llm_node.error_payload.as_ref().unwrap()["error_code"],
+        json!("provider_invalid_response")
     );
+    assert!(failed_detail
+        .node_runs
+        .iter()
+        .all(|node_run| node_run.node_id != "node-answer"));
 }
 
 #[tokio::test]

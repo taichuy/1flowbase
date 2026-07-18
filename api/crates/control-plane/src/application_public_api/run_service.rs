@@ -103,10 +103,14 @@ where
 
         let publication = self.load_enabled_publication(&actor).await?;
         let client_request = command.request;
+        let external_model_parameters = validate_external_model_parameters(
+            client_request.execution.model_parameters(),
+            client_request.model.as_deref(),
+            &publication.document_snapshot,
+        )?;
         let idempotency_key = client_request
             .execution
-            .get("idempotency_key")
-            .and_then(Value::as_str)
+            .idempotency_key()
             .map(ToOwned::to_owned);
         let idempotency_fingerprint = idempotency_key
             .as_ref()
@@ -115,8 +119,6 @@ where
         let request = self
             .bind_conversation(actor.application_id, actor.api_key_id, client_request)
             .await?;
-        let external_model_parameters =
-            validate_external_model_parameters(&request, &publication.document_snapshot)?;
 
         let compiled_plan = self
             .repository
@@ -157,7 +159,7 @@ where
         let input_payload = freeze_run_input_environment(
             mapped.node_input_payload,
             &environment_variables,
-            external_model_parameters,
+            external_model_parameters.as_ref(),
             compiled_plan_start_node_id(&compiled_plan.plan).as_deref(),
         );
         let input_payload = with_public_run_idempotency_fingerprint(
@@ -238,10 +240,22 @@ where
                 finished_at: OffsetDateTime::now_utc(),
             })
             .await
-            .map_err(|_| NativeRunValidationError::InvalidState)?
-            .unwrap_or_else(|| flow_run.clone());
+            .map_err(|_| NativeRunValidationError::InvalidState)?;
+        let (cancelled, cancellation_won) = match cancelled {
+            Some(cancelled) => (cancelled, true),
+            None => (
+                self.repository
+                    .get_published_flow_run(flow_run.id)
+                    .await
+                    .map_err(|_| NativeRunValidationError::InvalidState)?
+                    .ok_or(NativeRunValidationError::InvalidState)?,
+                false,
+            ),
+        };
 
-        self.append_cancelled_audit(actor, &cancelled).await;
+        if cancellation_won {
+            self.append_cancelled_audit(actor, &cancelled).await;
+        }
 
         Ok(cancelled)
     }
@@ -438,8 +452,14 @@ where
 fn public_run_idempotency_fingerprint(
     request: &NativeRunRequest,
 ) -> std::result::Result<String, NativeRunValidationError> {
-    let value =
+    let mut value =
         serde_json::to_value(request).map_err(|_| NativeRunValidationError::InvalidMapping)?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert(
+            "execution".to_string(),
+            request.execution.fingerprint_value(),
+        );
+    }
     let mut canonical = Vec::new();
     write_canonical_json(&value, &mut canonical)
         .map_err(|_| NativeRunValidationError::InvalidMapping)?;

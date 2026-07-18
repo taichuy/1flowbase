@@ -205,6 +205,109 @@ async fn d2_ac_004_native_streaming_cancel_projects_one_safe_terminal_and_closes
 }
 
 #[tokio::test]
+async fn d2_ac_004_native_cancel_terminal_constraint_failure_rolls_back_status_and_keeps_live_stream_open(
+) {
+    let (app, state) = test_app_with_state().await;
+    let (token, gate) =
+        setup_published_app_with_provider_gate(&app, "Native Cancel Atomic Rollback App").await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/agent/v1/runs")
+                .header("authorization", format!("Bearer {token}"))
+                .header("accept", "text/event-stream")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "query": "cancel only if terminal persistence can commit",
+                        "response_mode": "streaming",
+                        "stream_options": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let run_id = wait_for_active_streaming_run(state.as_ref()).await;
+    wait_for_provider_partial_delta(state.as_ref(), run_id, &gate).await;
+    sqlx::query(
+        "alter table flow_run_events add constraint reject_flow_cancelled_terminal check (event_type <> 'flow_cancelled')",
+    )
+    .execute(state.store.pool())
+    .await
+    .unwrap();
+
+    let cancel = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/agent/v1/runs/{run_id}/cancel"))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert!(!cancel.status().is_success());
+    let status = sqlx::query_scalar::<_, String>("select status from flow_runs where id = $1")
+        .bind(run_id)
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let output =
+        sqlx::query_scalar::<_, Value>("select output_payload from flow_runs where id = $1")
+            .bind(run_id)
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+    let error =
+        sqlx::query_scalar::<_, Option<Value>>("select error_payload from flow_runs where id = $1")
+            .bind(run_id)
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+    let durable_terminals = sqlx::query_scalar::<_, i64>(
+        "select count(*) from flow_run_events where flow_run_id = $1 and event_type = 'flow_cancelled'",
+    )
+    .bind(run_id)
+    .fetch_one(state.store.pool())
+    .await
+    .unwrap();
+    let subscription = state
+        .runtime_event_stream
+        .subscribe(run_id, None)
+        .await
+        .expect("the partial stream must remain inspectable after durable cancellation rollback");
+
+    assert_eq!(status, "running");
+    assert_eq!(output, json!({}));
+    assert!(error.is_none());
+    assert_eq!(durable_terminals, 0);
+    assert!(subscription.closure.borrow().is_none());
+    assert_eq!(
+        subscription
+            .replay
+            .iter()
+            .filter(|event| event.event_type == "flow_cancelled")
+            .count(),
+        0
+    );
+
+    gate.release();
+    let _ = timeout(
+        Duration::from_secs(5),
+        to_bytes(response.into_body(), usize::MAX),
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn d2_ac_004_openai_chat_streaming_cancel_projects_error_without_done() {
     let (app, state) = test_app_with_state().await;
     let (token, gate) =

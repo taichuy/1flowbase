@@ -8,6 +8,8 @@ use super::native::NativeRunRequest;
 pub struct TranslationReport {
     pub protocol: TranslationProtocol,
     pub decisions: Vec<TranslationDecision>,
+    #[serde(skip)]
+    invariant_error: Option<TranslationReportInvariantError>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,6 +31,31 @@ pub struct TranslationDecision {
     pub reason: Option<String>,
     pub effective_value: TranslationSafeRepresentation,
 }
+
+/// A translation adapter attempted to make two incompatible decisions for the
+/// same wire location. It is an internal invariant error: callers must return
+/// an adapter failure rather than expose a receipt whose first decision won by
+/// accident.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TranslationReportInvariantError {
+    source_path: String,
+    existing: TranslationDecision,
+    attempted: TranslationDecision,
+}
+
+impl TranslationReportInvariantError {
+    pub fn source_path(&self) -> &str {
+        &self.source_path
+    }
+}
+
+impl std::fmt::Display for TranslationReportInvariantError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("translation receipt source path received conflicting decisions")
+    }
+}
+
+impl std::error::Error for TranslationReportInvariantError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -63,6 +90,7 @@ impl TranslationReport {
         Self {
             protocol,
             decisions: Vec::new(),
+            invariant_error: None,
         }
     }
 
@@ -74,6 +102,9 @@ impl TranslationReport {
         reason: Option<&str>,
         effective_value: TranslationSafeRepresentation,
     ) {
+        if self.invariant_error.is_some() {
+            return;
+        }
         let decision = TranslationDecision {
             source_path: source_path.to_string(),
             target_path: target_path.map(ToOwned::to_owned),
@@ -87,11 +118,41 @@ impl TranslationReport {
             .find(|existing| existing.source_path == source_path)
         {
             if *existing != decision {
-                panic!("translation receipt source path decided more than once: {source_path}");
+                self.invariant_error = Some(TranslationReportInvariantError {
+                    source_path: source_path.to_string(),
+                    existing: existing.clone(),
+                    attempted: decision,
+                });
             }
             return;
         }
         self.decisions.push(decision);
+    }
+
+    /// Finalize a report at the external-protocol boundary. Record calls are
+    /// deliberately ergonomic inside translators; this turns any duplicate
+    /// conflict into a typed, propagatable adapter invariant before the report
+    /// can cross that boundary.
+    pub fn ensure_consistent(&self) -> Result<(), TranslationReportInvariantError> {
+        self.invariant_error.clone().map_or(Ok(()), Err)
+    }
+
+    /// Preserve the fact that each unexpected wire key was present while never
+    /// retaining the key itself in a non-durable receipt. Sorting makes the
+    /// anonymous ordinal stable regardless of JSON insertion order.
+    pub(crate) fn record_anonymous_unknown_fields<'a>(
+        &mut self,
+        parent_path: &str,
+        fields: impl IntoIterator<Item = &'a String>,
+        kind: TranslationDecisionKind,
+        reason: &'static str,
+        effective_value: TranslationSafeRepresentation,
+    ) -> usize {
+        let source_paths = anonymous_unknown_source_paths(parent_path, fields);
+        for source_path in &source_paths {
+            self.record(source_path, None, kind, Some(reason), effective_value);
+        }
+        source_paths.len()
     }
 
     pub fn has_decision(&self, source_path: &str, kind: TranslationDecisionKind) -> bool {
@@ -99,6 +160,19 @@ impl TranslationReport {
             .iter()
             .any(|decision| decision.source_path == source_path && decision.kind == kind)
     }
+}
+
+pub(crate) fn anonymous_unknown_source_paths<'a>(
+    parent_path: &str,
+    fields: impl IntoIterator<Item = &'a String>,
+) -> Vec<String> {
+    let mut fields = fields.into_iter().map(String::as_str).collect::<Vec<_>>();
+    fields.sort_unstable();
+    fields
+        .iter()
+        .enumerate()
+        .map(|(index, _)| format!("{parent_path}.<unknown>[{index}]"))
+        .collect()
 }
 
 #[cfg(test)]
@@ -131,8 +205,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "translation receipt source path decided more than once")]
-    fn rejects_conflicting_duplicate_source_path_decisions() {
+    fn surfaces_conflicting_duplicate_source_path_decisions_as_a_translation_invariant() {
         let mut report = TranslationReport::new(TranslationProtocol::Native);
         report.record(
             "$.execution.compatibility_mode",
@@ -148,5 +221,11 @@ mod tests {
             None,
             TranslationSafeRepresentation::Present,
         );
+
+        let error = report
+            .ensure_consistent()
+            .expect_err("a conflicting source decision must become a recoverable invariant error");
+        assert_eq!(error.source_path(), "$.execution.compatibility_mode");
+        assert_eq!(report.decisions.len(), 1);
     }
 }

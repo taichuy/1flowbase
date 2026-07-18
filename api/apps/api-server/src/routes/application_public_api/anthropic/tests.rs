@@ -1,5 +1,9 @@
 use super::*;
+use axum::body::Bytes;
 use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
+use control_plane::application_public_api::protocol_translation::{
+    TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
+};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -20,6 +24,35 @@ fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
         error: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     }
+}
+
+#[test]
+fn d2_ac_001_anthropic_malformed_json_has_one_safe_adapter_receipt() {
+    let sentinel = "D2-ANTHROPIC-MALFORMED-JSON-MUST-NOT-REACH-RECEIPT";
+    let error = parse_anthropic_json_body(Bytes::from(format!("{{\"raw\":\"{sentinel}\"")))
+        .expect_err("malformed Anthropic JSON must be rejected by the adapter boundary");
+    let AnthropicRouteError::Compat(error) = error else {
+        panic!("malformed JSON must remain an Anthropic adapter error");
+    };
+
+    assert_eq!(
+        error.report.protocol,
+        TranslationProtocol::AnthropicMessages
+    );
+    assert_eq!(error.report.decisions.len(), 1);
+    let decision = &error.report.decisions[0];
+    assert_eq!(decision.source_path, "$.body");
+    assert_eq!(decision.kind, TranslationDecisionKind::Rejected);
+    assert_eq!(
+        decision.effective_value,
+        TranslationSafeRepresentation::Present
+    );
+    assert!(
+        !serde_json::to_string(&error.report)
+            .expect("receipt should serialize")
+            .contains(sentinel),
+        "malformed JSON must not be retained in the receipt"
+    );
 }
 
 #[test]

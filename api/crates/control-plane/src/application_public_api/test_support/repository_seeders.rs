@@ -212,6 +212,14 @@ impl ApplicationPublicApiTestRepository {
             .len()
     }
 
+    pub fn conversation_count(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .conversations
+            .len()
+    }
+
     pub fn reset_editor_state_read_count(&self) {
         self.inner
             .lock()

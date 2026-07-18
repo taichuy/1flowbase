@@ -28,7 +28,7 @@ async fn start_node_debug_preview_creates_run_node_run_and_events() {
 }
 
 #[tokio::test]
-async fn live_run_failure_exposes_failed_llm_text_to_answer_contract() {
+async fn live_run_failure_keeps_answer_contract_unmaterialized() {
     use plugin_framework::provider_contract::{ProviderFinishReason, ProviderInvocationResult};
 
     let service = OrchestrationRuntimeService::for_tests_with_provider_results(vec![
@@ -68,9 +68,10 @@ async fn live_run_failure_exposes_failed_llm_text_to_answer_contract() {
         .unwrap();
 
     assert_eq!(failed.flow_run.status, domain::FlowRunStatus::Failed);
+    assert!(failed.flow_run.output_payload.get("answer").is_none());
     assert_eq!(
-        failed.flow_run.output_payload["answer"],
-        json!("first answer\n----\nprovider invocation finished with error")
+        failed.flow_run.error_payload.as_ref().unwrap()["error_code"],
+        json!("provider_invalid_response")
     );
     assert_eq!(
         node_run(&failed, "node-llm").status,
@@ -80,10 +81,10 @@ async fn live_run_failure_exposes_failed_llm_text_to_answer_contract() {
         node_run(&failed, "node-llm-2").status,
         domain::NodeRunStatus::Failed
     );
-    assert_eq!(
-        node_run(&failed, "node-answer").status,
-        domain::NodeRunStatus::Succeeded
-    );
+    assert!(failed
+        .node_runs
+        .iter()
+        .all(|node_run| node_run.node_id != "node-answer"));
 }
 
 #[tokio::test]

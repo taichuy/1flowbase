@@ -1,9 +1,12 @@
-use plugin_framework::provider_contract::NativePromptBlock;
+use plugin_framework::provider_contract::{
+    NativePromptBlock, NativePromptCacheControl, NativePromptCacheControlType, NativePromptCacheTtl,
+};
+use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
 use crate::application_public_api::client_protocol_envelope::ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE;
-use crate::application_public_api::native::NativeRunRequest;
+use crate::application_public_api::native::{NativeObject, NativeRunRequest};
 use crate::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationSafeRepresentation,
 };
@@ -35,6 +38,14 @@ pub struct AnthropicCompatError {
 }
 
 impl AnthropicCompatError {
+    fn translation_invariant(report: TranslationReport) -> Self {
+        Self {
+            message: "translation receipt invariant violated".to_string(),
+            error_type: "api_error".to_string(),
+            report,
+        }
+    }
+
     fn invalid(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -53,6 +64,9 @@ impl AnthropicCompatError {
     }
 
     fn with_report(mut self, report: TranslationReport) -> Self {
+        if report.ensure_consistent().is_err() {
+            return Self::translation_invariant(report);
+        }
         self.report = report;
         self
     }
@@ -70,16 +84,8 @@ fn reject_unknown_anthropic_fields(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
 ) -> Result<(), AnthropicCompatError> {
-    for field in object.keys() {
-        if matches!(
-            field.as_str(),
-            "model" | "messages" | "max_tokens" | "system" | "stream" | "metadata"
-        ) {
-            continue;
-        }
-
-        let path = format!("$.{field}");
-        let unsupported = matches!(
+    for field in object.keys().filter(|field| {
+        matches!(
             field.as_str(),
             "context_management"
                 | "tools"
@@ -94,29 +100,57 @@ fn reject_unknown_anthropic_fields(
                 | "top_p"
                 | "stop_sequences"
                 | "stream_options"
-        );
-        let kind = if unsupported {
-            TranslationDecisionKind::Unsupported
-        } else {
-            TranslationDecisionKind::Rejected
-        };
+        )
+    }) {
+        let path = format!("$.{field}");
         report.record(
             &path,
             None,
-            kind,
-            Some(if unsupported {
-                "this field has no current canonical owner"
-            } else {
-                "unknown Anthropic Messages field"
-            }),
-            TranslationSafeRepresentation::Redacted,
+            TranslationDecisionKind::Unsupported,
+            Some("this field has no current canonical owner"),
+            TranslationSafeRepresentation::Present,
         );
-        let error = if unsupported {
-            AnthropicCompatError::unsupported(field)
-        } else {
+        return Err(AnthropicCompatError::unsupported(field).with_report(report.clone()));
+    }
+    let unknown_fields = object
+        .keys()
+        .filter(|field| {
+            !matches!(
+                field.as_str(),
+                "model"
+                    | "messages"
+                    | "max_tokens"
+                    | "system"
+                    | "stream"
+                    | "metadata"
+                    | "context_management"
+                    | "tools"
+                    | "tool_choice"
+                    | "container"
+                    | "mcp_servers"
+                    | "thinking"
+                    | "output_config"
+                    | "service_tier"
+                    | "temperature"
+                    | "top_k"
+                    | "top_p"
+                    | "stop_sequences"
+                    | "stream_options"
+            )
+        })
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        "$",
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown Anthropic Messages field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
             AnthropicCompatError::invalid("unknown Anthropic Messages field")
-        };
-        return Err(error.with_report(report.clone()));
+                .with_report(report.clone()),
+        );
     }
     Ok(())
 }
@@ -178,31 +212,61 @@ fn validate_anthropic_message(
     index: usize,
     report: &mut TranslationReport,
 ) -> Result<(), AnthropicCompatError> {
-    let object = message.as_object().ok_or_else(|| {
-        AnthropicCompatError::invalid("message must be an object").with_report(report.clone())
-    })?;
-    for field in object.keys() {
-        if matches!(field.as_str(), "role" | "content") {
-            continue;
-        }
-        let path = format!("$.messages[{index}].{field}");
+    let message_path = format!("$.messages[{index}]");
+    let Some(object) = message.as_object() else {
         report.record(
-            &path,
+            &message_path,
             None,
             TranslationDecisionKind::Rejected,
-            Some("unknown Anthropic message field"),
-            TranslationSafeRepresentation::Redacted,
+            Some("Anthropic messages must be objects"),
+            TranslationSafeRepresentation::Present,
         );
+        return Err(
+            AnthropicCompatError::invalid("message must be an object").with_report(report.clone())
+        );
+    };
+    report.record(
+        &message_path,
+        Some("$.query,$.history"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
+    let unknown_fields = object
+        .keys()
+        .filter(|field| !matches!(field.as_str(), "role" | "content"))
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        &message_path,
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown Anthropic message field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
         return Err(
             AnthropicCompatError::invalid("unknown Anthropic message field")
                 .with_report(report.clone()),
         );
     }
 
-    let role = object.get("role").and_then(Value::as_str).ok_or_else(|| {
-        AnthropicCompatError::invalid("message role is required").with_report(report.clone())
-    })?;
     let role_path = format!("$.messages[{index}].role");
+    let Some(role) = object.get("role").and_then(Value::as_str) else {
+        report.record(
+            &role_path,
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("Anthropic message role must be text"),
+            if object.contains_key("role") {
+                TranslationSafeRepresentation::Present
+            } else {
+                TranslationSafeRepresentation::Absent
+            },
+        );
+        return Err(
+            AnthropicCompatError::invalid("message role is required").with_report(report.clone())
+        );
+    };
     if !matches!(role, "user" | "assistant") {
         report.record(
             &role_path,
@@ -235,9 +299,38 @@ fn validate_anthropic_message(
         AnthropicCompatError::invalid("message content is required").with_report(report.clone())
     })?;
     let content_path = format!("$.messages[{index}].content");
-    validate_anthropic_content_blocks(content, index, report)?;
-    let content_text =
-        anthropic_text_content(content).map_err(|error| error.with_report(report.clone()))?;
+    validate_anthropic_content_blocks(content, index, report).map_err(|error| {
+        if report
+            .decisions
+            .iter()
+            .all(|decision| decision.source_path != content_path)
+        {
+            report.record(
+                &content_path,
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("Anthropic message content contains invalid blocks"),
+                TranslationSafeRepresentation::Present,
+            );
+        }
+        error.with_report(report.clone())
+    })?;
+    let content_text = anthropic_text_content(content).map_err(|error| {
+        if report
+            .decisions
+            .iter()
+            .all(|decision| decision.source_path != content_path)
+        {
+            report.record(
+                &content_path,
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("Anthropic message content cannot be translated"),
+                TranslationSafeRepresentation::Present,
+            );
+        }
+        error.with_report(report.clone())
+    })?;
     reject_legacy_anthropic_control_text(&content_text, &content_path, report)?;
     report.record(
         &content_path,
@@ -273,10 +366,27 @@ fn validate_anthropic_content_blocks(
     };
 
     for (block_index, block) in blocks.iter().enumerate() {
-        let object = block.as_object().ok_or_else(|| {
-            AnthropicCompatError::invalid("content block must be an object")
-                .with_report(report.clone())
-        })?;
+        let block_path = format!("$.messages[{message_index}].content[{block_index}]");
+        let Some(object) = block.as_object() else {
+            report.record(
+                &block_path,
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("Anthropic content blocks must be objects"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(
+                AnthropicCompatError::invalid("content block must be an object")
+                    .with_report(report.clone()),
+            );
+        };
+        report.record(
+            &block_path,
+            Some("$.query,$.history"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
         let path = format!("$.messages[{message_index}].content[{block_index}].type");
         let block_type = object
             .get("type")
@@ -293,7 +403,7 @@ fn validate_anthropic_content_blocks(
                 );
                 validate_anthropic_supported_content_block(
                     object,
-                    &format!("$.messages[{message_index}].content[{block_index}]"),
+                    &block_path,
                     block_type,
                     report,
                 )?;
@@ -317,7 +427,11 @@ fn validate_anthropic_content_blocks(
                     None,
                     TranslationDecisionKind::Rejected,
                     Some("unknown Anthropic content block type"),
-                    TranslationSafeRepresentation::Present,
+                    if object.contains_key("type") {
+                        TranslationSafeRepresentation::Present
+                    } else {
+                        TranslationSafeRepresentation::Absent
+                    },
                 );
                 return Err(
                     AnthropicCompatError::invalid("unknown Anthropic content block type")
@@ -350,7 +464,11 @@ fn validate_anthropic_supported_content_block(
                     report,
                     &text_path,
                     "text content blocks require text",
-                    TranslationSafeRepresentation::Absent,
+                    if object.contains_key("text") {
+                        TranslationSafeRepresentation::Present
+                    } else {
+                        TranslationSafeRepresentation::Absent
+                    },
                 ));
             }
             report.record(
@@ -360,23 +478,6 @@ fn validate_anthropic_supported_content_block(
                 None,
                 TranslationSafeRepresentation::Redacted,
             );
-            if let Some(cache_control) = object.get("cache_control") {
-                validate_anthropic_cache_control(
-                    cache_control,
-                    &format!("{block_path}.cache_control"),
-                    TranslationDecisionKind::Dropped,
-                    None,
-                    report,
-                )?;
-            } else {
-                report.record(
-                    &format!("{block_path}.cache_control"),
-                    None,
-                    TranslationDecisionKind::Defaulted,
-                    Some("no content-block cache control"),
-                    TranslationSafeRepresentation::Defaulted,
-                );
-            }
         }
         "image" | "document" => {
             let unsupported_document_fields = if block_type == "document" {
@@ -397,26 +498,26 @@ fn validate_anthropic_supported_content_block(
                 block_type == "document",
                 report,
             )?;
-            if let Some(cache_control) = object.get("cache_control") {
-                validate_anthropic_cache_control(
-                    cache_control,
-                    &format!("{block_path}.cache_control"),
-                    TranslationDecisionKind::Dropped,
-                    None,
-                    report,
-                )?;
-            } else {
-                report.record(
-                    &format!("{block_path}.cache_control"),
-                    None,
-                    TranslationDecisionKind::Defaulted,
-                    Some("no content-block cache control"),
-                    TranslationSafeRepresentation::Defaulted,
-                );
-            }
         }
         _ => unreachable!("caller validates supported Anthropic content block types"),
     }
+    if let Some(cache_control) = object.get("cache_control") {
+        validate_anthropic_cache_control(
+            cache_control,
+            &format!("{block_path}.cache_control"),
+            TranslationDecisionKind::Unsupported,
+            None,
+            report,
+        )?;
+        return Err(AnthropicCompatError::unsupported("messages").with_report(report.clone()));
+    }
+    report.record(
+        &format!("{block_path}.cache_control"),
+        None,
+        TranslationDecisionKind::Defaulted,
+        Some("no content-block cache control"),
+        TranslationSafeRepresentation::Defaulted,
+    );
     Ok(())
 }
 
@@ -427,27 +528,39 @@ fn reject_unknown_anthropic_content_block_fields(
     unsupported_fields: &[&str],
     report: &mut TranslationReport,
 ) -> Result<(), AnthropicCompatError> {
-    for field in object.keys() {
-        if allowed_fields.contains(&field.as_str()) {
-            continue;
-        }
+    let unknown_fields = object
+        .keys()
+        .filter(|field| {
+            !allowed_fields.contains(&field.as_str())
+                && !unsupported_fields.contains(&field.as_str())
+        })
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        block_path,
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown Anthropic content-block field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
+            AnthropicCompatError::invalid("unknown Anthropic content-block field")
+                .with_report(report.clone()),
+        );
+    }
+    for field in object
+        .keys()
+        .filter(|field| unsupported_fields.contains(&field.as_str()))
+    {
         let path = format!("{block_path}.{field}");
-        if unsupported_fields.contains(&field.as_str()) {
-            report.record(
-                &path,
-                None,
-                TranslationDecisionKind::Unsupported,
-                Some("this Anthropic content-block field has no current canonical owner"),
-                TranslationSafeRepresentation::Redacted,
-            );
-            return Err(AnthropicCompatError::unsupported("messages").with_report(report.clone()));
-        }
-        return Err(reject_anthropic_nested_field(
-            report,
+        report.record(
             &path,
-            "unknown Anthropic content-block field",
-            TranslationSafeRepresentation::Redacted,
-        ));
+            None,
+            TranslationDecisionKind::Unsupported,
+            Some("this Anthropic content-block field has no current canonical owner"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(AnthropicCompatError::unsupported("messages").with_report(report.clone()));
     }
     Ok(())
 }
@@ -470,6 +583,13 @@ fn validate_anthropic_media_source(
             },
         ));
     };
+    report.record(
+        source_path,
+        Some("$.history[].content_blocks[].source"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
     let type_path = format!("{source_path}.type");
     let source_type = source
         .get("type")
@@ -497,7 +617,11 @@ fn validate_anthropic_media_source(
                 report,
                 &type_path,
                 "unknown Anthropic media source type",
-                TranslationSafeRepresentation::Present,
+                if source.contains_key("type") {
+                    TranslationSafeRepresentation::Present
+                } else {
+                    TranslationSafeRepresentation::Absent
+                },
             ));
         }
     };
@@ -508,16 +632,22 @@ fn validate_anthropic_media_source(
         None,
         TranslationSafeRepresentation::Present,
     );
-    for field in source.keys() {
-        if allowed_fields.contains(&field.as_str()) {
-            continue;
-        }
-        return Err(reject_anthropic_nested_field(
-            report,
-            &format!("{source_path}.{field}"),
-            "unknown Anthropic media source field",
-            TranslationSafeRepresentation::Redacted,
-        ));
+    let unknown_fields = source
+        .keys()
+        .filter(|field| !allowed_fields.contains(&field.as_str()))
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        source_path,
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown Anthropic media source field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
+            AnthropicCompatError::invalid("unknown Anthropic media source field")
+                .with_report(report.clone()),
+        );
     }
     for field in required_fields {
         let path = format!("{source_path}.{field}");
@@ -578,6 +708,8 @@ fn validate_anthropic_cache_control(
     target_path: Option<&str>,
     report: &mut TranslationReport,
 ) -> Result<(), AnthropicCompatError> {
+    let unsupported_reason = (kind == TranslationDecisionKind::Unsupported)
+        .then_some("message content cache control has no current canonical owner");
     let Some(cache_control) = value.as_object() else {
         return Err(reject_anthropic_nested_field(
             report,
@@ -586,16 +718,29 @@ fn validate_anthropic_cache_control(
             TranslationSafeRepresentation::Present,
         ));
     };
-    for field in cache_control.keys() {
-        if matches!(field.as_str(), "type" | "ttl") {
-            continue;
-        }
-        return Err(reject_anthropic_nested_field(
-            report,
-            &format!("{cache_path}.{field}"),
-            "unknown Anthropic cache_control field",
-            TranslationSafeRepresentation::Redacted,
-        ));
+    report.record(
+        cache_path,
+        target_path,
+        kind,
+        unsupported_reason,
+        TranslationSafeRepresentation::Present,
+    );
+    let unknown_fields = cache_control
+        .keys()
+        .filter(|field| !matches!(field.as_str(), "type" | "ttl"))
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        cache_path,
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown Anthropic cache_control field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
+            AnthropicCompatError::invalid("unknown Anthropic cache_control field")
+                .with_report(report.clone()),
+        );
     }
     let type_path = format!("{cache_path}.type");
     if cache_control.get("type").and_then(Value::as_str) != Some("ephemeral") {
@@ -614,7 +759,7 @@ fn validate_anthropic_cache_control(
         &type_path,
         target_path,
         kind,
-        None,
+        unsupported_reason,
         TranslationSafeRepresentation::Present,
     );
     if let Some(ttl) = cache_control.get("ttl") {
@@ -631,7 +776,7 @@ fn validate_anthropic_cache_control(
             &ttl_path,
             target_path,
             kind,
-            None,
+            unsupported_reason,
             TranslationSafeRepresentation::Present,
         );
     } else {
@@ -643,13 +788,6 @@ fn validate_anthropic_cache_control(
             TranslationSafeRepresentation::Defaulted,
         );
     }
-    report.record(
-        cache_path,
-        target_path,
-        kind,
-        None,
-        TranslationSafeRepresentation::Present,
-    );
     Ok(())
 }
 
@@ -718,10 +856,28 @@ fn anthropic_response_mode(
     }
 }
 
+#[derive(Debug, Default)]
+struct AnthropicRequestMetadata {
+    user_id: Option<String>,
+    expand_id: Option<String>,
+    session_id: Option<String>,
+    trace_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeCodeUserIdentity {
+    #[serde(default)]
+    account_uuid: Option<String>,
+    #[serde(default)]
+    device_id: Option<String>,
+    #[serde(default)]
+    session_id: Option<String>,
+}
+
 fn anthropic_metadata(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
-) -> Result<Value, AnthropicCompatError> {
+) -> Result<AnthropicRequestMetadata, AnthropicCompatError> {
     match object.get("metadata") {
         Some(Value::Object(metadata)) => {
             report.record(
@@ -731,7 +887,69 @@ fn anthropic_metadata(
                 None,
                 TranslationSafeRepresentation::Redacted,
             );
-            Ok(Value::Object(metadata.clone()))
+            let mut normalized = AnthropicRequestMetadata::default();
+            let unknown_fields = metadata
+                .keys()
+                .filter(|field| {
+                    !matches!(
+                        field.as_str(),
+                        "user_id" | "expand_id" | "session_id" | "trace_id"
+                    )
+                })
+                .collect::<Vec<_>>();
+            if report.record_anonymous_unknown_fields(
+                "$.metadata",
+                unknown_fields,
+                TranslationDecisionKind::Rejected,
+                "Anthropic metadata field has no canonical owner",
+                TranslationSafeRepresentation::Present,
+            ) > 0
+            {
+                return Err(
+                    AnthropicCompatError::invalid("unsupported Anthropic metadata field")
+                        .with_report(report.clone()),
+                );
+            }
+            for (field, value) in metadata {
+                let path = format!("$.metadata.{field}");
+                let target_path = match field.as_str() {
+                    "user_id" => "$.request_context.end_user_reference,$.conversation",
+                    "expand_id" => "$.conversation.user",
+                    "session_id" => "$.conversation.id",
+                    "trace_id" => "$.metadata.trace_id",
+                    _ => continue,
+                };
+                let Some(text) = value.as_str() else {
+                    report.record(
+                        &path,
+                        None,
+                        TranslationDecisionKind::Rejected,
+                        Some("Anthropic metadata fields must be text"),
+                        TranslationSafeRepresentation::Present,
+                    );
+                    return Err(AnthropicCompatError::invalid(
+                        "Anthropic metadata fields must be text",
+                    )
+                    .with_report(report.clone()));
+                };
+                report.record(
+                    &path,
+                    Some(target_path),
+                    TranslationDecisionKind::Normalized,
+                    None,
+                    TranslationSafeRepresentation::Redacted,
+                );
+                let text = text.trim();
+                let text = (!text.is_empty()).then(|| text.to_owned());
+                match field.as_str() {
+                    "user_id" => normalized.user_id = text,
+                    "expand_id" => normalized.expand_id = text,
+                    "session_id" => normalized.session_id = text,
+                    "trace_id" => normalized.trace_id = text,
+                    _ => continue,
+                }
+            }
+            Ok(normalized)
         }
         Some(_) => {
             report.record(
@@ -752,7 +970,7 @@ fn anthropic_metadata(
                 Some("empty metadata"),
                 TranslationSafeRepresentation::Defaulted,
             );
-            Ok(serde_json::json!({}))
+            Ok(AnthropicRequestMetadata::default())
         }
     }
 }
@@ -836,16 +1054,15 @@ fn anthropic_system_content_parts(
                     }
                     Value::Object(object) => {
                         let path = format!("$.system[{index}]");
+                        report.record(
+                            &path,
+                            Some("$.system"),
+                            TranslationDecisionKind::Normalized,
+                            None,
+                            TranslationSafeRepresentation::Redacted,
+                        );
                         validate_anthropic_system_text_block(object, &path, report)?;
-                        let block: NativePromptBlock = serde_json::from_value(block.clone())
-                            .map_err(|_| {
-                                reject_anthropic_nested_field(
-                                    report,
-                                    &path,
-                                    "system prompt block does not match the Native prompt contract",
-                                    TranslationSafeRepresentation::Redacted,
-                                )
-                            })?;
+                        let block = native_anthropic_system_text_block(object);
                         if !block.text_content().trim().is_empty() {
                             parts.push(block);
                         }
@@ -874,21 +1091,54 @@ fn anthropic_system_content_parts(
     Ok(parts)
 }
 
+fn native_anthropic_system_text_block(object: &Map<String, Value>) -> NativePromptBlock {
+    let text = object
+        .get("text")
+        .and_then(Value::as_str)
+        .expect("validated Anthropic system text blocks always contain text")
+        .to_owned();
+    let cache_control =
+        object
+            .get("cache_control")
+            .and_then(Value::as_object)
+            .map(|cache_control| NativePromptCacheControl {
+                cache_type: NativePromptCacheControlType::Ephemeral,
+                ttl: match cache_control.get("ttl").and_then(Value::as_str) {
+                    Some("5m") => Some(NativePromptCacheTtl::FiveMinutes),
+                    Some("1h") => Some(NativePromptCacheTtl::OneHour),
+                    None => None,
+                    Some(_) => {
+                        unreachable!("validated Anthropic cache control has a supported TTL")
+                    }
+                },
+            });
+    NativePromptBlock::Text {
+        text,
+        cache_control,
+    }
+}
+
 fn validate_anthropic_system_text_block(
     object: &Map<String, Value>,
     block_path: &str,
     report: &mut TranslationReport,
 ) -> Result<(), AnthropicCompatError> {
-    for field in object.keys() {
-        if matches!(field.as_str(), "type" | "text" | "cache_control") {
-            continue;
-        }
-        return Err(reject_anthropic_nested_field(
-            report,
-            &format!("{block_path}.{field}"),
-            "unknown Anthropic system block field",
-            TranslationSafeRepresentation::Redacted,
-        ));
+    let unknown_fields = object
+        .keys()
+        .filter(|field| !matches!(field.as_str(), "type" | "text" | "cache_control"))
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        block_path,
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown Anthropic system block field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
+            AnthropicCompatError::invalid("unknown Anthropic system block field")
+                .with_report(report.clone()),
+        );
     }
     let type_path = format!("{block_path}.type");
     if object.get("type").and_then(Value::as_str) != Some("text") {
@@ -992,54 +1242,47 @@ fn claude_code_system_control_kind(system_parts: &[NativePromptBlock]) -> Option
         .then_some("session_title")
 }
 
-fn metadata_conversation(metadata: Option<&Value>) -> Value {
-    let mut conversation = Map::new();
-    let Some(metadata) = metadata.and_then(Value::as_object) else {
-        return Value::Object(conversation);
-    };
-    let user_id = metadata
-        .get("user_id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let user_id_payload = user_id.and_then(|value| serde_json::from_str::<Value>(value).ok());
+fn metadata_conversation(metadata: &AnthropicRequestMetadata) -> NativeObject {
+    let mut conversation = NativeObject::default();
+    let user_id = metadata.user_id.as_deref();
+    let user_id_payload =
+        user_id.and_then(|value| serde_json::from_str::<ClaudeCodeUserIdentity>(value).ok());
     if let Some(user) = metadata
-        .get("expand_id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
+        .expand_id
+        .clone()
         .or_else(|| metadata_user_from_user_id(user_id, user_id_payload.as_ref()))
     {
-        conversation.insert("user".to_string(), Value::String(user));
+        conversation.insert_string("user", user);
     }
     if let Some(session_id) = user_id_payload
         .as_ref()
-        .and_then(|payload| payload.get("session_id"))
-        .and_then(Value::as_str)
-        .or_else(|| metadata.get("session_id").and_then(Value::as_str))
+        .and_then(|payload| payload.session_id.as_deref())
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+        .or_else(|| metadata.session_id.clone())
         .or_else(|| user_id.and_then(claude_code_session_id_from_identity))
     {
-        conversation.insert("id".to_string(), Value::String(session_id));
+        conversation.insert_string("id", session_id);
     }
-    Value::Object(conversation)
+    conversation
 }
 
-fn metadata_user_from_user_id(user_id: Option<&str>, payload: Option<&Value>) -> Option<String> {
+fn metadata_user_from_user_id(
+    user_id: Option<&str>,
+    payload: Option<&ClaudeCodeUserIdentity>,
+) -> Option<String> {
     payload
         .and_then(|payload| {
             payload
-                .get("account_uuid")
-                .and_then(Value::as_str)
+                .account_uuid
+                .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .or_else(|| {
                     payload
-                        .get("device_id")
-                        .and_then(Value::as_str)
+                        .device_id
+                        .as_deref()
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                 })
@@ -1199,11 +1442,7 @@ pub fn anthropic_content_is_tool_result_only(content: &Value) -> bool {
     has_tool_result
 }
 
-fn history_content_blocks(
-    _role: &str,
-    content: &Value,
-    keep_tool_use_blocks: bool,
-) -> Option<Value> {
+fn history_content_blocks(_role: &str, content: &Value) -> Option<Value> {
     let blocks = content.as_array()?;
     let has_media_blocks = blocks.iter().any(anthropic_history_block_has_media);
     let mut mapped_blocks = Vec::new();
@@ -1223,9 +1462,6 @@ fn history_content_blocks(
             }
             Some("tool_result") if has_media_blocks => {
                 mapped_blocks.extend(anthropic_tool_result_content_blocks(_role, block));
-            }
-            Some("tool_use" | "server_tool_use") if keep_tool_use_blocks => {
-                mapped_blocks.push(block.clone());
             }
             _ => {}
         }

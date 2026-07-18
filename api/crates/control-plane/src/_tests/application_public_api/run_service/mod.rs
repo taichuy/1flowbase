@@ -3,7 +3,10 @@ use control_plane::application_public_api::{
     mapping::{
         ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
     },
-    native::{CreateNativeRunCommand, NativeRunRequest, NativeRunValidationError},
+    native::{
+        translate_native_run_request, CreateNativeRunCommand, NativeRunRequest,
+        NativeRunValidationError,
+    },
     publications::{ApplicationPublicationService, PublishApplicationCommand},
     run_service::{ApplicationPublishedRunControlRepository, ApplicationPublishedRunService},
     ApplicationPublicApiTestHarness,
@@ -37,8 +40,7 @@ fn native_request(response_mode: &str, idempotency_key: Option<&str>) -> NativeR
         "response_mode": response_mode,
         "execution": execution,
         "metadata": {
-            "trace_id": "trace-1",
-            "request_id": "req-1"
+            "trace_id": "trace-1"
         }
     }))
     .unwrap()

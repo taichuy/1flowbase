@@ -26,7 +26,10 @@ use control_plane::{
             CreateNativeRunCommand, GetNativeRunCommand, NativeRunRequest, NativeRunResult,
             NativeRunStatus, NativeRunValidationError,
         },
-        protocol_translation::TranslatedNativeRunRequest,
+        protocol_translation::{
+            TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol,
+            TranslationReport, TranslationSafeRepresentation,
+        },
         publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
         run_service::native_result_from_run_detail,
     },
@@ -142,6 +145,14 @@ pub struct NativeApiError {
     pub(crate) status: StatusCode,
     pub(crate) code: &'static str,
     pub(crate) message: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct NativeRunRequestParseError {
+    pub(crate) code: &'static str,
+    pub(crate) message: String,
+    #[cfg(test)]
+    pub(crate) report: TranslationReport,
 }
 
 impl NativeApiError {
@@ -372,9 +383,25 @@ fn is_llm_tool_result_validation_error(message: &str) -> bool {
     .any(|prefix| message.starts_with(prefix))
 }
 
-fn parse_native_run_request(bytes: Bytes) -> Result<TranslatedNativeRunRequest, NativeApiError> {
-    let value = serde_json::from_slice::<Value>(&bytes)
-        .map_err(|_| NativeApiError::new(StatusCode::BAD_REQUEST, "json", "invalid JSON body"))?;
+pub(crate) fn parse_native_run_request(
+    bytes: Bytes,
+) -> Result<TranslatedNativeRunRequest, NativeRunRequestParseError> {
+    let value = serde_json::from_slice::<Value>(&bytes).map_err(|_| {
+        let mut report = TranslationReport::new(TranslationProtocol::Native);
+        report.record(
+            "$.body",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("invalid JSON body"),
+            TranslationSafeRepresentation::Present,
+        );
+        NativeRunRequestParseError {
+            code: "json",
+            message: "invalid JSON body".to_string(),
+            #[cfg(test)]
+            report,
+        }
+    })?;
     translate_native_run_request(value).map_err(|error| {
         debug!(
             route = "native_runs",
@@ -382,7 +409,12 @@ fn parse_native_run_request(bytes: Bytes) -> Result<TranslatedNativeRunRequest, 
             code = error.code,
             "Native request rejected by protocol adapter"
         );
-        NativeApiError::new(StatusCode::BAD_REQUEST, error.code, error.message)
+        NativeRunRequestParseError {
+            code: error.code,
+            message: error.message,
+            #[cfg(test)]
+            report: error.report,
+        }
     })
 }
 
@@ -530,7 +562,8 @@ pub async fn create_native_run(
     body: Bytes,
 ) -> Result<Response, NativeApiError> {
     let bearer_token = bearer_token(&headers)?;
-    let translated = parse_native_run_request(body)?;
+    let translated = parse_native_run_request(body)
+        .map_err(|error| NativeApiError::new(StatusCode::BAD_REQUEST, error.code, error.message))?;
     debug!(
         route = "native_runs",
         translation_decision_count = translated.report.decisions.len(),

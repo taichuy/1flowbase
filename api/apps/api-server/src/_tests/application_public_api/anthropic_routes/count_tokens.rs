@@ -78,3 +78,37 @@ async fn d2_ac_007_anthropic_count_tokens_rejects_tools_before_any_public_invoca
     assert_eq!(payload["error"]["type"], json!("unsupported_feature"));
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
+
+#[tokio::test]
+async fn d2_f1_anthropic_count_tokens_rejects_unknown_metadata_before_any_public_invocation() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "Anthropic Count Tokens Typed Metadata App").await;
+    let before = flow_run_count(state.as_ref()).await;
+    let sentinel = "D2-F1-ANTHROPIC-COUNT-TOKENS-METADATA-SECRET";
+
+    let response = post_json(
+        &app,
+        "/v1/messages/count_tokens",
+        ("x-api-key", token),
+        json!({
+            "model": "qwen3.6-35b-a3b",
+            "messages": [{"role": "user", "content": "Count this prompt"}],
+            "metadata": {
+                "trace_id": "count-trace-1",
+                sentinel: "must-not-reach-response"
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let payload = response_json(response).await;
+    assert_eq!(payload["error"]["type"], json!("invalid_request"));
+    assert!(
+        !serde_json::to_string(&payload)
+            .expect("error response serializes")
+            .contains(sentinel),
+        "unknown metadata must not be echoed from the shared translator"
+    );
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
+}

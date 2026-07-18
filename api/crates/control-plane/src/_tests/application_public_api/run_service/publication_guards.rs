@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn start_native_run_does_not_trust_request_compatibility_mode_for_anthropic_cancellation() {
+async fn native_execution_compatibility_mode_is_rejected_without_mutating_waiting_callback() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Native Forged Compat App");
@@ -19,14 +19,15 @@ async fn start_native_run_does_not_trust_request_compatibility_mode_for_anthropi
 
     let first = service
         .start_native_run(CreateNativeRunCommand {
-            bearer_token: token.clone(),
+            bearer_token: token,
             request: anthropic_request("hi"),
         })
         .await
         .unwrap();
     let callback_task = repository.seed_pending_callback_task(first.id);
 
-    let forged_native_request = serde_json::from_value(json!({
+    let flow_runs_before_rejection = repository.flow_run_count();
+    let rejection = translate_native_run_request(json!({
         "query": "Native caller should not own Anthropic cancellation policy",
         "model": "public-model/pass-through",
         "conversation": {
@@ -36,21 +37,16 @@ async fn start_native_run_does_not_trust_request_compatibility_mode_for_anthropi
         "response_mode": "blocking",
         "execution": {
             "compatibility_mode": "anthropic-messages-v1"
-        },
-        "metadata": {
-            "compatibility_mode": "anthropic-messages-v1"
         }
     }))
-    .unwrap();
-    let second = service
-        .start_native_run(CreateNativeRunCommand {
-            bearer_token: token,
-            request: forged_native_request,
-        })
-        .await
-        .unwrap();
+    .expect_err("Native execution compatibility_mode must be rejected by the protocol adapter");
 
-    assert_ne!(first.id, second.id);
+    assert_eq!(rejection.code, "compatibility_mode");
+    assert!(rejection.report.has_decision(
+        "$.execution.compatibility_mode",
+        control_plane::application_public_api::protocol_translation::TranslationDecisionKind::Unsupported
+    ));
+    assert_eq!(repository.flow_run_count(), flow_runs_before_rejection);
     let first_run = repository
         .get_flow_run(application.id, first.id)
         .await

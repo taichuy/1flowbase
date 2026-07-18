@@ -22,8 +22,7 @@ use super::{
     conversations::ApplicationPublicConversationRepository,
     mapping::ApplicationApiMappingConfig,
     protocol_translation::{
-        TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol,
-        TranslationReport, TranslationSafeRepresentation,
+        TranslationDecisionKind, TranslationReport, TranslationSafeRepresentation,
     },
     run_service::{
         ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
@@ -34,6 +33,14 @@ use crate::flow_run_title::build_flow_run_title;
 use crate::ports::{
     ApiKeyRepository, ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
     ApplicationRepository, AuthRepository, CacheStore,
+};
+
+mod metadata;
+mod model_parameters;
+
+pub use metadata::NativeRequestMetadata;
+pub use model_parameters::{
+    NativeExecution, NativeExecutionModelParameters, NativeReasoningParameters,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -50,10 +57,10 @@ pub struct NativeRunRequest {
     pub model: Option<String>,
     #[serde(default, deserialize_with = "deserialize_native_object")]
     pub inputs: NativeObject,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_native_history")]
     pub history: Vec<Value>,
     #[serde(default)]
-    pub attachments: Vec<Value>,
+    pub attachments: Vec<NativeAttachment>,
     #[serde(default, deserialize_with = "deserialize_native_object")]
     pub conversation: NativeObject,
     #[serde(
@@ -66,10 +73,10 @@ pub struct NativeRunRequest {
     pub response_mode: Option<String>,
     #[serde(default, deserialize_with = "deserialize_native_object")]
     pub stream_options: NativeObject,
-    #[serde(default, deserialize_with = "deserialize_native_object")]
-    pub execution: NativeObject,
-    #[serde(default, deserialize_with = "deserialize_native_object")]
-    pub metadata: NativeObject,
+    #[serde(default)]
+    pub execution: NativeExecution,
+    #[serde(default)]
+    pub metadata: NativeRequestMetadata,
     #[serde(default, skip_serializing_if = "NativeModelRequestContext::is_empty")]
     pub request_context: NativeModelRequestContext,
     #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
@@ -90,363 +97,394 @@ impl NativeRunRequest {
     }
 }
 
-/// Native is an adapter boundary too: it accepts only the public Native wire
-/// shape and emits a non-durable field-decision receipt before the request
-/// crosses into the published-run service.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NativeRequestTranslationError {
-    pub code: &'static str,
-    pub message: String,
-    pub report: TranslationReport,
-}
+mod request_translation;
 
-impl NativeRequestTranslationError {
-    fn rejected(
-        code: &'static str,
-        message: impl Into<String>,
-        source_path: &str,
-        kind: TranslationDecisionKind,
-        reason: &'static str,
-        effective_value: TranslationSafeRepresentation,
-        mut report: TranslationReport,
-    ) -> Self {
-        report.record(source_path, None, kind, Some(reason), effective_value);
-        Self {
-            code,
-            message: message.into(),
-            report,
-        }
-    }
-}
-
-pub fn translate_native_run_request(
-    value: Value,
-) -> std::result::Result<TranslatedNativeRunRequest, NativeRequestTranslationError> {
-    let mut report = TranslationReport::new(TranslationProtocol::Native);
-    let object = match value.as_object() {
-        Some(object) => object,
-        None => {
-            return Err(NativeRequestTranslationError::rejected(
-                "body",
-                "Native request body must be an object",
-                "$",
-                TranslationDecisionKind::Rejected,
-                "Native request body must be an object",
-                TranslationSafeRepresentation::Present,
-                report,
-            ));
-        }
+use request_translation::parse_native_prompt_blocks;
+pub use request_translation::{translate_native_run_request, NativeRequestTranslationError};
+fn native_history(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> std::result::Result<Vec<Value>, NativeRequestTranslationError> {
+    let Some(value) = object.get("history") else {
+        report.record(
+            "$.history",
+            Some("$.history"),
+            TranslationDecisionKind::Defaulted,
+            Some("empty Native history"),
+            TranslationSafeRepresentation::Defaulted,
+        );
+        return Ok(Vec::new());
     };
-
-    for field in object.keys() {
-        let path = format!("$.{field}");
-        match field.as_str() {
-            "query" | "system" | "model" | "inputs" | "history" | "attachments"
-            | "conversation" | "expand_id" | "response_mode" | "stream_options" | "execution"
-            | "metadata" | "request_context" | "title" => {}
-            "compatibility_mode" => {
-                return Err(NativeRequestTranslationError::rejected(
-                    "compatibility_mode",
-                    "compatibility_mode is not supported by the Native API",
-                    &path,
-                    TranslationDecisionKind::Unsupported,
-                    "this field has no public Native canonical owner",
-                    TranslationSafeRepresentation::Redacted,
-                    report,
-                ));
-            }
-            "client_protocol_envelope" => {
-                return Err(NativeRequestTranslationError::rejected(
-                    "client_protocol_envelope",
-                    "client_protocol_envelope is not supported by the Native API",
-                    &path,
-                    TranslationDecisionKind::Unsupported,
-                    "this field has no public Native canonical owner",
-                    TranslationSafeRepresentation::Redacted,
-                    report,
-                ));
-            }
-            "user_id" => {
-                return Err(NativeRequestTranslationError::rejected(
-                    "user_id",
-                    "user_id is not a Native request field",
-                    &path,
-                    TranslationDecisionKind::Rejected,
-                    "legacy user alias has no Native canonical owner",
-                    TranslationSafeRepresentation::Redacted,
-                    report,
-                ));
-            }
-            _ => {
-                return Err(NativeRequestTranslationError::rejected(
-                    "body",
-                    "unknown Native request field",
-                    &path,
-                    TranslationDecisionKind::Rejected,
-                    "unknown Native request field",
-                    TranslationSafeRepresentation::Redacted,
-                    report,
-                ));
-            }
-        }
-    }
-
-    record_required_native_string(object, "query", "$.query", "$.query", &mut report)?;
-    record_optional_native_system(object, &mut report)?;
-    record_optional_native_string(object, "model", "$.model", "$.model", &mut report)?;
-    record_optional_native_object(object, "inputs", "$.inputs", "$.inputs", &mut report)?;
-    record_optional_native_array(object, "history", "$.history", "$.history", &mut report)?;
-    record_optional_native_array(
-        object,
-        "attachments",
-        "$.attachments",
-        "$.attachments",
-        &mut report,
-    )?;
-    record_optional_native_object(
-        object,
-        "conversation",
-        "$.conversation",
-        "$.conversation",
-        &mut report,
-    )?;
-    record_optional_native_string(
-        object,
-        "expand_id",
-        "$.expand_id",
-        "$.expand_id",
-        &mut report,
-    )?;
-    record_optional_native_string(
-        object,
-        "response_mode",
-        "$.response_mode",
-        "$.response_mode",
-        &mut report,
-    )?;
-    record_optional_native_object(
-        object,
-        "stream_options",
-        "$.stream_options",
-        "$.stream_options",
-        &mut report,
-    )?;
-    record_optional_native_object(
-        object,
-        "execution",
-        "$.execution",
-        "$.execution",
-        &mut report,
-    )?;
-    record_optional_native_object(object, "metadata", "$.metadata", "$.metadata", &mut report)?;
-    record_optional_native_object(
-        object,
-        "request_context",
-        "$.request_context",
-        "$.request_context",
-        &mut report,
-    )?;
-    record_optional_native_string(object, "title", "$.title", "$.title", &mut report)?;
-
-    let request = serde_json::from_value::<NativeRunRequest>(value).map_err(|_| {
-        NativeRequestTranslationError::rejected(
-            "body",
-            "Native request does not match the public contract",
-            "$.body",
+    let Some(entries) = value.as_array() else {
+        return Err(NativeRequestTranslationError::rejected(
+            "history",
+            "history must be an array",
+            "$.history",
             TranslationDecisionKind::Rejected,
-            "Native request does not match the public contract",
+            "Native history must be an array",
+            TranslationSafeRepresentation::Present,
+            report.clone(),
+        ));
+    };
+    report.record(
+        "$.history",
+        Some("$.history"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
+    entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| normalize_native_history_entry(entry, index, report))
+        .collect()
+}
+
+fn normalize_native_history_entry(
+    entry: &Value,
+    index: usize,
+    report: &mut TranslationReport,
+) -> std::result::Result<Value, NativeRequestTranslationError> {
+    let entry_path = format!("$.history[{index}]");
+    let Some(object) = entry.as_object() else {
+        return Err(NativeRequestTranslationError::rejected(
+            "history",
+            "history entries must be objects",
+            &entry_path,
+            TranslationDecisionKind::Rejected,
+            "Native history entries must be objects",
+            TranslationSafeRepresentation::Present,
+            report.clone(),
+        ));
+    };
+    report.record(
+        &entry_path,
+        Some("$.history[]"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
+    if object.contains_key("content_blocks") {
+        return Err(NativeRequestTranslationError::rejected(
+            "history",
+            "history content_blocks are not supported by the Native API",
+            &format!("{entry_path}.content_blocks"),
+            TranslationDecisionKind::Unsupported,
+            "Native history content blocks require capability routing",
             TranslationSafeRepresentation::Redacted,
+            report.clone(),
+        ));
+    }
+    let unknown_fields = object
+        .keys()
+        .filter(|field| !matches!(field.as_str(), "role" | "content" | "content_blocks"))
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        &entry_path,
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown Native history field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(NativeRequestTranslationError::with_report(
+            "history",
+            "unknown Native history field",
+            report.clone(),
+        ));
+    }
+    let role_path = format!("{entry_path}.role");
+    let role = object.get("role").and_then(Value::as_str).ok_or_else(|| {
+        NativeRequestTranslationError::rejected(
+            "history",
+            "history role must be text",
+            &role_path,
+            TranslationDecisionKind::Rejected,
+            "Native history role must be text",
+            if object.contains_key("role") {
+                TranslationSafeRepresentation::Present
+            } else {
+                TranslationSafeRepresentation::Absent
+            },
             report.clone(),
         )
     })?;
-    Ok(TranslatedNativeRunRequest { request, report })
+    if !matches!(role, "system" | "user" | "assistant") {
+        return Err(NativeRequestTranslationError::rejected(
+            "history",
+            "unsupported Native history role",
+            &role_path,
+            TranslationDecisionKind::Rejected,
+            "unsupported Native history role",
+            TranslationSafeRepresentation::Present,
+            report.clone(),
+        ));
+    }
+    report.record(
+        &role_path,
+        Some("$.history[].role"),
+        TranslationDecisionKind::Exact,
+        None,
+        TranslationSafeRepresentation::Present,
+    );
+    let content_path = format!("{entry_path}.content");
+    let content = object
+        .get("content")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            NativeRequestTranslationError::rejected(
+                "history",
+                "history content must be text",
+                &content_path,
+                TranslationDecisionKind::Rejected,
+                "Native history content must be text",
+                if object.contains_key("content") {
+                    TranslationSafeRepresentation::Present
+                } else {
+                    TranslationSafeRepresentation::Absent
+                },
+                report.clone(),
+            )
+        })?;
+    report.record(
+        &content_path,
+        Some("$.history[].content"),
+        TranslationDecisionKind::Exact,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
+    Ok(json!({ "role": role, "content": content }))
 }
 
-fn record_required_native_string(
+fn native_attachments(
     object: &Map<String, Value>,
-    field: &'static str,
-    source_path: &'static str,
-    target_path: &'static str,
     report: &mut TranslationReport,
-) -> std::result::Result<(), NativeRequestTranslationError> {
-    if object.get(field).is_some_and(Value::is_string) {
+) -> std::result::Result<Vec<NativeAttachment>, NativeRequestTranslationError> {
+    let Some(value) = object.get("attachments") else {
         report.record(
-            source_path,
-            Some(target_path),
-            TranslationDecisionKind::Exact,
-            None,
-            TranslationSafeRepresentation::Redacted,
+            "$.attachments",
+            Some("$.attachments"),
+            TranslationDecisionKind::Defaulted,
+            Some("empty Native attachments"),
+            TranslationSafeRepresentation::Defaulted,
         );
-        return Ok(());
-    }
-    Err(NativeRequestTranslationError::rejected(
-        field,
-        format!("{field} must be a string"),
-        source_path,
+        return Ok(Vec::new());
+    };
+    let Some(entries) = value.as_array() else {
+        return Err(NativeRequestTranslationError::rejected(
+            "attachments",
+            "attachments must be an array",
+            "$.attachments",
+            TranslationDecisionKind::Rejected,
+            "Native attachments must be an array",
+            TranslationSafeRepresentation::Present,
+            report.clone(),
+        ));
+    };
+    report.record(
+        "$.attachments",
+        Some("$.attachments"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
+    entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| normalize_native_attachment(entry, index, report))
+        .collect()
+}
+
+fn normalize_native_attachment(
+    entry: &Value,
+    index: usize,
+    report: &mut TranslationReport,
+) -> std::result::Result<NativeAttachment, NativeRequestTranslationError> {
+    let entry_path = format!("$.attachments[{index}]");
+    let Some(object) = entry.as_object() else {
+        return Err(NativeRequestTranslationError::rejected(
+            "attachments",
+            "attachments entries must be objects",
+            &entry_path,
+            TranslationDecisionKind::Rejected,
+            "Native attachment entries must be objects",
+            TranslationSafeRepresentation::Present,
+            report.clone(),
+        ));
+    };
+    report.record(
+        &entry_path,
+        Some("$.attachments[]"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
+    let unknown_fields = object
+        .keys()
+        .filter(|field| {
+            !matches!(
+                field.as_str(),
+                "source" | "value" | "name" | "mime_type" | "metadata"
+            )
+        })
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        &entry_path,
+        unknown_fields,
         TranslationDecisionKind::Rejected,
-        "required Native text field must be a string",
-        if object.contains_key(field) {
-            TranslationSafeRepresentation::Present
-        } else {
-            TranslationSafeRepresentation::Absent
-        },
-        report.clone(),
-    ))
+        "unknown Native attachment field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(NativeRequestTranslationError::with_report(
+            "attachments",
+            "unknown Native attachment field",
+            report.clone(),
+        ));
+    }
+    let source_path = format!("{entry_path}.source");
+    let source = match object.get("source").and_then(Value::as_str) {
+        Some("upload_file_id") => NativeAttachmentSource::UploadFileId,
+        Some("url") => NativeAttachmentSource::Url,
+        Some("base64") => NativeAttachmentSource::Base64,
+        Some(_) => {
+            return Err(NativeRequestTranslationError::rejected(
+                "attachments",
+                "unsupported Native attachment source",
+                &source_path,
+                TranslationDecisionKind::Rejected,
+                "unsupported Native attachment source",
+                TranslationSafeRepresentation::Present,
+                report.clone(),
+            ));
+        }
+        None => {
+            return Err(NativeRequestTranslationError::rejected(
+                "attachments",
+                "attachment source must be text",
+                &source_path,
+                TranslationDecisionKind::Rejected,
+                "Native attachment source must be text",
+                if object.contains_key("source") {
+                    TranslationSafeRepresentation::Present
+                } else {
+                    TranslationSafeRepresentation::Absent
+                },
+                report.clone(),
+            ));
+        }
+    };
+    report.record(
+        &source_path,
+        Some("$.attachments[].source"),
+        TranslationDecisionKind::Normalized,
+        None,
+        TranslationSafeRepresentation::Present,
+    );
+    let value_path = format!("{entry_path}.value");
+    let value = object.get("value").and_then(Value::as_str).ok_or_else(|| {
+        NativeRequestTranslationError::rejected(
+            "attachments",
+            "attachment value must be text",
+            &value_path,
+            TranslationDecisionKind::Rejected,
+            "Native attachment value must be text",
+            if object.contains_key("value") {
+                TranslationSafeRepresentation::Present
+            } else {
+                TranslationSafeRepresentation::Absent
+            },
+            report.clone(),
+        )
+    })?;
+    report.record(
+        &value_path,
+        Some("$.attachments[].value"),
+        TranslationDecisionKind::Exact,
+        None,
+        TranslationSafeRepresentation::Redacted,
+    );
+    let name = optional_native_attachment_string(object, "name", &entry_path, report)?;
+    let mime_type = optional_native_attachment_string(object, "mime_type", &entry_path, report)?;
+    let metadata_path = format!("{entry_path}.metadata");
+    let metadata = match object.get("metadata") {
+        Some(Value::Object(metadata)) => {
+            report.record(
+                &metadata_path,
+                Some("$.attachments[].metadata"),
+                TranslationDecisionKind::Exact,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+            NativeObject::from_map(metadata.clone())
+        }
+        Some(_) => {
+            return Err(NativeRequestTranslationError::rejected(
+                "attachments",
+                "attachment metadata must be an object",
+                &metadata_path,
+                TranslationDecisionKind::Rejected,
+                "Native attachment metadata must be an object",
+                TranslationSafeRepresentation::Present,
+                report.clone(),
+            ));
+        }
+        None => {
+            report.record(
+                &metadata_path,
+                Some("$.attachments[].metadata"),
+                TranslationDecisionKind::Defaulted,
+                Some("empty attachment metadata"),
+                TranslationSafeRepresentation::Defaulted,
+            );
+            NativeObject::default()
+        }
+    };
+    Ok(NativeAttachment {
+        source,
+        value: value.to_owned(),
+        name,
+        mime_type,
+        metadata,
+    })
 }
 
-fn record_optional_native_string(
+fn optional_native_attachment_string(
     object: &Map<String, Value>,
     field: &'static str,
-    source_path: &'static str,
-    target_path: &'static str,
+    entry_path: &str,
     report: &mut TranslationReport,
-) -> std::result::Result<(), NativeRequestTranslationError> {
+) -> std::result::Result<Option<String>, NativeRequestTranslationError> {
+    let source_path = format!("{entry_path}.{field}");
     match object.get(field) {
-        Some(value) if value.is_string() => {
+        Some(Value::String(value)) => {
             report.record(
-                source_path,
-                Some(target_path),
+                &source_path,
+                Some(&format!("$.attachments[].{field}")),
                 TranslationDecisionKind::Exact,
                 None,
                 TranslationSafeRepresentation::Redacted,
             );
-            Ok(())
+            Ok(Some(value.clone()))
         }
         Some(_) => Err(NativeRequestTranslationError::rejected(
-            field,
-            format!("{field} must be a string"),
-            source_path,
+            "attachments",
+            format!("attachment {field} must be text"),
+            &source_path,
             TranslationDecisionKind::Rejected,
-            "optional Native text field must be a string",
+            "Native attachment optional text fields must be text",
             TranslationSafeRepresentation::Present,
             report.clone(),
         )),
         None => {
             report.record(
-                source_path,
-                Some(target_path),
+                &source_path,
+                Some(&format!("$.attachments[].{field}")),
                 TranslationDecisionKind::Defaulted,
-                Some("Native default"),
+                Some("no attachment text value"),
                 TranslationSafeRepresentation::Defaulted,
             );
-            Ok(())
-        }
-    }
-}
-
-fn record_optional_native_object(
-    object: &Map<String, Value>,
-    field: &'static str,
-    source_path: &'static str,
-    target_path: &'static str,
-    report: &mut TranslationReport,
-) -> std::result::Result<(), NativeRequestTranslationError> {
-    match object.get(field) {
-        Some(value) if value.is_object() => {
-            report.record(
-                source_path,
-                Some(target_path),
-                TranslationDecisionKind::Exact,
-                None,
-                TranslationSafeRepresentation::Redacted,
-            );
-            Ok(())
-        }
-        Some(_) => Err(NativeRequestTranslationError::rejected(
-            field,
-            format!("{field} must be an object"),
-            source_path,
-            TranslationDecisionKind::Rejected,
-            "optional Native object field must be an object",
-            TranslationSafeRepresentation::Present,
-            report.clone(),
-        )),
-        None => {
-            report.record(
-                source_path,
-                Some(target_path),
-                TranslationDecisionKind::Defaulted,
-                Some("empty Native object"),
-                TranslationSafeRepresentation::Defaulted,
-            );
-            Ok(())
-        }
-    }
-}
-
-fn record_optional_native_array(
-    object: &Map<String, Value>,
-    field: &'static str,
-    source_path: &'static str,
-    target_path: &'static str,
-    report: &mut TranslationReport,
-) -> std::result::Result<(), NativeRequestTranslationError> {
-    match object.get(field) {
-        Some(value) if value.is_array() => {
-            report.record(
-                source_path,
-                Some(target_path),
-                TranslationDecisionKind::Exact,
-                None,
-                TranslationSafeRepresentation::Redacted,
-            );
-            Ok(())
-        }
-        Some(_) => Err(NativeRequestTranslationError::rejected(
-            field,
-            format!("{field} must be an array"),
-            source_path,
-            TranslationDecisionKind::Rejected,
-            "optional Native array field must be an array",
-            TranslationSafeRepresentation::Present,
-            report.clone(),
-        )),
-        None => {
-            report.record(
-                source_path,
-                Some(target_path),
-                TranslationDecisionKind::Defaulted,
-                Some("empty Native array"),
-                TranslationSafeRepresentation::Defaulted,
-            );
-            Ok(())
-        }
-    }
-}
-
-fn record_optional_native_system(
-    object: &Map<String, Value>,
-    report: &mut TranslationReport,
-) -> std::result::Result<(), NativeRequestTranslationError> {
-    match object.get("system") {
-        Some(Value::String(_)) | Some(Value::Array(_)) => {
-            report.record(
-                "$.system",
-                Some("$.system"),
-                TranslationDecisionKind::Exact,
-                None,
-                TranslationSafeRepresentation::Redacted,
-            );
-            Ok(())
-        }
-        Some(_) => Err(NativeRequestTranslationError::rejected(
-            "system",
-            "system must be text or prompt blocks",
-            "$.system",
-            TranslationDecisionKind::Rejected,
-            "Native system must be text or prompt blocks",
-            TranslationSafeRepresentation::Present,
-            report.clone(),
-        )),
-        None => {
-            report.record(
-                "$.system",
-                Some("$.system"),
-                TranslationDecisionKind::Defaulted,
-                Some("empty Native system"),
-                TranslationSafeRepresentation::Defaulted,
-            );
-            Ok(())
+            Ok(None)
         }
     }
 }
@@ -455,6 +493,10 @@ fn record_optional_native_system(
 pub struct NativeObject(Map<String, Value>);
 
 impl NativeObject {
+    pub(crate) fn from_map(values: Map<String, Value>) -> Self {
+        Self(values)
+    }
+
     pub fn into_value(self) -> Value {
         Value::Object(self.0)
     }
@@ -507,15 +549,16 @@ pub enum NativeAttachmentSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NativeAttachment {
     pub source: NativeAttachmentSource,
     pub value: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
     pub name: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
     pub mime_type: Option<String>,
-    #[serde(default)]
-    pub metadata: Value,
+    #[serde(default, deserialize_with = "deserialize_native_object")]
+    pub metadata: NativeObject,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -603,6 +646,7 @@ pub enum NativeInputMappingError {
     InvalidPromptContext,
     InvalidSystemPrompt,
     InvalidRequestContext,
+    InvalidAttachments,
 }
 
 pub struct NativeInputMapper;
@@ -659,7 +703,8 @@ impl NativeInputMapper {
         write_optional_selector(
             &mut node_input_payload,
             input.attachments_target.as_deref(),
-            Value::Array(request.attachments.clone()),
+            serde_json::to_value(&request.attachments)
+                .map_err(|_| NativeInputMappingError::InvalidAttachments)?,
         )?;
         if let Some(envelope) = &request.client_protocol_envelope {
             write_selector(
@@ -699,13 +744,33 @@ fn split_system_context_from_history(
     let mut history = Vec::new();
 
     for message in &request.history {
-        if message.get("role").and_then(Value::as_str) == Some("system") {
-            if let Some(content) = message.get("content") {
-                system_blocks.extend(native_system_content_blocks(content)?);
-            }
+        let role = message
+            .get("role")
+            .and_then(Value::as_str)
+            .ok_or(NativeInputMappingError::InvalidPromptContext)?;
+        let content_value = message
+            .get("content")
+            .ok_or(NativeInputMappingError::InvalidPromptContext)?;
+        if role == "system" {
+            system_blocks.extend(native_system_content_blocks(content_value)?);
             continue;
         }
-        history.push(message.clone());
+        let content = content_value
+            .as_str()
+            .ok_or(NativeInputMappingError::InvalidPromptContext)?;
+        if !matches!(role, "user" | "assistant") {
+            return Err(NativeInputMappingError::InvalidPromptContext);
+        }
+        let mut normalized = Map::new();
+        normalized.insert("role".to_string(), Value::String(role.to_owned()));
+        normalized.insert("content".to_string(), Value::String(content.to_owned()));
+        if let Some(content_blocks) = message.get("content_blocks") {
+            if !content_blocks.is_array() {
+                return Err(NativeInputMappingError::InvalidPromptContext);
+            }
+            normalized.insert("content_blocks".to_string(), content_blocks.clone());
+        }
+        history.push(Value::Object(normalized));
     }
 
     Ok((system_blocks, history))
@@ -714,24 +779,7 @@ fn split_system_context_from_history(
 fn native_system_content_blocks(
     value: &Value,
 ) -> std::result::Result<Vec<NativePromptBlock>, NativeInputMappingError> {
-    match value {
-        Value::String(text) => Ok((!text.trim().is_empty())
-            .then(|| NativePromptBlock::text(text.clone()))
-            .into_iter()
-            .collect()),
-        Value::Array(_) => {
-            let blocks: Vec<NativePromptBlock> = serde_json::from_value(value.clone())
-                .map_err(|_| NativeInputMappingError::InvalidSystemPrompt)?;
-            if blocks
-                .iter()
-                .any(|block| block.text_content().trim().is_empty())
-            {
-                return Err(NativeInputMappingError::InvalidSystemPrompt);
-            }
-            Ok(blocks)
-        }
-        _ => Err(NativeInputMappingError::InvalidSystemPrompt),
-    }
+    parse_native_prompt_blocks(value).map_err(|_| NativeInputMappingError::InvalidSystemPrompt)
 }
 
 fn system_target(input: &super::mapping::ApplicationApiMappingInput) -> Option<String> {
@@ -994,37 +1042,40 @@ where
     D: Deserializer<'de>,
 {
     let value = Value::deserialize(deserializer)?;
-    match value {
-        Value::String(text) => Ok((!text.trim().is_empty())
-            .then(|| NativePromptBlock::text(text))
-            .into_iter()
-            .collect()),
-        Value::Array(_) => {
-            let blocks: Vec<NativePromptBlock> =
-                serde_json::from_value(value).map_err(de::Error::custom)?;
-            if blocks
-                .iter()
-                .any(|block| block.text_content().trim().is_empty())
-            {
-                return Err(de::Error::custom("system text block must not be empty"));
+    parse_native_prompt_blocks(&value).map_err(de::Error::custom)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NativeHistoryEntry {
+    role: String,
+    content: String,
+}
+
+fn deserialize_native_history<'de, D>(deserializer: D) -> std::result::Result<Vec<Value>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let entries = Vec::<NativeHistoryEntry>::deserialize(deserializer)?;
+    entries
+        .into_iter()
+        .map(|entry| {
+            if !matches!(entry.role.as_str(), "system" | "user" | "assistant") {
+                return Err(de::Error::custom("unsupported Native history role"));
             }
-            Ok(blocks)
-        }
-        Value::Null => Err(de::Error::custom(
-            "expected string or prompt blocks, found null",
-        )),
-        _ => Err(de::Error::custom("expected string or prompt blocks")),
-    }
+            Ok(json!({ "role": entry.role, "content": entry.content }))
+        })
+        .collect()
 }
 
 fn build_run_metadata(request: &NativeRunRequest) -> Value {
-    let idempotency_key = string_field(&request.execution, "idempotency_key");
+    let idempotency_key = request.execution.idempotency_key().map(ToOwned::to_owned);
     let external_user = request
         .expand_id
         .clone()
         .or_else(|| string_field(&request.conversation, "user"));
     let external_conversation_id = string_field(&request.conversation, "id");
-    let external_trace_id = string_field(&request.metadata, "trace_id");
+    let external_trace_id = request.metadata.trace_id().map(ToOwned::to_owned);
     let title = build_flow_run_title(request.title.as_deref(), &request.query);
 
     json!({
@@ -1157,7 +1208,6 @@ mod tests {
             "query": "hello",
             "model": model,
             "execution": {
-                "compatibility_mode": "native-v1",
                 "idempotency_key": "idem-1"
             },
             "metadata": {
@@ -1308,5 +1358,49 @@ mod tests {
                 ]
             })
         );
+    }
+
+    #[test]
+    fn mapper_rebuilds_history_without_unknown_raw_fields() {
+        let sentinel = "D2-NATIVE-MAPPER-RAW-HISTORY-MUST-NOT-REACH-MODEL";
+        let mut request: NativeRunRequest = serde_json::from_value(json!({
+            "query": "hello"
+        }))
+        .unwrap();
+        request.history.push(json!({
+            "role": "assistant",
+            "content": "prior answer",
+            "content_blocks": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "https://example.invalid/image.png"}
+                }
+            ],
+            "raw_provider_body": sentinel
+        }));
+
+        let mapped =
+            NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native())
+                .unwrap();
+
+        let mapped_history = &mapped.node_input_payload["node-start"]["history"];
+        assert_eq!(
+            mapped_history,
+            &json!([
+                {
+                    "role": "assistant",
+                    "content": "prior answer",
+                    "content_blocks": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "https://example.invalid/image.png"}
+                        }
+                    ]
+                }
+            ])
+        );
+        assert!(!serde_json::to_string(&mapped.node_input_payload)
+            .expect("mapped Native input should serialize")
+            .contains(sentinel));
     }
 }

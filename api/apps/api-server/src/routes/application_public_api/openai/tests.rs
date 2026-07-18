@@ -1,5 +1,9 @@
 use super::*;
+use axum::body::Bytes;
 use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
+use control_plane::application_public_api::protocol_translation::{
+    TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
+};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -19,6 +23,38 @@ fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
         usage: None,
         error: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
+    }
+}
+
+#[test]
+fn d2_ac_001_openai_malformed_json_uses_the_endpoint_protocol_and_safe_receipt() {
+    let sentinel = "D2-OPENAI-MALFORMED-JSON-MUST-NOT-REACH-RECEIPT";
+    for protocol in [
+        TranslationProtocol::OpenAiChat,
+        TranslationProtocol::OpenAiResponses,
+    ] {
+        let error =
+            parse_openai_json_body(Bytes::from(format!("{{\"raw\":\"{sentinel}\"")), protocol)
+                .expect_err("malformed OpenAI JSON must be rejected by the adapter boundary");
+        let OpenAiRouteError::Compat(error) = error else {
+            panic!("malformed JSON must remain an OpenAI adapter error");
+        };
+
+        assert_eq!(error.report.protocol, protocol);
+        assert_eq!(error.report.decisions.len(), 1);
+        let decision = &error.report.decisions[0];
+        assert_eq!(decision.source_path, "$.body");
+        assert_eq!(decision.kind, TranslationDecisionKind::Rejected);
+        assert_eq!(
+            decision.effective_value,
+            TranslationSafeRepresentation::Present
+        );
+        assert!(
+            !serde_json::to_string(&error.report)
+                .expect("receipt should serialize")
+                .contains(sentinel),
+            "malformed JSON must not be retained in the receipt"
+        );
     }
 }
 

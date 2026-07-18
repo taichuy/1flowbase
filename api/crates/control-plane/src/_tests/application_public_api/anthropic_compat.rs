@@ -2,8 +2,9 @@ use control_plane::application_public_api::compat::anthropic::{
     map_messages_request, translate_messages_request, AnthropicCompatError,
 };
 use control_plane::application_public_api::{
-    mapping::ApplicationApiMappingConfig, native::NativeInputMapper,
-    protocol_translation::TranslationDecisionKind,
+    mapping::ApplicationApiMappingConfig,
+    native::NativeInputMapper,
+    protocol_translation::{TranslationDecisionKind, TranslationSafeRepresentation},
 };
 use plugin_framework::provider_contract::NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY;
 use serde_json::{json, Value};
@@ -75,7 +76,7 @@ fn ac_002_anthropic_system_blocks_and_end_user_reference_become_native_truth() {
         {
             "type": "text",
             "text": "Use Claude Code project instructions.",
-            "cache_control": { "type": "ephemeral" }
+            "cache_control": { "type": "ephemeral", "ttl": "1h" }
         },
         {
             "type": "text",
@@ -97,7 +98,7 @@ fn ac_002_anthropic_system_blocks_and_end_user_reference_become_native_truth() {
             {
                 "type": "text",
                 "text": "Use Claude Code project instructions.",
-                "cache_control": { "type": "ephemeral" }
+                "cache_control": { "type": "ephemeral", "ttl": "1h" }
             },
             {
                 "type": "text",
@@ -132,7 +133,8 @@ fn ac_003_anthropic_max_tokens_maps_to_native_max_output_tokens() {
     let native = map_messages_request(base_request()).unwrap();
 
     assert_eq!(
-        native.execution["model_parameters"]["max_output_tokens"],
+        serde_json::to_value(&native).unwrap()["execution"]["model_parameters"]
+            ["max_output_tokens"],
         json!(512)
     );
 }
@@ -370,9 +372,153 @@ fn d2_ac_001_anthropic_text_block_unknown_field_is_rejected_with_its_own_receipt
     .expect_err("unknown Anthropic text-block fields must be rejected");
 
     assert!(error.report.has_decision(
-        "$.messages[0].content[0].unexpected",
+        "$.messages[0].content[0].<unknown>[0]",
         TranslationDecisionKind::Rejected
     ));
+}
+
+#[test]
+fn d2_ac_001_anthropic_required_and_nested_fields_have_one_safe_rejection_receipt() {
+    let sentinel = "D2-ANTHROPIC-RAW-METADATA-MUST-NOT-REACH-RECEIPT";
+    let cases = [
+        (
+            translate_messages_request(json!({
+                "messages": [{"role": "user", "content": "hello"}]
+            }))
+            .expect_err("missing Anthropic model must be decided before rejection"),
+            "$.model",
+        ),
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible"
+            }))
+            .expect_err("missing Anthropic messages must be decided before rejection"),
+            "$.messages",
+        ),
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": [{"role": "user", "content": "hello"}],
+                "metadata": {"raw_provider_body": sentinel}
+            }))
+            .expect_err("nested Anthropic metadata must not be copied into the Native request"),
+            "$.metadata.<unknown>[0]",
+        ),
+    ];
+
+    for (error, source_path) in cases {
+        let decisions = error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            decisions.len(),
+            1,
+            "{source_path} must have exactly one TranslationDecision"
+        );
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+        assert!(
+            !serde_json::to_string(&error.report)
+                .expect("receipt should serialize")
+                .contains(sentinel),
+            "receipt must not retain the raw nested sentinel"
+        );
+    }
+}
+
+#[test]
+fn d2_ac_001_anthropic_required_malformed_values_remain_present_in_the_receipt() {
+    let malformed_cases = [
+        (
+            translate_messages_request(json!({
+                "model": false,
+                "messages": [{"role": "user", "content": "hello"}]
+            }))
+            .expect_err("a malformed Anthropic model must be rejected"),
+            "$.model",
+        ),
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": {}
+            }))
+            .expect_err("a malformed Anthropic messages value must be rejected"),
+            "$.messages",
+        ),
+    ];
+    for (error, source_path) in malformed_cases {
+        let decisions = error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one receipt");
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+        assert_eq!(
+            decisions[0].effective_value,
+            TranslationSafeRepresentation::Present,
+            "{source_path} is malformed but present, not missing"
+        );
+    }
+
+    let missing_model = translate_messages_request(json!({
+        "messages": [{"role": "user", "content": "hello"}]
+    }))
+    .expect_err("a missing Anthropic model must be rejected");
+    let decision = missing_model
+        .report
+        .decisions
+        .iter()
+        .find(|decision| decision.source_path == "$.model")
+        .expect("the missing model needs a receipt");
+    assert_eq!(
+        decision.effective_value,
+        TranslationSafeRepresentation::Absent
+    );
+}
+
+#[test]
+fn d2_ac_001_anthropic_invalid_message_shapes_have_field_receipts() {
+    let cases = [
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": [false]
+            }))
+            .expect_err("a non-object Anthropic message must be rejected at its item path"),
+            "$.messages[0]",
+        ),
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": [{"role": false, "content": "hello"}]
+            }))
+            .expect_err("a non-text Anthropic role must be rejected at its field path"),
+            "$.messages[0].role",
+        ),
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": [{"role": "user", "content": [false]}]
+            }))
+            .expect_err("a non-object Anthropic content block must be rejected at its item path"),
+            "$.messages[0].content[0]",
+        ),
+    ];
+
+    for (error, source_path) in cases {
+        let decisions = error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one decision");
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+    }
 }
 
 #[test]
@@ -395,7 +541,7 @@ fn d2_ac_001_anthropic_media_source_unknown_field_is_rejected_before_canonical_h
     .expect_err("unknown Anthropic media source fields must be rejected");
 
     assert!(error.report.has_decision(
-        "$.messages[0].content[0].source.unexpected",
+        "$.messages[0].content[0].source.<unknown>[0]",
         TranslationDecisionKind::Rejected
     ));
 }
@@ -417,9 +563,230 @@ fn d2_ac_001_anthropic_cache_control_unknown_field_is_rejected_with_its_own_rece
     .expect_err("unknown cache-control fields must be rejected");
 
     assert!(error.report.has_decision(
-        "$.system[0].cache_control.unexpected",
+        "$.system[0].cache_control.<unknown>[0]",
         TranslationDecisionKind::Rejected
     ));
+}
+
+#[test]
+fn d2_ac_001_anthropic_message_cache_control_is_unsupported_not_dropped() {
+    let cases = [
+        json!({
+            "model": "claude-compatible",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": "hello",
+                    "cache_control": {"type": "ephemeral", "ttl": "5m"}
+                }]
+            }]
+        }),
+        json!({
+            "model": "claude-compatible",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": "aW1hZ2U="
+                    },
+                    "cache_control": {"type": "ephemeral", "ttl": "5m"}
+                }]
+            }]
+        }),
+        json!({
+            "model": "claude-compatible",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": "ZG9jdW1lbnQ="
+                    },
+                    "cache_control": {"type": "ephemeral", "ttl": "5m"}
+                }]
+            }]
+        }),
+    ];
+
+    for request in cases {
+        let error = translate_messages_request(request)
+            .expect_err("message cache control has no current Native owner");
+
+        assert_anthropic_unsupported_feature(error.clone());
+        for suffix in ["cache_control", "cache_control.type", "cache_control.ttl"] {
+            let source_path = format!("$.messages[0].content[0].{suffix}");
+            let decisions = error
+                .report
+                .decisions
+                .iter()
+                .filter(|decision| decision.source_path == source_path)
+                .collect::<Vec<_>>();
+            assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
+            assert_eq!(decisions[0].kind, TranslationDecisionKind::Unsupported);
+        }
+        assert!(
+            !error
+                .report
+                .decisions
+                .iter()
+                .any(|decision| decision.kind == TranslationDecisionKind::Dropped),
+            "a capability-dependent ingress field must not be silently dropped"
+        );
+    }
+}
+
+#[test]
+fn d2_ac_001_anthropic_content_and_source_type_receipts_preserve_wire_presence() {
+    let cases = [
+        (
+            json!({
+                "model": "claude-compatible",
+                "messages": [{
+                    "role": "user",
+                    "content": [{"text": "hello"}]
+                }]
+            }),
+            "$.messages[0].content[0].type",
+            TranslationSafeRepresentation::Absent,
+        ),
+        (
+            json!({
+                "model": "claude-compatible",
+                "messages": [{
+                    "role": "user",
+                    "content": [{"type": false, "text": "hello"}]
+                }]
+            }),
+            "$.messages[0].content[0].type",
+            TranslationSafeRepresentation::Present,
+        ),
+        (
+            json!({
+                "model": "claude-compatible",
+                "messages": [{
+                    "role": "user",
+                    "content": [{
+                        "type": "image",
+                        "source": {
+                            "media_type": "image/png",
+                            "data": "aW1hZ2U="
+                        }
+                    }]
+                }]
+            }),
+            "$.messages[0].content[0].source.type",
+            TranslationSafeRepresentation::Absent,
+        ),
+        (
+            json!({
+                "model": "claude-compatible",
+                "messages": [{
+                    "role": "user",
+                    "content": [{
+                        "type": "image",
+                        "source": {
+                            "type": false,
+                            "media_type": "image/png",
+                            "data": "aW1hZ2U="
+                        }
+                    }]
+                }]
+            }),
+            "$.messages[0].content[0].source.type",
+            TranslationSafeRepresentation::Present,
+        ),
+    ];
+
+    for (request, source_path, effective_value) in cases {
+        let error = translate_messages_request(request)
+            .expect_err("invalid Anthropic nested type fields must be rejected");
+        let decisions = error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+        assert_eq!(decisions[0].effective_value, effective_value);
+    }
+}
+
+#[test]
+fn d2_ac_001_anthropic_metadata_normalization_is_receipted_without_changing_conversation() {
+    let identity = "  {\"account_uuid\":\" account-42 \",\"session_id\":\" 3e7058c2-3120-4222-bb14-c99ec85e1c0f \"}  ";
+    let identity_translated = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        "metadata": {"user_id": identity}
+    }))
+    .expect("a Claude Code identity string should retain the current canonical derivation");
+
+    assert_eq!(
+        identity_translated
+            .request
+            .request_context
+            .end_user_reference
+            .as_deref(),
+        Some(identity.trim())
+    );
+    assert_eq!(
+        identity_translated.request.conversation["user"],
+        json!("account-42")
+    );
+    assert_eq!(
+        identity_translated.request.conversation["id"],
+        json!("3e7058c2-3120-4222-bb14-c99ec85e1c0f")
+    );
+    assert!(identity_translated
+        .report
+        .has_decision("$.metadata.user_id", TranslationDecisionKind::Normalized));
+
+    let trimmed_translated = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        "metadata": {
+            "user_id": "  source-user  ",
+            "expand_id": "  external-user  ",
+            "session_id": "  session-42  "
+        }
+    }))
+    .expect("trimmed Anthropic metadata should retain the current canonical mapping");
+
+    assert_eq!(
+        trimmed_translated
+            .request
+            .request_context
+            .end_user_reference
+            .as_deref(),
+        Some("source-user")
+    );
+    assert_eq!(
+        trimmed_translated.request.conversation["user"],
+        json!("external-user")
+    );
+    assert_eq!(
+        trimmed_translated.request.conversation["id"],
+        json!("session-42")
+    );
+    for source_path in [
+        "$.metadata.user_id",
+        "$.metadata.expand_id",
+        "$.metadata.session_id",
+    ] {
+        assert!(
+            trimmed_translated
+                .report
+                .has_decision(source_path, TranslationDecisionKind::Normalized),
+            "{source_path} must record its normalization"
+        );
+    }
 }
 
 #[test]
@@ -612,4 +979,141 @@ fn computer_use_returns_unsupported_feature() {
     ]);
 
     assert_unsupported_feature(request, "$.messages[0].content[0].type");
+}
+
+#[test]
+fn d2_f1_anthropic_nested_failures_reject_system_and_messages_containers() {
+    let system_error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "system": [{"type": "text", "text": false}],
+        "messages": [{"role": "user", "content": "hello"}]
+    }))
+    .expect_err("malformed Anthropic system text must reject the system container");
+    for source_path in ["$.system", "$.system[0].text"] {
+        let decisions = system_error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one receipt");
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+    }
+    let text = system_error
+        .report
+        .decisions
+        .iter()
+        .find(|decision| decision.source_path == "$.system[0].text")
+        .expect("malformed text decision exists");
+    assert_eq!(text.effective_value, TranslationSafeRepresentation::Present);
+
+    let message_error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{"role": "user", "content": false}]
+    }))
+    .expect_err("malformed Anthropic content must reject the messages container");
+    for source_path in ["$.messages", "$.messages[0].content"] {
+        let decisions = message_error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one receipt");
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+    }
+}
+
+#[test]
+fn d2_f1_anthropic_unknown_defined_keys_are_anonymous_and_complete() {
+    let alpha = "D2-F1-ANTHROPIC-UNKNOWN-KEY-ALPHA";
+    let beta = "D2-F1-ANTHROPIC-UNKNOWN-KEY-BETA";
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        alpha: true,
+        beta: false
+    }))
+    .expect_err("unknown Anthropic keys must not become receipt content");
+    let unknown_paths = error
+        .report
+        .decisions
+        .iter()
+        .filter(|decision| decision.source_path.starts_with("$.<unknown>"))
+        .map(|decision| decision.source_path.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(unknown_paths, ["$.<unknown>[0]", "$.<unknown>[1]"]);
+    let serialized = serde_json::to_string(&error.report).expect("receipt serializes");
+    assert!(!serialized.contains(alpha));
+    assert!(!serialized.contains(beta));
+}
+
+#[test]
+fn d2_f1_anthropic_defined_container_receipts_remain_unique_on_nested_rejection() {
+    let message_error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "image",
+                "source": {"type": "base64", "media_type": false, "data": "aW1hZ2U="}
+            }]
+        }]
+    }))
+    .expect_err("a malformed Anthropic media field retains all defined container receipts");
+    for (source_path, kind) in [
+        ("$.messages", TranslationDecisionKind::Rejected),
+        ("$.messages[0]", TranslationDecisionKind::Normalized),
+        ("$.messages[0].content", TranslationDecisionKind::Rejected),
+        (
+            "$.messages[0].content[0]",
+            TranslationDecisionKind::Normalized,
+        ),
+        (
+            "$.messages[0].content[0].source",
+            TranslationDecisionKind::Normalized,
+        ),
+        (
+            "$.messages[0].content[0].source.media_type",
+            TranslationDecisionKind::Rejected,
+        ),
+    ] {
+        let decisions = message_error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
+        assert_eq!(decisions[0].kind, kind);
+    }
+
+    let system_error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "system": [{
+            "type": "text",
+            "text": "Use the runbook.",
+            "cache_control": {"type": false}
+        }],
+        "messages": [{"role": "user", "content": "hello"}]
+    }))
+    .expect_err("a malformed system cache retains all defined system container receipts");
+    for (source_path, kind) in [
+        ("$.system", TranslationDecisionKind::Rejected),
+        ("$.system[0]", TranslationDecisionKind::Normalized),
+        ("$.system[0].cache_control", TranslationDecisionKind::Exact),
+        (
+            "$.system[0].cache_control.type",
+            TranslationDecisionKind::Rejected,
+        ),
+    ] {
+        let decisions = system_error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
+        assert_eq!(decisions[0].kind, kind);
+    }
 }
