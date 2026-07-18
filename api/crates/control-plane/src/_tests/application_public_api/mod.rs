@@ -32,6 +32,7 @@ use control_plane::{
         ApplicationPublicApiTestHarness,
     },
     auth::ApiKeyService,
+    errors::ControlPlaneError,
     ports::{
         ApplicationJsDependencySelectionRepository, ClaimedTask, EphemeralInspectionCapabilities,
         FlowRepository, ReplaceApplicationJsDependencySelectionInput, TaskQueue,
@@ -669,8 +670,10 @@ async fn application_public_api_mapping_draft_retains_bindings_and_extension_ide
         .unwrap();
 
     assert_eq!(
-        immutable_error.to_string(),
-        "workflow_extension_registration_immutable"
+        immutable_error.downcast_ref::<ControlPlaneError>(),
+        Some(&ControlPlaneError::Conflict(
+            "workflow_extension_registration_immutable"
+        ))
     );
     assert_eq!(stored.mapping, mapping);
     assert_eq!(stored.operation_bindings, operation_bindings);
@@ -702,8 +705,10 @@ async fn application_public_api_publication_rejects_changed_persisted_extension_
         .unwrap_err();
 
     assert_eq!(
-        error.to_string(),
-        "workflow_extension_registration_immutable"
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(&ControlPlaneError::Conflict(
+            "workflow_extension_registration_immutable"
+        ))
     );
 }
 
