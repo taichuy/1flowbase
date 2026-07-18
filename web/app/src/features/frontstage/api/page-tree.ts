@@ -32,6 +32,7 @@ export interface RenameFrontstageNodeInput {
   title: string | null;
   icon?: string | null;
   tooltip?: string | null;
+  contentPresentation?: 'single' | 'tabs';
   slug?: string | null;
 }
 
@@ -107,7 +108,7 @@ export function createFrontstagePageNode(
     },
     csrfToken,
     getFrontstageApiBaseUrl()
-  );
+  ).then((creation) => creation.page);
 }
 
 export function renameFrontstagePageNode(
@@ -120,6 +121,7 @@ export function renameFrontstagePageNode(
     title?: string | null;
     icon?: string | null;
     tooltip?: string | null;
+    content_presentation?: 'single' | 'tabs';
     slug?: string | null;
   } = { title: input.title };
   if (Object.prototype.hasOwnProperty.call(input, 'icon')) {
@@ -127,6 +129,9 @@ export function renameFrontstagePageNode(
   }
   if (Object.prototype.hasOwnProperty.call(input, 'tooltip')) {
     body.tooltip = input.tooltip;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'contentPresentation')) {
+    body.content_presentation = input.contentPresentation;
   }
   if (Object.prototype.hasOwnProperty.call(input, 'slug')) {
     body.slug = input.slug;

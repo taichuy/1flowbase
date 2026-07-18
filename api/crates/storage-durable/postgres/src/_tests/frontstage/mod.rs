@@ -51,6 +51,7 @@ async fn page_creation_keeps_one_default_tab_and_last_tab_is_guarded() {
             icon: None,
             tooltip: None,
             placement: domain::frontstage::FrontstageNavigationPlacement::Topbar,
+            content_presentation: domain::frontstage::FrontstagePageContentPresentation::Single,
             slug: Some("page-root".into()),
             rank: "a".into(),
             default_tab: Some(CreateFrontstagePageTabInput {
@@ -61,6 +62,7 @@ async fn page_creation_keeps_one_default_tab_and_last_tab_is_guarded() {
                 title: Some("Default".into()),
                 rank: "a".into(),
                 is_default: true,
+                route_segment: None,
                 document_root_uid: format!("frontstage.tab.{tab_id}.root"),
             }),
         })
@@ -84,6 +86,7 @@ const PAGE_TABS_MIGRATION_VERSION: i64 = 20260710130000;
 const FRONTSTAGE_WORKSPACE_INTEGRITY_MIGRATION_VERSION: i64 = 20260710193500;
 const FRONTSTAGE_PAGE_OWNER_KIND_MIGRATION_VERSION: i64 = 20260710210000;
 const FRONTSTAGE_PLACEMENT_INTEGRITY_MIGRATION_VERSION: i64 = 20260710223000;
+const FRONTSTAGE_PAGE_TAB_OWNERSHIP_MIGRATION_VERSION: i64 = 20260718210000;
 
 fn page_tabs_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
@@ -131,6 +134,181 @@ fn before_frontstage_placement_integrity_migrator() -> Migrator {
         migrations: Cow::Owned(migrations),
         ..Migrator::DEFAULT
     }
+}
+
+fn before_frontstage_page_tab_ownership_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < FRONTSTAGE_PAGE_TAB_OWNERSHIP_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+async fn insert_pre_page_tab_ownership_documents(
+    pool: &PgPool,
+    divergent_blocks: bool,
+) -> (Uuid, Uuid, Uuid, Uuid, Value) {
+    let (workspace_id, _) = insert_frontstage_test_workspaces(pool).await;
+    let page_id = Uuid::now_v7();
+    let default_tab_id = Uuid::now_v7();
+    let analytics_tab_id = Uuid::now_v7();
+    let default_blocks = json!([{ "id": "hero", "codeRef": "hero-code" }]);
+    let analytics_blocks = json!([{ "id": "chart", "codeRef": "chart-code" }]);
+    let default_schema_payload = json!({
+        "version": 1,
+        "blocks": default_blocks
+    });
+    let default_root_payload = if divergent_blocks {
+        json!({
+            "kind": "frontstage.tab.root",
+            "blocks": [{ "id": "stale", "codeRef": "stale-code" }]
+        })
+    } else {
+        json!({
+            "kind": "frontstage.tab.root",
+            "blocks": default_blocks
+        })
+    };
+    let analytics_schema_payload = json!({
+        "version": 1,
+        "blocks": analytics_blocks
+    });
+    let analytics_root_payload = json!({
+        "kind": "frontstage.tab.root",
+        "blocks": analytics_blocks
+    });
+    let mut transaction = pool.begin().await.unwrap();
+
+    sqlx::query(
+        "insert into frontstage_pages (id, workspace_id, kind, title, placement, rank) values ($1, $2, 'page', 'Reports', 'sidebar', 'a')",
+    )
+    .bind(page_id)
+    .bind(workspace_id)
+    .execute(&mut *transaction)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into frontstage_page_tabs (id, workspace_id, page_id, title, rank, is_default, document_root_uid) values ($1, $2, $3, 'Overview', 'a', true, $4), ($5, $2, $3, 'Analytics', 'b', false, $6)",
+    )
+    .bind(default_tab_id)
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(format!("frontstage.tab.{default_tab_id}.root"))
+    .bind(analytics_tab_id)
+    .bind(format!("frontstage.tab.{analytics_tab_id}.root"))
+    .execute(&mut *transaction)
+    .await
+    .unwrap();
+    for (tab_id, root_uid, schema_payload, root_payload) in [
+        (
+            default_tab_id,
+            format!("frontstage.tab.{default_tab_id}.root"),
+            default_schema_payload,
+            default_root_payload,
+        ),
+        (
+            analytics_tab_id,
+            format!("frontstage.tab.{analytics_tab_id}.root"),
+            analytics_schema_payload,
+            analytics_root_payload,
+        ),
+    ] {
+        sqlx::query(
+            "insert into frontstage_page_schemas (id, scope_id, tab_id, workspace_id, root_uid, schema_payload, root_payload) values ($1, $2, $3, $2, $4, $5, $6)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(workspace_id)
+        .bind(tab_id)
+        .bind(root_uid)
+        .bind(schema_payload)
+        .bind(root_payload)
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    }
+    transaction.commit().await.unwrap();
+
+    (
+        workspace_id,
+        page_id,
+        default_tab_id,
+        analytics_tab_id,
+        json!({ "version": 1, "blocks": [{ "id": "chart", "codeRef": "chart-code" }] }),
+    )
+}
+
+#[tokio::test]
+async fn page_tab_ownership_migration_backfills_presentation_routes_and_document_payload() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    before_frontstage_page_tab_ownership_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    let (workspace_id, page_id, default_tab_id, analytics_tab_id, analytics_document) =
+        insert_pre_page_tab_ownership_documents(&pool, false).await;
+
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+    let presentation: String = sqlx::query_scalar(
+        "select content_presentation from frontstage_pages where workspace_id = $1 and id = $2",
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(presentation, "tabs");
+    let routes: Vec<(Uuid, Option<String>)> = sqlx::query_as(
+        "select id, route_segment from frontstage_page_tabs where workspace_id = $1 and page_id = $2 order by rank",
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert!(routes.contains(&(default_tab_id, None)));
+    assert!(routes.contains(&(
+        analytics_tab_id,
+        Some(format!("tab-{}", analytics_tab_id.simple()))
+    )));
+    let document_payload: Value = sqlx::query_scalar(
+        "select document_payload from frontstage_page_schemas where workspace_id = $1 and tab_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(analytics_tab_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(document_payload, analytics_document);
+}
+
+#[tokio::test]
+async fn page_tab_ownership_migration_rejects_divergent_legacy_blocks_without_partial_schema_change() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    before_frontstage_page_tab_ownership_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    insert_pre_page_tab_ownership_documents(&pool, true).await;
+
+    let error = sqlx::migrate!("./migrations").run(&pool).await.unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("frontstage tab document migration rejected divergent schema and root blocks"),
+        "unexpected migration error: {error}"
+    );
+    let content_presentation_exists: bool = sqlx::query_scalar(
+        "select exists(select 1 from information_schema.columns where table_schema = current_schema() and table_name = 'frontstage_pages' and column_name = 'content_presentation')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!content_presentation_exists);
 }
 
 async fn insert_frontstage_group_and_page(
@@ -364,7 +542,7 @@ async fn insert_frontstage_page_with_owner_rows(
     let mut transaction = pool.begin().await.unwrap();
 
     sqlx::query(
-        "insert into frontstage_pages (id, workspace_id, kind, title, rank) values ($1, $2, 'page', 'Owner Page', 'a')",
+        "insert into frontstage_pages (id, workspace_id, kind, title, content_presentation, rank) values ($1, $2, 'page', 'Owner Page', 'tabs', 'a')",
     )
     .bind(page_id)
     .bind(workspace_id)
@@ -372,7 +550,7 @@ async fn insert_frontstage_page_with_owner_rows(
     .await
     .unwrap();
     sqlx::query(
-        "insert into frontstage_page_tabs (id, workspace_id, page_id, title, rank, is_default, document_root_uid) values ($1, $2, $3, 'Default', 'a', true, $4), ($5, $2, $3, 'Secondary', 'b', false, $6)",
+        "insert into frontstage_page_tabs (id, workspace_id, page_id, title, rank, is_default, document_root_uid, route_segment) values ($1, $2, $3, 'Default', 'a', true, $4, null), ($5, $2, $3, 'Secondary', 'b', false, $6, 'secondary')",
     )
     .bind(default_tab_id)
     .bind(workspace_id)
@@ -423,7 +601,7 @@ async fn full_migrations_reject_group_owned_tabs_and_block_codes_at_commit() {
     let mut insert_tab = pool.begin().await.unwrap();
     let inserted_tab_id = Uuid::now_v7();
     sqlx::query(
-        "insert into frontstage_page_tabs (id, workspace_id, page_id, title, rank, is_default, document_root_uid) values ($1, $2, $3, 'Invalid', 'z', false, $4)",
+        "insert into frontstage_page_tabs (id, workspace_id, page_id, title, rank, is_default, document_root_uid, route_segment) values ($1, $2, $3, 'Invalid', 'z', false, $4, 'invalid')",
     )
     .bind(inserted_tab_id)
     .bind(workspace_id)
@@ -493,7 +671,9 @@ async fn full_migrations_reject_page_to_group_with_owner_rows_and_allow_cascade_
     let (guarded_page_id, _, _, _) =
         insert_frontstage_page_with_owner_rows(&pool, workspace_id).await;
     let mut kind_update = pool.begin().await.unwrap();
-    sqlx::query("update frontstage_pages set kind = 'group' where id = $1")
+    sqlx::query(
+        "update frontstage_pages set kind = 'group', content_presentation = 'single' where id = $1",
+    )
         .bind(guarded_page_id)
         .execute(&mut *kind_update)
         .await
@@ -562,7 +742,7 @@ async fn full_migrations_defer_page_owner_kind_checks_until_transaction_end() {
     let immediate_tab_id = Uuid::now_v7();
     let mut immediate_check = pool.begin().await.unwrap();
     sqlx::query(
-        "insert into frontstage_page_tabs (id, workspace_id, page_id, title, rank, is_default, document_root_uid) values ($1, $2, $3, 'Immediate', 'a', false, $4)",
+        "insert into frontstage_page_tabs (id, workspace_id, page_id, title, rank, is_default, document_root_uid, route_segment) values ($1, $2, $3, 'Immediate', 'a', false, $4, 'immediate')",
     )
     .bind(immediate_tab_id)
     .bind(workspace_id)
@@ -644,7 +824,9 @@ async fn full_migrations_defer_page_owner_kind_checks_until_transaction_end() {
         .execute(&mut *conversion)
         .await
         .unwrap();
-    sqlx::query("update frontstage_pages set kind = 'group' where id = $1")
+    sqlx::query(
+        "update frontstage_pages set kind = 'group', content_presentation = 'single' where id = $1",
+    )
         .bind(converted_page_id)
         .execute(&mut *conversion)
         .await
@@ -694,7 +876,9 @@ async fn full_migrations_validate_old_and_new_tab_owners_after_reparent() {
         .unwrap();
 
     let mut invalid_reparent = pool.begin().await.unwrap();
-    sqlx::query("update frontstage_page_tabs set page_id = $1, is_default = false where id = $2")
+    sqlx::query(
+        "update frontstage_page_tabs set page_id = $1, is_default = false, route_segment = 'source-default' where id = $2",
+    )
         .bind(target_page_id)
         .bind(source_default_tab_id)
         .execute(&mut *invalid_reparent)
@@ -708,12 +892,16 @@ async fn full_migrations_validate_old_and_new_tab_owners_after_reparent() {
 
     let replacement_tab_id = Uuid::now_v7();
     let mut valid_reparent = pool.begin().await.unwrap();
-    sqlx::query("update frontstage_page_tabs set is_default = false where id = $1")
+    sqlx::query(
+        "update frontstage_page_tabs set is_default = false, route_segment = 'source-default' where id = $1",
+    )
         .bind(source_default_tab_id)
         .execute(&mut *valid_reparent)
         .await
         .unwrap();
-    sqlx::query("update frontstage_page_tabs set is_default = false where id = $1")
+    sqlx::query(
+        "update frontstage_page_tabs set is_default = false, route_segment = 'target-default' where id = $1",
+    )
         .bind(target_default_tab_id)
         .execute(&mut *valid_reparent)
         .await
@@ -728,7 +916,9 @@ async fn full_migrations_validate_old_and_new_tab_owners_after_reparent() {
     .execute(&mut *valid_reparent)
     .await
     .unwrap();
-    sqlx::query("update frontstage_page_tabs set page_id = $1, is_default = true where id = $2")
+    sqlx::query(
+        "update frontstage_page_tabs set page_id = $1, is_default = true, route_segment = null where id = $2",
+    )
         .bind(target_page_id)
         .bind(source_default_tab_id)
         .execute(&mut *valid_reparent)

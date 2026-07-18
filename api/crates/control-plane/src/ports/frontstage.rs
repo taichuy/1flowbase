@@ -11,6 +11,7 @@ pub struct CreateFrontstagePageInput {
     pub icon: Option<String>,
     pub tooltip: Option<String>,
     pub placement: domain::frontstage::FrontstageNavigationPlacement,
+    pub content_presentation: domain::frontstage::FrontstagePageContentPresentation,
     pub slug: Option<String>,
     pub rank: String,
     pub default_tab: Option<CreateFrontstagePageTabInput>,
@@ -25,6 +26,7 @@ pub struct CreateFrontstagePageTabInput {
     pub title: Option<String>,
     pub rank: String,
     pub is_default: bool,
+    pub route_segment: Option<String>,
     pub document_root_uid: String,
 }
 
@@ -38,6 +40,7 @@ pub struct UpdateFrontstagePageMetadataInput {
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
     pub placement: Option<domain::frontstage::FrontstageNavigationPlacement>,
+    pub content_presentation: Option<domain::frontstage::FrontstagePageContentPresentation>,
     pub slug: Option<Option<String>>,
 }
 
@@ -66,8 +69,7 @@ pub struct SaveFrontstageTabDocumentInput {
     pub actor_user_id: Uuid,
     pub page_id: Uuid,
     pub tab_id: Uuid,
-    pub schema_payload: serde_json::Value,
-    pub root_payload: serde_json::Value,
+    pub document_payload: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]
@@ -128,7 +130,7 @@ pub trait FrontstagePageRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
-        tab_id: Uuid,
+        tab_reference: &str,
     ) -> anyhow::Result<Option<domain::frontstage::FrontstagePageDetail>>;
 
     async fn create_frontstage_page(

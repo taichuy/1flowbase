@@ -45,40 +45,71 @@ describe('frontstage page tree feature api', () => {
       .mockResolvedValue({
         id: 'group-1',
         title: '分组 1',
+        icon: null,
+        tooltip: null,
+        is_hidden: false,
+        placement: 'sidebar',
+        content_presentation: 'single',
+        slug: null,
         kind: 'group',
         parent_id: null,
-        rank: '001000',
-        schema_root_uid: null
+        rank: '001000'
       });
     const createPageSpy = vi
       .spyOn(apiClient, 'createFrontstagePage')
       .mockResolvedValue({
-        id: 'page-1',
-        title: '页面 1',
-        kind: 'page',
-        parent_id: 'group-1',
-        rank: '001000',
-        schema_root_uid: 'root'
+        page: {
+          id: 'page-1',
+          title: '页面 1',
+          icon: null,
+          tooltip: null,
+          is_hidden: false,
+          placement: 'sidebar',
+          content_presentation: 'single',
+          slug: null,
+          kind: 'page',
+          parent_id: 'group-1',
+          rank: '001000'
+        },
+        default_tab: {
+          id: 'tab-1',
+          page_id: 'page-1',
+          title: null,
+          rank: 'a',
+          is_default: true,
+          route_segment: null,
+          document_root_uid: 'frontstage.tab.1.root'
+        }
       });
     const updateSpy = vi
       .spyOn(apiClient, 'updateFrontstagePageNodeTitle')
       .mockResolvedValue({
         id: 'page-1',
         title: '页面 新名',
+        icon: null,
+        tooltip: null,
+        is_hidden: false,
+        placement: 'sidebar',
+        content_presentation: 'single',
+        slug: null,
         kind: 'page',
         parent_id: null,
-        rank: '001000',
-        schema_root_uid: 'root'
+        rank: '001000'
       });
     const moveSpy = vi
       .spyOn(apiClient, 'moveFrontstagePageNode')
       .mockResolvedValue({
         id: 'page-1',
         title: '页面 新名',
+        icon: null,
+        tooltip: null,
+        is_hidden: false,
+        placement: 'sidebar',
+        content_presentation: 'single',
+        slug: null,
         kind: 'page',
         parent_id: null,
-        rank: '000000',
-        schema_root_uid: 'root'
+        rank: '000000'
       });
     const deleteSpy = vi
       .spyOn(apiClient, 'deleteFrontstagePageNode')
@@ -206,25 +237,33 @@ describe('frontstage page content feature api', () => {
 
   test('adapts page detail DTOs to camelCase output', async () => {
     const detailSpy = vi
-      .spyOn(apiClient, 'apiFetch')
+      .spyOn(apiClient, 'getFrontstagePageTabDetail')
       .mockResolvedValue({
         page: {
           id: 'page-1',
           title: '页面 1',
-          icon: undefined,
-          tooltip: undefined,
+          icon: null,
+          tooltip: null,
+          is_hidden: false,
+          placement: 'sidebar',
+          content_presentation: 'tabs',
+          slug: null,
           kind: 'page',
           parent_id: 'group-1',
-          rank: '001000',
-          schema_root_uid: 'root-1'
+          rank: '001000'
         },
-        schema: {
+        tab: {
+          id: 'tab-1',
+          page_id: 'page-1',
+          title: '概览',
+          rank: '001000',
+          is_default: true,
+          route_segment: null,
+          document_root_uid: 'root-1'
+        },
+        document: {
           root_uid: 'root-1',
           payload: { blocks: [] }
-        },
-        root: {
-          uid: 'root-1',
-          payload: { kind: 'frontstage.page.root' }
         }
       });
 
@@ -235,24 +274,33 @@ describe('frontstage page content feature api', () => {
         page: {
           id: 'page-1',
           title: '页面 1',
+          icon: null,
+          tooltip: null,
           kind: 'page',
           parentId: 'group-1',
-          rank: '001000'
+          rank: '001000',
+          contentPresentation: 'tabs'
         },
-        schema: {
+        tab: {
+          id: 'tab-1',
+          pageId: 'page-1',
+          title: '概览',
+          rank: '001000',
+          isDefault: true,
+          routeSegment: null,
+          documentRootUid: 'root-1'
+        },
+        document: {
           rootUid: 'root-1',
           payload: { blocks: [] }
-        },
-        root: {
-          uid: 'root-1',
-          payload: { kind: 'frontstage.page.root' }
         }
       });
-      expect(detailSpy).toHaveBeenCalledWith({
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1',
-        method: 'GET',
-        baseUrl: expect.any(String)
-      });
+      expect(detailSpy).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        'tab-1',
+        expect.any(String)
+      );
     } finally {
       detailSpy.mockRestore();
     }
@@ -260,23 +308,33 @@ describe('frontstage page content feature api', () => {
 
   test('adapts page content save calls to api-client DTOs', async () => {
     const saveSpy = vi
-      .spyOn(apiClient, 'apiFetch')
+      .spyOn(apiClient, 'saveFrontstageTabDocument')
       .mockResolvedValue({
         page: {
           id: 'page-1',
           title: '页面 1',
+          icon: null,
+          tooltip: null,
+          is_hidden: false,
+          placement: 'sidebar',
+          content_presentation: 'single',
+          slug: null,
           kind: 'page',
           parent_id: 'group-1',
+          rank: '001000'
+        },
+        tab: {
+          id: 'tab-1',
+          page_id: 'page-1',
+          title: '概览',
           rank: '001000',
-          schema_root_uid: 'root-1'
+          is_default: true,
+          route_segment: null,
+          document_root_uid: 'root-1'
         },
-        schema: {
+        document: {
           root_uid: 'root-1',
-          payload: { version: 1, nodes: [{ uid: 'hero-1' }] }
-        },
-        root: {
-          uid: 'root-1',
-          payload: { children: ['hero-1'] }
+          payload: { version: 1, blocks: [{ id: 'hero-1' }] }
         }
       });
 
@@ -286,47 +344,42 @@ describe('frontstage page content feature api', () => {
           'workspace-1',
           'page-1',
           'tab-1',
-          {
-            schema: {
-              payload: { version: 1, nodes: [{ uid: 'hero-1' }] }
-            },
-            root: {
-              payload: { children: ['hero-1'] }
-            }
-          },
+          { payload: { version: 1, blocks: [{ id: 'hero-1' }] } },
           'csrf-123'
         )
       ).resolves.toEqual({
         page: {
           id: 'page-1',
           title: '页面 1',
+          icon: null,
+          tooltip: null,
           kind: 'page',
           parentId: 'group-1',
-          rank: '001000'
+          rank: '001000',
+          contentPresentation: 'single'
         },
-        schema: {
+        tab: {
+          id: 'tab-1',
+          pageId: 'page-1',
+          title: '概览',
+          rank: '001000',
+          isDefault: true,
+          routeSegment: null,
+          documentRootUid: 'root-1'
+        },
+        document: {
           rootUid: 'root-1',
-          payload: { version: 1, nodes: [{ uid: 'hero-1' }] }
-        },
-        root: {
-          uid: 'root-1',
-          payload: { children: ['hero-1'] }
+          payload: { version: 1, blocks: [{ id: 'hero-1' }] }
         }
       });
-      expect(saveSpy).toHaveBeenCalledWith({
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/document',
-        method: 'PUT',
-        body: {
-          schema: {
-            payload: { version: 1, nodes: [{ uid: 'hero-1' }] }
-          },
-          root: {
-            payload: { children: ['hero-1'] }
-          }
-        },
-        csrfToken: 'csrf-123',
-        baseUrl: expect.any(String)
-      });
+      expect(saveSpy).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        'tab-1',
+        { payload: { version: 1, blocks: [{ id: 'hero-1' }] } },
+        'csrf-123',
+        expect.any(String)
+      );
     } finally {
       saveSpy.mockRestore();
     }

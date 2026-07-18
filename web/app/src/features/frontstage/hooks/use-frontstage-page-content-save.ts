@@ -6,7 +6,7 @@ import {
   frontstagePageContentQueryKey,
   saveFrontstagePageContent,
   type FrontstagePageContent,
-  type SaveFrontstagePageContentInput
+  type SaveFrontstageTabDocumentInput
 } from '../api/page-content';
 
 interface UseFrontstagePageContentSaveInput {
@@ -65,7 +65,7 @@ export function useFrontstagePageContentSave({
   };
 
   const saveMutation = useMutation({
-    mutationFn: (input: SaveFrontstagePageContentInput) =>
+    mutationFn: (input: SaveFrontstageTabDocumentInput) =>
       saveFrontstagePageContent(
         requireValue(workspaceId, 'workspace id'),
         requireValue(pageId, 'page id'),
@@ -77,7 +77,10 @@ export function useFrontstagePageContentSave({
     onError: captureMutationError,
     onSuccess: async (savedContent: FrontstagePageContent) => {
       queryClient.setQueryData(queryKey, savedContent);
-      await queryClient.invalidateQueries({ queryKey, refetchType: 'active' });
+      await queryClient.invalidateQueries({
+        queryKey: ['frontstage', workspaceId ?? '', 'pages', pageId ?? '', 'tabs'],
+        refetchType: 'active'
+      });
     }
   });
 

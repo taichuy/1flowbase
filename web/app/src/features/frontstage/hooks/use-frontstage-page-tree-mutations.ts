@@ -40,6 +40,14 @@ export function useFrontstagePageTreeMutations(workspaceId: string) {
     await queryClient.invalidateQueries({ queryKey, refetchType: 'active' });
   };
 
+  const invalidatePageTreeAndContent = async () => {
+    await invalidatePageTree();
+    await queryClient.invalidateQueries({
+      queryKey: ['frontstage', workspaceId, 'pages'],
+      refetchType: 'active'
+    });
+  };
+
   const clearMutationError = () => {
     setMutationError(null);
   };
@@ -65,7 +73,7 @@ export function useFrontstagePageTreeMutations(workspaceId: string) {
       createFrontstagePageNode(workspaceId, input, requireCsrfToken(csrfToken)),
     onMutate: clearMutationError,
     onError: captureMutationError,
-    onSuccess: invalidatePageTree
+    onSuccess: invalidatePageTreeAndContent
   });
 
   const renameMutation = useMutation({
@@ -84,7 +92,7 @@ export function useFrontstagePageTreeMutations(workspaceId: string) {
       ),
     onMutate: clearMutationError,
     onError: captureMutationError,
-    onSuccess: invalidatePageTree
+    onSuccess: invalidatePageTreeAndContent
   });
 
   const moveMutation = useMutation({

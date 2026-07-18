@@ -17,8 +17,12 @@ import {
 } from '../../../../state/frontstage-design-mode-store';
 import type {
   FrontstagePageContent,
-  SaveFrontstagePageContentInput
+  SaveFrontstageTabDocumentInput
 } from '../../api/page-content';
+import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
@@ -159,39 +163,22 @@ function updateNodeMetadataInTree(
 }
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000'
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 function createSavedPageContentFromInput(
-  input: SaveFrontstagePageContentInput
+  input: SaveFrontstageTabDocumentInput
 ): FrontstagePageContent {
   return createPageContent({
     schema: {
       rootUid: 'root-1',
-      payload: input.schema.payload
+      payload: input.payload
     },
     root: {
       uid: 'root-1',
-      payload: input.root.payload
+      payload: input.payload
     }
   });
 }
@@ -420,7 +407,7 @@ function mockPageContentSaveState(
   overrides: Partial<FrontstagePageContentSaveState> = {}
 ): FrontstagePageContentSaveState {
   const state = {
-    save: vi.fn((input: SaveFrontstagePageContentInput) =>
+    save: vi.fn((input: SaveFrontstageTabDocumentInput) =>
       Promise.resolve(createSavedPageContentFromInput(input))
     ),
     saving: false,

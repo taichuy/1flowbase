@@ -1,7 +1,7 @@
 import type {
   FrontstagePageContent,
   FrontstagePageContentNode,
-  SaveFrontstagePageContentInput
+  SaveFrontstageTabDocumentInput
 } from '../api/page-content';
 
 export type FrontstagePageDocumentDiagnosticSeverity = 'warning' | 'error';
@@ -67,7 +67,7 @@ interface FrontstageBlockPayload {
   runtime: FrontstageBlockRuntimeHint;
 }
 
-type PayloadSource = 'root' | 'schema';
+type PayloadSource = 'document';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -101,11 +101,7 @@ function pushDiagnostic(
 }
 
 function resolveRootUid(content: FrontstagePageContent): string {
-  return (
-    asOptionalString(content.root.uid) ??
-    asOptionalString(content.schema.rootUid) ??
-    content.page.id
-  );
+  return asOptionalString(content.document.rootUid) ?? content.page.id;
 }
 
 function getPayloadRecord(
@@ -134,26 +130,15 @@ function selectBlockPayloads(
   content: FrontstagePageContent,
   diagnostics: FrontstagePageDocumentDiagnostic[]
 ): { blocks: unknown[]; source: PayloadSource | null } {
-  const rootPayload = getPayloadRecord(
-    content.root.payload,
-    'root',
-    diagnostics
-  );
-  const schemaPayload = getPayloadRecord(
-    content.schema.payload,
-    'schema',
+  const documentPayload = getPayloadRecord(
+    content.document.payload,
+    'document',
     diagnostics
   );
 
-  if (Array.isArray(rootPayload?.blocks)) {
-    return { blocks: rootPayload.blocks, source: 'root' };
-  }
-
-  if (Array.isArray(schemaPayload?.blocks)) {
-    return { blocks: schemaPayload.blocks, source: 'schema' };
-  }
-
-  return { blocks: [], source: null };
+  return Array.isArray(documentPayload?.blocks)
+    ? { blocks: documentPayload.blocks, source: 'document' }
+    : { blocks: [], source: null };
 }
 
 function toUniqueValue(
@@ -418,7 +403,7 @@ export function createFrontstagePageDocument(
       pushDiagnostic(diagnostics, {
         severity: 'warning',
         code: 'invalid_block',
-        path: `${source ?? 'root'}.payload.blocks.${index}`,
+        path: `${source ?? 'document'}.payload.blocks.${index}`,
         message: 'Frontstage block instance must be an object.'
       });
       return;
@@ -481,19 +466,11 @@ function createPayloadWithBlocks(
 export function createFrontstagePageDocumentSaveInput(
   content: FrontstagePageContent,
   document: FrontstagePageDocument
-): SaveFrontstagePageContentInput {
+): SaveFrontstageTabDocumentInput {
   return {
-    schema: {
-      payload: createPayloadWithBlocks(
-        content.schema.payload,
-        document.blocks.map(createBlockPayload)
-      )
-    },
-    root: {
-      payload: createPayloadWithBlocks(
-        content.root.payload,
-        document.blocks.map(createBlockPayload)
-      )
-    }
+    payload: createPayloadWithBlocks(
+      content.document.payload,
+      document.blocks.map(createBlockPayload)
+    )
   };
 }

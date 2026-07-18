@@ -17,8 +17,12 @@ import {
 } from '../../../../state/frontstage-design-mode-store';
 import type {
   FrontstagePageContent,
-  SaveFrontstagePageContentInput
+  SaveFrontstageTabDocumentInput
 } from '../../api/page-content';
+import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { FrontStagePage } from '../../pages/FrontStagePage';
 
@@ -102,26 +106,9 @@ function authenticate(permissions: string[]) {
 }
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000'
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 function createBlockPayload(blockId: string, order: number) {
@@ -275,22 +262,22 @@ function createPageContentWithBlockPayloads(
 }
 
 function createSavedPageContentFromInput(
-  input: SaveFrontstagePageContentInput
+  input: SaveFrontstageTabDocumentInput
 ): FrontstagePageContent {
   return createPageContent({
     schema: {
       rootUid: 'root-1',
-      payload: input.schema.payload
+      payload: input.payload
     },
     root: {
       uid: 'root-1',
-      payload: input.root.payload
+      payload: input.payload
     }
   });
 }
 
-function getSavedBlocks(input: SaveFrontstagePageContentInput) {
-  const payload = input.root.payload;
+function getSavedBlocks(input: SaveFrontstageTabDocumentInput) {
+  const payload = input.payload;
   if (typeof payload !== 'object' || payload === null) {
     throw new Error('root payload must be an object');
   }
@@ -303,7 +290,7 @@ function getSavedBlocks(input: SaveFrontstagePageContentInput) {
   return blocks as Array<Record<string, unknown>>;
 }
 
-function getSavedBlockIds(input: SaveFrontstagePageContentInput): unknown[] {
+function getSavedBlockIds(input: SaveFrontstageTabDocumentInput): unknown[] {
   return getSavedBlocks(input).map((block) => block.id);
 }
 
@@ -311,7 +298,7 @@ function mockPageContentSaveState(
   overrides: Partial<FrontstagePageContentSaveState> = {}
 ): FrontstagePageContentSaveState {
   const state = {
-    save: vi.fn((input: SaveFrontstagePageContentInput) =>
+    save: vi.fn((input: SaveFrontstageTabDocumentInput) =>
       Promise.resolve(createSavedPageContentFromInput(input))
     ),
     saving: false,
@@ -448,7 +435,7 @@ describe('FrontStagePage block arrange actions', () => {
     });
 
     const [saveInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstagePageContentInput
+      SaveFrontstageTabDocumentInput
     ];
     expect(getSavedBlockIds(saveInput)).toEqual(['hero', 'cta']);
 
@@ -475,7 +462,7 @@ describe('FrontStagePage block arrange actions', () => {
     });
 
     const [saveInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstagePageContentInput
+      SaveFrontstageTabDocumentInput
     ];
     expect(getSavedBlockIds(saveInput)).toEqual([]);
 
@@ -500,7 +487,7 @@ describe('FrontStagePage block arrange actions', () => {
     });
 
     const [moveDownInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstagePageContentInput
+      SaveFrontstageTabDocumentInput
     ];
     expect(getSavedBlockIds(moveDownInput)).toEqual(['hero', 'cta', 'feature']);
 
@@ -511,7 +498,7 @@ describe('FrontStagePage block arrange actions', () => {
     });
 
     const [moveUpInput] = saveState.save.mock.calls[1] as [
-      SaveFrontstagePageContentInput
+      SaveFrontstageTabDocumentInput
     ];
     expect(getSavedBlockIds(moveUpInput)).toEqual(['hero', 'feature', 'cta']);
   });

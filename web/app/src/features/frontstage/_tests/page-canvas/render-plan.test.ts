@@ -4,6 +4,10 @@ import { describe, expect, test } from 'vitest';
 
 import type { FrontstagePageContent } from '../../api/page-content';
 import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from '../frontstage-page-content-fixtures';
+import {
   createFrontstagePageDocument,
   type FrontstageBlockInstance
 } from '../../lib/page-document';
@@ -13,26 +17,9 @@ import {
 } from '../../lib/page-canvas/render-plan';
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000',
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 function createBlock(

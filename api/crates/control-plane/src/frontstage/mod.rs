@@ -50,6 +50,7 @@ pub struct UpdateFrontstagePageMetadataCommand {
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
     pub placement: Option<domain::frontstage::FrontstageNavigationPlacement>,
+    pub content_presentation: Option<domain::frontstage::FrontstagePageContentPresentation>,
     pub slug: Option<Option<String>>,
 }
 
@@ -71,7 +72,7 @@ pub struct GetFrontstagePageDetailCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub page_id: Uuid,
-    pub tab_id: Uuid,
+    pub tab_reference: String,
 }
 
 pub struct CreateFrontstagePageTabCommand {
@@ -79,6 +80,7 @@ pub struct CreateFrontstagePageTabCommand {
     pub workspace_id: Uuid,
     pub page_id: Uuid,
     pub title: Option<String>,
+    pub route_segment: Option<String>,
     pub rank: Option<String>,
 }
 
@@ -110,8 +112,7 @@ pub struct SaveFrontstageTabDocumentCommand {
     pub workspace_id: Uuid,
     pub page_id: Uuid,
     pub tab_id: Uuid,
-    pub schema_payload: serde_json::Value,
-    pub root_payload: serde_json::Value,
+    pub document_payload: serde_json::Value,
 }
 
 pub struct SaveFrontstageBlockCodeCommand {
@@ -157,6 +158,34 @@ fn normalize_frontstage_slug(value: Option<String>) -> Result<Option<String>> {
         return Err(ControlPlaneError::InvalidInput("frontstage_page_slug_reserved").into());
     }
     Ok(Some(normalized))
+}
+
+fn normalize_tab_route_segment(value: Option<String>) -> Result<Option<String>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty()
+        || normalized.len() > 48
+        || normalized.starts_with('-')
+        || normalized.ends_with('-')
+        || normalized.contains("--")
+        || !normalized
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        || Uuid::parse_str(&normalized).is_ok()
+    {
+        return Err(ControlPlaneError::InvalidInput("frontstage_page_tab_route_segment").into());
+    }
+    Ok(Some(normalized))
+}
+
+fn required_tab_title(value: Option<String>) -> Result<String> {
+    let title = value.unwrap_or_default().trim().to_owned();
+    if title.is_empty() {
+        return Err(ControlPlaneError::InvalidInput("frontstage_page_tab_title").into());
+    }
+    Ok(title)
 }
 
 fn root_slug_for(
@@ -247,6 +276,7 @@ where
                 icon: command.icon,
                 tooltip: command.tooltip,
                 placement: command.placement,
+                content_presentation: domain::frontstage::FrontstagePageContentPresentation::Single,
                 slug,
                 rank: normalize_rank(command.rank),
                 default_tab: None,
@@ -289,6 +319,7 @@ where
                 icon: command.icon,
                 tooltip: command.tooltip,
                 placement: command.placement,
+                content_presentation: domain::frontstage::FrontstagePageContentPresentation::Single,
                 slug,
                 rank: normalize_rank(command.rank),
                 default_tab: Some(CreateFrontstagePageTabInput {
@@ -299,6 +330,7 @@ where
                     title: Some("Default".to_owned()),
                     rank: "a".to_owned(),
                     is_default: true,
+                    route_segment: None,
                     document_root_uid: reserved_tab_document_root_uid(tab_id),
                 }),
             })
@@ -320,7 +352,11 @@ where
 
         let detail = self
             .repository
-            .get_frontstage_page_tab_detail(command.workspace_id, command.page_id, command.tab_id)
+            .get_frontstage_page_tab_detail(
+                command.workspace_id,
+                command.page_id,
+                &command.tab_reference,
+            )
             .await?
             .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
         ensure_page_record(&detail.page)?;
@@ -340,7 +376,7 @@ where
                 .visibility_rules_for_actor(&actor, command.actor_user_id, command.workspace_id)
                 .await?;
             if !FrontstagePageVisibilityContext::new(&pages, &rules)
-                .is_tab_visible(command.page_id, command.tab_id)
+                .is_tab_visible(command.page_id, detail.tab.id)
             {
                 return Err(ControlPlaneError::NotFound("frontstage_page_tab").into());
             }
@@ -359,7 +395,10 @@ where
             .await?;
         ensure_design_permission(&actor)?;
 
-        let existing = if command.placement.is_some() || command.slug.is_some() {
+        let existing = if command.placement.is_some()
+            || command.content_presentation.is_some()
+            || command.slug.is_some()
+        {
             Some(
                 self.repository
                     .get_frontstage_page(command.workspace_id, command.page_id)
@@ -402,6 +441,28 @@ where
             }
         }
 
+        if let Some(content_presentation) = command.content_presentation {
+            let existing = existing
+                .as_ref()
+                .expect("existing page loaded for content presentation update");
+            ensure_page_record(existing)?;
+            if content_presentation == domain::frontstage::FrontstagePageContentPresentation::Single
+                && existing.content_presentation
+                    != domain::frontstage::FrontstagePageContentPresentation::Single
+                && self
+                    .repository
+                    .list_frontstage_page_tabs(command.workspace_id, command.page_id)
+                    .await?
+                    .len()
+                    > 1
+            {
+                return Err(ControlPlaneError::Conflict(
+                    "frontstage_page_tabs_require_single_default",
+                )
+                .into());
+            }
+        }
+
         let updated = self
             .repository
             .update_frontstage_page_metadata(&UpdateFrontstagePageMetadataInput {
@@ -413,6 +474,7 @@ where
                 tooltip: command.tooltip,
                 is_hidden: command.is_hidden,
                 placement: command.placement,
+                content_presentation: command.content_presentation,
                 slug: match command.slug {
                     Some(value) => {
                         let existing = existing
@@ -544,8 +606,21 @@ where
             .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
-        self.ensure_existing_page(command.workspace_id, command.page_id)
-            .await?;
+        let page = self
+            .repository
+            .get_frontstage_page(command.workspace_id, command.page_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
+        ensure_page_record(&page)?;
+        if page.content_presentation
+            != domain::frontstage::FrontstagePageContentPresentation::Tabs
+        {
+            return Err(ControlPlaneError::Conflict("frontstage_page_tabs_not_enabled").into());
+        }
+        let title = required_tab_title(command.title)?;
+        let route_segment = normalize_tab_route_segment(command.route_segment)?.ok_or(
+            ControlPlaneError::InvalidInput("frontstage_page_tab_route_segment_required"),
+        )?;
         let tab_id = Uuid::now_v7();
         self.repository
             .create_frontstage_page_tab(&CreateFrontstagePageTabInput {
@@ -553,9 +628,10 @@ where
                 workspace_id: command.workspace_id,
                 actor_user_id: command.actor_user_id,
                 page_id: command.page_id,
-                title: command.title,
+                title: Some(title),
                 rank: normalize_rank(command.rank),
                 is_default: false,
+                route_segment: Some(route_segment),
                 document_root_uid: reserved_tab_document_root_uid(tab_id),
             })
             .await
@@ -617,8 +693,7 @@ where
                 actor_user_id: command.actor_user_id,
                 page_id: command.page_id,
                 tab_id: command.tab_id,
-                schema_payload: command.schema_payload,
-                root_payload: command.root_payload,
+                document_payload: command.document_payload,
             })
             .await?;
         self.audit(&actor, &detail.page, "frontstage.tab_document_saved")
@@ -1139,6 +1214,7 @@ mod tests {
             tooltip: None,
             is_hidden: false,
             placement: domain::frontstage::FrontstageNavigationPlacement::Sidebar,
+            content_presentation: domain::frontstage::FrontstagePageContentPresentation::Single,
             slug: None,
             rank: rank.to_owned(),
             created_at: OffsetDateTime::UNIX_EPOCH,

@@ -559,7 +559,7 @@ impl crate::ports::FrontstagePageRepository for MemoryRoleRepository {
         &self,
         _workspace_id: Uuid,
         _page_id: Uuid,
-        _tab_id: Uuid,
+        _tab_reference: &str,
     ) -> Result<Option<domain::frontstage::FrontstagePageDetail>> {
         Ok(None)
     }

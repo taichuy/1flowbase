@@ -1,5 +1,7 @@
 import {
-  apiFetch,
+  getFrontstagePageTabDetail,
+  saveFrontstageTabDocument,
+  type ConsoleFrontstagePageDetail,
   type ConsoleFrontstagePageNode
 } from '@1flowbase/api-client';
 
@@ -13,52 +15,35 @@ export interface FrontstagePageContentNode {
   kind: 'group' | 'page';
   parentId: string | null;
   rank: string;
+  contentPresentation: 'single' | 'tabs';
 }
 
-export interface FrontstagePageSchema {
+export interface FrontstageTabDocument {
   rootUid: string;
   payload: unknown;
 }
 
-export interface FrontstagePageRoot {
-  uid: string;
-  payload: unknown;
+export interface FrontstagePageContentTab {
+  id: string;
+  pageId: string;
+  title: string | null;
+  rank: string;
+  isDefault: boolean;
+  routeSegment: string | null;
+  documentRootUid: string;
 }
 
 export interface FrontstagePageContent {
   page: FrontstagePageContentNode;
-  schema: FrontstagePageSchema;
-  root: FrontstagePageRoot;
+  tab: FrontstagePageContentTab;
+  document: FrontstageTabDocument;
 }
 
-export interface SaveFrontstagePageContentPayloadInput {
+export interface SaveFrontstageTabDocumentInput {
   payload: unknown;
 }
 
-export interface SaveFrontstagePageContentInput {
-  schema: SaveFrontstagePageContentPayloadInput;
-  root: SaveFrontstagePageContentPayloadInput;
-}
-
-interface FrontstagePageDetailDto {
-  page: Omit<ConsoleFrontstagePageNode, 'schema_root_uid'>;
-  tab: {
-    id: string;
-    page_id: string;
-    title: string | null;
-    rank: string;
-    is_default: boolean;
-    document_root_uid: string;
-  };
-  schema: {
-    root_uid: string;
-    payload: unknown;
-  };
-  root: {
-    uid: string;
-    payload: unknown;
-  };
-}
+type FrontstagePageDetailDto = ConsoleFrontstagePageDetail;
 
 export const frontstagePageContentQueryKey = (
   workspaceId: string,
@@ -67,7 +52,7 @@ export const frontstagePageContentQueryKey = (
 ) => ['frontstage', workspaceId, 'pages', pageId, 'tabs', tabId, 'content'] as const;
 
 function mapFrontstagePageNode(
-  page: FrontstagePageDetailDto['page']
+  page: ConsoleFrontstagePageNode
 ): FrontstagePageContentNode {
   return {
     id: page.id,
@@ -76,7 +61,22 @@ function mapFrontstagePageNode(
     tooltip: page.tooltip,
     kind: page.kind,
     parentId: page.parent_id,
-    rank: page.rank
+    rank: page.rank,
+    contentPresentation: page.content_presentation
+  };
+}
+
+function mapFrontstagePageContentTab(
+  tab: FrontstagePageDetailDto['tab']
+): FrontstagePageContentTab {
+  return {
+    id: tab.id,
+    pageId: tab.page_id,
+    title: tab.title,
+    rank: tab.rank,
+    isDefault: tab.is_default,
+    routeSegment: tab.route_segment,
+    documentRootUid: tab.document_root_uid
   };
 }
 
@@ -85,13 +85,10 @@ function mapFrontstagePageContent(
 ): FrontstagePageContent {
   return {
     page: mapFrontstagePageNode(detail.page),
-    schema: {
-      rootUid: detail.schema.root_uid,
-      payload: detail.schema.payload
-    },
-    root: {
-      uid: detail.root.uid,
-      payload: detail.root.payload
+    tab: mapFrontstagePageContentTab(detail.tab),
+    document: {
+      rootUid: detail.document.root_uid,
+      payload: detail.document.payload
     }
   };
 }
@@ -99,13 +96,14 @@ function mapFrontstagePageContent(
 export async function fetchFrontstagePageContent(
   workspaceId: string,
   pageId: string,
-  tabId: string
+  tabReference: string
 ): Promise<FrontstagePageContent> {
-  const detail = await apiFetch<FrontstagePageDetailDto>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}`,
-    method: 'GET',
-    baseUrl: getFrontstageApiBaseUrl()
-  });
+  const detail = await getFrontstagePageTabDetail(
+    workspaceId,
+    pageId,
+    tabReference,
+    getFrontstageApiBaseUrl()
+  );
 
   return mapFrontstagePageContent(detail);
 }
@@ -114,16 +112,17 @@ export async function saveFrontstagePageContent(
   workspaceId: string,
   pageId: string,
   tabId: string,
-  input: SaveFrontstagePageContentInput,
+  input: SaveFrontstageTabDocumentInput,
   csrfToken: string
 ): Promise<FrontstagePageContent> {
-  const detail = await apiFetch<FrontstagePageDetailDto>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/document`,
-    method: 'PUT',
-    body: input,
+  const detail = await saveFrontstageTabDocument(
+    workspaceId,
+    pageId,
+    tabId,
+    input,
     csrfToken,
-    baseUrl: getFrontstageApiBaseUrl()
-  });
+    getFrontstageApiBaseUrl()
+  );
 
   return mapFrontstagePageContent(detail);
 }

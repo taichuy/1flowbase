@@ -264,7 +264,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     !isPageContentSavePending;
   const operationStatusText = isOperationPending
     ? i18nText('frontstage', 'auto.saving')
-    : i18nText('frontstage', 'auto.operation_failed');
+    : pageTreeMutationError
+      ? toDisplayErrorMessage(pageTreeMutationError)
+      : i18nText('frontstage', 'auto.operation_failed');
 
   const canEnterDesignMode = useMemo(() => {
     return (
@@ -428,7 +430,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       title: pageTreeFormDialog.initialTitle,
       icon: pageTreeFormDialog.initialIcon,
       tooltip: pageTreeFormDialog.initialTooltip,
-      slug: pageTreeFormDialog.initialSlug
+      slug: pageTreeFormDialog.initialSlug,
+      contentPresentation: pageTreeFormDialog.initialContentPresentation
     });
   }, [pageTreeForm, pageTreeFormDialog]);
 
@@ -650,18 +653,18 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     />
   ) : null;
 
-  const runPageTreeOperation = async <T,>(
-    operation: () => Promise<T | void>
-  ): Promise<T | null> => {
+  const runPageTreeOperation = async (
+    operation: () => Promise<unknown>
+  ): Promise<boolean> => {
     setOperationStatus('pending');
 
     try {
-      const result = await operation();
+      await operation();
       setOperationStatus('idle');
-      return result ?? null;
+      return true;
     } catch {
       setOperationStatus('error');
-      return null;
+      return false;
     }
   };
 
@@ -787,11 +790,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         rank: dialog.rank
       };
 
-      await runPageTreeOperation(async () => {
+      const created = await runPageTreeOperation(async () => {
         await createPageTreeNode(dialog.nodeKind, input);
       });
 
-      setPageTreeFormDialog(null);
+      if (created) {
+        setPageTreeFormDialog(null);
+      }
       return;
     }
 
@@ -799,31 +804,43 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       const title = values.title ?? '';
       const icon = values.icon ?? null;
       const tooltip = values.tooltip ?? null;
+      const contentPresentation =
+        dialog.nodeKind === 'page'
+          ? values.contentPresentation ?? dialog.initialContentPresentation
+          : undefined;
 
-      await runPageTreeOperation(async () => {
+      const renamed = await runPageTreeOperation(async () => {
         await onRenamePageNode?.(dialog.nodeId, {
           title,
           icon,
-          tooltip
+          tooltip,
+          ...(contentPresentation ? { contentPresentation } : {})
         });
         setPageTree((currentTree) =>
           updatePageTreeNode(currentTree, dialog.nodeId, {
             title,
             icon,
-            tooltip
+            tooltip,
+            ...(contentPresentation
+              ? { content_presentation: contentPresentation }
+              : {})
           })
         );
       });
-      setPageTreeFormDialog(null);
+      if (renamed) {
+        setPageTreeFormDialog(null);
+      }
       return;
     }
 
-    await runPageTreeOperation(async () => {
+    const updated = await runPageTreeOperation(async () => {
       await onUpdatePageNodeMetadata?.(dialog.nodeId, {
         tooltip: values.tooltip ?? ''
       });
     });
-    setPageTreeFormDialog(null);
+    if (updated) {
+      setPageTreeFormDialog(null);
+    }
   };
 
   const handleRenameNode = (node: FrontStageTreeNode) => {
@@ -833,7 +850,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       initialTitle: node.title ?? '',
       initialIcon: node.icon ?? '',
       initialTooltip: node.tooltip ?? '',
-      title: i18nText('frontstage', 'auto.edit_node')
+      initialContentPresentation:
+        node.kind === 'page' ? node.content_presentation : undefined,
+      nodeKind: node.kind,
+      title:
+        node.kind === 'page'
+          ? i18nText('frontstage', 'design.configure_page')
+          : i18nText('frontstage', 'auto.edit_node')
     });
   };
 
@@ -1253,11 +1276,12 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                 {operationStatusText}
               </Typography.Text>
             ) : null}
-            {selectedPageId && tabId && onNavigateTab ? (
+            {selectedPageId && tabId && onNavigateTab && activePageContent ? (
               <FrontstagePageTabs
                 workspaceId={workspaceId}
                 pageId={selectedPageId}
                 tabId={tabId}
+                presentation={activePageContent.page.contentPresentation}
                 isDesignMode={canEnterDesignMode && isDesignMode}
                 onNavigateTab={onNavigateTab}
               >

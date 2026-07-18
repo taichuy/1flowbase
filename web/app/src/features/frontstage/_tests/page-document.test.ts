@@ -2,32 +2,19 @@ import { describe, expect, test } from 'vitest';
 
 import type { FrontstagePageContent } from '../api/page-content';
 import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from './frontstage-page-content-fixtures';
+import {
   createFrontstagePageDocument,
   createFrontstagePageDocumentSaveInput,
   type FrontstageBlockInstance
 } from '../lib/page-document';
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000',
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 describe('frontstage page document', () => {
@@ -212,14 +199,8 @@ describe('frontstage page document', () => {
       {
         severity: 'error',
         code: 'invalid_payload',
-        path: 'root.payload',
-        message: 'Frontstage root payload must be an object.'
-      },
-      {
-        severity: 'error',
-        code: 'invalid_payload',
-        path: 'schema.payload',
-        message: 'Frontstage schema payload must be an object.'
+        path: 'document.payload',
+        message: 'Frontstage document payload must be an object.'
       }
     ]);
   });
@@ -304,18 +285,11 @@ describe('frontstage page document', () => {
 
   test('creates save payloads for empty documents while preserving non-block fields', () => {
     const content = createPageContent({
-      schema: {
+      document: {
         rootUid: 'root-1',
         payload: {
           version: 1,
-          schemaMeta: { owner: 'frontstage' }
-        }
-      },
-      root: {
-        uid: 'root-1',
-        payload: {
-          kind: 'frontstage.page.root',
-          rootMeta: ['keep']
+          documentMeta: { owner: 'frontstage' }
         }
       }
     });
@@ -324,45 +298,29 @@ describe('frontstage page document', () => {
     const input = createFrontstagePageDocumentSaveInput(content, document);
 
     expect(input).toEqual({
-      schema: {
-        payload: {
-          version: 1,
-          schemaMeta: { owner: 'frontstage' },
-          blocks: []
-        }
-      },
-      root: {
-        payload: {
-          kind: 'frontstage.page.root',
-          rootMeta: ['keep'],
-          blocks: []
-        }
+      payload: {
+        version: 1,
+        documentMeta: { owner: 'frontstage' },
+        blocks: []
       }
     });
   });
 
   test('serializes current blocks without runtime-only document fields', () => {
     const content = createPageContent({
-      schema: {
+      document: {
         rootUid: 'root-1',
         payload: {
           version: 1,
-          blocks: [{ id: 'stale-schema-block', codeRef: 'stale-schema-code' }]
-        }
-      },
-      root: {
-        uid: 'root-1',
-        payload: {
-          kind: 'frontstage.page.root',
-          blocks: [{ id: 'stale-root-block', codeRef: 'stale-root-code' }]
+          blocks: [{ id: 'stale-block', codeRef: 'stale-code' }]
         }
       }
     });
     const block: FrontstageBlockInstance = {
       id: 'hero',
-      sourceId: 'stale-root-block',
+      sourceId: 'stale-block',
       codeRef: 'hero-code',
-      sourceCodeRef: 'stale-root-code',
+      sourceCodeRef: 'stale-code',
       catalog: {
         providerCode: 'official',
         installationId: 'installation-1'
@@ -424,31 +382,23 @@ describe('frontstage page document', () => {
       }
     };
 
-    expect(input.schema.payload).toEqual({
+    expect(input.payload).toEqual({
       version: 1,
       blocks: [expectedBlock]
     });
-    expect(input.root.payload).toEqual({
-      kind: 'frontstage.page.root',
-      blocks: [expectedBlock]
-    });
-    expect(input.root.payload).not.toHaveProperty('diagnostics');
-    expect(input.root.payload).not.toHaveProperty('isEmpty');
-    expect(input.root.payload).not.toHaveProperty('sourceId');
-    expect(input.root.payload).not.toHaveProperty('sourceCodeRef');
+    expect(input.payload).not.toHaveProperty('diagnostics');
+    expect(input.payload).not.toHaveProperty('isEmpty');
+    expect(input.payload).not.toHaveProperty('sourceId');
+    expect(input.payload).not.toHaveProperty('sourceCodeRef');
     expect(expectedBlock).not.toHaveProperty('sourceId');
     expect(expectedBlock).not.toHaveProperty('sourceCodeRef');
     expect(expectedBlock).not.toHaveProperty('layout');
 
     const roundTripDocument = createFrontstagePageDocument(
       createPageContent({
-        schema: {
+        document: {
           rootUid: 'root-1',
-          payload: input.schema.payload
-        },
-        root: {
-          uid: 'root-1',
-          payload: input.root.payload
+          payload: input.payload
         }
       })
     );

@@ -1,4 +1,5 @@
 import type { FrontstagePageContent } from '../../api/page-content';
+import type { FrontstagePageTab } from '../../api/page-tabs';
 import type { FrontStageTreeNode } from '../../lib/page-tree';
 import type {
   CreatePageTreeNodeInput,
@@ -15,7 +16,7 @@ export type FrontStagePageProps = {
   showSidebar?: boolean;
   autoSelectFirstPage?: boolean;
   onNavigatePage?: (pageId?: string) => void;
-  onNavigateTab?: (tabId: string) => void;
+  onNavigateTab?: (tab: FrontstagePageTab) => void;
   initialPageTree?: FrontStageTreeNode[];
   isPageTreeLoading?: boolean;
   hasPageTreeLoadError?: boolean;

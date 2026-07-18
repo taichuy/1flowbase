@@ -51,33 +51,23 @@ function createPageContent(title = '页面 1') {
       kind: 'page' as const,
       parentId: null,
       rank: '001000',
+      contentPresentation: 'single' as const
     },
-    schema: {
-      rootUid: 'root-1',
-      payload: { blocks: [{ uid: 'hero' }] }
+    tab: {
+      id: 'tab-1',
+      pageId: 'page-1',
+      title: '概览',
+      rank: '001000',
+      isDefault: true,
+      routeSegment: null,
+      documentRootUid: 'root-1'
     },
-    root: {
-      uid: 'root-1',
-      payload: {
-        kind: 'frontstage.page.root',
-        children: ['hero']
-      }
-    }
+    document: { rootUid: 'root-1', payload: { blocks: [{ uid: 'hero' }] } }
   };
 }
 
 function createSaveInput() {
-  return {
-    schema: {
-      payload: { blocks: [{ uid: 'hero' }] }
-    },
-    root: {
-      payload: {
-        kind: 'frontstage.page.root',
-        children: ['hero']
-      }
-    }
-  };
+  return { payload: { blocks: [{ uid: 'hero' }] } };
 }
 
 function setupSave(queryClient = createQueryClient()) {
@@ -145,7 +135,7 @@ describe('useFrontstagePageContentSave', () => {
       createPageContent('页面 已保存')
     );
     expect(invalidateQueriesSpy).toHaveBeenCalledWith({
-      queryKey,
+      queryKey: ['frontstage', 'workspace-1', 'pages', 'page-1', 'tabs'],
       refetchType: 'active'
     });
     expect(result.current.saving).toBe(false);

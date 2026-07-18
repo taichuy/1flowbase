@@ -6,6 +6,7 @@ export type FrontStageTreeNode = {
   icon?: string | null;
   tooltip?: string | null;
   is_hidden?: boolean;
+  content_presentation?: 'single' | 'tabs';
   kind: 'group' | 'page';
   children?: FrontStageTreeNode[];
 };

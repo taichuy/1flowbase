@@ -56,6 +56,7 @@ function createDocument(
       kind: 'page',
       parentId: null,
       rank: '001000',
+      contentPresentation: 'single',
     },
     rootUid: 'root-1',
     blocks,
