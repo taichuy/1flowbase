@@ -119,6 +119,16 @@ pub struct StartPublishedFlowRunCommand {
     pub flow_run_id: Uuid,
 }
 
+/// Starts a published application-flow Compact branch with the already
+/// classified, typed provider result. The ingress is transient; the runtime
+/// persists only the Compact Response terminal receipt through the normal
+/// terminal winner path.
+pub struct StartPublishedCompactFlowRunCommand {
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub ingress: orchestration_runtime::execution_state::CompactResponseIngress,
+}
+
 #[derive(Debug, Clone)]
 pub struct LiveProviderStreamEvent {
     pub node_id: String,
@@ -826,9 +836,39 @@ where
     where
         R: crate::ports::FileManagementRepository,
     {
+        self.start_published_flow_run_inner(command.application_id, command.flow_run_id, None)
+            .await
+    }
+
+    pub async fn start_published_compact_flow_run(
+        &self,
+        command: StartPublishedCompactFlowRunCommand,
+    ) -> Result<domain::ApplicationRunDetail>
+    where
+        R: crate::ports::FileManagementRepository,
+    {
+        self.start_published_flow_run_inner(
+            command.application_id,
+            command.flow_run_id,
+            Some(command.ingress),
+        )
+        .await
+    }
+
+    async fn start_published_flow_run_inner(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        compact_response_ingress: Option<
+            orchestration_runtime::execution_state::CompactResponseIngress,
+        >,
+    ) -> Result<domain::ApplicationRunDetail>
+    where
+        R: crate::ports::FileManagementRepository,
+    {
         let flow_run = self
             .repository
-            .get_flow_run(command.application_id, command.flow_run_id)
+            .get_flow_run(application_id, flow_run_id)
             .await?
             .ok_or_else(|| anyhow!("flow run not found"))?;
         if flow_run.run_mode != domain::FlowRunMode::PublishedApiRun {
@@ -841,7 +881,7 @@ where
         .await?;
         let application = self
             .repository
-            .get_application(actor.current_workspace_id, command.application_id)
+            .get_application(actor.current_workspace_id, application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
 
@@ -871,7 +911,7 @@ where
         let Some(running) = running else {
             return self
                 .repository
-                .get_application_run_detail(command.application_id, flow_run.id)
+                .get_application_run_detail(application_id, flow_run.id)
                 .await?
                 .ok_or_else(|| anyhow!("flow run detail not found"));
         };
@@ -912,19 +952,28 @@ where
             let _ = stream.append(running.id, flow_started_event).await;
         }
 
-        let result = self
-            .continue_flow_debug_run(ContinueFlowDebugRunCommand {
-                application_id: command.application_id,
-                flow_run_id: running.id,
-                workspace_id: application.workspace_id,
-            })
-            .await;
+        let continuation = ContinueFlowDebugRunCommand {
+            application_id,
+            flow_run_id: running.id,
+            workspace_id: application.workspace_id,
+        };
+        let result = match compact_response_ingress {
+            Some(ingress) => {
+                live_debug_run::continue_flow_debug_run_with_compact_ingress(
+                    self,
+                    continuation,
+                    ingress,
+                )
+                .await
+            }
+            None => self.continue_flow_debug_run(continuation).await,
+        };
         let detail = match result {
             Ok(detail) => detail,
             Err(error) => {
                 if let Ok(Some(failed)) = self
                     .repository
-                    .get_flow_run(command.application_id, running.id)
+                    .get_flow_run(application_id, running.id)
                     .await
                 {
                     self.append_published_terminal_audit(&application, &failed)

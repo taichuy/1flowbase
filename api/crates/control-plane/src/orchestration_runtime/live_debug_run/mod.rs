@@ -210,6 +210,31 @@ where
     continuation::continue_flow_debug_run(service, command).await
 }
 
+pub(super) async fn continue_flow_debug_run_with_compact_ingress<R, H>(
+    service: &OrchestrationRuntimeService<R, H>,
+    command: ContinueFlowDebugRunCommand,
+    ingress: orchestration_runtime::execution_state::CompactResponseIngress,
+) -> Result<domain::ApplicationRunDetail>
+where
+    R: crate::ports::ApplicationRepository
+        + crate::ports::FileManagementRepository
+        + crate::ports::FlowRepository
+        + crate::ports::OrchestrationRuntimeRepository
+        + crate::ports::ModelDefinitionRepository
+        + crate::ports::ModelProviderRepository
+        + crate::ports::NodeContributionRepository
+        + crate::ports::PluginRepository
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    H: crate::ports::ProviderRuntimePort
+        + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
+        + Clone,
+{
+    continuation::continue_flow_debug_run_with_compact_ingress(service, command, ingress).await
+}
+
 pub(super) async fn continue_flow_debug_run_with_live_provider_events<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: ContinueFlowDebugRunCommand,

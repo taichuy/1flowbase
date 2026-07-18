@@ -13,6 +13,9 @@ pub(super) async fn continue_flow_debug_run_inner<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: &ContinueFlowDebugRunCommand,
     live_provider_events: Option<LiveProviderStreamEventSender>,
+    compact_response_ingress: Option<
+        orchestration_runtime::execution_state::CompactResponseIngress,
+    >,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::ApplicationRepository
@@ -119,6 +122,9 @@ where
     if let Some(http_file_persister) = service.http_response_file_persister(actor) {
         runtime_context =
             runtime_context.with_http_response_file_persister(Arc::new(http_file_persister));
+    }
+    if let Some(ingress) = compact_response_ingress {
+        runtime_context = runtime_context.with_application_flow_compact_ingress(ingress);
     }
 
     let outcome = orchestration_runtime::execution_engine::start_flow_debug_run_with_runtime_context_and_lifecycle(

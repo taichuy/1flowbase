@@ -1,11 +1,37 @@
 use orchestration_runtime::answer_projection::{
     answer_segments_from_value, AnswerProjectionSegment, ANSWER_SEGMENTS_KEY,
 };
+use orchestration_runtime::execution_state::CompactResponseReceipt;
 use serde_json::{json, Value};
 
 use crate::application_public_api::native::{self, NativeRunResult, NativeRunStatus};
 
 use super::repository_contracts::{PublishedRunPendingCallback, PublishedRunStreamState};
+
+/// A durable native projection for the application-flow Compact terminal.
+/// The receipt is decoded only from the committed winner payload, never from
+/// an inbound protocol body or an ordinary Answer output.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NativeCompactRunResult {
+    pub run: NativeRunResult,
+    pub receipt: Option<CompactResponseReceipt>,
+}
+
+pub fn native_compact_result_from_run_detail(
+    detail: &domain::ApplicationRunDetail,
+    metadata: Value,
+) -> NativeCompactRunResult {
+    let receipt = matches!(
+        detail.flow_run.status,
+        domain::FlowRunStatus::Succeeded | domain::FlowRunStatus::Incomplete
+    )
+    .then(|| CompactResponseReceipt::from_payload(&detail.flow_run.output_payload).ok())
+    .flatten();
+    NativeCompactRunResult {
+        run: native_result_from_run_detail(detail, metadata),
+        receipt,
+    }
+}
 
 pub fn native_result_from_flow_run(
     flow_run: &domain::FlowRunRecord,

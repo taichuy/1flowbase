@@ -875,6 +875,15 @@ where
         Ok(run)
     }
 
+    pub async fn create_application_flow_compact_run(
+        &self,
+        command: CreateNativeRunCommand,
+    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+        self.published_run_service()
+            .start_application_flow_compact_run(command)
+            .await
+    }
+
     pub async fn get_native_run(
         &self,
         command: GetNativeRunCommand,

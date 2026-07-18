@@ -1,9 +1,14 @@
 use std::sync::Arc;
 
+use orchestration_runtime::{
+    compiled_plan::{CompiledLlmRuntime, CompiledPlan, StartCompactDispatch},
+    execution_state::CompactResponseIngress,
+};
 use plugin_framework::{
     provider_contract::{
         ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
-        ProviderInvocationInput, ProviderMessage, ProviderMessageRole, ProviderWireOperation,
+        ProviderInvocationInput, ProviderMessage, ProviderMessageRole, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderWireOperation,
     },
     provider_package::{ProviderConfigField, ProviderPackage},
 };
@@ -12,12 +17,13 @@ use uuid::Uuid;
 
 use super::super::{
     api_keys::{ApplicationApiKeyActor, ApplicationApiKeyService},
-    native::NativeRunRequest,
+    native::{CompactionProfile, NativeRunRequest},
     publications::ApplicationPublicationVersionRecord,
 };
 use super::{
-    PublishedProviderManifestCapabilityRepository, PublishedRouteResolutionError,
-    PublishedRouteResolver, ResolvedCompactProviderRoute,
+    GenerateExecutionProfile, PublishedProviderManifestCapabilityRepository,
+    PublishedRouteDispatch, PublishedRouteResolutionError, PublishedRouteResolver,
+    ResolvedCompactProviderRoute, ResolvedProviderRoute, ResolvedPublishedRoute,
 };
 use crate::ports::{
     ApiKeyRepository, ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
@@ -32,6 +38,21 @@ pub struct CompactCommand {
     pub bearer_token: String,
     pub request: NativeRunRequest,
     pub profile: ProviderCompactProfile,
+}
+
+/// A classified Compact request used only to decide whether a published Start
+/// owns the application-flow terminal. It carries no raw provider output.
+#[derive(Debug, Clone)]
+pub struct ApplicationFlowCompactCommand {
+    pub bearer_token: String,
+    pub request: NativeRunRequest,
+    pub profile: CompactionProfile,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PublishedCompactDispatch {
+    Transparent,
+    ApplicationFlow(CompactResponseIngress),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,8 +133,9 @@ where
             )
             .await
             .map_err(PublishedCompactError::RouteUnavailable)?;
-        let (installation, provider_config) =
-            self.load_compact_target(actor.workspace_id, &route).await?;
+        let (installation, provider_config) = self
+            .load_compact_target(actor.workspace_id, &route.llm_runtime)
+            .await?;
         let input = compact_invocation_input(command.request, route, provider_config)?;
         let result = self
             .runtime
@@ -122,6 +144,138 @@ where
             .map_err(published_compact_runtime_error)?;
 
         Ok(PublishedCompactResult { result })
+    }
+
+    /// Resolves the frozen Start dispatch before any flow run is created. A
+    /// transparent Start leaves K3 on its existing direct provider route;
+    /// application-flow dispatch admits exactly one typed ingress for A2.
+    pub async fn resolve_application_flow_compact(
+        &self,
+        command: ApplicationFlowCompactCommand,
+    ) -> Result<PublishedCompactDispatch, PublishedCompactError> {
+        let actor = self
+            .api_key_service()
+            .authenticate_bearer_token(&command.bearer_token)
+            .await
+            .map_err(|_| PublishedCompactError::NotAuthenticated)?;
+        self.ensure_application_exists(&actor).await?;
+
+        let publication = self.load_enabled_publication(&actor).await?;
+        let compiled_plan_record = self
+            .repository
+            .get_application_compiled_plan(publication.compiled_plan_id)
+            .await
+            .map_err(|_| PublishedCompactError::ApplicationNotPublished)?
+            .ok_or(PublishedCompactError::ApplicationNotPublished)?;
+        if compact_start_dispatch(&compiled_plan_record.plan)? == StartCompactDispatch::Transparent
+        {
+            return Ok(PublishedCompactDispatch::Transparent);
+        }
+
+        let ingress = match command.profile {
+            CompactionProfile::LocalSummary => {
+                let route = PublishedRouteResolver::new(&self.repository)
+                    .resolve_generate(
+                        actor.workspace_id,
+                        &publication,
+                        &compiled_plan_record,
+                        PublishedRouteDispatch::OperationBinding,
+                        GenerateExecutionProfile::LocalSummary,
+                    )
+                    .await
+                    .map_err(PublishedCompactError::RouteUnavailable)?;
+                let ResolvedPublishedRoute::Provider(route) = route else {
+                    return Err(PublishedCompactError::RouteUnavailable(
+                        PublishedRouteResolutionError::OperationUnbound,
+                    ));
+                };
+                self.local_summary_ingress(actor.workspace_id, command.request, route)
+                    .await?
+            }
+            CompactionProfile::ResponsesCompact => {
+                self.remote_compact_ingress(
+                    actor.workspace_id,
+                    &publication,
+                    &compiled_plan_record,
+                    command.request,
+                    ProviderCompactProfile::ResponsesCompact,
+                )
+                .await?
+            }
+            CompactionProfile::ResponsesCompactionV2 => {
+                self.remote_compact_ingress(
+                    actor.workspace_id,
+                    &publication,
+                    &compiled_plan_record,
+                    command.request,
+                    ProviderCompactProfile::ResponsesCompactionV2,
+                )
+                .await?
+            }
+        };
+        Ok(PublishedCompactDispatch::ApplicationFlow(ingress))
+    }
+
+    async fn local_summary_ingress(
+        &self,
+        workspace_id: Uuid,
+        request: NativeRunRequest,
+        route: ResolvedProviderRoute,
+    ) -> Result<CompactResponseIngress, PublishedCompactError> {
+        let (installation, provider_config) = self
+            .load_compact_target(workspace_id, &route.llm_runtime)
+            .await?;
+        let output = self
+            .runtime
+            .invoke_stream(
+                &installation,
+                local_summary_invocation_input(request, route, provider_config)?,
+            )
+            .await
+            .map_err(published_generate_runtime_error)?;
+        if let Some(error) = output.events.iter().find_map(|event| match event {
+            ProviderStreamEvent::Error { error } => Some(error.clone()),
+            _ => None,
+        }) {
+            return Err(PublishedCompactError::Provider(
+                ProviderCompactError::Runtime { error },
+            ));
+        }
+        CompactResponseIngress::local_generate(output.result).map_err(compact_ingress_error)
+    }
+
+    async fn remote_compact_ingress(
+        &self,
+        workspace_id: Uuid,
+        publication: &ApplicationPublicationVersionRecord,
+        compiled_plan_record: &domain::CompiledPlanRecord,
+        request: NativeRunRequest,
+        profile: ProviderCompactProfile,
+    ) -> Result<CompactResponseIngress, PublishedCompactError> {
+        let route = PublishedRouteResolver::new(&self.repository)
+            .resolve_compact(workspace_id, publication, compiled_plan_record, profile)
+            .await
+            .map_err(PublishedCompactError::RouteUnavailable)?;
+        let (installation, provider_config) = self
+            .load_compact_target(workspace_id, &route.llm_runtime)
+            .await?;
+        let result = self
+            .runtime
+            .compact(
+                &installation,
+                compact_invocation_input(request, route, provider_config)?,
+            )
+            .await
+            .map_err(published_compact_runtime_error)?;
+        match profile {
+            ProviderCompactProfile::ResponsesCompact => {
+                CompactResponseIngress::responses_compact(result).map_err(compact_ingress_error)
+            }
+            ProviderCompactProfile::ResponsesCompactionV2 => {
+                CompactResponseIngress::responses_compaction_v2(result)
+                    .map_err(compact_ingress_error)
+            }
+        }
     }
 
     fn api_key_service(&self) -> ApplicationApiKeyService<R> {
@@ -161,9 +315,9 @@ where
     async fn load_compact_target(
         &self,
         workspace_id: Uuid,
-        route: &ResolvedCompactProviderRoute,
+        runtime: &CompiledLlmRuntime,
     ) -> Result<(domain::PluginInstallationRecord, Value), PublishedCompactError> {
-        let provider_instance_id = Uuid::parse_str(&route.llm_runtime.provider_instance_id)
+        let provider_instance_id = Uuid::parse_str(&runtime.provider_instance_id)
             .map_err(|_| PublishedCompactError::ProviderTargetUnavailable)?;
         let instance = self
             .repository
@@ -171,15 +325,15 @@ where
             .await
             .map_err(|_| PublishedCompactError::ProviderTargetUnavailable)?
             .ok_or(PublishedCompactError::ProviderTargetUnavailable)?;
-        if instance.provider_code != route.llm_runtime.provider_code
-            || instance.protocol != route.llm_runtime.protocol
+        if instance.provider_code != runtime.provider_code
+            || instance.protocol != runtime.protocol
             || instance.status != domain::ModelProviderInstanceStatus::Ready
             || !instance.included_in_main
             || (!instance.enabled_model_ids.is_empty()
                 && !instance
                     .enabled_model_ids
                     .iter()
-                    .any(|model_id| model_id == &route.llm_runtime.model))
+                    .any(|model_id| model_id == &runtime.model))
         {
             return Err(PublishedCompactError::ProviderTargetUnavailable);
         }
@@ -218,6 +372,28 @@ where
     }
 }
 
+fn compact_start_dispatch(
+    plan_payload: &Value,
+) -> Result<StartCompactDispatch, PublishedCompactError> {
+    let plan: CompiledPlan = serde_json::from_value(plan_payload.clone()).map_err(|_| {
+        PublishedCompactError::RouteUnavailable(PublishedRouteResolutionError::CompiledPlanInvalid)
+    })?;
+    let mut starts = plan.nodes.values().filter(|node| node.node_type == "start");
+    let start = starts
+        .next()
+        .ok_or(PublishedCompactError::RouteUnavailable(
+            PublishedRouteResolutionError::CompiledPlanInvalid,
+        ))?;
+    if starts.next().is_some() {
+        return Err(PublishedCompactError::RouteUnavailable(
+            PublishedRouteResolutionError::CompiledPlanInvalid,
+        ));
+    }
+    StartCompactDispatch::from_start_config(&start.config).map_err(|_| {
+        PublishedCompactError::RouteUnavailable(PublishedRouteResolutionError::CompiledPlanInvalid)
+    })
+}
+
 fn compact_invocation_input(
     request: NativeRunRequest,
     route: ResolvedCompactProviderRoute,
@@ -238,6 +414,48 @@ fn compact_invocation_input(
         client_protocol_envelope: request.client_protocol_envelope,
         ..ProviderInvocationInput::default()
     })
+}
+
+fn local_summary_invocation_input(
+    request: NativeRunRequest,
+    route: ResolvedProviderRoute,
+    provider_config: Value,
+) -> Result<ProviderInvocationInput, PublishedCompactError> {
+    let messages = compact_messages(&request)?;
+    Ok(ProviderInvocationInput {
+        operation: ProviderWireOperation::Generate,
+        provider_instance_id: route.llm_runtime.provider_instance_id,
+        provider_code: route.llm_runtime.provider_code,
+        protocol: route.llm_runtime.protocol,
+        model: route.llm_runtime.model,
+        provider_config,
+        messages,
+        system: request.system,
+        request_context: request.request_context,
+        client_protocol_envelope: request.client_protocol_envelope,
+        ..ProviderInvocationInput::default()
+    })
+}
+
+fn compact_ingress_error(error: anyhow::Error) -> PublishedCompactError {
+    PublishedCompactError::Provider(ProviderCompactError::InvalidContract {
+        message: error.to_string(),
+    })
+}
+
+fn published_generate_runtime_error(error: anyhow::Error) -> PublishedCompactError {
+    error
+        .downcast_ref::<ProviderCompactError>()
+        .cloned()
+        .map(PublishedCompactError::Provider)
+        .unwrap_or_else(|| {
+            PublishedCompactError::Provider(ProviderCompactError::Runtime {
+                error: ProviderRuntimeError::new(
+                    ProviderRuntimeErrorKind::ProviderUpstreamError,
+                    error.to_string(),
+                ),
+            })
+        })
 }
 
 async fn compact_provider_config<R>(

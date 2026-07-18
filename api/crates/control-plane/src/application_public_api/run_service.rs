@@ -45,7 +45,8 @@ pub use count_tokens::{
     PublishedCountTokensResult,
 };
 pub use native_results::{
-    native_result_from_flow_run, native_result_from_run_detail, native_result_from_run_stream_state,
+    native_compact_result_from_run_detail, native_result_from_flow_run,
+    native_result_from_run_detail, native_result_from_run_stream_state, NativeCompactRunResult,
 };
 pub use repository_contracts::{
     ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
@@ -109,6 +110,29 @@ where
         &self,
         command: CreateNativeRunCommand,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+        self.start_native_run_for_dispatch(command, PublishedRouteDispatch::OperationBinding)
+            .await
+    }
+
+    /// Creates the durable shell for a Compact request that has already been
+    /// admitted to the application-flow terminal. Provider ingress remains
+    /// transient and is supplied only when the runtime starts this run.
+    pub async fn start_application_flow_compact_run(
+        &self,
+        command: CreateNativeRunCommand,
+    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+        if command.request.execution.compaction_intent().is_none() {
+            return Err(NativeRunValidationError::InvalidMapping);
+        }
+        self.start_native_run_for_dispatch(command, PublishedRouteDispatch::ApplicationFlow)
+            .await
+    }
+
+    async fn start_native_run_for_dispatch(
+        &self,
+        command: CreateNativeRunCommand,
+        route_dispatch: PublishedRouteDispatch,
+    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
         let mut api_key_service = ApplicationApiKeyService::new(self.repository.clone());
         if let Some(cache) = &self.last_used_cache {
             api_key_service = api_key_service.with_last_used_cache(cache.clone());
@@ -121,6 +145,10 @@ where
 
         let publication = self.load_enabled_publication(&actor).await?;
         let client_request = command.request;
+        let generate_profile = client_request
+            .execution
+            .generate_profile()
+            .unwrap_or(GenerateExecutionProfile::Standard);
         let external_model_parameters = validate_external_model_parameters(
             client_request.execution.model_parameters(),
             client_request.model.as_deref(),
@@ -149,8 +177,8 @@ where
                 actor.workspace_id,
                 &publication,
                 &compiled_plan,
-                PublishedRouteDispatch::OperationBinding,
-                GenerateExecutionProfile::Standard,
+                route_dispatch,
+                generate_profile,
             )
             .await
             .map_err(NativeRunValidationError::RouteUnavailable)?;
@@ -596,6 +624,7 @@ fn ensure_idempotency_fingerprint_matches(
 mod tests {
     use super::super::conversations::ApplicationPublicConversationMessageRecord;
     use super::*;
+    use plugin_framework::provider_contract::{ProviderFinishReason, ProviderInvocationResult};
     use serde_json::json;
     use time::OffsetDateTime;
     use uuid::Uuid;
@@ -708,6 +737,38 @@ mod tests {
                 { "kind": "message", "text": "结构化回答" }
             ])
         );
+    }
+
+    #[test]
+    fn native_compact_projection_reads_only_a_successful_durable_receipt() {
+        let result = ProviderInvocationResult {
+            final_content: Some("typed local compact summary".to_string()),
+            finish_reason: Some(ProviderFinishReason::Stop),
+            ..ProviderInvocationResult::default()
+        };
+        let receipt_payload = json!({
+            "semantic_terminal": "compact_response",
+            "profile": "local_summary",
+            "result": serde_json::to_value(result).expect("fixture receipt should serialize"),
+        });
+        let mut detail = domain::ApplicationRunDetail {
+            flow_run: test_flow_run(receipt_payload),
+            node_runs: Vec::new(),
+            checkpoints: Vec::new(),
+            callback_tasks: Vec::new(),
+            events: Vec::new(),
+            stitched_trace: Vec::new(),
+            subagent_traces: Vec::new(),
+        };
+
+        let projected = native_compact_result_from_run_detail(&detail, json!({}));
+        assert!(projected.receipt.is_some());
+        assert!(projected.run.answer.is_none());
+
+        detail.flow_run.status = domain::FlowRunStatus::Failed;
+        let failed = native_compact_result_from_run_detail(&detail, json!({}));
+        assert!(failed.receipt.is_none());
+        assert!(failed.run.answer.is_none());
     }
 
     #[test]
