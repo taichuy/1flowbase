@@ -221,6 +221,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     let console_operation_registry =
         api_server::app_state::compile_core_console_operation_registry(&settings_feature_registry)
             .expect("core console operation registry should compile");
+    let process_started_at = OffsetDateTime::now_utc();
 
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
@@ -234,7 +235,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             file_storage_registry: std::sync::Arc::new(storage_object::builtin_driver_registry()),
             runtime_engine,
             provider_runtime,
-            process_started_at: OffsetDateTime::now_utc(),
+            process_started_at,
             runtime_activity: std::sync::Arc::new(
                 api_server::runtime_activity::ApplicationRuntimeActivityTracker::default(),
             ),
