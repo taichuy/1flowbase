@@ -6,7 +6,6 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::warn;
 use uuid::Uuid;
 
-use super::debug_stream_events;
 use crate::ports::{
     AppendRuntimeEventInput, OrchestrationRuntimeRepository, RuntimeEventCloseReason,
     RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventStream,
@@ -203,53 +202,46 @@ where
     Ok(())
 }
 
-pub async fn fail_runtime_event_stream_if_missing_terminal(
+pub async fn project_runtime_event_stream_terminal(
     stream: Arc<dyn RuntimeEventStream>,
-    run_id: Uuid,
-    error: &anyhow::Error,
+    flow_run: &domain::FlowRunRecord,
 ) {
-    match stream.replay(run_id, None, usize::MAX).await {
-        Ok(events)
-            if events
-                .iter()
-                .any(|event| is_terminal_runtime_event(&event.event_type)) =>
-        {
-            return;
-        }
-        Ok(_) => {}
-        Err(replay_error) => {
-            warn!(
-                flow_run_id = %run_id,
-                error = %replay_error,
-                "failed to check runtime event stream terminal state"
-            );
-        }
-    }
-
-    let error_payload = serde_json::json!({ "message": error.to_string() });
-    if let Err(append_error) = stream
-        .append(
-            run_id,
-            debug_stream_events::flow_failed(run_id, error_payload),
-        )
-        .await
-    {
+    let Some(terminal_event) =
+        super::stream_terminal_recovery::terminal_event_from_flow_run(flow_run)
+    else {
         warn!(
-            flow_run_id = %run_id,
-            event_type = "flow_failed",
-            error = %append_error,
-            "failed to append fallback runtime terminal event"
+            flow_run_id = %flow_run.id,
+            durable_status = %flow_run.status.as_str(),
+            "runtime event stream fallback has no durable terminal to project"
         );
-    }
-    if let Err(close_error) = stream
-        .close_run(run_id, RuntimeEventCloseReason::Failed)
+        return;
+    };
+    project_runtime_event_stream_terminal_payload(
+        stream,
+        flow_run.id,
+        flow_run.status,
+        terminal_event,
+    )
+    .await;
+}
+
+pub(super) async fn project_runtime_event_stream_terminal_payload(
+    stream: Arc<dyn RuntimeEventStream>,
+    flow_run_id: Uuid,
+    durable_status: domain::FlowRunStatus,
+    mut terminal_event: RuntimeEventPayload,
+) {
+    terminal_event.persist_required = false;
+    terminal_event.durability = crate::ports::RuntimeEventDurability::Ephemeral;
+    if let Err(error) = stream
+        .append_terminal_if_missing_and_close(flow_run_id, terminal_event)
         .await
     {
         warn!(
-            flow_run_id = %run_id,
-            reason = ?RuntimeEventCloseReason::Failed,
-            error = %close_error,
-            "failed to close fallback runtime event stream"
+            flow_run_id = %flow_run_id,
+            durable_status = %durable_status.as_str(),
+            error = %error,
+            "failed to project durable terminal to runtime event stream"
         );
     }
 }

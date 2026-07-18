@@ -7,19 +7,21 @@ use crate::{
     flow_run_title::display_flow_run_title,
     ports::{
         AppendBillingSessionInput, AppendCostLedgerInput, AppendCreditLedgerInput,
-        AppendRunEventInput, AttachCompiledPlanToFlowRunInput, CreateFlowRunShellInput,
-        FailQueuedFlowRunShellInput, OrchestrationRuntimeRepository,
+        AppendRunEventInput, AttachCompiledPlanToFlowRunInput, CommitFlowRunTerminalInput,
+        CommitFlowRunTerminalResult, CreateFlowRunShellInput, OrchestrationRuntimeRepository,
     },
+    state_transition::ensure_flow_run_transition,
 };
 
 use super::super::{
     compile_context::ensure_compiled_plan_runnable,
     debug_stream_events, freeze_failover_queue_routes,
     inputs::{build_compiled_plan_input, flow_document_hash, flow_document_schema_version},
+    stream_terminal_recovery::{resolve_terminal_commit, TerminalCommitResolution},
     ApplicationRunContext, OrchestrationRuntimeService, PrepareFlowDebugRunCommand,
     StartFlowDebugRunCommand,
 };
-use super::{append_runtime_event, emit_flow_failed_and_close, fail_flow_run, load_run_detail};
+use super::{append_runtime_event, fail_flow_run, load_run_detail, project_committed_terminal};
 
 pub(super) async fn start_flow_debug_run<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
@@ -396,26 +398,42 @@ where
     let error_payload = json!({ "message": error.to_string() });
     let Some(flow_run) = service
         .repository
-        .fail_queued_flow_run_shell(&FailQueuedFlowRunShellInput {
-            flow_run_id,
-            output_payload: json!({}),
-            error_payload: error_payload.clone(),
-            finished_at: OffsetDateTime::now_utc(),
-        })
+        .get_flow_run(application_id, flow_run_id)
         .await?
     else {
         return Ok(None);
     };
-    emit_flow_failed_and_close(service, flow_run.id, error_payload.clone()).await;
-    service
+    if flow_run.status != domain::FlowRunStatus::Queued || flow_run.compiled_plan_id.is_some() {
+        return Ok(None);
+    }
+    ensure_flow_run_transition(
+        flow_run.status,
+        domain::FlowRunStatus::Failed,
+        "fail_queued_flow_run_shell",
+    )?;
+    let terminal_event = debug_stream_events::flow_failed(flow_run.id, error_payload.clone());
+    let receipt = service
         .repository
-        .append_run_event(&AppendRunEventInput {
+        .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
             flow_run_id: flow_run.id,
-            node_run_id: None,
-            event_type: "flow_run_failed".to_string(),
-            payload: error_payload.clone(),
+            expected_status: flow_run.status,
+            result: CommitFlowRunTerminalResult::Failed {
+                output_payload: json!({}),
+                error_payload: error_payload.clone(),
+            },
+            flow_run_event_payload: error_payload,
+            terminal_event_payload: terminal_event.payload,
+            finished_at: OffsetDateTime::now_utc(),
         })
         .await?;
+    let flow_run =
+        match resolve_terminal_commit(&service.repository, application_id, flow_run.id, receipt)
+            .await?
+        {
+            TerminalCommitResolution::Winner(flow_run)
+            | TerminalCommitResolution::Loser(flow_run) => flow_run,
+        };
+    project_committed_terminal(service, &flow_run).await;
 
     load_run_detail(&service.repository, application_id, flow_run.id)
         .await

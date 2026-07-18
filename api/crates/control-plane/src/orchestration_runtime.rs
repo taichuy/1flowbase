@@ -29,7 +29,8 @@ use crate::{
     plugin_management::ready_current_node_plugin_installation,
     ports::{
         AppendRunEventInput, ApplicationJsDependencySelectionRepository, ApplicationRepository,
-        CacheStore, CallbackResumeWaitingNode, CompleteCallbackTaskInput, FlowRepository,
+        CacheStore, CallbackResumeWaitingNode, CommitFlowRunTerminalInput,
+        CommitFlowRunTerminalResult, CompleteCallbackTaskInput, FlowRepository,
         ModelDefinitionRepository, ModelProviderRepository, NodeContributionRepository,
         OrchestrationRuntimeRepository, PluginRepository, ProviderRuntimePort,
         RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventStream, TaskQueue,
@@ -253,7 +254,7 @@ where
 }
 
 pub use runtime_event_persister::{
-    fail_runtime_event_stream_if_missing_terminal, spawn_runtime_debug_event_persister,
+    project_runtime_event_stream_terminal, spawn_runtime_debug_event_persister,
     wait_for_runtime_debug_event_persister,
 };
 
@@ -699,14 +700,56 @@ where
             },
             "complete_flow_debug_preview",
         )?;
-        let flow_run = self
+        let completion = build_complete_flow_run_input(&flow_run, &preview, finished_at);
+        let terminal_event = if completion.status == domain::FlowRunStatus::Failed {
+            debug_stream_events::flow_failed(
+                flow_run.id,
+                completion
+                    .error_payload
+                    .clone()
+                    .unwrap_or_else(|| json!({ "message": "node preview failed" })),
+            )
+        } else {
+            debug_stream_events::flow_finished(flow_run.id, completion.output_payload.clone())
+        };
+        let result = if completion.status == domain::FlowRunStatus::Failed {
+            CommitFlowRunTerminalResult::Failed {
+                output_payload: completion.output_payload,
+                error_payload: completion
+                    .error_payload
+                    .unwrap_or_else(|| json!({ "message": "node preview failed" })),
+            }
+        } else {
+            CommitFlowRunTerminalResult::Succeeded {
+                output_payload: completion.output_payload,
+            }
+        };
+        let flow_run_event_payload = result
+            .error_payload()
+            .cloned()
+            .unwrap_or_else(|| result.output_payload().clone());
+        let receipt = self
             .repository
-            .complete_flow_run(&build_complete_flow_run_input(
-                &flow_run,
-                &preview,
+            .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
+                flow_run_id: flow_run.id,
+                expected_status: flow_run.status,
+                result,
+                flow_run_event_payload,
+                terminal_event_payload: terminal_event.payload,
                 finished_at,
-            ))
+            })
             .await?;
+        let flow_run = match stream_terminal_recovery::resolve_terminal_commit(
+            &self.repository,
+            command.application_id,
+            flow_run.id,
+            receipt,
+        )
+        .await?
+        {
+            stream_terminal_recovery::TerminalCommitResolution::Winner(flow_run)
+            | stream_terminal_recovery::TerminalCommitResolution::Loser(flow_run) => flow_run,
+        };
         let mut variable_cache = command
             .input_payload
             .as_object()
@@ -1234,24 +1277,34 @@ where
                 domain::FlowRunStatus::Failed,
                 "complete_data_model_side_effect_callback",
             )?;
-            let failed_flow_run = self
+            let terminal_event =
+                debug_stream_events::flow_failed(flow_run.id, error_payload.clone());
+            let receipt = self
                 .repository
-                .update_flow_run(&UpdateFlowRunInput {
+                .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
                     flow_run_id: flow_run.id,
-                    status: domain::FlowRunStatus::Failed,
-                    output_payload: flow_run.output_payload.clone(),
-                    error_payload: Some(error_payload.clone()),
-                    finished_at: Some(OffsetDateTime::now_utc()),
+                    expected_status: flow_run.status,
+                    result: CommitFlowRunTerminalResult::Failed {
+                        output_payload: flow_run.output_payload.clone(),
+                        error_payload: error_payload.clone(),
+                    },
+                    flow_run_event_payload: error_payload,
+                    terminal_event_payload: terminal_event.payload,
+                    finished_at: OffsetDateTime::now_utc(),
                 })
                 .await?;
-            self.repository
-                .append_run_event(&AppendRunEventInput {
-                    flow_run_id: flow_run.id,
-                    node_run_id: Some(callback_task.node_run_id),
-                    event_type: "flow_run_failed".to_string(),
-                    payload: error_payload,
-                })
-                .await?;
+            let failed_flow_run = match stream_terminal_recovery::resolve_terminal_commit(
+                &self.repository,
+                command.application_id,
+                flow_run.id,
+                receipt,
+            )
+            .await?
+            {
+                stream_terminal_recovery::TerminalCommitResolution::Winner(flow_run)
+                | stream_terminal_recovery::TerminalCommitResolution::Loser(flow_run) => flow_run,
+            };
+            live_debug_run::project_committed_terminal(self, &failed_flow_run).await;
             return Ok(failed_flow_run);
         }
 
@@ -1357,7 +1410,15 @@ where
                     }
                 }
             }
-            if let Some(reason) = persisted.close_reason {
+            if let Some(terminal_event) = &persisted.terminal_event {
+                runtime_event_persister::project_runtime_event_stream_terminal_payload(
+                    stream.clone(),
+                    flow_run_id,
+                    persisted.flow_run.status,
+                    terminal_event.clone(),
+                )
+                .await;
+            } else if let Some(reason) = persisted.close_reason {
                 if let Err(error) = stream.close_run(flow_run_id, reason).await {
                     if is_expected_runtime_event_stream_closed_error(&error) {
                         tracing::debug!(

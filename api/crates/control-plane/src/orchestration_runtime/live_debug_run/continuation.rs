@@ -5,12 +5,12 @@ use time::OffsetDateTime;
 use crate::{
     errors::ControlPlaneError,
     ports::{
-        AppendRunEventInput, OrchestrationRuntimeRepository, RuntimeEventCloseReason,
-        UpdateFlowRunInput,
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, OrchestrationRuntimeRepository,
     },
     state_transition::ensure_flow_run_transition,
 };
 
+use super::super::stream_terminal_recovery::{resolve_terminal_commit, TerminalCommitResolution};
 use super::super::{
     debug_stream_events, ApplicationRunContext, CancelFlowRunCommand, ContinueFlowDebugRunCommand,
     LiveProviderStreamEventSender, OrchestrationRuntimeService,
@@ -19,7 +19,7 @@ use super::super::{
 mod engine;
 mod helpers;
 
-use super::{append_runtime_event, close_runtime_event_stream, fail_flow_run, load_run_detail};
+use super::{append_runtime_event, fail_flow_run, load_run_detail, project_committed_terminal};
 use engine::continue_flow_debug_run_inner;
 
 pub(super) async fn continue_flow_debug_run<R, H>(
@@ -139,40 +139,34 @@ where
         domain::FlowRunStatus::Cancelled,
         "cancel_flow_run",
     )?;
-    let updated = service
+    let terminal_event = debug_stream_events::flow_cancelled(flow_run.id);
+    let receipt = service
         .repository
-        .update_flow_run_if_status(
-            &UpdateFlowRunInput {
-                flow_run_id: flow_run.id,
-                status: domain::FlowRunStatus::Cancelled,
+        .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
+            flow_run_id: flow_run.id,
+            expected_status: flow_run.status,
+            result: CommitFlowRunTerminalResult::Cancelled {
                 output_payload: flow_run.output_payload.clone(),
                 error_payload: flow_run.error_payload.clone(),
-                finished_at: Some(OffsetDateTime::now_utc()),
             },
-            flow_run.status,
-        )
-        .await?;
-    let Some(flow_run) = updated else {
-        return load_run_detail(&service.repository, command.application_id, flow_run.id).await;
-    };
-    append_runtime_event(
-        service,
-        flow_run.id,
-        debug_stream_events::flow_cancelled(flow_run.id),
-    )
-    .await;
-    close_runtime_event_stream(service, flow_run.id, RuntimeEventCloseReason::Cancelled).await;
-    service
-        .repository
-        .append_run_event(&AppendRunEventInput {
-            flow_run_id: flow_run.id,
-            node_run_id: None,
-            event_type: "flow_run_cancelled".to_string(),
-            payload: json!({
-                "reason": "manual_stop",
-            }),
+            flow_run_event_payload: json!({ "reason": "manual_stop" }),
+            terminal_event_payload: terminal_event.payload,
+            finished_at: OffsetDateTime::now_utc(),
         })
         .await?;
+    let flow_run = match resolve_terminal_commit(
+        &service.repository,
+        command.application_id,
+        flow_run.id,
+        receipt,
+    )
+    .await?
+    {
+        TerminalCommitResolution::Winner(flow_run) | TerminalCommitResolution::Loser(flow_run) => {
+            flow_run
+        }
+    };
+    project_committed_terminal(service, &flow_run).await;
 
     load_run_detail(&service.repository, command.application_id, flow_run.id).await
 }

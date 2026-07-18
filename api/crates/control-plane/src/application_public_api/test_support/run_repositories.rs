@@ -252,22 +252,43 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
     async fn cancel_published_flow_run(
         &self,
         input: &run_service::CancelPublishedFlowRunInput,
-    ) -> Result<Option<domain::FlowRunRecord>> {
+    ) -> Result<crate::ports::CommitFlowRunTerminalReceipt> {
         let mut inner = self
             .inner
             .lock()
             .expect("application public api test repo mutex poisoned");
         let Some(record) = inner.flow_runs.get_mut(&input.flow_run_id) else {
-            return Ok(None);
+            return Err(ControlPlaneError::NotFound("flow_run").into());
         };
-        if record.status != input.from_status {
-            return Ok(None);
+        if record.status != input.from_status
+            || matches!(
+                record.status,
+                domain::FlowRunStatus::Succeeded
+                    | domain::FlowRunStatus::Incomplete
+                    | domain::FlowRunStatus::Failed
+                    | domain::FlowRunStatus::Cancelled
+            )
+        {
+            return Ok(crate::ports::CommitFlowRunTerminalReceipt::Loser);
         }
         record.status = domain::FlowRunStatus::Cancelled;
         record.output_payload = input.output_payload.clone();
         record.error_payload = input.error_payload.clone();
         record.finished_at = Some(input.finished_at);
-        Ok(Some(record.clone()))
+        let cancelled = record.clone();
+        let events = inner.run_events.entry(input.flow_run_id).or_default();
+        events.push(domain::RunEventRecord {
+            id: Uuid::now_v7(),
+            flow_run_id: input.flow_run_id,
+            node_run_id: None,
+            sequence: (events.len() + 1) as i64,
+            event_type: "flow_run_cancelled".to_string(),
+            payload: input.flow_run_event_payload.clone(),
+            created_at: input.finished_at,
+        });
+        Ok(crate::ports::CommitFlowRunTerminalReceipt::Winner(
+            cancelled,
+        ))
     }
 
     async fn cancel_published_pending_callback_tasks_for_run(

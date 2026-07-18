@@ -298,6 +298,19 @@ pub async fn start_flow_debug_run_stream(
 
         match result {
             Ok(detail) => {
+                if matches!(
+                    detail.flow_run.status,
+                    domain::FlowRunStatus::Succeeded
+                        | domain::FlowRunStatus::Incomplete
+                        | domain::FlowRunStatus::Failed
+                        | domain::FlowRunStatus::Cancelled
+                ) {
+                    project_runtime_event_stream_terminal(
+                        background_state.runtime_event_stream.clone(),
+                        &detail.flow_run,
+                    )
+                    .await;
+                }
                 if let Err(error) = offload_application_run_detail_artifacts(
                     background_state.clone(),
                     workspace_id,
@@ -315,12 +328,30 @@ pub async fn start_flow_debug_run_stream(
                 }
             }
             Err(error) => {
-                fail_runtime_event_stream_if_missing_terminal(
-                    background_state.runtime_event_stream.clone(),
-                    run_id,
-                    &error,
-                )
-                .await;
+                match background_state.store.get_flow_run(id, run_id).await {
+                    Ok(Some(winner)) => {
+                        project_runtime_event_stream_terminal(
+                            background_state.runtime_event_stream.clone(),
+                            &winner,
+                        )
+                        .await;
+                    }
+                    Ok(None) => {
+                        error!(
+                            application_id = %id,
+                            flow_run_id = %run_id,
+                            "failed streamed flow debug run has no durable winner to project"
+                        );
+                    }
+                    Err(load_error) => {
+                        error!(
+                            application_id = %id,
+                            flow_run_id = %run_id,
+                            error = %load_error,
+                            "failed to load durable winner for runtime stream projection"
+                        );
+                    }
+                }
                 error!(
                     application_id = %id,
                     flow_run_id = %run_id,

@@ -1,5 +1,6 @@
 use control_plane::orchestration_runtime::{
-    CompleteCallbackTaskCommand, ContinueFlowDebugRunCommand, OrchestrationRuntimeService,
+    CompleteCallbackTaskCommand, ContinueFlowDebugRunCommand,
+    FinalizePublishedRunMissingStreamTerminalCommand, OrchestrationRuntimeService,
     PrepareFlowDebugRunCommand, StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
 };
 use control_plane::{

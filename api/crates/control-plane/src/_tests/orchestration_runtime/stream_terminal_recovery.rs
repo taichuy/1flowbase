@@ -101,7 +101,14 @@ async fn d2_ac_008_eof_cas_reloads_a_concurrent_succeeded_winner() {
         .await
         .iter()
         .all(|event| event.event_type != "flow_failed"));
-    assert!(stream.close_calls().is_empty());
+    assert!(stream
+        .events()
+        .iter()
+        .any(|event| event.event_type == "flow_finished"));
+    assert_eq!(
+        stream.close_calls(),
+        vec![(flow_run.id, RuntimeEventCloseReason::Finished)]
+    );
 }
 
 #[tokio::test]
@@ -202,14 +209,34 @@ async fn d2_ac_008_eof_keeps_existing_terminal_or_waiting_winners() {
                 .all(|event| event.event_type != "flow_failed"),
             "unexpected EOF failure for {status:?}"
         );
-        assert!(
-            stream.events().is_empty(),
-            "unexpected stream event for {status:?}"
-        );
-        assert!(
-            stream.close_calls().is_empty(),
-            "unexpected stream close for {status:?}"
-        );
+        let expected_terminal = match status {
+            FlowRunStatus::Succeeded => Some(("flow_finished", RuntimeEventCloseReason::Finished)),
+            FlowRunStatus::Incomplete => {
+                Some(("flow_incomplete", RuntimeEventCloseReason::Incomplete))
+            }
+            FlowRunStatus::Failed => Some(("flow_failed", RuntimeEventCloseReason::Failed)),
+            FlowRunStatus::Cancelled => {
+                Some(("flow_cancelled", RuntimeEventCloseReason::Cancelled))
+            }
+            FlowRunStatus::WaitingCallback | FlowRunStatus::WaitingHuman => None,
+            other => panic!("unexpected fixture status: {other:?}"),
+        };
+        match expected_terminal {
+            Some((event_type, reason)) => {
+                assert_eq!(
+                    stream
+                        .events()
+                        .last()
+                        .map(|event| event.event_type.as_str()),
+                    Some(event_type)
+                );
+                assert_eq!(stream.close_calls(), vec![(flow_run.id, reason)]);
+            }
+            None => {
+                assert!(stream.events().is_empty());
+                assert!(stream.close_calls().is_empty());
+            }
+        }
     }
 }
 
@@ -562,6 +589,23 @@ async fn d2_ac_008_concurrent_stable_eof_retries_append_one_live_terminal_and_cl
         stream.close_calls(),
         vec![(flow_run.id, RuntimeEventCloseReason::Failed)],
         "concurrent retries must close the stream once"
+    );
+    let durable_terminals = service
+        .list_runtime_events(flow_run.id, 0)
+        .await
+        .into_iter()
+        .filter(|event| event.event_type == "flow_failed")
+        .collect::<Vec<_>>();
+    let live_terminals = stream
+        .events()
+        .into_iter()
+        .filter(|event| event.run_id == flow_run.id && event.event_type == "flow_failed")
+        .collect::<Vec<_>>();
+    assert_eq!(durable_terminals.len(), 1);
+    assert_eq!(live_terminals.len(), 1);
+    assert_eq!(
+        live_terminals[0].payload, durable_terminals[0].payload,
+        "live retry and replay must project the same durable winner payload"
     );
 }
 

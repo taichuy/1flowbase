@@ -562,14 +562,29 @@ async fn runtime_debug_event_persister_stops_after_incomplete_terminal_event() {
 }
 
 #[tokio::test]
-async fn runtime_event_persister_fails_stream_when_run_ends_without_terminal_event() {
+async fn runtime_event_stream_fallback_projects_the_durable_terminal_winner() {
     let stream =
         std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
-    let run_id = Uuid::now_v7();
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_application_with_flow("Runtime stream durable fallback")
+        .await;
+    let run = service
+        .seed_published_running_run_with_output(&seeded, json!({ "answer": "partial" }))
+        .await;
+    let winner = service
+        .finalize_published_run_missing_stream_terminal(
+            FinalizePublishedRunMissingStreamTerminalCommand {
+                application_id: seeded.application_id,
+                flow_run_id: run.id,
+            },
+        )
+        .await
+        .expect("durable recovery should commit the terminal winner");
 
     stream
         .append(
-            run_id,
+            run.id,
             RuntimeEventPayload {
                 event_type: "flow_started".to_string(),
                 source: RuntimeEventSource::Runtime,
@@ -578,17 +593,16 @@ async fn runtime_event_persister_fails_stream_when_run_ends_without_terminal_eve
                 trace_visible: true,
                 payload: json!({
                     "type": "flow_started",
-                    "run_id": run_id,
+                    "run_id": run.id,
                 }),
             },
         )
         .await
         .unwrap();
 
-    control_plane::orchestration_runtime::fail_runtime_event_stream_if_missing_terminal(
+    control_plane::orchestration_runtime::project_runtime_event_stream_terminal(
         stream.clone(),
-        run_id,
-        &anyhow::anyhow!("debug run failed"),
+        &winner,
     )
     .await;
 
@@ -599,17 +613,17 @@ async fn runtime_event_persister_fails_stream_when_run_ends_without_terminal_eve
     );
     assert_eq!(
         events.last().map(|event| event.payload["error"].clone()),
-        Some(json!("debug run failed"))
+        Some(json!("runtime event stream ended without a terminal event"))
     );
     assert_eq!(
         events
             .last()
             .map(|event| event.payload["error_payload"]["message"].clone()),
-        Some(json!("debug run failed"))
+        Some(json!("runtime event stream ended without a terminal event"))
     );
     assert_eq!(
         stream.close_calls(),
-        vec![(run_id, RuntimeEventCloseReason::Failed)]
+        vec![(run.id, RuntimeEventCloseReason::Failed)]
     );
 }
 
@@ -1037,6 +1051,26 @@ async fn provider_error_after_live_delta_keeps_failure_out_of_answer_contract() 
         .node_runs
         .iter()
         .all(|node_run| node_run.node_id != "node-answer"));
+    let durable_events = service
+        .list_runtime_events(failed_detail.flow_run.id, 0)
+        .await;
+    assert_eq!(
+        durable_events
+            .iter()
+            .filter(|event| event.event_type == "flow_failed")
+            .count(),
+        1
+    );
+    assert!(durable_events.iter().all(|event| {
+        event.event_type != "flow_finished"
+            && event
+                .payload
+                .get("presentation")
+                .and_then(Value::as_object)
+                .and_then(|presentation| presentation.get("kind"))
+                .and_then(Value::as_str)
+                != Some("answer")
+    }));
 }
 
 #[tokio::test]

@@ -86,7 +86,9 @@ where
     }
 }
 
-pub(super) async fn append_answer_presentation_suffix<R>(
+/// Builds only the live suffix after a terminal candidate has been computed. The caller discards
+/// it on a CAS loss; durable replay reads the answer from the committed terminal payload.
+pub(super) async fn answer_presentation_suffix_events<R>(
     repository: &R,
     flow_run_id: Uuid,
     compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
@@ -109,12 +111,7 @@ where
         final_answer_presentation_events(compiled_plan, outcome, prepared_node_runs, answer_node_id)
             .filter(|events| !events.is_empty())
     {
-        return append_missing_answer_presentation_events(
-            repository,
-            flow_run_id,
-            candidate_events,
-        )
-        .await;
+        return missing_answer_presentation_events(repository, flow_run_id, candidate_events).await;
     }
 
     let visible_answer = answer_presentation::visible_answer_text(answer);
@@ -126,16 +123,14 @@ where
         return Ok(Vec::new());
     }
 
-    let event = debug_stream_events::answer_text_delta(
+    Ok(vec![debug_stream_events::answer_text_delta(
         answer_node_id,
         suffix.to_string(),
         0,
         None,
         None,
         None,
-    );
-    runtime_event_persister::persist_runtime_event_payload(repository, flow_run_id, &event).await?;
-    Ok(vec![event])
+    )])
 }
 
 fn final_answer_presentation_events(
@@ -247,6 +242,22 @@ async fn append_missing_answer_presentation_events<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
+    let appended = missing_answer_presentation_events(repository, flow_run_id, events).await?;
+    for event in &appended {
+        runtime_event_persister::persist_runtime_event_payload(repository, flow_run_id, event)
+            .await?;
+    }
+    Ok(appended)
+}
+
+async fn missing_answer_presentation_events<R>(
+    repository: &R,
+    flow_run_id: Uuid,
+    events: Vec<crate::ports::RuntimeEventPayload>,
+) -> Result<Vec<crate::ports::RuntimeEventPayload>>
+where
+    R: OrchestrationRuntimeRepository,
+{
     let existing_events = repository
         .list_runtime_events(flow_run_id, 0)
         .await?
@@ -304,8 +315,6 @@ where
         if let Some(payload) = event.payload.as_object_mut() {
             payload.insert("text".to_string(), Value::String(missing));
         }
-        runtime_event_persister::persist_runtime_event_payload(repository, flow_run_id, &event)
-            .await?;
         appended.push(event);
     }
 

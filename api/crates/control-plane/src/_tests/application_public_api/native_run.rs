@@ -988,6 +988,21 @@ async fn native_run_cancel_cas_miss_reloads_durable_winner_without_second_public
         1,
         "CAS miss must not append a second public cancellation event"
     );
+    let terminal_types = repository.run_event_types(created.id);
+    assert_eq!(
+        terminal_types
+            .iter()
+            .filter(|event_type| event_type.as_str() == "flow_run_cancelled")
+            .count(),
+        1,
+        "typed cancel receipt must commit one canonical flow terminal"
+    );
+    assert!(
+        terminal_types
+            .iter()
+            .all(|event_type| event_type.as_str() != "flow_cancelled"),
+        "Native result projection must not create a second durable terminal owner"
+    );
 }
 
 #[test]

@@ -18,9 +18,8 @@ use super::{
     StartFlowDebugRunCommand,
 };
 use run_detail::{fail_flow_run, load_run_detail};
-use runtime_events::{
-    append_runtime_event, close_runtime_event_stream, emit_flow_failed_and_close,
-};
+use runtime_events::append_runtime_event;
+pub(super) use runtime_events::project_committed_terminal;
 
 use super::{persistence::PreparedNodeRuns, RuntimeActiveNode, RuntimeFlowExecutionContext};
 

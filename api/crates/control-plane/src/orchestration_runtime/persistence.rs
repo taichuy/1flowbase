@@ -11,9 +11,9 @@ use crate::{
     ports::{
         AppendCapabilityInvocationInput, AppendContextProjectionInput,
         AppendModelFailoverAttemptLedgerInput, AppendRunEventInput, AppendUsageLedgerInput,
-        CreateCallbackTaskInput, CreateCheckpointInput, CreateNodeRunInput,
-        LinkUsageLedgerToModelFailoverAttemptInput, OrchestrationRuntimeRepository,
-        UpdateFlowRunInput, UpdateNodeRunInput,
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, CreateCallbackTaskInput,
+        CreateCheckpointInput, CreateNodeRunInput, LinkUsageLedgerToModelFailoverAttemptInput,
+        OrchestrationRuntimeRepository, UpdateFlowRunInput, UpdateNodeRunInput,
     },
     runtime_observability::{
         append_host_event, append_host_span, append_provider_stream_events_raw,
@@ -37,9 +37,12 @@ use super::{
     llm_observability_refs::{apply_llm_debug_observability_refs, LlmDebugObservabilityRefs},
     payloads::persisted_node_output_payload,
     runtime_event_persister,
+    stream_terminal_recovery::{
+        resolve_terminal_commit, terminal_event_from_flow_run, TerminalCommitResolution,
+    },
 };
 use answer_presentation_persistence::{
-    answer_node_id, append_answer_presentation_suffix, append_ready_answer_presentation_prefix,
+    answer_node_id, answer_presentation_suffix_events, append_ready_answer_presentation_prefix,
     final_flow_output_payload, materialize_ready_answer_node_run,
 };
 pub(in crate::orchestration_runtime) use checkpoint_locator::{
@@ -75,7 +78,38 @@ pub(super) struct PersistFlowDebugOutcomeInput<'a> {
 pub(super) struct PersistedFlowDebugOutcome {
     pub(super) flow_run: domain::FlowRunRecord,
     pub(super) stream_events: Vec<crate::ports::RuntimeEventPayload>,
+    pub(super) terminal_event: Option<crate::ports::RuntimeEventPayload>,
     pub(super) close_reason: Option<crate::ports::RuntimeEventCloseReason>,
+}
+
+async fn commit_terminal_outcome<R>(
+    repository: &R,
+    application_id: Uuid,
+    input: CommitFlowRunTerminalInput,
+    stream_events: Vec<crate::ports::RuntimeEventPayload>,
+) -> Result<PersistedFlowDebugOutcome>
+where
+    R: OrchestrationRuntimeRepository,
+{
+    let flow_run_id = input.flow_run_id;
+    let resolution = resolve_terminal_commit(
+        repository,
+        application_id,
+        flow_run_id,
+        repository.commit_flow_run_terminal(&input).await?,
+    )
+    .await?;
+    let (flow_run, stream_events) = match resolution {
+        TerminalCommitResolution::Winner(flow_run) => (flow_run, stream_events),
+        TerminalCommitResolution::Loser(flow_run) => (flow_run, Vec::new()),
+    };
+    let terminal_event = terminal_event_from_flow_run(&flow_run);
+    Ok(PersistedFlowDebugOutcome {
+        flow_run,
+        stream_events,
+        terminal_event,
+        close_reason: None,
+    })
 }
 
 pub(super) async fn persist_flow_debug_outcome<R>(
@@ -206,6 +240,7 @@ where
                 return Ok(PersistedFlowDebugOutcome {
                     flow_run: persisted_flow_run,
                     stream_events: Vec::new(),
+                    terminal_event: None,
                     close_reason: None,
                 });
             }
@@ -297,6 +332,7 @@ where
                 return Ok(PersistedFlowDebugOutcome {
                     flow_run: persisted_flow_run,
                     stream_events: Vec::new(),
+                    terminal_event: None,
                     close_reason: None,
                 });
             }
@@ -358,31 +394,8 @@ where
                 "persist_flow_completed",
             )?;
             let output_payload = final_flow_output_payload(outcome);
-            let updated = repository
-                .update_flow_run_if_status(
-                    &UpdateFlowRunInput {
-                        flow_run_id: flow_run.id,
-                        status: domain::FlowRunStatus::Succeeded,
-                        output_payload: output_payload.clone(),
-                        error_payload: None,
-                        finished_at: Some(OffsetDateTime::now_utc()),
-                    },
-                    flow_run.status,
-                )
-                .await?;
-            if updated.is_none() {
-                let persisted_flow_run = repository
-                    .get_flow_run(application_id, flow_run.id)
-                    .await?
-                    .ok_or_else(|| anyhow!("persisted flow run not found"))?;
-                return Ok(PersistedFlowDebugOutcome {
-                    flow_run: persisted_flow_run,
-                    stream_events: Vec::new(),
-                    close_reason: None,
-                });
-            }
             stream_events.extend(
-                append_answer_presentation_suffix(
+                answer_presentation_suffix_events(
                     repository,
                     flow_run.id,
                     compiled_plan,
@@ -393,23 +406,24 @@ where
                 )
                 .await?,
             );
-            repository
-                .append_run_event(&AppendRunEventInput {
-                    flow_run_id: flow_run.id,
-                    node_run_id: None,
-                    event_type: "flow_run_completed".to_string(),
-                    payload: output_payload.clone(),
-                })
-                .await?;
-            let terminal_event = debug_stream_events::flow_finished(flow_run.id, output_payload);
-            runtime_event_persister::persist_runtime_event_payload(
+            let terminal_event =
+                debug_stream_events::flow_finished(flow_run.id, output_payload.clone());
+            return commit_terminal_outcome(
                 repository,
-                flow_run.id,
-                &terminal_event,
+                application_id,
+                CommitFlowRunTerminalInput {
+                    flow_run_id: flow_run.id,
+                    expected_status: flow_run.status,
+                    result: CommitFlowRunTerminalResult::Succeeded {
+                        output_payload: output_payload.clone(),
+                    },
+                    flow_run_event_payload: output_payload,
+                    terminal_event_payload: terminal_event.payload.clone(),
+                    finished_at: OffsetDateTime::now_utc(),
+                },
+                stream_events,
             )
-            .await?;
-            stream_events.push(terminal_event);
-            close_reason = Some(crate::ports::RuntimeEventCloseReason::Finished);
+            .await;
         }
         orchestration_runtime::execution_state::ExecutionStopReason::Incomplete(_) => {
             ensure_flow_run_transition(
@@ -418,31 +432,8 @@ where
                 "persist_flow_incomplete",
             )?;
             let output_payload = final_flow_output_payload(outcome);
-            let updated = repository
-                .update_flow_run_if_status(
-                    &UpdateFlowRunInput {
-                        flow_run_id: flow_run.id,
-                        status: domain::FlowRunStatus::Incomplete,
-                        output_payload: output_payload.clone(),
-                        error_payload: None,
-                        finished_at: Some(OffsetDateTime::now_utc()),
-                    },
-                    flow_run.status,
-                )
-                .await?;
-            if updated.is_none() {
-                let persisted_flow_run = repository
-                    .get_flow_run(application_id, flow_run.id)
-                    .await?
-                    .ok_or_else(|| anyhow!("persisted flow run not found"))?;
-                return Ok(PersistedFlowDebugOutcome {
-                    flow_run: persisted_flow_run,
-                    stream_events: Vec::new(),
-                    close_reason: None,
-                });
-            }
             stream_events.extend(
-                append_answer_presentation_suffix(
+                answer_presentation_suffix_events(
                     repository,
                     flow_run.id,
                     compiled_plan,
@@ -453,23 +444,24 @@ where
                 )
                 .await?,
             );
-            repository
-                .append_run_event(&AppendRunEventInput {
-                    flow_run_id: flow_run.id,
-                    node_run_id: None,
-                    event_type: "flow_run_incomplete".to_string(),
-                    payload: output_payload.clone(),
-                })
-                .await?;
-            let terminal_event = debug_stream_events::flow_incomplete(flow_run.id, output_payload);
-            runtime_event_persister::persist_runtime_event_payload(
+            let terminal_event =
+                debug_stream_events::flow_incomplete(flow_run.id, output_payload.clone());
+            return commit_terminal_outcome(
                 repository,
-                flow_run.id,
-                &terminal_event,
+                application_id,
+                CommitFlowRunTerminalInput {
+                    flow_run_id: flow_run.id,
+                    expected_status: flow_run.status,
+                    result: CommitFlowRunTerminalResult::Incomplete {
+                        output_payload: output_payload.clone(),
+                    },
+                    flow_run_event_payload: output_payload,
+                    terminal_event_payload: terminal_event.payload.clone(),
+                    finished_at: OffsetDateTime::now_utc(),
+                },
+                stream_events,
             )
-            .await?;
-            stream_events.push(terminal_event);
-            close_reason = Some(crate::ports::RuntimeEventCloseReason::Incomplete);
+            .await;
         }
         orchestration_runtime::execution_state::ExecutionStopReason::Failed(failure) => {
             ensure_flow_run_transition(
@@ -479,58 +471,25 @@ where
             )?;
             let output_payload = final_flow_output_payload(outcome);
             let error_payload = failure.error_payload.clone();
-            let updated = repository
-                .update_flow_run_if_status(
-                    &UpdateFlowRunInput {
-                        flow_run_id: flow_run.id,
-                        status: domain::FlowRunStatus::Failed,
-                        output_payload: output_payload.clone(),
-                        error_payload: Some(error_payload.clone()),
-                        finished_at: Some(OffsetDateTime::now_utc()),
-                    },
-                    flow_run.status,
-                )
-                .await?;
-            if updated.is_none() {
-                let persisted_flow_run = repository
-                    .get_flow_run(application_id, flow_run.id)
-                    .await?
-                    .ok_or_else(|| anyhow!("persisted flow run not found"))?;
-                return Ok(PersistedFlowDebugOutcome {
-                    flow_run: persisted_flow_run,
-                    stream_events: Vec::new(),
-                    close_reason: None,
-                });
-            }
-            stream_events.extend(
-                append_answer_presentation_suffix(
-                    repository,
-                    flow_run.id,
-                    compiled_plan,
-                    outcome,
-                    prepared_node_runs,
-                    answer_node_id(outcome),
-                    &output_payload,
-                )
-                .await?,
-            );
-            repository
-                .append_run_event(&AppendRunEventInput {
-                    flow_run_id: flow_run.id,
-                    node_run_id: None,
-                    event_type: "flow_run_failed".to_string(),
-                    payload: error_payload.clone(),
-                })
-                .await?;
-            let terminal_event = debug_stream_events::flow_failed(flow_run.id, error_payload);
-            runtime_event_persister::persist_runtime_event_payload(
+            let terminal_event =
+                debug_stream_events::flow_failed(flow_run.id, error_payload.clone());
+            return commit_terminal_outcome(
                 repository,
-                flow_run.id,
-                &terminal_event,
+                application_id,
+                CommitFlowRunTerminalInput {
+                    flow_run_id: flow_run.id,
+                    expected_status: flow_run.status,
+                    result: CommitFlowRunTerminalResult::Failed {
+                        output_payload,
+                        error_payload: error_payload.clone(),
+                    },
+                    flow_run_event_payload: error_payload,
+                    terminal_event_payload: terminal_event.payload.clone(),
+                    finished_at: OffsetDateTime::now_utc(),
+                },
+                stream_events,
             )
-            .await?;
-            stream_events.push(terminal_event);
-            close_reason = Some(crate::ports::RuntimeEventCloseReason::Failed);
+            .await;
         }
     }
 
@@ -541,6 +500,7 @@ where
     Ok(PersistedFlowDebugOutcome {
         flow_run: persisted_flow_run,
         stream_events,
+        terminal_event: None,
         close_reason,
     })
 }

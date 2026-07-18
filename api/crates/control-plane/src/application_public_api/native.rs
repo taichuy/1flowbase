@@ -971,18 +971,6 @@ where
                     .await
                     .map_err(|_| NativeRunValidationError::InvalidMapping)?;
             }
-            self.repository
-                .append_published_run_event(&crate::ports::AppendRunEventInput {
-                    flow_run_id: cancelled.id,
-                    node_run_id: None,
-                    event_type: "flow_cancelled".to_string(),
-                    payload: json!({
-                        "code": "cancelled",
-                        "message": "published run cancelled",
-                    }),
-                })
-                .await
-                .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         }
 
         Ok(super::run_service::native_result_from_flow_run(

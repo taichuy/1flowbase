@@ -38,6 +38,8 @@ pub struct CancelPublishedFlowRunInput {
     pub from_status: domain::FlowRunStatus,
     pub output_payload: Value,
     pub error_payload: Option<Value>,
+    pub flow_run_event_payload: Value,
+    pub terminal_event_payload: Value,
     pub finished_at: OffsetDateTime,
 }
 
@@ -84,7 +86,7 @@ pub trait ApplicationPublishedRunControlRepository: Send + Sync {
     async fn cancel_published_flow_run(
         &self,
         input: &CancelPublishedFlowRunInput,
-    ) -> Result<Option<domain::FlowRunRecord>>;
+    ) -> Result<crate::ports::CommitFlowRunTerminalReceipt>;
 
     async fn cancel_published_pending_callback_tasks_for_run(
         &self,

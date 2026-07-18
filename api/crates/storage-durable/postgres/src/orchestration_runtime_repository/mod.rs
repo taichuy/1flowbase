@@ -845,17 +845,20 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
     async fn cancel_published_flow_run(
         &self,
         input: &CancelPublishedFlowRunInput,
-    ) -> Result<Option<domain::FlowRunRecord>> {
-        PgControlPlaneStore::update_flow_run_if_status(
+    ) -> Result<CommitFlowRunTerminalReceipt> {
+        PgControlPlaneStore::commit_flow_run_terminal(
             self,
-            &UpdateFlowRunInput {
+            &CommitFlowRunTerminalInput {
                 flow_run_id: input.flow_run_id,
-                status: domain::FlowRunStatus::Cancelled,
-                output_payload: input.output_payload.clone(),
-                error_payload: input.error_payload.clone(),
-                finished_at: Some(input.finished_at),
+                expected_status: input.from_status,
+                result: CommitFlowRunTerminalResult::Cancelled {
+                    output_payload: input.output_payload.clone(),
+                    error_payload: input.error_payload.clone(),
+                },
+                flow_run_event_payload: input.flow_run_event_payload.clone(),
+                terminal_event_payload: input.terminal_event_payload.clone(),
+                finished_at: input.finished_at,
             },
-            input.from_status,
         )
         .await
     }

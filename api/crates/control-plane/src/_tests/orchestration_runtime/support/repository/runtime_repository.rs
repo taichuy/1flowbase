@@ -213,6 +213,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
     ) -> Result<CommitFlowRunTerminalReceipt> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         force_status_before_next_flow_update(&mut inner, input.flow_run_id);
+        force_stream_terminal_failure_before_next_flow_update(&mut inner, input.flow_run_id);
         let Some(existing) = inner.flow_runs_by_id.get(&input.flow_run_id).cloned() else {
             return Err(ControlPlaneError::NotFound("flow_run").into());
         };
@@ -302,10 +303,6 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         &self,
         input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
     ) -> Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome> {
-        {
-            let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
-            force_stream_terminal_failure_before_next_flow_update(&mut inner, input.flow_run_id);
-        }
         let receipt = self
             .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
                 flow_run_id: input.flow_run_id,

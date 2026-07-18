@@ -90,7 +90,7 @@ async fn cancel_flow_run_emits_cancelled_runtime_terminal_event_and_closes_strea
 }
 
 #[tokio::test]
-async fn cancel_flow_run_does_not_overwrite_succeeded_run_after_stale_read() {
+async fn cancel_flow_run_projects_succeeded_winner_after_stale_read() {
     let stream = Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
     let service =
         OrchestrationRuntimeService::for_tests().with_runtime_event_stream(stream.clone());
@@ -132,7 +132,14 @@ async fn cancel_flow_run_does_not_overwrite_succeeded_run_after_stale_read() {
         .events()
         .iter()
         .any(|event| event.event_type == "flow_cancelled"));
-    assert!(stream.close_calls().is_empty());
+    assert!(stream
+        .events()
+        .iter()
+        .any(|event| event.event_type == "flow_finished"));
+    assert_eq!(
+        stream.close_calls(),
+        vec![(started.flow_run.id, RuntimeEventCloseReason::Finished)]
+    );
 }
 
 #[tokio::test]

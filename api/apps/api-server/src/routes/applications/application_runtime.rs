@@ -16,7 +16,7 @@ use control_plane::{
     application::{ApplicationNonCrudConsoleOperation, ApplicationService},
     errors::ControlPlaneError,
     orchestration_runtime::{
-        debug_stream_events, fail_runtime_event_stream_if_missing_terminal,
+        debug_stream_events, project_runtime_event_stream_terminal,
         spawn_runtime_debug_event_persister,
         trace_projection::{
             build_application_run_trace_projection, merge_trace_node_run_detail,

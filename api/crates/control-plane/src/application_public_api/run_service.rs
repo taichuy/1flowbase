@@ -225,6 +225,8 @@ where
             "cancel_published_api_run",
         )
         .map_err(|_| NativeRunValidationError::InvalidState)?;
+        let terminal_event =
+            crate::orchestration_runtime::debug_stream_events::flow_cancelled(flow_run.id);
         let cancelled = self
             .repository
             .cancel_published_flow_run(&CancelPublishedFlowRunInput {
@@ -237,13 +239,28 @@ where
                     "code": PUBLISHED_RUN_CANCELLED_ERROR_CODE,
                     "message": PUBLISHED_RUN_CANCELLED_ERROR_MESSAGE,
                 })),
+                flow_run_event_payload: json!({
+                    "code": PUBLISHED_RUN_CANCELLED_ERROR_CODE,
+                    "message": PUBLISHED_RUN_CANCELLED_ERROR_MESSAGE,
+                }),
+                terminal_event_payload: terminal_event.payload,
                 finished_at: OffsetDateTime::now_utc(),
             })
             .await
             .map_err(|_| NativeRunValidationError::InvalidState)?;
         let (cancelled, cancellation_won) = match cancelled {
-            Some(cancelled) => (cancelled, true),
-            None => (
+            crate::ports::CommitFlowRunTerminalReceipt::Winner(cancelled) => (cancelled, true),
+            crate::ports::CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(
+                cancelled,
+            ) => {
+                tracing::warn!(
+                    flow_run_id = %cancelled.id,
+                    application_id = %cancelled.application_id,
+                    "published cancellation committed with a post-commit projection warning"
+                );
+                (cancelled, true)
+            }
+            crate::ports::CommitFlowRunTerminalReceipt::Loser => (
                 self.repository
                     .get_published_flow_run(flow_run.id)
                     .await

@@ -4,12 +4,18 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    ports::{AppendRunEventInput, OrchestrationRuntimeRepository, UpdateFlowRunInput},
+    ports::{
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, OrchestrationRuntimeRepository,
+    },
     state_transition::ensure_flow_run_transition,
 };
 
-use super::super::OrchestrationRuntimeService;
-use super::emit_flow_failed_and_close;
+use super::super::{
+    debug_stream_events,
+    stream_terminal_recovery::{resolve_terminal_commit, TerminalCommitResolution},
+    OrchestrationRuntimeService,
+};
+use super::project_committed_terminal;
 
 pub(super) async fn load_run_detail<R>(
     repository: &R,
@@ -58,6 +64,7 @@ where
         flow_run.status,
         domain::FlowRunStatus::Cancelled
             | domain::FlowRunStatus::Succeeded
+            | domain::FlowRunStatus::Incomplete
             | domain::FlowRunStatus::Failed
     ) {
         return load_run_detail(&service.repository, application_id, flow_run_id).await;
@@ -68,26 +75,29 @@ where
         "fail_flow_run",
     )?;
     let error_payload = serde_error_payload(error);
-    service
+    let terminal_event = debug_stream_events::flow_failed(flow_run_id, error_payload.clone());
+    let receipt = service
         .repository
-        .update_flow_run(&UpdateFlowRunInput {
-            flow_run_id,
-            status: domain::FlowRunStatus::Failed,
-            output_payload: flow_run.output_payload,
-            error_payload: Some(error_payload.clone()),
-            finished_at: Some(OffsetDateTime::now_utc()),
+        .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
+            flow_run_id: flow_run.id,
+            expected_status: flow_run.status,
+            result: CommitFlowRunTerminalResult::Failed {
+                output_payload: flow_run.output_payload,
+                error_payload: error_payload.clone(),
+            },
+            flow_run_event_payload: error_payload,
+            terminal_event_payload: terminal_event.payload,
+            finished_at: OffsetDateTime::now_utc(),
         })
         .await?;
-    emit_flow_failed_and_close(service, flow_run_id, error_payload.clone()).await;
-    service
-        .repository
-        .append_run_event(&AppendRunEventInput {
-            flow_run_id,
-            node_run_id: None,
-            event_type: "flow_run_failed".to_string(),
-            payload: error_payload,
-        })
-        .await?;
+    let flow_run =
+        match resolve_terminal_commit(&service.repository, application_id, flow_run_id, receipt)
+            .await?
+        {
+            TerminalCommitResolution::Winner(flow_run)
+            | TerminalCommitResolution::Loser(flow_run) => flow_run,
+        };
+    project_committed_terminal(service, &flow_run).await;
 
     load_run_detail(&service.repository, application_id, flow_run_id).await
 }
