@@ -58,6 +58,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::application_public_api::openai::list_models,
         crate::routes::application_public_api::openai::create_chat_completion,
         crate::routes::application_public_api::openai::create_response,
+        crate::routes::application_public_api::openai::create_response_compact,
         crate::routes::application_public_api::anthropic::create_message,
         crate::routes::application_public_api::anthropic::count_message_tokens,
         crate::routes::application_orchestration::get_orchestration,

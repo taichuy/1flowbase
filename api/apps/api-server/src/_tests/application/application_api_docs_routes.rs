@@ -220,6 +220,7 @@ async fn application_api_docs_list_models_and_streaming_contracts() {
     assert!(operation_paths.contains(&("POST", "/v1/chat/completions")));
     assert!(!operation_paths.contains(&("POST", "/openai/v1/chat/completions")));
     assert!(operation_paths.contains(&("POST", "/v1/responses")));
+    assert!(operation_paths.contains(&("POST", "/v1/responses/compact")));
 
     let models_spec = app
         .clone()

@@ -88,6 +88,21 @@ pub(super) fn openai_response_create_request_body(docs: &DocTextResolver) -> Val
     )
 }
 
+pub(super) fn openai_compact_request_body(docs: &DocTextResolver) -> Value {
+    let mut schema = openai_response_create_schema(docs);
+    if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) {
+        properties.remove("stream");
+        properties.remove("previous_response_id");
+    }
+    json_request_body(
+        schema,
+        json!({
+            "model": "provider/model",
+            "input": "Compact this conversation"
+        }),
+    )
+}
+
 pub(super) fn anthropic_message_request_body(docs: &DocTextResolver) -> Value {
     json_request_body(
         anthropic_message_schema(docs),
@@ -266,6 +281,25 @@ pub(super) fn openai_response_responses(docs: &DocTextResolver) -> Value {
             docs.response_description("application_not_published_or_run_state_not_supported"),
             openai_error_body_schema()
         )
+    })
+}
+
+pub(super) fn openai_compact_responses(docs: &DocTextResolver) -> Value {
+    json!({
+        "200": json_response(
+            docs.response_description("compatible_response"),
+            openai_compact_response_items_schema()
+        ),
+        "400": json_response(docs.response_description("invalid_request"), openai_error_body_schema()),
+        "401": json_response(docs.response_description("invalid_application_api_key"), openai_error_body_schema()),
+        "403": json_response(docs.response_description("forbidden"), openai_error_body_schema()),
+        "409": json_response(
+            docs.response_description("application_not_published_or_run_state_not_supported"),
+            openai_error_body_schema()
+        ),
+        "422": json_response(docs.response_description("published_compact_unavailable"), openai_error_body_schema()),
+        "429": json_response(docs.response_description("provider_compact_failure"), openai_error_body_schema()),
+        "502": json_response(docs.response_description("provider_compact_failure"), openai_error_body_schema())
     })
 }
 
@@ -675,6 +709,16 @@ fn openai_response_response_schema() -> Value {
                     "total_tokens": {"type": "integer"}
                 }
             }
+        }
+    })
+}
+
+fn openai_compact_response_items_schema() -> Value {
+    json!({
+        "type": "array",
+        "items": {
+            "type": "object",
+            "additionalProperties": true
         }
     })
 }

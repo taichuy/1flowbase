@@ -14,20 +14,24 @@ use control_plane::application_public_api::{
     client_protocol_envelope::{capture_client_protocol_envelope, ClientProtocolIngressPolicy},
     compat::openai::{
         extract_model_list_from_start_node, response_id_from_run_id,
-        translate_chat_completion_request, translate_response_request, OpenAiCompatError,
-        OpenAiCompatibleModel,
+        translate_chat_completion_request, translate_response_request_with_context,
+        OpenAiCompatError, OpenAiCompatibleModel, OpenAiResponsesEndpoint,
     },
     native::{
-        ApplicationNativeRunService, CreateNativeRunCommand, NativeRunRequest, NativeRunResult,
-        NativeRunStatus, NativeRunValidationError,
+        ApplicationNativeRunService, CreateNativeRunCommand, NativeExecutionOperation,
+        NativeRunRequest, NativeRunResult, NativeRunStatus, NativeRunValidationError,
+        RemoteCompactionProfile,
     },
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
         TranslationSafeRepresentation,
     },
     publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
+    run_service::{ApplicationPublishedCompactService, CompactCommand},
 };
-use plugin_framework::provider_contract::ClientProtocolEnvelope;
+use plugin_framework::provider_contract::{
+    ClientProtocolEnvelope, ProviderCompactProfile, ProviderCompactResult,
+};
 use serde_json::{json, Value};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -40,6 +44,7 @@ use crate::{
     },
 };
 
+mod compact;
 mod model_list;
 #[cfg(test)]
 mod tests;
@@ -163,7 +168,9 @@ pub async fn create_chat_completion(
         (status = 401, body = OpenAiErrorBody),
         (status = 403, body = OpenAiErrorBody),
         (status = 409, body = OpenAiErrorBody),
-        (status = 422, body = OpenAiErrorBody)
+        (status = 422, body = OpenAiErrorBody),
+        (status = 429, body = OpenAiErrorBody),
+        (status = 502, body = OpenAiErrorBody)
     )
 )]
 pub async fn create_response(
@@ -171,11 +178,53 @@ pub async fn create_response(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, OpenAiRouteError> {
+    create_response_for_endpoint(state, headers, body, OpenAiResponsesEndpoint::Responses).await
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/responses/compact",
+    request_body = Value,
+    responses(
+        (status = 200, body = Value),
+        (status = 400, body = OpenAiErrorBody),
+        (status = 401, body = OpenAiErrorBody),
+        (status = 403, body = OpenAiErrorBody),
+        (status = 409, body = OpenAiErrorBody),
+        (status = 422, body = OpenAiErrorBody),
+        (status = 429, body = OpenAiErrorBody),
+        (status = 502, body = OpenAiErrorBody)
+    )
+)]
+pub async fn create_response_compact(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, OpenAiRouteError> {
+    create_response_for_endpoint(
+        state,
+        headers,
+        body,
+        OpenAiResponsesEndpoint::ResponsesCompact,
+    )
+    .await
+}
+
+async fn create_response_for_endpoint(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    body: Bytes,
+    endpoint: OpenAiResponsesEndpoint,
+) -> Result<Response, OpenAiRouteError> {
+    let route = match endpoint {
+        OpenAiResponsesEndpoint::Responses => "responses",
+        OpenAiResponsesEndpoint::ResponsesCompact => "responses_compact",
+    };
     let credential = match openai_credential(&headers) {
         Ok(credential) => credential,
         Err(error) => {
             warn!(
-                route = "responses",
+                route,
                 status = error.status.as_u16(),
                 code = error.code,
                 "openai responses compatible authentication failed"
@@ -183,23 +232,48 @@ pub async fn create_response(
             return Err(error.into());
         }
     };
+    if compact::has_codex_turn_metadata(&headers) {
+        if let Err(error) =
+            authenticate_openai_response_credential(state.as_ref(), &credential).await
+        {
+            warn!(
+                route,
+                auth_source = credential.source,
+                status = error.status.as_u16(),
+                code = error.code,
+                "openai responses Codex metadata request authentication failed"
+            );
+            return Err(error.into());
+        }
+    }
+    let request_context = match compact::responses_request_context(&headers, endpoint) {
+        Ok(context) => context,
+        Err(error) => {
+            warn_openai_route_error(
+                route,
+                &error,
+                "openai responses Codex metadata validation failed",
+            );
+            return Err(error);
+        }
+    };
     let value = match parse_openai_json_body(body, TranslationProtocol::OpenAiResponses) {
         Ok(value) => value,
         Err(error) => {
             warn_openai_route_error(
-                "responses",
+                route,
                 &error,
                 "openai responses compatible JSON validation failed",
             );
             return Err(error);
         }
     };
-    let translated = match translate_response_request(value) {
+    let translated = match translate_response_request_with_context(value, request_context) {
         Ok(translated) => translated,
         Err(error) => {
             let route_error = OpenAiRouteError::from(error);
             warn_openai_route_error(
-                "responses",
+                route,
                 &route_error,
                 "openai responses compatible request validation failed",
             );
@@ -211,39 +285,128 @@ pub async fn create_response(
     request.client_protocol_envelope = openai_client_protocol_envelope_from_headers(&headers);
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
-    let run = match create_native_run(state.clone(), credential.token.clone(), request).await {
-        Ok(run) => run,
-        Err(error) => {
-            warn!(
-                route = "responses",
+    match request.execution.execution_operation().clone() {
+        NativeExecutionOperation::Generate(_) => {
+            let run =
+                match create_native_run(state.clone(), credential.token.clone(), request).await {
+                    Ok(run) => run,
+                    Err(error) => {
+                        warn!(
+                            route,
+                            auth_source = credential.source,
+                            status = error.status.as_u16(),
+                            code = error.code,
+                            "openai responses compatible native run validation failed"
+                        );
+                        return Err(error.into());
+                    }
+                };
+
+            info!(
+                route,
                 auth_source = credential.source,
-                status = error.status.as_u16(),
-                code = error.code,
-                "openai responses compatible native run validation failed"
+                application_id = %run.application_id,
+                flow_run_id = %run.id,
+                response_mode = response_mode.as_deref().unwrap_or("blocking"),
+                model = %model,
+                translation_decision_count,
+                "openai responses compatible request accepted"
             );
-            return Err(error.into());
+
+            if response_mode.as_deref() == Some("streaming") {
+                return compat_sse::start_openai_response_stream(state, run, model, None)
+                    .await
+                    .map_err(Into::into);
+            }
+
+            let run = native::execute_blocking_native_run(state, credential.token, run).await?;
+            Ok(Json(to_openai_responses_response(run, model, None)?).into_response())
         }
-    };
-
-    info!(
-        route = "responses",
-        auth_source = credential.source,
-        application_id = %run.application_id,
-        flow_run_id = %run.id,
-        response_mode = response_mode.as_deref().unwrap_or("blocking"),
-        model = %model,
-        translation_decision_count,
-        "openai responses compatible request accepted"
-    );
-
-    if response_mode.as_deref() == Some("streaming") {
-        return compat_sse::start_openai_response_stream(state, run, model, None)
+        NativeExecutionOperation::Compact(remote_profile) => {
+            let profile = match remote_profile {
+                RemoteCompactionProfile::ResponsesCompact => {
+                    ProviderCompactProfile::ResponsesCompact
+                }
+                RemoteCompactionProfile::ResponsesCompactionV2 => {
+                    ProviderCompactProfile::ResponsesCompactionV2
+                }
+            };
+            let result = match ApplicationPublishedCompactService::new(
+                state.store.clone(),
+                native::api_provider_runtime(state.as_ref()),
+                state.provider_secret_master_key.clone(),
+            )
+            .with_last_used_cache(state.infrastructure.cache_store())
+            .compact(CompactCommand {
+                bearer_token: credential.token,
+                request,
+                profile,
+            })
             .await
-            .map_err(Into::into);
-    }
+            {
+                Ok(result) => result,
+                Err(error) => {
+                    let route_error = compact::published_compact_error(error);
+                    warn_openai_route_error(
+                        route,
+                        &route_error,
+                        "openai responses Compact request failed without a flow run",
+                    );
+                    return Err(route_error);
+                }
+            };
 
-    let run = native::execute_blocking_native_run(state, credential.token, run).await?;
-    Ok(Json(to_openai_responses_response(run, model, None)?).into_response())
+            info!(
+                route,
+                auth_source = credential.source,
+                compaction_profile = profile.as_str(),
+                response_mode = response_mode.as_deref().unwrap_or("blocking"),
+                model = %model,
+                translation_decision_count,
+                "openai responses Compact request completed without a flow run"
+            );
+
+            match (profile, result.result) {
+                (
+                    ProviderCompactProfile::ResponsesCompact,
+                    ProviderCompactResult::ResponseItems { response_items, .. },
+                ) => {
+                    // The legacy Compact contract is exactly the provider's ResponseItem[]. It
+                    // is intentionally neither wrapped in a Response object nor projected as a
+                    // runtime SSE flow.
+                    Ok(Json(response_items).into_response())
+                }
+                (
+                    ProviderCompactProfile::ResponsesCompactionV2,
+                    ProviderCompactResult::CompletedOpaqueCompactionItem {
+                        response_id,
+                        compaction_item,
+                        encrypted_content: _,
+                        ..
+                    },
+                ) => {
+                    let response = compact::completed_v2_compaction_response(
+                        model,
+                        response_id,
+                        compaction_item,
+                    );
+                    if response_mode.as_deref() == Some("streaming") {
+                        let response = serde_json::to_value(response).map_err(|_| {
+                            OpenAiRouteError::Native(native::NativeApiError::new(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                "openai_compact_response_serialization_failed",
+                                "could not serialize OpenAI Compact response",
+                            ))
+                        })?;
+                        return compat_sse::completed_openai_response_stream(response)
+                            .map_err(Into::into);
+                    }
+                    Ok(Json(response).into_response())
+                }
+                _ => Err(compact::unexpected_compact_result_error()),
+            }
+        }
+    }
 }
 
 #[utoipa::path(
@@ -356,6 +519,18 @@ fn openai_credential(headers: &HeaderMap) -> Result<OpenAiCredential, native::Na
                 "missing Authorization bearer token or x-api-key",
             )
         })
+}
+
+async fn authenticate_openai_response_credential(
+    state: &ApiState,
+    credential: &OpenAiCredential,
+) -> Result<(), native::NativeApiError> {
+    ApplicationApiKeyService::new(state.store.clone())
+        .with_last_used_cache(state.infrastructure.cache_store())
+        .authenticate_bearer_token(&credential.token)
+        .await
+        .map(|_| ())
+        .map_err(|_| native::native_error(NativeRunValidationError::NotAuthenticated))
 }
 
 fn openai_client_protocol_envelope_from_headers(

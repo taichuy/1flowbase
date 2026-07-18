@@ -35,6 +35,10 @@ pub fn compatible_router() -> Router<Arc<ApiState>> {
         .route("/v1/models", get(openai::list_models))
         .route("/v1/chat/completions", post(openai::create_chat_completion))
         .route("/v1/responses", post(openai::create_response))
+        .route(
+            "/v1/responses/compact",
+            post(openai::create_response_compact),
+        )
         .route("/v1/chat/completions/models", get(openai::list_models))
         .route(
             "/v1/messages/count_tokens",

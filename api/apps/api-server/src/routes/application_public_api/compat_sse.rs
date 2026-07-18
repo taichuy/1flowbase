@@ -279,6 +279,37 @@ pub(crate) async fn start_openai_response_stream(
     .await
 }
 
+/// Compact is a unary provider operation, so its completed Responses event is
+/// projected directly instead of opening a runtime event stream or creating a
+/// flow run.
+pub(crate) fn completed_openai_response_stream(
+    response: Value,
+) -> Result<Response, NativeApiError> {
+    let event = Event::default()
+        .event("response.completed")
+        .json_data(json!({
+            "type": "response.completed",
+            "response": response,
+        }))
+        .map_err(|_| {
+            NativeApiError::new(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "openai_compact_response_serialization_failed",
+                "could not serialize OpenAI Compact response",
+            )
+        })?;
+
+    Ok(
+        Sse::new(tokio_stream::iter([Ok::<Event, Infallible>(event)]))
+            .keep_alive(
+                KeepAlive::new()
+                    .interval(Duration::from_secs(10))
+                    .text("heartbeat"),
+            )
+            .into_response(),
+    )
+}
+
 #[cfg(test)]
 pub(crate) async fn start_openai_chat_resume_stream(
     state: Arc<ApiState>,

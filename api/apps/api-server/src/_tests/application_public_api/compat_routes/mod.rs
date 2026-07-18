@@ -671,5 +671,6 @@ fn anthropic_body(stream: bool) -> Value {
 }
 
 mod auth;
+mod compact;
 mod openai;
 mod streaming;

@@ -13,9 +13,9 @@ use schemas::{
     anthropic_message_request_body, anthropic_responses, native_create_run_request_body,
     native_create_run_responses, native_get_run_responses, native_model_list_responses,
     native_resume_run_request_body, native_resume_run_responses, native_upload_file_request_body,
-    native_upload_responses, openai_chat_completion_request_body, openai_model_list_responses,
-    openai_response_create_request_body, openai_response_responses, openai_responses,
-    operation_request_body, operation_responses,
+    native_upload_responses, openai_chat_completion_request_body, openai_compact_request_body,
+    openai_compact_responses, openai_model_list_responses, openai_response_create_request_body,
+    openai_response_responses, openai_responses, operation_request_body, operation_responses,
 };
 
 const NATIVE_CATEGORY_ID: &str = "application-native-api";
@@ -177,6 +177,9 @@ impl DocTextResolver {
             ("application_public_api.openai.response", DocsLocale::ZhHans) => {
                 "创建 OpenAI 兼容响应"
             }
+            ("application_public_api.openai.response_compact", DocsLocale::ZhHans) => {
+                "创建 OpenAI 兼容紧凑响应"
+            }
             ("application_public_api.openai.list_models", DocsLocale::ZhHans) => {
                 "拉取 OpenAI 兼容模型列表"
             }
@@ -207,6 +210,9 @@ impl DocTextResolver {
             }
             ("application_public_api.openai.response", DocsLocale::EnUs) => {
                 "Create OpenAI-compatible response"
+            }
+            ("application_public_api.openai.response_compact", DocsLocale::EnUs) => {
+                "Create OpenAI-compatible compact response"
             }
             ("application_public_api.openai.list_models", DocsLocale::EnUs) => {
                 "List OpenAI-compatible models"
@@ -247,6 +253,9 @@ impl DocTextResolver {
             ("application_public_api.openai.response", DocsLocale::ZhHans) => {
                 "将 OpenAI Responses 请求适配为原生公开运行，previous_response_id 会解析回原生公开运行。"
             }
+            ("application_public_api.openai.response_compact", DocsLocale::ZhHans) => {
+                "调用当前发布版本的 Responses Compact provider 绑定，并原样返回 provider 的 ResponseItem 数组；不会创建公开运行。"
+            }
             ("application_public_api.openai.list_models", DocsLocale::ZhHans) => {
                 "读取当前应用活跃发布版本中起始节点暴露的 OpenAI 兼容模型列表。"
             }
@@ -279,6 +288,9 @@ impl DocTextResolver {
             }
             ("application_public_api.openai.response", DocsLocale::EnUs) => {
                 "Adapts an OpenAI Responses request to a Native public run and resolves previous_response_id back to a Native public run."
+            }
+            ("application_public_api.openai.response_compact", DocsLocale::EnUs) => {
+                "Calls the active published Responses Compact provider binding and returns its ResponseItem array unchanged; no public run is created."
             }
             ("application_public_api.openai.list_models", DocsLocale::EnUs) => {
                 "Lists OpenAI-compatible models exposed by the active published application's start node."
@@ -437,6 +449,12 @@ impl DocTextResolver {
             ("provider_count_tokens_failure", DocsLocale::ZhHans) => {
                 "provider token 统计请求失败或返回无效响应"
             }
+            ("published_compact_unavailable", DocsLocale::ZhHans) => {
+                "已发布 Compact 操作未绑定、目标不可用或 provider 未声明该能力"
+            }
+            ("provider_compact_failure", DocsLocale::ZhHans) => {
+                "provider Compact 请求失败、被限流或返回无效响应"
+            }
             ("compatible_model_list", DocsLocale::ZhHans) => "OpenAI 兼容模型列表",
             ("native_model_list", DocsLocale::ZhHans) => "原生模型能力列表",
             ("native_run", DocsLocale::ZhHans) => "原生运行",
@@ -457,6 +475,12 @@ impl DocTextResolver {
             ("provider_rate_limited", DocsLocale::EnUs) => "Provider CountTokens request was rate limited",
             ("provider_count_tokens_failure", DocsLocale::EnUs) => {
                 "Provider CountTokens request failed or returned an invalid response"
+            }
+            ("published_compact_unavailable", DocsLocale::EnUs) => {
+                "Published Compact operation is unbound, unavailable, or not declared by its provider"
+            }
+            ("provider_compact_failure", DocsLocale::EnUs) => {
+                "Provider Compact request failed, was rate limited, or returned an invalid response"
             }
             ("compatible_model_list", DocsLocale::EnUs) => "OpenAI-compatible model list",
             ("native_model_list", DocsLocale::EnUs) => "Native model capability list",
@@ -809,6 +833,19 @@ static PUBLIC_OPERATION_REGISTRY: &[PublicOperation] = &[
         request_body: Some(openai_response_create_request_body),
         responses: openai_response_responses,
         notes: OperationNotes::CategoryLimitations,
+    },
+    PublicOperation {
+        id: "applicationOpenAiCreateResponseCompact",
+        method: "POST",
+        path: "/v1/responses/compact",
+        category_id: OPENAI_CATEGORY_ID,
+        doc_key: "application_public_api.openai.response_compact",
+        request_body: Some(openai_compact_request_body),
+        responses: openai_compact_responses,
+        notes: OperationNotes::Text {
+            zh_hans: "此端点只调用当前发布 Responses Compact 绑定的 provider，并返回其原始 ResponseItem 数组。它不会创建 flow run、运行时事件流或本地摘要；未绑定、不可用或 provider 失败会返回明确错误。",
+            en_us: "This endpoint calls only the active published Responses Compact provider binding and returns its raw ResponseItem array. It never creates a flow run, runtime event stream, or local summary; unbound, unavailable, and provider failures are explicit errors.",
+        },
     },
     PublicOperation {
         id: "applicationOpenAiListModels",
