@@ -56,6 +56,7 @@ vi.mock('@monaco-editor/react', () => ({
 
 const block: FrontstageBlockInstance = {
   id: 'orders-block',
+  rendererVersion: 'v1',
   sourceId: 'orders-block',
   codeRef: 'orders-code',
   sourceCodeRef: 'orders-code',

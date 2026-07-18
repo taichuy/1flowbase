@@ -5,7 +5,7 @@ import {
 import type {
   SchemaBlock,
   SchemaFieldBlock
-} from '../../../shared/schema-ui/contracts/canvas-node-schema';
+} from '../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 import { describe, expect, test, vi } from 'vitest';
 
 import { agentFlowRendererRegistry } from '../schema/agent-flow-renderer-registry';

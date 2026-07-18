@@ -11,7 +11,7 @@ import {
 } from 'antd';
 import { useReducer, useRef } from 'react';
 
-import type { SchemaFieldRendererProps } from '../../../../../shared/schema-ui/registry/create-renderer-registry';
+import type { SchemaFieldRendererProps } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 import {
   DEFAULT_LLM_EXTERNAL_TOOL_POLICY,
   DEFAULT_LLM_INTERNAL_LLM_NODE_POLICY,

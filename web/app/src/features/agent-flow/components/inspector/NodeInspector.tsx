@@ -1,11 +1,11 @@
 import type {
   SchemaBlock,
   CanvasNodeSchema
-} from '../../../../shared/schema-ui/contracts/canvas-node-schema';
+} from '../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 import { PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons';
-import { SchemaRenderer } from '../../../../shared/schema-ui/runtime/SchemaRenderer';
-import { evaluateSchemaRule } from '../../../../shared/schema-ui/runtime/rule-evaluator';
-import type { SchemaAdapter } from '../../../../shared/schema-ui/registry/create-renderer-registry';
+import { SchemaRenderer } from '../../../../shared/schema-ui/v1/runtime/SchemaRenderer';
+import { evaluateSchemaRule } from '../../../../shared/schema-ui/v1/runtime/rule-evaluator';
+import type { SchemaAdapter } from '../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 import { useEffect, useRef } from 'react';
 import { Button, Tag, Tooltip, Typography } from 'antd';
 

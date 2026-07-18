@@ -2,7 +2,7 @@ import type { FlowNodeType } from '@1flowbase/flow-schema';
 import type {
   SchemaFieldOption,
   SchemaRule
-} from '../../../../shared/schema-ui/contracts/canvas-node-schema';
+} from '../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 
 export type InspectorSectionKey =
   | 'basics'

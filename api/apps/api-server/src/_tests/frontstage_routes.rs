@@ -980,7 +980,8 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
         "blocks": [
             {
                 "id": "hero-1",
-                "codeRef": "hero"
+                "codeRef": "hero",
+                "renderer_version": "v1"
             }
         ]
     });
@@ -1067,6 +1068,90 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
     )
     .await;
     assert_eq!(cross_workspace_status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn page_content_save_rejects_missing_or_unsupported_block_renderer_versions() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let (_, page_payload) = create_page(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        Some("Versioned Blocks"),
+        None,
+        "a",
+    )
+    .await;
+    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
+
+    let (missing_status, missing_payload) = save_page_content(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        page_id,
+        tab_id,
+        json!({
+            "version": 1,
+            "blocks": [{ "id": "hero", "codeRef": "hero-code" }]
+        }),
+    )
+    .await;
+    assert_eq!(missing_status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        missing_payload["code"],
+        json!("frontstage_block_renderer_version_missing")
+    );
+
+    let (unsupported_status, unsupported_payload) = save_page_content(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        page_id,
+        tab_id,
+        json!({
+            "version": 1,
+            "blocks": [{
+                "id": "future",
+                "codeRef": "future-code",
+                "renderer_version": "v2"
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(unsupported_status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        unsupported_payload["code"],
+        json!("frontstage_block_renderer_version_unsupported")
+    );
+
+    let (accepted_status, accepted_payload) = save_page_content(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        page_id,
+        tab_id,
+        json!({
+            "version": 1,
+            "blocks": [{
+                "id": "hero",
+                "codeRef": "hero-code",
+                "renderer_version": "v1"
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(accepted_status, StatusCode::OK);
+    assert_eq!(
+        accepted_payload["data"]["document"]["payload"]["blocks"][0]["renderer_version"],
+        json!("v1")
+    );
 }
 
 #[tokio::test]
@@ -1158,7 +1243,11 @@ async fn page_tabs_keep_documents_isolated_and_reject_last_tab_deletion() {
     let second_document = json!({
         "version": 1,
         "root_uid": second_root_uid,
-        "blocks": [{"id": "second", "codeRef": "second-code"}]
+        "blocks": [{
+            "id": "second",
+            "codeRef": "second-code",
+            "renderer_version": "v1"
+        }]
     });
     let (save_status, _) = save_page_content(
         &app,

@@ -27,7 +27,7 @@ import { useState } from 'react';
 import type {
   SchemaViewRenderer,
   SchemaViewRendererProps
-} from '../../../shared/schema-ui/registry/create-renderer-registry';
+} from '../../../shared/schema-ui/v1/registry/create-renderer-registry';
 import { NodeRunIOCard } from '../components/detail/last-run/NodeRunIOCard';
 import { NodeRunMetadataCard } from '../components/detail/last-run/NodeRunMetadataCard';
 import { NodeRunSummaryCard } from '../components/detail/last-run/NodeRunSummaryCard';

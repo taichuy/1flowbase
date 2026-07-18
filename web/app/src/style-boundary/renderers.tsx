@@ -7,7 +7,7 @@ import { createAccountMenuItems } from '../app-shell/account-menu-items';
 import { AgentFlowEditorShell } from '../features/agent-flow/components/editor/AgentFlowEditorShell';
 import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
-import { SchemaFormDrawer } from '../shared/schema-ui/form-drawer/SchemaFormDrawer';
+import { SchemaFormDrawer } from '../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
 import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import {
   createStyleBoundaryFrontstagePageContent,

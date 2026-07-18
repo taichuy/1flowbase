@@ -5,7 +5,7 @@ import type {
   NodeRuntimeUiContract
 } from '@1flowbase/flow-schema';
 
-import type { SchemaViewRenderer } from '../../../../shared/schema-ui/registry/create-renderer-registry';
+import type { SchemaViewRenderer } from '../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 import type { NodeDefinitionMeta } from './types';
 
 export interface RegisteredNodeDefinition {

@@ -37,6 +37,7 @@ describe('frontstage page document', () => {
             blocks: [
               {
                 id: 'hero',
+                renderer_version: 'v1',
                 codeRef: 'hero-code',
                 catalog: {
                   providerCode: 'official',
@@ -61,6 +62,7 @@ describe('frontstage page document', () => {
     expect(document.blocks).toEqual([
       {
         id: 'hero',
+        rendererVersion: 'v1',
         sourceId: 'hero',
         codeRef: 'hero-code',
         sourceCodeRef: 'hero-code',
@@ -86,6 +88,53 @@ describe('frontstage page document', () => {
     expect(document.diagnostics).toEqual([]);
   });
 
+  test('preserves the persisted renderer version independently from plugin and template versions', () => {
+    const content = createPageContent({
+      root: {
+        uid: 'root-1',
+        payload: {
+          blocks: [
+            {
+              id: 'hero',
+              renderer_version: 'v1',
+              codeRef: 'hero-code',
+              contribution: {
+                pluginId: 'official.blocks',
+                pluginVersion: '4.2.0',
+                code: 'official.hero'
+              },
+              runtime: {
+                kind: 'iframe',
+                entry: 'blocks/hero.html',
+                code_template_version: '2026-07-01'
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    const document = createFrontstagePageDocument(content);
+    const input = createFrontstagePageDocumentSaveInput(content, document);
+
+    expect(document.blocks[0]).toMatchObject({
+      rendererVersion: 'v1',
+      contribution: { pluginVersion: '4.2.0' },
+      runtime: { code_template_version: '2026-07-01' }
+    });
+    expect(input.payload).toMatchObject({
+      blocks: [
+        expect.objectContaining({
+          renderer_version: 'v1',
+          contribution: expect.objectContaining({ pluginVersion: '4.2.0' }),
+          runtime: expect.objectContaining({
+            code_template_version: '2026-07-01'
+          })
+        })
+      ]
+    });
+  });
+
   test('prefers x-layout over legacy layout when both are present', () => {
     const document = createFrontstagePageDocument(
       createPageContent({
@@ -95,6 +144,7 @@ describe('frontstage page document', () => {
             blocks: [
               {
                 id: 'hero',
+                renderer_version: 'v1',
                 codeRef: 'hero-code',
                 contributionCode: 'official.hero',
                 layout: { region: 'legacy', order: 99, width: 1, height: 1 },
@@ -131,6 +181,7 @@ describe('frontstage page document', () => {
             blocks: [
               {
                 id: 'hero',
+                renderer_version: 'v1',
                 codeRef: 'hero-code',
                 contributionCode: 'official.hero',
                 layout: { region: 'legacy', order: 7, width: 8, height: 2 },
@@ -161,6 +212,7 @@ describe('frontstage page document', () => {
             blocks: [
               {
                 id: 'schema-block',
+                renderer_version: 'v1',
                 code_ref: 'schema-code',
                 contribution_code: 'official.schema',
                 runtime: 'inline'
@@ -211,7 +263,13 @@ describe('frontstage page document', () => {
         root: {
           uid: 'root-1',
           payload: {
-            blocks: [{ props: 'invalid-props', 'x-layout': 'invalid-layout' }]
+            blocks: [
+              {
+                renderer_version: 'v1',
+                props: 'invalid-props',
+                'x-layout': 'invalid-layout'
+              }
+            ]
           }
         }
       })
@@ -220,6 +278,7 @@ describe('frontstage page document', () => {
     expect(document.blocks).toEqual([
       {
         id: 'block-1',
+        rendererVersion: 'v1',
         sourceId: null,
         codeRef: 'block-1-code',
         sourceCodeRef: null,
@@ -259,8 +318,18 @@ describe('frontstage page document', () => {
           uid: 'root-1',
           payload: {
             blocks: [
-              { id: 'hero', codeRef: 'hero-code', contributionCode: 'hero' },
-              { id: 'hero', codeRef: 'hero-code', contributionCode: 'hero' }
+              {
+                id: 'hero',
+                renderer_version: 'v1',
+                codeRef: 'hero-code',
+                contributionCode: 'hero'
+              },
+              {
+                id: 'hero',
+                renderer_version: 'v1',
+                codeRef: 'hero-code',
+                contributionCode: 'hero'
+              }
             ]
           }
         }
@@ -318,6 +387,7 @@ describe('frontstage page document', () => {
     });
     const block: FrontstageBlockInstance = {
       id: 'hero',
+      rendererVersion: 'v1',
       sourceId: 'stale-block',
       codeRef: 'hero-code',
       sourceCodeRef: 'stale-code',
@@ -357,6 +427,7 @@ describe('frontstage page document', () => {
 
     const expectedBlock = {
       id: 'hero',
+      renderer_version: 'v1',
       codeRef: 'hero-code',
       catalog: {
         providerCode: 'official',

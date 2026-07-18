@@ -12,7 +12,7 @@ import type {
   IfElseBranchDocument
 } from '@1flowbase/flow-schema';
 
-import { evaluateSchemaRule } from '../../../shared/schema-ui/runtime/rule-evaluator';
+import { evaluateSchemaRule } from '../../../shared/schema-ui/v1/runtime/rule-evaluator';
 import type { AgentFlowModelProviderOptions } from '../api/model-provider-options';
 import {
   extractDataModelQuerySelectors,

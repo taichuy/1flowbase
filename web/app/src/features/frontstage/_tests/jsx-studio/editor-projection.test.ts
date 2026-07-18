@@ -81,6 +81,7 @@ const dataCapabilities: ConsoleFrontstageDataCapabilities = {
 function createBlock(): FrontstageBlockInstance {
   return {
     id: 'orders-block',
+    rendererVersion: 'v1',
     sourceId: 'orders-block',
     codeRef: 'orders-code',
     sourceCodeRef: 'orders-code',

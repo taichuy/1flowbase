@@ -2,7 +2,7 @@ import {
   createRendererRegistry,
   type SchemaFieldRenderer,
   type SchemaViewRenderer
-} from '../../../shared/schema-ui/registry/create-renderer-registry';
+} from '../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
 import { LlmParameterForm } from '../components/detail/fields/LlmParameterForm';
 import { agentFlowFieldRenderers } from './agent-flow-field-renderers';

@@ -137,6 +137,39 @@ const blockLabelStyle: CSSProperties = {
   padding: '0 8px'
 };
 
+function resolveRendererVersionError(
+  item: FrontstageBlockRenderPlanItem
+): { message: string; description: string } | null {
+  const reason = item.fallbackReasons.find(
+    (fallbackReason) =>
+      fallbackReason.code === 'missing_renderer_version' ||
+      fallbackReason.code === 'unsupported_renderer_version'
+  );
+
+  if (!reason) {
+    return null;
+  }
+
+  if (reason.code === 'missing_renderer_version') {
+    return {
+      message: i18nText('frontstage', 'auto.block_renderer_version_missing'),
+      description: i18nText(
+        'frontstage',
+        'auto.block_renderer_version_missing_description'
+      )
+    };
+  }
+
+  return {
+    message: i18nText('frontstage', 'auto.block_renderer_version_unsupported'),
+    description: i18nText(
+      'frontstage',
+      'auto.block_renderer_version_unsupported_description',
+      { value1: item.rendererVersion ?? '' }
+    )
+  };
+}
+
 function RenderPlanSlot({
   item,
   runtimeSessionEntry,
@@ -149,6 +182,7 @@ function RenderPlanSlot({
   canMoveDown
 }: RenderPlanSlotProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const rendererVersionError = resolveRendererVersionError(item);
 
   // Determine border style based on mode
   let borderStyle: CSSProperties;
@@ -182,6 +216,26 @@ function RenderPlanSlot({
 
   // Render the actual block content
   const renderBlockContent = () => {
+    if (rendererVersionError) {
+      return (
+        <div
+          style={{
+            height: '100%',
+            boxSizing: 'border-box',
+            overflow: 'auto',
+            padding: isDesignMode ? '48px 24px 28px' : 12
+          }}
+        >
+          <Alert
+            type="error"
+            showIcon
+            message={rendererVersionError.message}
+            description={rendererVersionError.description}
+          />
+        </div>
+      );
+    }
+
     if (runtimeSessionEntry && 'snapshot' in runtimeSessionEntry) {
       return (
         <div

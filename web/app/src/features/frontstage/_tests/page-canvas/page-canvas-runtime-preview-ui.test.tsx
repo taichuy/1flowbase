@@ -139,6 +139,7 @@ describe('PageCanvas runtime preview UI', () => {
               blocks: [
                 {
                   id: 'ready',
+                  renderer_version: 'v1',
                   codeRef: 'ready-code',
                   contributionCode: 'official.ready',
                   runtime: { kind: 'iframe', entry: 'blocks/ready.js' },
@@ -279,6 +280,7 @@ describe('PageCanvas runtime preview UI', () => {
               blocks: [
                 {
                   id: 'factory-failed',
+                  renderer_version: 'v1',
                   codeRef: 'factory-failed-code',
                   contributionCode: 'official.factory-failed',
                   runtime: {
@@ -289,6 +291,7 @@ describe('PageCanvas runtime preview UI', () => {
                 },
                 {
                   id: 'loading',
+                  renderer_version: 'v1',
                   codeRef: 'loading-code',
                   contributionCode: 'official.loading',
                   runtime: { kind: 'iframe', entry: 'blocks/loading.js' },

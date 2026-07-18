@@ -27,8 +27,8 @@ import { i18nText } from '../../../../shared/i18n/text';
 import {
   SchemaFormDrawer,
   type SchemaFormValues
-} from '../../../../shared/schema-ui/form-drawer/SchemaFormDrawer';
-import type { PluginFormSchema } from '../../../../shared/schema-ui/contracts/plugin-form-schema';
+} from '../../../../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
+import type { PluginFormSchema } from '../../../../shared/schema-ui/v1/contracts/plugin-form-schema';
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import {
   createSettingsAuthCenterAuthenticator,

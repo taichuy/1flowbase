@@ -603,6 +603,7 @@ describe('FrontStagePage - design controls', () => {
     mockFrontstageBlockCatalog([createCatalogEntry()]);
     const blockPayload = {
       id: 'orders-block',
+      renderer_version: 'v1',
       codeRef: 'orders-code',
       catalog: {
         providerCode: '1flowbase',
@@ -757,6 +758,7 @@ describe('FrontStagePage - design controls', () => {
     const [block] = getSavedBlocks(saveInput);
 
     expect(block).toMatchObject({
+      renderer_version: 'v1',
       catalog: {
         providerCode: '1flowbase',
         installationId: 'builtin-installation'

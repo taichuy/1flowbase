@@ -334,7 +334,10 @@ describe('frontstage page content feature api', () => {
         },
         document: {
           root_uid: 'root-1',
-          payload: { version: 1, blocks: [{ id: 'hero-1' }] }
+          payload: {
+            version: 1,
+            blocks: [{ id: 'hero-1', renderer_version: 'v1' }]
+          }
         }
       });
 
@@ -344,7 +347,12 @@ describe('frontstage page content feature api', () => {
           'workspace-1',
           'page-1',
           'tab-1',
-          { payload: { version: 1, blocks: [{ id: 'hero-1' }] } },
+          {
+            payload: {
+              version: 1,
+              blocks: [{ id: 'hero-1', renderer_version: 'v1' }]
+            }
+          },
           'csrf-123'
         )
       ).resolves.toEqual({
@@ -369,14 +377,22 @@ describe('frontstage page content feature api', () => {
         },
         document: {
           rootUid: 'root-1',
-          payload: { version: 1, blocks: [{ id: 'hero-1' }] }
+          payload: {
+            version: 1,
+            blocks: [{ id: 'hero-1', renderer_version: 'v1' }]
+          }
         }
       });
       expect(saveSpy).toHaveBeenCalledWith(
         'workspace-1',
         'page-1',
         'tab-1',
-        { payload: { version: 1, blocks: [{ id: 'hero-1' }] } },
+        {
+          payload: {
+            version: 1,
+            blocks: [{ id: 'hero-1', renderer_version: 'v1' }]
+          }
+        },
         'csrf-123',
         expect.any(String)
       );

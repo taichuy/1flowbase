@@ -101,6 +101,7 @@ function createPageContent(): FrontstagePageContent {
         blocks: [
           {
             id: 'hero',
+            renderer_version: 'v1',
             codeRef: 'hero-code',
             contributionCode: 'official.hero',
             runtime: { kind: 'iframe', entry: 'blocks/hero.js' },
@@ -137,6 +138,7 @@ function createCatalogMatchedPageContent(): FrontstagePageContent {
         blocks: [
           {
             id: 'hero',
+            renderer_version: 'v1',
             codeRef: 'hero-code',
             catalog: {
               providerCode: 'official',

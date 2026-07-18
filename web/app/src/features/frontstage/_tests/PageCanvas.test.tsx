@@ -71,6 +71,7 @@ describe('PageCanvas', () => {
               blocks: [
                 {
                   id: 'hero',
+                  renderer_version: 'v1',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
                   runtime: { kind: 'iframe', entry: 'blocks/hero.html' },
@@ -78,6 +79,7 @@ describe('PageCanvas', () => {
                 },
                 {
                   id: 'cta',
+                  renderer_version: 'v1',
                   codeRef: 'cta-code',
                   contributionCode: 'official.cta',
                   runtime: 'inline',
@@ -108,6 +110,7 @@ describe('PageCanvas', () => {
               blocks: [
                 {
                   id: 'hero',
+                  renderer_version: 'v1',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
                   runtime: { kind: 'iframe', entry: 'blocks/hero.js' },
@@ -124,6 +127,31 @@ describe('PageCanvas', () => {
     expect(slots.getByText('区块加载中...')).toBeInTheDocument();
   });
 
+  test('shows an explicit error instead of rendering an unsupported renderer version', () => {
+    render(
+      <PageCanvas
+        content={createPageContent({
+          root: {
+            uid: 'root-1',
+            payload: {
+              blocks: [
+                {
+                  id: 'future',
+                  renderer_version: 'v2',
+                  codeRef: 'future-code',
+                  contributionCode: 'official.future',
+                  runtime: { kind: 'iframe', entry: 'blocks/future.js' }
+                }
+              ]
+            }
+          }
+        })}
+      />
+    );
+
+    expect(screen.getByText('区块渲染版本不受支持')).toBeInTheDocument();
+  });
+
   test('notifies selection changes when clicked in design mode', () => {
     const onSelectBlock = vi.fn();
 
@@ -137,6 +165,7 @@ describe('PageCanvas', () => {
               blocks: [
                 {
                   id: 'hero',
+                  renderer_version: 'v1',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
                   runtime: 'inline'
@@ -167,6 +196,7 @@ describe('PageCanvas', () => {
               blocks: [
                 {
                   id: 'hero',
+                  renderer_version: 'v1',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
                   runtime: 'inline'
@@ -213,6 +243,7 @@ describe('PageCanvas', () => {
                 },
                 {
                   id: 'cta',
+                  renderer_version: 'v1',
                   codeRef: 'cta-code',
                   contributionCode: 'official.cta',
                   runtime: { kind: 'iframe', entry: 'blocks/cta.js' },

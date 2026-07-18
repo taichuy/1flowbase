@@ -222,6 +222,7 @@ function createReadRequest(
   pageId: string
 ): FrontstagePageCanvasBlockCodeReadRequest | null {
   const codeRef = normalizeRequiredString(slot.codeRef);
+  const rendererVersion = normalizeRequiredString(slot.rendererVersion);
   const runtimeEntry = normalizeRequiredString(slot.runtime.entry);
 
   if (
@@ -229,6 +230,7 @@ function createReadRequest(
     !slot.canEnterRestrictedJsRuntime ||
     slot.fallbackReasons.length > 0 ||
     !codeRef ||
+    !rendererVersion ||
     !runtimeEntry
   ) {
     return null;
@@ -341,6 +343,7 @@ function createBlockFromSlot(
 ): FrontstageBlockInstance {
   return {
     id: slot.blockId,
+    rendererVersion: slot.rendererVersion,
     sourceId: slot.sourceBlockId,
     codeRef: slot.codeRef,
     sourceCodeRef: slot.sourceCodeRef,

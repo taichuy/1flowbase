@@ -62,12 +62,15 @@ function createPageContent(title = '页面 1') {
       routeSegment: null,
       documentRootUid: 'root-1'
     },
-    document: { rootUid: 'root-1', payload: { blocks: [{ uid: 'hero' }] } }
+    document: {
+      rootUid: 'root-1',
+      payload: { blocks: [{ uid: 'hero', renderer_version: 'v1' }] }
+    }
   };
 }
 
 function createSaveInput() {
-  return { payload: { blocks: [{ uid: 'hero' }] } };
+  return { payload: { blocks: [{ uid: 'hero', renderer_version: 'v1' }] } };
 }
 
 function setupSave(queryClient = createQueryClient()) {

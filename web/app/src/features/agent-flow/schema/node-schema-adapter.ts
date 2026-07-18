@@ -24,7 +24,7 @@ import {
 } from '../lib/variables/conversation-variables';
 import type { AgentFlowIssue } from '../lib/validate-document';
 
-import type { SchemaAdapter } from '../../../shared/schema-ui/registry/create-renderer-registry';
+import type { SchemaAdapter } from '../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
 function getNode(document: FlowAuthoringDocument, nodeId: string) {
   const node = document.graph.nodes.find(

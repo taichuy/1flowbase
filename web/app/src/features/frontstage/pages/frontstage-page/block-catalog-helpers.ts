@@ -1,5 +1,6 @@
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstageBlockCompositionInput } from '../../lib/block-composition';
+import { FRONTSTAGE_BLOCK_RENDERER_VERSION_V1 } from '../../lib/block-renderer-version';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
 function createCatalogBlockInput(
@@ -15,6 +16,7 @@ function createCatalogBlockInput(
 
   return {
     id: blockId,
+    rendererVersion: FRONTSTAGE_BLOCK_RENDERER_VERSION_V1,
     codeRef: `${blockId}-code`,
     catalog: {
       providerCode: entry.providerCode,

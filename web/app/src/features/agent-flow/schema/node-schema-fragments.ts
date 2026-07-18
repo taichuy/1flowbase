@@ -8,7 +8,7 @@ import type {
   SchemaBlock,
   SchemaFieldBlock,
   SchemaSectionBlock
-} from '../../../shared/schema-ui/contracts/canvas-node-schema';
+} from '../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 import {
   getNodeDefinitionSections,
   type NodeDefinitionField,

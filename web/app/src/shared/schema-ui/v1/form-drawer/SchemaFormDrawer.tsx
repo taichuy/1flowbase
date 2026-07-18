@@ -2,8 +2,8 @@ import { Alert, Button, Drawer, Flex, Form, Input, InputNumber, Modal, Select, S
 import type { Rule } from 'antd/es/form';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { i18nText } from '../../i18n/text';
-import { ResizableDrawer } from '../../ui/resizable-drawer/ResizableDrawer';
+import { i18nText } from '../../../i18n/text';
+import { ResizableDrawer } from '../../../ui/resizable-drawer/ResizableDrawer';
 import type {
   PluginFormFieldSchema,
   PluginFormSchema,

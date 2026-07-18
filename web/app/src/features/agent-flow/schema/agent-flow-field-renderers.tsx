@@ -9,7 +9,7 @@ import { Input, InputNumber, Select, Switch } from 'antd';
 import type {
   SchemaFieldRenderer,
   SchemaFieldRendererProps
-} from '../../../shared/schema-ui/registry/create-renderer-registry';
+} from '../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
 import type { AgentFlowDataModelFieldOption } from '../api/data-model-options';
 import { ConditionGroupField } from '../components/bindings/ConditionGroupField';

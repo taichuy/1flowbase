@@ -23,6 +23,7 @@ function createBlock(
 
   return {
     id,
+    rendererVersion: overrides.rendererVersion ?? 'v1',
     sourceId: overrides.sourceId ?? id,
     codeRef,
     sourceCodeRef: overrides.sourceCodeRef ?? codeRef,
@@ -123,6 +124,9 @@ describe('frontstage block composition', () => {
       1,
       2
     ]);
+    expect(
+      inserted.document.blocks.map((block) => block.rendererVersion)
+    ).toEqual(['v1', 'v1', 'v1']);
     expect(inserted.selectedBlockId).toBe('cta');
   });
 

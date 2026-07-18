@@ -55,7 +55,8 @@ function createBlock(
       entry: 'blocks/hero/index.js',
       hint: 'iframe'
     },
-    ...overrides
+    ...overrides,
+    rendererVersion: overrides.rendererVersion ?? 'v1'
   };
 }
 

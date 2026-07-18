@@ -5,6 +5,7 @@ use std::{
 
 use access_control::ensure_permission;
 use anyhow::Result;
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
@@ -137,6 +138,43 @@ const RESERVED_FRONTSTAGE_SLUGS: &[&str] = &[
     "sign-in",
     "templates",
 ];
+
+const FRONTSTAGE_BLOCK_RENDERER_VERSION_V1: &str = "v1";
+
+fn validate_frontstage_block_renderer_versions(document_payload: &Value) -> Result<()> {
+    let Some(blocks) = document_payload
+        .as_object()
+        .and_then(|document| document.get("blocks"))
+    else {
+        return Ok(());
+    };
+    let Some(blocks) = blocks.as_array() else {
+        return Ok(());
+    };
+
+    for block in blocks {
+        let Some(block) = block.as_object() else {
+            return Err(ControlPlaneError::InvalidInput(
+                "frontstage_block_renderer_version_missing",
+            )
+            .into());
+        };
+        let Some(renderer_version) = block.get("renderer_version").and_then(Value::as_str) else {
+            return Err(ControlPlaneError::InvalidInput(
+                "frontstage_block_renderer_version_missing",
+            )
+            .into());
+        };
+        if renderer_version != FRONTSTAGE_BLOCK_RENDERER_VERSION_V1 {
+            return Err(ControlPlaneError::InvalidInput(
+                "frontstage_block_renderer_version_unsupported",
+            )
+            .into());
+        }
+    }
+
+    Ok(())
+}
 
 fn normalize_frontstage_slug(value: Option<String>) -> Result<Option<String>> {
     let Some(value) = value else {
@@ -685,6 +723,7 @@ where
         ensure_design_permission(&actor)?;
         self.ensure_existing_page(command.workspace_id, command.page_id)
             .await?;
+        validate_frontstage_block_renderer_versions(&command.document_payload)?;
 
         let detail = self
             .repository

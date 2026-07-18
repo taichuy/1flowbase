@@ -2,7 +2,7 @@ import { Button } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 
 import type { DockPanelSchema } from '../contracts/overlay-shell-schema';
-import { i18nText } from '../../i18n/text';
+import { i18nText } from '../../../i18n/text';
 
 export function SchemaDockPanel({
   schema,

@@ -38,6 +38,7 @@ export type FrontstageBlockLayout = Record<string, unknown> & {
 
 export interface FrontstageBlockInstance {
   id: string;
+  rendererVersion: string | null;
   sourceId: string | null;
   codeRef: string;
   sourceCodeRef: string | null;
@@ -59,6 +60,7 @@ export interface FrontstagePageDocument {
 
 interface FrontstageBlockPayload {
   id: string;
+  renderer_version: string | null;
   codeRef: string;
   catalog: FrontstageBlockCatalogRef;
   contribution: FrontstageBlockContributionRef;
@@ -272,6 +274,32 @@ function normalizeRuntime(
   };
 }
 
+function normalizeRendererVersion(
+  block: Record<string, unknown>,
+  path: string,
+  diagnostics: FrontstagePageDocumentDiagnostic[]
+): string | null {
+  const value = block.renderer_version;
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+
+  pushDiagnostic(diagnostics, {
+    severity: 'error',
+    code:
+      value === undefined
+        ? 'missing_renderer_version'
+        : 'invalid_renderer_version',
+    path: `${path}.renderer_version`,
+    message:
+      value === undefined
+        ? 'Frontstage block renderer_version is required.'
+        : 'Frontstage block renderer_version must be a non-empty string.'
+  });
+  return null;
+}
+
 function normalizeBlock(
   block: Record<string, unknown>,
   blockIndex: number,
@@ -351,12 +379,14 @@ function normalizeBlock(
 
   const props = normalizeProps(block, path, diagnostics);
   const layout = normalizeLayout(block, blockIndex, path, diagnostics);
+  const rendererVersion = normalizeRendererVersion(block, path, diagnostics);
   const runtimeDiagnostics: FrontstagePageDocumentDiagnostic[] = [];
   const runtime = normalizeRuntime(block, blockIndex, runtimeDiagnostics);
   pendingRuntimeDiagnostics.push(...runtimeDiagnostics);
 
   return {
     id,
+    rendererVersion,
     sourceId,
     codeRef,
     sourceCodeRef,
@@ -441,6 +471,7 @@ function createBlockPayload(
 ): FrontstageBlockPayload {
   return {
     id: block.id,
+    renderer_version: block.rendererVersion,
     codeRef: block.codeRef,
     catalog: { ...block.catalog },
     contribution: { ...block.contribution },

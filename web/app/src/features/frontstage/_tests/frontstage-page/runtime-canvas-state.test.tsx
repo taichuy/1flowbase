@@ -345,6 +345,7 @@ function createCatalogMatchedBlockPayload(
 ): Record<string, unknown> {
   return {
     id: 'frontstage-js-block-1',
+    renderer_version: 'v1',
     codeRef: 'frontstage-js-block-1-code',
     catalog: {
       providerCode: '1flowbase',

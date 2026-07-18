@@ -87,6 +87,7 @@ const FRONTSTAGE_WORKSPACE_INTEGRITY_MIGRATION_VERSION: i64 = 20260710193500;
 const FRONTSTAGE_PAGE_OWNER_KIND_MIGRATION_VERSION: i64 = 20260710210000;
 const FRONTSTAGE_PLACEMENT_INTEGRITY_MIGRATION_VERSION: i64 = 20260710223000;
 const FRONTSTAGE_PAGE_TAB_OWNERSHIP_MIGRATION_VERSION: i64 = 20260718210000;
+const FRONTSTAGE_BLOCK_RENDERER_VERSION_MIGRATION_VERSION: i64 = 20260718220000;
 
 fn page_tabs_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
@@ -140,6 +141,18 @@ fn before_frontstage_page_tab_ownership_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
         .iter()
         .filter(|migration| migration.version < FRONTSTAGE_PAGE_TAB_OWNERSHIP_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+fn before_frontstage_block_renderer_version_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < FRONTSTAGE_BLOCK_RENDERER_VERSION_MIGRATION_VERSION)
         .cloned()
         .collect::<Vec<_>>();
     Migrator {
@@ -309,6 +322,113 @@ async fn page_tab_ownership_migration_rejects_divergent_legacy_blocks_without_pa
     .await
     .unwrap();
     assert!(!content_presentation_exists);
+}
+
+#[tokio::test]
+async fn frontstage_block_renderer_version_migration_backfills_document_and_compatibility_projections(
+) {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    before_frontstage_block_renderer_version_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    let (workspace_id, _) = insert_frontstage_test_workspaces(&pool).await;
+    let page_id = Uuid::now_v7();
+    let tab_id = Uuid::now_v7();
+    let root_uid = format!("frontstage.tab.{tab_id}.root");
+    let legacy_blocks = json!([
+        {
+            "id": "hero",
+            "codeRef": "hero-code",
+            "props": { "title": "Hero" }
+        },
+        {
+            "id": "future",
+            "codeRef": "future-code",
+            "renderer_version": "v2"
+        }
+    ]);
+
+    let mut transaction = pool.begin().await.unwrap();
+    sqlx::query(
+        "insert into frontstage_pages (id, workspace_id, kind, title, placement, content_presentation, rank) values ($1, $2, 'page', 'Versioned Page', 'sidebar', 'single', 'a')",
+    )
+    .bind(page_id)
+    .bind(workspace_id)
+    .execute(&mut *transaction)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into frontstage_page_tabs (id, workspace_id, page_id, title, rank, is_default, document_root_uid, route_segment) values ($1, $2, $3, 'Default', 'a', true, $4, null)",
+    )
+    .bind(tab_id)
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(&root_uid)
+    .execute(&mut *transaction)
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into frontstage_page_schemas (id, scope_id, tab_id, workspace_id, root_uid, schema_payload, root_payload, document_payload) values ($1, $2, $3, $2, $4, $5, $6, $7)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(tab_id)
+    .bind(&root_uid)
+    .bind(json!({
+        "version": 1,
+        "schema_meta": { "owner": "compat" },
+        "blocks": legacy_blocks
+    }))
+    .bind(json!({
+        "uid": root_uid,
+        "kind": "frontstage.tab.root",
+        "root_meta": { "owner": "compat" },
+        "blocks": legacy_blocks
+    }))
+    .bind(json!({
+        "version": 1,
+        "document_meta": { "owner": "document" },
+        "blocks": legacy_blocks
+    }))
+    .execute(&mut *transaction)
+    .await
+    .unwrap();
+    transaction.commit().await.unwrap();
+
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+    let (schema_payload, root_payload, document_payload): (Value, Value, Value) = sqlx::query_as(
+        "select schema_payload, root_payload, document_payload from frontstage_page_schemas where workspace_id = $1 and tab_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(tab_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let expected_blocks = json!([
+        {
+            "id": "hero",
+            "codeRef": "hero-code",
+            "props": { "title": "Hero" },
+            "renderer_version": "v1"
+        },
+        {
+            "id": "future",
+            "codeRef": "future-code",
+            "renderer_version": "v2"
+        }
+    ]);
+
+    assert_eq!(document_payload["blocks"], expected_blocks);
+    assert_eq!(schema_payload["blocks"], expected_blocks);
+    assert_eq!(root_payload["blocks"], expected_blocks);
+    assert_eq!(
+        document_payload["document_meta"],
+        json!({ "owner": "document" })
+    );
+    assert_eq!(schema_payload["schema_meta"], json!({ "owner": "compat" }));
+    assert_eq!(root_payload["root_meta"], json!({ "owner": "compat" }));
 }
 
 async fn insert_frontstage_group_and_page(
