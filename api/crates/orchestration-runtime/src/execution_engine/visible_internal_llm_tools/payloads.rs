@@ -357,6 +357,8 @@ pub(super) fn visible_internal_llm_tool_failure(
         node,
         runtime,
         error_payload,
+        LlmFailureProjection::NoNodeOutput,
+        None,
         build_llm_metrics_payload(
             runtime,
             ProviderUsage::default(),
@@ -367,7 +369,6 @@ pub(super) fn visible_internal_llm_tool_failure(
             None,
         ),
         provider_events,
-        true,
         LlmDebugInvocation {
             messages: &[],
             context: None,

@@ -383,7 +383,10 @@ where
             )
             .await?;
             provider_events.extend(execution.provider_events.clone());
-            if let Some(error_payload) = execution.error_payload {
+            if let Some(mut error_payload) = execution.error_payload.take() {
+                if let Some(message) = execution.recoverable_error_message.take() {
+                    error_payload["message"] = Value::String(message);
+                }
                 return Ok(VisibleInternalLlmToolNodeExecution::Failed(error_payload));
             }
             if let Some(mut wait) = execution.pending_callback.take() {

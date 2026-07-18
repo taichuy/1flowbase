@@ -52,17 +52,27 @@ pub(super) fn build_failed_llm_execution(
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,
     error_payload: Value,
+    failure_projection: LlmFailureProjection,
+    recoverable_error_message: Option<String>,
     metrics_payload: Value,
     provider_events: Vec<ProviderStreamEvent>,
-    include_output_payload: bool,
     debug_invocation: LlmDebugInvocation<'_>,
 ) -> Result<LlmNodeExecution> {
     let provider_events = durable_provider_events(provider_events);
+    let mut executor_output = Map::new();
+    if failure_projection != LlmFailureProjection::NoNodeOutput {
+        executor_output.insert(
+            first_output_key(node),
+            Value::String(failed_llm_output_text(&error_payload)),
+        );
+        executor_output.insert(
+            "provider_route".to_string(),
+            build_llm_provider_route_payload(runtime),
+        );
+        executor_output.insert("finish_reason".to_string(), json!("error"));
+    }
     let raw = RawNodeExecutionResult {
-        // A failed provider invocation has error facts and may have transient
-        // partial deltas, but it never manufactures a successful node output.
-        // Error policies own any explicit fallback or error branch.
-        executor_output: Map::new(),
+        executor_output,
         metrics_facts: object_from_value(metrics_payload)?,
         error_facts: object_from_value(error_payload)?,
         debug_facts: build_llm_debug_facts(
@@ -77,17 +87,26 @@ pub(super) fn build_failed_llm_execution(
     let built = build_llm_node_payloads(node, raw)?;
 
     Ok(LlmNodeExecution {
-        output_payload: if include_output_payload {
-            built.output_payload
-        } else {
-            json!({})
-        },
+        output_payload: built.output_payload,
         error_payload: Some(built.error_payload),
         metrics_payload: built.metrics_payload,
         debug_payload: built.debug_payload,
         provider_events,
         pending_callback: None,
+        failure_projection,
+        recoverable_error_message,
     })
+}
+
+fn failed_llm_output_text(error_payload: &Value) -> String {
+    error_payload
+        .get("message")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| error_payload.get("error_message").and_then(Value::as_str))
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("LLM node failed")
+        .to_string()
 }
 
 pub(super) fn build_successful_llm_execution(
@@ -178,6 +197,8 @@ pub(super) fn build_successful_llm_execution(
         debug_payload: built.debug_payload,
         provider_events,
         pending_callback: None,
+        failure_projection: LlmFailureProjection::NoNodeOutput,
+        recoverable_error_message: None,
     })
 }
 

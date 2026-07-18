@@ -238,6 +238,88 @@ pub(super) fn durable_provider_events(
         .collect()
 }
 
+// Visible internal tools need a user-actionable diagnostic while their branch
+// remains in memory; durable node errors continue to use the generic payload.
+pub(super) fn recoverable_provider_error_message(error: &ProviderRuntimeError) -> String {
+    sanitize_provider_diagnostic(&error.message)
+}
+
+fn sanitize_provider_diagnostic(text: &str) -> String {
+    let mut sanitized = text.to_string();
+    for marker in [
+        "bearer ",
+        "authorization:",
+        "\"authorization\":\"",
+        "api_key=",
+        "api_key:",
+        "\"api_key\":\"",
+        "token=",
+        "secret=",
+        "\"secret\":\"",
+    ] {
+        sanitized = redact_provider_diagnostic_marker(&sanitized, marker);
+    }
+    sanitized = redact_provider_diagnostic_token(&sanitized, "sk-");
+    let sanitized = sanitized.trim();
+    if sanitized.chars().count() <= 240 {
+        sanitized.to_string()
+    } else {
+        format!("{}...", sanitized.chars().take(240).collect::<String>())
+    }
+}
+
+fn redact_provider_diagnostic_marker(text: &str, marker: &str) -> String {
+    let haystack = text.to_ascii_lowercase();
+    let needle = marker.to_ascii_lowercase();
+    let mut result = String::with_capacity(text.len());
+    let mut cursor = 0;
+
+    while let Some(offset) = haystack[cursor..].find(&needle) {
+        let start = cursor + offset;
+        let value_start = start + marker.len();
+        result.push_str(&text[cursor..value_start]);
+        let mut value_end = value_start;
+        for ch in text[value_start..].chars() {
+            if ch.is_whitespace() || matches!(ch, '\"' | '\'' | ',' | '}' | ']' | '\n' | '\r') {
+                break;
+            }
+            value_end += ch.len_utf8();
+        }
+        if value_end > value_start {
+            result.push_str("[REDACTED]");
+        }
+        cursor = value_end;
+    }
+
+    result.push_str(&text[cursor..]);
+    result
+}
+
+fn redact_provider_diagnostic_token(text: &str, prefix: &str) -> String {
+    let haystack = text.to_ascii_lowercase();
+    let needle = prefix.to_ascii_lowercase();
+    let mut result = String::with_capacity(text.len());
+    let mut cursor = 0;
+
+    while let Some(offset) = haystack[cursor..].find(&needle) {
+        let start = cursor + offset;
+        result.push_str(&text[cursor..start]);
+        result.push_str(prefix);
+        result.push_str("[REDACTED]");
+        let mut token_end = start + prefix.len();
+        for ch in text[token_end..].chars() {
+            if !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.')) {
+                break;
+            }
+            token_end += ch.len_utf8();
+        }
+        cursor = token_end;
+    }
+
+    result.push_str(&text[cursor..]);
+    result
+}
+
 pub(super) fn provider_runtime_error_from_anyhow(error: &anyhow::Error) -> ProviderRuntimeError {
     if let Some(PluginFrameworkError::RuntimeContract { error }) =
         error.downcast_ref::<PluginFrameworkError>()

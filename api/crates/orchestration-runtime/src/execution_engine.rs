@@ -147,6 +147,13 @@ impl ExecutionLifecycle for NoopExecutionLifecycle {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LlmFailureProjection {
+    NoNodeOutput,
+    FailedNodeOutput,
+    LegacyTerminalFallback,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlmNodeExecution {
     pub output_payload: Value,
@@ -155,6 +162,8 @@ pub struct LlmNodeExecution {
     pub debug_payload: Value,
     pub provider_events: Vec<ProviderStreamEvent>,
     pub pending_callback: Option<LlmToolCallbackWait>,
+    pub(super) failure_projection: LlmFailureProjection,
+    pub(super) recoverable_error_message: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -656,11 +665,14 @@ where
                 if let Some(error_payload) = execution.error_payload {
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
+                        pending_failure: &mut pending_failure,
                         node,
                         output_payload: &execution.output_payload,
                         error_payload,
+                        failure_projection: execution.failure_projection,
                     })? {
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
@@ -719,11 +731,14 @@ where
                 if let Some(error_payload) = execution.error_payload {
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
+                        pending_failure: &mut pending_failure,
                         node,
                         output_payload: &execution.output_payload,
                         error_payload,
+                        failure_projection: LlmFailureProjection::NoNodeOutput,
                     })? {
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
@@ -760,11 +775,14 @@ where
                 if let Some(error_payload) = execution.error_payload {
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
+                        pending_failure: &mut pending_failure,
                         node,
                         output_payload: &execution.output_payload,
                         error_payload,
+                        failure_projection: LlmFailureProjection::NoNodeOutput,
                     })? {
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
@@ -949,11 +967,14 @@ where
                 if let Some(error_payload) = execution.error_payload {
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
+                        pending_failure: &mut pending_failure,
                         node,
                         output_payload: &execution.output_payload,
                         error_payload,
+                        failure_projection: LlmFailureProjection::NoNodeOutput,
                     })? {
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
@@ -987,11 +1008,14 @@ where
                 if let Some(error_payload) = execution.error_payload {
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
+                        failed_node_index: index,
                         active_node_ids: &mut active_node_ids,
                         variable_pool: &mut variable_pool,
+                        pending_failure: &mut pending_failure,
                         node,
                         output_payload: &execution.output_payload,
                         error_payload,
+                        failure_projection: LlmFailureProjection::NoNodeOutput,
                     })? {
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
@@ -1148,6 +1172,8 @@ where
                     node,
                     attempt_runtime,
                     error_payload,
+                    LlmFailureProjection::NoNodeOutput,
+                    None,
                     build_llm_metrics_payload(
                         attempt_runtime,
                         ProviderUsage::default(),
@@ -1158,7 +1184,6 @@ where
                         None,
                     ),
                     Vec::new(),
-                    true,
                     LlmDebugInvocation {
                         messages: &[],
                         context: None,
@@ -1198,6 +1223,8 @@ where
                 node,
                 attempt_runtime,
                 error_payload,
+                LlmFailureProjection::NoNodeOutput,
+                None,
                 build_llm_metrics_payload(
                     attempt_runtime,
                     ProviderUsage::default(),
@@ -1208,7 +1235,6 @@ where
                     None,
                 ),
                 Vec::new(),
-                true,
                 LlmDebugInvocation {
                     messages: &invocation_messages,
                     context: Some(&invocation.debug_context),
@@ -1225,6 +1251,7 @@ where
                 let attempt_finished_at = OffsetDateTime::now_utc();
                 let provider_error = provider_runtime_error_from_anyhow(&error);
                 let error_payload = build_provider_error_payload(attempt_runtime, &provider_error);
+                let recoverable_error_message = recoverable_provider_error_message(&provider_error);
                 let attempt = build_attempt_metric(AttemptMetricInput {
                     attempt_index,
                     retry_reason: retry_reason.as_deref(),
@@ -1257,6 +1284,8 @@ where
                     node,
                     attempt_runtime,
                     error_payload,
+                    LlmFailureProjection::NoNodeOutput,
+                    Some(recoverable_error_message),
                     build_llm_metrics_payload(
                         attempt_runtime,
                         ProviderUsage::default(),
@@ -1267,7 +1296,6 @@ where
                         None,
                     ),
                     Vec::new(),
-                    true,
                     LlmDebugInvocation {
                         messages: &invocation_messages,
                         context: Some(&invocation.debug_context),
@@ -1288,27 +1316,55 @@ where
             output.result.final_content.clone(),
             collect_dify_style_deltas(&output.events),
         );
-        let provider_error = first_provider_error(&output.events)
-            .cloned()
-            .or_else(|| invalid_tool_call_finish_error(finish_reason.as_ref(), &output.result))
-            .or_else(|| {
-                matches!(finish_reason, Some(ProviderFinishReason::Error)).then(|| {
-                    ProviderRuntimeError::normalize(
-                        "invoke",
-                        "provider invocation finished with error",
-                        None,
-                    )
-                })
-            });
+        let stream_provider_error = first_provider_error(&output.events).cloned();
+        let invalid_tool_call_error = if stream_provider_error.is_none() {
+            invalid_tool_call_finish_error(finish_reason.as_ref(), &output.result)
+        } else {
+            None
+        };
+        let terminal_finish_error = (stream_provider_error.is_none()
+            && invalid_tool_call_error.is_none()
+            && matches!(finish_reason, Some(ProviderFinishReason::Error)))
+        .then(|| {
+            ProviderRuntimeError::normalize(
+                "invoke",
+                "provider invocation finished with error",
+                None,
+            )
+        });
+        let failure_projection = if invalid_tool_call_error.is_some() {
+            LlmFailureProjection::LegacyTerminalFallback
+        } else if terminal_finish_error.is_some()
+            && content_delta_seen_before_terminal_failure(&output.events, finish_reason.as_ref())
+        {
+            LlmFailureProjection::FailedNodeOutput
+        } else {
+            LlmFailureProjection::NoNodeOutput
+        };
+        let provider_error = stream_provider_error
+            .or(invalid_tool_call_error)
+            .or(terminal_finish_error);
         let failed_after_first_token = provider_error.is_some()
             && content_delta_seen_before_terminal_failure(&output.events, finish_reason.as_ref());
-        let error_payload = provider_error
+        let recoverable_error_message = provider_error
+            .as_ref()
+            .map(recoverable_provider_error_message);
+        let mut error_payload = provider_error
             .as_ref()
             .map(|error| build_provider_error_payload(attempt_runtime, error))
             .or_else(|| {
                 (!has_valid_provider_output(final_content.as_deref(), &output.result))
                     .then(|| build_empty_provider_response_error_payload(attempt_runtime))
             });
+        if failure_projection == LlmFailureProjection::LegacyTerminalFallback {
+            if let (Some(error_payload), Some(message)) =
+                (&mut error_payload, recoverable_error_message.as_deref())
+            {
+                // Invalid tool-call completion is generated by this runtime,
+                // rather than copied from an upstream provider response.
+                error_payload["message"] = Value::String(message.to_string());
+            }
+        }
         let attempt_status = match error_payload
             .as_ref()
             .and_then(|payload| payload.get("error_code"))
@@ -1353,6 +1409,8 @@ where
                 node,
                 attempt_runtime,
                 error_payload.clone(),
+                failure_projection,
+                recoverable_error_message,
                 build_llm_metrics_payload(
                     attempt_runtime,
                     usage,
@@ -1363,7 +1421,6 @@ where
                     output.time_to_first_token_ms,
                 ),
                 output.events,
-                true,
                 LlmDebugInvocation {
                     messages: &invocation_messages,
                     context: Some(&invocation.debug_context),
@@ -1409,6 +1466,8 @@ where
         node,
         runtime,
         error_payload,
+        LlmFailureProjection::NoNodeOutput,
+        None,
         build_llm_metrics_payload(
             runtime,
             ProviderUsage::default(),
@@ -1419,7 +1478,6 @@ where
             None,
         ),
         Vec::new(),
-        true,
         LlmDebugInvocation {
             messages: &[],
             context: None,
