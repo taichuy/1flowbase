@@ -88,6 +88,19 @@ impl MemoryPluginManagementRepository {
             .source_kind = "builtin".to_string();
     }
 
+    pub(crate) async fn set_installation_contract_version(
+        &self,
+        installation_id: Uuid,
+        contract_version: &str,
+    ) {
+        self.installations
+            .write()
+            .await
+            .get_mut(&installation_id)
+            .expect("test installation must exist")
+            .contract_version = contract_version.to_string();
+    }
+
     pub(crate) async fn artifact_snapshot_update_count(&self) -> usize {
         self.artifact_snapshot_updates.read().await.len()
     }

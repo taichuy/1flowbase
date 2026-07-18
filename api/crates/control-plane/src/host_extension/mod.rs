@@ -1,8 +1,7 @@
 use crate::errors::ControlPlaneError;
+use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 
 pub const HOST_EXTENSION_CONTRACT_VERSION: &str = "1flowbase.host_extension/v1";
-pub const MODEL_PROVIDER_CONTRACT_V1: &str = "1flowbase.provider/v1";
-pub const MODEL_PROVIDER_CONTRACT_V2: &str = "1flowbase.provider/v2";
 
 pub fn ensure_root_actor(actor: &domain::ActorContext) -> Result<(), ControlPlaneError> {
     if actor.is_root {
@@ -44,8 +43,5 @@ pub fn is_host_extension_installation(installation: &domain::PluginInstallationR
 }
 
 pub fn is_model_provider_installation(installation: &domain::PluginInstallationRecord) -> bool {
-    matches!(
-        installation.contract_version.as_str(),
-        MODEL_PROVIDER_CONTRACT_V1 | MODEL_PROVIDER_CONTRACT_V2
-    )
+    installation.contract_version == CURRENT_PROVIDER_CONTRACT
 }

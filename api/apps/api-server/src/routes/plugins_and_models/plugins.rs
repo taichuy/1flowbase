@@ -20,6 +20,7 @@ use control_plane::resource_action::{
     ActionDefinition, ResourceActionKernel, ResourceActionRegistry, ResourceDefinition,
     ResourceScopeKind,
 };
+use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 use serde::{Deserialize, Serialize};
 use storage_durable::MainDurableStore;
 use time::format_description::well_known::Rfc3339;
@@ -643,9 +644,9 @@ fn to_artifact_instance_response(
     }
 }
 
-fn runtime_slot_for_contract(contract_version: &str) -> Option<String> {
+pub(crate) fn runtime_slot_for_contract(contract_version: &str) -> Option<String> {
     match contract_version {
-        "1flowbase.provider/v1" | "1flowbase.provider/v2" => Some("model_provider".to_string()),
+        CURRENT_PROVIDER_CONTRACT => Some("model_provider".to_string()),
         "1flowbase.data_source/v1" => Some("data_source".to_string()),
         _ => None,
     }

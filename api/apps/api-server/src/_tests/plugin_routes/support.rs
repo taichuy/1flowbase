@@ -317,7 +317,7 @@ pub(super) fn build_signed_openai_upload_package(version: &str) -> Vec<u8> {
         "plugin_id": format!("openai_compatible@{}", version),
         "provider_code": "openai_compatible",
         "version": version,
-        "contract_version": "1flowbase.provider/v1",
+        "contract_version": "1flowbase.provider/v2",
         "artifact_sha256": "sha256:fixture-artifact",
         "payload_sha256": payload_sha256,
         "signature_algorithm": "ed25519",

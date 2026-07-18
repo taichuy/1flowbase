@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::{
+    host_extension::is_model_provider_installation,
     plugin_management::{
         AssignPluginCommand, DeletePluginFamilyCommand, EnablePluginCommand, InstallPluginCommand,
         PluginCatalogFilter, PluginCompatibilityOverride, PluginManagementService,
@@ -27,6 +28,7 @@ use domain::{
     PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus,
     PluginTaskKind, PluginTaskStatus, PluginVerificationStatus,
 };
+use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 
 use super::support::{
     actor_with_permissions, create_provider_fixture, requested_locales, seed_test_installation,
@@ -676,6 +678,82 @@ async fn assign_plugin_allows_data_source_runtime_installation() {
     assert!(assignments
         .iter()
         .any(|item| item.installation_id == installation_id));
+}
+
+#[tokio::test]
+async fn ac_002_model_provider_recognition_accepts_only_current_contract() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("plugin-provider-recognition-{}", Uuid::now_v7()));
+    let installation_id = seed_test_installation(
+        &repository,
+        &install_root,
+        "fixture_provider",
+        "0.1.0",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    let current = repository
+        .get_installation(installation_id)
+        .await
+        .unwrap()
+        .expect("current provider installation should exist");
+    assert_eq!(current.contract_version, CURRENT_PROVIDER_CONTRACT);
+    assert!(is_model_provider_installation(&current));
+
+    let mut legacy = current;
+    legacy.contract_version = "1flowbase.provider/v1".to_string();
+    assert!(!is_model_provider_installation(&legacy));
+}
+
+#[tokio::test]
+async fn ac_002_workspace_assignment_rejects_legacy_provider_contract() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let actor_user_id = repository.actor.user_id;
+    let install_root =
+        std::env::temp_dir().join(format!("plugin-legacy-assignment-{}", Uuid::now_v7()));
+    let installation_id = seed_test_installation(
+        &repository,
+        &install_root,
+        "fixture_provider",
+        "0.1.0",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    repository
+        .set_installation_contract_version(installation_id, "1flowbase.provider/v1")
+        .await;
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+
+    let error = service
+        .assign_plugin(AssignPluginCommand {
+            actor_user_id,
+            installation_id,
+        })
+        .await
+        .expect_err("legacy provider contract must not be workspace assignable");
+
+    assert!(error
+        .to_string()
+        .contains("plugin_assignment_not_supported"));
+    assert!(repository
+        .list_assignments(workspace_id)
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 async fn seed_data_source_runtime_installation() -> (

@@ -18,8 +18,9 @@ use access_control::ensure_permission;
 use anyhow::{Context, Result};
 use plugin_framework::{
     compute_manifest_fingerprint, intake_package_bytes, parse_plugin_manifest,
-    provider_package::ProviderPackage, PackageIntakePolicy, PackageIntakeResult,
-    PluginConsumptionKind, PluginExecutionMode, PluginManifestV1,
+    provider_contract::CURRENT_PROVIDER_CONTRACT, provider_package::ProviderPackage,
+    PackageIntakePolicy, PackageIntakeResult, PluginConsumptionKind, PluginExecutionMode,
+    PluginManifestV1,
 };
 use semver::Version;
 use serde_json::json;

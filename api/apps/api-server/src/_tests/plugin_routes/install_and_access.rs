@@ -8,10 +8,26 @@ use axum::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+use crate::routes::plugins_and_models::plugins::runtime_slot_for_contract;
+use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
+
 use super::support::{
     create_fixture_provider_package, create_member, create_role, replace_member_roles,
     replace_role_permissions,
 };
+
+#[test]
+fn ac_002_plugin_route_classifies_only_current_provider_contract() {
+    assert_eq!(
+        runtime_slot_for_contract(CURRENT_PROVIDER_CONTRACT).as_deref(),
+        Some("model_provider")
+    );
+    assert_eq!(runtime_slot_for_contract("1flowbase.provider/v1"), None);
+    assert_eq!(
+        runtime_slot_for_contract("1flowbase.data_source/v1").as_deref(),
+        Some("data_source")
+    );
+}
 
 #[tokio::test]
 async fn plugin_routes_install_enable_assign_and_query_tasks() {

@@ -733,9 +733,6 @@ where
 fn supports_workspace_assignment(installation: &domain::PluginInstallationRecord) -> bool {
     matches!(
         installation.contract_version.as_str(),
-        "1flowbase.provider/v1"
-            | "1flowbase.provider/v2"
-            | "1flowbase.data_source/v1"
-            | "1flowbase.capability/v1"
+        CURRENT_PROVIDER_CONTRACT | "1flowbase.data_source/v1" | "1flowbase.capability/v1"
     )
 }
