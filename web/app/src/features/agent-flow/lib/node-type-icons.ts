@@ -47,6 +47,7 @@ function codeNodeIcon() {
 const NODE_TYPE_ICONS: Record<string, ReactNode> = {
   start: createElement(PlaySquareOutlined),
   answer: createElement(MessageOutlined),
+  compact_response: createElement(MessageOutlined),
   llm: createElement(ThunderboltOutlined),
   agents: createElement(ThunderboltOutlined),
   agent: createElement(ThunderboltOutlined),

@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+import {
+  COMPACT_SOURCE_HANDLE_ID,
+  createDefaultAgentFlowDocument
+} from '@1flowbase/flow-schema';
 
 import { classifyDocumentChange } from '../../lib/document/change-kind';
 import { createEdgeDocument } from '../../lib/document/edge-factory';
@@ -8,6 +11,7 @@ import { getContainerPathForNode } from '../../lib/document/transforms/container
 import { duplicateNodeSubgraph } from '../../lib/document/transforms/duplicate';
 import {
   removeEdge,
+  connectNodes,
   connectNodeFromSource,
   insertNodeOnEdge,
   reconnectEdge,
@@ -110,6 +114,77 @@ describe('agent flow document transforms', () => {
         target: 'missing-node'
       })
     ).toBe(false);
+  });
+
+  test('reserves the Start compact handle for one direct Compact Response edge', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-compact' });
+    const startNode = document.graph.nodes.find(
+      (node) => node.id === 'node-start'
+    );
+    const compactResponse = createNodeDocument(
+      'compact_response',
+      'node-compact-response'
+    );
+
+    if (!startNode) {
+      throw new Error('expected default Start node');
+    }
+
+    startNode.config.compact_dispatch = 'application_flow';
+    document.graph.nodes.push(compactResponse);
+
+    expect(
+      validateConnection(document, {
+        source: 'node-start',
+        target: 'node-compact-response',
+        sourceHandle: COMPACT_SOURCE_HANDLE_ID
+      })
+    ).toBe(true);
+    expect(
+      validateConnection(document, {
+        source: 'node-start',
+        target: 'node-llm',
+        sourceHandle: COMPACT_SOURCE_HANDLE_ID
+      })
+    ).toBe(false);
+
+    const connected = connectNodes(document, {
+      connection: {
+        source: 'node-start',
+        target: 'node-compact-response',
+        sourceHandle: COMPACT_SOURCE_HANDLE_ID,
+        targetHandle: null
+      }
+    });
+
+    expect(
+      validateConnection(connected, {
+        source: 'node-start',
+        target: 'node-compact-response',
+        sourceHandle: COMPACT_SOURCE_HANDLE_ID
+      })
+    ).toBe(false);
+    expect(
+      connectNodeFromSource(connected, {
+        sourceNodeId: 'node-compact-response',
+        node: createNodeDocument('code', 'node-after-compact-response')
+      })
+    ).toBe(connected);
+
+    const codeOption = BUILTIN_NODE_PICKER_OPTIONS.find(
+      (option) => option.type === 'code'
+    );
+
+    if (!codeOption) {
+      throw new Error('expected Code node picker option');
+    }
+
+    expect(
+      replaceNodeWithOption(connected, {
+        nodeId: 'node-compact-response',
+        option: codeOption
+      })
+    ).toBe(connected);
   });
 
   test('classifies viewport changes as layout and field changes as logical', () => {

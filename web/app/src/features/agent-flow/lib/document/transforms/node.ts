@@ -7,7 +7,10 @@ import { getLlmNodeOutputs } from '@1flowbase/flow-schema';
 
 import { createEdgeDocument } from '../edge-factory';
 import { createNodeDocument } from '../node-factory';
-import type { NodePickerOption } from '../../plugin-node-definitions';
+import {
+  getNodePickerOptionNodeType,
+  type NodePickerOption
+} from '../../plugin-node-definitions';
 import { getOutgoingEdges, getNodeById } from '../selectors';
 import {
   getDefaultIfElseSourceHandle,
@@ -20,6 +23,11 @@ import {
   isLlmToolSourceHandle,
   type LlmVisibleInternalTool
 } from '../../llm-node-config';
+import {
+  isApplicationFlowCompactSource,
+  isFlowTerminalNode,
+  isStartCompactHandle
+} from '../../compact-dispatch';
 
 const NODE_GAP_X = 280;
 const NODE_HEIGHT = 96;
@@ -244,6 +252,25 @@ export function replaceNodeWithOption(
     return document;
   }
 
+  const hasIncomingCompactHandle = document.graph.edges.some((edge) => {
+    if (edge.target !== node.id) {
+      return false;
+    }
+
+    return isStartCompactHandle(
+      getNodeById(document, edge.source),
+      edge.sourceHandle
+    );
+  });
+  const replacementType = getNodePickerOptionNodeType(payload.option);
+
+  if (
+    (node.type === 'compact_response' || hasIncomingCompactHandle) &&
+    replacementType !== 'compact_response'
+  ) {
+    return document;
+  }
+
   const replacement = createNodeDocument(
     payload.option,
     node.id,
@@ -386,6 +413,25 @@ export function insertNodeAfter(
   const outgoingEdges = getOutgoingEdges(document, anchorNodeId).filter(
     (edge) => edge.sourceHandle === resolvedSourceHandle
   );
+
+  if (isFlowTerminalNode(anchorNode)) {
+    return document;
+  }
+
+  if (isStartCompactHandle(anchorNode, resolvedSourceHandle)) {
+    if (
+      !isApplicationFlowCompactSource(anchorNode, resolvedSourceHandle) ||
+      node.type !== 'compact_response' ||
+      outgoingEdges.length > 0
+    ) {
+      return document;
+    }
+  } else if (
+    node.type === 'compact_response' ||
+    (isFlowTerminalNode(node) && outgoingEdges.length > 0)
+  ) {
+    return document;
+  }
   const nextPositionX = anchorNode.position.x + NODE_GAP_X;
   const mountedToolEdges = isLlmToolSourceHandle(resolvedSourceHandle)
     ? getOutgoingEdges(document, anchorNodeId)

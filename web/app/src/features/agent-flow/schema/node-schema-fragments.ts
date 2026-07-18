@@ -135,6 +135,10 @@ function isEditableOutputContractNodeType(nodeType: FlowNodeType) {
   );
 }
 
+function isTerminalNodeType(nodeType: FlowNodeType) {
+  return nodeType === 'answer' || nodeType === 'compact_response';
+}
+
 function shouldExposeGeneratedOutputVariables(nodeType: FlowNodeType) {
   if (getRegisteredNodeDefinition(nodeType)?.suppressGeneratedOutputVariables) {
     return false;
@@ -143,6 +147,7 @@ function shouldExposeGeneratedOutputVariables(nodeType: FlowNodeType) {
   return (
     nodeType !== 'start' &&
     nodeType !== 'if_else' &&
+    !isTerminalNodeType(nodeType) &&
     !isEditableOutputContractNodeType(nodeType)
   );
 }
@@ -289,7 +294,7 @@ export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
       : { remainingSections: definitionSections, extractedBlocks: [] };
   const outputVariableBlocks = buildSharedOutputVariableBlocks(nodeType);
   const policyBlocks: SchemaBlock[] =
-    nodeType === 'start'
+    nodeType === 'start' || isTerminalNodeType(nodeType)
       ? []
       : [
           {
@@ -312,11 +317,15 @@ export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
         ]
       : []),
     ...policyBlocks,
-    {
-      kind: 'view',
-      renderer: 'relations',
-      title: i18nText('agentFlow', 'auto.next_step')
-    }
+    ...(isTerminalNodeType(nodeType)
+      ? []
+      : [
+          {
+            kind: 'view' as const,
+            renderer: 'relations',
+            title: i18nText('agentFlow', 'auto.next_step')
+          }
+        ])
   ];
 }
 

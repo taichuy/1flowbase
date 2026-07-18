@@ -2,6 +2,10 @@ import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
 import type { AgentFlowCanvasEdge } from '../../components/canvas/node-types';
 import { MAIN_SOURCE_HANDLE_ID } from '../canvas/handle-ids';
+import {
+  isFlowTerminalNode,
+  isStartCompactHandle
+} from '../compact-dispatch';
 import type { NodePickerOption } from '../plugin-node-definitions';
 
 export function toCanvasEdges(
@@ -26,19 +30,28 @@ export function toCanvasEdges(
         visibleNodeIds.has(edge.source) &&
         visibleNodeIds.has(edge.target)
     )
-    .map((edge) => ({
-      id: edge.id,
-      type: 'agentFlowEdge' as const,
-      selected: edge.id === selectedEdgeId,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: edge.sourceHandle ?? MAIN_SOURCE_HANDLE_ID,
-      targetHandle: edge.targetHandle,
-      animated: false,
-      style: { stroke: '#b2c8b9', strokeWidth: 2 },
-      data: {
-        nodePickerOptions: actions.nodePickerOptions,
-        onInsertNode: actions.onInsertNode
-      }
-    }));
+    .map((edge) => {
+      const sourceNode = document.graph.nodes.find(
+        (node) => node.id === edge.source
+      );
+      const canInsertNode =
+        !isFlowTerminalNode(sourceNode) &&
+        !isStartCompactHandle(sourceNode, edge.sourceHandle);
+
+      return {
+        id: edge.id,
+        type: 'agentFlowEdge' as const,
+        selected: edge.id === selectedEdgeId,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle ?? MAIN_SOURCE_HANDLE_ID,
+        targetHandle: edge.targetHandle,
+        animated: false,
+        style: { stroke: '#b2c8b9', strokeWidth: 2 },
+        data: {
+          nodePickerOptions: actions.nodePickerOptions,
+          onInsertNode: canInsertNode ? actions.onInsertNode : undefined
+        }
+      };
+    });
 }

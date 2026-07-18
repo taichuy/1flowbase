@@ -210,6 +210,53 @@ describe('AgentFlowNodeCard', () => {
     expect(screen.queryByText('3')).not.toBeInTheDocument();
   });
 
+  test('renders one typed Compact handle beside the ordinary Start handle', () => {
+    render(
+      <AppProviders>
+        <AgentFlowNodeCard
+          {...({
+            data: {
+              nodeId: 'node-start',
+              nodeType: 'start',
+              nodeSchema: resolveAgentFlowNodeSchema('start'),
+              typeLabel: 'Start',
+              alias: 'Start',
+              description: '',
+              config: { compact_dispatch: 'application_flow' },
+              issueCount: 0,
+              canEnterContainer: false,
+              pickerOpen: false,
+              showTargetHandle: false,
+              showSourceHandle: true,
+              branchSourceHandles: [],
+              compactSourceHandle: { id: 'compact', title: '压缩' },
+              compactSourceHandleOccupied: false,
+              compactNodePickerOptions: [],
+              isContainer: false,
+              nodePickerOptions: [],
+              onOpenPicker: vi.fn(),
+              onClosePicker: vi.fn(),
+              onOpenContainer: vi.fn(),
+              onSelectNode: vi.fn(),
+              onInsertNode: vi.fn(),
+              onReplaceNode: vi.fn(),
+              onDeleteNode: vi.fn()
+            },
+            id: 'node-start',
+            selected: false
+          } as unknown as Parameters<typeof AgentFlowNodeCard>[0])}
+        />
+      </AppProviders>
+    );
+
+    const compactHandles = document.querySelectorAll(
+      '.react-flow__handle[id="compact"]'
+    );
+
+    expect(compactHandles).toHaveLength(1);
+    expect(compactHandles[0]).toHaveClass('agent-flow-node-handle--compact');
+  });
+
   test('summarizes extension trigger state on the workflow start node card', () => {
     render(
       <AppProviders>

@@ -7,6 +7,7 @@ import {
 } from '@1flowbase/flow-schema';
 
 import type { AgentFlowNodeContributionEntry } from '../api/node-contributions';
+import { isApplicationFlowCompactSource } from './compact-dispatch';
 import type {
   NodeDefinition,
   NodeDefinitionMeta
@@ -51,6 +52,7 @@ const UNRELEASED_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
 ]);
 
 const HIDDEN_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
+  'compact_response',
   'workflow_start',
   'workflow_end',
   ...UNRELEASED_BUILTIN_NODE_PICKER_TYPES
@@ -89,12 +91,16 @@ export const BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
       .filter((nodeType) => !HIDDEN_BUILTIN_NODE_PICKER_TYPES.has(nodeType))
   );
 
+export const COMPACT_RESPONSE_NODE_PICKER_OPTIONS =
+  buildBuiltinNodePickerOptions(['compact_response']);
+
 export const GENERAL_EXECUTION_NODE_PICKER_TYPES =
   builtinNodeRuntimeContractTypes.filter(
     (nodeType): nodeType is BuiltinFlowNodeType =>
       nodeType !== 'plugin_node' &&
       nodeType !== 'start' &&
       nodeType !== 'answer' &&
+      nodeType !== 'compact_response' &&
       nodeType !== 'workflow_start' &&
       nodeType !== 'workflow_end' &&
       !UNRELEASED_BUILTIN_NODE_PICKER_TYPES.has(nodeType)
@@ -164,6 +170,20 @@ export function buildNodePickerOptions(
     ...BUILTIN_NODE_PICKER_OPTIONS,
     ...contributions.map(toPluginContributionPickerOption)
   ];
+}
+
+export function getNodePickerOptionsForSource(
+  options: NodePickerOption[],
+  sourceNode: Pick<FlowNodeDocument, 'type' | 'config'> | null | undefined,
+  sourceHandle: string | null | undefined
+) {
+  if (isApplicationFlowCompactSource(sourceNode, sourceHandle)) {
+    return COMPACT_RESPONSE_NODE_PICKER_OPTIONS;
+  }
+
+  return options.filter(
+    (option) => getNodePickerOptionNodeType(option) !== 'compact_response'
+  );
 }
 
 export function getNodePickerOptionKey(option: NodePickerOption) {

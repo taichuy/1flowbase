@@ -42,7 +42,11 @@ type MockReactFlowProps = {
     };
     width?: number;
     data?: {
+      compactSourceHandle?: { id: string; title: string } | null;
+      compactNodePickerOptions?: Array<{ type?: string }>;
+      onRunNode?: (nodeId: string) => void;
       onSelectNode?: (nodeId: string) => void;
+      showSourceHandle?: boolean;
     };
   }>;
   edges?: Array<{
@@ -545,6 +549,71 @@ describe('AgentFlowCanvas interactions', () => {
         })
       ])
     );
+  });
+
+  test('projects one typed Compact handle and only connects it to Compact Response', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-compact' });
+    const startNode = document.graph.nodes.find(
+      (node) => node.id === 'node-start'
+    );
+
+    if (!startNode) {
+      throw new Error('expected default Start node');
+    }
+
+    startNode.config.compact_dispatch = 'application_flow';
+    document.graph.nodes.push(
+      createNodeDocument(
+        'compact_response',
+        'node-compact-response',
+        920,
+        360
+      )
+    );
+
+    const { getState } = renderCanvas(document);
+    const startCanvasNode = latestReactFlowProps?.nodes?.find(
+      (node) => node.id === 'node-start'
+    );
+    const answerCanvasNode = latestReactFlowProps?.nodes?.find(
+      (node) => node.id === 'node-answer'
+    );
+    const compactCanvasNode = latestReactFlowProps?.nodes?.find(
+      (node) => node.id === 'node-compact-response'
+    );
+
+    expect(startCanvasNode?.data?.compactSourceHandle).toEqual(
+      expect.objectContaining({ id: 'compact' })
+    );
+    expect(startCanvasNode?.data?.compactNodePickerOptions).toEqual([
+      expect.objectContaining({ type: 'compact_response' })
+    ]);
+    expect(answerCanvasNode?.data?.showSourceHandle).toBe(false);
+    expect(compactCanvasNode?.data?.showSourceHandle).toBe(false);
+    expect(compactCanvasNode?.data?.onRunNode).toBeUndefined();
+
+    act(() => {
+      latestReactFlowProps?.onConnect?.({
+        source: 'node-start',
+        target: 'node-compact-response',
+        sourceHandle: 'compact',
+        targetHandle: null
+      });
+      latestReactFlowProps?.onConnect?.({
+        source: 'node-start',
+        target: 'node-llm',
+        sourceHandle: 'compact',
+        targetHandle: null
+      });
+    });
+
+    const compactEdges = getState().workingDocument.graph.edges.filter(
+      (edge) => edge.source === 'node-start' && edge.sourceHandle === 'compact'
+    );
+
+    expect(compactEdges).toEqual([
+      expect.objectContaining({ target: 'node-compact-response' })
+    ]);
   });
 
   test('creates a composable edge from an LLM tool connector', () => {

@@ -1,5 +1,7 @@
 import {
   getLlmNodeOutputs,
+  getStartCompactDispatch,
+  isFlowCompactDispatch,
   validatePublicOutputKey,
   type FlowAuthoringDocument
 } from '@1flowbase/flow-schema';
@@ -59,6 +61,11 @@ import { systemVariableNodeId } from './variables/system-variables';
 import { i18nText } from '../../../shared/i18n/text';
 import { validateCodeNamedBindings } from './validation/code-named-bindings';
 import { pushFieldIssue, type AgentFlowIssue } from './validation/issues';
+import {
+  isApplicationFlowCompactSource,
+  isFlowTerminalNode
+} from './compact-dispatch';
+import { COMPACT_SOURCE_HANDLE_ID } from './canvas/handle-ids';
 
 export type { AgentFlowIssue } from './validation/issues';
 
@@ -653,6 +660,163 @@ function validateAnswerPresentationReferences(
   }
 }
 
+function validateCompactDispatchTopology(
+  issues: AgentFlowIssue[],
+  document: FlowAuthoringDocument,
+  nodeById: Map<string, FlowNodeDocument>
+) {
+  for (const startNode of document.graph.nodes.filter(
+    (node) => node.type === 'start'
+  )) {
+    const rawDispatch = startNode.config.compact_dispatch;
+    const compactEdges = document.graph.edges.filter(
+      (edge) =>
+        edge.source === startNode.id &&
+        edge.sourceHandle === COMPACT_SOURCE_HANDLE_ID
+    );
+
+    if (rawDispatch !== undefined && !isFlowCompactDispatch(rawDispatch)) {
+      pushFieldIssue(
+        issues,
+        startNode,
+        'config.compact_dispatch',
+        i18nText('agentFlow', 'auto.compact_dispatch_invalid'),
+        i18nText('agentFlow', 'auto.compact_dispatch_invalid_message')
+      );
+    }
+
+    if (getStartCompactDispatch(startNode.config) !== 'application_flow') {
+      if (compactEdges.length > 0) {
+        pushFieldIssue(
+          issues,
+          startNode,
+          'config.compact_dispatch',
+          i18nText('agentFlow', 'auto.compact_response_connection_invalid'),
+          i18nText(
+            'agentFlow',
+            'auto.compact_response_transparent_dispatch_message'
+          )
+        );
+      }
+
+      continue;
+    }
+
+    if (compactEdges.length !== 1) {
+      pushFieldIssue(
+        issues,
+        startNode,
+        'config.compact_dispatch',
+        i18nText('agentFlow', 'auto.compact_response_connection_invalid'),
+        i18nText(
+          'agentFlow',
+          'auto.compact_response_exactly_one_edge_message'
+        )
+      );
+    }
+
+    for (const edge of compactEdges) {
+      const targetNode = nodeById.get(edge.target);
+
+      if (!targetNode) {
+        pushFieldIssue(
+          issues,
+          startNode,
+          'config.compact_dispatch',
+          i18nText('agentFlow', 'auto.compact_response_connection_invalid'),
+          i18nText('agentFlow', 'auto.compact_response_dangling_edge_message')
+        );
+        continue;
+      }
+
+      if (targetNode.type !== 'compact_response') {
+        pushFieldIssue(
+          issues,
+          startNode,
+          'config.compact_dispatch',
+          i18nText('agentFlow', 'auto.compact_response_connection_invalid'),
+          i18nText('agentFlow', 'auto.compact_response_target_message')
+        );
+      }
+    }
+  }
+
+  for (const node of document.graph.nodes) {
+    if (node.type === 'compact_response') {
+      const incomingEdges = document.graph.edges.filter(
+        (edge) => edge.target === node.id
+      );
+      const hasSingleCompactStart =
+        incomingEdges.length === 1 &&
+        isApplicationFlowCompactSource(
+          nodeById.get(incomingEdges[0]!.source),
+          incomingEdges[0]!.sourceHandle
+        );
+
+      if (!hasSingleCompactStart) {
+        issues.push({
+          id: `${node.id}-compact-response-incoming`,
+          scope: 'node',
+          level: 'error',
+          nodeId: node.id,
+          sectionKey: 'basics',
+          fieldKey: null,
+          title: i18nText(
+            'agentFlow',
+            'auto.compact_response_connection_invalid'
+          ),
+          message: i18nText(
+            'agentFlow',
+            'auto.compact_response_requires_start_handle_message'
+          )
+        });
+      }
+
+      if (
+        Object.keys(node.config).length > 0 ||
+        Object.keys(node.bindings).length > 0 ||
+        node.outputs.length > 0
+      ) {
+        issues.push({
+          id: `${node.id}-compact-response-contract`,
+          scope: 'node',
+          level: 'error',
+          nodeId: node.id,
+          sectionKey: 'basics',
+          fieldKey: null,
+          title: i18nText(
+            'agentFlow',
+            'auto.compact_response_contract_invalid'
+          ),
+          message: i18nText(
+            'agentFlow',
+            'auto.compact_response_contract_message'
+          )
+        });
+      }
+    }
+
+    if (
+      isFlowTerminalNode(node) &&
+      document.graph.edges.some((edge) => edge.source === node.id)
+    ) {
+      issues.push({
+        id: `${node.id}-terminal-outgoing-edge`,
+        scope: 'node',
+        level: 'error',
+        nodeId: node.id,
+        sectionKey: 'basics',
+        fieldKey: null,
+        title: i18nText('agentFlow', 'auto.terminal_connection_invalid'),
+        message: i18nText(
+          'agentFlow',
+          'auto.terminal_connection_invalid_message'
+        )
+      });
+    }
+  }
+}
+
 export function validateDocument(
   document: FlowAuthoringDocument,
   providerOptions?: AgentFlowModelProviderOptions | null,
@@ -707,6 +871,8 @@ export function validateDocument(
       )
     });
   }
+
+  validateCompactDispatchTopology(issues, document, nodeById);
 
   for (const edge of document.graph.edges) {
     if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {

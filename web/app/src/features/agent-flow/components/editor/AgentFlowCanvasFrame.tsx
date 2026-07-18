@@ -219,6 +219,12 @@ export function AgentFlowCanvasFrame({
     () => listConversationVariables(workingDocument),
     [workingDocument]
   );
+  const selectedNode = useMemo(
+    () =>
+      workingDocument.graph.nodes.find((node) => node.id === selectedNodeId) ??
+      null,
+    [selectedNodeId, workingDocument.graph.nodes]
+  );
   const [selectedVariable, setSelectedVariable] =
     useState<SelectedVariableInfo | null>(null);
   const [variableCacheHeight, setVariableCacheHeight] = useState(
@@ -1013,9 +1019,17 @@ export function AgentFlowCanvasFrame({
               environmentVariables={environmentVariables}
               issues={issues}
               onClose={detailActions.closeDetail}
-              onDebugNode={selectedNodeId ? handleDebugSelectedNode : undefined}
+              onDebugNode={
+                selectedNodeId && selectedNode?.type !== 'compact_response'
+                  ? handleDebugSelectedNode
+                  : undefined
+              }
               onResolveRunScope={debugSession.selectRunScope}
-              onRunNode={selectedNodeId ? handleRunSelectedNode : undefined}
+              onRunNode={
+                selectedNodeId && selectedNode?.type !== 'compact_response'
+                  ? handleRunSelectedNode
+                  : undefined
+              }
               previewActionsDisabled={nodePreviewMutation.isPending}
               runLoading={nodePreviewAction === 'run'}
             />

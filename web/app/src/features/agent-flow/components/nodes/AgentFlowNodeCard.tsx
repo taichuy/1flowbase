@@ -19,7 +19,10 @@ import { ConnectorAddIcon } from '../canvas/ConnectorAddIcon';
 import { NodePickerPopover } from '../node-picker/NodePickerPopover';
 import type { AgentFlowCanvasNode } from '../canvas/node-types';
 import { agentFlowRendererRegistry } from '../../schema/agent-flow-renderer-registry';
-import { MAIN_SOURCE_HANDLE_ID } from '../../lib/canvas/handle-ids';
+import {
+  COMPACT_SOURCE_HANDLE_ID,
+  MAIN_SOURCE_HANDLE_ID
+} from '../../lib/canvas/handle-ids';
 import { getNodeDefinitionMeta } from '../../lib/node-definitions';
 import { getCommonErrorBranchSourceHandle } from '../../lib/policy/node-error-policy';
 import {
@@ -29,6 +32,12 @@ import {
 import { i18nText } from '../../../../shared/i18n/text';
 
 const QUICK_ACTION_HIDE_DELAY_MS = 1000;
+
+type SourceHandle = {
+  id: string | null;
+  title: string | null;
+  disabled?: boolean;
+};
 
 function stopActionEvent(event: SyntheticEvent<HTMLElement>) {
   event.stopPropagation();
@@ -94,6 +103,7 @@ export function AgentFlowNodeCard({
   }, []);
   const nodePickerOptions = data.nodePickerOptions ?? [];
   const isUnresolvedNode = data.nodeType === 'unresolved_node';
+  const isCompactResponseNode = data.nodeType === 'compact_response';
   const unresolvedInfo = unresolvedNodeInfo(data.config);
   const replaceItems: MenuProps['items'] = nodePickerOptions.map((option) => ({
     key: getNodePickerOptionKey(option),
@@ -108,7 +118,7 @@ export function AgentFlowNodeCard({
   }));
   const runNode = data.onRunNode;
   const runMenuItems: NonNullable<MenuProps['items']> =
-    !isUnresolvedNode && runNode
+    !isUnresolvedNode && !isCompactResponseNode && runNode
       ? [
           {
             key: 'run',
@@ -124,12 +134,16 @@ export function AgentFlowNodeCard({
       : [];
   const menuItems: MenuProps['items'] = [
     ...runMenuItems,
-    {
-      key: 'replace',
-      icon: <SwapOutlined />,
-      label: i18nText('agentFlow', 'auto.replace_node'),
-      children: replaceItems
-    },
+    ...(isCompactResponseNode
+      ? []
+      : [
+          {
+            key: 'replace',
+            icon: <SwapOutlined />,
+            label: i18nText('agentFlow', 'auto.replace_node'),
+            children: replaceItems
+          }
+        ]),
     {
       key: 'delete',
       icon: <DeleteOutlined />,
@@ -193,6 +207,7 @@ export function AgentFlowNodeCard({
   });
   const branchHandleSignature = [
     ...branchSourceHandles,
+    ...(data.compactSourceHandle ? [data.compactSourceHandle] : []),
     ...(commonErrorBranchSourceHandle ? [commonErrorBranchSourceHandle] : [])
   ]
     .map((handle) => handle.id)
@@ -201,10 +216,20 @@ export function AgentFlowNodeCard({
   const toolHandleSignature = toolSourceHandles
     .map((handle) => handle.id)
     .join('|');
-  const primarySourceHandles =
+  const primarySourceHandles: SourceHandle[] =
     branchSourceHandles.length > 0
       ? branchSourceHandles
-      : [{ id: null, title: null }];
+      : [
+          { id: null, title: null },
+          ...(data.compactSourceHandle
+            ? [
+                {
+                  ...data.compactSourceHandle,
+                  disabled: data.compactSourceHandleOccupied
+                }
+              ]
+            : [])
+        ];
   const sourceHandles = [
     ...primarySourceHandles,
     ...(commonErrorBranchSourceHandle &&
@@ -219,18 +244,23 @@ export function AgentFlowNodeCard({
     updateNodeInternals(data.nodeId);
   }, [
     branchHandleSignature,
+    data.compactSourceHandleOccupied,
     data.nodeId,
     toolHandleSignature,
     updateNodeInternals
   ]);
 
   function renderSourceHandle(
-    handle: { id: string | null; title: string | null },
+    handle: SourceHandle,
     index: number
   ) {
     const sourceHandleId = handle.id ?? MAIN_SOURCE_HANDLE_ID;
     const pickerSourceHandleId = data.pickerSourceHandleId ?? null;
     const pickerOpen = data.pickerOpen && pickerSourceHandleId === handle.id;
+    const nodePickerOptions =
+      handle.id === COMPACT_SOURCE_HANDLE_ID
+        ? data.compactNodePickerOptions
+        : data.nodePickerOptions;
     const ariaLabel = handle.title
       ? i18nText('agentFlow', 'auto.add_node_after_branch', {
           value1: data.alias,
@@ -258,9 +288,14 @@ export function AgentFlowNodeCard({
       <div key={handle.id ?? 'default'}>
         <NodePickerPopover
           ariaLabel={ariaLabel}
-          open={pickerOpen}
-          options={data.nodePickerOptions}
+          open={pickerOpen && !handle.disabled}
+          options={nodePickerOptions}
           onOpenChange={(open) => {
+            if (handle.disabled) {
+              data.onClosePicker();
+              return;
+            }
+
             if (open) {
               if (handle.id) {
                 data.onOpenPicker(data.nodeId, handle.id);
@@ -272,11 +307,15 @@ export function AgentFlowNodeCard({
 
             data.onClosePicker();
           }}
-          onPickNode={(option) =>
+          onPickNode={(option) => {
+            if (handle.disabled) {
+              return;
+            }
+
             handle.id
               ? data.onInsertNode(data.nodeId, option, handle.id)
-              : data.onInsertNode(data.nodeId, option)
-          }
+              : data.onInsertNode(data.nodeId, option);
+          }}
         >
           <Tooltip
             title={tooltipTitle}
@@ -296,9 +335,22 @@ export function AgentFlowNodeCard({
               type="source"
               position={Position.Right}
               aria-expanded={pickerOpen}
+              aria-disabled={handle.disabled}
               aria-haspopup="menu"
               aria-label={ariaLabel}
-              className={`agent-flow-node-handle agent-flow-node-handle--source${handle.id ? ' agent-flow-node-handle--branch' : ''}`}
+              className={[
+                'agent-flow-node-handle',
+                'agent-flow-node-handle--source',
+                handle.id && handle.id !== COMPACT_SOURCE_HANDLE_ID
+                  ? 'agent-flow-node-handle--branch'
+                  : null,
+                handle.id === COMPACT_SOURCE_HANDLE_ID
+                  ? 'agent-flow-node-handle--compact'
+                  : null
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              isConnectable={!handle.disabled}
               role="button"
               style={style}
               tabIndex={0}
@@ -312,6 +364,10 @@ export function AgentFlowNodeCard({
 
                 event.preventDefault();
                 event.stopPropagation();
+
+                if (handle.disabled) {
+                  return;
+                }
 
                 if (pickerOpen) {
                   data.onClosePicker();
@@ -449,7 +505,7 @@ export function AgentFlowNodeCard({
           onMouseLeave={scheduleHideQuickActions}
           onPointerDown={stopActionEvent}
         >
-          {!isUnresolvedNode && runNode ? (
+          {!isUnresolvedNode && !isCompactResponseNode && runNode ? (
             <Tooltip title={i18nText('agentFlow', 'auto.execute_this_node')}>
               <Button
                 aria-label={i18nText('agentFlow', 'auto.execute', {
