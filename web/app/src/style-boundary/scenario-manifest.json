@@ -114,7 +114,7 @@
       "web/app/src/features/applications/components/ApplicationCardGrid.tsx",
       "web/app/src/shared/schema-ui/contracts/overlay-shell-schema.ts",
       "web/app/src/shared/schema-ui/overlay-shell/SchemaModalPanel.tsx",
-      "web/app/src/features/applications/components/ApplicationCreateModal.tsx",
+      "web/app/src/features/applications/components/ApplicationFormModal.tsx",
       "web/app/src/app/router.tsx"
     ],
     "boundaryNodes": [

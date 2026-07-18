@@ -11,7 +11,7 @@ use control_plane::mcp_management::{
     SaveMcpUpstreamCredentialCommand,
 };
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -74,6 +74,26 @@ pub enum SaveMcpUpstreamCredentialBody {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct McpUpstreamTestResponse {
     pub connection_id: String,
+    pub ok: bool,
+    pub server_name: Option<String>,
+    pub server_version: Option<String>,
+    pub protocol_version: Option<String>,
+    pub tested_at: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct TestMcpUpstreamConnectionDraftBody {
+    pub connection_id: Option<String>,
+    pub endpoint: String,
+    pub transport: String,
+    pub auth_type: String,
+    pub custom_header_name: Option<String>,
+    pub credential: Option<SaveMcpUpstreamCredentialBody>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpUpstreamDraftTestResponse {
     pub ok: bool,
     pub server_name: Option<String>,
     pub server_version: Option<String>,
@@ -166,6 +186,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/mcp/upstream-connections/test",
+            console_post(
+                test_draft_connection,
+                ConsoleOperation("mcp.upstream_connections.test".to_string()),
+            ),
+        )
+        .route(
             "/mcp/upstream-connections/:connection_id/test",
             console_post(
                 test_connection,
@@ -204,9 +231,11 @@ pub async fn list_connections(
     let records = McpManagementService::new(state.store.clone())
         .list_upstream_connections(context.user.id)
         .await?;
-    Ok(Json(ApiSuccess::new(
-        records.into_iter().map(to_connection_response).collect(),
-    )))
+    let responses = records
+        .into_iter()
+        .map(to_connection_response)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Json(ApiSuccess::new(responses)))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/upstream-connections", request_body = SaveMcpUpstreamConnectionBody, responses((status = 201, body = McpUpstreamConnectionResponse)))]
@@ -222,7 +251,7 @@ pub async fn create_connection(
         .await?;
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_connection_response(record))),
+        Json(ApiSuccess::new(to_connection_response(record)?)),
     ))
 }
 
@@ -243,7 +272,7 @@ pub async fn update_connection(
             body,
         )?)
         .await?;
-    Ok(Json(ApiSuccess::new(to_connection_response(record))))
+    Ok(Json(ApiSuccess::new(to_connection_response(record)?)))
 }
 
 #[utoipa::path(delete, path = "/api/console/mcp/upstream-connections/{connection_id}", responses((status = 204)))]
@@ -304,6 +333,89 @@ pub async fn delete_credentials(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(post, path = "/api/console/mcp/upstream-connections/test", request_body = TestMcpUpstreamConnectionDraftBody, responses((status = 200, body = McpUpstreamDraftTestResponse)))]
+pub async fn test_draft_connection(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<TestMcpUpstreamConnectionDraftBody>,
+) -> Result<Json<ApiSuccess<McpUpstreamDraftTestResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    parse_upstream_transport(&body.transport)?;
+    let auth_type = parse_upstream_auth_type(&body.auth_type)?;
+    let service = McpManagementService::new(state.store.clone());
+    let stored_secret = if let Some(connection_id) = body.connection_id.as_deref() {
+        let (_, secret) = service
+            .prepare_upstream_management_action(
+                context.user.id,
+                parse_connection_id(connection_id)?,
+                &state.provider_secret_master_key,
+            )
+            .await?;
+        secret
+    } else {
+        None
+    };
+    let provided_secret = match (auth_type, body.credential) {
+        (domain::McpUpstreamAuthType::None, None) => None,
+        (
+            domain::McpUpstreamAuthType::Bearer,
+            Some(SaveMcpUpstreamCredentialBody::Bearer { token }),
+        ) if !token.trim().is_empty() => Some(serde_json::json!({"token":token})),
+        (
+            domain::McpUpstreamAuthType::CustomHeader,
+            Some(SaveMcpUpstreamCredentialBody::CustomHeader {
+                header_name,
+                header_value,
+            }),
+        ) if body.custom_header_name.as_deref() == Some(header_name.as_str())
+            && !header_value.is_empty() =>
+        {
+            Some(serde_json::json!({
+                "header_name":header_name,
+                "header_value":header_value
+            }))
+        }
+        (_, None) => None,
+        _ => {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput("credential").into())
+        }
+    };
+    let secret = provided_secret.or(stored_secret);
+    let tested_at = OffsetDateTime::now_utc();
+    let tested_at_response = format_timestamp(tested_at)?;
+    let result = match McpStreamableHttpClient::connect_configuration(
+        &body.endpoint,
+        auth_type,
+        body.custom_header_name.as_deref(),
+        secret.as_ref(),
+    )
+    .await
+    {
+        Ok(client) => client.initialize().await,
+        Err(error) => Err(error),
+    };
+    let response = match result {
+        Ok(server) => McpUpstreamDraftTestResponse {
+            ok: true,
+            server_name: server.name,
+            server_version: server.version,
+            protocol_version: Some(server.protocol_version),
+            tested_at: tested_at_response,
+            error: None,
+        },
+        Err(error) => McpUpstreamDraftTestResponse {
+            ok: false,
+            server_name: None,
+            server_version: None,
+            protocol_version: None,
+            tested_at: tested_at_response,
+            error: Some(error.to_string()),
+        },
+    };
+    Ok(Json(ApiSuccess::new(response)))
+}
+
 #[utoipa::path(post, path = "/api/console/mcp/upstream-connections/{connection_id}/test", responses((status = 200, body = McpUpstreamTestResponse)))]
 pub async fn test_connection(
     State(state): State<Arc<ApiState>>,
@@ -322,6 +434,7 @@ pub async fn test_connection(
         )
         .await?;
     let tested_at = OffsetDateTime::now_utc();
+    let tested_at_response = format_timestamp(tested_at)?;
     let result = match McpStreamableHttpClient::connect(&connection, secret.as_ref()).await {
         Ok(client) => client.initialize().await,
         Err(error) => Err(error),
@@ -334,7 +447,7 @@ pub async fn test_connection(
                 server_name: server.name,
                 server_version: server.version,
                 protocol_version: Some(server.protocol_version),
-                tested_at: tested_at.to_string(),
+                tested_at: tested_at_response.clone(),
                 error: None,
             },
             None,
@@ -348,7 +461,7 @@ pub async fn test_connection(
                     server_name: None,
                     server_version: None,
                     protocol_version: None,
-                    tested_at: tested_at.to_string(),
+                    tested_at: tested_at_response,
                     error: Some(error.clone()),
                 },
                 Some(error),
@@ -413,7 +526,7 @@ pub async fn discover_tools(
         server_name: discovery.server.name,
         server_version: discovery.server.version,
         protocol_version: discovery.server.protocol_version,
-        discovered_at: discovered_at.to_string(),
+        discovered_at: format_timestamp(discovered_at)?,
         items: sources.into_iter().map(to_tool_source_response).collect(),
     })))
 }
@@ -524,20 +637,8 @@ fn connection_command(
     connection_id: Option<Uuid>,
     body: SaveMcpUpstreamConnectionBody,
 ) -> Result<SaveMcpUpstreamConnectionCommand, ApiError> {
-    let transport = match body.transport.as_str() {
-        "streamable_http" => domain::McpUpstreamTransport::StreamableHttp,
-        _ => {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput("transport").into());
-        }
-    };
-    let auth_type = match body.auth_type.as_str() {
-        "none" => domain::McpUpstreamAuthType::None,
-        "bearer" => domain::McpUpstreamAuthType::Bearer,
-        "custom_header" => domain::McpUpstreamAuthType::CustomHeader,
-        _ => {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput("auth_type").into());
-        }
-    };
+    let transport = parse_upstream_transport(&body.transport)?;
+    let auth_type = parse_upstream_auth_type(&body.auth_type)?;
     let status = match body.status.as_str() {
         "enabled" => domain::McpUpstreamConnectionStatus::Enabled,
         "disabled" => domain::McpUpstreamConnectionStatus::Disabled,
@@ -555,6 +656,26 @@ fn connection_command(
     })
 }
 
+fn parse_upstream_transport(value: &str) -> Result<domain::McpUpstreamTransport, ApiError> {
+    match value {
+        "streamable_http" => Ok(domain::McpUpstreamTransport::StreamableHttp),
+        _ => {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput("transport").into());
+        }
+    }
+}
+
+fn parse_upstream_auth_type(value: &str) -> Result<domain::McpUpstreamAuthType, ApiError> {
+    match value {
+        "none" => Ok(domain::McpUpstreamAuthType::None),
+        "bearer" => Ok(domain::McpUpstreamAuthType::Bearer),
+        "custom_header" => Ok(domain::McpUpstreamAuthType::CustomHeader),
+        _ => {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput("auth_type").into());
+        }
+    }
+}
+
 fn parse_connection_id(value: &str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(value)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("connection_id").into())
@@ -562,13 +683,13 @@ fn parse_connection_id(value: &str) -> Result<Uuid, ApiError> {
 
 fn to_connection_response(
     record: domain::McpUpstreamConnectionRecord,
-) -> McpUpstreamConnectionResponse {
+) -> Result<McpUpstreamConnectionResponse, time::error::Format> {
     let credentials_status = match record.auth_type {
         domain::McpUpstreamAuthType::None => "not_required",
         _ if record.credentials_configured => "configured",
         _ => "missing",
     };
-    McpUpstreamConnectionResponse {
+    Ok(McpUpstreamConnectionResponse {
         connection_id: record.id.to_string(),
         workspace_id: record.workspace_id.to_string(),
         name: record.name,
@@ -578,12 +699,19 @@ fn to_connection_response(
         custom_header_name: record.custom_header_name,
         status: record.status.as_str().into(),
         credentials_status: credentials_status.into(),
-        last_connected_at: record.last_connected_at.map(|value| value.to_string()),
-        last_discovered_at: record.last_discovered_at.map(|value| value.to_string()),
+        last_connected_at: record.last_connected_at.map(format_timestamp).transpose()?,
+        last_discovered_at: record
+            .last_discovered_at
+            .map(format_timestamp)
+            .transpose()?,
         last_error: record.last_error,
-        created_at: record.created_at.to_string(),
-        updated_at: record.updated_at.to_string(),
-    }
+        created_at: format_timestamp(record.created_at)?,
+        updated_at: format_timestamp(record.updated_at)?,
+    })
+}
+
+fn format_timestamp(value: OffsetDateTime) -> Result<String, time::error::Format> {
+    value.format(&Rfc3339)
 }
 
 fn to_tool_source_response(record: domain::McpUpstreamToolSourceRecord) -> McpUpstreamToolResponse {

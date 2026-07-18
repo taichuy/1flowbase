@@ -31,7 +31,9 @@ import type {
   ConsoleMcpUpstreamAuthType,
   ConsoleMcpUpstreamConnection,
   ConsoleMcpUpstreamDiscoveredTool,
-  SaveConsoleMcpUpstreamConnectionBody
+  SaveConsoleMcpUpstreamConnectionBody,
+  SaveConsoleMcpUpstreamConnectionCredentialsBody,
+  TestConsoleMcpUpstreamConnectionDraftBody
 } from '@1flowbase/api-client';
 
 import { useAuthStore } from '../../../../../state/auth-store';
@@ -47,6 +49,7 @@ import {
   settingsMcpCatalogQueryKey,
   settingsMcpUpstreamConnectionsQueryKey,
   testSettingsMcpUpstreamConnection,
+  testSettingsMcpUpstreamConnectionDraft,
   updateSettingsMcpUpstreamConnection
 } from '../../../api/mcp-management';
 
@@ -55,6 +58,10 @@ type ConnectionFormValues = SaveConsoleMcpUpstreamConnectionBody & {
   header_name?: string;
   header_value?: string;
 };
+
+type ConnectionTestRequest =
+  | { kind: 'saved'; connectionId: string }
+  | { kind: 'draft'; body: TestConsoleMcpUpstreamConnectionDraftBody };
 
 const textByKey = {
   enabled: () => i18nText('settingsMcpManagement', 'auto.enabled'),
@@ -155,6 +162,7 @@ const textByKey = {
     i18nText('settingsMcpManagement', 'auto.upstream_server_name'),
   upstream_server_version: () =>
     i18nText('settingsMcpManagement', 'auto.upstream_server_version'),
+  upstream_test: () => i18nText('settingsMcpManagement', 'auto.upstream_test'),
   upstream_test_connection: () =>
     i18nText('settingsMcpManagement', 'auto.upstream_test_connection'),
   upstream_tested_at: () =>
@@ -262,8 +270,7 @@ export function ThirdPartyMcpTab({
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [editingConnection, setEditingConnection] =
     useState<ConsoleMcpUpstreamConnection | null>(null);
-  const [testConnection, setTestConnection] =
-    useState<ConsoleMcpUpstreamConnection | null>(null);
+  const [testResultOpen, setTestResultOpen] = useState(false);
   const [discoverConnection, setDiscoverConnection] =
     useState<ConsoleMcpUpstreamConnection | null>(null);
   const [toolKeyword, setToolKeyword] = useState('');
@@ -274,23 +281,27 @@ export function ThirdPartyMcpTab({
     queryFn: fetchSettingsMcpUpstreamConnections
   });
 
+  const validateConnectionCredential = (values: ConnectionFormValues) => {
+    if (
+      values.auth_type === 'bearer' &&
+      editingConnection?.auth_type !== 'bearer' &&
+      !values.token
+    ) {
+      throw new Error(text('upstream_bearer_token_required'));
+    }
+    if (
+      values.auth_type === 'custom_header' &&
+      (editingConnection?.auth_type !== 'custom_header' ||
+        editingConnection.custom_header_name !== values.header_name) &&
+      !values.header_value
+    ) {
+      throw new Error(text('upstream_header_value_required'));
+    }
+  };
+
   const saveMutation = useMutation({
     mutationFn: async (values: ConnectionFormValues) => {
-      if (
-        values.auth_type === 'bearer' &&
-        editingConnection?.auth_type !== 'bearer' &&
-        !values.token
-      ) {
-        throw new Error(text('upstream_bearer_token_required'));
-      }
-      if (
-        values.auth_type === 'custom_header' &&
-        (editingConnection?.auth_type !== 'custom_header' ||
-          editingConnection.custom_header_name !== values.header_name) &&
-        !values.header_value
-      ) {
-        throw new Error(text('upstream_header_value_required'));
-      }
+      validateConnectionCredential(values);
       const body: SaveConsoleMcpUpstreamConnectionBody = {
         name: values.name,
         endpoint: values.endpoint,
@@ -372,12 +383,16 @@ export function ThirdPartyMcpTab({
   });
 
   const testMutation = useMutation({
-    mutationFn: (connectionId: string) =>
-      testSettingsMcpUpstreamConnection(connectionId, csrfToken),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpUpstreamConnectionsQueryKey
-      });
+    mutationFn: (request: ConnectionTestRequest) =>
+      request.kind === 'saved'
+        ? testSettingsMcpUpstreamConnection(request.connectionId, csrfToken)
+        : testSettingsMcpUpstreamConnectionDraft(request.body, csrfToken),
+    onSuccess: async (_result, request) => {
+      if (request.kind === 'saved') {
+        await queryClient.invalidateQueries({
+          queryKey: settingsMcpUpstreamConnectionsQueryKey
+        });
+      }
     }
   });
 
@@ -415,6 +430,48 @@ export function ThirdPartyMcpTab({
       message.error(error instanceof Error ? error.message : String(error));
     }
   });
+
+  const testCurrentForm = async () => {
+    try {
+      const values = await form.validateFields();
+      validateConnectionCredential(values);
+      let credential: SaveConsoleMcpUpstreamConnectionCredentialsBody | null =
+        null;
+      if (values.auth_type === 'bearer' && values.token) {
+        credential = { kind: 'bearer', token: values.token };
+      } else if (
+        values.auth_type === 'custom_header' &&
+        values.header_name &&
+        values.header_value
+      ) {
+        credential = {
+          kind: 'custom_header',
+          header_name: values.header_name,
+          header_value: values.header_value
+        };
+      }
+      testMutation.reset();
+      setTestResultOpen(true);
+      testMutation.mutate({
+        kind: 'draft',
+        body: {
+          connection_id: editingConnection?.connection_id ?? null,
+          endpoint: values.endpoint,
+          transport: values.transport,
+          auth_type: values.auth_type,
+          custom_header_name:
+            values.auth_type === 'custom_header'
+              ? (values.header_name ?? null)
+              : null,
+          credential
+        }
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        message.error(error.message);
+      }
+    }
+  };
 
   const columns = useMemo<TableColumnsType<ConsoleMcpUpstreamConnection>>(
     () => [
@@ -517,9 +574,12 @@ export function ThirdPartyMcpTab({
                 size="small"
                 disabled={!canManage}
                 onClick={() => {
-                  setTestConnection(record);
+                  setTestResultOpen(true);
                   testMutation.reset();
-                  testMutation.mutate(record.connection_id);
+                  testMutation.mutate({
+                    kind: 'saved',
+                    connectionId: record.connection_id
+                  });
                 }}
               />
             </Tooltip>
@@ -661,13 +721,35 @@ export function ThirdPartyMcpTab({
             ? text('upstream_edit_connection_title')
             : text('upstream_new_connection_title')
         }
-        okText={i18nText('settings', 'auto.save')}
-        cancelText={i18nText('settings', 'auto.cancel')}
-        okButtonProps={{
-          'aria-label': i18nText('settings', 'auto.save')
-        }}
-        confirmLoading={saveMutation.isPending}
-        onOk={() => form.submit()}
+        footer={[
+          <Button
+            key="cancel"
+            aria-label={i18nText('settings', 'auto.cancel')}
+            disabled={saveMutation.isPending || testMutation.isPending}
+            onClick={() => setConnectionModalOpen(false)}
+          >
+            {i18nText('settings', 'auto.cancel')}
+          </Button>,
+          <Button
+            key="test"
+            aria-label={text('upstream_test')}
+            disabled={!canManage || saveMutation.isPending}
+            loading={testMutation.isPending}
+            onClick={() => void testCurrentForm()}
+          >
+            {text('upstream_test')}
+          </Button>,
+          <Button
+            key="save"
+            aria-label={i18nText('settings', 'auto.save')}
+            type="primary"
+            disabled={!canManage || testMutation.isPending}
+            loading={saveMutation.isPending}
+            onClick={() => form.submit()}
+          >
+            {i18nText('settings', 'auto.save')}
+          </Button>
+        ]}
         onCancel={() => setConnectionModalOpen(false)}
         destroyOnHidden
       >
@@ -776,10 +858,10 @@ export function ThirdPartyMcpTab({
       </Modal>
 
       <Modal
-        open={testConnection !== null}
+        open={testResultOpen}
         title={text('upstream_connection_test_title')}
         footer={null}
-        onCancel={() => setTestConnection(null)}
+        onCancel={() => setTestResultOpen(false)}
         destroyOnHidden
       >
         {testMutation.isPending ? <Spin /> : null}

@@ -6,3 +6,7 @@
 .application-management-panel__table-region .data-table {
   height: 100%;
 }
+
+.application-management-panel__row {
+  cursor: pointer;
+}

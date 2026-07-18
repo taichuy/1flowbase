@@ -301,6 +301,7 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
             "POST",
             "/api/console/mcp/upstream-connections/{connection_id}/test",
         ),
+        ("POST", "/api/console/mcp/upstream-connections/test"),
         (
             "POST",
             "/api/console/mcp/upstream-connections/{connection_id}/discover",

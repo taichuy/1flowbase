@@ -54,8 +54,7 @@ import {
   type ApplicationTagCatalogEntry,
   updateApplication
 } from '../api/applications';
-import { ApplicationCreateModal } from '../components/ApplicationCreateModal';
-import { ApplicationEditModal } from '../components/ApplicationEditModal';
+import { ApplicationFormModal } from '../components/ApplicationFormModal';
 import { ApplicationTagManagerModal } from '../components/ApplicationTagManagerModal';
 import { ApplicationTemplateImportModal } from '../components/ApplicationTemplateImportModal';
 import { downloadTemplateFile } from '../lib/template-download';
@@ -90,10 +89,15 @@ function mergeTagCatalog(
     }
   }
 
-  return Array.from(merged.values()).sort((left, right) => left.name.localeCompare(right.name));
+  return Array.from(merged.values()).sort((left, right) =>
+    left.name.localeCompare(right.name)
+  );
 }
 
-function buildCopiedApplicationName(name: string, t: TFunction<'applications'>) {
+function buildCopiedApplicationName(
+  name: string,
+  t: TFunction<'applications'>
+) {
   return t('auto.copied_application_name', { value1: name });
 }
 
@@ -126,11 +130,20 @@ export function ApplicationListPage() {
   const [tagFilter, setTagFilter] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
   const [myCreated, setMyCreated] = useState(false);
-  const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null);
-  const [taggingApplicationId, setTaggingApplicationId] = useState<string | null>(null);
-  const [openActionApplicationId, setOpenActionApplicationId] = useState<string | null>(null);
-  const [optimisticTags, setOptimisticTags] = useState<ApplicationTagCatalogEntry[]>([]);
-  const [importTemplate, setImportTemplate] = useState<AgentFlowTemplatePackage | null>(null);
+  const [editingApplicationId, setEditingApplicationId] = useState<
+    string | null
+  >(null);
+  const [taggingApplicationId, setTaggingApplicationId] = useState<
+    string | null
+  >(null);
+  const [openActionApplicationId, setOpenActionApplicationId] = useState<
+    string | null
+  >(null);
+  const [optimisticTags, setOptimisticTags] = useState<
+    ApplicationTagCatalogEntry[]
+  >([]);
+  const [importTemplate, setImportTemplate] =
+    useState<AgentFlowTemplatePackage | null>(null);
   const [importName, setImportName] = useState('');
   const [importPreview, setImportPreview] = useState<Awaited<
     ReturnType<typeof previewAgentFlowTemplate>
@@ -168,7 +181,8 @@ export function ApplicationListPage() {
   });
 
   const exportTemplateMutation = useMutation({
-    mutationFn: (applicationId: string) => exportAgentFlowTemplate(applicationId),
+    mutationFn: (applicationId: string) =>
+      exportAgentFlowTemplate(applicationId),
     onSuccess: (template) => {
       downloadTemplateFile(template);
       messageApi.success(t('auto.template_exported'));
@@ -179,7 +193,8 @@ export function ApplicationListPage() {
   });
 
   const previewTemplateMutation = useMutation({
-    mutationFn: (template: AgentFlowTemplatePackage) => previewAgentFlowTemplate(template),
+    mutationFn: (template: AgentFlowTemplatePackage) =>
+      previewAgentFlowTemplate(template),
     onSuccess: (preview) => {
       setImportPreview(preview);
       setImportName(preview.application.name);
@@ -238,7 +253,8 @@ export function ApplicationListPage() {
   });
 
   const deleteApplicationMutation = useMutation({
-    mutationFn: (application: Application) => deleteApplication(application.id, csrfToken ?? ''),
+    mutationFn: (application: Application) =>
+      deleteApplication(application.id, csrfToken ?? ''),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: applicationsQueryKey }),
@@ -252,21 +268,31 @@ export function ApplicationListPage() {
   });
 
   const createApplicationTagMutation = useMutation({
-    mutationFn: (input: { name: string }) => createApplicationTag(input, csrfToken ?? ''),
+    mutationFn: (input: { name: string }) =>
+      createApplicationTag(input, csrfToken ?? ''),
     onSuccess: async (createdTag) => {
       setOptimisticTags((current) =>
-        current.some((tag) => tag.id === createdTag.id) ? current : [...current, createdTag]
+        current.some((tag) => tag.id === createdTag.id)
+          ? current
+          : [...current, createdTag]
       );
-      await queryClient.invalidateQueries({ queryKey: applicationCatalogQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey: applicationCatalogQueryKey
+      });
     }
   });
 
   const isRoot = actor?.effective_display_role === 'root';
-  const canCreate = isRoot || Boolean(me?.permissions.includes('application.create.all'));
-  const canEditAny = isRoot || Boolean(me?.permissions.includes('application.edit.all'));
+  const canCreate =
+    isRoot || Boolean(me?.permissions.includes('application.create.all'));
+  const canEditAny =
+    isRoot || Boolean(me?.permissions.includes('application.edit.all'));
   const canEditOwn = Boolean(me?.permissions.includes('application.edit.own'));
-  const canDeleteAny = isRoot || Boolean(me?.permissions.includes('application.delete.all'));
-  const canDeleteOwn = Boolean(me?.permissions.includes('application.delete.own'));
+  const canDeleteAny =
+    isRoot || Boolean(me?.permissions.includes('application.delete.all'));
+  const canDeleteOwn = Boolean(
+    me?.permissions.includes('application.delete.own')
+  );
   const normalizedKeyword = keyword.trim().toLowerCase();
 
   if (applicationsQuery.isPending || applicationCatalogQuery.isPending) {
@@ -274,7 +300,9 @@ export function ApplicationListPage() {
   }
 
   if (applicationsQuery.isError || applicationCatalogQuery.isError) {
-    return <Result status="error" title={t('auto.application_list_load_failed')} />;
+    return (
+      <Result status="error" title={t('auto.application_list_load_failed')} />
+    );
   }
 
   const applications = applicationsQuery.data ?? [];
@@ -284,13 +312,14 @@ export function ApplicationListPage() {
   const typeLabels = new Map(
     catalog.types.map((type) => [type.value, type.label] as const)
   );
-  const editingApplication =
-    applications.find((application) => application.id === editingApplicationId) ?? null;
   const taggingApplication =
-    applications.find((application) => application.id === taggingApplicationId) ?? null;
+    applications.find(
+      (application) => application.id === taggingApplicationId
+    ) ?? null;
 
   const visibleApplications = applications.filter((application) => {
-    const matchesType = typeFilter === 'all' || application.application_type === typeFilter;
+    const matchesType =
+      typeFilter === 'all' || application.application_type === typeFilter;
     const matchesKeyword =
       normalizedKeyword.length === 0 ||
       application.name.toLowerCase().includes(normalizedKeyword) ||
@@ -333,7 +362,9 @@ export function ApplicationListPage() {
     }
 
     try {
-      const template = JSON.parse(await file.text()) as AgentFlowTemplatePackage;
+      const template = JSON.parse(
+        await file.text()
+      ) as AgentFlowTemplatePackage;
       setImportTemplate(template);
       previewTemplateMutation.mutate(template);
     } catch {
@@ -354,7 +385,14 @@ export function ApplicationListPage() {
   };
 
   return (
-    <div style={{ padding: '24px 0', width: '100%', maxWidth: 1240, margin: '0 auto' }}>
+    <div
+      style={{
+        padding: '24px 0',
+        width: '100%',
+        maxWidth: 1240,
+        margin: '0 auto'
+      }}
+    >
       {messageContextHolder}
       {modalContextHolder}
       <input
@@ -365,7 +403,13 @@ export function ApplicationListPage() {
         style={{ display: 'none' }}
         onChange={(event) => void handleImportTemplateFile(event)}
       />
-      <Flex justify="space-between" align="center" wrap="wrap" gap={16} style={{ marginBottom: 24 }}>
+      <Flex
+        justify="space-between"
+        align="center"
+        wrap="wrap"
+        gap={16}
+        style={{ marginBottom: 24 }}
+      >
         <Space size="small" wrap>
           {typeTabs.map((tab) => (
             <Button
@@ -381,8 +425,12 @@ export function ApplicationListPage() {
         </Space>
 
         <Space size="middle" wrap>
-          <Checkbox checked={myCreated} onChange={(event) => setMyCreated(event.target.checked)}>
-            {t('auto.created_by_me')}</Checkbox>
+          <Checkbox
+            checked={myCreated}
+            onChange={(event) => setMyCreated(event.target.checked)}
+          >
+            {t('auto.created_by_me')}
+          </Checkbox>
           <Select
             allowClear
             value={tagFilter}
@@ -434,14 +482,16 @@ export function ApplicationListPage() {
               style={{ justifyContent: 'flex-start' }}
               onClick={() => setCreateOpen(true)}
             >
-              {t('auto.create_blank_application')}</Button>
+              {t('auto.create_blank_application')}
+            </Button>
             <Button
               type="text"
               icon={<FileTextOutlined />}
               style={{ justifyContent: 'flex-start' }}
               disabled
             >
-              {t('auto.create_from_application_template')}</Button>
+              {t('auto.create_from_application_template')}
+            </Button>
             <Button
               type="text"
               icon={<ImportOutlined />}
@@ -449,14 +499,17 @@ export function ApplicationListPage() {
               loading={previewTemplateMutation.isPending}
               onClick={() => importFileInputRef.current?.click()}
             >
-              {t('auto.import_template_file')}</Button>
+              {t('auto.import_template_file')}
+            </Button>
           </div>
         )}
 
         {visibleApplications.map((application) => {
           const canEdit = canEditApplication(application);
           const canDelete = canDeleteApplication(application);
-          const typeLabel = typeLabels.get(application.application_type) ?? application.application_type;
+          const typeLabel =
+            typeLabels.get(application.application_type) ??
+            application.application_type;
           const applicationHref = `/applications/${application.id}/orchestration`;
           const actionItems: MenuProps['items'] = [
             {
@@ -505,7 +558,9 @@ export function ApplicationListPage() {
             >
               <a
                 href={applicationHref}
-                aria-label={t('auto.enter_application_named', { value1: application.name })}
+                aria-label={t('auto.enter_application_named', {
+                  value1: application.name
+                })}
                 style={{
                   position: 'absolute',
                   inset: 0,
@@ -513,7 +568,13 @@ export function ApplicationListPage() {
                   borderRadius: 18
                 }}
               />
-              <div style={{ position: 'relative', zIndex: 2, pointerEvents: 'none' }}>
+              <div
+                style={{
+                  position: 'relative',
+                  zIndex: 2,
+                  pointerEvents: 'none'
+                }}
+              >
                 <Flex align="flex-start" gap={12} style={{ marginBottom: 16 }}>
                   <div
                     style={{
@@ -531,7 +592,10 @@ export function ApplicationListPage() {
                     {applicationTypeIcon(application.application_type)}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <Typography.Title level={5} style={{ margin: 0, color: '#0f172a' }}>
+                    <Typography.Title
+                      level={5}
+                      style={{ margin: 0, color: '#0f172a' }}
+                    >
                       {application.name}
                     </Typography.Title>
                     <Typography.Text type="secondary">
@@ -547,14 +611,18 @@ export function ApplicationListPage() {
                   </div>
                 </Flex>
 
-                <Typography.Paragraph style={{ color: '#334155', minHeight: 44 }}>
-                  {application.description || t('auto.application_description_empty')}
+                <Typography.Paragraph
+                  style={{ color: '#334155', minHeight: 44 }}
+                >
+                  {application.description ||
+                    t('auto.application_description_empty')}
                 </Typography.Paragraph>
 
                 <Flex wrap gap={8} style={{ minHeight: 32, marginBottom: 16 }}>
                   {application.tags.length === 0 ? (
                     <Tag bordered={false} color="default">
-                      {t('auto.no_tags')}</Tag>
+                      {t('auto.no_tags')}
+                    </Tag>
                   ) : (
                     application.tags.map((tag) => (
                       <Tag key={tag.id} bordered={false} color="blue">
@@ -574,17 +642,22 @@ export function ApplicationListPage() {
                   <Button
                     size="small"
                     icon={<TagOutlined />}
-                    aria-label={t('auto.manage_tags_named', { value1: application.name })}
+                    aria-label={t('auto.manage_tags_named', {
+                      value1: application.name
+                    })}
                     onClick={() => setTaggingApplicationId(application.id)}
                     disabled={!canEdit}
                   >
-                    {t('auto.manage_tags')}</Button>
+                    {t('auto.manage_tags')}
+                  </Button>
                 </Space>
                 <div style={{ position: 'relative' }}>
                   <Button
                     type="text"
                     icon={<MoreOutlined />}
-                    aria-label={t('auto.more_actions_named', { value1: application.name })}
+                    aria-label={t('auto.more_actions_named', {
+                      value1: application.name
+                    })}
                     aria-expanded={openActionApplicationId === application.id}
                     onMouseDown={(event) => {
                       event.preventDefault();
@@ -657,22 +730,14 @@ export function ApplicationListPage() {
         </div>
       ) : null}
 
-      <ApplicationEditModal
-        open={Boolean(editingApplication)}
-        application={editingApplication}
-        saving={updateApplicationMutation.isPending}
-        onCancel={() => setEditingApplicationId(null)}
-        onSubmit={(values) => {
-          if (!editingApplication) {
-            return;
-          }
-
-          void handleUpdateApplication(editingApplication, {
-            name: values.name,
-            description: values.description,
-            tag_ids: editingApplication.tags.map((tag) => tag.id)
-          }).then(() => setEditingApplicationId(null));
+      <ApplicationFormModal
+        open={Boolean(editingApplicationId)}
+        csrfToken={csrfToken ?? ''}
+        intent={{
+          kind: 'edit',
+          applicationId: editingApplicationId ?? ''
         }}
+        onClose={() => setEditingApplicationId(null)}
       />
 
       <ApplicationTagManagerModal
@@ -683,7 +748,9 @@ export function ApplicationListPage() {
         creating={createApplicationTagMutation.isPending}
         onCancel={() => setTaggingApplicationId(null)}
         onCreateTag={async (name) => {
-          const createdTag = await createApplicationTagMutation.mutateAsync({ name });
+          const createdTag = await createApplicationTagMutation.mutateAsync({
+            name
+          });
           return { id: createdTag.id, name: createdTag.name };
         }}
         onSubmit={(tagIds) => {
@@ -699,12 +766,17 @@ export function ApplicationListPage() {
         }}
       />
 
-      <ApplicationCreateModal
+      <ApplicationFormModal
         open={createOpen}
         csrfToken={csrfToken ?? ''}
         onClose={() => setCreateOpen(false)}
-        onCreated={(applicationId) => {
-          window.location.assign(`/applications/${applicationId}/orchestration`);
+        intent={{
+          kind: 'create',
+          onCreated: (applicationId) => {
+            window.location.assign(
+              `/applications/${applicationId}/orchestration`
+            );
+          }
         }}
       />
 

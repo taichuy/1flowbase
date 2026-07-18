@@ -141,6 +141,9 @@ export interface UpdateConsoleApplicationInput {
   name: string;
   description: string;
   tag_ids: string[];
+  icon?: string;
+  icon_type?: string;
+  icon_background?: string;
 }
 
 export interface CreateConsoleApplicationTagInput {

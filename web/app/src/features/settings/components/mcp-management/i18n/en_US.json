@@ -97,6 +97,7 @@
     "upstream_last_error": "Last error",
     "upstream_actions": "Connection actions",
     "upstream_edit_connection": "Edit connection",
+    "upstream_test": "Test",
     "upstream_test_connection": "Test connection",
     "upstream_discover_tools": "Discover Tools",
     "upstream_delete_connection": "Delete connection",

@@ -75,6 +75,12 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
+        let current_mapping = self
+            .repository
+            .get_application_api_mapping(application.id)
+            .await?
+            .unwrap_or_else(ApplicationApiMappingConfig::default_native);
+        ensure_extension_registration_unchanged(&current_mapping, &command.mapping)?;
         if let Some(slug) = command.mapping.extension_slug() {
             if let Some(existing_application_id) = self
                 .repository
@@ -103,6 +109,27 @@ where
                 mapping: command.mapping,
             })
             .await
+    }
+}
+
+pub(crate) fn ensure_extension_registration_unchanged(
+    current: &ApplicationApiMappingConfig,
+    requested: &ApplicationApiMappingConfig,
+) -> Result<()> {
+    let unchanged = match (&current.extension, &requested.extension) {
+        (None, None) => true,
+        (Some(current), Some(requested)) => {
+            current.slug == requested.slug
+                && current.method == requested.method
+                && current.response_mode == requested.response_mode
+        }
+        _ => false,
+    };
+
+    if unchanged {
+        Ok(())
+    } else {
+        Err(ControlPlaneError::Conflict("workflow_extension_registration_immutable").into())
     }
 }
 

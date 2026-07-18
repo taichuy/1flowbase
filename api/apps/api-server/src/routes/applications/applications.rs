@@ -62,6 +62,9 @@ pub struct PatchApplicationBody {
     pub description: String,
     #[serde(default)]
     pub tag_ids: Vec<String>,
+    pub icon: Option<String>,
+    pub icon_type: Option<String>,
+    pub icon_background: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -856,6 +859,9 @@ pub async fn patch_application(
             name: body.name,
             description: body.description,
             tag_ids,
+            icon: body.icon,
+            icon_type: body.icon_type,
+            icon_background: body.icon_background,
         })
         .await?;
 

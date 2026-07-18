@@ -6,7 +6,8 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::mapping::{
-    validate_application_api_mapping, ApplicationApiMappingConfig, ApplicationApiMappingOutput,
+    ensure_extension_registration_unchanged, validate_application_api_mapping,
+    ApplicationApiMappingConfig, ApplicationApiMappingOutput,
 };
 use crate::{
     application::{
@@ -160,6 +161,12 @@ where
                 ApplicationNonCrudConsoleOperation::Publish,
             )?;
         }
+        let current_mapping = self
+            .repository
+            .get_application_api_mapping(application.id)
+            .await?
+            .unwrap_or_else(ApplicationApiMappingConfig::default_native);
+        ensure_extension_registration_unchanged(&current_mapping, &command.mapping)?;
         let extension_slug = command.mapping.extension_slug().map(ToOwned::to_owned);
         if let Some(slug) = extension_slug.as_deref() {
             if let Some(existing_publication) = self

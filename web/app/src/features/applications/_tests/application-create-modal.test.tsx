@@ -6,20 +6,26 @@ const applicationsApi = vi.hoisted(() => ({
   createApplication: vi.fn()
 }));
 
-vi.mock('../api/applications', () => applicationsApi);
+vi.mock('../api/applications', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/applications')>()),
+  ...applicationsApi
+}));
 
 const publicApi = vi.hoisted(() => ({
   saveApplicationApiMapping: vi.fn(),
   saveWorkflowScheduleTrigger: vi.fn()
 }));
 
-vi.mock('../api/public-api', () => publicApi);
+vi.mock('../api/public-api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/public-api')>()),
+  ...publicApi
+}));
 
 import { AppProviders } from '../../../app/AppProviders';
 
-import { ApplicationCreateModal } from '../components/ApplicationCreateModal';
+import { ApplicationFormModal } from '../components/ApplicationFormModal';
 
-describe('ApplicationCreateModal', () => {
+describe('ApplicationFormModal create intent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     applicationsApi.createApplication.mockResolvedValue({ id: 'app-workflow' });
@@ -30,11 +36,11 @@ describe('ApplicationCreateModal', () => {
   test('keeps form semantics after migrating to the shared modal shell', () => {
     render(
       <AppProviders>
-        <ApplicationCreateModal
+        <ApplicationFormModal
           open
           csrfToken="csrf-123"
           onClose={vi.fn()}
-          onCreated={vi.fn()}
+          intent={{ kind: 'create', onCreated: vi.fn() }}
         />
       </AppProviders>
     );
@@ -44,6 +50,15 @@ describe('ApplicationCreateModal', () => {
     expect(
       screen.getByRole('button', { name: '创建应用' })
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: '图标' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: '图标类型' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: '图标背景' })
+    ).not.toBeInTheDocument();
   }, 10_000);
 
   test('creates extension workflows with their initial trigger configuration', async () => {
@@ -51,11 +66,11 @@ describe('ApplicationCreateModal', () => {
 
     render(
       <AppProviders>
-        <ApplicationCreateModal
+        <ApplicationFormModal
           open
           csrfToken="csrf-123"
           onClose={vi.fn()}
-          onCreated={onCreated}
+          intent={{ kind: 'create', onCreated }}
         />
       </AppProviders>
     );
@@ -85,24 +100,26 @@ describe('ApplicationCreateModal', () => {
         'csrf-123'
       );
     });
-    expect(onCreated).toHaveBeenCalledWith('app-workflow');
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalledWith('app-workflow');
+    });
   });
 
   test('creates schedule workflows disabled with cron configuration', async () => {
     render(
       <AppProviders>
-        <ApplicationCreateModal
+        <ApplicationFormModal
           open
           csrfToken="csrf-123"
           onClose={vi.fn()}
-          onCreated={vi.fn()}
+          intent={{ kind: 'create', onCreated: vi.fn() }}
         />
       </AppProviders>
     );
 
     fireEvent.click(screen.getByRole('radio', { name: /Workflow/i }));
     const triggerTypeSelect = screen.getByRole('combobox', {
-      name: /workflow_trigger_type/
+      name: '触发方式'
     });
     fireEvent.mouseDown(triggerTypeSelect);
     const triggerOptions = document.querySelectorAll<HTMLElement>(

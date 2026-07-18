@@ -386,6 +386,9 @@ async fn application_routes_support_catalog_tags_and_patching_metadata() {
                     json!({
                         "name": "Agent Support Updated",
                         "description": "updated support app",
+                        "icon": "ApiOutlined",
+                        "icon_type": "iconfont-v2",
+                        "icon_background": "#123456",
                         "tag_ids": [tag_id]
                     })
                     .to_string(),
@@ -404,6 +407,15 @@ async fn application_routes_support_catalog_tags_and_patching_metadata() {
     assert_eq!(
         patch_payload["data"]["description"].as_str(),
         Some("updated support app")
+    );
+    assert_eq!(patch_payload["data"]["icon"].as_str(), Some("ApiOutlined"));
+    assert_eq!(
+        patch_payload["data"]["icon_type"].as_str(),
+        Some("iconfont-v2")
+    );
+    assert_eq!(
+        patch_payload["data"]["icon_background"].as_str(),
+        Some("#123456")
     );
     assert_eq!(
         patch_payload["data"]["tags"][0]["name"].as_str(),

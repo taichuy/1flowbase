@@ -58,6 +58,45 @@ async fn create_application(app: &Router, cookie: &str, csrf: &str, name: &str) 
     create_application_with_type(app, cookie, csrf, name, "agent_flow").await
 }
 
+async fn create_extension_workflow(app: &Router, cookie: &str, csrf: &str, name: &str) -> String {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_type": "workflow",
+                        "workflow_trigger_type": "extension",
+                        "workflow_trigger_config": {
+                            "subpath": "orders/create",
+                            "http_method": "POST",
+                            "response_mode": "sync"
+                        },
+                        "name": name,
+                        "description": "extension workflow test",
+                        "icon": null,
+                        "icon_type": null,
+                        "icon_background": null
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    response_json(response).await["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
 async fn create_member_with_permissions(
     app: &Router,
     root_cookie: &str,
@@ -408,6 +447,79 @@ async fn application_api_mapping_routes_get_and_replace_nullable_model_target() 
         replace_payload["data"]["output"]["answer_selector"].as_str(),
         Some("end.answer")
     );
+}
+
+#[tokio::test]
+async fn ac_007_extension_registration_fields_are_immutable_after_creation() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_id =
+        create_extension_workflow(&app, &cookie, &csrf, "Immutable Extension").await;
+
+    let replace = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-mapping"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "input": {
+                            "query_target": "node-start.query",
+                            "model_target": "node-start.model",
+                            "inputs_target": "node-start",
+                            "history_target": "node-start.history",
+                            "attachments_target": "node-start.files"
+                        },
+                        "output": {
+                            "answer_selector": null,
+                            "usage_selector": null,
+                            "files_selector": null,
+                            "error_selector": null
+                        },
+                        "extension": {
+                            "slug": "orders/changed",
+                            "method": "PUT",
+                            "response_mode": "async",
+                            "parameters": []
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(replace.status(), StatusCode::CONFLICT);
+    let conflict = response_json(replace).await;
+    assert_eq!(
+        conflict["code"],
+        json!("workflow_extension_registration_immutable")
+    );
+
+    let current = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-mapping"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(current.status(), StatusCode::OK);
+    let current = response_json(current).await;
+    assert_eq!(current["data"]["extension"]["slug"], json!("orders/create"));
+    assert_eq!(current["data"]["extension"]["method"], json!("POST"));
+    assert_eq!(current["data"]["extension"]["response_mode"], json!("sync"));
 }
 
 #[tokio::test]

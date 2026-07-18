@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 应用治理改造五个 issue 已拍板并挂上 GitHub
-summary: 用户确认 /settings/applications 治理改造方向并回答全部拍板点，2026-07-15 已创建 #1286-#1290 五个 issue；#1286 生命周期闭环是地基，用户指示"继续"后进入实现。
+summary: 用户确认 /settings/applications 治理改造方向；#1286 生命周期闭环已合入，#1289 已完成 extension 后端不可变校验和 Settings 详情 Drawer 第一版，当前等待页面视觉确认。
 keywords:
   - application
   - settings
@@ -14,8 +14,8 @@ match_when:
   - 讨论应用发布、下线、复制、模板导出或设置页改版
   - 需要回忆用户对生命周期语义的拍板结论
 created_at: 2026-07-15 15
-updated_at: 2026-07-15 15
-last_verified_at: 2026-07-15 15
+updated_at: 2026-07-18 17
+last_verified_at: 2026-07-18 17
 decision_policy: verify_before_decision
 scope:
   - api/crates/control-plane/src/application_public_api
@@ -41,7 +41,8 @@ scope:
 
 ## 用户拍板结论（决策原文语义）
 
-- 编辑表单必须与新增表单能力一致：新增有类型/触发器/图标而编辑只有名称/描述是核心痛点。
+- 编辑入口必须覆盖新增时形成的全部应用配置，但可变性按领域约束区分：名称、描述、图标、标签和 schedule 配置可编辑；`application_type` 以及 extension 的 URL/subpath、HTTP method、同步/异步模式在创建后只读。
+- extension 不可变约束必须由后端写入口校验，不能只靠前端禁用控件；任何通过通用 mapping PUT 或其他绕行入口修改上述冻结字段的请求都必须被拒绝，避免注册表、mapping、发布快照和动态 OpenAPI 产生矛盾或冲突。
 - 生命周期收敛为「草稿 ⇄ 已发布」双态，新增"从已发布退回草稿"转换；不引入第三个用户可见状态。
 - 按触发器落地停用语义：extension = 接口取消注册；schedule = 停止调度；agent_flow 公开 API = 停止对外调用。统一为一个发布开关心智，`api_enabled` 从用户心智退位。
 - 复制必须包含流程定义（真复制），按缺陷处理；环境变量默认随复制。
@@ -61,4 +62,4 @@ scope:
 
 ## 截止与状态
 
-- 无硬截止；用户 2026-07-15 指示"继续"，按依赖顺序从 #1286 开始实现，落 dev 分支。#1287/#1288/#1289/#1290 尚未动工。
+- 无硬截止；2026-07-18 用户确认并启动 #1289。已完成 extension 创建后冻结字段在 mapping 保存与 publish 入口的后端校验，以及 Settings 详情 Drawer、schedule 编辑、extension 只读摘要、成员选择器、行内发布开关和筛选结果 CSV 导出；定向测试、TypeScript、Rust static、style-boundary 与 i18n error 门禁通过。按前端视觉确认偏好，当前不提交、不推送，等待用户查看页面效果。#1287/#1288/#1290 尚未动工。

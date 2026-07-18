@@ -7,6 +7,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use serde_json::{json, Value};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -73,6 +74,71 @@ async fn create_connection(app: &axum::Router, cookie: &str, csrf: &str) -> Valu
         .unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
     response_json(response).await["data"].clone()
+}
+
+#[tokio::test]
+async fn issue_1246_upstream_connection_api_timestamps_are_rfc3339() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let connection = create_connection(&app, &cookie, &csrf).await;
+
+    for field in ["created_at", "updated_at"] {
+        let timestamp = connection[field]
+            .as_str()
+            .unwrap_or_else(|| panic!("{field} must be a string"));
+        OffsetDateTime::parse(timestamp, &Rfc3339)
+            .unwrap_or_else(|error| panic!("{field} must be RFC 3339: {error}"));
+    }
+}
+
+#[tokio::test]
+async fn form_connection_test_uses_request_config_without_persisting_connection() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let tested = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/upstream-connections/test")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "connection_id":null,
+                        "endpoint":"http://127.0.0.1/mcp",
+                        "transport":"streamable_http",
+                        "auth_type":"none",
+                        "custom_header_name":null,
+                        "credential":null
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(tested.status(), StatusCode::OK);
+    let tested = response_json(tested).await;
+    assert_eq!(tested["data"]["ok"], json!(false));
+    assert_eq!(tested["data"]["error"], json!("invalid upstream endpoint"));
+    OffsetDateTime::parse(tested["data"]["tested_at"].as_str().unwrap(), &Rfc3339).unwrap();
+
+    let listed = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/mcp/upstream-connections")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(listed.status(), StatusCode::OK);
+    assert_eq!(response_json(listed).await["data"], json!([]));
 }
 
 #[tokio::test]

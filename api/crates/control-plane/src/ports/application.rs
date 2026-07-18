@@ -91,6 +91,9 @@ pub struct UpdateApplicationInput {
     pub name: String,
     pub description: String,
     pub tag_ids: Vec<Uuid>,
+    pub icon: Option<Option<String>>,
+    pub icon_type: Option<Option<String>>,
+    pub icon_background: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone)]

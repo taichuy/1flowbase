@@ -11,6 +11,7 @@ import {
   importConsoleMcpUpstreamTools,
   saveConsoleMcpUpstreamConnectionCredentials,
   testConsoleMcpUpstreamConnection,
+  testConsoleMcpUpstreamConnectionDraft,
   updateConsoleMcpUpstreamConnection,
   updateConsoleMcpTool,
   executeConsoleMcpProxyToolDebug
@@ -89,6 +90,22 @@ describe('console MCP upstream connection client', () => {
   });
 
   test('AC-007 AC-008 uses backend-owned test, discovery, and import routes', async () => {
+    const draft = {
+      connection_id: null,
+      endpoint: 'https://mcp.acme.example/mcp',
+      transport: 'streamable_http' as const,
+      auth_type: 'bearer' as const,
+      custom_header_name: null,
+      credential: { kind: 'bearer' as const, token: 'draft-token' }
+    };
+    await expect(
+      testConsoleMcpUpstreamConnectionDraft(draft, 'csrf-123')
+    ).resolves.toMatchObject({
+      path: '/api/console/mcp/upstream-connections/test',
+      method: 'POST',
+      body: draft,
+      csrfToken: 'csrf-123'
+    });
     await expect(
       testConsoleMcpUpstreamConnection('connection/slash', 'csrf-123')
     ).resolves.toMatchObject({

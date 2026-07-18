@@ -1,5 +1,6 @@
 {
   "auto": {
+    "workflow_trigger_type": "Trigger type",
     "workflow_start_description": "Defines workflow input parameters.",
     "workflow_end_description": "Declares the successful sync response fields.",
     "input_parameters": "Input Parameters",
