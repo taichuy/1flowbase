@@ -677,3 +677,44 @@ async fn preview_executor_unsupported_node_type_not_implemented_returns_error() 
     assert_eq!(outcome.node_output, serde_json::json!({}));
     assert!(outcome.provider_events.is_empty());
 }
+
+#[tokio::test]
+async fn preview_executor_rejects_compact_response_without_simulating_a_profile_or_wire_body() {
+    let mut plan = sample_compiled_plan();
+    plan.nodes.insert(
+        "node-compact-response".to_string(),
+        CompiledNode {
+            node_id: "node-compact-response".to_string(),
+            node_type: "compact_response".to_string(),
+            alias: "Compact Response".to_string(),
+            container_id: None,
+            dependency_node_ids: vec!["node-start".to_string()],
+            downstream_node_ids: Vec::new(),
+            bindings: BTreeMap::new(),
+            outputs: Vec::new(),
+            config: json!({}),
+            plugin_runtime: None,
+            llm_runtime: None,
+            code_runtime: None,
+        },
+    );
+
+    let invoker = StubPreviewInvoker {
+        captured_input: Arc::new(Mutex::new(None)),
+    };
+    let error = preview_executor::run_node_preview(
+        &plan,
+        "node-compact-response",
+        &serde_json::json!({ "node-start": { "query": "compact" } }),
+        &invoker,
+    )
+    .await
+    .expect_err("Compact Response should require a real typed ingress, not a preview simulator");
+
+    assert!(error.to_string().contains("do not support preview"));
+    assert!(invoker
+        .captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .is_none());
+}

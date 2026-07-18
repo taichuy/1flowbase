@@ -31,6 +31,7 @@ const EXECUTABLE_NODE_TYPES: &[&str] = &[
     "workflow_start",
     "workflow_end",
     "answer",
+    "compact_response",
     "llm",
     "if_else",
     "code",
@@ -112,7 +113,7 @@ impl FlowCompiler {
         }
         let (nodes, edges, topological_order, mut compile_issues) =
             build_nodes_and_topology(document, context)?;
-        validate_document_kind(document_kind, &nodes)?;
+        validate_document_kind(document_kind, &nodes, &edges)?;
 
         let mut plan = CompiledPlan {
             flow_id,
@@ -133,14 +134,18 @@ impl FlowCompiler {
 fn validate_document_kind(
     document_kind: FlowDocumentKind,
     nodes: &BTreeMap<String, CompiledNode>,
+    edges: &[CompiledEdge],
 ) -> Result<()> {
     match document_kind {
-        FlowDocumentKind::AgentFlow => validate_agent_flow_node_family(nodes),
+        FlowDocumentKind::AgentFlow => validate_agent_flow_node_family(nodes, edges),
         FlowDocumentKind::Workflow => validate_workflow_node_family(nodes),
     }
 }
 
-fn validate_agent_flow_node_family(nodes: &BTreeMap<String, CompiledNode>) -> Result<()> {
+fn validate_agent_flow_node_family(
+    nodes: &BTreeMap<String, CompiledNode>,
+    edges: &[CompiledEdge],
+) -> Result<()> {
     for workflow_node_type in ["workflow_start", "workflow_end"] {
         if let Some(node) = nodes
             .values()
@@ -154,6 +159,8 @@ fn validate_agent_flow_node_family(nodes: &BTreeMap<String, CompiledNode>) -> Re
         }
     }
 
+    validate_compact_response_topology(nodes, edges)?;
+
     Ok(())
 }
 
@@ -163,7 +170,7 @@ fn validate_workflow_node_family(nodes: &BTreeMap<String, CompiledNode>) -> Resu
 
     for node in nodes.values() {
         match node.node_type.as_str() {
-            "start" | "answer" => {
+            "start" | "answer" | "compact_response" => {
                 bail!(
                     "workflow document cannot contain {} node {}",
                     node.node_type,
@@ -182,6 +189,167 @@ fn validate_workflow_node_family(nodes: &BTreeMap<String, CompiledNode>) -> Resu
 
     if workflow_end_count == 0 {
         bail!("workflow document must contain at least one workflow_end node");
+    }
+
+    Ok(())
+}
+
+/// Validates the reserved AgentFlow Compact branch after edges have been
+/// resolved. The graph has no authorable value channel into Compact Response:
+/// its result arrives only through the typed runtime ingress.
+pub(super) fn validate_compact_response_topology(
+    nodes: &BTreeMap<String, CompiledNode>,
+    edges: &[CompiledEdge],
+) -> Result<()> {
+    let start_nodes = nodes
+        .values()
+        .filter(|node| node.node_type == "start")
+        .collect::<Vec<_>>();
+    let compact_response_nodes = nodes
+        .values()
+        .filter(|node| node.node_type == "compact_response")
+        .collect::<Vec<_>>();
+    let compact_handle_edges = edges
+        .iter()
+        .filter(|edge| {
+            edge.source_handle.as_deref() == Some(COMPACT_SOURCE_HANDLE_ID)
+                && nodes
+                    .get(&edge.source)
+                    .is_some_and(|source| source.node_type == "start")
+        })
+        .collect::<Vec<_>>();
+
+    let mut application_flow_start_count = 0;
+    for start_node in &start_nodes {
+        let dispatch = StartCompactDispatch::from_start_config(&start_node.config)
+            .map_err(|error| anyhow!("start node {} {error}", start_node.node_id))?;
+        let start_compact_edges = compact_handle_edges
+            .iter()
+            .copied()
+            .filter(|edge| edge.source == start_node.node_id)
+            .collect::<Vec<_>>();
+
+        match dispatch {
+            StartCompactDispatch::Transparent => {
+                if !start_compact_edges.is_empty() {
+                    bail!(
+                        "transparent start node {} cannot retain a compact edge",
+                        start_node.node_id
+                    );
+                }
+            }
+            StartCompactDispatch::ApplicationFlow => {
+                application_flow_start_count += 1;
+                if start_compact_edges.len() != 1 {
+                    bail!(
+                        "application_flow start node {} must have exactly one compact edge",
+                        start_node.node_id
+                    );
+                }
+
+                let edge = start_compact_edges[0];
+                let target = nodes.get(&edge.target).ok_or_else(|| {
+                    anyhow!(
+                        "compact edge {} references unknown target node: {}",
+                        edge.edge_id,
+                        edge.target
+                    )
+                })?;
+                if target.node_type != "compact_response" {
+                    bail!(
+                        "compact edge {} from start node {} must target a compact_response node",
+                        edge.edge_id,
+                        start_node.node_id
+                    );
+                }
+            }
+        }
+    }
+
+    if application_flow_start_count > 0 && start_nodes.len() != 1 {
+        bail!("application_flow compact dispatch requires exactly one start node");
+    }
+
+    for edge in &compact_handle_edges {
+        let source = nodes.get(&edge.source).ok_or_else(|| {
+            anyhow!(
+                "compact edge {} references unknown source node: {}",
+                edge.edge_id,
+                edge.source
+            )
+        })?;
+        if StartCompactDispatch::from_start_config(&source.config)
+            .map_err(|error| anyhow!("start node {} {error}", source.node_id))?
+            != StartCompactDispatch::ApplicationFlow
+        {
+            bail!(
+                "compact edge {} must originate from an application_flow start node",
+                edge.edge_id
+            );
+        }
+    }
+
+    for compact_response in &compact_response_nodes {
+        validate_compact_response_node_contract(compact_response)?;
+
+        let incoming_edges = edges
+            .iter()
+            .filter(|edge| edge.target == compact_response.node_id)
+            .collect::<Vec<_>>();
+        if incoming_edges.len() != 1 {
+            bail!(
+                "compact_response node {} must have exactly one incoming compact edge",
+                compact_response.node_id
+            );
+        }
+
+        let incoming_edge = incoming_edges[0];
+        let source = nodes.get(&incoming_edge.source).ok_or_else(|| {
+            anyhow!(
+                "compact_response node {} incoming edge {} references unknown source node: {}",
+                compact_response.node_id,
+                incoming_edge.edge_id,
+                incoming_edge.source
+            )
+        })?;
+        if source.node_type != "start"
+            || incoming_edge.source_handle.as_deref() != Some(COMPACT_SOURCE_HANDLE_ID)
+            || StartCompactDispatch::from_start_config(&source.config)
+                .map_err(|error| anyhow!("start node {} {error}", source.node_id))?
+                != StartCompactDispatch::ApplicationFlow
+        {
+            bail!(
+                "compact_response node {} must be reached directly from an application_flow start compact edge",
+                compact_response.node_id
+            );
+        }
+    }
+
+    let compact_surface_present = application_flow_start_count > 0
+        || !compact_response_nodes.is_empty()
+        || !compact_handle_edges.is_empty();
+    for node in nodes.values().filter(|node| {
+        node.node_type == "compact_response"
+            || (compact_surface_present && node.node_type == "answer")
+    }) {
+        if edges.iter().any(|edge| edge.source == node.node_id) {
+            bail!(
+                "terminal node {} must not have downstream edges",
+                node.node_id
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_compact_response_node_contract(node: &CompiledNode) -> Result<()> {
+    if node.config != serde_json::json!({}) || !node.bindings.is_empty() || !node.outputs.is_empty()
+    {
+        bail!(
+            "compact_response node {} must not define config, bindings, or outputs",
+            node.node_id
+        );
     }
 
     Ok(())
@@ -501,6 +669,19 @@ fn validate_edge_source_handle(
     source_handle: Option<&str>,
     if_else_source_handles: &BTreeMap<String, BTreeSet<String>>,
 ) -> Result<()> {
+    if source_node.node_type == "start" && source_handle == Some(COMPACT_SOURCE_HANDLE_ID) {
+        if StartCompactDispatch::from_start_config(&source_node.config)?
+            != StartCompactDispatch::ApplicationFlow
+        {
+            bail!(
+                "edge {edge_id} uses compact sourceHandle on start node {} without application_flow dispatch",
+                source_node.node_id
+            );
+        }
+
+        return Ok(());
+    }
+
     if source_handle == Some(ERROR_BRANCH_SOURCE_HANDLE) {
         if node_uses_error_branch(source_node) {
             return Ok(());

@@ -230,11 +230,16 @@ async fn run_node_preview_with_prepared_context<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
-    replay_deterministic_upstream_state(plan, target_node_id, &mut variable_pool)?;
     let node = plan
         .nodes
         .get(target_node_id)
         .ok_or_else(|| anyhow!("target node not found: {target_node_id}"))?;
+    if node.node_type == "compact_response" {
+        return Err(anyhow!(
+            "compact_response nodes do not support preview; use a typed Compact ingress through an application-flow run"
+        ));
+    }
+    replay_deterministic_upstream_state(plan, target_node_id, &mut variable_pool)?;
     let resolved_inputs = if node.node_type == "start" {
         variable_pool
             .get(target_node_id)

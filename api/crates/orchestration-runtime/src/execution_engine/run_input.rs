@@ -6,6 +6,8 @@ use plugin_framework::provider_contract::{
 };
 use std::sync::Arc;
 
+use crate::execution_state::{ApplicationFlowExecutionIntent, CompactResponseIngress};
+
 #[derive(Clone, Default)]
 pub struct ExecutionRuntimeContext {
     pub(super) tools: Vec<Value>,
@@ -14,6 +16,7 @@ pub struct ExecutionRuntimeContext {
     pub(super) native_model_request_context: NativeModelRequestContext,
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
     pub(super) http_response_file_persister: Option<Arc<dyn HttpResponseFilePersister>>,
+    pub(super) compact_response_ingress: Option<CompactResponseIngress>,
 }
 
 impl ExecutionRuntimeContext {
@@ -32,6 +35,7 @@ impl ExecutionRuntimeContext {
             )?,
             llm_routing_counter_store: None,
             http_response_file_persister: None,
+            compact_response_ingress: None,
         })
     }
 
@@ -49,6 +53,28 @@ impl ExecutionRuntimeContext {
     ) -> Self {
         self.http_response_file_persister = Some(persister);
         self
+    }
+
+    /// Callers use this only after the published route has explicitly chosen
+    /// application-flow dispatch and admitted one successful typed Compact
+    /// result. Transparent Compact routing bypasses this runtime entirely.
+    pub fn with_application_flow_compact_ingress(
+        mut self,
+        ingress: CompactResponseIngress,
+    ) -> Self {
+        self.compact_response_ingress = Some(ingress);
+        self
+    }
+
+    pub fn execution_intent(&self) -> ApplicationFlowExecutionIntent {
+        self.compact_response_ingress
+            .as_ref()
+            .map(CompactResponseIngress::intent)
+            .unwrap_or(ApplicationFlowExecutionIntent::Ordinary)
+    }
+
+    pub(super) fn compact_response_ingress(&self) -> Option<&CompactResponseIngress> {
+        self.compact_response_ingress.as_ref()
     }
 
     pub(super) async fn next_llm_routing_counter(
