@@ -9,7 +9,7 @@
 如果没有注册，请自行更新到对应约定目录
 
 # 本项目 skills
-1.`problem-framing`：需求对齐、方案拍板与计划形态选择；计划只使用 Single Issue 或两层 Issue Tree。
+1.`problem-framing`：需求对齐、会导向产品决策的功能 / 交互诊断、方案拍板与计划形态选择；计划只使用 Single Issue 或两层 Issue Tree。
 2.`frontend-development`：前端页面、UI 结构、工作区流程、节点开发、schema UI、交互和视觉结构变更时使用。
 3.`backend-development`：后端 API、状态流转、模块边界、核心业务逻辑、状态写入口和一致性设计变更时使用。
 4.`test-driven-development`：功能、缺陷、重构或行为变化可用自动化测试覆盖时，在实现前使用。
@@ -27,12 +27,12 @@
 8.前端多语言资源必须让 `i18n-hygiene` 暴露无静态引用 key；`unused-i18n-key` 是 warning，保留时必须说明动态 key、路由配置或外部渲染入口原因。
 
 # 开发流程控制
-1.需求类请求默认先使用 `problem-framing`；方向确认前不修改产品代码。
+1.需求类请求，以及会导向产品决策的功能差异、缺失能力、不可编辑状态或入口归属诊断，默认先使用 `problem-framing`；方向确认前不修改产品代码。
 2.普通任务使用 Single Issue；跨上下文、多 agent、跨仓或包含多个可独立集成结果的长计划使用 Root → Delivery 两层 Issue Tree。Root 一次批准既定 Delivery，用户只验收 Root。
-3.纯查询、机械精确改动，或用户明确要求直接开始 / 无需确认时，可以跳过需求对齐。
-4.长计划执行必须读取 `.agents/skills/problem-framing/references/long-running-work.md`；Root agent 是唯一调度者、集成者和 Control Ledger owner，开发、reviewer、QA agent 不再嵌套调度 agent。
-5.开发上下文只在同一 Delivery 内连续复用；新 Delivery 使用新上下文和最小 handoff，不继承完整历史。
-6.默认只实现一个当前 Delivery；第二个开发 Delivery 仅在无依赖、无写入 / 端口 / 构建冲突且能独立结算 Root AC 时并行。状态汇报和资源检查由事件触发，不做无变化轮询。
+3.只有不影响产品 / 设计决策的事实查询、机械精确改动，或用户明确要求直接开始 / 无需确认时，才可跳过需求对齐；“为什么流程不一致 / 能力缺失 / 无法编辑 / 应放在哪个入口”不属于纯查询。
+4.长计划执行必须读取 `.agents/skills/problem-framing/references/long-running-work.md`；默认先用一个只读 Scout，Root agent 汇总路径、现状、目标、AC 与集中 Test Batch，并成为唯一 packetizer、assembly owner 和 Control Ledger owner。
+5.开发只接收边界明确的 Work Packet；同一 Delivery 可连续复用开发上下文，新 Delivery 使用最小 handoff。开发、reviewer、QA agent 不再嵌套调度 agent。
+6.Root 下全部开发与 fixture Work Packet 装配到隔离 assembly 后，只启动一个 fresh QA 做集中测试；不做 per-packet / per-Delivery QA。无依赖、无共享写 / contract / migration / 端口 / 构建冲突的开发 Packet 才可并行，状态与资源检查保持事件驱动。
 
 # 文件管理约定
 1.理论上来说单个代码文件不应该超过1500行
@@ -43,7 +43,7 @@
 6.`docs/superpowers/plans` 和早期 `docs/superpowers/specs` 属于历史计划/规格归档，允许按时间保留旧文件；引用前必须优先核对最新 AGENTS、README 和 superseded 标记。
 
 # 规则编写约定
-新增或调整 AGENTS / skills 时，优先写目标、验收证据、预算和停止条件；绝对词只用于真不变量，不把可判断事项写成冗长固定流程。
+新增或调整 AGENTS / skills 时，优先写目标、验收证据、资源边界和停止条件；绝对词只用于真不变量，不把可判断事项写成冗长固定流程。
 
 ## Command Output
 

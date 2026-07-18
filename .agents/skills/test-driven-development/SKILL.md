@@ -1,13 +1,13 @@
 ---
 name: test-driven-development
-description: Use when implementing 1flowbase features, bug fixes, refactors, backend APIs, state transitions, permissions, contract changes, or behavior changes that can be covered by automated tests. Use to write the minimum failing test that captures the expected observable result before implementation.
+description: Use when implementing 1flowbase features, bug fixes, refactors, backend APIs, state transitions, permissions, contract changes, or behavior changes that can be covered by automated tests. For a Single Issue, run the minimum failing test before implementation. For an Issue Tree, define the finite acceptance matrix and fixtures before implementation, then execute them once after the Root assembly is frozen.
 ---
 
 # Test Driven Development
 
 ## Goal
 
-用最小测试先锁定目标行为，再写实现，避免先实现后补“证明型测试”。
+在开发前用最小测试或有限验收矩阵锁定目标行为。Single Issue 先红后绿；Issue Tree 先定义 fixture，完成 Root 全部开发后集中验证，避免事后补“证明型测试”。
 
 ## When to Use
 
@@ -29,10 +29,15 @@ description: Use when implementing 1flowbase features, bug fixes, refactors, bac
 - 可接受替代证据：用户在当前任务中明确说跳过 issue、直接实现或无需确认。
 - 没有 issue 或跳过证据时，停止；回到 `problem-framing` 创建 / 更新 issue 并等待用户确认。
 - 后端 API / 状态入口测试必须承接已确认的验收预期；缺少预期时回到 `problem-framing`，不要在 TDD 阶段重定需求。
-- 已确认 issue / handoff 有 `AC-001` 这类验收点时，红灯测试必须声明覆盖哪个验收点；缺少可测试验收点时先回 `problem-framing` 补齐口径。
+- 已确认 issue / handoff 有 `AC-001` 这类验收点时，测试或 fixture 必须声明覆盖哪个验收点；Single Issue 在实现前确认红灯，Issue Tree 按 Batch Acceptance Cycle 集中执行。缺少可测试验收点时先回 `problem-framing` 补齐口径。
 - 改产品代码前检查 `../_shared/design-rules.md`；命中规则时停止，回到 `problem-framing` 给更小 redesign。
 
-## Workflow
+## Cycle Selection
+
+- Single Issue 或一个连贯实现任务使用常规 red → green。
+- Issue Tree 长计划读取 `problem-framing/references/long-running-work.md`，使用 Batch Acceptance Cycle：先固定有限完整的验收矩阵，再完成 Root 下全部开发 Work Packet，最后集中执行 authenticity / green / regression；不为每个 Packet 重启测试与 QA。
+
+## Single-Task Red-Green
 
 1. 写一个最小失败测试，表达目标行为或复现缺陷，并在测试名、注释或交付说明中映射到对应验收点。
 2. 运行定向测试，确认失败原因符合预期。
@@ -43,6 +48,15 @@ description: Use when implementing 1flowbase features, bug fixes, refactors, bac
 7. 按变更风险补必要回归：定向测试优先，只补当前任务结果和直接风险所需的类型、lint、build 或 smoke。
 8. workspace 级 cargo / pnpm build、clippy、full test、服务重启、`api-debug`，或超过 3 条重验证命令的收益和成本，必须在 `problem-framing` / 已确认计划 / handoff 阶段前置说明。实现期发现未预期重验证需求时，默认不打断开发，交付说明标为 beta / CI / 全局门禁未验证；只有缺少该证据会让继续实现不安全或无法判断当前任务是否完成时，才暂停并说明原因。
 9. 同一 worktree 同时只运行一条 Cargo 命令；单条命令内部默认使用机器逻辑 CPU 的一半，不写死 `CARGO_BUILD_JOBS=1/4`。仓库包装命令会自动读取；直接运行定向 Cargo 时使用 `CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo ...`。只有复现资源问题或本地配置明确限流时才降低。
+
+## Batch Acceptance Cycle
+
+1. Scout 结束后，由 Root 在分发开发前固定有限 Root AC matrix、预期结果、fixture、命令、重型资源上限和延后门禁。
+2. 优先复用 Scout 已取得的失败证据。缺少真实 red 时，把 controlled negative / authenticity fixture 写入 Test Batch；开发前不为补 red 单独启动测试循环。
+3. 开发 Work Packet 同时提交其指定测试 / fixture，但不逐包运行 red、green、reviewer、QA 或回归；只做无法安全装配时必需的机械检查。
+4. Root 下全部产品与 fixture Packet 进入冻结 assembly SHA 后，只由一个 fresh QA agent 集中运行 authenticity、targeted green 和影响面回归。
+5. QA 一次性返回全部 blocker；Root 转换成 fix Packet，全部修复装配后再启动一个新的单一 QA，不按 blocker 逐个 test-loop。
+6. 没有 subagent 时也保持同一批次边界，不因角色合并而恢复探索 → patch → test 的碎片循环。
 
 ## Test Authenticity Gate
 
@@ -70,8 +84,9 @@ description: Use when implementing 1flowbase features, bug fixes, refactors, bac
 
 - 新增或调整的测试
 - 测试覆盖的验收点编号；未覆盖的验收点写明原因和替代证据
-- 红灯确认方式
+- Single Issue 的红灯确认方式；Issue Tree 的 Scout failure evidence 或 controlled negative
 - 通过的验证命令，以及哪些属于本地结果验证、哪些延后到 beta / CI / 专门质量工作区
+- 长计划说明冻结 assembly SHA 与集中 Test Batch；Packet 未单独运行的测试不冒充已通过
 - 后端 API 任务的预期 response / 状态结果如何被测试断言覆盖
 - 未验证范围、原因和替代验证
 
@@ -79,7 +94,7 @@ warning 与 coverage 产物统一落到 `tmp/test-governance/`。
 
 ## Common Mistakes
 
-- 测试和实现一起写，没看过红灯。
+- Single Issue 中测试和实现一起写、没看过红灯；Issue Tree 中开发前未固定 acceptance fixture。
 - 方案确认后直接进入实现，没检查 issue gate。
 - 实现前没检查 design rules，顺手新增模糊 helper、bool 分支或 pass-through 层。
 - 只测 mock 调用次数，不测真实行为。
@@ -87,5 +102,6 @@ warning 与 coverage 产物统一落到 `tmp/test-governance/`。
 - 后端接口只测 service 内部逻辑，没有覆盖 route 认证、DTO、status / error shape 或状态副作用。
 - 为了通过测试扩大实现范围。
 - 按字段或断言进行 patch → test 微循环，反复重跑没有相关输入变化的同一套件。
+- 长计划为每个 Work Packet 启动 reviewer / QA 或回归，导致开发与测试反复交错。
 - 把全局质量门禁当成本地 TDD 收尾默认步骤，导致长任务验证成本失控。
 - 跳过 TDD 但没有说明原因和替代验证。

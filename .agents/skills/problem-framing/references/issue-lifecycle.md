@@ -18,15 +18,15 @@ Issue Tree 固定为两层：
 
 ```text
 Root（唯一计划、进度与用户验收真值）
-  └─ Delivery（纵向、可集成、可独立关闭）
+  └─ Delivery（纵向验收容器；内部使用 Work Packet）
 ```
 
 - Root 的一次确认授权执行其列出的全部 Delivery，不逐个重复请求用户批准。
-- Delivery 只有在可观察结果、Root AC、owner、集成边界、执行 / 验证预算和停止条件固定后才进入 `implementation`。
-- Delivery 不继续拆 issue；内部实现步骤使用工作计划、测试或 handoff 管理。
+- Delivery 只有在 Scout evidence、可观察结果、Root AC、assembly 边界、全部 Work Packet 和集中 Test Batch 固定后才进入 `implementation`。
+- Delivery 不继续拆 issue；内部开发使用执行账本中的 Work Packet，不把 Packet 建成 GitHub 子 issue。
 - 不能独立结算 Root AC 的工作是实现步骤，不是 Delivery。
 - contract、frontend、backend、storage、test 等横向技术层不能仅因模块不同而各自成为 Delivery；Delivery 应穿过必要层形成可运行结果。
-- Root 是用户最终验收入口。Delivery 只有进入 Root 集成基线并更新 Root 证据账本后才算完成。
+- Root 是用户最终验收入口。全部开发先进入隔离 assembly；唯一集中 QA 通过并合入 protected baseline 后，Delivery 才算完成。
 
 ## Grades
 
@@ -36,7 +36,7 @@ Root（唯一计划、进度与用户验收真值）
 | --- | --- | --- |
 | `grade:g0` | 纯查询、机械精确改动或明确直接实现 | 最终说明跳过原因 |
 | `grade:g1` | 单点低风险变化 | 结果、范围、定向验收 |
-| `grade:g2` | 子系统行为变化 | 完整 AC 与验证预算 |
+| `grade:g2` | 子系统行为变化 | 完整 AC 与验证边界 |
 | `grade:g3` | 跨前后端、状态、权限、schema 或 runtime contract | 三方向、边界证据、回归计划 |
 | `grade:g4` | 用户内容、历史数据、migration、核心 contract 或不可逆决策 | Domain Matrix、red-team、rollback / preview 与用户明确批准 |
 
@@ -76,9 +76,9 @@ discussion -> ready -> implementation -> qa -> user-acceptance -> closed
 - AI 可以起草、实施和提供证据，不能替用户批准关键方向或完成最终用户验收。
 - 方向确认只授权创建或重构计划；Single Issue 或 Tree Root 确认后授权实现其既定范围。
 - Delivery 可在 Root 批准后直接进入实现；新增 Delivery、改变 Root AC、source of truth、用户内容或数据影响时回到 `problem-framing`。
-- Delivery 内局部实现判断不追加计划 comment；agent control interval 到 60 分钟仍无新证据或有界下一结果、到达 P80 仍无 candidate、预算向量越界且一次有界重估无法收敛、出现第二个独立结果，或同根因连续两次 review 失败时，阶段返回 `discussion` 并重构活动真值。
+- Delivery 内局部实现判断不追加计划 comment；Packet 出现第二个独立结果、无法声明明确写集合、并发写集合不能互斥且无法串行化、assembly 无法吸收 commit，或同根因在集中 QA 第二次失败时，阶段返回 `discussion` 并重构活动真值。
 - Single Issue 在 AC 结算并完成用户验收后进入 `phase:closed` 并关闭。
-- Delivery 在结果进入 Root 集成基线、证据回写 Root 后关闭；局部 commit、分支测试或评论不构成完成。
+- Delivery 在全部 Packet 装配、Root 集中 QA 通过、结果合入 protected baseline并回写 Root 后关闭；局部 commit、分支测试或评论不构成完成。
 - Root 在所有 AC 结算、最终 QA 通过并由用户验收后进入 `phase:closed` 并关闭。
 
 ## Acceptance Ledger

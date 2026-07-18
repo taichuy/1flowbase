@@ -2,19 +2,20 @@
 
 ## Purpose
 
-质量门禁先按场景分 lane，再选择证据。三条 lane 的目标、资源预算和停止条件不同，不要把开发后轻量验收、PR 合并门禁和项目全量体检混成一套脚本清单。当前本地开发分支默认只做结果验证和直接风险验证；仓库级、线上级、重型质量门禁默认交给 beta / CI / 专门质量工作区。Project Health Gate 先由质量维度矩阵定义体检范围，脚本失败、artifact 和日志只作为被归类的证据。
+质量门禁先按场景分 lane，再选择证据。三条 lane 的目标、资源边界和停止条件不同，不要把开发后轻量验收、PR 合并门禁和项目全量体检混成一套脚本清单。当前本地开发分支默认只做结果验证和直接风险验证；仓库级、线上级、重型质量门禁默认交给 beta / CI / 专门质量工作区。Project Health Gate 先由质量维度矩阵定义体检范围，脚本失败、artifact 和日志只作为被归类的证据。
 
 ## Lane Matrix
 
-| Lane | 目标 | 资源预算 | 优先执行面 | 算法模型 | 输出 | 停止条件 |
+| Lane | 目标 | 资源边界 | 优先执行面 | 算法模型 | 输出 | 停止条件 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `Dev Acceptance Gate` | 当前任务是否完成，是否明显破坏主路径 | 低，优先快 | 本地、TDD 结果、定向脚本、截图 / page-debug | 风险向量 -> 最小证据链 -> 时间预算 -> 早停 | 已验证、未验证、残余风险 | 核心验收已被证据覆盖，或预算耗尽后明确未验证 |
+| `Dev Acceptance Gate` | 当前任务是否完成，是否明显破坏主路径 | 低，优先快 | 本地、TDD 结果、定向脚本、截图 / page-debug | 风险向量 -> 最小证据链 -> 证据充分即早停 | 已验证、未验证、残余风险 | 核心验收已被证据覆盖，或资源边界触发后明确未验证 |
 | `PR Merge Gate` | PR 是否达到可合入基线 | 中，允许 GitHub Actions 消耗 | CI、artifact、warningFiles、PR comment | Gate DAG -> 并行调度 -> 失败归因 -> 合并风险评分 | blocker、warning、advisory、cost | 足以判断能否合并，或缺少 artifact 时标 unavailable |
 | `Project Health Gate` | 当前项目整体健康度与维护方向 | 高，优先维度覆盖 | 质量维度矩阵、GitHub Actions、quality artifact、coverage、hygiene、security、热点数据 | lane 确认 -> 质量维度矩阵 -> 证据归类 -> 风险热力图 -> 趋势对比 -> 轮转深挖 | 健康快照、硬性失败、风险热区、维护建议 | 全量维度有证据或明确未覆盖，维护问题已转入建议 |
 
 ## Dev Acceptance Gate
 
 - 目标是加快开发反馈，不用仓库级门禁惩罚局部开发。
+- Issue Tree 使用 batch mode：Root 下全部开发与 fixture Work Packet 装配到冻结 assembly SHA 后只执行一次；不为 Packet 或 Delivery 分别启动 reviewer、QA 或回归。
 - 优先复用 `test-driven-development` 的红绿结果；只补当前改动直接相关证据。
 - 默认最多选择一个主验证命令和必要 smoke；同一 contract 已被 targeted test 覆盖时，不再为同一结论叠加运行态取证。
 - 验证重点是当前任务结果、直接相关 API / 状态 / UI contract 和主路径；重型质量门禁判断标准见 `repo-quality-gates.md#heavy-gate-criteria`，默认留给 PR / Project Health lane。

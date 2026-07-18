@@ -60,10 +60,10 @@
 | --- | --- | --- | --- |
 | AC-001 |  |  | 本地 / QA / CI-beta / 用户验收 |
 
-## 验证与预算
+## 验证与资源边界
 - 最小结果证据：
 - 延后证据：
-- 资源或时间边界：
+- 资源与验证边界：
 
 ## 停止与重构条件
 
@@ -110,13 +110,12 @@
 | --- | --- | --- | --- | --- |
 
 ## Control Ledger
-- 当前已集成基线：
-- 当前 Delivery、owner 与状态：
-- candidate / review / integration 证据：
-- Delivery 预算合同：started_at / P50 / P80 / external deadline / confidence / assumptions
-- 当前 agent control interval：started_at / 30m target / 60m mandatory return
-- 当前消耗与 utilization：phase / critical path / agent elapsed / external wait / contexts / heavy validations / rework
-- 下一预算检查点：
+- protected baseline / local assembly baseline：
+- Scout evidence：paths / current state / unknowns
+- Work Packet Ledger：ready / active / committed / needs-split / blocked
+- assembled commits 与冲突：
+- Test Batch：AC matrix / commands / fixtures / 重型验证上限 / status
+- Observation counters：packets / needs-split / assembly-conflicts / agent-contexts / validation-runs / duplicate-evidence-runs / QA-cycles
 - 剩余验收风险：
 - 活动 agent、worktree、进程与端口：
 - 已知阻塞 / 不确定性 / 外部扰动：
@@ -155,20 +154,24 @@
 | 编号 | 可观察结果 | 证据 |
 | --- | --- | --- |
 
-## 执行与验证预算
-- 主要开发 owner / worktree：
-- evidence probe 上限与估算依据：
-- started_at / P50 / P80 / external deadline / feasibility / confidence / assumptions：
-- agent control interval：30m target / 60m mandatory return / follow-up owner
-- critical path / agent elapsed / external wait / contexts / heavy validations / rework 上限：
-- 最小本地证据与延后门禁：
-- candidate review 层级：
-- 预算检查点与有界例外：
+## Scout Evidence
+- 相关路径、当前行为与已集成基线：
+- 依赖、写冲突、未知与有限 inventory：
+
+## Work Packet Ledger
+| ID | 具体代码结果 | Input SHA / 依赖 | Owned paths | Owner / worktree | AC / fixture | 状态 / commit |
+| --- | --- | --- | --- | --- | --- | --- |
+
+## Test Batch
+- Root AC matrix 与预期结果：
+- 集中 controlled negative / targeted green / regression commands：
+- fixture owner、重型资源上限与延后门禁：
+- QA 输入 assembly SHA：
 
 ## 停止与上报条件
 
 ## 完成条件
-- 结果已进入 Root 的集成基线，Root 账本已更新，证据可复核。
+- 全部 Work Packet 进入 assembly，Root 集中 QA 通过，结果合入 protected baseline，Root 账本已更新。
 ```
 
 ## Artifact Rules
@@ -178,7 +181,8 @@
 - Delivery 必须产生纵向、可集成结果并减少 Root 验收风险；类型、mapper、migration、测试或评论等实现步骤不单独建 issue。
 - Root 获批后即授权执行正文列出的 Delivery；Delivery 不重复等待用户批准。扩大 Root 边界时返回 `problem-framing`。
 - 一个计划只有一个在线真值。重构计划时替换旧结构并关闭 superseded 节点，只保留证据链接，不并行维护两套计划。
-- 长计划按 `budget-calibration.md` 在 Delivery integrated / reframed / blocked / cancelled 时写结构化 `budget_observation`；预算耗尽不构成完成证据。
+- Work Packet 只存在于 Root / Delivery 执行账本，不继续创建 GitHub issue；每个 Packet 必须有单一代码结果、明确写集合和 commit / needs-split / blocked 状态，同时 active 的 Packet 写集合必须互斥。
+- Root 下全部开发 Packet 与 fixture 装配完成前不启动 reviewer / QA；Root 只对冻结 assembly candidate 运行一个集中 Test Batch。
 
 ## ADR
 
@@ -218,7 +222,7 @@ Proposed
 
 ## Integrated Baseline And Owned Areas
 
-## Budget And Evidence Tier
+## Work Packet Contract
 
 ## Decisions And Gotchas
 
