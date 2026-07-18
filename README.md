@@ -375,6 +375,21 @@ Project guidelines:
 
 ---
 
+## OpenAI Build Week
+
+### Built with Codex and GPT-5.6
+
+Codex was used to:
+- redesign MCP configuration workflows
+- implement and review Rust backend changes
+- improve React components
+- debug integration issues
+
+GPT-5.6 was used for:
+- designing agent workflows
+- validating MCP capability patterns
+- improving architecture decisions
+
 ## License
 
 This project is licensed under [Apache-2.0](LICENSE).
