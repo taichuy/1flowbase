@@ -38,15 +38,14 @@ import {
   createApplication,
   deleteApplication,
   exportAgentFlowTemplate,
-  fetchApplicationCatalog,
-  updateApplication
+  fetchApplicationCatalog
 } from '../../../applications/api/applications';
 import {
   fetchApplicationApiMapping,
   publishApplicationApiVersion,
-  saveWorkflowScheduleTrigger,
   unpublishApplicationApiVersion
 } from '../../../applications/api/public-api';
+import { ApplicationFormModal } from '../../../applications/components/ApplicationFormModal';
 import { downloadTemplateFile } from '../../../applications/lib/template-download';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import {
@@ -57,11 +56,10 @@ import {
   type SettingsApplicationManagementItem,
   type SettingsApplicationManagementQuery
 } from '../../api/application-management';
-import { fetchSettingsMembers, settingsMembersQueryKey } from '../../api/members';
 import {
-  ApplicationDetailsDrawer,
-  type ApplicationDetailsValues
-} from './ApplicationDetailsDrawer';
+  fetchSettingsMembers,
+  settingsMembersQueryKey
+} from '../../api/members';
 import {
   pushApplicationManagementRouteState,
   readApplicationManagementRouteState,
@@ -187,51 +185,12 @@ export function ApplicationManagementPanel() {
       queryClient.invalidateQueries({ queryKey: applicationCatalogQueryKey })
     ]);
   }, [queryClient]);
-  const updateMutation = useMutation({
-    mutationFn: async ({
-      application,
-      values
-    }: {
-      application: SettingsApplicationManagementItem;
-      values: ApplicationDetailsValues;
-    }) => {
-      const updated = await updateApplication(
-        application.id,
-        {
-          name: values.name,
-          description: values.description,
-          tag_ids: values.tag_ids,
-          icon: values.icon.trim(),
-          icon_type: values.icon_type.trim(),
-          icon_background: values.icon_background.trim()
-        },
-        csrfToken
-      );
-      if (application.workflow_trigger_type === 'schedule') {
-        await saveWorkflowScheduleTrigger(
-          application.id,
-          {
-            enabled: Boolean(values.schedule_enabled),
-            cron: values.schedule_cron?.trim() ?? '',
-            timezone: values.schedule_timezone?.trim() ?? '',
-            input_payload: values.schedule_input_payload ?? {}
-          },
-          csrfToken
-        );
-      }
-      return updated;
-    },
-    onSuccess: invalidateApplications,
-    onError: () => messageApi.error(i18nText('applications', 'auto.save_failed'))
-  });
   const deleteMutation = useMutation({
     mutationFn: (applicationId: string) =>
       deleteApplication(applicationId, csrfToken),
     onSuccess: async () => {
       await invalidateApplications();
-      messageApi.success(
-        i18nText('applications', 'auto.application_deleted')
-      );
+      messageApi.success(i18nText('applications', 'auto.application_deleted'));
     },
     onError: () =>
       messageApi.error(
@@ -258,9 +217,7 @@ export function ApplicationManagementPanel() {
       messageApi.success(i18nText('applications', 'auto.application_copied'));
     },
     onError: () =>
-      messageApi.error(
-        i18nText('applications', 'auto.copy_application_failed')
-      )
+      messageApi.error(i18nText('applications', 'auto.copy_application_failed'))
   });
   const exportMutation = useMutation({
     mutationFn: exportAgentFlowTemplate,
@@ -362,7 +319,10 @@ export function ApplicationManagementPanel() {
     (application: SettingsApplicationManagementItem) => {
       modalApi.confirm({
         title: i18nText('applications', 'auto.revert_to_draft'),
-        content: i18nText('applications', 'auto.revert_to_draft_confirm_content'),
+        content: i18nText(
+          'applications',
+          'auto.revert_to_draft_confirm_content'
+        ),
         okText: i18nText('applications', 'auto.revert_to_draft'),
         cancelText: i18nText('applications', 'auto.cancel'),
         onOk: () => revertToDraft(application.id)
@@ -384,9 +344,7 @@ export function ApplicationManagementPanel() {
         width: 260,
         render: (_, application) => (
           <Flex vertical gap={2}>
-            <Typography.Text strong>
-              {application.name}
-            </Typography.Text>
+            <Typography.Text strong>{application.name}</Typography.Text>
             <Typography.Text type="secondary" ellipsis>
               {application.description ||
                 i18nText('applications', 'auto.application_description_empty')}
@@ -564,15 +522,15 @@ export function ApplicationManagementPanel() {
                 }}
                 trigger={['click']}
               >
-              <Button
-                type="text"
-                icon={<MoreOutlined />}
-                aria-label={i18nText(
-                  'applications',
-                  'auto.more_actions_named',
-                  { value1: application.name }
-                )}
-              />
+                <Button
+                  type="text"
+                  icon={<MoreOutlined />}
+                  aria-label={i18nText(
+                    'applications',
+                    'auto.more_actions_named',
+                    { value1: application.name }
+                  )}
+                />
               </Dropdown>
             </Space>
           );
@@ -790,18 +748,15 @@ export function ApplicationManagementPanel() {
         />
       </div>
 
-      <ApplicationDetailsDrawer
-        application={detailsApplication}
-        catalogTags={catalog.tags}
-        saving={updateMutation.isPending}
-        onClose={() => setDetailsApplication(null)}
-        onSubmit={(values) => {
-          if (!detailsApplication) return;
-          updateMutation.mutate(
-            { application: detailsApplication, values },
-            { onSuccess: () => setDetailsApplication(null) }
-          );
+      <ApplicationFormModal
+        open={Boolean(detailsApplication)}
+        csrfToken={csrfToken}
+        intent={{
+          kind: 'edit',
+          applicationId: detailsApplication?.id ?? '',
+          onSaved: () => void invalidateApplications()
         }}
+        onClose={() => setDetailsApplication(null)}
       />
     </SettingsSectionSurface>
   );

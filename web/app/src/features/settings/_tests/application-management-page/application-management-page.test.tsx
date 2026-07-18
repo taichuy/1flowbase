@@ -3,6 +3,7 @@ import { fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const applicationManagementApi = vi.hoisted(() => ({
+  settingsApplicationManagementQueryPrefix: ['settings', 'applications'],
   settingsApplicationManagementQueryKey: vi.fn((query: unknown) => [
     'settings',
     'applications',
@@ -13,8 +14,13 @@ const applicationManagementApi = vi.hoisted(() => ({
 
 const applicationsApi = vi.hoisted(() => ({
   applicationCatalogQueryKey: ['applications', 'catalog'],
+  applicationDetailQueryKey: vi.fn((applicationId: string) => [
+    'applications',
+    applicationId
+  ]),
   applicationsQueryKey: ['applications'],
   fetchApplicationCatalog: vi.fn(),
+  fetchApplicationDetail: vi.fn(),
   updateApplication: vi.fn(),
   deleteApplication: vi.fn(),
   createApplication: vi.fn(),
@@ -56,7 +62,12 @@ const orchestrationApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/application-management', () => applicationManagementApi);
-vi.mock('../../../applications/api/applications', () => applicationsApi);
+vi.mock('../../../applications/api/applications', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../applications/api/applications')
+  >()),
+  ...applicationsApi
+}));
 vi.mock('../../../applications/api/public-api', () => applicationsPublicApi);
 vi.mock('../../api/members', () => membersApi);
 vi.mock('../../../agent-flow/api/orchestration', () => orchestrationApi);
@@ -126,6 +137,20 @@ describe('ApplicationManagementPanel', () => {
       ],
       tags: [{ id: 'tag-report', name: '报表', application_count: 1 }]
     });
+    applicationsApi.fetchApplicationDetail.mockResolvedValue({
+      id: 'app-workflow',
+      application_type: 'workflow',
+      workflow_trigger_type: 'schedule',
+      name: 'Daily Report',
+      description: 'Generate a report every day',
+      icon: null,
+      icon_type: null,
+      icon_background: null,
+      created_by: 'root-user',
+      created_at: '2026-07-12T08:00:00Z',
+      updated_at: '2026-07-13T08:00:00Z',
+      tags: [{ id: 'tag-report', name: '报表' }]
+    });
     applicationsApi.updateApplication.mockResolvedValue({ id: 'app-workflow' });
     applicationsPublicApi.unpublishApplicationApiVersion.mockResolvedValue(
       undefined
@@ -184,7 +209,12 @@ describe('ApplicationManagementPanel', () => {
         updated_at: '2026-07-18T08:00:00Z',
         document: {
           schemaVersion: '1.0.0',
-          meta: { flowId: 'flow-extension', name: '', description: '', tags: [] },
+          meta: {
+            flowId: 'flow-extension',
+            name: '',
+            description: '',
+            tags: []
+          },
           graph: {
             nodes: [
               {
@@ -226,7 +256,11 @@ describe('ApplicationManagementPanel', () => {
             edges: []
           },
           variables: { conversation: [] },
-          editor: { viewport: { x: 0, y: 0, zoom: 1 }, annotations: [], activeContainerPath: [] }
+          editor: {
+            viewport: { x: 0, y: 0, zoom: 1 },
+            annotations: [],
+            activeContainerPath: []
+          }
         }
       },
       versions: [],
@@ -322,30 +356,46 @@ describe('ApplicationManagementPanel', () => {
     });
   });
 
-  test('AC-001 AC-008 opens one details drawer and keeps extension registration read-only', async () => {
-    applicationManagementApi.fetchSettingsApplicationManagement.mockResolvedValue({
-      items: [
-        {
-          id: 'app-extension',
-          application_type: 'workflow',
-          workflow_trigger_type: 'extension',
-          name: 'Order Extension',
-          description: 'Creates an order',
-          icon: 'ApiOutlined',
-          icon_type: 'iconfont',
-          icon_background: '#E6F7F2',
-          created_by: 'root-user',
-          created_by_display_name: 'Root',
-          created_at: '2026-07-12T08:00:00Z',
-          updated_at: '2026-07-13T08:00:00Z',
-          tags: [],
-          publication_status: 'unpublished'
-        }
-      ],
-      total: 1,
-      page: 1,
-      page_size: 20
+  test('AC-001 AC-008 opens the shared edit modal and keeps extension registration read-only', async () => {
+    applicationsApi.fetchApplicationDetail.mockResolvedValue({
+      id: 'app-extension',
+      application_type: 'workflow',
+      workflow_trigger_type: 'extension',
+      name: 'Order Extension',
+      description: 'Creates an order',
+      icon: 'ApiOutlined',
+      icon_type: 'iconfont',
+      icon_background: '#E6F7F2',
+      created_by: 'root-user',
+      created_at: '2026-07-12T08:00:00Z',
+      updated_at: '2026-07-13T08:00:00Z',
+      tags: []
     });
+    applicationManagementApi.fetchSettingsApplicationManagement.mockResolvedValue(
+      {
+        items: [
+          {
+            id: 'app-extension',
+            application_type: 'workflow',
+            workflow_trigger_type: 'extension',
+            name: 'Order Extension',
+            description: 'Creates an order',
+            icon: 'ApiOutlined',
+            icon_type: 'iconfont',
+            icon_background: '#E6F7F2',
+            created_by: 'root-user',
+            created_by_display_name: 'Root',
+            created_at: '2026-07-12T08:00:00Z',
+            updated_at: '2026-07-13T08:00:00Z',
+            tags: [],
+            publication_status: 'unpublished'
+          }
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20
+      }
+    );
     applicationsPublicApi.fetchApplicationApiMapping.mockResolvedValue({
       input: {
         query_target: 'node-start.query',
@@ -378,15 +428,21 @@ describe('ApplicationManagementPanel', () => {
     fireEvent.click(name.closest('tr') as HTMLElement);
 
     const drawer = await screen.findByRole('dialog', {
-      name: '应用详情-Order Extension'
+      name: '编辑应用信息'
     });
-    expect(within(drawer).getByDisplayValue('Order Extension')).toBeEnabled();
+    expect(document.querySelector('.ant-modal-content')).not.toBeNull();
+    expect(document.querySelector('.ant-drawer')).toBeNull();
+    expect(
+      await within(drawer).findByDisplayValue('Order Extension')
+    ).toBeEnabled();
     expect(await within(drawer).findByText('POST')).toBeInTheDocument();
     expect(
       await within(drawer).findByText('/api/ex/orders/create')
     ).toBeInTheDocument();
     expect(within(drawer).getByText('同步')).toBeInTheDocument();
-    expect(within(drawer).getByText('body · customer_id · string')).toBeInTheDocument();
+    expect(
+      within(drawer).getByText('body · customer_id · string')
+    ).toBeInTheDocument();
     expect(within(drawer).getByText('order_id · string')).toBeInTheDocument();
     expect(
       within(drawer).queryByRole('textbox', { name: '接口路径' })
@@ -403,14 +459,16 @@ describe('ApplicationManagementPanel', () => {
     const name = await screen.findByText('Daily Report');
     fireEvent.click(name.closest('tr') as HTMLElement);
     const drawer = await screen.findByRole('dialog', {
-      name: '应用详情-Daily Report'
+      name: '编辑应用信息'
     });
     const cron = await within(drawer).findByDisplayValue('0 9 * * 1-5');
     fireEvent.change(cron, { target: { value: '0 10 * * 1-5' } });
     fireEvent.click(within(drawer).getByRole('button', { name: '保存修改' }));
 
     await waitFor(() => {
-      expect(applicationsPublicApi.saveWorkflowScheduleTrigger).toHaveBeenCalledWith(
+      expect(
+        applicationsPublicApi.saveWorkflowScheduleTrigger
+      ).toHaveBeenCalledWith(
         'app-workflow',
         {
           enabled: false,

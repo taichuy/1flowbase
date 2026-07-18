@@ -301,6 +301,14 @@
     "revert_to_draft_success": "已退回草稿",
     "revert_to_draft_failed": "退回草稿失败",
     "publication_published": "已发布",
-    "publication_draft": "草稿"
+    "publication_draft": "草稿",
+    "loading": "加载中...",
+    "request_parameters": "请求参数",
+    "no_request_parameters": "暂无请求参数",
+    "response_fields": "响应字段",
+    "no_response_fields": "暂无响应字段",
+    "schedule_enabled": "启用定时任务",
+    "trigger_load_failed": "触发器配置加载失败",
+    "tags": "标签"
   }
 }

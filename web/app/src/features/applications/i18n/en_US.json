@@ -301,6 +301,14 @@
     "revert_to_draft_success": "Reverted to draft",
     "revert_to_draft_failed": "Failed to revert to draft",
     "publication_published": "Published",
-    "publication_draft": "Draft"
+    "publication_draft": "Draft",
+    "loading": "Loading...",
+    "request_parameters": "Request parameters",
+    "no_request_parameters": "No request parameters",
+    "response_fields": "Response fields",
+    "no_response_fields": "No response fields",
+    "schedule_enabled": "Enable schedule",
+    "trigger_load_failed": "Failed to load trigger configuration",
+    "tags": "Tags"
   }
 }
