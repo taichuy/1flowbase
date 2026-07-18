@@ -18,6 +18,7 @@ use super::{
     },
     publications::ApplicationPublicationVersionRecord,
 };
+mod compact;
 mod conversation_history;
 mod count_tokens;
 mod native_results;
@@ -33,6 +34,10 @@ use crate::{
         ApplicationRepository, AuthRepository, CacheStore, CreateFlowRunInput,
     },
     state_transition::ensure_flow_run_transition,
+};
+pub use compact::{
+    ApplicationPublishedCompactService, CompactCommand, PublishedCompactError,
+    PublishedCompactResult,
 };
 use conversation_history::application_public_conversation_messages_to_native_history;
 pub use count_tokens::{
@@ -51,7 +56,8 @@ pub use repository_contracts::{
 pub use resolved_route::{
     GenerateExecutionProfile, PublishedProviderManifestCapabilityRepository,
     PublishedRouteDispatch, PublishedRouteResolutionError, PublishedRouteResolver,
-    ResolvedCountTokensProviderRoute, ResolvedProviderRoute, ResolvedPublishedRoute,
+    ResolvedCompactProviderRoute, ResolvedCountTokensProviderRoute, ResolvedProviderRoute,
+    ResolvedPublishedRoute,
 };
 use run_input::{
     compiled_plan_start_node_id, freeze_run_input_environment, generate_external_conversation_id,

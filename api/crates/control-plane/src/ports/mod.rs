@@ -21,9 +21,9 @@ use domain::{
     ScopeContext, SessionRecord, TenantRecord, UserRecord, WorkspaceRecord,
 };
 use plugin_framework::provider_contract::{
-    ProviderBalanceResult, ProviderCountTokensInput, ProviderCountTokensResult,
-    ProviderInvocationInput, ProviderInvocationResult, ProviderModelDescriptor,
-    ProviderStreamEvent,
+    ProviderBalanceResult, ProviderCompactResult, ProviderCountTokensInput,
+    ProviderCountTokensResult, ProviderInvocationInput, ProviderInvocationResult,
+    ProviderModelDescriptor, ProviderStreamEvent,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;

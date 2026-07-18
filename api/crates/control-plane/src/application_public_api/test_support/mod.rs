@@ -8,6 +8,7 @@ use std::{
 
 use anyhow::Result;
 use async_trait::async_trait;
+use plugin_framework::provider_contract::ProviderCompactProfile;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -65,6 +66,9 @@ struct ApplicationPublicApiTestRepositoryInner {
     published_generate_capability_profiles: Vec<run_service::GenerateExecutionProfile>,
     published_count_tokens_capability_supported: Option<bool>,
     published_count_tokens_capability_checks: usize,
+    published_compact_capability_supported: Option<bool>,
+    published_compact_capability_checks: usize,
+    published_compact_capability_profiles: Vec<ProviderCompactProfile>,
 }
 
 #[derive(Clone, Default)]
@@ -251,6 +255,28 @@ impl ApplicationPublicApiTestRepository {
             .published_count_tokens_capability_checks
     }
 
+    pub fn set_published_compact_capability_supported(&self, supported: bool) {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .published_compact_capability_supported = Some(supported);
+    }
+
+    pub fn published_compact_capability_checks(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .published_compact_capability_checks
+    }
+
+    pub fn published_compact_capability_profiles(&self) -> Vec<ProviderCompactProfile> {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .published_compact_capability_profiles
+            .clone()
+    }
+
     pub fn configure_published_generate_route(
         &self,
         application_id: Uuid,
@@ -373,6 +399,71 @@ impl ApplicationPublicApiTestRepository {
         }
         compiled_plan.plan =
             serde_json::to_value(plan).expect("published CountTokens route fixture must serialize");
+    }
+
+    pub fn configure_published_compact_route(
+        &self,
+        application_id: Uuid,
+        profile: ProviderCompactProfile,
+        target_node_id: &str,
+        llm_runtime: orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+    ) {
+        use orchestration_runtime::compiled_plan::{CompiledNode, CompiledPlan};
+
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let publication = inner
+            .publications
+            .values_mut()
+            .find(|publication| publication.application_id == application_id)
+            .expect("published Compact route fixture requires a publication");
+        let binding = Some(mapping::ApplicationOperationTargetBinding {
+            target_node_id: target_node_id.to_string(),
+        });
+        match profile {
+            ProviderCompactProfile::ResponsesCompact => {
+                publication.operation_bindings.compact.responses_compact = binding;
+            }
+            ProviderCompactProfile::ResponsesCompactionV2 => {
+                publication
+                    .operation_bindings
+                    .compact
+                    .responses_compaction_v2 = binding;
+            }
+        }
+        let compiled_plan_id = publication.compiled_plan_id;
+        let compiled_plan = inner
+            .compiled_plans
+            .get_mut(&compiled_plan_id)
+            .expect("published Compact route fixture requires a compiled plan");
+        let node = CompiledNode {
+            node_id: target_node_id.to_string(),
+            node_type: "llm".to_string(),
+            alias: "Published Compact target".to_string(),
+            container_id: None,
+            dependency_node_ids: Vec::new(),
+            downstream_node_ids: Vec::new(),
+            bindings: Default::default(),
+            outputs: Vec::new(),
+            config: serde_json::json!({}),
+            plugin_runtime: None,
+            llm_runtime: Some(llm_runtime),
+            code_runtime: None,
+        };
+        let mut plan: CompiledPlan = serde_json::from_value(compiled_plan.plan.clone())
+            .expect("published Compact route fixture requires a valid compiled plan");
+        plan.nodes.insert(target_node_id.to_string(), node);
+        if !plan
+            .topological_order
+            .iter()
+            .any(|node_id| node_id == target_node_id)
+        {
+            plan.topological_order.push(target_node_id.to_string());
+        }
+        compiled_plan.plan =
+            serde_json::to_value(plan).expect("published Compact route fixture must serialize");
     }
 }
 

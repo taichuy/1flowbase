@@ -2,8 +2,9 @@ use control_plane::application_public_api::{
     api_keys::{ApplicationApiKeyService, CreateApplicationApiKeyCommand},
     mapping::{
         ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
-        ApplicationApiMappingService, ApplicationOperationBindings,
-        ApplicationOperationTargetBinding, ReplaceApplicationApiMappingCommand,
+        ApplicationApiMappingService, ApplicationCompactOperationBindings,
+        ApplicationOperationBindings, ApplicationOperationTargetBinding,
+        ReplaceApplicationApiMappingCommand,
     },
     native::{
         translate_native_run_request, CreateNativeRunCommand, NativeRunRequest,
@@ -22,7 +23,9 @@ use control_plane::ports::{
     ApplicationPublicationRepository, ApplicationRepository, FlowRepository,
     ReplaceApplicationEnvironmentVariablesInput,
 };
-use plugin_framework::provider_contract::{NativePromptBlock, ProviderWireOperation};
+use plugin_framework::provider_contract::{
+    NativePromptBlock, ProviderCompactProfile, ProviderWireOperation,
+};
 use serde_json::json;
 use uuid::Uuid;
 

@@ -1450,6 +1450,15 @@ pub trait ProviderRuntimePort: Send + Sync {
         let _ = input;
         anyhow::bail!("provider CountTokens is not implemented by this runtime")
     }
+    async fn compact(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+        input: ProviderInvocationInput,
+    ) -> anyhow::Result<ProviderCompactResult> {
+        let _ = installation;
+        let _ = input;
+        anyhow::bail!("provider Compact is not implemented by this runtime")
+    }
     async fn invoke_stream(
         &self,
         installation: &domain::PluginInstallationRecord,

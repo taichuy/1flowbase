@@ -12,7 +12,10 @@ use domain::{
 };
 use plugin_framework::{
     error::PluginFrameworkError,
-    provider_contract::{ProviderInvocationInput, ProviderRuntimeErrorKind},
+    provider_contract::{
+        ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
+        ProviderInvocationInput, ProviderRuntimeErrorKind, ProviderWireOperation,
+    },
 };
 use plugin_runner::{
     capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
@@ -286,6 +289,86 @@ esac
     }
 }
 
+fn write_compact_provider_package(package: &TempProviderPackage, response: &str) {
+    package.write(
+        "manifest.yaml",
+        r#"manifest_version: 1
+plugin_id: fixture_provider@0.1.0
+version: 0.1.0
+vendor: 1flowbase
+display_name: Fixture Provider
+description: Fixture provider
+source_kind: uploaded
+trust_level: checksum_only
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes:
+  - model_provider
+binding_targets:
+  - workspace
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.provider/v2
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: provider_instance_only
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/fixture_provider
+  capabilities:
+    - compact.responses_compact
+    - compact.responses_compaction_v2
+  limits:
+    timeout_ms: 30000
+node_contributions: []
+"#,
+    );
+    package.write(
+        "provider/fixture_provider.yaml",
+        r#"provider_code: fixture_provider
+display_name: Fixture Provider
+protocol: openai_compatible
+model_discovery: static
+config_schema: []
+"#,
+    );
+    package.write(
+        "i18n/en_US.json",
+        r#"{ "plugin": { "label": "Fixture Provider" } }"#,
+    );
+    package.write(
+        "bin/fixture_provider",
+        &format!(
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+payload="$(cat)"
+case "${{payload}}" in
+  *'"method":"invoke"'*'"operation":"compact"'*'"profile":"responses_compaction_v2"'*)
+    printf '%s' '{response}'
+    ;;
+  *)
+    printf '%s' '{{"ok":false,"error":{{"kind":"provider_invalid_response","message":"expected typed Compact invoke"}}}}'
+    exit 1
+    ;;
+esac
+"#,
+        ),
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = package.path().join("bin/fixture_provider");
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+}
+
 async fn wait_for_provider_active_streams(provider_host: &Arc<RwLock<ProviderHost>>, count: usize) {
     for _ in 0..20 {
         let snapshot = {
@@ -329,6 +412,28 @@ fn fixture_installation(package: &TempProviderPackage) -> PluginInstallationReco
         created_by: Uuid::now_v7(),
         created_at: now,
         updated_at: now,
+    }
+}
+
+fn compact_fixture_installation(package: &TempProviderPackage) -> PluginInstallationRecord {
+    let mut installation = fixture_installation(package);
+    installation.contract_version = "1flowbase.provider/v2".to_string();
+    installation.protocol = "openai_responses".to_string();
+    installation
+}
+
+fn compact_invocation_input(profile: ProviderCompactProfile) -> ProviderInvocationInput {
+    ProviderInvocationInput {
+        operation: ProviderWireOperation::Compact,
+        profile: Some(profile),
+        provider_instance_id: "provider-1".to_string(),
+        provider_code: "fixture_provider".to_string(),
+        protocol: "openai_responses".to_string(),
+        model: "fixture-compact-model".to_string(),
+        provider_config: json!({
+            "api_key": "secret"
+        }),
+        ..ProviderInvocationInput::default()
     }
 }
 
@@ -441,4 +546,73 @@ async fn provider_runtime_preserves_contract_error_for_llm_invocation() {
         }
         other => panic!("expected runtime contract error, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn provider_runtime_compact_preserves_typed_v2_opaque_result() {
+    let package = TempProviderPackage::new();
+    write_compact_provider_package(
+        &package,
+        r#"{"ok":true,"result":{"result_type":"completed_opaque_compaction_item","operation":"compact","profile":"responses_compaction_v2","response_id":"response-frozen","compaction_item":{"type":"compaction","encrypted_content":"opaque-v2"},"encrypted_content":"opaque-v2"}}"#,
+    );
+    let runtime = ApiProviderRuntime::new(Arc::new(ApiRuntimeServices::new(
+        Arc::new(RwLock::new(ProviderHost::default())),
+        Arc::new(RwLock::new(CapabilityHost::default())),
+        Arc::new(RwLock::new(DataSourceHost::default())),
+    )));
+
+    let compacted = runtime
+        .compact(
+            &compact_fixture_installation(&package),
+            compact_invocation_input(ProviderCompactProfile::ResponsesCompactionV2),
+        )
+        .await
+        .expect("the API provider runtime should return the typed Compact result");
+
+    assert_eq!(
+        compacted,
+        ProviderCompactResult::CompletedOpaqueCompactionItem {
+            operation: ProviderWireOperation::Compact,
+            profile: ProviderCompactProfile::ResponsesCompactionV2,
+            response_id: Some("response-frozen".to_string()),
+            compaction_item: json!({
+                "type": "compaction",
+                "encrypted_content": "opaque-v2"
+            }),
+            encrypted_content: "opaque-v2".to_string(),
+        }
+    );
+}
+
+#[tokio::test]
+async fn provider_runtime_compact_preserves_typed_provider_failure() {
+    let package = TempProviderPackage::new();
+    write_compact_provider_package(
+        &package,
+        r#"{"ok":false,"error":{"kind":"provider_upstream_error","message":"upstream Compact failed","provider_summary":"opaque upstream"}}"#,
+    );
+    let runtime = ApiProviderRuntime::new(Arc::new(ApiRuntimeServices::new(
+        Arc::new(RwLock::new(ProviderHost::default())),
+        Arc::new(RwLock::new(CapabilityHost::default())),
+        Arc::new(RwLock::new(DataSourceHost::default())),
+    )));
+
+    let error = runtime
+        .compact(
+            &compact_fixture_installation(&package),
+            compact_invocation_input(ProviderCompactProfile::ResponsesCompactionV2),
+        )
+        .await
+        .expect_err("typed Compact provider failures must not become fabricated success values");
+
+    let compact_error = error
+        .downcast_ref::<ProviderCompactError>()
+        .expect("the API runtime must preserve the typed Compact error");
+    assert!(matches!(
+        compact_error,
+        ProviderCompactError::Runtime { error }
+            if error.kind == ProviderRuntimeErrorKind::ProviderUpstreamError
+                && error.message == "upstream Compact failed"
+                && error.provider_summary.as_deref() == Some("opaque upstream")
+    ));
 }

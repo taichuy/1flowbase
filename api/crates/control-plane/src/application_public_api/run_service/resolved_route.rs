@@ -1,14 +1,17 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use orchestration_runtime::compiled_plan::{CompiledLlmRuntime, CompiledPlan};
-use plugin_framework::provider_contract::ProviderWireOperation;
+use plugin_framework::provider_contract::{ProviderCompactProfile, ProviderWireOperation};
 use uuid::Uuid;
 
 #[cfg(not(test))]
 use crate::ports::{ModelProviderRepository, PluginRepository};
 #[cfg(not(test))]
 use plugin_framework::{
-    provider_contract::{CURRENT_PROVIDER_CONTRACT, PROVIDER_COUNT_TOKENS_CAPABILITY},
+    provider_contract::{
+        CURRENT_PROVIDER_CONTRACT, PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
+        PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY, PROVIDER_COUNT_TOKENS_CAPABILITY,
+    },
     provider_package::ProviderPackage,
 };
 
@@ -46,6 +49,17 @@ pub struct ResolvedProviderRoute {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedCountTokensProviderRoute {
     pub operation: ProviderWireOperation,
+    pub target_node_id: String,
+    pub llm_runtime: CompiledLlmRuntime,
+}
+
+/// A remote Compact target resolved from the immutable publication snapshot.
+/// Local summary remains a Generate execution and is deliberately not routable
+/// through this unary provider path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedCompactProviderRoute {
+    pub operation: ProviderWireOperation,
+    pub profile: ProviderCompactProfile,
     pub target_node_id: String,
     pub llm_runtime: CompiledLlmRuntime,
 }
@@ -94,6 +108,15 @@ pub trait PublishedProviderManifestCapabilityRepository: Send + Sync {
         workspace_id: Uuid,
         runtime: &CompiledLlmRuntime,
     ) -> Result<bool>;
+    async fn supports_published_compact(
+        &self,
+        workspace_id: Uuid,
+        runtime: &CompiledLlmRuntime,
+        profile: ProviderCompactProfile,
+    ) -> Result<bool> {
+        let _ = (workspace_id, runtime, profile);
+        Ok(false)
+    }
 }
 
 // Unit tests inject an explicit in-memory implementation from test_support. Excluding the
@@ -159,61 +182,100 @@ where
         workspace_id: Uuid,
         runtime: &CompiledLlmRuntime,
     ) -> Result<bool> {
-        let mut targets = vec![(
-            runtime.provider_instance_id.as_str(),
-            runtime.provider_code.as_str(),
-            runtime.protocol.as_str(),
-        )];
-        if let Some(routing) = runtime.routing.as_ref() {
-            targets.extend(routing.queue_targets.iter().map(|target| {
-                (
-                    target.provider_instance_id.as_str(),
-                    target.provider_code.as_str(),
-                    target.protocol.as_str(),
-                )
-            }));
-        }
-        targets.sort_unstable();
-        targets.dedup();
-
-        for (provider_instance_id, provider_code, protocol) in targets {
-            let Ok(provider_instance_id) = Uuid::parse_str(provider_instance_id) else {
-                return Ok(false);
-            };
-            let Some(instance) = self
-                .get_instance(workspace_id, provider_instance_id)
-                .await?
-            else {
-                return Ok(false);
-            };
-            if instance.provider_code != provider_code || instance.protocol != protocol {
-                return Ok(false);
-            }
-            let Some(installation) = self.get_installation(instance.installation_id).await? else {
-                return Ok(false);
-            };
-            if installation.contract_version != CURRENT_PROVIDER_CONTRACT
-                || installation.provider_code != provider_code
-                || installation.protocol != protocol
-            {
-                return Ok(false);
-            }
-            let Ok(package) = ProviderPackage::load_from_dir(&installation.installed_path) else {
-                return Ok(false);
-            };
-            if !package
-                .manifest
-                .runtime
-                .capabilities
-                .iter()
-                .any(|capability| capability == PROVIDER_COUNT_TOKENS_CAPABILITY)
-            {
-                return Ok(false);
-            }
-        }
-
-        Ok(true)
+        supports_published_manifest_capability(
+            self,
+            workspace_id,
+            runtime,
+            PROVIDER_COUNT_TOKENS_CAPABILITY,
+        )
+        .await
     }
+
+    async fn supports_published_compact(
+        &self,
+        workspace_id: Uuid,
+        runtime: &CompiledLlmRuntime,
+        profile: ProviderCompactProfile,
+    ) -> Result<bool> {
+        let capability = match profile {
+            ProviderCompactProfile::ResponsesCompact => {
+                PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY
+            }
+            ProviderCompactProfile::ResponsesCompactionV2 => {
+                PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY
+            }
+        };
+        supports_published_manifest_capability(self, workspace_id, runtime, capability).await
+    }
+}
+
+#[cfg(not(test))]
+async fn supports_published_manifest_capability<T>(
+    repository: &T,
+    workspace_id: Uuid,
+    runtime: &CompiledLlmRuntime,
+    capability: &str,
+) -> Result<bool>
+where
+    T: ModelProviderRepository + PluginRepository + Send + Sync,
+{
+    let mut targets = vec![(
+        runtime.provider_instance_id.as_str(),
+        runtime.provider_code.as_str(),
+        runtime.protocol.as_str(),
+    )];
+    if let Some(routing) = runtime.routing.as_ref() {
+        targets.extend(routing.queue_targets.iter().map(|target| {
+            (
+                target.provider_instance_id.as_str(),
+                target.provider_code.as_str(),
+                target.protocol.as_str(),
+            )
+        }));
+    }
+    targets.sort_unstable();
+    targets.dedup();
+
+    for (provider_instance_id, provider_code, protocol) in targets {
+        let Ok(provider_instance_id) = Uuid::parse_str(provider_instance_id) else {
+            return Ok(false);
+        };
+        let Some(instance) = repository
+            .get_instance(workspace_id, provider_instance_id)
+            .await?
+        else {
+            return Ok(false);
+        };
+        if instance.provider_code != provider_code || instance.protocol != protocol {
+            return Ok(false);
+        }
+        let Some(installation) = repository
+            .get_installation(instance.installation_id)
+            .await?
+        else {
+            return Ok(false);
+        };
+        if installation.contract_version != CURRENT_PROVIDER_CONTRACT
+            || installation.provider_code != provider_code
+            || installation.protocol != protocol
+        {
+            return Ok(false);
+        }
+        let Ok(package) = ProviderPackage::load_from_dir(&installation.installed_path) else {
+            return Ok(false);
+        };
+        if !package
+            .manifest
+            .runtime
+            .capabilities
+            .iter()
+            .any(|declared| declared == capability)
+        {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
 }
 
 pub struct PublishedRouteResolver<'a, R> {
@@ -323,6 +385,62 @@ where
 
         Ok(ResolvedCountTokensProviderRoute {
             operation: ProviderWireOperation::CountTokens,
+            target_node_id: binding.target_node_id.clone(),
+            llm_runtime: runtime.clone(),
+        })
+    }
+
+    pub async fn resolve_compact(
+        &self,
+        workspace_id: Uuid,
+        publication: &ApplicationPublicationVersionRecord,
+        compiled_plan_record: &domain::CompiledPlanRecord,
+        profile: ProviderCompactProfile,
+    ) -> std::result::Result<ResolvedCompactProviderRoute, PublishedRouteResolutionError> {
+        if compiled_plan_record.id != publication.compiled_plan_id {
+            return Err(PublishedRouteResolutionError::CompiledPlanMismatch);
+        }
+
+        let binding = match profile {
+            ProviderCompactProfile::ResponsesCompact => publication
+                .operation_bindings
+                .compact
+                .responses_compact
+                .as_ref(),
+            ProviderCompactProfile::ResponsesCompactionV2 => publication
+                .operation_bindings
+                .compact
+                .responses_compaction_v2
+                .as_ref(),
+        }
+        .ok_or(PublishedRouteResolutionError::OperationUnbound)?;
+        let compiled_plan: CompiledPlan = serde_json::from_value(compiled_plan_record.plan.clone())
+            .map_err(|_| PublishedRouteResolutionError::CompiledPlanInvalid)?;
+        let node = compiled_plan
+            .nodes
+            .get(&binding.target_node_id)
+            .filter(|node| node.node_id == binding.target_node_id)
+            .ok_or(PublishedRouteResolutionError::TargetMissing)?;
+        if node.node_type != "llm" {
+            return Err(PublishedRouteResolutionError::TargetNotLlm);
+        }
+        let runtime = node
+            .llm_runtime
+            .as_ref()
+            .filter(|runtime| llm_runtime_is_complete(runtime))
+            .ok_or(PublishedRouteResolutionError::IncompleteLlmRuntime)?;
+        let supported = self
+            .repository
+            .supports_published_compact(workspace_id, runtime, profile)
+            .await
+            .unwrap_or(false);
+        if !supported {
+            return Err(PublishedRouteResolutionError::ProviderCapabilityMismatch);
+        }
+
+        Ok(ResolvedCompactProviderRoute {
+            operation: ProviderWireOperation::Compact,
+            profile,
             target_node_id: binding.target_node_id.clone(),
             llm_runtime: runtime.clone(),
         })

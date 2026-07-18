@@ -293,6 +293,276 @@ async fn count_tokens_uses_the_frozen_bound_provider_route() {
     assert_eq!(repository.published_count_tokens_capability_checks(), 2);
 }
 
+/// Root #1366 / K2b: remote Compact resolves only the frozen profile binding.
+#[tokio::test]
+async fn compact_uses_the_frozen_bound_provider_route_and_exact_profile_capability() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Frozen Compact Route App");
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let profile = ProviderCompactProfile::ResponsesCompactionV2;
+    let frozen_runtime = published_llm_runtime();
+    repository.configure_published_compact_route(
+        application.id,
+        profile,
+        "node-frozen-compact",
+        frozen_runtime.clone(),
+    );
+    let publication_before_draft_mutation = repository
+        .load_active_application_publication(application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    ApplicationApiMappingService::new(repository.clone())
+        .replace_mapping_draft(
+            ReplaceApplicationApiMappingCommand {
+                actor_user_id: actor_user_id(),
+                application_id: application.id,
+                mapping: published_mapping(),
+            },
+            Some(ApplicationOperationBindings {
+                compact: ApplicationCompactOperationBindings {
+                    responses_compaction_v2: Some(ApplicationOperationTargetBinding {
+                        target_node_id: "node-draft-compact".into(),
+                    }),
+                    ..ApplicationCompactOperationBindings::default()
+                },
+                ..ApplicationOperationBindings::default()
+            }),
+        )
+        .await
+        .unwrap();
+    let publication = repository
+        .load_active_application_publication(application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let compiled_plan = repository
+        .get_application_compiled_plan(publication.compiled_plan_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(publication, publication_before_draft_mutation);
+    assert_eq!(
+        publication
+            .operation_bindings
+            .compact
+            .responses_compaction_v2
+            .as_ref()
+            .unwrap()
+            .target_node_id,
+        "node-frozen-compact"
+    );
+
+    let resolver = PublishedRouteResolver::new(&repository);
+    let route = resolver
+        .resolve_compact(
+            application.workspace_id,
+            &publication,
+            &compiled_plan,
+            profile,
+        )
+        .await
+        .unwrap();
+    assert_eq!(route.operation, ProviderWireOperation::Compact);
+    assert_eq!(route.profile, profile);
+    assert_eq!(route.target_node_id, "node-frozen-compact");
+    assert_eq!(route.llm_runtime, frozen_runtime);
+    assert_eq!(
+        repository.published_compact_capability_profiles(),
+        vec![profile]
+    );
+    assert_eq!(repository.flow_run_count(), 0);
+
+    repository.set_published_compact_capability_supported(false);
+    let mismatch = resolver
+        .resolve_compact(
+            application.workspace_id,
+            &publication,
+            &compiled_plan,
+            profile,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        mismatch,
+        PublishedRouteResolutionError::ProviderCapabilityMismatch
+    );
+    assert_eq!(
+        repository.published_compact_capability_profiles(),
+        vec![profile, profile]
+    );
+    assert_eq!(repository.flow_run_count(), 0);
+}
+
+/// Root #1366 / K2b: invalid Compact targets cannot reach a provider capability check.
+#[tokio::test]
+async fn compact_unbound_and_invalid_targets_fail_before_provider_dispatch() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Invalid Compact Route App");
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let profile = ProviderCompactProfile::ResponsesCompact;
+    let publication = repository
+        .load_active_application_publication(application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let compiled_plan = repository
+        .get_application_compiled_plan(publication.compiled_plan_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let resolver = PublishedRouteResolver::new(&repository);
+
+    let unbound = resolver
+        .resolve_compact(
+            application.workspace_id,
+            &publication,
+            &compiled_plan,
+            profile,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(unbound, PublishedRouteResolutionError::OperationUnbound);
+
+    repository.configure_published_compact_route(
+        application.id,
+        profile,
+        "node-frozen-compact",
+        published_llm_runtime(),
+    );
+    let publication = repository
+        .load_active_application_publication(application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let compiled_plan = repository
+        .get_application_compiled_plan(publication.compiled_plan_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut missing_target_publication = publication.clone();
+    missing_target_publication
+        .operation_bindings
+        .compact
+        .responses_compact
+        .as_mut()
+        .unwrap()
+        .target_node_id = "missing-node".into();
+    let missing = resolver
+        .resolve_compact(
+            application.workspace_id,
+            &missing_target_publication,
+            &compiled_plan,
+            profile,
+        )
+        .await
+        .unwrap_err();
+
+    let mut incomplete_plan = compiled_plan.clone();
+    incomplete_plan.plan["nodes"]["node-frozen-compact"]["llm_runtime"]["model"] =
+        serde_json::json!("");
+    let incomplete = resolver
+        .resolve_compact(
+            application.workspace_id,
+            &publication,
+            &incomplete_plan,
+            profile,
+        )
+        .await
+        .unwrap_err();
+
+    let mut non_llm_plan = compiled_plan.clone();
+    non_llm_plan.plan["nodes"]["node-frozen-compact"]["node_type"] =
+        serde_json::json!("http_request");
+    let non_llm = resolver
+        .resolve_compact(
+            application.workspace_id,
+            &publication,
+            &non_llm_plan,
+            profile,
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(missing, PublishedRouteResolutionError::TargetMissing);
+    assert_eq!(non_llm, PublishedRouteResolutionError::TargetNotLlm);
+    assert_eq!(
+        incomplete,
+        PublishedRouteResolutionError::IncompleteLlmRuntime
+    );
+    assert_eq!(repository.published_compact_capability_checks(), 0);
+    assert_eq!(repository.flow_run_count(), 0);
+}
+
+/// Root #1366 / K2b: ordinary Generate stays on its own resolver seam.
+#[tokio::test]
+async fn ordinary_generate_never_reaches_the_compact_resolver() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Generate Isolation App");
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    repository.configure_published_generate_route(
+        application.id,
+        "node-frozen-generate",
+        published_llm_runtime(),
+    );
+    let publication = repository
+        .load_active_application_publication(application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let compiled_plan = repository
+        .get_application_compiled_plan(publication.compiled_plan_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let route = PublishedRouteResolver::new(&repository)
+        .resolve_generate(
+            application.workspace_id,
+            &publication,
+            &compiled_plan,
+            PublishedRouteDispatch::OperationBinding,
+            GenerateExecutionProfile::Standard,
+        )
+        .await
+        .unwrap();
+
+    assert!(matches!(route, ResolvedPublishedRoute::Provider(_)));
+    assert!(repository
+        .published_compact_capability_profiles()
+        .is_empty());
+    assert_eq!(repository.flow_run_count(), 0);
+}
+
 /// Root #1366 AC-003 / AC-005: stale, non-LLM, and incomplete targets fail before capability.
 #[tokio::test]
 async fn generate_invalid_targets_fail_before_capability_lookup() {

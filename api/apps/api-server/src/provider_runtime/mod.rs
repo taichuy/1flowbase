@@ -25,8 +25,8 @@ use plugin_framework::{
     },
     error::PluginFrameworkError,
     provider_contract::{
-        ProviderBalanceResult, ProviderCountTokensInput, ProviderCountTokensResult,
-        ProviderInvocationInput, ProviderModelDescriptor,
+        ProviderBalanceResult, ProviderCompactResult, ProviderCountTokensInput,
+        ProviderCountTokensResult, ProviderInvocationInput, ProviderModelDescriptor,
     },
 };
 use plugin_runner::{
@@ -251,6 +251,29 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         let operation = {
             let host = self.services.provider_host.read().await;
             host.count_tokens_operation(&installation.plugin_id, input)
+                .map_err(anyhow::Error::new)
+        };
+        let result = match operation {
+            Ok(operation) => operation
+                .await
+                .map(|output| output.result)
+                .map_err(anyhow::Error::new),
+            Err(error) => Err(error),
+        };
+        finish_runtime_activity(activity, &result);
+        result
+    }
+
+    async fn compact(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+        input: ProviderInvocationInput,
+    ) -> anyhow::Result<ProviderCompactResult> {
+        let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
+        self.ensure_provider_loaded(installation).await?;
+        let operation = {
+            let host = self.services.provider_host.read().await;
+            host.compact_operation(&installation.plugin_id, input)
                 .map_err(anyhow::Error::new)
         };
         let result = match operation {
