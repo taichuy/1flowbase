@@ -54,7 +54,7 @@ source of truth / owner -> 必要复杂度
 维持以下守恒关系：
 
 - 用户描述提供线索，结论强度不超过证据；安全、数据、权限与已确认 contract 是硬边界，工作偏好只改变方向权重。
-- 方案范围不超过授权与非目标；新增范围同时产生成功标准、owner、证据和预算债务。
+- 方案范围不超过授权与非目标；新增范围同时产生成功标准、owner、证据责任和资源边界。
 - 只处理会改变可行域或推荐的未知；其他缺口使用有界假设。下一步不能减少决策残差时停止。
 - 后端是 contract 与状态唯一数据来源；前端不承担输出兼容，接口字段保持后端 DTO / 领域语义原名。
 
@@ -93,7 +93,6 @@ source of truth / owner -> 必要复杂度
 | issue、Issue Tree、ADR、discussion brief、handoff | `references/artifacts.md` |
 | 计划形态、grade、labels、批准与关闭 | `references/issue-lifecycle.md` |
 | 长计划、多 agent、跨上下文或持续集成控制 | `references/long-running-work.md` |
-| Delivery 结束观测、预算聚合或历史校准 | `references/budget-calibration.md` |
 | defaults、contract、schema、state、permissions、migration、history、runtime behavior、user content | `references/domain-matrix.md` |
 | 高风险方向比较或反方评审 | `references/options-and-red-team.md` |
 | 新公共抽象、接口、flag、通用 helper、重复校验或 pass-through | `../_shared/design-rules.md` |

@@ -13,7 +13,7 @@
 
 - 目的：回答“仓库是否可合入 / CI 是否可过 / 项目健康度如何”，而不是“当前任务结果是否成立”。
 - 范围：跨 workspace、全仓、全前端、全后端、全 coverage、全 hygiene，或检查与当前改动无直接调用链的大量消费者。
-- 成本：会触发大范围编译、build、clippy、full test、coverage、security scan，或明显超过一个主验证命令和必要 smoke 的时间预算。
+- 成本：会触发大范围编译、build、clippy、full test、coverage、security scan，或明显超过一个主验证命令和必要 smoke 的资源边界。
 - 运行态影响：需要重启服务、真实认证链、外部中间件、运行态接口取证、写 `tmp/test-governance/` 全局 artifact，或可能干扰开发反馈节奏。
 
 常见重门禁：`cargo test --workspace`、`cargo clippy --workspace --all-targets`、workspace 级 `pnpm build` / full lint / full test、`verify-repo`、`verify-ci`、coverage、repo hygiene、i18n hygiene、container / security scan、服务重启后 `api-debug` 取证。定向 crate test、route integration test、单消费者 contract test、局部 `tsc`、单路由 screenshot/page-debug 通常不是重门禁。
@@ -63,7 +63,7 @@
 - 目标：写明要拦截的真实失败模式，不用抽象口号替代。
 - 反方样例：至少列出一个不应被拦的合法场景，避免规则过宽。
 - 确定性证据：使用 fixture、历史失败、脚本输出或可复现 diff 证明规则能稳定命中目标。
-- 预算和停止条件：说明本地执行成本、warning / blocker 归属、何时升级到 PR / Project Health lane。
+- 资源边界和停止条件：说明本地执行成本、warning / blocker 归属、何时升级到 PR / Project Health lane。
 - 人工确认：规则会改变开发者行为、阻断合并或触碰用户内容时，必须等待用户确认后再进入 enforce。
 
 ## Hard Stops

@@ -9,7 +9,7 @@ description: Evidence-driven QA evaluation for 1flowbase dev acceptance, PR merg
 
 `qa-evaluation` 不是另一个开发 Skill，而是 1flowbase 的质量评估器。开发阶段默认不自动注入完整测试门禁；进入自检、验收、回归或交付阶段后，再由这个 Skill 负责选择脚本、收集证据并输出 QA 结论。它默认只产出问题报告与修正方向，不直接改代码。
 
-质量门禁先分 lane 再选证据：开发后验收优先快，PR 门禁优先合并信心，项目体检优先完整健康快照和维护者感知。当前本地开发分支专注结果验证和尽早发现直接问题；仓库级、线上级、重型质量门禁默认交给 beta / CI / 专门质量工作区。不要把三种资源预算混成一套重门禁。
+质量门禁先分 lane 再选证据：开发后验收优先快，PR 门禁优先合并信心，项目体检优先完整健康快照和维护者感知。当前本地开发分支专注结果验证和尽早发现直接问题；仓库级、线上级、重型质量门禁默认交给 beta / CI / 专门质量工作区。不要把三种资源边界混成一套重门禁。
 
 Project Health Gate 的顺序固定为：先确认 lane 和范围，再建立质量维度矩阵，再把脚本、artifact、日志、截图、代码证据归类到矩阵，最后输出 findings。当前失败脚本或错误报告只是证据来源，不得成为项目体检的完整范围或主线。
 
@@ -46,16 +46,17 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - `Test compatibility`: 失败测试必须先对照当前 spec / ADR / 已确认验收预期 / 后端 DTO contract / 用户任务边界。旧测试不是兼容要求本身；若旧断言与新确认行为冲突，报告为过期测试期望或测试债，要求更新 / 删除对应测试证据，不得为了让旧测试通过添加 legacy alias、fallback、回退路径或弱化状态 / contract。无法证明新行为已被确认时，只能写 `未验证，不下确定结论`。
 - `Acceptance point settlement`: issue / handoff 有 `AC-001` 这类验收点时，QA 必须逐点给 `green / red / 未验证`、证据和残余风险；机械门禁通过只能作为证据，不能替代验收点结论。
 - `Context capsule`: 交付后若验收点通过，输出压缩 capsule：做了什么、在哪里、关键决策 / gotchas、后续扩展入口。capsule 只写指针，不复制代码；代码仓库仍是真值来源。
-- `Quality rule change`: 新增或调整 AGENTS / skills / repo hygiene / 质量门禁规则时，必须检查目标、验收证据、预算和停止条件；质量规则本身还要有反方样例、确定性 fixture 或历史证据、人工确认点。
+- `Quality rule change`: 新增或调整 AGENTS / skills / repo hygiene / 质量门禁规则时，必须检查目标、验收证据、资源边界和停止条件；质量规则本身还要有反方样例、确定性 fixture 或历史证据、人工确认点。
 
 ## Quick Reference
 
 - 开发阶段默认不加载完整质量门禁；功能完成后再主动进入 `qa-evaluation`
-- Issue Tree 的最终 QA 只在全部 Delivery 进入唯一集成基线后启动；同时只保留一个 `fork_turns=none` 的全新 QA agent，且 QA agent 不再嵌套调度 agent。
-- QA 一次性输出完整 blocker 集合。对应 Delivery owner 集中修复后再启动新的 QA；同一根因第二次失败、验收语义变化或范围继续增长时回到 `problem-framing`，不无限循环。
+- Issue Tree 不做 per-packet / per-Delivery reviewer 或 QA；Root 下全部开发与 fixture Work Packet 进入冻结 assembly SHA 后，才启动一个 `fork_turns=none` 的全新 QA agent。
+- QA 一次性输出完整 blocker 集合。Root 转换为 fix Packet，全部修复装配后再启动新的单一 QA；同一根因第二次失败、验收语义变化或范围继续增长时回到 `problem-framing`，不无限循环。
 - 先按 `references/governance/gate-lanes.md` 选择门禁 lane：`Dev Acceptance Gate`、`PR Merge Gate`、`Project Health Gate`
 - 默认 `Dev Acceptance Gate / task mode`；用户明确要求 PR 校验、全量门禁、项目体检或完整 QA 审计时，才升级到对应 lane
-- `Dev Acceptance Gate` 追求快速反馈：复用 TDD 红绿结果，按风险向量选择最小证据链，证据足够或预算耗尽就停，不用仓库级门禁惩罚局部开发
+- `Dev Acceptance Gate` 追求快速反馈：复用 TDD / Batch Acceptance 结果，按风险向量选择最小证据链，证据足够或资源边界触发就停，不用仓库级门禁惩罚局部开发
+- 长计划的 Dev Acceptance Gate 只针对冻结 assembly candidate 执行一次；Work Packet commit、局部 compile 或自检只作为装配证据，不能触发独立 QA 或结算 AC。
 - `existing-codebase` 任务默认只把本次引入的问题作为 blocker；既有债务、旧覆盖率缺口或历史 warning 只有被当前 issue 明确纳入时才阻断当前验收
 - 有验收点账本时，QA 输出必须按点结算；没有账本时才按目标 / 风险维度组织结论
 - 本地开发分支只证明当前任务结果、直接相关 contract 和主路径风险；workspace 级 cargo / pnpm build / clippy / full test、coverage、verify-repo、repo hygiene、i18n hygiene 等重门禁默认延后到 beta / CI / 专门质量工作区
@@ -92,7 +93,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - 后端范围命中 Rust 代码时，必须额外检查类型不变量、错误边界、状态方法、事务、幂等、async 阻塞、锁跨 await、数据库约束和 Rust 质量门禁
 - Rust 后端验收必须核对 completion self-check；缺少证据时对应项只能写 `未验证`，不能下通过结论
 - 同一 worktree 内同时只执行一条后端 Cargo 验证命令，避免多进程争抢 package cache / artifact lock；单条命令内部默认读取机器逻辑 CPU 的一半并行编译，不写死 `CARGO_BUILD_JOBS=1/4`。仓库包装命令自动读取；直接定向命令使用 `CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo ...`
-- 验证预算由 gate lane 决定：开发后验收用最小证据链和早停；PR 门禁用 CI / gate DAG / artifact；项目体检用全量维度覆盖、风险热力图和轮转深挖
+- 验证边界由 gate lane 决定：开发后验收用最小证据链和早停；PR 门禁用 CI / gate DAG / artifact；项目体检用全量维度覆盖、风险热力图和轮转深挖
 - 前端层级、入口、L0 / L1 / L2 / L3 问题：使用 `frontend-development` 的 `interaction-architecture-gate`
 - 后端契约、状态入口、边界污染问题：联动 `backend-development`
 - 项目体检发现非硬性维护问题时，联动 `problem-framing` 输出现状、方向、风险收益和建议；硬性门禁失败才进入质量回归修复
@@ -101,7 +102,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 ## Implementation
 
 - Mode selection and session bias: `references/governance/modes.md`
-- Gate lane model and resource budgets: `references/governance/gate-lanes.md`
+- Gate lane model and resource boundaries: `references/governance/gate-lanes.md`
 - Repository quality gate routing: `references/governance/repo-quality-gates.md`
 - I18n hygiene gate: `references/frontend/i18n-hygiene-gate.md`
 - Quality gate watch scenarios: `references/governance/quality-gate-watch.md`
