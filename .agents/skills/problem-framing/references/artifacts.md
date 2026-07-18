@@ -111,9 +111,12 @@
 
 ## Control Ledger
 - 当前已集成基线：
-- 当前 Delivery：
+- 当前 Delivery、owner 与状态：
+- candidate / review / integration 证据：
+- Delivery 预算与当前消耗：
 - 剩余验收风险：
-- 已知阻塞 / 不确定性：
+- 活动 agent、worktree、进程与端口：
+- 已知阻塞 / 不确定性 / 外部扰动：
 - 下一可控结果：
 
 ## 验证、回滚与资源边界
@@ -148,6 +151,12 @@
 ## 验收证据
 | 编号 | 可观察结果 | 证据 |
 | --- | --- | --- |
+
+## 执行与验证预算
+- 主要开发 owner / worktree：
+- 预计时间、影响面与 agent 上限：
+- 最小本地证据与延后门禁：
+- candidate review 层级：
 
 ## 停止与上报条件
 
@@ -200,6 +209,8 @@ Proposed
 ## Acceptance Evidence
 
 ## Integrated Baseline And Owned Areas
+
+## Budget And Evidence Tier
 
 ## Decisions And Gotchas
 

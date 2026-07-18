@@ -51,6 +51,8 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 ## Quick Reference
 
 - 开发阶段默认不加载完整质量门禁；功能完成后再主动进入 `qa-evaluation`
+- Issue Tree 的最终 QA 只在全部 Delivery 进入唯一集成基线后启动；同时只保留一个 `fork_turns=none` 的全新 QA agent，且 QA agent 不再嵌套调度 agent。
+- QA 一次性输出完整 blocker 集合。对应 Delivery owner 集中修复后再启动新的 QA；同一根因第二次失败、验收语义变化或范围继续增长时回到 `problem-framing`，不无限循环。
 - 先按 `references/governance/gate-lanes.md` 选择门禁 lane：`Dev Acceptance Gate`、`PR Merge Gate`、`Project Health Gate`
 - 默认 `Dev Acceptance Gate / task mode`；用户明确要求 PR 校验、全量门禁、项目体检或完整 QA 审计时，才升级到对应 lane
 - `Dev Acceptance Gate` 追求快速反馈：复用 TDD 红绿结果，按风险向量选择最小证据链，证据足够或预算耗尽就停，不用仓库级门禁惩罚局部开发

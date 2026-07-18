@@ -30,6 +30,9 @@
 1.需求类请求默认先使用 `problem-framing`；方向确认前不修改产品代码。
 2.普通任务使用 Single Issue；跨上下文、多 agent、跨仓或包含多个可独立集成结果的长计划使用 Root → Delivery 两层 Issue Tree。Root 一次批准既定 Delivery，用户只验收 Root。
 3.纯查询、机械精确改动，或用户明确要求直接开始 / 无需确认时，可以跳过需求对齐。
+4.长计划执行必须读取 `.agents/skills/problem-framing/references/long-running-work.md`；Root agent 是唯一调度者、集成者和 Control Ledger owner，开发、reviewer、QA agent 不再嵌套调度 agent。
+5.开发上下文只在同一 Delivery 内连续复用；新 Delivery 使用新上下文和最小 handoff，不继承完整历史。
+6.默认只实现一个当前 Delivery；第二个开发 Delivery 仅在无依赖、无写入 / 端口 / 构建冲突且能独立结算 Root AC 时并行。状态汇报和资源检查由事件触发，不做无变化轮询。
 
 # 文件管理约定
 1.理论上来说单个代码文件不应该超过1500行

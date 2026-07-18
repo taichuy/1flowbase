@@ -58,6 +58,7 @@ description: 1flowbase 需求对齐与动工前决策 Skill。用于功能、缺
 - 缺少会改变 source of truth、contract、数据、权限、用户内容或验收的关键信息时，集中追问并给推荐默认值。
 - 用户明确要求直接实现时，可以跳过 issue 确认；仍需把成功标准、权限、验证和停止条件交给实现 Skill。
 - 方向确认后，计划只使用两种形态：普通任务使用 Single Issue；长计划使用两层 Issue Tree。读取 `references/issue-lifecycle.md`。
+- 长计划的当前 Delivery 未固定可观察结果、Root AC、owner、集成边界、执行 / 验证预算与停止条件时，不进入实现。
 - 新问题扩大已确认目标、数据影响、权限或 contract 时，停止实现并回到本 Skill；局部实现选择不重复请求批准。
 
 ## Boundaries
