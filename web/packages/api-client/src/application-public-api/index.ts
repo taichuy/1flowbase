@@ -48,6 +48,78 @@ export interface ConsoleApplicationApiMapping {
     error_selector: string | null;
   };
   extension?: ConsoleWorkflowExtensionApiConfig | null;
+  operation_bindings?: ConsoleApplicationOperationBindings | null;
+}
+
+export interface ConsoleApplicationOperationTargetBinding {
+  target_node_id: string;
+}
+
+export interface ConsoleApplicationOperationBindings {
+  generate: ConsoleApplicationOperationTargetBinding | null;
+  count_tokens: ConsoleApplicationOperationTargetBinding | null;
+  compact: {
+    responses_compact: ConsoleApplicationOperationTargetBinding | null;
+    responses_compaction_v2: ConsoleApplicationOperationTargetBinding | null;
+  };
+}
+
+export type ConsoleApplicationOperationBindingOperation =
+  | 'generate'
+  | 'count_tokens'
+  | 'compact.responses_compact'
+  | 'compact.responses_compaction_v2';
+
+export type ConsoleApplicationPublishedOperationBindingStatus =
+  | 'supported'
+  | 'unbound'
+  | 'unsupported';
+
+export type ConsoleApplicationOperationBindingUnsupportedReason =
+  | 'compiled_plan_missing'
+  | 'compiled_plan_mismatch'
+  | 'compiled_plan_invalid'
+  | 'target_missing'
+  | 'target_not_llm'
+  | 'target_runtime_incomplete'
+  | 'provider_target_unavailable'
+  | 'provider_contract_unsupported'
+  | 'provider_manifest_unavailable'
+  | 'provider_capability_unsupported';
+
+export interface ConsoleApplicationOperationBindingTargetOption {
+  target_node_id: string;
+  node_alias: string;
+}
+
+export interface ConsoleApplicationOperationBindingOption {
+  operation: ConsoleApplicationOperationBindingOperation;
+  targets: ConsoleApplicationOperationBindingTargetOption[];
+}
+
+export interface ConsoleApplicationDraftOperationBindingProjection {
+  operation_bindings: ConsoleApplicationOperationBindings;
+  options: ConsoleApplicationOperationBindingOption[];
+}
+
+export interface ConsoleApplicationPublishedOperationBindingProjection {
+  operation: ConsoleApplicationOperationBindingOperation;
+  target_node_id: string | null;
+  status: ConsoleApplicationPublishedOperationBindingStatus;
+  target: ConsoleApplicationOperationBindingTargetOption | null;
+  unsupported_reason: ConsoleApplicationOperationBindingUnsupportedReason | null;
+}
+
+export interface ConsoleApplicationPublishedOperationBindingsProjection {
+  publication_id: string;
+  compiled_plan_id: string;
+  bindings: ConsoleApplicationPublishedOperationBindingProjection[];
+}
+
+export interface ConsoleApplicationOperationBindingProjection {
+  editable: boolean;
+  draft: ConsoleApplicationDraftOperationBindingProjection;
+  published: ConsoleApplicationPublishedOperationBindingsProjection | null;
 }
 
 export type ConsoleWorkflowExtensionHttpMethod =
@@ -213,6 +285,16 @@ export function getConsoleApplicationApiMapping(
 ): Promise<ConsoleApplicationApiMapping> {
   return apiFetch<ConsoleApplicationApiMapping>({
     path: `/api/console/applications/${applicationId}/api-mapping`,
+    baseUrl
+  });
+}
+
+export function getConsoleApplicationOperationBindings(
+  applicationId: string,
+  baseUrl?: string
+): Promise<ConsoleApplicationOperationBindingProjection> {
+  return apiFetch<ConsoleApplicationOperationBindingProjection>({
+    path: `/api/console/applications/${applicationId}/api-operation-bindings`,
     baseUrl
   });
 }

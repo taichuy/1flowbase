@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import type { ConsoleApplicationApiMapping } from '../application-public-api';
+import type {
+  ConsoleApplicationApiMapping,
+  ConsoleApplicationOperationBindingProjection
+} from '../application-public-api';
 import {
   APPLICATION_PUBLIC_RUNTIME_PATHS,
   createConsoleApplicationApiKey,
@@ -9,6 +12,7 @@ import {
   fetchConsoleApplicationApiOperationSpec,
   getConsoleWorkflowScheduleTrigger,
   getConsoleApplicationApiMapping,
+  getConsoleApplicationOperationBindings,
   getConsoleApplicationApiPublication,
   listConsoleApplicationApiKeys,
   publishConsoleApplicationApiVersion,
@@ -198,6 +202,74 @@ describe('application public API client', () => {
         method: 'PATCH',
         body: JSON.stringify({ api_enabled: false })
       })
+    );
+  });
+
+  test('reads the server-owned operation binding projection without deriving capability', async () => {
+    const projection: ConsoleApplicationOperationBindingProjection = {
+      editable: false,
+      draft: {
+        operation_bindings: {
+          generate: { target_node_id: 'node-draft-generate' },
+          count_tokens: null,
+          compact: {
+            responses_compact: null,
+            responses_compaction_v2: null
+          }
+        },
+        options: [
+          {
+            operation: 'generate',
+            targets: [
+              {
+                target_node_id: 'node-draft-generate',
+                node_alias: 'Draft generate'
+              }
+            ]
+          }
+        ]
+      },
+      published: {
+        publication_id: 'publication-1',
+        compiled_plan_id: 'compiled-plan-1',
+        bindings: [
+          {
+            operation: 'generate',
+            target_node_id: 'node-frozen-generate',
+            status: 'supported',
+            target: {
+              target_node_id: 'node-frozen-generate',
+              node_alias: 'Frozen generate'
+            },
+            unsupported_reason: null
+          },
+          {
+            operation: 'count_tokens',
+            target_node_id: null,
+            status: 'unbound',
+            target: null,
+            unsupported_reason: null
+          },
+          {
+            operation: 'compact.responses_compact',
+            target_node_id: 'node-frozen-compact',
+            status: 'unsupported',
+            target: null,
+            unsupported_reason: 'provider_capability_unsupported'
+          }
+        ]
+      }
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(projection));
+
+    await expect(
+      getConsoleApplicationOperationBindings('app-1', 'http://localhost:7800')
+    ).resolves.toEqual(projection);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:7800/api/console/applications/app-1/api-operation-bindings',
+      expect.objectContaining({ method: 'GET' })
     );
   });
 

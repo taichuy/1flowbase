@@ -18,6 +18,7 @@ import {
 } from '../api/public-api';
 import { ApplicationApiDocsPanel } from '../components/api/ApplicationApiDocsPanel';
 import { ApplicationApiKeysPanel } from '../components/api/ApplicationApiKeysPanel';
+import { ApplicationApiMappingPanel } from '../components/api/ApplicationApiMappingPanel';
 import { ApplicationApiStatusBar } from '../components/api/ApplicationApiStatusBar';
 import './application-api-page.css';
 
@@ -95,6 +96,10 @@ export function ApplicationApiPage({
           />
         }
       >
+        <ApplicationApiMappingPanel
+          applicationId={application.id}
+          csrfToken={csrfToken}
+        />
         <ApplicationApiKeysPanel
           applicationId={application.id}
           csrfToken={csrfToken}

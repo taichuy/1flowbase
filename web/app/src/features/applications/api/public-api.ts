@@ -5,6 +5,7 @@ import {
   fetchConsoleApplicationApiOperationSpec,
   getConsoleWorkflowScheduleTrigger,
   getConsoleApplicationApiMapping,
+  getConsoleApplicationOperationBindings,
   getConsoleApplicationApiPublication,
   listConsoleApplicationApiKeys,
   publishConsoleApplicationApiVersion,
@@ -15,6 +16,12 @@ import {
   type ConsoleApplicationApiKey,
   type ConsoleApplicationApiMapping,
   type ConsoleApplicationApiPublication,
+  type ConsoleApplicationOperationBindingOperation,
+  type ConsoleApplicationOperationBindingOption,
+  type ConsoleApplicationOperationBindingProjection,
+  type ConsoleApplicationOperationBindingUnsupportedReason,
+  type ConsoleApplicationOperationBindings,
+  type ConsoleApplicationPublishedOperationBindingStatus,
   type ConsoleApiDocsCategoryOperationsRequest,
   type ConsoleWorkflowScheduleTrigger,
   type CreatedConsoleApplicationApiKey,
@@ -27,6 +34,17 @@ export type ApplicationApiKey = ConsoleApplicationApiKey;
 export type CreatedApplicationApiKey = CreatedConsoleApplicationApiKey;
 export type ApplicationApiMapping = ConsoleApplicationApiMapping;
 export type ApplicationApiPublication = ConsoleApplicationApiPublication;
+export type ApplicationOperationBindingOperation =
+  ConsoleApplicationOperationBindingOperation;
+export type ApplicationOperationBindingOption =
+  ConsoleApplicationOperationBindingOption;
+export type ApplicationOperationBindingProjection =
+  ConsoleApplicationOperationBindingProjection;
+export type ApplicationOperationBindingUnsupportedReason =
+  ConsoleApplicationOperationBindingUnsupportedReason;
+export type ApplicationOperationBindings = ConsoleApplicationOperationBindings;
+export type ApplicationPublishedOperationBindingStatus =
+  ConsoleApplicationPublishedOperationBindingStatus;
 export type WorkflowScheduleTrigger = ConsoleWorkflowScheduleTrigger;
 export type WorkflowScheduleTriggerInput =
   ReplaceConsoleWorkflowScheduleTriggerInput;
@@ -72,6 +90,8 @@ export const applicationApiKeysQueryKey = (applicationId: string) =>
   ['applications', applicationId, 'public-api', 'keys'] as const;
 export const applicationApiMappingQueryKey = (applicationId: string) =>
   ['applications', applicationId, 'public-api', 'mapping'] as const;
+export const applicationOperationBindingsQueryKey = (applicationId: string) =>
+  ['applications', applicationId, 'public-api', 'operation-bindings'] as const;
 export const applicationApiPublicationQueryKey = (applicationId: string) =>
   ['applications', applicationId, 'public-api', 'publication'] as const;
 export const workflowScheduleTriggerQueryKey = (applicationId: string) =>
@@ -154,6 +174,13 @@ export function revokeApplicationApiKey(
 
 export function fetchApplicationApiMapping(applicationId: string) {
   return getConsoleApplicationApiMapping(
+    applicationId,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function fetchApplicationOperationBindings(applicationId: string) {
+  return getConsoleApplicationOperationBindings(
     applicationId,
     getApplicationsApiBaseUrl()
   );
