@@ -9,6 +9,7 @@ use control_plane::{
         mapping::{
             validate_application_api_mapping, ApplicationApiMappingConfig,
             ApplicationApiMappingInput, ApplicationApiMappingOutput, ApplicationApiMappingService,
+            ApplicationOperationBindings, ApplicationOperationTargetBinding,
             GetApplicationApiMappingCommand, ReplaceApplicationApiMappingCommand,
             WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
             WorkflowExtensionParameterMapping, WorkflowExtensionParameterSource,
@@ -616,6 +617,94 @@ async fn application_public_api_mapping_service_returns_default_then_replaces_st
         ApplicationApiMappingConfig::default_native()
     );
     assert_eq!(stored, replacement);
+}
+
+#[tokio::test]
+async fn application_public_api_mapping_draft_retains_bindings_and_extension_identity() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_application(actor_user_id(), "Support Bot");
+    let service = ApplicationApiMappingService::new(harness.repository());
+    let mapping = workflow_extension_mapping("open-ticket");
+    let operation_bindings = ApplicationOperationBindings {
+        generate: Some(ApplicationOperationTargetBinding {
+            target_node_id: "node-llm".into(),
+        }),
+        ..Default::default()
+    };
+
+    service
+        .replace_mapping_draft(
+            ReplaceApplicationApiMappingCommand {
+                actor_user_id: actor_user_id(),
+                application_id: application.id,
+                mapping: mapping.clone(),
+            },
+            Some(operation_bindings.clone()),
+        )
+        .await
+        .unwrap();
+    service
+        .replace_mapping(ReplaceApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: mapping.clone(),
+        })
+        .await
+        .unwrap();
+
+    let immutable_error = service
+        .replace_mapping(ReplaceApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: workflow_extension_mapping("closed-ticket"),
+        })
+        .await
+        .unwrap_err();
+    let stored = service
+        .get_mapping_draft(GetApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        immutable_error.to_string(),
+        "workflow_extension_registration_immutable"
+    );
+    assert_eq!(stored.mapping, mapping);
+    assert_eq!(stored.operation_bindings, operation_bindings);
+}
+
+#[tokio::test]
+async fn application_public_api_publication_rejects_changed_persisted_extension_identity() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
+    let mapping = workflow_extension_mapping("open-ticket");
+
+    ApplicationApiMappingService::new(repository.clone())
+        .replace_mapping(ReplaceApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping,
+        })
+        .await
+        .unwrap();
+    let error = ApplicationPublicationService::new(repository)
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: workflow_extension_mapping("closed-ticket"),
+            api_enabled: true,
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "workflow_extension_registration_immutable"
+    );
 }
 
 #[tokio::test]

@@ -188,10 +188,10 @@ where
             .repository
             .get_application_api_mapping(application.id)
             .await?;
-        let current_draft = stored_draft
-            .clone()
-            .unwrap_or_else(super::mapping::ApplicationApiMappingDraft::default_native);
-        ensure_extension_registration_unchanged(&current_draft.mapping, &command.mapping)?;
+        // A default read projection is not a persisted extension registration.
+        if let Some(current_draft) = stored_draft.as_ref() {
+            ensure_extension_registration_unchanged(&current_draft.mapping, &command.mapping)?;
+        }
         let extension_slug = command.mapping.extension_slug().map(ToOwned::to_owned);
         if let Some(slug) = extension_slug.as_deref() {
             if let Some(existing_publication) = self

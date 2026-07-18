@@ -107,9 +107,14 @@ where
             .ok_or(ControlPlaneError::NotFound("application"))?;
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
         let current_draft = self
-            .get_mapping_draft_for_application(application.id)
+            .repository
+            .get_application_api_mapping(application.id)
             .await?;
-        ensure_extension_registration_unchanged(&current_draft.mapping, &command.mapping)?;
+        // The read model supplies a native default for an absent draft, but no
+        // extension registration exists until a draft has been persisted.
+        if let Some(current_draft) = current_draft.as_ref() {
+            ensure_extension_registration_unchanged(&current_draft.mapping, &command.mapping)?;
+        }
         if let Some(slug) = command.mapping.extension_slug() {
             if let Some(existing_application_id) = self
                 .repository
@@ -136,7 +141,11 @@ where
                 actor_user_id: command.actor_user_id,
                 application_id: application.id,
                 mapping: command.mapping,
-                operation_bindings: operation_bindings.unwrap_or(current_draft.operation_bindings),
+                operation_bindings: operation_bindings.unwrap_or_else(|| {
+                    current_draft
+                        .map(|draft| draft.operation_bindings)
+                        .unwrap_or_default()
+                }),
             })
             .await
     }
