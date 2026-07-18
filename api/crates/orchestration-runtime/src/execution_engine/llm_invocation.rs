@@ -172,7 +172,9 @@ pub(super) fn build_provider_invocation(
     }
 
     let mut input = ProviderInvocationInput {
+        operation: ProviderWireOperation::Generate,
         contract_version: Default::default(),
+        profile: None,
         provider_instance_id: runtime.provider_instance_id.clone(),
         provider_code: runtime.provider_code.clone(),
         protocol: runtime.protocol.clone(),

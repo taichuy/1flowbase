@@ -481,6 +481,53 @@ runtime:
 }
 
 #[test]
+fn provider_v2_manifest_accepts_exact_remote_compact_capability_rows() {
+    let raw = r#"
+manifest_version: 1
+plugin_id: openai@0.2.13
+version: 0.2.13
+vendor: 1flowbase
+display_name: OpenAI
+description: OpenAI provider v2
+source_kind: official_registry
+trust_level: verified_official
+consumption_kind: runtime_extension
+execution_mode: stateful_provider_worker
+slot_codes:
+  - model_provider
+binding_targets:
+  - workspace
+selection_mode: assignment_then_select
+minimum_host_version: 0.2.6
+contract_version: 1flowbase.provider/v2
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: outbound_only
+  secrets: provider_instance_only
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json_worker
+  entry: bin/openai-provider
+  capabilities:
+    - compact.responses_compact
+    - compact.responses_compaction_v2
+"#;
+
+    let manifest = parse_plugin_manifest(raw)
+        .expect("the two declared OpenAI Compact capability rows should be accepted exactly");
+
+    assert_eq!(
+        manifest.runtime.capabilities,
+        vec![
+            "compact.responses_compact",
+            "compact.responses_compaction_v2"
+        ]
+    );
+}
+
+#[test]
 fn runtime_extension_rejects_provider_as_plugin_type_slot() {
     let raw = r#"
 manifest_version: 1

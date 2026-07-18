@@ -13,6 +13,9 @@ pub const NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY: &str = "__native_model_prompt
 pub const NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY: &str = "__native_model_request_context";
 pub const CURRENT_PROVIDER_CONTRACT: &str = "1flowbase.provider/v2";
 pub const PROVIDER_COUNT_TOKENS_CAPABILITY: &str = "count_tokens";
+pub const PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY: &str = "compact.responses_compact";
+pub const PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY: &str =
+    "compact.responses_compaction_v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -390,9 +393,38 @@ pub enum ProviderInvocationContractVersion {
 #[serde(rename_all = "snake_case")]
 pub enum ProviderInvocationCapability {
     CountTokens,
+    #[serde(rename = "compact.responses_compact")]
+    CompactResponsesCompact,
+    #[serde(rename = "compact.responses_compaction_v2")]
+    CompactResponsesCompactionV2,
     SystemPromptBlocks,
     SystemPromptCacheControl,
     EndUserReference,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderCompactProfile {
+    ResponsesCompact,
+    ResponsesCompactionV2,
+}
+
+impl ProviderCompactProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ResponsesCompact => "responses_compact",
+            Self::ResponsesCompactionV2 => "responses_compaction_v2",
+        }
+    }
+
+    pub fn required_capability(self) -> ProviderInvocationCapability {
+        match self {
+            Self::ResponsesCompact => ProviderInvocationCapability::CompactResponsesCompact,
+            Self::ResponsesCompactionV2 => {
+                ProviderInvocationCapability::CompactResponsesCompactionV2
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -422,7 +454,11 @@ pub struct ClientProtocolEnvelope {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderInvocationInput {
+    #[serde(default, skip_serializing_if = "is_generate_provider_wire_operation")]
+    pub operation: ProviderWireOperation,
     pub contract_version: ProviderInvocationContractVersion,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<ProviderCompactProfile>,
     pub provider_instance_id: String,
     pub provider_code: String,
     pub protocol: String,
@@ -454,11 +490,17 @@ pub struct ProviderInvocationInput {
     pub run_context: BTreeMap<String, Value>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderWireOperation {
+    #[default]
     Generate,
     CountTokens,
+    Compact,
+}
+
+fn is_generate_provider_wire_operation(operation: &ProviderWireOperation) -> bool {
+    *operation == ProviderWireOperation::Generate
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -547,9 +589,71 @@ pub struct ProviderCountTokensResult {
     pub input_tokens: u64,
 }
 
+/// The closed result set for remote compaction. V2 exposes only the
+/// provider-produced opaque value; callers must not decode or replace it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "result_type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ProviderCompactResult {
+    ResponseItems {
+        operation: ProviderWireOperation,
+        profile: ProviderCompactProfile,
+        response_items: Vec<Value>,
+    },
+    CompletedOpaqueCompactionItem {
+        operation: ProviderWireOperation,
+        profile: ProviderCompactProfile,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        response_id: Option<String>,
+        compaction_item: Value,
+        encrypted_content: String,
+    },
+}
+
+impl ProviderCompactResult {
+    pub fn operation(&self) -> ProviderWireOperation {
+        match self {
+            Self::ResponseItems { operation, .. }
+            | Self::CompletedOpaqueCompactionItem { operation, .. } => *operation,
+        }
+    }
+
+    pub fn profile(&self) -> ProviderCompactProfile {
+        match self {
+            Self::ResponseItems { profile, .. }
+            | Self::CompletedOpaqueCompactionItem { profile, .. } => *profile,
+        }
+    }
+
+    pub fn satisfies_profile(&self, expected_profile: ProviderCompactProfile) -> bool {
+        self.operation() == ProviderWireOperation::Compact
+            && self.profile() == expected_profile
+            && match (expected_profile, self) {
+                (
+                    ProviderCompactProfile::ResponsesCompact,
+                    Self::ResponseItems { response_items, .. },
+                ) => response_items.iter().all(Value::is_object),
+                (
+                    ProviderCompactProfile::ResponsesCompactionV2,
+                    Self::CompletedOpaqueCompactionItem {
+                        compaction_item,
+                        encrypted_content,
+                        ..
+                    },
+                ) => compaction_item.as_object().is_some_and(|item| {
+                    item.get("type").and_then(Value::as_str) == Some("compaction")
+                        && item.get("encrypted_content").and_then(Value::as_str)
+                            == Some(encrypted_content.as_str())
+                }),
+                _ => false,
+            }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProviderWireAudit {
     pub operation: ProviderWireOperation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<ProviderCompactProfile>,
     pub contract_version: ProviderInvocationContractVersion,
     pub message_count: u32,
     pub system_block_count: u32,
@@ -579,19 +683,28 @@ impl ProviderInvocationInput {
 
     pub fn synchronize_required_capabilities(&mut self) {
         self.required_capabilities
-            .extend(self.semantic_required_capabilities());
+            .extend(self.derived_required_capabilities());
     }
 
     pub fn semantic_required_capabilities(&self) -> BTreeSet<ProviderInvocationCapability> {
         semantic_required_capabilities(&self.system, &self.request_context)
     }
 
+    pub fn compact_profile(&self) -> Result<ProviderCompactProfile, String> {
+        if self.operation != ProviderWireOperation::Compact {
+            return Err("Compact input must declare operation=compact".to_string());
+        }
+        self.profile
+            .ok_or_else(|| "Compact input must declare a compact profile".to_string())
+    }
+
     pub fn to_current_provider_wire_value(
         &self,
         declared_capabilities: &[String],
     ) -> Result<Value, PluginFrameworkError> {
-        let mut invocation = self.clone();
-        invocation.synchronize_required_capabilities();
+        let invocation = self
+            .prepared_current_provider_invocation()
+            .map_err(|message| PluginFrameworkError::invalid_provider_contract(message))?;
         let unsupported = undeclared_provider_capabilities(
             &invocation.required_capabilities,
             declared_capabilities,
@@ -612,6 +725,36 @@ impl ProviderInvocationInput {
             .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))
     }
 
+    pub fn to_current_provider_compact_wire_value(
+        &self,
+        declared_capabilities: &[String],
+    ) -> Result<Value, ProviderCompactError> {
+        let profile = self
+            .compact_profile()
+            .map_err(|message| ProviderCompactError::InvalidContract { message })?;
+        let invocation = self
+            .prepared_current_provider_invocation()
+            .map_err(|message| ProviderCompactError::InvalidContract { message })?;
+        let unsupported = undeclared_provider_capabilities(
+            &invocation.required_capabilities,
+            declared_capabilities,
+        );
+
+        if !unsupported.is_empty() {
+            return Err(ProviderCompactError::Unsupported {
+                profile,
+                capabilities: unsupported
+                    .iter()
+                    .map(provider_invocation_capability_name)
+                    .collect(),
+            });
+        }
+
+        serde_json::to_value(invocation).map_err(|error| ProviderCompactError::InvalidContract {
+            message: error.to_string(),
+        })
+    }
+
     pub fn wire_audit(&self) -> ProviderWireAudit {
         let lengths = [
             self.messages.len(),
@@ -623,10 +766,11 @@ impl ProviderInvocationInput {
             self.run_context.len(),
         ];
         let mut required_capabilities = self.required_capabilities.clone();
-        required_capabilities.extend(self.semantic_required_capabilities());
+        required_capabilities.extend(self.derived_required_capabilities());
 
         ProviderWireAudit {
-            operation: ProviderWireOperation::Generate,
+            operation: self.operation,
+            profile: self.profile,
             contract_version: self.contract_version,
             message_count: bounded_wire_count(self.messages.len()),
             system_block_count: bounded_wire_count(self.system.len()),
@@ -643,6 +787,72 @@ impl ProviderInvocationInput {
             required_capabilities,
         }
     }
+
+    fn prepared_current_provider_invocation(&self) -> Result<Self, String> {
+        self.validate_current_provider_operation()?;
+        let mut invocation = self.clone();
+        invocation.synchronize_required_capabilities();
+        Ok(invocation)
+    }
+
+    fn derived_required_capabilities(&self) -> BTreeSet<ProviderInvocationCapability> {
+        let mut capabilities = self.semantic_required_capabilities();
+        if self.operation == ProviderWireOperation::Compact {
+            if let Some(profile) = self.profile {
+                capabilities.insert(profile.required_capability());
+            }
+        }
+        capabilities
+    }
+
+    fn validate_current_provider_operation(&self) -> Result<(), String> {
+        let claimed_compact_capability = self.required_capabilities.iter().find(|capability| {
+            matches!(
+                capability,
+                ProviderInvocationCapability::CompactResponsesCompact
+                    | ProviderInvocationCapability::CompactResponsesCompactionV2
+            )
+        });
+
+        match (self.operation, self.profile) {
+            (ProviderWireOperation::Generate, None) => {
+                if let Some(capability) = claimed_compact_capability {
+                    return Err(format!(
+                        "Generate input must not claim Compact capability {}",
+                        provider_invocation_capability_name(capability)
+                    ));
+                }
+                Ok(())
+            }
+            (ProviderWireOperation::Generate, Some(_)) => {
+                Err("Generate input must not declare a compact profile".to_string())
+            }
+            (ProviderWireOperation::CountTokens, _) => Err(
+                "CountTokens input must use ProviderCountTokensInput instead of ProviderInvocationInput"
+                    .to_string(),
+            ),
+            (ProviderWireOperation::Compact, Some(profile)) => {
+                if let Some(capability) = self.required_capabilities.iter().find(|capability| {
+                    matches!(
+                        capability,
+                        ProviderInvocationCapability::CompactResponsesCompact
+                            | ProviderInvocationCapability::CompactResponsesCompactionV2
+                    ) && **capability != profile.required_capability()
+                })
+                {
+                    return Err(format!(
+                        "Compact input profile {} must not claim capability {}",
+                        profile.as_str(),
+                        provider_invocation_capability_name(capability)
+                    ));
+                }
+                Ok(())
+            }
+            (ProviderWireOperation::Compact, None) => {
+                Err("Compact input must declare a compact profile".to_string())
+            }
+        }
+    }
 }
 
 fn bounded_wire_count(length: usize) -> u32 {
@@ -652,6 +862,12 @@ fn bounded_wire_count(length: usize) -> u32 {
 fn provider_invocation_capability_name(capability: &ProviderInvocationCapability) -> &'static str {
     match capability {
         ProviderInvocationCapability::CountTokens => PROVIDER_COUNT_TOKENS_CAPABILITY,
+        ProviderInvocationCapability::CompactResponsesCompact => {
+            PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY
+        }
+        ProviderInvocationCapability::CompactResponsesCompactionV2 => {
+            PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY
+        }
         ProviderInvocationCapability::SystemPromptBlocks => "system_prompt_blocks",
         ProviderInvocationCapability::SystemPromptCacheControl => "system_prompt_cache_control",
         ProviderInvocationCapability::EndUserReference => "end_user_reference",
@@ -826,6 +1042,42 @@ impl fmt::Display for ProviderCountTokensError {
 }
 
 impl std::error::Error for ProviderCountTokensError {}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProviderCompactError {
+    Unsupported {
+        profile: ProviderCompactProfile,
+        capabilities: Vec<&'static str>,
+    },
+    InvalidContract {
+        message: String,
+    },
+    Runtime {
+        error: ProviderRuntimeError,
+    },
+}
+
+impl fmt::Display for ProviderCompactError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unsupported {
+                profile,
+                capabilities,
+            } => write!(
+                f,
+                "provider does not declare required Compact capabilities for {}: {}",
+                profile.as_str(),
+                capabilities.join(", ")
+            ),
+            Self::InvalidContract { message } => {
+                write!(f, "provider Compact contract is invalid: {message}")
+            }
+            Self::Runtime { error } => write!(f, "provider Compact runtime error: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for ProviderCompactError {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

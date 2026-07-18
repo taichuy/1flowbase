@@ -12,11 +12,12 @@ use plugin_framework::{
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::PluginExecutionMode,
     provider_contract::{
-        ModelDiscoveryMode, ProviderBalanceResult, ProviderCountTokensError,
-        ProviderCountTokensInput, ProviderCountTokensResult, ProviderInvocationInput,
-        ProviderInvocationResult, ProviderModelDescriptor, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest, ProviderStreamEvent,
-        ProviderWireOperation, CURRENT_PROVIDER_CONTRACT,
+        ModelDiscoveryMode, ProviderBalanceResult, ProviderCompactError, ProviderCompactProfile,
+        ProviderCompactResult, ProviderCountTokensError, ProviderCountTokensInput,
+        ProviderCountTokensResult, ProviderInvocationInput, ProviderInvocationResult,
+        ProviderModelDescriptor, ProviderRuntimeError, ProviderRuntimeErrorKind,
+        ProviderStdioMethod, ProviderStdioRequest, ProviderStreamEvent, ProviderWireOperation,
+        CURRENT_PROVIDER_CONTRACT,
     },
     PluginRuntimeLimits,
 };
@@ -98,6 +99,11 @@ pub struct ProviderBalanceOutput {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ProviderCountTokensOutput {
     pub result: ProviderCountTokensResult,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ProviderCompactOutput {
+    pub result: ProviderCompactResult,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -478,6 +484,72 @@ impl ProviderHost {
         })
     }
 
+    pub async fn compact(
+        &self,
+        plugin_id: &str,
+        input: ProviderInvocationInput,
+    ) -> Result<ProviderCompactOutput, ProviderCompactError> {
+        self.compact_operation(plugin_id, input)?.await
+    }
+
+    pub fn compact_operation(
+        &self,
+        plugin_id: &str,
+        input: ProviderInvocationInput,
+    ) -> Result<
+        impl std::future::Future<Output = Result<ProviderCompactOutput, ProviderCompactError>>
+            + Send
+            + 'static,
+        ProviderCompactError,
+    > {
+        let expected_profile = input
+            .compact_profile()
+            .map_err(|message| ProviderCompactError::InvalidContract { message })?;
+        let loaded = self
+            .loaded_package(plugin_id)
+            .map_err(compact_framework_error)?
+            .clone();
+        let provider_workers = Arc::clone(&self.provider_workers);
+        Ok(async move {
+            let wire_input = current_provider_compact_wire_input(&loaded, &input)?;
+            tracing::info!(
+                provider_code = %input.provider_code,
+                model = %input.model,
+                profile = %expected_profile.as_str(),
+                "provider compact wire prepared"
+            );
+            let output = Self::call_runtime_loaded(
+                loaded,
+                provider_workers,
+                ProviderStdioMethod::Invoke,
+                wire_input,
+            )
+            .await
+            .map_err(compact_framework_error)?;
+            let result =
+                serde_json::from_value::<ProviderCompactResult>(output).map_err(|error| {
+                    ProviderCompactError::Runtime {
+                        error: ProviderRuntimeError::new(
+                            ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                            format!("provider Compact result is malformed: {error}"),
+                        ),
+                    }
+                })?;
+            if !result.satisfies_profile(expected_profile) {
+                return Err(ProviderCompactError::Runtime {
+                    error: ProviderRuntimeError::new(
+                        ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                        format!(
+                            "provider Compact result must declare operation=compact with profile={}",
+                            expected_profile.as_str()
+                        ),
+                    ),
+                });
+            }
+            Ok(ProviderCompactOutput { result })
+        })
+    }
+
     pub async fn invoke_stream(
         &self,
         plugin_id: &str,
@@ -739,7 +811,29 @@ fn current_provider_wire_input(
         )));
     }
 
+    if input.operation != ProviderWireOperation::Generate {
+        return Err(PluginFrameworkError::invalid_provider_contract(
+            "provider stream invocation must declare operation=generate",
+        ));
+    }
+
     input.to_current_provider_wire_value(&loaded.package.manifest.runtime.capabilities)
+}
+
+fn current_provider_compact_wire_input(
+    loaded: &LoadedProviderPackage,
+    input: &ProviderInvocationInput,
+) -> Result<Value, ProviderCompactError> {
+    if loaded.package.manifest.contract_version != CURRENT_PROVIDER_CONTRACT {
+        return Err(ProviderCompactError::InvalidContract {
+            message: format!(
+                "unsupported provider package contract: expected {CURRENT_PROVIDER_CONTRACT}, found {}",
+                loaded.package.manifest.contract_version
+            ),
+        });
+    }
+
+    input.to_current_provider_compact_wire_value(&loaded.package.manifest.runtime.capabilities)
 }
 
 fn current_provider_count_tokens_wire_input(
@@ -776,6 +870,29 @@ fn count_tokens_framework_error(error: PluginFrameworkError) -> ProviderCountTok
             ),
         },
         other => ProviderCountTokensError::InvalidContract {
+            message: other.to_string(),
+        },
+    }
+}
+
+fn compact_framework_error(error: PluginFrameworkError) -> ProviderCompactError {
+    match error {
+        PluginFrameworkError::RuntimeContract { error } => {
+            ProviderCompactError::Runtime { error: *error }
+        }
+        PluginFrameworkError::Serialization { message, .. } => ProviderCompactError::Runtime {
+            error: ProviderRuntimeError::new(
+                ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                format!("provider Compact response is malformed: {message}"),
+            ),
+        },
+        PluginFrameworkError::Io { message, .. } => ProviderCompactError::Runtime {
+            error: ProviderRuntimeError::new(
+                ProviderRuntimeErrorKind::EndpointUnreachable,
+                format!("provider Compact runtime is unavailable: {message}"),
+            ),
+        },
+        other => ProviderCompactError::InvalidContract {
             message: other.to_string(),
         },
     }
@@ -918,6 +1035,18 @@ config_schema: []
             );
             fs::write(&manifest_path, manifest)
                 .expect("fixture provider manifest should declare CountTokens");
+        }
+
+        fn declare_compact_capability(&self, capability: &str) {
+            let manifest_path = self.path().join("manifest.yaml");
+            let manifest = fs::read_to_string(&manifest_path)
+                .expect("fixture provider manifest should be readable");
+            let manifest = manifest.replace(
+                "  limits:\n",
+                &format!("  capabilities:\n    - {capability}\n  limits:\n"),
+            );
+            fs::write(&manifest_path, manifest)
+                .expect("fixture provider manifest should declare Compact capability");
         }
 
         fn write_count_tokens_response_runtime(&self, response: &str) {
@@ -1168,6 +1297,19 @@ done
         }
     }
 
+    fn compact_input(model: &str, profile: ProviderCompactProfile) -> ProviderInvocationInput {
+        ProviderInvocationInput {
+            operation: ProviderWireOperation::Compact,
+            profile: Some(profile),
+            provider_instance_id: "provider-1".to_string(),
+            provider_code: "fixture_provider".to_string(),
+            protocol: "openai_responses".to_string(),
+            model: model.to_string(),
+            provider_config: json!({}),
+            ..ProviderInvocationInput::default()
+        }
+    }
+
     async fn wait_for_active_streams(host: &ProviderHost, count: usize) {
         for _ in 0..20 {
             if host.active_stream_snapshot().await.streams.len() == count {
@@ -1205,6 +1347,10 @@ done
             json!(512)
         );
         assert!(wire_input["model_parameters"].get("max_tokens").is_none());
+        assert!(
+            wire_input.get("operation").is_none() && wire_input.get("profile").is_none(),
+            "default Generate must retain the existing provider wire shape"
+        );
     }
 
     #[tokio::test]
@@ -1260,6 +1406,76 @@ done
         assert!(
             !spawn_marker.exists(),
             "missing CountTokens capability must fail before provider spawn"
+        );
+    }
+
+    #[tokio::test]
+    async fn k2_compact_missing_capability_fails_before_spawn_side_effect() {
+        let package = TempProviderPackage::new();
+        let spawn_marker = package.path().join("compact-spawn-side-effect-marker");
+        package.write_spawn_side_effect_runtime(&spawn_marker);
+        let mut host = ProviderHost::default();
+        let plugin_id = host
+            .load(package.path().to_str().unwrap())
+            .unwrap()
+            .plugin_id;
+
+        let error = host
+            .compact(
+                &plugin_id,
+                compact_input("fixture-model", ProviderCompactProfile::ResponsesCompact),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ProviderCompactError::Unsupported {
+                profile: ProviderCompactProfile::ResponsesCompact,
+                capabilities,
+            } if capabilities == vec!["compact.responses_compact"]
+        ));
+        assert!(
+            !spawn_marker.exists(),
+            "missing Compact capability must fail before provider spawn"
+        );
+    }
+
+    #[tokio::test]
+    async fn k2_compact_unclaimed_profile_capability_fails_before_spawn_side_effect() {
+        let package = TempProviderPackage::new();
+        package.declare_compact_capability("compact.responses_compact");
+        let spawn_marker = package
+            .path()
+            .join("compact-unclaimed-spawn-side-effect-marker");
+        package.write_spawn_side_effect_runtime(&spawn_marker);
+        let mut host = ProviderHost::default();
+        let plugin_id = host
+            .load(package.path().to_str().unwrap())
+            .unwrap()
+            .plugin_id;
+
+        let error = host
+            .compact(
+                &plugin_id,
+                compact_input(
+                    "fixture-model",
+                    ProviderCompactProfile::ResponsesCompactionV2,
+                ),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ProviderCompactError::Unsupported {
+                profile: ProviderCompactProfile::ResponsesCompactionV2,
+                capabilities,
+            } if capabilities == vec!["compact.responses_compaction_v2"]
+        ));
+        assert!(
+            !spawn_marker.exists(),
+            "a Compact profile must not claim another profile's manifest row"
         );
     }
 

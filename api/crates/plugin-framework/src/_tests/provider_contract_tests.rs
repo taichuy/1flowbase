@@ -5,11 +5,12 @@ use plugin_framework::{
     provider_contract::{
         ClientProtocolEnvelope, ModelDiscoveryMode, NativeModelRequestContext, NativePromptBlock,
         NativePromptCacheControl, NativePromptCacheControlType, ProviderBalanceInfo,
-        ProviderBalanceResult, ProviderCountTokensError, ProviderCountTokensInput,
-        ProviderCountTokensResult, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderMessage, ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind,
-        ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse,
-        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
+        ProviderBalanceResult, ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
+        ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
+        ProviderInvocationInput, ProviderInvocationResult, ProviderMessage, ProviderMessageRole,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
+        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
+        ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::json;
@@ -303,6 +304,72 @@ fn c1_count_tokens_wire_is_tagged_and_requires_a_declared_capability() {
         input.to_current_provider_wire_value(&[]),
         Err(ProviderCountTokensError::Unsupported { capabilities })
             if capabilities == vec!["count_tokens"]
+    ));
+}
+
+#[test]
+fn k2_compact_wire_derives_the_selected_profile_capability_and_closed_result_shape() {
+    let input = ProviderInvocationInput {
+        operation: ProviderWireOperation::Compact,
+        profile: Some(ProviderCompactProfile::ResponsesCompactionV2),
+        provider_instance_id: "provider-1".to_string(),
+        provider_code: "openai".to_string(),
+        protocol: "openai_responses".to_string(),
+        model: "gpt-5.4-mini".to_string(),
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::User,
+            content: "retain this turn".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: None,
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let wire = input
+        .to_current_provider_compact_wire_value(&["compact.responses_compaction_v2".to_string()])
+        .expect("the selected Compact profile should require its exact manifest row");
+    assert_eq!(wire["operation"], json!("compact"));
+    assert_eq!(wire["profile"], json!("responses_compaction_v2"));
+    assert_eq!(
+        wire["required_capabilities"],
+        json!(["compact.responses_compaction_v2"])
+    );
+
+    let result = serde_json::to_value(ProviderCompactResult::CompletedOpaqueCompactionItem {
+        operation: ProviderWireOperation::Compact,
+        profile: ProviderCompactProfile::ResponsesCompactionV2,
+        response_id: Some("resp_compact".to_string()),
+        compaction_item: json!({
+            "type": "compaction",
+            "encrypted_content": "opaque-byte-canary"
+        }),
+        encrypted_content: "opaque-byte-canary".to_string(),
+    })
+    .expect("the V2 Compact result should have one closed typed representation");
+    assert_eq!(
+        result,
+        json!({
+            "result_type": "completed_opaque_compaction_item",
+            "operation": "compact",
+            "profile": "responses_compaction_v2",
+            "response_id": "resp_compact",
+            "compaction_item": {
+                "type": "compaction",
+                "encrypted_content": "opaque-byte-canary"
+            },
+            "encrypted_content": "opaque-byte-canary"
+        })
+    );
+
+    assert!(matches!(
+        input.to_current_provider_compact_wire_value(&[]),
+        Err(ProviderCompactError::Unsupported {
+            profile: ProviderCompactProfile::ResponsesCompactionV2,
+            capabilities,
+        }) if capabilities == vec!["compact.responses_compaction_v2"]
     ));
 }
 

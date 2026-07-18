@@ -7,7 +7,7 @@ use plugin_framework::{
     provider_contract::{
         NativePromptBlock, ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult,
         ProviderMessage, ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind,
-        ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::{json, Map, Value};
