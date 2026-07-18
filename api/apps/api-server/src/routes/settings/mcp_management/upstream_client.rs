@@ -14,12 +14,14 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+const MAX_ERROR_RESPONSE_BYTES: usize = 8 * 1024;
 const MAX_DISCOVERY_PAGES: usize = 64;
 const MAX_DISCOVERY_TOOLS: usize = 10_000;
 const MAX_DISCOVERY_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 const DNS_LOOKUP_DEADLINE: Duration = Duration::from_secs(5);
 const DISCOVERY_DEADLINE: Duration = Duration::from_secs(60);
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
+const MCP_STREAMABLE_HTTP_ACCEPT: &str = "application/json, text/event-stream";
 
 #[derive(Debug, Clone)]
 pub struct McpUpstreamServerInfo {
@@ -478,10 +480,7 @@ impl McpStreamableHttpClient {
     ) -> Result<(), McpUpstreamClientError> {
         let response = self.send(body, session_id).await?;
         if !response.status().is_success() {
-            return Err(McpUpstreamClientError::Protocol(format!(
-                "HTTP {}",
-                response.status()
-            )));
+            return Err(upstream_http_status_error(response).await);
         }
         Ok(())
     }
@@ -491,34 +490,36 @@ impl McpStreamableHttpClient {
         body: Value,
         session_id: Option<&str>,
     ) -> Result<RpcResponse, McpUpstreamClientError> {
+        let expected_id = body
+            .get("id")
+            .cloned()
+            .ok_or_else(|| McpUpstreamClientError::Protocol("missing JSON-RPC id".into()))?;
         let response = self.send(body, session_id).await?;
         if !response.status().is_success() {
-            return Err(McpUpstreamClientError::Protocol(format!(
-                "HTTP {}",
-                response.status()
-            )));
+            return Err(upstream_http_status_error(response).await);
         }
         let content_type = response
             .headers()
             .get(CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .unwrap_or("");
-        if !content_type
-            .split(';')
-            .next()
-            .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"))
-        {
-            return Err(McpUpstreamClientError::NonJsonResponse);
-        }
+        let media_type = content_type.split(';').next().map(str::trim).unwrap_or("");
         let session_id = response
             .headers()
             .get("mcp-session-id")
             .and_then(|value| value.to_str().ok())
             .map(str::to_string);
-        let bytes = bounded_body(response).await?;
-        let response_bytes = bytes.len();
-        let body =
-            serde_json::from_slice(&bytes).map_err(|_| McpUpstreamClientError::NonJsonResponse)?;
+        let (body, response_bytes) = if media_type.eq_ignore_ascii_case("application/json") {
+            let bytes = bounded_body(response).await?;
+            let response_bytes = bytes.len();
+            let body = serde_json::from_slice(&bytes)
+                .map_err(|_| McpUpstreamClientError::NonJsonResponse)?;
+            (body, response_bytes)
+        } else if media_type.eq_ignore_ascii_case("text/event-stream") {
+            bounded_sse_rpc_body(response, &expected_id).await?
+        } else {
+            return Err(McpUpstreamClientError::NonJsonResponse);
+        };
         Ok(RpcResponse {
             body,
             session_id,
@@ -534,7 +535,7 @@ impl McpStreamableHttpClient {
         let mut request = self
             .client
             .post(self.endpoint.clone())
-            .header(ACCEPT, "application/json")
+            .header(ACCEPT, MCP_STREAMABLE_HTTP_ACCEPT)
             .headers(self.authentication_headers.clone())
             .json(&body);
         if let Some(session_id) = session_id {
@@ -605,6 +606,128 @@ async fn bounded_body(response: reqwest::Response) -> Result<Vec<u8>, McpUpstrea
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes)
+}
+
+async fn upstream_http_status_error(response: reqwest::Response) -> McpUpstreamClientError {
+    let status = response.status();
+    match bounded_error_body(response).await {
+        Ok((bytes, truncated)) => {
+            let detail = String::from_utf8_lossy(&bytes).trim().to_string();
+            let suffix = if truncated { " [truncated]" } else { "" };
+            if detail.is_empty() {
+                McpUpstreamClientError::Protocol(format!("HTTP {status}"))
+            } else {
+                McpUpstreamClientError::Protocol(format!("HTTP {status}: {detail}{suffix}"))
+            }
+        }
+        Err(error) => error,
+    }
+}
+
+async fn bounded_error_body(
+    response: reqwest::Response,
+) -> Result<(Vec<u8>, bool), McpUpstreamClientError> {
+    let mut stream = response.bytes_stream();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| McpUpstreamClientError::Request(error.to_string()))?;
+        let remaining = MAX_ERROR_RESPONSE_BYTES.saturating_sub(bytes.len());
+        if chunk.len() > remaining {
+            bytes.extend_from_slice(&chunk[..remaining]);
+            return Ok((bytes, true));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok((bytes, false))
+}
+
+async fn bounded_sse_rpc_body(
+    response: reqwest::Response,
+    expected_id: &Value,
+) -> Result<(Value, usize), McpUpstreamClientError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
+    {
+        return Err(McpUpstreamClientError::ResponseTooLarge);
+    }
+    let mut stream = response.bytes_stream();
+    let mut pending = Vec::new();
+    let mut event_data = Vec::new();
+    let mut response_bytes = 0usize;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| McpUpstreamClientError::Request(error.to_string()))?;
+        response_bytes = response_bytes
+            .checked_add(chunk.len())
+            .ok_or(McpUpstreamClientError::ResponseTooLarge)?;
+        if response_bytes > MAX_RESPONSE_BYTES {
+            return Err(McpUpstreamClientError::ResponseTooLarge);
+        }
+        pending.extend_from_slice(&chunk);
+
+        let mut consumed = 0usize;
+        while let Some(offset) = pending[consumed..].iter().position(|byte| *byte == b'\n') {
+            let line_end = consumed + offset;
+            let line = pending[consumed..line_end]
+                .strip_suffix(b"\r")
+                .unwrap_or(&pending[consumed..line_end]);
+            if let Some(body) = observe_sse_line(line, &mut event_data, expected_id)? {
+                return Ok((body, response_bytes));
+            }
+            consumed = line_end + 1;
+        }
+        if consumed > 0 {
+            pending.drain(..consumed);
+        }
+    }
+
+    if !pending.is_empty() {
+        let line = pending.strip_suffix(b"\r").unwrap_or(&pending);
+        if let Some(body) = observe_sse_line(line, &mut event_data, expected_id)? {
+            return Ok((body, response_bytes));
+        }
+    }
+    if let Some(body) = finish_sse_event(&mut event_data, expected_id)? {
+        return Ok((body, response_bytes));
+    }
+    Err(McpUpstreamClientError::Protocol(
+        "missing JSON-RPC response in SSE stream".into(),
+    ))
+}
+
+fn observe_sse_line(
+    line: &[u8],
+    event_data: &mut Vec<u8>,
+    expected_id: &Value,
+) -> Result<Option<Value>, McpUpstreamClientError> {
+    if line.is_empty() {
+        return finish_sse_event(event_data, expected_id);
+    }
+    if line.starts_with(b":") {
+        return Ok(None);
+    }
+    if let Some(data) = line.strip_prefix(b"data:") {
+        let data = data.strip_prefix(b" ").unwrap_or(data);
+        event_data.extend_from_slice(data);
+        event_data.push(b'\n');
+    }
+    Ok(None)
+}
+
+fn finish_sse_event(
+    event_data: &mut Vec<u8>,
+    expected_id: &Value,
+) -> Result<Option<Value>, McpUpstreamClientError> {
+    if event_data.is_empty() {
+        return Ok(None);
+    }
+    if event_data.last() == Some(&b'\n') {
+        event_data.pop();
+    }
+    let body = serde_json::from_slice::<Value>(event_data)
+        .map_err(|_| McpUpstreamClientError::NonJsonResponse)?;
+    event_data.clear();
+    Ok((body.get("id") == Some(expected_id)).then_some(body))
 }
 
 fn rpc_error(body: &Value) -> McpUpstreamClientError {
@@ -691,7 +814,7 @@ mod tests {
     use axum::{
         extract::State,
         http::{HeaderMap as AxumHeaderMap, StatusCode},
-        response::IntoResponse,
+        response::{IntoResponse, Response},
         routing::post,
         Json, Router,
     };
@@ -793,6 +916,61 @@ mod tests {
         }
     }
 
+    async fn github_streamable_initialize_stub(
+        headers: AxumHeaderMap,
+        Json(body): Json<Value>,
+    ) -> Response {
+        let accepted = headers
+            .get("accept")
+            .and_then(|value| value.to_str().ok())
+            .map(|value| {
+                let media_types = value.split(',').map(str::trim).collect::<HashSet<_>>();
+                media_types.contains("application/json")
+                    && media_types.contains("text/event-stream")
+            })
+            .unwrap_or(false);
+        if !accepted {
+            return (
+                StatusCode::BAD_REQUEST,
+                "Accept must contain both 'application/json' and 'text/event-stream'",
+            )
+                .into_response();
+        }
+
+        let payload = json!({
+            "jsonrpc":"2.0",
+            "id":body["id"],
+            "result":{
+                "protocolVersion":MCP_PROTOCOL_VERSION,
+                "serverInfo":{"name":"github-mcp-server","version":"remote-test"},
+                "capabilities":{"tools":{}}
+            }
+        });
+        (
+            StatusCode::OK,
+            [
+                ("content-type", "text/event-stream"),
+                ("mcp-session-id", "github-session"),
+            ],
+            format!("event: message\r\ndata: {payload}\r\n\r\n"),
+        )
+            .into_response()
+    }
+
+    async fn upstream_error_stub() -> Response {
+        (
+            StatusCode::BAD_REQUEST,
+            "Accept must contain both 'application/json' and 'text/event-stream'",
+        )
+            .into_response()
+    }
+
+    async fn oversized_upstream_error_stub() -> Response {
+        let mut body = "x".repeat(MAX_ERROR_RESPONSE_BYTES + 64);
+        body.push_str("terminal-marker");
+        (StatusCode::BAD_GATEWAY, body).into_response()
+    }
+
     fn loopback_connection(endpoint: String) -> domain::McpUpstreamConnectionRecord {
         let now = OffsetDateTime::now_utc();
         domain::McpUpstreamConnectionRecord {
@@ -813,6 +991,74 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[tokio::test]
+    async fn issue_1246_streamable_http_accepts_github_sse_initialize_response() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new().route("/mcp", post(github_streamable_initialize_stub));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let client = McpStreamableHttpClient::connect_test_loopback(&loopback_connection(format!(
+            "http://{address}/mcp"
+        )))
+        .await
+        .unwrap();
+
+        let initialized = client.initialize().await.unwrap();
+
+        assert_eq!(initialized.name.as_deref(), Some("github-mcp-server"));
+        assert_eq!(initialized.version.as_deref(), Some("remote-test"));
+        assert_eq!(initialized.protocol_version, MCP_PROTOCOL_VERSION);
+        assert_eq!(initialized.session_id.as_deref(), Some("github-session"));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn issue_1246_upstream_http_error_preserves_bounded_response_body() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new().route("/mcp", post(upstream_error_stub));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let client = McpStreamableHttpClient::connect_test_loopback(&loopback_connection(format!(
+            "http://{address}/mcp"
+        )))
+        .await
+        .unwrap();
+
+        let error = client.initialize().await.unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "upstream protocol error: HTTP 400 Bad Request: Accept must contain both 'application/json' and 'text/event-stream'"
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn issue_1246_upstream_http_error_body_is_truncated_at_budget() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new().route("/mcp", post(oversized_upstream_error_stub));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let client = McpStreamableHttpClient::connect_test_loopback(&loopback_connection(format!(
+            "http://{address}/mcp"
+        )))
+        .await
+        .unwrap();
+
+        let error = client.initialize().await.unwrap_err().to_string();
+
+        assert!(error.ends_with(" [truncated]"));
+        assert!(!error.contains("terminal-marker"));
+        assert!(error.len() < MAX_ERROR_RESPONSE_BYTES + 128);
+        server.abort();
     }
 
     #[test]

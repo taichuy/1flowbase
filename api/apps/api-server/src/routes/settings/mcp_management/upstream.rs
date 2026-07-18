@@ -11,7 +11,7 @@ use control_plane::mcp_management::{
     SaveMcpUpstreamCredentialCommand,
 };
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -204,9 +204,11 @@ pub async fn list_connections(
     let records = McpManagementService::new(state.store.clone())
         .list_upstream_connections(context.user.id)
         .await?;
-    Ok(Json(ApiSuccess::new(
-        records.into_iter().map(to_connection_response).collect(),
-    )))
+    let responses = records
+        .into_iter()
+        .map(to_connection_response)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Json(ApiSuccess::new(responses)))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/upstream-connections", request_body = SaveMcpUpstreamConnectionBody, responses((status = 201, body = McpUpstreamConnectionResponse)))]
@@ -222,7 +224,7 @@ pub async fn create_connection(
         .await?;
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_connection_response(record))),
+        Json(ApiSuccess::new(to_connection_response(record)?)),
     ))
 }
 
@@ -243,7 +245,7 @@ pub async fn update_connection(
             body,
         )?)
         .await?;
-    Ok(Json(ApiSuccess::new(to_connection_response(record))))
+    Ok(Json(ApiSuccess::new(to_connection_response(record)?)))
 }
 
 #[utoipa::path(delete, path = "/api/console/mcp/upstream-connections/{connection_id}", responses((status = 204)))]
@@ -322,6 +324,7 @@ pub async fn test_connection(
         )
         .await?;
     let tested_at = OffsetDateTime::now_utc();
+    let tested_at_response = format_timestamp(tested_at)?;
     let result = match McpStreamableHttpClient::connect(&connection, secret.as_ref()).await {
         Ok(client) => client.initialize().await,
         Err(error) => Err(error),
@@ -334,7 +337,7 @@ pub async fn test_connection(
                 server_name: server.name,
                 server_version: server.version,
                 protocol_version: Some(server.protocol_version),
-                tested_at: tested_at.to_string(),
+                tested_at: tested_at_response.clone(),
                 error: None,
             },
             None,
@@ -348,7 +351,7 @@ pub async fn test_connection(
                     server_name: None,
                     server_version: None,
                     protocol_version: None,
-                    tested_at: tested_at.to_string(),
+                    tested_at: tested_at_response,
                     error: Some(error.clone()),
                 },
                 Some(error),
@@ -413,7 +416,7 @@ pub async fn discover_tools(
         server_name: discovery.server.name,
         server_version: discovery.server.version,
         protocol_version: discovery.server.protocol_version,
-        discovered_at: discovered_at.to_string(),
+        discovered_at: format_timestamp(discovered_at)?,
         items: sources.into_iter().map(to_tool_source_response).collect(),
     })))
 }
@@ -562,13 +565,13 @@ fn parse_connection_id(value: &str) -> Result<Uuid, ApiError> {
 
 fn to_connection_response(
     record: domain::McpUpstreamConnectionRecord,
-) -> McpUpstreamConnectionResponse {
+) -> Result<McpUpstreamConnectionResponse, time::error::Format> {
     let credentials_status = match record.auth_type {
         domain::McpUpstreamAuthType::None => "not_required",
         _ if record.credentials_configured => "configured",
         _ => "missing",
     };
-    McpUpstreamConnectionResponse {
+    Ok(McpUpstreamConnectionResponse {
         connection_id: record.id.to_string(),
         workspace_id: record.workspace_id.to_string(),
         name: record.name,
@@ -578,12 +581,19 @@ fn to_connection_response(
         custom_header_name: record.custom_header_name,
         status: record.status.as_str().into(),
         credentials_status: credentials_status.into(),
-        last_connected_at: record.last_connected_at.map(|value| value.to_string()),
-        last_discovered_at: record.last_discovered_at.map(|value| value.to_string()),
+        last_connected_at: record.last_connected_at.map(format_timestamp).transpose()?,
+        last_discovered_at: record
+            .last_discovered_at
+            .map(format_timestamp)
+            .transpose()?,
         last_error: record.last_error,
-        created_at: record.created_at.to_string(),
-        updated_at: record.updated_at.to_string(),
-    }
+        created_at: format_timestamp(record.created_at)?,
+        updated_at: format_timestamp(record.updated_at)?,
+    })
+}
+
+fn format_timestamp(value: OffsetDateTime) -> Result<String, time::error::Format> {
+    value.format(&Rfc3339)
 }
 
 fn to_tool_source_response(record: domain::McpUpstreamToolSourceRecord) -> McpUpstreamToolResponse {

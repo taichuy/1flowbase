@@ -7,6 +7,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use serde_json::{json, Value};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -73,6 +74,22 @@ async fn create_connection(app: &axum::Router, cookie: &str, csrf: &str) -> Valu
         .unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
     response_json(response).await["data"].clone()
+}
+
+#[tokio::test]
+async fn issue_1246_upstream_connection_api_timestamps_are_rfc3339() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let connection = create_connection(&app, &cookie, &csrf).await;
+
+    for field in ["created_at", "updated_at"] {
+        let timestamp = connection[field]
+            .as_str()
+            .unwrap_or_else(|| panic!("{field} must be a string"));
+        OffsetDateTime::parse(timestamp, &Rfc3339)
+            .unwrap_or_else(|error| panic!("{field} must be RFC 3339: {error}"));
+    }
 }
 
 #[tokio::test]
