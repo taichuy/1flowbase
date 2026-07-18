@@ -62,6 +62,7 @@ struct ApplicationPublicApiTestRepositoryInner {
     fail_mark_api_key_used: bool,
     published_generate_capability_supported: Option<bool>,
     published_generate_capability_checks: usize,
+    published_generate_capability_profiles: Vec<run_service::GenerateExecutionProfile>,
 }
 
 #[derive(Clone, Default)]
@@ -222,6 +223,16 @@ impl ApplicationPublicApiTestRepository {
             .lock()
             .expect("application public api test repo mutex poisoned")
             .published_generate_capability_checks
+    }
+
+    pub fn published_generate_capability_profiles(
+        &self,
+    ) -> Vec<run_service::GenerateExecutionProfile> {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .published_generate_capability_profiles
+            .clone()
     }
 
     pub fn configure_published_generate_route(

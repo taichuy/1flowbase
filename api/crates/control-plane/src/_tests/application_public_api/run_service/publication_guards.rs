@@ -74,9 +74,9 @@ async fn generate_capability_mismatch_fails_closed_without_run_or_provider_spawn
     assert_eq!(repository.published_generate_capability_checks(), 1);
 }
 
-/// Root #1366 AC-003 / AC-006: standard and local-summary Generate resolve one frozen target.
+/// Root #1366 AC-003 / AC-006: both Generate profiles use the frozen target and fail closed.
 #[tokio::test]
-async fn generate_profiles_ignore_draft_mutation_and_resolve_the_same_frozen_target() {
+async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_mismatch() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Frozen Generate Route App");
@@ -169,14 +169,47 @@ async fn generate_profiles_ignore_draft_mutation_and_resolve_the_same_frozen_tar
         let ResolvedPublishedRoute::Provider(route) = route else {
             panic!("Generate binding must resolve a provider target");
         };
+        assert_eq!(route.operation, ProviderWireOperation::Generate);
         assert_eq!(route.target_node_id, "node-frozen-llm");
         assert_eq!(route.llm_runtime, frozen_runtime);
     }
+    assert_eq!(
+        repository.published_generate_capability_profiles(),
+        vec![
+            GenerateExecutionProfile::Standard,
+            GenerateExecutionProfile::LocalSummary,
+        ]
+    );
+
+    repository.set_published_generate_capability_supported(false);
+    let mismatch = resolver
+        .resolve_generate(
+            application.workspace_id,
+            &publication,
+            &compiled_plan,
+            PublishedRouteDispatch::OperationBinding,
+            GenerateExecutionProfile::LocalSummary,
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        mismatch,
+        PublishedRouteResolutionError::ProviderCapabilityMismatch
+    );
+    assert_eq!(
+        repository.published_generate_capability_profiles(),
+        vec![
+            GenerateExecutionProfile::Standard,
+            GenerateExecutionProfile::LocalSummary,
+            GenerateExecutionProfile::LocalSummary,
+        ]
+    );
 }
 
-/// Root #1366 AC-003 / AC-005: stale target identity and incomplete runtime fail before capability.
+/// Root #1366 AC-003 / AC-005: stale, non-LLM, and incomplete targets fail before capability.
 #[tokio::test]
-async fn generate_target_mismatch_and_incomplete_runtime_fail_before_capability_lookup() {
+async fn generate_invalid_targets_fail_before_capability_lookup() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Invalid Frozen Route App");
@@ -238,7 +271,22 @@ async fn generate_target_mismatch_and_incomplete_runtime_fail_before_capability_
         .await
         .unwrap_err();
 
+    let mut non_llm_plan = compiled_plan.clone();
+    non_llm_plan.plan["nodes"]["node-frozen-llm"]["node_type"] =
+        serde_json::json!("http_request");
+    let non_llm = resolver
+        .resolve_generate(
+            application.workspace_id,
+            &publication,
+            &non_llm_plan,
+            PublishedRouteDispatch::OperationBinding,
+            GenerateExecutionProfile::Standard,
+        )
+        .await
+        .unwrap_err();
+
     assert_eq!(missing, PublishedRouteResolutionError::TargetMissing);
+    assert_eq!(non_llm, PublishedRouteResolutionError::TargetNotLlm);
     assert_eq!(
         incomplete,
         PublishedRouteResolutionError::IncompleteLlmRuntime

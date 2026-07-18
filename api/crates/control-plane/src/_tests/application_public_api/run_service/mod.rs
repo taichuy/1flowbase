@@ -22,7 +22,7 @@ use control_plane::ports::{
     ApplicationPublicationRepository, ApplicationRepository, FlowRepository,
     ReplaceApplicationEnvironmentVariablesInput,
 };
-use plugin_framework::provider_contract::NativePromptBlock;
+use plugin_framework::provider_contract::{NativePromptBlock, ProviderWireOperation};
 use serde_json::json;
 use uuid::Uuid;
 
