@@ -158,7 +158,9 @@ pub fn translate_chat_completion_request(
     let metadata = openai_metadata(object, &mut report)?;
     let execution = native_execution(
         chat_max_output_tokens(object, &mut report)?,
-        NativeExecutionOperation::Generate,
+        NativeExecutionOperation::Generate(
+            crate::application_public_api::run_service::GenerateExecutionProfile::Standard,
+        ),
     );
     let request = NativeRunRequest {
         query,
@@ -511,6 +513,6 @@ fn native_execution(
         .and_then(NonZeroU64::new)
         .map(NativeExecution::with_max_output_tokens)
         .unwrap_or_default();
-    execution.set_operation(operation);
+    execution.set_execution_operation(operation);
     execution
 }

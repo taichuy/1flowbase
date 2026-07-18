@@ -167,13 +167,11 @@ pub(super) fn classify_response_operation(
         (OpenAiResponsesEndpoint::Responses, _, false) => None,
     };
 
-    let operation = profile
-        .map(CompactionIntent::new)
-        .map(NativeExecutionOperation::Compact)
-        .unwrap_or_default();
-    if !operation.is_generate() {
-        record_compaction_evidence(context, has_compaction_trigger, report);
-    }
+    let Some(intent) = profile.map(CompactionIntent::new) else {
+        return Ok(NativeExecutionOperation::default());
+    };
+    let operation = intent.execution_operation();
+    record_compaction_evidence(context, has_compaction_trigger, report);
     Ok(operation)
 }
 

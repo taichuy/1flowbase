@@ -4,9 +4,12 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use super::{NativeExecutionOperation, NativeObject};
-use crate::application_public_api::protocol_translation::{
-    anonymous_unknown_source_paths, TranslationDecisionKind, TranslationReport,
-    TranslationSafeRepresentation,
+use crate::application_public_api::{
+    protocol_translation::{
+        anonymous_unknown_source_paths, TranslationDecisionKind, TranslationReport,
+        TranslationSafeRepresentation,
+    },
+    run_service::GenerateExecutionProfile,
 };
 
 const MODEL_PARAMETERS_PATH: &str = "$.execution.model_parameters";
@@ -19,7 +22,7 @@ pub struct NativeExecution {
     opaque: NativeObject,
     idempotency_key: Option<String>,
     model_parameters: Option<NativeExecutionModelParameters>,
-    operation: NativeExecutionOperation,
+    execution_operation: NativeExecutionOperation,
 }
 
 impl NativeExecution {
@@ -29,7 +32,7 @@ impl NativeExecution {
         let mut opaque = Map::new();
         let mut idempotency_key = None;
         let mut model_parameters = None;
-        let mut operation = NativeExecutionOperation::default();
+        let mut execution_operation = NativeExecutionOperation::default();
         for (field, value) in object {
             match field.as_str() {
                 "idempotency_key" => {
@@ -44,8 +47,8 @@ impl NativeExecution {
                     model_parameters = Some(NativeExecutionModelParameters::from_value(value)?);
                 }
                 "operation" => {
-                    operation = serde_json::from_value(value.clone())
-                        .map_err(|_| NativeExecutionParseError::operation())?;
+                    execution_operation = NativeExecutionOperation::from_value(value)
+                        .ok_or_else(NativeExecutionParseError::operation)?;
                 }
                 "compatibility_mode" => {
                     return Err(NativeExecutionParseError::compatibility_mode());
@@ -59,7 +62,7 @@ impl NativeExecution {
             opaque: NativeObject::from_map(opaque),
             idempotency_key,
             model_parameters,
-            operation,
+            execution_operation,
         })
     }
 
@@ -70,7 +73,7 @@ impl NativeExecution {
             model_parameters: Some(NativeExecutionModelParameters::with_max_output_tokens(
                 max_output_tokens,
             )),
-            operation: NativeExecutionOperation::default(),
+            execution_operation: NativeExecutionOperation::default(),
         }
     }
 
@@ -82,12 +85,19 @@ impl NativeExecution {
         self.idempotency_key.as_deref()
     }
 
-    pub fn operation(&self) -> &NativeExecutionOperation {
-        &self.operation
+    pub fn execution_operation(&self) -> &NativeExecutionOperation {
+        &self.execution_operation
     }
 
-    pub(crate) fn set_operation(&mut self, operation: NativeExecutionOperation) {
-        self.operation = operation;
+    pub(crate) fn set_execution_operation(&mut self, operation: NativeExecutionOperation) {
+        self.execution_operation = operation;
+    }
+
+    fn has_explicit_execution_operation(&self) -> bool {
+        !matches!(
+            &self.execution_operation,
+            NativeExecutionOperation::Generate(GenerateExecutionProfile::Standard)
+        )
     }
 
     pub(crate) fn as_value(&self) -> Value {
@@ -104,12 +114,8 @@ impl NativeExecution {
                 model_parameters.canonical_value(),
             );
         }
-        if !self.operation.is_generate() {
-            execution.insert(
-                "operation".to_string(),
-                serde_json::to_value(&self.operation)
-                    .expect("Native execution operation must serialize"),
-            );
+        if self.has_explicit_execution_operation() {
+            execution.insert("operation".to_string(), self.execution_operation.as_value());
         }
         Value::Object(execution)
     }
@@ -128,12 +134,8 @@ impl NativeExecution {
                 model_parameters.fingerprint_value(),
             );
         }
-        if !self.operation.is_generate() {
-            execution.insert(
-                "operation".to_string(),
-                serde_json::to_value(&self.operation)
-                    .expect("Native execution operation must serialize"),
-            );
+        if self.has_explicit_execution_operation() {
+            execution.insert("operation".to_string(), self.execution_operation.as_value());
         }
         Value::Object(execution)
     }
@@ -539,7 +541,7 @@ pub(super) fn record_native_execution_receipts(
             TranslationSafeRepresentation::Redacted,
         );
     }
-    if !execution.operation.is_generate() {
+    if execution.has_explicit_execution_operation() {
         report.record(
             "$.execution.operation",
             Some("$.execution.operation"),

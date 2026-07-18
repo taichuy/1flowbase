@@ -41,6 +41,7 @@ mod model_parameters;
 
 pub use compaction::{
     CompactionIntent, CompactionProfile, CompactionResultRequirement, NativeExecutionOperation,
+    RemoteCompactionProfile,
 };
 pub use metadata::NativeRequestMetadata;
 pub use model_parameters::{
