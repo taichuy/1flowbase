@@ -1,0 +1,491 @@
+{
+  "schema_version": "1flowbase.provider-conformance/v1",
+  "provider_contract_version": "1flowbase.provider/v2",
+  "providers": [
+    {
+      "provider_code": "openai",
+      "plugin_id": "openai",
+      "protocol": "openai_responses",
+      "response_fixture": "openai_responses_sse",
+      "expected_manifest": {
+        "consumption_kind": "runtime_extension",
+        "execution_mode": "stateful_provider_worker",
+        "slot_codes": ["model_provider"],
+        "contract_version": "1flowbase.provider/v2",
+        "runtime": {
+          "protocol": "stdio_json_worker",
+          "entry": "bin/openai-provider",
+          "capabilities": []
+        }
+      },
+      "input": {
+        "contract_version": "1flowbase.provider/v2",
+        "provider_instance_id": "conformance-openai",
+        "provider_code": "openai",
+        "protocol": "openai_responses",
+        "model": "gpt-5.5",
+        "provider_config": {
+          "base_url": "$UPSTREAM_BASE_URL",
+          "api_key": "$SECRET_CANARY",
+          "organization": "$HEADER_CANARY",
+          "transport_mode": "http_sse",
+          "validate_model": false
+        },
+        "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+        "system": [],
+        "request_context": {},
+        "required_capabilities": [],
+        "tools": [],
+        "mcp_bindings": [],
+        "response_format": null,
+        "model_parameters": { "temperature": 0.25 },
+        "client_protocol_envelope": {
+          "source_protocol": "anthropic_messages",
+          "policy": "anthropic_messages_v1",
+          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+        },
+        "trace_context": {},
+        "run_context": {}
+      },
+      "expected_wire": {
+        "method": "POST",
+        "path": "/responses",
+        "headers": {
+          "accept": "text/event-stream",
+          "content-type": "application/json",
+          "authorization": "Bearer $SECRET_CANARY",
+          "openai-organization": "$HEADER_CANARY",
+          "x-claude-code-session-id": "$HEADER_CANARY"
+        },
+        "body": {
+          "model": "gpt-5.5",
+          "input": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+          "stream": true,
+          "temperature": 0.25
+        },
+        "wire_audit": {
+          "message_count": 1,
+          "system_block_count": 0,
+          "model_parameter_count": 1,
+          "counts_capped": false
+        }
+      }
+    },
+    {
+      "provider_code": "anthropic",
+      "plugin_id": "anthropic",
+      "protocol": "anthropic_messages",
+      "response_fixture": "anthropic_messages_sse",
+      "expected_manifest": {
+        "consumption_kind": "runtime_extension",
+        "execution_mode": "process_per_call",
+        "slot_codes": ["model_provider"],
+        "contract_version": "1flowbase.provider/v2",
+        "runtime": {
+          "protocol": "stdio_json",
+          "entry": "bin/anthropic-provider",
+          "capabilities": [
+            "end_user_reference",
+            "system_prompt_blocks",
+            "system_prompt_cache_control"
+          ]
+        }
+      },
+      "input": {
+        "contract_version": "1flowbase.provider/v2",
+        "provider_instance_id": "conformance-anthropic",
+        "provider_code": "anthropic",
+        "protocol": "anthropic_messages",
+        "model": "claude-sonnet-4-20250514",
+        "provider_config": {
+          "base_url": "$UPSTREAM_BASE_URL",
+          "api_key": "$SECRET_CANARY",
+          "anthropic_version": "2023-06-01",
+          "validate_model": false
+        },
+        "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+        "system": [
+          {
+            "type": "text",
+            "text": "$SYSTEM_PROMPT_CANARY",
+            "cache_control": { "type": "ephemeral" }
+          }
+        ],
+        "request_context": { "end_user_reference": "$END_USER_CANARY" },
+        "required_capabilities": [
+          "system_prompt_blocks",
+          "system_prompt_cache_control",
+          "end_user_reference"
+        ],
+        "tools": [],
+        "mcp_bindings": [],
+        "response_format": null,
+        "model_parameters": { "temperature": 0.25 },
+        "client_protocol_envelope": {
+          "source_protocol": "anthropic_messages",
+          "policy": "anthropic_messages_v1",
+          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+        },
+        "trace_context": {},
+        "run_context": {}
+      },
+      "expected_wire": {
+        "method": "POST",
+        "path": "/v1/messages",
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json",
+          "x-api-key": "$SECRET_CANARY",
+          "anthropic-version": "2023-06-01",
+          "x-claude-code-session-id": "$HEADER_CANARY"
+        },
+        "body": {
+          "model": "claude-sonnet-4-20250514",
+          "messages": [
+            {
+              "role": "user",
+              "content": [{ "type": "text", "text": "$PROMPT_CANARY" }]
+            }
+          ],
+          "stream": true,
+          "max_tokens": 4096,
+          "system": [
+            {
+              "type": "text",
+              "text": "$SYSTEM_PROMPT_CANARY",
+              "cache_control": { "type": "ephemeral" }
+            }
+          ],
+          "metadata": { "user_id": "$END_USER_CANARY" },
+          "temperature": 0.25
+        },
+        "wire_audit": {
+          "message_count": 1,
+          "system_block_count": 1,
+          "model_parameter_count": 1,
+          "counts_capped": false
+        }
+      }
+    },
+    {
+      "provider_code": "aliyun_bailian",
+      "plugin_id": "aliyun_bailian",
+      "protocol": "aliyun_bailian",
+      "response_fixture": "openai_chat_sse",
+      "expected_manifest": {
+        "consumption_kind": "runtime_extension",
+        "execution_mode": "process_per_call",
+        "slot_codes": ["model_provider"],
+        "contract_version": "1flowbase.provider/v2",
+        "runtime": {
+          "protocol": "stdio_json",
+          "entry": "bin/aliyun_bailian-provider",
+          "capabilities": []
+        }
+      },
+      "input": {
+        "contract_version": "1flowbase.provider/v2",
+        "provider_instance_id": "conformance-aliyun-bailian",
+        "provider_code": "aliyun_bailian",
+        "protocol": "aliyun_bailian",
+        "model": "qwen-plus",
+        "provider_config": {
+          "base_url": "$UPSTREAM_BASE_URL",
+          "api_key": "$SECRET_CANARY",
+          "api_protocol": "openai_chat",
+          "validate_model": false
+        },
+        "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+        "system": [],
+        "request_context": {},
+        "required_capabilities": [],
+        "tools": [],
+        "mcp_bindings": [],
+        "response_format": null,
+        "model_parameters": { "temperature": 0.25 },
+        "client_protocol_envelope": {
+          "source_protocol": "anthropic_messages",
+          "policy": "anthropic_messages_v1",
+          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+        },
+        "trace_context": {},
+        "run_context": {}
+      },
+      "expected_wire": {
+        "method": "POST",
+        "path": "/compatible-mode/v1/chat/completions",
+        "headers": {
+          "accept": "text/event-stream",
+          "content-type": "application/json",
+          "authorization": "Bearer $SECRET_CANARY",
+          "x-claude-code-session-id": "$HEADER_CANARY"
+        },
+        "body": {
+          "model": "qwen-plus",
+          "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+          "stream": true,
+          "stream_options": { "include_usage": true },
+          "temperature": 0.25
+        },
+        "wire_audit": {
+          "message_count": 1,
+          "system_block_count": 0,
+          "model_parameter_count": 1,
+          "counts_capped": false
+        }
+      }
+    },
+    {
+      "provider_code": "deepseek",
+      "plugin_id": "deepseek",
+      "protocol": "deepseek",
+      "response_fixture": "openai_chat_sse",
+      "expected_manifest": {
+        "consumption_kind": "runtime_extension",
+        "execution_mode": "process_per_call",
+        "slot_codes": ["model_provider"],
+        "contract_version": "1flowbase.provider/v2",
+        "runtime": {
+          "protocol": "stdio_json",
+          "entry": "bin/deepseek-provider",
+          "capabilities": []
+        }
+      },
+      "input": {
+        "contract_version": "1flowbase.provider/v2",
+        "provider_instance_id": "conformance-deepseek",
+        "provider_code": "deepseek",
+        "protocol": "deepseek",
+        "model": "deepseek-chat",
+        "provider_config": {
+          "base_url": "$UPSTREAM_BASE_URL",
+          "api_key": "$SECRET_CANARY",
+          "validate_model": false
+        },
+        "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+        "system": [],
+        "request_context": {},
+        "required_capabilities": [],
+        "tools": [],
+        "mcp_bindings": [],
+        "response_format": null,
+        "model_parameters": { "temperature": 0.25 },
+        "client_protocol_envelope": {
+          "source_protocol": "anthropic_messages",
+          "policy": "anthropic_messages_v1",
+          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+        },
+        "trace_context": {},
+        "run_context": {}
+      },
+      "expected_wire": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json",
+          "authorization": "Bearer $SECRET_CANARY",
+          "x-claude-code-session-id": "$HEADER_CANARY"
+        },
+        "body": {
+          "model": "deepseek-chat",
+          "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+          "stream": true,
+          "stream_options": { "include_usage": true },
+          "temperature": 0.25
+        },
+        "wire_audit": {
+          "message_count": 1,
+          "system_block_count": 0,
+          "model_parameter_count": 1,
+          "counts_capped": false
+        }
+      }
+    },
+    {
+      "provider_code": "gemini",
+      "plugin_id": "gemini",
+      "protocol": "gemini",
+      "response_fixture": "gemini_generate_content_sse",
+      "expected_manifest": {
+        "consumption_kind": "runtime_extension",
+        "execution_mode": "process_per_call",
+        "slot_codes": ["model_provider"],
+        "contract_version": "1flowbase.provider/v2",
+        "runtime": {
+          "protocol": "stdio_json",
+          "entry": "bin/gemini-provider",
+          "capabilities": []
+        }
+      },
+      "input": {
+        "contract_version": "1flowbase.provider/v2",
+        "provider_instance_id": "conformance-gemini",
+        "provider_code": "gemini",
+        "protocol": "gemini",
+        "model": "gemini-2.5-flash",
+        "provider_config": {
+          "base_url": "$UPSTREAM_BASE_URL",
+          "api_key": "$SECRET_CANARY",
+          "auth_type": "api_key",
+          "validate_model": false
+        },
+        "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+        "system": [],
+        "request_context": {},
+        "required_capabilities": [],
+        "tools": [],
+        "mcp_bindings": [],
+        "response_format": null,
+        "model_parameters": { "temperature": 0.25 },
+        "client_protocol_envelope": {
+          "source_protocol": "anthropic_messages",
+          "policy": "anthropic_messages_v1",
+          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+        },
+        "trace_context": {},
+        "run_context": {}
+      },
+      "expected_wire": {
+        "method": "POST",
+        "path": "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json",
+          "x-goog-api-key": "$SECRET_CANARY",
+          "x-claude-code-session-id": "$HEADER_CANARY"
+        },
+        "body": {
+          "contents": [
+            { "role": "user", "parts": [{ "text": "$PROMPT_CANARY" }] }
+          ],
+          "generationConfig": { "temperature": 0.25 }
+        },
+        "wire_audit": {
+          "message_count": 1,
+          "system_block_count": 0,
+          "model_parameter_count": 1,
+          "counts_capped": false
+        }
+      }
+    },
+    {
+      "provider_code": "openai_compatible",
+      "plugin_id": "openai_compatible",
+      "protocol": "openai_compatible",
+      "response_fixture": "openai_chat_sse",
+      "expected_manifest": {
+        "consumption_kind": "runtime_extension",
+        "execution_mode": "process_per_call",
+        "slot_codes": ["model_provider"],
+        "contract_version": "1flowbase.provider/v2",
+        "runtime": {
+          "protocol": "stdio_json",
+          "entry": "bin/openai_compatible-provider",
+          "capabilities": []
+        }
+      },
+      "input": {
+        "contract_version": "1flowbase.provider/v2",
+        "provider_instance_id": "conformance-openai-compatible",
+        "provider_code": "openai_compatible",
+        "protocol": "openai_compatible",
+        "model": "compatible-model",
+        "provider_config": {
+          "base_url": "$UPSTREAM_BASE_URL",
+          "api_key": "$SECRET_CANARY",
+          "validate_model": false
+        },
+        "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+        "system": [],
+        "request_context": {},
+        "required_capabilities": [],
+        "tools": [],
+        "mcp_bindings": [],
+        "response_format": null,
+        "model_parameters": { "temperature": 0.25 },
+        "client_protocol_envelope": {
+          "source_protocol": "anthropic_messages",
+          "policy": "anthropic_messages_v1",
+          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+        },
+        "trace_context": {},
+        "run_context": {}
+      },
+      "expected_wire": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json",
+          "authorization": "Bearer $SECRET_CANARY",
+          "x-claude-code-session-id": "$HEADER_CANARY"
+        },
+        "body": {
+          "model": "compatible-model",
+          "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+          "stream": true,
+          "stream_options": { "include_usage": true },
+          "temperature": 0.25
+        },
+        "wire_audit": {
+          "message_count": 1,
+          "system_block_count": 0,
+          "model_parameter_count": 1,
+          "counts_capped": false
+        }
+      }
+    }
+  ],
+  "negative_cases": {
+    "pair": [
+      {
+        "id": "main-sha-mismatch",
+        "main": { "expected_sha": "a", "actual_sha": "b", "dirty": false },
+        "official": { "expected_sha": "c", "actual_sha": "c", "dirty": false },
+        "expected_error": "main source SHA mismatch"
+      },
+      {
+        "id": "official-dirty",
+        "main": { "expected_sha": "a", "actual_sha": "a", "dirty": false },
+        "official": { "expected_sha": "c", "actual_sha": "c", "dirty": true },
+        "expected_error": "official source tree is dirty"
+      },
+      {
+        "id": "package-digest-mismatch",
+        "main": { "expected_sha": "a", "actual_sha": "a", "dirty": false },
+        "official": { "expected_sha": "c", "actual_sha": "c", "dirty": false },
+        "expected_error": "package digest mismatch"
+      }
+    ],
+    "legacy_input": {
+      "target_provider": "openai",
+      "contract_version": "1flowbase.provider/v1",
+      "expected_status_family": 4,
+      "expected_upstream_requests": 0
+    },
+    "undeclared_capability": {
+      "target_provider": "openai",
+      "required_capabilities": [
+        "system_prompt_blocks",
+        "system_prompt_cache_control"
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "$SYSTEM_PROMPT_CANARY",
+          "cache_control": { "type": "ephemeral" }
+        }
+      ],
+      "expected_status_family": 4,
+      "expected_upstream_requests": 0
+    }
+  },
+  "sensitive_canaries": {
+    "prompt": "$PROMPT_CANARY",
+    "system_prompt": "$SYSTEM_PROMPT_CANARY",
+    "header": "$HEADER_CANARY",
+    "secret": "$SECRET_CANARY",
+    "end_user": "$END_USER_CANARY"
+  }
+}

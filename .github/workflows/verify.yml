@@ -6,6 +6,16 @@ on:
     branches:
       - main
       - latest
+  workflow_dispatch:
+    inputs:
+      main_source_sha:
+        description: Exact 1flowbase source SHA for actual-package conformance
+        required: true
+        type: string
+      official_source_sha:
+        description: Exact official-plugin source SHA for actual-package conformance
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -19,6 +29,76 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  provider-conformance:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.main_source_sha }}
+
+      - name: Checkout exact official provider source
+        uses: actions/checkout@v6
+        with:
+          repository: taichuy/1flowbase-official-plugins
+          ref: ${{ inputs.official_source_sha }}
+          path: tmp/provider-conformance/official-source
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross --locked
+
+      - name: Build and package the fixed actual-provider matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=x86_64-unknown-linux-musl
+          providers=(openai anthropic aliyun_bailian deepseek gemini openai_compatible)
+          rm -rf tmp/provider-conformance/packages
+
+          for provider_code in "${providers[@]}"; do
+            plugin_dir="tmp/provider-conformance/official-source/runtime-extensions/model-providers/${provider_code}"
+            cross build --manifest-path "${plugin_dir}/Cargo.toml" --release --target "${target}"
+            runtime_binary_name="$(node tmp/provider-conformance/official-source/scripts/list-provider-package-targets.mjs --plugin-dir "${plugin_dir}" --rust-target "${target}" --field runtime_binary_name)"
+            node scripts/node/plugin/cli.js package \
+              "${plugin_dir}" \
+              --out "tmp/provider-conformance/packages/${provider_code}" \
+              --runtime-binary "${plugin_dir}/target/${target}/release/${runtime_binary_name}" \
+              --target "${target}"
+          done
+
+      - name: Build exact plugin-runner host binary
+        run: cargo build --manifest-path api/Cargo.toml --release -p plugin-runner --bin plugin-runner
+
+      - name: Run actual-package provider conformance
+        run: |
+          node scripts/node/provider-conformance/cli.js \
+            --main-root "$GITHUB_WORKSPACE" \
+            --official-root "$GITHUB_WORKSPACE/tmp/provider-conformance/official-source" \
+            --main-sha "${{ inputs.main_source_sha }}" \
+            --official-sha "${{ inputs.official_source_sha }}" \
+            --package-dir tmp/provider-conformance/packages \
+            --plugin-runner-bin api/target/release/plugin-runner \
+            --fixture scripts/node/provider-conformance/fixtures/six-provider-matrix.json \
+            --artifact tmp/provider-conformance/paired-sha.json
+
+      - name: Upload paired SHA artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: provider-conformance-pair
+          path: tmp/provider-conformance/paired-sha.json
+          if-no-files-found: error
+
   repo-tooling-gate:
     runs-on: ubuntu-latest
     steps:
