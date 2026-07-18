@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashSet};
 use crate::{
     capability_kind::PluginConsumptionKind,
     error::{FrameworkResult, PluginFrameworkError},
+    provider_contract::CURRENT_PROVIDER_CONTRACT,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -987,13 +988,8 @@ fn validate_contract_version(manifest: &PluginManifestV1) -> FrameworkResult<()>
                 .any(|slot| matches!(slot.as_str(), "data_source" | "data_import_snapshot"))
             {
                 "1flowbase.data_source/v1"
-            } else if matches!(
-                manifest.contract_version.as_str(),
-                "1flowbase.provider/v1" | "1flowbase.provider/v2"
-            ) {
-                return Ok(());
             } else {
-                "1flowbase.provider/v1 or 1flowbase.provider/v2"
+                CURRENT_PROVIDER_CONTRACT
             }
         }
         PluginConsumptionKind::CapabilityPlugin => "1flowbase.capability/v1",

@@ -268,6 +268,41 @@ async fn package_intake_marks_uploaded_unsigned_archive_as_unverified() {
 }
 
 #[tokio::test]
+async fn ac_002_package_intake_rejects_legacy_provider_contract() {
+    let fixture_dir = TempFixtureDir::new();
+    write_provider_fixture(
+        &fixture_dir,
+        "fixture_provider",
+        "0.1.0",
+        "uploaded",
+        "unverified",
+    );
+    let manifest_path = fixture_dir.path().join("manifest.yaml");
+    let legacy_manifest = fs::read_to_string(&manifest_path)
+        .unwrap()
+        .replace("1flowbase.provider/v2", "1flowbase.provider/v1");
+    fixture_dir.write_str("manifest.yaml", &legacy_manifest);
+
+    let package_bytes = pack_zip(fixture_dir.path());
+    let error = intake_package_bytes(
+        &package_bytes,
+        &PackageIntakePolicy {
+            source_kind: "uploaded".to_string(),
+            trust_mode: "allow_unsigned".to_string(),
+            expected_artifact_sha256: None,
+            trusted_public_keys: Vec::new(),
+            original_filename: Some("fixture_provider-0.1.0.zip".into()),
+        },
+    )
+    .await
+    .expect_err("legacy provider contract must fail package intake");
+
+    assert!(error
+        .to_string()
+        .contains("contract_version must be 1flowbase.provider/v2"));
+}
+
+#[tokio::test]
 async fn package_intake_rejects_malformed_provider_parameter_form() {
     let fixture_dir = TempFixtureDir::new();
     write_provider_fixture(
@@ -497,7 +532,7 @@ fn create_signed_package_fixture(input: SignedFixtureInput<'_>) -> SignedPackage
                 .as_deref()
                 .unwrap_or(input.provider_code),
             version: input.release_version.as_deref().unwrap_or(input.version),
-            contract_version: "1flowbase.provider/v1",
+            contract_version: "1flowbase.provider/v2",
             artifact_sha256: "sha256:fixture-artifact",
             payload_sha256,
             signature_algorithm: "ed25519",
@@ -552,7 +587,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: outbound_only

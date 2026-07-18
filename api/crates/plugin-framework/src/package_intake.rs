@@ -15,6 +15,7 @@ use zip::ZipArchive;
 use crate::{
     error::PluginFrameworkError,
     manifest_v1::{parse_plugin_manifest, PluginManifestV1},
+    provider_contract::CURRENT_PROVIDER_CONTRACT,
     provider_package::ProviderPackage,
 };
 
@@ -112,12 +113,7 @@ pub async fn intake_package_bytes(
     };
     match ProviderPackage::load_from_dir(&extracted.package_root) {
         Ok(_) => {}
-        Err(error)
-            if matches!(
-                manifest.contract_version.as_str(),
-                "1flowbase.provider/v1" | "1flowbase.provider/v2"
-            ) =>
-        {
+        Err(error) if manifest.contract_version == CURRENT_PROVIDER_CONTRACT => {
             let _ = fs::remove_dir_all(&extracted.temp_dir);
             return Err(error);
         }

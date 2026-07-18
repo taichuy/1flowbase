@@ -383,7 +383,7 @@ node_contributions:
 }
 
 #[test]
-fn runtime_extension_uses_registered_slot_vocabulary() {
+fn ac_002_model_provider_manifest_accepts_only_current_contract() {
     let raw = r#"
 manifest_version: 1
 plugin_id: openai_compatible@0.1.0
@@ -401,7 +401,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: outbound_only
@@ -414,12 +414,19 @@ runtime:
   entry: bin/openai-compatible-provider
 "#;
 
-    let manifest = parse_plugin_manifest(raw).expect("manifest should parse");
+    let manifest = parse_plugin_manifest(raw).expect("current provider manifest should parse");
     assert_eq!(
         manifest.consumption_kind,
         PluginConsumptionKind::RuntimeExtension
     );
     assert_eq!(manifest.slot_codes, vec!["model_provider"]);
+
+    let legacy_raw = raw.replace("1flowbase.provider/v2", "1flowbase.provider/v1");
+    let error = parse_plugin_manifest(&legacy_raw)
+        .expect_err("legacy provider contract must be rejected during manifest intake");
+    assert!(error
+        .to_string()
+        .contains("contract_version must be 1flowbase.provider/v2"));
 }
 
 #[test]
@@ -490,7 +497,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: outbound_only

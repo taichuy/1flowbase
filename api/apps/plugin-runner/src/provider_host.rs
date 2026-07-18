@@ -14,7 +14,7 @@ use plugin_framework::{
     provider_contract::{
         ModelDiscoveryMode, ProviderBalanceResult, ProviderInvocationInput,
         ProviderInvocationResult, ProviderModelDescriptor, ProviderStdioMethod,
-        ProviderStdioRequest, ProviderStreamEvent, PROVIDER_CONTRACT_V2,
+        ProviderStdioRequest, ProviderStreamEvent, CURRENT_PROVIDER_CONTRACT,
     },
     PluginRuntimeLimits,
 };
@@ -608,6 +608,10 @@ impl ProviderHost {
         } = invocation;
 
         let wire_input = current_provider_wire_input(&loaded, &input)?;
+        tracing::info!(
+            wire_audit = ?input.wire_audit(),
+            "provider generate wire prepared"
+        );
         let _lease =
             Self::acquire_active_invocation_lease(&active_invocation_leases, &input).await?;
         Self::register_active_stream(&active_streams, invocation_id.clone(), &plugin_id, &input)
@@ -661,15 +665,14 @@ fn current_provider_wire_input(
     loaded: &LoadedProviderPackage,
     input: &ProviderInvocationInput,
 ) -> FrameworkResult<Value> {
-    if loaded.package.manifest.contract_version != PROVIDER_CONTRACT_V2 {
+    if loaded.package.manifest.contract_version != CURRENT_PROVIDER_CONTRACT {
         return Err(PluginFrameworkError::invalid_provider_contract(format!(
-            "unsupported provider package contract: expected {PROVIDER_CONTRACT_V2}, found {}",
+            "unsupported provider package contract: expected {CURRENT_PROVIDER_CONTRACT}, found {}",
             loaded.package.manifest.contract_version
         )));
     }
 
-    serde_json::to_value(input)
-        .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))
+    input.to_current_provider_wire_value(&loaded.package.manifest.runtime.capabilities)
 }
 
 mod operations;
@@ -728,19 +731,6 @@ mod tests {
         }
 
         fn write_provider_package_with_runtime_timeout(&self, display_name: &str, timeout_ms: u64) {
-            self.write_provider_package_with_contract(
-                display_name,
-                timeout_ms,
-                PROVIDER_CONTRACT_V2,
-            );
-        }
-
-        fn write_provider_package_with_contract(
-            &self,
-            display_name: &str,
-            timeout_ms: u64,
-            contract_version: &str,
-        ) {
             self.write(
                 "manifest.yaml",
                 &format!(
@@ -760,7 +750,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: {contract_version}
+contract_version: {CURRENT_PROVIDER_CONTRACT}
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: none
@@ -791,6 +781,25 @@ config_schema: []
                 r#"{ "plugin": { "label": "Fixture Provider" } }"#,
             );
             self.write("bin/fixture_provider", "#!/usr/bin/env bash\n");
+        }
+
+        fn write_spawn_side_effect_runtime(&self, marker: &Path) {
+            self.write(
+                "bin/fixture_provider",
+                &format!(
+                    "#!/usr/bin/env bash\nset -euo pipefail\ntouch '{}'\nprintf '%s\\n' '{{\"type\":\"result\",\"result\":{{\"final_content\":\"unexpected spawn\",\"finish_reason\":\"stop\"}}}}'\n",
+                    marker.display()
+                ),
+            );
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+
+                let path = self.path().join("bin/fixture_provider");
+                let mut permissions = fs::metadata(&path).unwrap().permissions();
+                permissions.set_mode(0o755);
+                fs::set_permissions(path, permissions).unwrap();
+            }
         }
 
         fn write_slow_invoke_runtime(&self) {
@@ -1014,7 +1023,7 @@ done
     }
 
     #[test]
-    fn d1_ac_011_current_provider_package_serializes_typed_input_without_projection() {
+    fn ac_002_current_provider_package_serializes_typed_input_without_projection() {
         let package = TempProviderPackage::new();
         let mut host = ProviderHost::default();
         let summary = host.load(package.path().to_str().unwrap()).unwrap();
@@ -1043,15 +1052,18 @@ done
     }
 
     #[tokio::test]
-    async fn d1_ac_011_non_current_provider_package_is_rejected_before_starting_provider_process() {
+    async fn ac_002_legacy_provider_abi_is_rejected_before_spawn_side_effect() {
         let package = TempProviderPackage::new();
-        package.write_provider_package_with_contract(
-            "Legacy Provider",
-            30_000,
-            "1flowbase.provider/v1",
-        );
+        let spawn_marker = package.path().join("spawn-side-effect-marker");
+        package.write_spawn_side_effect_runtime(&spawn_marker);
         let mut host = ProviderHost::default();
         let summary = host.load(package.path().to_str().unwrap()).unwrap();
+        host.loaded_packages
+            .get_mut(&summary.plugin_id)
+            .expect("loaded fixture should be mutable for the legacy ABI negative")
+            .package
+            .manifest
+            .contract_version = "1flowbase.provider/v1".to_string();
 
         let error = host
             .invoke_stream(&summary.plugin_id, invocation_input("fixture-model"))
@@ -1061,6 +1073,7 @@ done
         assert!(error
             .to_string()
             .contains("unsupported provider package contract"));
+        assert!(!spawn_marker.exists(), "legacy ABI must fail before spawn");
         assert!(host.active_stream_snapshot().await.streams.is_empty());
         assert!(lock_provider_worker_registry(&host.provider_workers)
             .expect("provider worker registry should be available")

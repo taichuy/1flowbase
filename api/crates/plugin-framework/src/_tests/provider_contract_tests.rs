@@ -8,7 +8,7 @@ use plugin_framework::{
         ProviderBalanceResult, ProviderInvocationInput, ProviderInvocationResult, ProviderMessage,
         ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine,
         ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent,
-        ProviderToolCall, ProviderUsage, PROVIDER_CONTRACT_V1, PROVIDER_CONTRACT_V2,
+        ProviderToolCall, ProviderUsage,
     },
 };
 use serde_json::json;
@@ -232,7 +232,7 @@ fn provider_invocation_input_serializes_client_protocol_envelope() {
 }
 
 #[test]
-fn ac_006_provider_v2_fails_closed_when_required_capability_is_missing() {
+fn ac_002_current_provider_fails_closed_when_required_capability_is_missing() {
     let input = ProviderInvocationInput {
         system: vec![NativePromptBlock::Text {
             text: "Cache this block".to_string(),
@@ -248,7 +248,7 @@ fn ac_006_provider_v2_fails_closed_when_required_capability_is_missing() {
     };
 
     let error = input
-        .to_provider_wire_value(PROVIDER_CONTRACT_V2, &["system_prompt_blocks".to_string()])
+        .to_current_provider_wire_value(&["system_prompt_blocks".to_string()])
         .unwrap_err();
 
     let message = error.to_string();
@@ -257,47 +257,7 @@ fn ac_006_provider_v2_fails_closed_when_required_capability_is_missing() {
 }
 
 #[test]
-fn ac_007_provider_v1_projection_keeps_plain_text_workflows_running() {
-    let input = ProviderInvocationInput {
-        system: vec![
-            NativePromptBlock::text("First instruction"),
-            NativePromptBlock::text("Second instruction"),
-        ],
-        ..ProviderInvocationInput::default()
-    };
-
-    let payload = input
-        .to_provider_wire_value(PROVIDER_CONTRACT_V1, &[])
-        .unwrap();
-
-    assert_eq!(payload["system"], "First instruction\n\nSecond instruction");
-    assert!(payload.get("contract_version").is_none());
-    assert!(payload.get("request_context").is_none());
-    assert!(payload.get("required_capabilities").is_none());
-}
-
-#[test]
-fn ac_006_provider_v1_rejects_block_policy_before_network_invocation() {
-    let input = ProviderInvocationInput {
-        system: vec![NativePromptBlock::Text {
-            text: "Cache this block".to_string(),
-            cache_control: Some(NativePromptCacheControl {
-                cache_type: NativePromptCacheControlType::Ephemeral,
-                ttl: None,
-            }),
-        }],
-        ..ProviderInvocationInput::default()
-    };
-
-    let error = input
-        .to_provider_wire_value(PROVIDER_CONTRACT_V1, &[])
-        .unwrap_err();
-
-    assert!(error.to_string().contains("system_prompt_cache_control"));
-}
-
-#[test]
-fn ac_004_native_model_invocation_v2_requires_explicit_contract_version() {
+fn ac_002_current_generate_input_requires_explicit_contract_version() {
     let error = serde_json::from_value::<ProviderInvocationInput>(json!({
         "provider_instance_id": "provider-1",
         "provider_code": "anthropic",
@@ -309,6 +269,80 @@ fn ac_004_native_model_invocation_v2_requires_explicit_contract_version() {
     .unwrap_err();
 
     assert!(error.to_string().contains("contract_version"));
+}
+
+#[test]
+fn ac_002_current_generate_input_strictly_rejects_legacy_and_unknown_fields() {
+    let legacy_contract = serde_json::from_value::<ProviderInvocationInput>(json!({
+        "contract_version": "1flowbase.provider/v1",
+        "provider_instance_id": "provider-1",
+        "provider_code": "legacy",
+        "protocol": "openai_compatible",
+        "model": "legacy-model",
+        "messages": [],
+        "system": "legacy system projection"
+    }))
+    .unwrap_err();
+    assert!(legacy_contract
+        .to_string()
+        .contains("1flowbase.provider/v1"));
+
+    let unknown_field = serde_json::from_value::<ProviderInvocationInput>(json!({
+        "contract_version": "1flowbase.provider/v2",
+        "provider_instance_id": "provider-1",
+        "provider_code": "current",
+        "protocol": "openai_compatible",
+        "model": "current-model",
+        "messages": [],
+        "system": [],
+        "raw_body": "must-not-be-accepted"
+    }))
+    .unwrap_err();
+    assert!(unknown_field.to_string().contains("raw_body"));
+}
+
+#[test]
+fn ac_005_wire_audit_is_bounded_and_excludes_raw_or_sensitive_values() {
+    const SECRET_CANARY: &str = "secret-canary-do-not-audit";
+    const PROMPT_CANARY: &str = "prompt-canary-do-not-audit";
+    const RAW_CANARY: &str = "raw-body-canary-do-not-audit";
+
+    let input = ProviderInvocationInput {
+        provider_config: json!({
+            "api_key": SECRET_CANARY,
+            "raw_body": RAW_CANARY,
+        }),
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::User,
+            content: PROMPT_CANARY.to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: None,
+        }],
+        system: vec![NativePromptBlock::text(PROMPT_CANARY)],
+        trace_context: BTreeMap::from([("secret-header".to_string(), SECRET_CANARY.to_string())]),
+        run_context: BTreeMap::from([("raw_body".to_string(), json!(RAW_CANARY))]),
+        ..ProviderInvocationInput::default()
+    };
+
+    let audit = input.wire_audit();
+    let payload = serde_json::to_value(&audit).unwrap();
+    let encoded = serde_json::to_string(&audit).unwrap();
+
+    assert_eq!(payload["operation"], "generate");
+    assert_eq!(payload["message_count"], 1);
+    assert_eq!(payload["system_block_count"], 1);
+    assert_eq!(payload["trace_context_entry_count"], 1);
+    assert_eq!(payload["run_context_entry_count"], 1);
+    assert!(!payload["counts_capped"].as_bool().unwrap());
+    assert!(encoded.len() <= 1024, "wire audit must remain bounded");
+    assert!(!encoded.contains(SECRET_CANARY));
+    assert!(!encoded.contains(PROMPT_CANARY));
+    assert!(!encoded.contains(RAW_CANARY));
+    assert!(!encoded.contains("api_key"));
+    assert!(!encoded.contains("raw_body"));
 }
 
 #[test]

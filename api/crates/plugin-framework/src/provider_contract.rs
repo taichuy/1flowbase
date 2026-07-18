@@ -11,8 +11,7 @@ use crate::error::PluginFrameworkError;
 pub const CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY: &str = "__client_protocol_envelope";
 pub const NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY: &str = "__native_model_prompt_context";
 pub const NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY: &str = "__native_model_request_context";
-pub const PROVIDER_CONTRACT_V1: &str = "1flowbase.provider/v1";
-pub const PROVIDER_CONTRACT_V2: &str = "1flowbase.provider/v2";
+pub const CURRENT_PROVIDER_CONTRACT: &str = "1flowbase.provider/v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -383,7 +382,7 @@ impl NativeModelPromptContext {
 pub enum ProviderInvocationContractVersion {
     #[default]
     #[serde(rename = "1flowbase.provider/v2")]
-    V2,
+    Current,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -419,7 +418,8 @@ pub struct ClientProtocolEnvelope {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-pub struct NativeModelInvocationV2 {
+#[serde(deny_unknown_fields)]
+pub struct ProviderInvocationInput {
     pub contract_version: ProviderInvocationContractVersion,
     pub provider_instance_id: String,
     pub provider_code: String,
@@ -452,37 +452,32 @@ pub struct NativeModelInvocationV2 {
     pub run_context: BTreeMap<String, Value>,
 }
 
-pub use NativeModelInvocationV2 as ProviderInvocationInput;
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ProviderInvocationInputV1 {
-    pub provider_instance_id: String,
-    pub provider_code: String,
-    pub protocol: String,
-    pub model: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub previous_response_id: Option<String>,
-    #[serde(default)]
-    pub provider_config: Value,
-    #[serde(default)]
-    pub messages: Vec<ProviderMessage>,
-    pub system: Option<String>,
-    #[serde(default)]
-    pub tools: Vec<Value>,
-    #[serde(default)]
-    pub mcp_bindings: Vec<Value>,
-    pub response_format: Option<Value>,
-    #[serde(default)]
-    pub model_parameters: BTreeMap<String, Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
-    #[serde(default)]
-    pub trace_context: BTreeMap<String, String>,
-    #[serde(default)]
-    pub run_context: BTreeMap<String, Value>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderWireOperation {
+    Generate,
 }
 
-impl NativeModelInvocationV2 {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProviderWireAudit {
+    pub operation: ProviderWireOperation,
+    pub contract_version: ProviderInvocationContractVersion,
+    pub message_count: u32,
+    pub system_block_count: u32,
+    pub tool_count: u32,
+    pub mcp_binding_count: u32,
+    pub model_parameter_count: u32,
+    pub trace_context_entry_count: u32,
+    pub run_context_entry_count: u32,
+    pub counts_capped: bool,
+    pub has_previous_response_id: bool,
+    pub has_request_context: bool,
+    pub has_response_format: bool,
+    pub has_client_protocol_envelope: bool,
+    pub required_capabilities: BTreeSet<ProviderInvocationCapability>,
+}
+
+impl ProviderInvocationInput {
     pub fn system_text(&self) -> Option<String> {
         (!self.system.is_empty()).then(|| {
             self.system
@@ -510,9 +505,8 @@ impl NativeModelInvocationV2 {
         capabilities
     }
 
-    pub fn to_provider_wire_value(
+    pub fn to_current_provider_wire_value(
         &self,
-        contract_version: &str,
         declared_capabilities: &[String],
     ) -> Result<Value, PluginFrameworkError> {
         let mut invocation = self.clone();
@@ -530,64 +524,56 @@ impl NativeModelInvocationV2 {
             .copied()
             .collect::<Vec<_>>();
 
-        match contract_version {
-            PROVIDER_CONTRACT_V2 => {
-                if !unsupported.is_empty() {
-                    return Err(PluginFrameworkError::invalid_provider_contract(format!(
-                        "provider contract v2 is missing required capabilities: {}",
-                        unsupported
-                            .iter()
-                            .map(provider_invocation_capability_name)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )));
-                }
-                serde_json::to_value(invocation).map_err(|error| {
-                    PluginFrameworkError::invalid_provider_contract(error.to_string())
-                })
-            }
-            PROVIDER_CONTRACT_V1 => {
-                if !invocation.required_capabilities.is_empty() {
-                    return Err(PluginFrameworkError::invalid_provider_contract(format!(
-                        "provider contract v1 cannot represent required capabilities: {}",
-                        invocation
-                            .required_capabilities
-                            .iter()
-                            .map(provider_invocation_capability_name)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )));
-                }
-                serde_json::to_value(invocation.project_v1()).map_err(|error| {
-                    PluginFrameworkError::invalid_provider_contract(error.to_string())
-                })
-            }
-            other => Err(PluginFrameworkError::invalid_provider_contract(format!(
-                "unsupported provider contract version: {other}"
-            ))),
+        if !unsupported.is_empty() {
+            return Err(PluginFrameworkError::invalid_provider_contract(format!(
+                "current provider contract is missing required capabilities: {}",
+                unsupported
+                    .iter()
+                    .map(provider_invocation_capability_name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
         }
+
+        serde_json::to_value(invocation)
+            .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))
     }
 
-    fn project_v1(self) -> ProviderInvocationInputV1 {
-        let system = self.system_text();
-        ProviderInvocationInputV1 {
-            provider_instance_id: self.provider_instance_id,
-            provider_code: self.provider_code,
-            protocol: self.protocol,
-            model: self.model,
-            previous_response_id: self.previous_response_id,
-            provider_config: self.provider_config,
-            messages: self.messages,
-            system,
-            tools: self.tools,
-            mcp_bindings: self.mcp_bindings,
-            response_format: self.response_format,
-            model_parameters: self.model_parameters,
-            client_protocol_envelope: self.client_protocol_envelope,
-            trace_context: self.trace_context,
-            run_context: self.run_context,
+    pub fn wire_audit(&self) -> ProviderWireAudit {
+        let lengths = [
+            self.messages.len(),
+            self.system.len(),
+            self.tools.len(),
+            self.mcp_bindings.len(),
+            self.model_parameters.len(),
+            self.trace_context.len(),
+            self.run_context.len(),
+        ];
+        let mut required_capabilities = self.required_capabilities.clone();
+        required_capabilities.extend(self.semantic_required_capabilities());
+
+        ProviderWireAudit {
+            operation: ProviderWireOperation::Generate,
+            contract_version: self.contract_version,
+            message_count: bounded_wire_count(self.messages.len()),
+            system_block_count: bounded_wire_count(self.system.len()),
+            tool_count: bounded_wire_count(self.tools.len()),
+            mcp_binding_count: bounded_wire_count(self.mcp_bindings.len()),
+            model_parameter_count: bounded_wire_count(self.model_parameters.len()),
+            trace_context_entry_count: bounded_wire_count(self.trace_context.len()),
+            run_context_entry_count: bounded_wire_count(self.run_context.len()),
+            counts_capped: lengths.iter().any(|length| u32::try_from(*length).is_err()),
+            has_previous_response_id: self.previous_response_id.is_some(),
+            has_request_context: !self.request_context.is_empty(),
+            has_response_format: self.response_format.is_some(),
+            has_client_protocol_envelope: self.client_protocol_envelope.is_some(),
+            required_capabilities,
         }
     }
+}
+
+fn bounded_wire_count(length: usize) -> u32 {
+    u32::try_from(length).unwrap_or(u32::MAX)
 }
 
 fn provider_invocation_capability_name(capability: &ProviderInvocationCapability) -> &'static str {
