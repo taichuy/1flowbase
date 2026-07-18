@@ -162,6 +162,7 @@ const textByKey = {
     i18nText('settingsMcpManagement', 'auto.upstream_server_name'),
   upstream_server_version: () =>
     i18nText('settingsMcpManagement', 'auto.upstream_server_version'),
+  upstream_test: () => i18nText('settingsMcpManagement', 'auto.upstream_test'),
   upstream_test_connection: () =>
     i18nText('settingsMcpManagement', 'auto.upstream_test_connection'),
   upstream_tested_at: () =>
@@ -731,13 +732,13 @@ export function ThirdPartyMcpTab({
           </Button>,
           <Button
             key="test"
-            aria-label={text('upstream_test_connection')}
+            aria-label={text('upstream_test')}
             icon={<ExperimentOutlined />}
             disabled={!canManage || saveMutation.isPending}
             loading={testMutation.isPending}
             onClick={() => void testCurrentForm()}
           >
-            {text('upstream_test_connection')}
+            {text('upstream_test')}
           </Button>,
           <Button
             key="save"

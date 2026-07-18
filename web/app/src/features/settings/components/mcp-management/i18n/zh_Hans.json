@@ -97,6 +97,7 @@
     "upstream_last_error": "最近错误",
     "upstream_actions": "连接操作",
     "upstream_edit_connection": "编辑连接",
+    "upstream_test": "测试",
     "upstream_test_connection": "测试连接",
     "upstream_discover_tools": "发现 Tool",
     "upstream_delete_connection": "删除连接",

@@ -213,7 +213,7 @@ describe('ThirdPartyMcpTab', () => {
       target: { value: 'https://draft.example/mcp' }
     });
     const cancelButton = within(dialog).getByRole('button', { name: '取消' });
-    const testButton = within(dialog).getByRole('button', { name: '测试连接' });
+    const testButton = within(dialog).getByRole('button', { name: '测试' });
     const saveButton = within(dialog).getByRole('button', { name: '保存' });
     expect(
       cancelButton.compareDocumentPosition(testButton) &
@@ -265,7 +265,7 @@ describe('ThirdPartyMcpTab', () => {
     fireEvent.change(within(dialog).getByLabelText('Endpoint'), {
       target: { value: 'https://edited.example/mcp' }
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: '测试连接' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '测试' }));
 
     await waitFor(() => {
       expect(
