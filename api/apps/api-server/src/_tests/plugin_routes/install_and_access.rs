@@ -8,7 +8,7 @@ use axum::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use crate::routes::plugins_and_models::plugins::runtime_slot_for_contract;
+use crate::routes::plugins::runtime_slot_for_contract;
 use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 
 use super::support::{
