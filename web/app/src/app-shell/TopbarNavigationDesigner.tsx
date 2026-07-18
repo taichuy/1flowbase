@@ -70,8 +70,6 @@ export function TopbarNavigationItemLabel({
       initialIcon: node.icon ?? '',
       initialTooltip: node.tooltip ?? '',
       initialSlug: node.slug ?? '',
-      initialContentPresentation:
-        node.kind === 'page' ? node.content_presentation : undefined,
       nodeKind: node.kind,
       showSlug: true
     });

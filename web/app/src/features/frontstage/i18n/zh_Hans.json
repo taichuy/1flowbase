@@ -283,14 +283,12 @@
   },
   "design": {
     "create_tab": "新建标签页",
-    "content_presentation": "内容呈现方式",
     "configure_page": "配置页面",
     "configure_tab": "配置标签页",
     "delete_tab_confirm": "确定删除该标签页？",
     "drag_handle": "拖拽排序",
+    "enable_tabs": "开启 Tabs",
     "last_tab_hint": "页面至少保留一个标签页，最后一个标签页不可删除。",
-    "single_page": "单页（不显示标签页）",
-    "tabs_page": "标签页",
     "tab_route_segment": "访问路径",
     "tab_route_segment_required": "请输入标签页访问路径",
     "tab_settings": "标签页设置"

@@ -621,7 +621,7 @@ describe('FrontStagePage - page tree CRUD', () => {
   );
 
   test(
-    'AC-001 persists the configured presentation and keeps Page settings open when the backend rejects the transition',
+    'AC-002 persists the Tabs switch immediately and restores the persisted state when disabling Tabs fails',
     async () => {
       authenticate(['frontstage.page.design']);
       const onRenamePageNode = vi
@@ -645,14 +645,15 @@ describe('FrontStagePage - page tree CRUD', () => {
       );
 
       activateDesignMode();
-      const pageItem = getPageTreeItem('页面 page-1');
-
-      await clickPageTreeOperationMenuItemAndFlush(pageItem, '编辑');
-      fireEvent.mouseDown(
-        screen.getByRole('combobox', { name: '内容呈现方式' })
+      const workspace = screen.getByTestId('frontstage-page-workspace');
+      await clickAndFlush(
+        within(workspace).getByRole('button', { name: '配置页面' })
       );
-      await clickAndFlush(await screen.findByText('标签页'));
-      await clickLatestButtonAndFlush('确定');
+      const enableTabsSwitch = await screen.findByRole('switch', {
+        name: '开启 Tabs'
+      });
+      expect(enableTabsSwitch).not.toBeChecked();
+      await clickAndFlush(enableTabsSwitch);
 
       await waitFor(() => {
         expect(onRenamePageNode).toHaveBeenNthCalledWith(1, 'page-1', {
@@ -662,18 +663,9 @@ describe('FrontStagePage - page tree CRUD', () => {
           contentPresentation: 'tabs'
         });
       });
-      await waitFor(() => {
-        expect(
-          screen.queryByRole('dialog', { name: '配置页面' })
-        ).not.toBeInTheDocument();
-      });
+      await waitFor(() => expect(enableTabsSwitch).toBeChecked());
 
-      await clickPageTreeOperationMenuItemAndFlush(pageItem, '编辑');
-      fireEvent.mouseDown(
-        screen.getByRole('combobox', { name: '内容呈现方式' })
-      );
-      await clickAndFlush(await screen.findByText('单页（不显示标签页）'));
-      await clickLatestButtonAndFlush('确定');
+      await clickAndFlush(enableTabsSwitch);
 
       await waitFor(() => {
         expect(onRenamePageNode).toHaveBeenNthCalledWith(2, 'page-1', {
@@ -683,9 +675,7 @@ describe('FrontStagePage - page tree CRUD', () => {
           contentPresentation: 'single'
         });
       });
-      expect(
-        await screen.findByRole('dialog', { name: '配置页面' })
-      ).toBeInTheDocument();
+      await waitFor(() => expect(enableTabsSwitch).toBeChecked());
       expect(screen.getByText('操作失败')).toBeInTheDocument();
     },
     SLOW_FRONTSTAGE_TEST_TIMEOUT

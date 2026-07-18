@@ -44,6 +44,14 @@
   transition: opacity 150ms ease;
 }
 
+.frontstage-page-workspace__tabs-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 128px;
+}
+
 .frontstage-page-workspace__header:hover
   .frontstage-page-workspace__page-action,
 .frontstage-page-workspace__header:focus-within

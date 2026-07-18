@@ -151,6 +151,7 @@
       "web/app/src/shared/ui/section-page-layout/SectionSidebarNav.tsx",
       "web/app/src/shared/ui/section-page-layout/section-page-layout.css",
       "web/app/src/features/frontstage/pages/FrontStagePage.tsx",
+      "web/app/src/features/frontstage/pages/frontstage-page/PageWorkspaceActionMenu.tsx",
       "web/app/src/features/frontstage/pages/frontstage-page.css",
       "web/app/src/features/frontstage/components/FrontStagePageTreeSidebar.tsx",
       "web/app/src/features/frontstage/components/frontstage-page-tree-sidebar.css",

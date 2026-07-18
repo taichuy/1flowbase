@@ -1,5 +1,5 @@
 import * as AntIcons from '@ant-design/icons';
-import { Button, Form, Input, Modal, Popover, Select, Space } from 'antd';
+import { Button, Form, Input, Modal, Popover, Space } from 'antd';
 import type { FormInstance } from 'antd';
 import type { ElementType } from 'react';
 
@@ -10,7 +10,6 @@ type PageTreeFormValues = {
   icon?: string;
   tooltip?: string;
   slug?: string;
-  contentPresentation?: 'single' | 'tabs';
 };
 
 type PageTreeFormDialog =
@@ -24,7 +23,6 @@ type PageTreeFormDialog =
       initialIcon: string;
       initialTooltip: string;
       initialSlug?: string;
-      initialContentPresentation?: 'single' | 'tabs';
       showSlug?: boolean;
     }
   | {
@@ -35,7 +33,6 @@ type PageTreeFormDialog =
       initialIcon: string;
       initialTooltip: string;
       initialSlug?: string;
-      initialContentPresentation?: 'single' | 'tabs';
       nodeKind: 'group' | 'page';
       showSlug?: boolean;
     }
@@ -250,25 +247,6 @@ function PageTreeFormModal({
             <Form.Item label={i18nText("frontstage", "auto.description")} name="tooltip">
               <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} />
             </Form.Item>
-            {dialog?.kind === 'rename' && dialog.nodeKind === 'page' ? (
-              <Form.Item
-                label={i18nText('frontstage', 'design.content_presentation')}
-                name="contentPresentation"
-              >
-                <Select
-                  options={[
-                    {
-                      value: 'single',
-                      label: i18nText('frontstage', 'design.single_page')
-                    },
-                    {
-                      value: 'tabs',
-                      label: i18nText('frontstage', 'design.tabs_page')
-                    }
-                  ]}
-                />
-              </Form.Item>
-            ) : null}
           </>
         )}
       </Form>

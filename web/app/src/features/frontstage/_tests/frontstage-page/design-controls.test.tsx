@@ -554,7 +554,7 @@ describe('FrontStagePage - design controls', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('#1300 assigns page configuration and selection to the complete page workspace', () => {
+  test('AC-001 opens the two-action page menu from the page workspace', async () => {
     authenticate(['frontstage.page.design']);
     renderPage('page-1');
 
@@ -571,7 +571,21 @@ describe('FrontStagePage - design controls', () => {
     ).toHaveClass('frontstage-page-workspace__header');
 
     fireEvent.click(configurePage);
-    expect(screen.getByText('编辑节点')).toBeInTheDocument();
+
+    const pageMenu = await screen.findByRole('menu');
+    expect(within(pageMenu).getAllByRole('menuitem')).toHaveLength(2);
+    expect(within(pageMenu).getByText('编辑')).toBeInTheDocument();
+    expect(
+      within(pageMenu).getByRole('switch', { name: '开启 Tabs' })
+    ).not.toBeChecked();
+
+    fireEvent.click(within(pageMenu).getByText('编辑'));
+    expect(
+      await screen.findByRole('dialog', { name: '配置页面' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: '内容呈现方式' })
+    ).not.toBeInTheDocument();
   });
 
   test('#1300 keeps the canvas and Add Block action inside the active tab container', async () => {

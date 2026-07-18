@@ -283,14 +283,12 @@
   },
   "design": {
     "create_tab": "Create tab",
-    "content_presentation": "Content presentation",
     "configure_page": "Configure page",
     "configure_tab": "Configure tab",
     "delete_tab_confirm": "Delete this tab?",
     "drag_handle": "Drag to reorder",
+    "enable_tabs": "Enable Tabs",
     "last_tab_hint": "A page keeps at least one tab; the last tab cannot be deleted.",
-    "single_page": "Single page (hide tabs)",
-    "tabs_page": "Tabs",
     "tab_route_segment": "Route segment",
     "tab_route_segment_required": "Enter a route segment",
     "tab_settings": "Tab settings"
