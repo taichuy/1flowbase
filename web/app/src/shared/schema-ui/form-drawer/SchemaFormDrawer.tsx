@@ -3,6 +3,7 @@ import type { Rule } from 'antd/es/form';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { i18nText } from '../../i18n/text';
+import { ResizableDrawer } from '../../ui/resizable-drawer/ResizableDrawer';
 import type {
   PluginFormFieldSchema,
   PluginFormSchema,
@@ -82,15 +83,6 @@ export interface SchemaFormDrawerProps {
 const DEFAULT_SCHEMA_FORM_DRAWER_WIDTH = 560;
 const DEFAULT_SCHEMA_FORM_DRAWER_MIN_WIDTH = 360;
 const DEFAULT_SCHEMA_FORM_DRAWER_MAX_WIDTH = 960;
-let schemaFormDrawerInstanceSeed = 0;
-
-function clampSchemaFormDrawerWidth(
-  width: number,
-  minWidth: number,
-  maxWidth: number
-) {
-  return Math.min(maxWidth, Math.max(minWidth, width));
-}
 
 function defaultValuesFromSchema(schema: PluginFormSchema): SchemaFormValues {
   return Object.fromEntries(
@@ -212,21 +204,9 @@ export function SchemaFormDrawer({
   const [localSubmitting, setLocalSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const contextRef = useRef<SchemaFormDrawerContext | null>(null);
-  const instanceClassNameRef = useRef<string | null>(null);
-  if (instanceClassNameRef.current == null) {
-    schemaFormDrawerInstanceSeed += 1;
-    instanceClassNameRef.current = `schema-form-drawer-instance-${schemaFormDrawerInstanceSeed}`;
-  }
   const initialResizableWidth =
     defaultWidth ??
     (typeof width === 'number' ? width : DEFAULT_SCHEMA_FORM_DRAWER_WIDTH);
-  const [resizableWidth, setResizableWidth] = useState(() =>
-    clampSchemaFormDrawerWidth(initialResizableWidth, minWidth, maxWidth)
-  );
-  const dragStartRef = useRef<{ pointerX: number; width: number } | null>(null);
-  const resizeFrameRef = useRef<number | null>(null);
-  const pendingDrawerWidthRef = useRef<number | null>(null);
-  const liveDrawerWidthRef = useRef(resizableWidth);
   const isSubmitting = submitting ?? localSubmitting;
   const resolvedInitialValues = useMemo(
     () => ({
@@ -327,251 +307,140 @@ export function SchemaFormDrawer({
     setSubmitError(null);
   }, [form, open, resolvedInitialValues]);
 
-  useEffect(() => {
-    if (!open || !resizable) {
-      return;
-    }
-    const nextWidth = clampSchemaFormDrawerWidth(
-      initialResizableWidth,
-      minWidth,
-      maxWidth
-    );
-    liveDrawerWidthRef.current = nextWidth;
-    setResizableWidth(nextWidth);
-  }, [initialResizableWidth, maxWidth, minWidth, open, resizable]);
-
-  useEffect(() => {
-    liveDrawerWidthRef.current = resizableWidth;
-  }, [resizableWidth]);
-
-  useEffect(() => {
-    if (!resizable) {
-      return undefined;
-    }
-
-    const drawerRootSelector = `.${instanceClassNameRef.current}`;
-    const applyLiveDrawerWidth = (nextWidth: number) => {
-      liveDrawerWidthRef.current = nextWidth;
-      const drawerWrapper = document.querySelector<HTMLElement>(
-        `${drawerRootSelector} .ant-drawer-content-wrapper`
-      );
-      if (drawerWrapper) {
-        drawerWrapper.style.width = `${nextWidth}px`;
-      }
-    };
-
-    const handleMouseMove = (event: MouseEvent) => {
-      const dragStart = dragStartRef.current;
-      if (!dragStart) {
-        return;
-      }
-
-      pendingDrawerWidthRef.current = clampSchemaFormDrawerWidth(
-        dragStart.width + dragStart.pointerX - event.clientX,
-        minWidth,
-        maxWidth
-      );
-      if (resizeFrameRef.current != null) {
-        return;
-      }
-
-      resizeFrameRef.current = window.requestAnimationFrame(() => {
-        resizeFrameRef.current = null;
-        const nextWidth = pendingDrawerWidthRef.current;
-        pendingDrawerWidthRef.current = null;
-        if (nextWidth == null) {
-          return;
-        }
-        applyLiveDrawerWidth(nextWidth);
-      });
-    };
-
-    const handleMouseUp = () => {
-      const pendingWidth = pendingDrawerWidthRef.current;
-      if (resizeFrameRef.current != null) {
-        window.cancelAnimationFrame(resizeFrameRef.current);
-        resizeFrameRef.current = null;
-      }
-      if (pendingWidth != null) {
-        pendingDrawerWidthRef.current = null;
-        applyLiveDrawerWidth(pendingWidth);
-      }
-      setResizableWidth((currentWidth) =>
-        currentWidth === liveDrawerWidthRef.current
-          ? currentWidth
-          : liveDrawerWidthRef.current
-      );
-      dragStartRef.current = null;
-      document.body.classList.remove('schema-form-drawer--resizing');
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      if (resizeFrameRef.current != null) {
-        window.cancelAnimationFrame(resizeFrameRef.current);
-        resizeFrameRef.current = null;
-      }
-      document.body.classList.remove('schema-form-drawer--resizing');
-    };
-  }, [maxWidth, minWidth, resizable]);
-
   const leftActions = extraActions.filter((action) => action.placement === 'left');
   const rightActions = extraActions.filter((action) => action.placement !== 'left');
-  const resolvedRootClassName = [
-    rootClassName,
-    resizable ? instanceClassNameRef.current : null
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const resolvedWidth = resizable ? resizableWidth : width;
+
+  const footer = (
+    <Flex
+      className="schema-form-drawer__footer"
+      gap="small"
+      justify={leftActions.length > 0 ? 'space-between' : 'start'}
+      wrap
+    >
+      <Space wrap>
+        {leftActions.map((action) => (
+          <Button
+            danger={action.variant === 'danger'}
+            disabled={disabled || action.disabled || isSubmitting}
+            icon={action.icon}
+            key={action.key}
+            loading={action.loading}
+            onClick={() => void action.onClick(context)}
+          >
+            {action.label}
+          </Button>
+        ))}
+      </Space>
+      <Space wrap>
+        {rightActions.map((action) => (
+          <Button
+            danger={action.variant === 'danger'}
+            disabled={disabled || action.disabled || isSubmitting}
+            icon={action.icon}
+            key={action.key}
+            loading={action.loading}
+            onClick={() => void action.onClick(context)}
+          >
+            {action.label}
+          </Button>
+        ))}
+        <Button
+          disabled={disabled}
+          loading={isSubmitting}
+          type="primary"
+          onClick={() => void submitForm()}
+        >
+          {submitText ?? i18nText('schemaUi', 'auto.save')}
+        </Button>
+        <Button disabled={isSubmitting} onClick={confirmClose}>
+          {cancelText ?? i18nText('schemaUi', 'auto.cancel')}
+        </Button>
+      </Space>
+    </Flex>
+  );
+  const body = (
+    <div
+      className={['schema-form-drawer__body', bodyClassName]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      {leadingContent}
+      {statusMessages.map((statusMessage) => (
+        <Alert
+          key={statusMessage.key}
+          message={statusMessage.message}
+          showIcon
+          type={statusMessage.type}
+        />
+      ))}
+      {submitError ? <Alert message={submitError} showIcon type="error" /> : null}
+      <Form<SchemaFormValues>
+        disabled={disabled}
+        form={form}
+        initialValues={resolvedInitialValues}
+        layout="vertical"
+        onValuesChange={(changed, values) =>
+          onValuesChange?.(
+            values as SchemaFormValues,
+            changed as SchemaFormValues,
+            context
+          )
+        }
+      >
+        {schema.fields.map((field) => (
+          <Form.Item
+            extra={field.description}
+            key={field.key}
+            label={field.label}
+            name={field.key}
+            rules={fieldRules(field)}
+            valuePropName={field.type === 'boolean' ? 'checked' : 'value'}
+          >
+            {field.read_only ? (
+              <Input disabled placeholder={field.placeholder} />
+            ) : (
+              renderFieldControl(field)
+            )}
+          </Form.Item>
+        ))}
+      </Form>
+    </div>
+  );
+
+  if (resizable) {
+    return (
+      <ResizableDrawer
+        destroyOnClose
+        defaultWidth={initialResizableWidth}
+        footer={footer}
+        maxWidth={maxWidth}
+        minWidth={minWidth}
+        open={open}
+        resizeLabel={resizeLabel}
+        rootClassName={['schema-form-drawer', rootClassName]
+          .filter(Boolean)
+          .join(' ')}
+        title={drawerTitle(title, subtitle)}
+        onClose={confirmClose}
+      >
+        {body}
+      </ResizableDrawer>
+    );
+  }
 
   return (
     <Drawer
       className="schema-form-drawer"
       destroyOnClose
-      footer={
-        <Flex className="schema-form-drawer__footer" gap="small" justify={leftActions.length > 0 ? 'space-between' : 'start'} wrap>
-          <Space wrap>
-            {leftActions.map((action) => (
-	      <Button
-	                danger={action.variant === 'danger'}
-	                disabled={disabled || action.disabled || isSubmitting}
-                icon={action.icon}
-                key={action.key}
-                loading={action.loading}
-                onClick={() => void action.onClick(context)}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </Space>
-          <Space wrap>
-            {rightActions.map((action) => (
-	              <Button
-	                danger={action.variant === 'danger'}
-	                disabled={disabled || action.disabled || isSubmitting}
-                icon={action.icon}
-                key={action.key}
-                loading={action.loading}
-                onClick={() => void action.onClick(context)}
-              >
-                {action.label}
-              </Button>
-            ))}
-            <Button disabled={disabled} loading={isSubmitting} type="primary" onClick={() => void submitForm()}>
-              {submitText ?? i18nText('schemaUi', 'auto.save')}
-            </Button>
-            <Button disabled={isSubmitting} onClick={confirmClose}>
-              {cancelText ?? i18nText('schemaUi', 'auto.cancel')}
-            </Button>
-          </Space>
-        </Flex>
-      }
-	      open={open}
-	      placement="right"
-	      rootClassName={resolvedRootClassName}
+      footer={footer}
+      open={open}
+      placement="right"
+      rootClassName={rootClassName}
       title={drawerTitle(title, subtitle)}
-      width={resolvedWidth}
+      width={width}
       onClose={confirmClose}
     >
-	      <div className={['schema-form-drawer__body', bodyClassName].filter(Boolean).join(' ')}>
-	        {resizable ? (
-	          <div
-	            aria-label={resizeLabel}
-	            aria-orientation="vertical"
-	            aria-valuemax={maxWidth}
-	            aria-valuemin={minWidth}
-	            aria-valuenow={resizableWidth}
-	            className="schema-form-drawer__resize-handle"
-	            role="separator"
-	            tabIndex={0}
-	            onKeyDown={(event) => {
-	              if (event.key === 'ArrowLeft') {
-	                event.preventDefault();
-	                setResizableWidth((currentWidth) =>
-	                  clampSchemaFormDrawerWidth(
-	                    currentWidth + 40,
-	                    minWidth,
-	                    maxWidth
-	                  )
-	                );
-	                return;
-	              }
-
-	              if (event.key === 'ArrowRight') {
-	                event.preventDefault();
-	                setResizableWidth((currentWidth) =>
-	                  clampSchemaFormDrawerWidth(
-	                    currentWidth - 40,
-	                    minWidth,
-	                    maxWidth
-	                  )
-	                );
-	                return;
-	              }
-
-	              if (event.key === 'Home') {
-	                event.preventDefault();
-	                setResizableWidth(minWidth);
-	                return;
-	              }
-
-	              if (event.key === 'End') {
-	                event.preventDefault();
-	                setResizableWidth(maxWidth);
-	              }
-	            }}
-	            onMouseDown={(event) => {
-	              event.preventDefault();
-	              dragStartRef.current = {
-	                pointerX: event.clientX,
-	                width: liveDrawerWidthRef.current
-	              };
-	              document.body.classList.add('schema-form-drawer--resizing');
-	            }}
-	          />
-	        ) : null}
-	        {leadingContent}
-	        {statusMessages.map((statusMessage) => (
-	          <Alert
-	            key={statusMessage.key}
-	            message={statusMessage.message}
-	            showIcon
-	            type={statusMessage.type}
-	          />
-	        ))}
-	        {submitError ? <Alert message={submitError} showIcon type="error" /> : null}
-	        <Form<SchemaFormValues>
-	          disabled={disabled}
-          form={form}
-          initialValues={resolvedInitialValues}
-          layout="vertical"
-          onValuesChange={(changed, values) =>
-            onValuesChange?.(values as SchemaFormValues, changed as SchemaFormValues, context)
-          }
-        >
-          {schema.fields.map((field) => (
-            <Form.Item
-              extra={field.description}
-              key={field.key}
-              label={field.label}
-              name={field.key}
-              rules={fieldRules(field)}
-              valuePropName={field.type === 'boolean' ? 'checked' : 'value'}
-            >
-              {field.read_only ? (
-                <Input disabled placeholder={field.placeholder} />
-              ) : (
-                renderFieldControl(field)
-              )}
-            </Form.Item>
-          ))}
-        </Form>
-      </div>
+      {body}
     </Drawer>
   );
 }

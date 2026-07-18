@@ -21,6 +21,7 @@ export const FRONTSTAGE_GRID_COLUMNS = {
 } as const;
 
 type FrontstageGridBreakpoint = keyof typeof FRONTSTAGE_GRID_COLUMNS;
+const DEFAULT_FRONTSTAGE_GRID_HEIGHT = 8;
 export type FrontstagePersistedGridLayout = Record<
   string,
   Record<string, { x: number; y: number; w: number; h: number }>
@@ -45,9 +46,9 @@ function layoutForBreakpoint(
   return {
     i: item.blockId,
     x: finiteLayoutValue(layout.x, 0),
-    y: finiteLayoutValue(layout.y, index * 4),
+    y: finiteLayoutValue(layout.y, index * DEFAULT_FRONTSTAGE_GRID_HEIGHT),
     w: Math.min(columns, finiteLayoutValue(layout.w, columns)),
-    h: finiteLayoutValue(layout.h, 4)
+    h: finiteLayoutValue(layout.h, DEFAULT_FRONTSTAGE_GRID_HEIGHT)
   };
 }
 

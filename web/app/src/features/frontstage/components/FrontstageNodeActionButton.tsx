@@ -1,5 +1,5 @@
 import { Button } from 'antd';
-import type { ComponentProps } from 'react';
+import { forwardRef, type ComponentProps, type ComponentRef } from 'react';
 
 import './frontstage-node-action-button.css';
 
@@ -10,20 +10,18 @@ type FrontstageNodeActionButtonProps = Omit<
   className?: string;
 };
 
-export function FrontstageNodeActionButton({
-  className,
-  ...props
-}: FrontstageNodeActionButtonProps) {
+export const FrontstageNodeActionButton = forwardRef<
+  ComponentRef<typeof Button>,
+  FrontstageNodeActionButtonProps
+>(function FrontstageNodeActionButton({ className, ...props }, ref) {
   return (
     <Button
       {...props}
-      className={[
-        'frontstage-node-action-button',
-        className
-      ]
+      ref={ref}
+      className={['frontstage-node-action-button', className]
         .filter(Boolean)
         .join(' ')}
       size="small"
     />
   );
-}
+});

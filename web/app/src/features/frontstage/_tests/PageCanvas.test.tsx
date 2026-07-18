@@ -248,5 +248,11 @@ describe('PageCanvas', () => {
       name: /区块 /
     });
     expect(blockButtons).toHaveLength(2);
+    expect(screen.getByTestId('block-slot-hero').parentElement).toHaveClass(
+      'react-grid-item'
+    );
+    expect(screen.getByTestId('block-slot-hero')).toHaveStyle({
+      height: '100%'
+    });
   });
 });

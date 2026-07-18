@@ -40,20 +40,26 @@ vi.mock(
 );
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
-vi.mock('../../components/BlockCodeEditorDrawer', () => ({
-  BlockCodeEditorDrawer: ({
+vi.mock('../../components/jsx-studio/FrontstageJsxStudioDrawer', () => ({
+  FrontstageJsxStudioDrawer: ({
     open,
+    initialSection,
     workspaceId,
     pageId,
     block
   }: {
     open: boolean;
+    initialSection: string;
     workspaceId: string | null | undefined;
     pageId: string | null | undefined;
     block?: { id?: string; codeRef?: string | null } | null;
   }) =>
     open ? (
-      <dialog open aria-label="区块代码">
+      <dialog
+        open
+        aria-label="JSX Studio"
+        data-initial-section={initialSection}
+      >
         <span>workspace:{workspaceId ?? 'none'}</span>
         <span>page:{pageId ?? 'none'}</span>
         <span>block:{block?.id ?? 'none'}</span>
@@ -383,24 +389,23 @@ function clickBlockToolbar(blockId: string, buttonName: string) {
 }
 
 async function clickBlockMoveAction(blockId: string, actionName: string) {
-  clickBlockToolbar(blockId, '移动或排序区块');
-  await clickAndFlush(await screen.findByRole('button', { name: actionName }));
-}
-
-async function clickBlockMoreAction(blockId: string, actionName: string) {
   clickBlockToolbar(blockId, '更多区块操作');
-  await clickAndFlush(await screen.findByRole('button', { name: actionName }));
+  const action = (await screen.findByText(actionName)).closest('button');
+  if (!action) {
+    throw new Error(`Missing block action button: ${actionName}`);
+  }
+  await clickAndFlush(action);
 }
 
 async function confirmBlockDelete(blockId: string) {
   clickBlockToolbar(blockId, '更多区块操作');
-  await screen.findByRole('button', { name: '删除区块' });
-  const deleteMenuButtons = screen.getAllByRole('button', {
-    name: '删除区块'
-  });
-  await clickAndFlush(deleteMenuButtons[deleteMenuButtons.length - 1]);
+  const deleteAction = (await screen.findByText('删除')).closest('button');
+  if (!deleteAction) {
+    throw new Error('Missing block delete action');
+  }
+  await clickAndFlush(deleteAction);
   await clickAndFlush(
-    await screen.findByRole('button', { name: '确认删除区块' })
+    await screen.findByRole('button', { name: /删\s*除/ })
   );
 }
 
@@ -540,7 +545,7 @@ describe('FrontStagePage block arrange actions', () => {
     expect(screen.getByText('区块保存中')).toBeInTheDocument();
   });
 
-  test('opens block code editor drawer for the selected block in design mode', async () => {
+  test('opens JSX Studio on the code section for the selected block in design mode', async () => {
     authenticate(['frontstage.page.design']);
     renderFrontStagePage(createPageContentWithBlocks(['hero', 'cta']));
 
@@ -548,7 +553,8 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块代码');
 
-    const dialog = await screen.findByRole('dialog', { name: '区块代码' });
+    const dialog = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    expect(dialog).toHaveAttribute('data-initial-section', 'code');
     expect(
       within(dialog).getByText('workspace:workspace-1')
     ).toBeInTheDocument();
@@ -579,9 +585,8 @@ describe('FrontStagePage block arrange actions', () => {
     ).not.toBeInTheDocument();
 
     fireEvent.click(configurationButton);
-    expect(
-      await screen.findByRole('dialog', { name: '区块配置' })
-    ).toBeInTheDocument();
+    const studio = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    expect(studio).toHaveAttribute('data-initial-section', 'configuration');
   });
 
   test('hides block code editor entry outside design mode and without design permission', async () => {
@@ -680,7 +685,7 @@ describe('FrontStagePage block arrange actions', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('opens readonly block configuration drawer from the selected block model', async () => {
+  test('opens the shared JSX Studio on the configuration section', async () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
     renderFrontStagePage(
@@ -691,46 +696,13 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
 
-    const dialog = await screen.findByRole('dialog', { name: '区块配置' });
-    const basicSection = within(dialog).getByTestId(
-      'frontstage-block-configuration-section-basic'
-    );
-    expect(basicSection).toHaveTextContent('hero');
-    expect(basicSection).toHaveTextContent('hero-code');
-    expect(basicSection).toHaveTextContent('宽度12');
-    expect(basicSection).toHaveTextContent('高度5');
-    expect(basicSection).toHaveTextContent('顺序0');
-
-    fireEvent.click(within(dialog).getByRole('tab', { name: '数据' }));
-    const dataSection = within(dialog).getByTestId(
-      'frontstage-block-configuration-section-data'
-    );
-    expect(dataSection).toHaveTextContent('orders');
-    expect(dataSection).toHaveTextContent('2 个字段');
-
-    fireEvent.click(within(dialog).getByRole('tab', { name: '代码' }));
-    const codeSection = within(dialog).getByTestId(
-      'frontstage-block-configuration-section-code'
-    );
-    expect(codeSection).toHaveTextContent('js-ui');
-    expect(codeSection).toHaveTextContent('blocks/hero/index.js');
-
-    fireEvent.click(within(dialog).getByRole('tab', { name: '上下文' }));
-    const contextSection = within(dialog).getByTestId(
-      'frontstage-block-configuration-section-context'
-    );
-    expect(contextSection).toHaveTextContent('目录已匹配');
-    expect(contextSection).toHaveTextContent('text');
-
-    fireEvent.click(within(dialog).getByRole('tab', { name: '限制' }));
-    const limitsSection = within(dialog).getByTestId(
-      'frontstage-block-configuration-section-limits'
-    );
-    expect(limitsSection).toHaveTextContent('超时1000 ms');
-    expect(limitsSection).toHaveTextContent('最大渲染深度8');
+    const dialog = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    expect(dialog).toHaveAttribute('data-initial-section', 'configuration');
+    expect(within(dialog).getByText('block:hero')).toBeInTheDocument();
+    expect(within(dialog).getByText('code:hero-code')).toBeInTheDocument();
   });
 
-  test('closes block configuration drawer when exiting design mode, switching pages, or clearing selection', async () => {
+  test('closes configuration Studio when exiting design mode, switching pages, or clearing selection', async () => {
     authenticate(['frontstage.page.design']);
     const pageTree = [
       {
@@ -759,13 +731,13 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
     expect(
-      await screen.findByRole('dialog', { name: '区块配置' })
+      await screen.findByRole('dialog', { name: 'JSX Studio' })
     ).toBeInTheDocument();
 
     await exitDesignMode();
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: '区块配置' })
+        screen.queryByRole('dialog', { name: 'JSX Studio' })
       ).not.toBeInTheDocument();
     });
 
@@ -773,20 +745,20 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
     expect(
-      await screen.findByRole('dialog', { name: '区块配置' })
+      await screen.findByRole('dialog', { name: 'JSX Studio' })
     ).toBeInTheDocument();
 
     await clickAndFlush(getBlockRow('hero'));
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: '区块配置' })
+        screen.queryByRole('dialog', { name: 'JSX Studio' })
       ).not.toBeInTheDocument();
     });
 
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
     expect(
-      await screen.findByRole('dialog', { name: '区块配置' })
+      await screen.findByRole('dialog', { name: 'JSX Studio' })
     ).toBeInTheDocument();
 
     // Switch page
@@ -824,12 +796,12 @@ describe('FrontStagePage block arrange actions', () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: '区块配置' })
+        screen.queryByRole('dialog', { name: 'JSX Studio' })
       ).not.toBeInTheDocument();
     });
   }, 25000);
 
-  test('closes block code editor drawer when exiting design mode or switching pages', async () => {
+  test('closes code Studio when exiting design mode or switching pages', async () => {
     authenticate(['frontstage.page.design']);
     const pageTree = [
       {
@@ -858,13 +830,13 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块代码');
     expect(
-      await screen.findByRole('dialog', { name: '区块代码' })
+      await screen.findByRole('dialog', { name: 'JSX Studio' })
     ).toBeInTheDocument();
 
     await exitDesignMode();
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: '区块代码' })
+        screen.queryByRole('dialog', { name: 'JSX Studio' })
       ).not.toBeInTheDocument();
     });
 
@@ -872,7 +844,7 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块代码');
     expect(
-      await screen.findByRole('dialog', { name: '区块代码' })
+      await screen.findByRole('dialog', { name: 'JSX Studio' })
     ).toBeInTheDocument();
 
     fireEvent.click(
@@ -909,7 +881,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: '区块代码' })
+        screen.queryByRole('dialog', { name: 'JSX Studio' })
       ).not.toBeInTheDocument();
     });
   });

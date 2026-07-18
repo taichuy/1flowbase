@@ -35,6 +35,7 @@ describe('frontstage responsive grid layout', () => {
 
     expect(layouts.lg?.[0]).toMatchObject({ i: 'hero', x: 2, y: 3, w: 6, h: 5 });
     expect(layouts.sm?.[0]).toMatchObject({ i: 'hero', x: 0, y: 1, w: 4, h: 3 });
+    expect(layouts.md?.[0]).toMatchObject({ i: 'hero', h: 8 });
     expect(createFrontstagePersistedGridLayout(layouts)).toMatchObject({
       hero: {
         lg: { x: 2, y: 3, w: 6, h: 5 },

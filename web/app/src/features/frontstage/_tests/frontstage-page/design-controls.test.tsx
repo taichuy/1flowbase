@@ -38,6 +38,9 @@ const blockCatalogHook = vi.hoisted(() => ({
 const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
+const dataCapabilitiesHook = vi.hoisted(() => ({
+  useFrontstageDataCapabilities: vi.fn()
+}));
 const runtimeSessionsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasRuntimeSessions: vi.fn()
 }));
@@ -80,6 +83,10 @@ vi.mock(
 );
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
+vi.mock(
+  '../../hooks/use-frontstage-data-capabilities',
+  () => dataCapabilitiesHook
+);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-runtime-sessions',
   () => runtimeSessionsHook
@@ -431,6 +438,14 @@ function mockFrontstageBlockCode() {
   });
 }
 
+function mockFrontstageDataCapabilities() {
+  dataCapabilitiesHook.useFrontstageDataCapabilities.mockReturnValue({
+    data: { queries: [], actions: [], models: [] },
+    loading: false,
+    error: null
+  });
+}
+
 function mockRuntimeSessions(
   overrides: Partial<UseFrontstagePageCanvasRuntimeSessionsResult> = {}
 ) {
@@ -465,6 +480,7 @@ describe('FrontStagePage - design controls', () => {
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
     mockFrontstageBlockCode();
+    mockFrontstageDataCapabilities();
     mockRuntimeSessions();
     pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
       {
@@ -592,6 +608,63 @@ describe('FrontStagePage - design controls', () => {
       within(tabContent).getByRole('button', { name: '创建区块' })
     ).toBeInTheDocument();
     expect(within(tabContent).getByText('页面内容为空')).toBeInTheDocument();
+  });
+
+  test('opens configuration and code in the same resizable JSX Studio', async () => {
+    authenticate(['frontstage.page.design']);
+    mockFrontstageBlockCatalog([createCatalogEntry()]);
+    const blockPayload = {
+      id: 'orders-block',
+      codeRef: 'orders-code',
+      catalog: {
+        providerCode: '1flowbase',
+        installationId: 'builtin-installation'
+      },
+      contribution: {
+        pluginId: 'builtin-frontstage',
+        pluginVersion: '1.0.0',
+        code: 'frontstage.js-ui-block'
+      },
+      props: { title: 'Orders' },
+      'x-layout': { order: 0, region: 'main' },
+      runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
+    };
+
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          tabId="tab-1"
+          onNavigateTab={vi.fn()}
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent({
+            schema: {
+              rootUid: 'root-1',
+              payload: { blocks: [blockPayload] }
+            },
+            root: {
+              uid: 'root-1',
+              payload: { blocks: [blockPayload] }
+            }
+          })}
+        />
+      </AppProviders>
+    );
+
+    activateDesignMode();
+    const blockSlot = await screen.findByTestId('block-slot-orders-block');
+    fireEvent.mouseEnter(blockSlot);
+    fireEvent.click(
+      within(blockSlot).getByRole('button', { name: '区块配置' })
+    );
+
+    expect(
+      await screen.findByRole('dialog', { name: 'JSX Studio' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('结构化配置')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('dialog', { name: '区块配置' })
+    ).not.toBeInTheDocument();
   });
 
   test('shows real page tree operation states without local draft wording', () => {
