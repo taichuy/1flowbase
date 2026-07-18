@@ -733,7 +733,6 @@ export function ThirdPartyMcpTab({
           <Button
             key="test"
             aria-label={text('upstream_test')}
-            icon={<ExperimentOutlined />}
             disabled={!canManage || saveMutation.isPending}
             loading={testMutation.isPending}
             onClick={() => void testCurrentForm()}
