@@ -515,7 +515,6 @@ fn application_run_conversation_message_items_from_flow_run(
         .or_else(|| start_payload.get("messages"))
         .and_then(serde_json::Value::as_array)
     {
-        let mut hidden_control_kind = None;
         for message in history {
             let role = message
                 .get("role")
@@ -524,25 +523,7 @@ fn application_run_conversation_message_items_from_flow_run(
             let Some(content) = application_run_conversation_history_message_content(message) else {
                 continue;
             };
-            let message_control_kind =
-                hidden_conversation_history_control_kind(message).or_else(|| {
-                    (role == "user"
-                        && flow_run.compatibility_mode.as_deref()
-                            == Some("anthropic-messages-v1"))
-                    .then(|| {
-                        control_plane::application_public_api::compat::anthropic::claude_code_control_kind(
-                            &content,
-                        )
-                    })
-                    .flatten()
-                });
-            if role == "user" {
-                hidden_control_kind = message_control_kind;
-            }
-            if message_control_kind.is_some()
-                || (role == "assistant" && hidden_control_kind.is_some())
-                || is_hidden_conversation_history_message(message)
-            {
+            if is_hidden_conversation_history_message(message) {
                 continue;
             }
 
@@ -724,20 +705,6 @@ fn is_hidden_conversation_history_message(message: &serde_json::Value) -> bool {
         .and_then(|metadata| metadata.get("hidden_from_conversation"))
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false)
-}
-
-fn hidden_conversation_history_control_kind(
-    message: &serde_json::Value,
-) -> Option<&'static str> {
-    match message
-        .get("metadata")
-        .and_then(|metadata| metadata.get("claude_code_control"))
-        .and_then(serde_json::Value::as_str)
-    {
-        Some("compact_summary") => Some("compact_summary"),
-        Some("compact_resume") => Some("compact_resume"),
-        _ => None,
-    }
 }
 
 fn run_conversation_message_items_select_sql(

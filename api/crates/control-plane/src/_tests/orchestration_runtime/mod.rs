@@ -7,3 +7,4 @@ mod runtime_observability;
 mod runtime_observability_live_coalescer;
 mod scheduler_admission;
 mod service;
+mod stream_terminal_recovery;

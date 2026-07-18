@@ -426,6 +426,18 @@ async fn application_api_docs_registers_anthropic_count_tokens_operation() {
         operation["requestBody"]["content"]["application/json"]["schema"]["required"],
         json!(["model", "messages"])
     );
+    let metadata = &operation["requestBody"]["content"]["application/json"]["schema"]["properties"]
+        ["metadata"];
+    assert_eq!(
+        metadata["properties"],
+        json!({
+            "user_id": {"type": "string"},
+            "expand_id": {"type": "string"},
+            "session_id": {"type": "string"},
+            "trace_id": {"type": "string"}
+        })
+    );
+    assert_eq!(metadata["additionalProperties"], json!(false));
     assert_eq!(
         operation["responses"]["200"]["content"]["application/json"]["schema"]["required"],
         json!(["input_tokens"])
@@ -483,6 +495,57 @@ async fn application_api_docs_operation_specs_include_request_parameters() {
         create_run_body["properties"]["attachments"]["items"]["properties"]["value"]["type"],
         json!("string")
     );
+    assert_eq!(
+        create_run_body["properties"]["history"]["items"]["additionalProperties"],
+        json!(false),
+        "Native history items reject unknown fields at the adapter"
+    );
+    assert_eq!(
+        create_run_body["properties"]["attachments"]["items"]["additionalProperties"],
+        json!(false),
+        "Native attachment items reject unknown fields at the adapter"
+    );
+    assert_eq!(
+        create_run_body["properties"]["attachments"]["items"]["properties"]["metadata"]
+            ["additionalProperties"],
+        json!(true),
+        "attachment metadata remains an explicitly dynamic container"
+    );
+    assert_eq!(
+        create_run_body["properties"]["execution"]["additionalProperties"],
+        json!(true),
+        "opaque execution options remain open"
+    );
+    assert!(
+        create_run_body["properties"]["execution"]["description"]
+            .as_str()
+            .is_some_and(|description| description.contains("compatibility_mode")),
+        "the Native docs must state that execution compatibility_mode is unsupported"
+    );
+    assert!(
+        create_run_body["properties"]["metadata"]["description"]
+            .as_str()
+            .is_some_and(|description| description.contains("initial run response")),
+        "the Native docs must not promise arbitrary metadata durability"
+    );
+    assert_eq!(
+        create_run_body["properties"]["metadata"]["properties"],
+        json!({"trace_id": {"type": "string"}})
+    );
+    assert_eq!(
+        create_run_body["properties"]["metadata"]["additionalProperties"],
+        json!(false)
+    );
+    assert_eq!(
+        create_run_body["properties"]["execution"]["properties"]["model_parameters"]
+            ["additionalProperties"],
+        json!(false)
+    );
+    assert_eq!(
+        create_run_body["properties"]["execution"]["properties"]["model_parameters"]["properties"]
+            ["reasoning"]["additionalProperties"],
+        json!(false)
+    );
 
     let openai_spec = app
         .clone()
@@ -519,6 +582,40 @@ async fn application_api_docs_operation_specs_include_request_parameters() {
     assert!(openai_body["properties"]["messages"]["items"]["properties"]
         .get("tool_call_id")
         .is_some());
+    assert_eq!(
+        openai_body["properties"]["metadata"]["properties"],
+        json!({"trace_id": {"type": "string"}})
+    );
+    assert_eq!(
+        openai_body["properties"]["metadata"]["additionalProperties"],
+        json!(false)
+    );
+
+    let openai_response_spec = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-docs/operations/applicationOpenAiCreateResponse/openapi.json"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(openai_response_spec.status(), StatusCode::OK);
+    let openai_response_payload = response_json(openai_response_spec).await;
+    let openai_response_body = &openai_response_payload["paths"]["/v1/responses"]["post"]
+        ["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(
+        openai_response_body["properties"]["metadata"]["properties"],
+        json!({"trace_id": {"type": "string"}})
+    );
+    assert_eq!(
+        openai_response_body["properties"]["metadata"]["additionalProperties"],
+        json!(false)
+    );
 
     let anthropic_spec = app
         .clone()
@@ -550,12 +647,18 @@ async fn application_api_docs_operation_specs_include_request_parameters() {
         json!(["text", "tool_use", "tool_result"])
     );
     assert_eq!(
-        anthropic_body["properties"]["metadata"]["properties"]["expand_id"]["type"],
-        json!("string")
+        anthropic_body["properties"]["metadata"]["properties"],
+        json!({
+            "user_id": {"type": "string"},
+            "expand_id": {"type": "string"},
+            "session_id": {"type": "string"},
+            "trace_id": {"type": "string"}
+        })
     );
-    assert!(anthropic_body["properties"]["metadata"]["properties"]
-        .get("user_id")
-        .is_none());
+    assert_eq!(
+        anthropic_body["properties"]["metadata"]["additionalProperties"],
+        json!(false)
+    );
 
     let get_run_spec = app
         .clone()

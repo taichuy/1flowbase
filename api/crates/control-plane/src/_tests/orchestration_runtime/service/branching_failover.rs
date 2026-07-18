@@ -283,7 +283,7 @@ async fn selected_answer_branch_projects_reasoning_before_text_exactly_once() {
 }
 
 #[tokio::test]
-async fn live_failed_llm_with_inactive_later_branch_activates_terminal_answer() {
+async fn live_failed_llm_with_inactive_later_branch_keeps_answer_unmaterialized() {
     let service = OrchestrationRuntimeService::for_tests_with_provider_results(vec![
         ProviderInvocationResult {
             finish_reason: Some(ProviderFinishReason::Error),
@@ -489,14 +489,11 @@ async fn live_failed_llm_with_inactive_later_branch_activates_terminal_answer() 
         node_run(&failed, "node-llm").status,
         domain::NodeRunStatus::Failed
     );
-    assert_eq!(
-        node_run(&failed, "node-answer").status,
-        domain::NodeRunStatus::Succeeded
-    );
-    assert_eq!(
-        failed.flow_run.output_payload["answer"],
-        json!("provider invocation finished with error")
-    );
+    assert!(failed
+        .node_runs
+        .iter()
+        .all(|node_run| node_run.node_id != "node-answer"));
+    assert!(failed.flow_run.output_payload.get("answer").is_none());
     assert!(failed
         .node_runs
         .iter()

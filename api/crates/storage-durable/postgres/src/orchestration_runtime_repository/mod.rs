@@ -28,9 +28,11 @@ use control_plane::{
         CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
         DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
         DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
-        FailQueuedFlowRunShellInput, FinishFlowRunCallbackResumeAttemptInput,
-        GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
-        LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
+        FailQueuedFlowRunShellInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+        FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
+        FinishFlowRunCallbackResumeAttemptInput, GetApplicationRunMonitoringReportInput,
+        GetRuntimeDebugArtifactInput, LinkUsageLedgerToModelFailoverAttemptInput,
+        ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, ModelProviderRequestLogsPage,
@@ -145,6 +147,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         expected_status: domain::FlowRunStatus,
     ) -> Result<Option<domain::FlowRunRecord>> {
         PgControlPlaneStore::update_flow_run_if_status(self, input, expected_status).await
+    }
+
+    async fn finalize_published_run_missing_stream_terminal(
+        &self,
+        input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+    ) -> Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome> {
+        PgControlPlaneStore::finalize_published_run_missing_stream_terminal(self, input).await
     }
 
     async fn complete_flow_run(
@@ -888,7 +897,6 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
               and api_key_id = $2
               and external_user = $3
               and external_conversation_id = $4
-              and compatibility_mode = $5
               and run_mode = 'published_api_run'
               and status = 'waiting_callback'
             order by started_at asc, id asc
@@ -898,7 +906,6 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         .bind(input.api_key_id)
         .bind(&input.external_user)
         .bind(&input.external_conversation_id)
-        .bind(&input.compatibility_mode)
         .fetch_all(self.pool())
         .await?;
 

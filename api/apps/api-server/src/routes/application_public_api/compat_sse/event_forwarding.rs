@@ -611,42 +611,6 @@ async fn send_compatible_sse_events(
     true
 }
 
-pub(super) async fn append_compatible_resume_terminal_event(
-    state: &ApiState,
-    run: &NativeRunResult,
-) {
-    let Some(event) = terminal_runtime_event_from_native_run(run) else {
-        return;
-    };
-    let close_reason = match run.status {
-        NativeRunStatus::Succeeded => control_plane::ports::RuntimeEventCloseReason::Finished,
-        NativeRunStatus::Incomplete => control_plane::ports::RuntimeEventCloseReason::Incomplete,
-        NativeRunStatus::Failed => control_plane::ports::RuntimeEventCloseReason::Failed,
-        NativeRunStatus::Cancelled => control_plane::ports::RuntimeEventCloseReason::Cancelled,
-        NativeRunStatus::Waiting => control_plane::ports::RuntimeEventCloseReason::WaitingCallback,
-        NativeRunStatus::Created | NativeRunStatus::Queued | NativeRunStatus::Running => return,
-    };
-    let _ = state
-        .runtime_event_stream
-        .append(run.id, runtime_event_payload_from_envelope(event))
-        .await;
-    let _ = state
-        .runtime_event_stream
-        .close_run(run.id, close_reason)
-        .await;
-}
-
-fn runtime_event_payload_from_envelope(envelope: RuntimeEventEnvelope) -> RuntimeEventPayload {
-    RuntimeEventPayload {
-        event_type: envelope.event_type,
-        source: envelope.source,
-        durability: envelope.durability,
-        persist_required: envelope.persist_required,
-        trace_visible: envelope.trace_visible,
-        payload: envelope.payload,
-    }
-}
-
 struct CompatibleTerminalFallback<'a, F> {
     state: &'a ApiState,
     initial_run: &'a NativeRunResult,
@@ -682,7 +646,19 @@ where
         ignored_waiting_callback_task_id,
     } = fallback;
 
-    let latest_run = load_latest_native_run_for_terminal_fallback(state, initial_run).await;
+    let latest_run = match recover_missing_stream_terminal_winner(state, initial_run).await {
+        Ok(run) => run,
+        Err(error) => {
+            warn!(
+                flow_run_id = %initial_run.id,
+                application_id = %initial_run.application_id,
+                error = %error,
+                trigger = %trigger,
+                "failed to recover the durable winner after compatible stream EOF"
+            );
+            return CompatibleTerminalFallbackOutcome::NotTerminal;
+        }
+    };
     let Some(terminal_event) = terminal_runtime_event_from_native_run(&latest_run) else {
         if warn_if_not_terminal {
             warn!(

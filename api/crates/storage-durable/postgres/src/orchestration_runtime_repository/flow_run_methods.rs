@@ -901,6 +901,155 @@ impl PgControlPlaneStore {
         Ok(None)
     }
 
+    async fn finalize_published_run_missing_stream_terminal(
+        &self,
+        input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+    ) -> Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome> {
+        let mut tx = self.pool().begin().await?;
+        let error_payload = Some(input.error_payload.clone());
+        let row = sqlx::query(
+            r#"
+            update flow_runs
+            set status = $2,
+                output_payload = $3,
+                error_payload = $4,
+                finished_at = $5,
+                updated_at = $5
+            where id = $1
+              and status = $6
+            returning
+                id,
+                application_id,
+                flow_id,
+                flow_draft_id,
+                compiled_plan_id,
+                debug_session_id,
+                flow_schema_version,
+                document_hash,
+                run_mode,
+                target_node_id,
+                title,
+                status,
+                input_payload,
+                output_payload,
+                error_payload,
+                created_by,
+                null::text as authorized_account,
+                api_key_id,
+                publication_version_id,
+                external_user,
+                external_conversation_id,
+                external_trace_id,
+                compatibility_mode,
+                idempotency_key,
+                started_at,
+                finished_at,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(input.flow_run_id)
+        .bind(domain::FlowRunStatus::Failed.as_str())
+        .bind(&input.output_payload)
+        .bind(&error_payload)
+        .bind(input.finished_at)
+        .bind(input.expected_status.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(row) = row else {
+            tx.rollback().await?;
+            let exists = sqlx::query_scalar::<_, bool>(
+                r#"
+                select exists(select 1 from flow_runs where id = $1)
+                "#,
+            )
+            .bind(input.flow_run_id)
+            .fetch_one(self.pool())
+            .await?;
+            if !exists {
+                return Err(ControlPlaneError::NotFound("flow_run").into());
+            }
+            return Ok(FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::CasMiss);
+        };
+
+        let flow_run = map_flow_run_record(row)?;
+        Self::upsert_visible_application_run_log_summary_projection(&mut tx, &flow_run).await?;
+        Self::replace_application_run_conversation_message_items_projection(&mut tx, &flow_run)
+            .await?;
+
+        let scope_id = flow_run_scope_id_for_update(&mut tx, flow_run.id).await?;
+        let flow_event_sequence = next_event_sequence(&mut tx, flow_run.id).await?;
+        sqlx::query(
+            r#"
+            insert into flow_run_events (
+                id,
+                scope_id,
+                flow_run_id,
+                node_run_id,
+                sequence,
+                event_type,
+                payload
+            ) values ($1, $2, $3, null, $4, 'flow_run_failed', $5)
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(scope_id)
+        .bind(flow_run.id)
+        .bind(flow_event_sequence)
+        .bind(&input.error_payload)
+        .execute(&mut *tx)
+        .await?;
+
+        let runtime_event_sequence = next_runtime_event_sequence(&mut tx, flow_run.id).await?;
+        sqlx::query(
+            r#"
+            insert into runtime_events (
+                id,
+                flow_run_id,
+                node_run_id,
+                span_id,
+                parent_span_id,
+                sequence,
+                event_type,
+                layer,
+                source,
+                trust_level,
+                item_id,
+                ledger_ref,
+                payload,
+                visibility,
+                durability
+            ) values (
+                $1, $2, null, null, null, $3, 'flow_failed', 'agent_transition',
+                'host', 'host_fact', null, null, $4, 'workspace', 'durable'
+            )
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(flow_run.id)
+        .bind(runtime_event_sequence)
+        .bind(&input.terminal_event_payload)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        match self.upsert_application_conversation_messages_for_flow_run(&flow_run).await {
+            Ok(()) => Ok(FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::Finalized(
+                flow_run,
+            )),
+            Err(error) => {
+                tracing::warn!(
+                    flow_run_id = %flow_run.id,
+                    application_id = %flow_run.application_id,
+                    error = %error,
+                    "published stream EOF recovery committed canonical failure but conversation projection failed"
+                );
+                Ok(FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::FinalizedWithPostCommitProjectionWarning(flow_run))
+            }
+        }
+    }
+
     async fn complete_flow_run(
         &self,
         input: &CompleteFlowRunInput,

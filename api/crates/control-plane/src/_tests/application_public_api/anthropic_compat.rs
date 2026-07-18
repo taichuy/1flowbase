@@ -1,8 +1,10 @@
 use control_plane::application_public_api::compat::anthropic::{
-    map_messages_request, AnthropicCompatError,
+    map_messages_request, translate_messages_request, AnthropicCompatError,
 };
 use control_plane::application_public_api::{
-    mapping::ApplicationApiMappingConfig, native::NativeInputMapper,
+    mapping::ApplicationApiMappingConfig,
+    native::NativeInputMapper,
+    protocol_translation::{TranslationDecisionKind, TranslationSafeRepresentation},
 };
 use plugin_framework::provider_contract::NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY;
 use serde_json::{json, Value};
@@ -19,15 +21,32 @@ fn base_request() -> Value {
     })
 }
 
-fn assert_unsupported_feature(request: Value) {
-    let error = map_messages_request(request).unwrap_err();
+fn assert_unsupported_feature(request: Value, path: &str) {
+    let error = translate_messages_request(request).unwrap_err();
 
-    assert_anthropic_unsupported_feature(error);
+    assert_anthropic_unsupported_feature(error.clone());
+    assert!(error
+        .report
+        .has_decision(path, TranslationDecisionKind::Unsupported));
 }
 
 fn assert_anthropic_unsupported_feature(error: AnthropicCompatError) {
     assert_eq!(error.error_type, "unsupported_feature");
     assert!(error.message.contains("is not supported by this endpoint"));
+}
+
+#[test]
+fn d2_ac_007_context_management_is_unsupported_before_native_run_creation() {
+    let mut request = base_request();
+    request["context_management"] = json!({"edits": []});
+
+    let error = translate_messages_request(request)
+        .expect_err("context management has no D2 canonical owner");
+
+    assert_anthropic_unsupported_feature(error.clone());
+    assert!(error
+        .report
+        .has_decision("$.context_management", TranslationDecisionKind::Unsupported));
 }
 
 #[test]
@@ -57,7 +76,7 @@ fn ac_002_anthropic_system_blocks_and_end_user_reference_become_native_truth() {
         {
             "type": "text",
             "text": "Use Claude Code project instructions.",
-            "cache_control": { "type": "ephemeral" }
+            "cache_control": { "type": "ephemeral", "ttl": "1h" }
         },
         {
             "type": "text",
@@ -79,7 +98,7 @@ fn ac_002_anthropic_system_blocks_and_end_user_reference_become_native_truth() {
             {
                 "type": "text",
                 "text": "Use Claude Code project instructions.",
-                "cache_control": { "type": "ephemeral" }
+                "cache_control": { "type": "ephemeral", "ttl": "1h" }
             },
             {
                 "type": "text",
@@ -114,7 +133,8 @@ fn ac_003_anthropic_max_tokens_maps_to_native_max_output_tokens() {
     let native = map_messages_request(base_request()).unwrap();
 
     assert_eq!(
-        native.execution["model_parameters"]["max_output_tokens"],
+        serde_json::to_value(&native).unwrap()["execution"]["model_parameters"]
+            ["max_output_tokens"],
         json!(512)
     );
 }
@@ -244,7 +264,7 @@ fn one_m_model_suffix_maps_to_native_model_and_anthropic_beta() {
 }
 
 #[test]
-fn tools_are_accepted_for_agent_framework_compatibility() {
+fn d2_ac_007_anthropic_tools_are_unsupported_with_a_translation_receipt() {
     let mut request = base_request();
     request["tools"] = json!([
         {
@@ -254,35 +274,22 @@ fn tools_are_accepted_for_agent_framework_compatibility() {
         }
     ]);
 
-    let native = map_messages_request(request).unwrap();
-
-    assert_eq!(native.query, "Final question");
-    assert_eq!(native.model.as_deref(), Some("claude-compatible-custom"));
-    assert_eq!(
-        native.inputs.as_value()["tools"][0]["name"],
-        json!("lookup_order")
-    );
+    assert_unsupported_feature(request, "$.tools");
 }
 
 #[test]
-fn tool_choice_is_accepted_for_agent_framework_compatibility() {
+fn d2_ac_007_anthropic_tool_choice_is_unsupported_with_a_translation_receipt() {
     let mut request = base_request();
     request["tool_choice"] = json!({
         "type": "tool",
         "name": "lookup_order"
     });
 
-    let native = map_messages_request(request).unwrap();
-
-    assert_eq!(native.query, "Final question");
-    assert_eq!(
-        native.inputs.as_value()["tool_choice"]["name"],
-        json!("lookup_order")
-    );
+    assert_unsupported_feature(request, "$.tool_choice");
 }
 
 #[test]
-fn tool_use_and_tool_result_blocks_map_to_native_history_and_query() {
+fn d2_ac_007_anthropic_tool_blocks_are_unsupported_with_a_translation_receipt() {
     let mut request = base_request();
     request["messages"] = json!([
         {"role": "user", "content": "Find order"},
@@ -309,27 +316,7 @@ fn tool_use_and_tool_result_blocks_map_to_native_history_and_query() {
         }
     ]);
 
-    let native = map_messages_request(request).unwrap();
-
-    assert_eq!(native.query, "Order found");
-    assert_eq!(
-        native.history,
-        vec![
-            json!({"role": "user", "content": "Find order"}),
-            json!({
-                "role": "assistant",
-                "content": "",
-                "content_blocks": [
-                    {
-                        "type": "tool_use",
-                        "id": "toolu_123",
-                        "name": "lookup_order",
-                        "input": {"order_id": "order_123"}
-                    }
-                ]
-            })
-        ]
-    );
+    assert_unsupported_feature(request, "$.messages[1].content[0].type");
 }
 
 #[test]
@@ -370,8 +357,462 @@ fn last_user_multimodal_content_maps_query_text_and_preserves_media_blocks() {
 }
 
 #[test]
-fn last_user_mixed_tool_result_and_text_uses_visible_text_as_query() {
-    let native = map_messages_request(json!({
+fn d2_ac_001_anthropic_text_block_unknown_field_is_rejected_with_its_own_receipt() {
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible-custom",
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "text",
+                "text": "hello",
+                "unexpected": "must not reach canonical history"
+            }]
+        }]
+    }))
+    .expect_err("unknown Anthropic text-block fields must be rejected");
+
+    assert!(error.report.has_decision(
+        "$.messages[0].content[0].<unknown>[0]",
+        TranslationDecisionKind::Rejected
+    ));
+}
+
+#[test]
+fn d2_ac_001_anthropic_required_and_nested_fields_have_one_safe_rejection_receipt() {
+    let sentinel = "D2-ANTHROPIC-RAW-METADATA-MUST-NOT-REACH-RECEIPT";
+    let cases = [
+        (
+            translate_messages_request(json!({
+                "messages": [{"role": "user", "content": "hello"}]
+            }))
+            .expect_err("missing Anthropic model must be decided before rejection"),
+            "$.model",
+        ),
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible"
+            }))
+            .expect_err("missing Anthropic messages must be decided before rejection"),
+            "$.messages",
+        ),
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": [{"role": "user", "content": "hello"}],
+                "metadata": {"raw_provider_body": sentinel}
+            }))
+            .expect_err("nested Anthropic metadata must not be copied into the Native request"),
+            "$.metadata.<unknown>[0]",
+        ),
+    ];
+
+    for (error, source_path) in cases {
+        let decisions = error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            decisions.len(),
+            1,
+            "{source_path} must have exactly one TranslationDecision"
+        );
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+        assert!(
+            !serde_json::to_string(&error.report)
+                .expect("receipt should serialize")
+                .contains(sentinel),
+            "receipt must not retain the raw nested sentinel"
+        );
+    }
+}
+
+#[test]
+fn d2_ac_001_anthropic_required_malformed_values_remain_present_in_the_receipt() {
+    let malformed_cases = [
+        (
+            translate_messages_request(json!({
+                "model": false,
+                "messages": [{"role": "user", "content": "hello"}]
+            }))
+            .expect_err("a malformed Anthropic model must be rejected"),
+            "$.model",
+        ),
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": {}
+            }))
+            .expect_err("a malformed Anthropic messages value must be rejected"),
+            "$.messages",
+        ),
+    ];
+    for (error, source_path) in malformed_cases {
+        let decisions = error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one receipt");
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+        assert_eq!(
+            decisions[0].effective_value,
+            TranslationSafeRepresentation::Present,
+            "{source_path} is malformed but present, not missing"
+        );
+    }
+
+    let missing_model = translate_messages_request(json!({
+        "messages": [{"role": "user", "content": "hello"}]
+    }))
+    .expect_err("a missing Anthropic model must be rejected");
+    let decision = missing_model
+        .report
+        .decisions
+        .iter()
+        .find(|decision| decision.source_path == "$.model")
+        .expect("the missing model needs a receipt");
+    assert_eq!(
+        decision.effective_value,
+        TranslationSafeRepresentation::Absent
+    );
+}
+
+#[test]
+fn d2_ac_001_anthropic_invalid_message_shapes_have_field_receipts() {
+    let cases = [
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": [false]
+            }))
+            .expect_err("a non-object Anthropic message must be rejected at its item path"),
+            "$.messages[0]",
+        ),
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": [{"role": false, "content": "hello"}]
+            }))
+            .expect_err("a non-text Anthropic role must be rejected at its field path"),
+            "$.messages[0].role",
+        ),
+        (
+            translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": [{"role": "user", "content": [false]}]
+            }))
+            .expect_err("a non-object Anthropic content block must be rejected at its item path"),
+            "$.messages[0].content[0]",
+        ),
+    ];
+
+    for (error, source_path) in cases {
+        let decisions = error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one decision");
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+    }
+}
+
+#[test]
+fn d2_ac_001_anthropic_media_source_unknown_field_is_rejected_before_canonical_history() {
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible-custom",
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": "aW1hZ2U=",
+                    "unexpected": "raw compat payload"
+                }
+            }]
+        }]
+    }))
+    .expect_err("unknown Anthropic media source fields must be rejected");
+
+    assert!(error.report.has_decision(
+        "$.messages[0].content[0].source.<unknown>[0]",
+        TranslationDecisionKind::Rejected
+    ));
+}
+
+#[test]
+fn d2_ac_001_anthropic_cache_control_unknown_field_is_rejected_with_its_own_receipt() {
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible-custom",
+        "system": [{
+            "type": "text",
+            "text": "Use the support playbook.",
+            "cache_control": {
+                "type": "ephemeral",
+                "unexpected": "raw compat payload"
+            }
+        }],
+        "messages": [{"role": "user", "content": "hello"}]
+    }))
+    .expect_err("unknown cache-control fields must be rejected");
+
+    assert!(error.report.has_decision(
+        "$.system[0].cache_control.<unknown>[0]",
+        TranslationDecisionKind::Rejected
+    ));
+}
+
+#[test]
+fn d2_ac_001_anthropic_message_cache_control_is_unsupported_not_dropped() {
+    let cases = [
+        json!({
+            "model": "claude-compatible",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": "hello",
+                    "cache_control": {"type": "ephemeral", "ttl": "5m"}
+                }]
+            }]
+        }),
+        json!({
+            "model": "claude-compatible",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": "aW1hZ2U="
+                    },
+                    "cache_control": {"type": "ephemeral", "ttl": "5m"}
+                }]
+            }]
+        }),
+        json!({
+            "model": "claude-compatible",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": "ZG9jdW1lbnQ="
+                    },
+                    "cache_control": {"type": "ephemeral", "ttl": "5m"}
+                }]
+            }]
+        }),
+    ];
+
+    for request in cases {
+        let error = translate_messages_request(request)
+            .expect_err("message cache control has no current Native owner");
+
+        assert_anthropic_unsupported_feature(error.clone());
+        for suffix in ["cache_control", "cache_control.type", "cache_control.ttl"] {
+            let source_path = format!("$.messages[0].content[0].{suffix}");
+            let decisions = error
+                .report
+                .decisions
+                .iter()
+                .filter(|decision| decision.source_path == source_path)
+                .collect::<Vec<_>>();
+            assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
+            assert_eq!(decisions[0].kind, TranslationDecisionKind::Unsupported);
+        }
+        assert!(
+            !error
+                .report
+                .decisions
+                .iter()
+                .any(|decision| decision.kind == TranslationDecisionKind::Dropped),
+            "a capability-dependent ingress field must not be silently dropped"
+        );
+    }
+}
+
+#[test]
+fn d2_ac_001_anthropic_content_and_source_type_receipts_preserve_wire_presence() {
+    let cases = [
+        (
+            json!({
+                "model": "claude-compatible",
+                "messages": [{
+                    "role": "user",
+                    "content": [{"text": "hello"}]
+                }]
+            }),
+            "$.messages[0].content[0].type",
+            TranslationSafeRepresentation::Absent,
+        ),
+        (
+            json!({
+                "model": "claude-compatible",
+                "messages": [{
+                    "role": "user",
+                    "content": [{"type": false, "text": "hello"}]
+                }]
+            }),
+            "$.messages[0].content[0].type",
+            TranslationSafeRepresentation::Present,
+        ),
+        (
+            json!({
+                "model": "claude-compatible",
+                "messages": [{
+                    "role": "user",
+                    "content": [{
+                        "type": "image",
+                        "source": {
+                            "media_type": "image/png",
+                            "data": "aW1hZ2U="
+                        }
+                    }]
+                }]
+            }),
+            "$.messages[0].content[0].source.type",
+            TranslationSafeRepresentation::Absent,
+        ),
+        (
+            json!({
+                "model": "claude-compatible",
+                "messages": [{
+                    "role": "user",
+                    "content": [{
+                        "type": "image",
+                        "source": {
+                            "type": false,
+                            "media_type": "image/png",
+                            "data": "aW1hZ2U="
+                        }
+                    }]
+                }]
+            }),
+            "$.messages[0].content[0].source.type",
+            TranslationSafeRepresentation::Present,
+        ),
+    ];
+
+    for (request, source_path, effective_value) in cases {
+        let error = translate_messages_request(request)
+            .expect_err("invalid Anthropic nested type fields must be rejected");
+        let decisions = error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+        assert_eq!(decisions[0].effective_value, effective_value);
+    }
+}
+
+#[test]
+fn d2_ac_001_anthropic_metadata_normalization_is_receipted_without_changing_conversation() {
+    let identity = "  {\"account_uuid\":\" account-42 \",\"session_id\":\" 3e7058c2-3120-4222-bb14-c99ec85e1c0f \"}  ";
+    let identity_translated = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        "metadata": {"user_id": identity}
+    }))
+    .expect("a Claude Code identity string should retain the current canonical derivation");
+
+    assert_eq!(
+        identity_translated
+            .request
+            .request_context
+            .end_user_reference
+            .as_deref(),
+        Some(identity.trim())
+    );
+    assert_eq!(
+        identity_translated.request.conversation["user"],
+        json!("account-42")
+    );
+    assert_eq!(
+        identity_translated.request.conversation["id"],
+        json!("3e7058c2-3120-4222-bb14-c99ec85e1c0f")
+    );
+    assert!(identity_translated
+        .report
+        .has_decision("$.metadata.user_id", TranslationDecisionKind::Normalized));
+
+    let trimmed_translated = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        "metadata": {
+            "user_id": "  source-user  ",
+            "expand_id": "  external-user  ",
+            "session_id": "  session-42  "
+        }
+    }))
+    .expect("trimmed Anthropic metadata should retain the current canonical mapping");
+
+    assert_eq!(
+        trimmed_translated
+            .request
+            .request_context
+            .end_user_reference
+            .as_deref(),
+        Some("source-user")
+    );
+    assert_eq!(
+        trimmed_translated.request.conversation["user"],
+        json!("external-user")
+    );
+    assert_eq!(
+        trimmed_translated.request.conversation["id"],
+        json!("session-42")
+    );
+    for source_path in [
+        "$.metadata.user_id",
+        "$.metadata.expand_id",
+        "$.metadata.session_id",
+    ] {
+        assert!(
+            trimmed_translated
+                .report
+                .has_decision(source_path, TranslationDecisionKind::Normalized),
+            "{source_path} must record its normalization"
+        );
+    }
+}
+
+#[test]
+fn d2_ac_001_anthropic_marker_rejection_replaces_preliminary_decision_for_the_same_path() {
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible-custom",
+        "messages": [{
+            "role": "user",
+            "content": "Your task is to create a detailed summary of the conversation so far"
+        }]
+    }))
+    .expect_err("Claude Code control markers have no canonical owner");
+
+    let decisions = error
+        .report
+        .decisions
+        .iter()
+        .filter(|decision| decision.source_path == "$.messages[0].content")
+        .collect::<Vec<_>>();
+    assert_eq!(decisions.len(), 1, "a source path has one final decision");
+    assert_eq!(decisions[0].kind, TranslationDecisionKind::Unsupported);
+}
+
+#[test]
+fn d2_ac_007_mixed_tool_result_and_text_is_unsupported_with_a_translation_receipt() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "messages": [
             {"role": "user", "content": "uploads/agent-flow-preview-debug.png 描述一下这幅图说什么？"},
@@ -398,16 +839,14 @@ fn last_user_mixed_tool_result_and_text_uses_visible_text_as_query() {
                 ]
             }
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(native.query, "帮我找找这个代码位置");
-    assert!(!native.query.contains("old image output"));
+    assert_unsupported_feature(request, "$.messages[1].content[0].type");
 }
 
 #[test]
-fn assistant_thinking_history_is_ignored_for_claude_code_replay() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_thinking_history_is_unsupported_with_a_translation_receipt() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "messages": [
             {"role": "user", "content": "hi ?"},
@@ -425,22 +864,14 @@ fn assistant_thinking_history_is_ignored_for_claude_code_replay() {
             },
             {"role": "user", "content": "next question"}
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(native.query, "next question");
-    assert_eq!(
-        native.history,
-        vec![
-            json!({"role": "user", "content": "hi ?"}),
-            json!({"role": "assistant", "content": "Hello!"})
-        ]
-    );
+    assert_unsupported_feature(request, "$.messages[1].content[0].type");
 }
 
 #[test]
-fn claude_code_compact_summary_request_marks_control_metadata() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_claude_code_compact_summary_marker_is_unsupported() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
             "user_id": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
@@ -452,22 +883,14 @@ fn claude_code_compact_summary_request_marks_control_metadata() {
                 "content": "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.\n\nYour task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.\n\nIMPORTANT: Do NOT use any tools. You MUST respond with ONLY the <summary>...</summary> block as your text output."
             }
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(
-        native.metadata.as_value()["compatibility"]["claude_code_control"],
-        json!("compact_summary")
-    );
-    assert_eq!(
-        native.inputs.as_value()["compatibility"]["claude_code_control"],
-        json!("compact_summary")
-    );
+    assert_unsupported_feature(request, "$.messages[1].content");
 }
 
 #[test]
-fn claude_code_session_title_request_marks_control_metadata() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_claude_code_title_marker_is_unsupported() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "system": "x-anthropic-billing-header: cc_version=2.1.141.831; cc_entrypoint=cli; cch=a143a;\n\nYou are Claude Code, Anthropic's official CLI for Claude.\n\nGenerate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this coding session. Return JSON with a single \"title\" field.",
         "metadata": {
@@ -476,22 +899,14 @@ fn claude_code_session_title_request_marks_control_metadata() {
         "messages": [
             {"role": "user", "content": "uploads/image-1.png 帮我看看这导航栏代码是在哪来的？"}
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(
-        native.metadata.as_value()["compatibility"]["claude_code_control"],
-        json!("session_title")
-    );
-    assert_eq!(
-        native.inputs.as_value()["compatibility"]["claude_code_control"],
-        json!("session_title")
-    );
+    assert_unsupported_feature(request, "$.system");
 }
 
 #[test]
-fn claude_code_away_summary_request_marks_control_metadata() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_claude_code_away_summary_marker_is_unsupported() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
             "user_id": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
@@ -502,22 +917,14 @@ fn claude_code_away_summary_request_marks_control_metadata() {
                 "content": "The user stepped away and is coming back. Write exactly 1-3 short sentences. Start by stating the high-level task — what they are building or debugging, not implementation details. Next: the concrete next step. Skip status reports and commit recaps."
             }
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(
-        native.metadata.as_value()["compatibility"]["claude_code_control"],
-        json!("away_summary")
-    );
-    assert_eq!(
-        native.inputs.as_value()["compatibility"]["claude_code_control"],
-        json!("away_summary")
-    );
+    assert_unsupported_feature(request, "$.messages[0].content");
 }
 
 #[test]
-fn claude_code_compact_resume_request_without_transcript_marks_control_metadata() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_claude_code_compact_resume_marker_is_unsupported() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
             "user_id": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
@@ -528,22 +935,14 @@ fn claude_code_compact_resume_request_without_transcript_marks_control_metadata(
                 "content": "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n- user asked where uploads/image-1.png is implemented\n\nContinue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with \"I'll continue\" or similar. Pick up the last task as if the break never happened."
             }
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(
-        native.metadata.as_value()["compatibility"]["claude_code_control"],
-        json!("compact_resume")
-    );
-    assert_eq!(
-        native.inputs.as_value()["compatibility"]["claude_code_control"],
-        json!("compact_resume")
-    );
+    assert_unsupported_feature(request, "$.messages[0].content");
 }
 
 #[test]
-fn claude_code_compact_resume_history_is_marked_hidden_from_conversation() {
-    let native = map_messages_request(json!({
+fn d2_ac_007_claude_code_compact_resume_history_marker_is_unsupported() {
+    let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
             "user_id": "user_31fb5a_account__session_3e7058c2-3120-4222-bb14-c99ec85e1c0f"
@@ -556,27 +955,9 @@ fn claude_code_compact_resume_history_is_marked_hidden_from_conversation() {
             {"role": "assistant", "content": "已恢复上下文。"},
             {"role": "user", "content": "那你帮我拉一下最新代码"}
         ]
-    }))
-    .unwrap();
+    });
 
-    assert_eq!(native.query, "那你帮我拉一下最新代码");
-    assert_eq!(native.history.len(), 2);
-    assert_eq!(
-        native.history[0]["metadata"]["hidden_from_conversation"],
-        json!(true)
-    );
-    assert_eq!(
-        native.history[0]["metadata"]["claude_code_control"],
-        json!("compact_resume")
-    );
-    assert_eq!(
-        native.history[1]["metadata"]["hidden_from_conversation"],
-        json!(true)
-    );
-    assert_eq!(
-        native.history[1]["metadata"]["claude_code_control"],
-        json!("compact_resume")
-    );
+    assert_unsupported_feature(request, "$.messages[0].content");
 }
 
 #[test]
@@ -597,5 +978,142 @@ fn computer_use_returns_unsupported_feature() {
         {"role": "user", "content": "What is on screen?"}
     ]);
 
-    assert_unsupported_feature(request);
+    assert_unsupported_feature(request, "$.messages[0].content[0].type");
+}
+
+#[test]
+fn d2_f1_anthropic_nested_failures_reject_system_and_messages_containers() {
+    let system_error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "system": [{"type": "text", "text": false}],
+        "messages": [{"role": "user", "content": "hello"}]
+    }))
+    .expect_err("malformed Anthropic system text must reject the system container");
+    for source_path in ["$.system", "$.system[0].text"] {
+        let decisions = system_error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one receipt");
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+    }
+    let text = system_error
+        .report
+        .decisions
+        .iter()
+        .find(|decision| decision.source_path == "$.system[0].text")
+        .expect("malformed text decision exists");
+    assert_eq!(text.effective_value, TranslationSafeRepresentation::Present);
+
+    let message_error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{"role": "user", "content": false}]
+    }))
+    .expect_err("malformed Anthropic content must reject the messages container");
+    for source_path in ["$.messages", "$.messages[0].content"] {
+        let decisions = message_error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one receipt");
+        assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+    }
+}
+
+#[test]
+fn d2_f1_anthropic_unknown_defined_keys_are_anonymous_and_complete() {
+    let alpha = "D2-F1-ANTHROPIC-UNKNOWN-KEY-ALPHA";
+    let beta = "D2-F1-ANTHROPIC-UNKNOWN-KEY-BETA";
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        alpha: true,
+        beta: false
+    }))
+    .expect_err("unknown Anthropic keys must not become receipt content");
+    let unknown_paths = error
+        .report
+        .decisions
+        .iter()
+        .filter(|decision| decision.source_path.starts_with("$.<unknown>"))
+        .map(|decision| decision.source_path.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(unknown_paths, ["$.<unknown>[0]", "$.<unknown>[1]"]);
+    let serialized = serde_json::to_string(&error.report).expect("receipt serializes");
+    assert!(!serialized.contains(alpha));
+    assert!(!serialized.contains(beta));
+}
+
+#[test]
+fn d2_f1_anthropic_defined_container_receipts_remain_unique_on_nested_rejection() {
+    let message_error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "image",
+                "source": {"type": "base64", "media_type": false, "data": "aW1hZ2U="}
+            }]
+        }]
+    }))
+    .expect_err("a malformed Anthropic media field retains all defined container receipts");
+    for (source_path, kind) in [
+        ("$.messages", TranslationDecisionKind::Rejected),
+        ("$.messages[0]", TranslationDecisionKind::Normalized),
+        ("$.messages[0].content", TranslationDecisionKind::Rejected),
+        (
+            "$.messages[0].content[0]",
+            TranslationDecisionKind::Normalized,
+        ),
+        (
+            "$.messages[0].content[0].source",
+            TranslationDecisionKind::Normalized,
+        ),
+        (
+            "$.messages[0].content[0].source.media_type",
+            TranslationDecisionKind::Rejected,
+        ),
+    ] {
+        let decisions = message_error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
+        assert_eq!(decisions[0].kind, kind);
+    }
+
+    let system_error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "system": [{
+            "type": "text",
+            "text": "Use the runbook.",
+            "cache_control": {"type": false}
+        }],
+        "messages": [{"role": "user", "content": "hello"}]
+    }))
+    .expect_err("a malformed system cache retains all defined system container receipts");
+    for (source_path, kind) in [
+        ("$.system", TranslationDecisionKind::Rejected),
+        ("$.system[0]", TranslationDecisionKind::Normalized),
+        ("$.system[0].cache_control", TranslationDecisionKind::Exact),
+        (
+            "$.system[0].cache_control.type",
+            TranslationDecisionKind::Rejected,
+        ),
+    ] {
+        let decisions = system_error
+            .report
+            .decisions
+            .iter()
+            .filter(|decision| decision.source_path == source_path)
+            .collect::<Vec<_>>();
+        assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
+        assert_eq!(decisions[0].kind, kind);
+    }
 }

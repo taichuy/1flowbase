@@ -4,8 +4,9 @@ use async_trait::async_trait;
 use control_plane::{
     application_public_api::native::NativeRunStatus,
     ports::{
-        AppendRuntimeEventInput, OrchestrationRuntimeRepository, RuntimeEventCloseReason,
-        RuntimeEventClosure, RuntimeEventPayload, RuntimeEventStream, RuntimeEventStreamPolicy,
+        AppendRuntimeEventInput, AppendTerminalIfMissingAndCloseOutcome,
+        OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventClosure,
+        RuntimeEventPayload, RuntimeEventStream, RuntimeEventStreamPolicy,
         RuntimeEventSubscription, RuntimeEventTrimPolicy,
     },
 };
@@ -74,6 +75,14 @@ impl RuntimeEventStream for ReplayBeforeFallbackRuntimeEventStream {
         event: RuntimeEventPayload,
     ) -> anyhow::Result<RuntimeEventEnvelope> {
         Ok(RuntimeEventEnvelope::new(run_id, 0, event))
+    }
+
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        _run_id: Uuid,
+        _event: RuntimeEventPayload,
+    ) -> anyhow::Result<AppendTerminalIfMissingAndCloseOutcome> {
+        anyhow::bail!("replay fixture does not support atomic terminal claims")
     }
 
     async fn subscribe(

@@ -49,22 +49,28 @@ fn flow_run(
 }
 
 #[test]
-fn anthropic_messages_uses_external_user_root_session_key() {
-    let run = flow_run(
+fn published_api_session_key_ignores_legacy_compatibility_mode() {
+    let without_mode = flow_run(None, Some("claude-root-session"), Some("turn-a"), "");
+    let with_legacy_mode = flow_run(
         Some("anthropic-messages-v1"),
         Some("claude-root-session"),
         Some("turn-a"),
         "",
     );
 
-    let metadata = derive_scheduler_admission_metadata(&run);
+    let without_mode = derive_scheduler_admission_metadata(&without_mode);
+    let with_legacy_mode = derive_scheduler_admission_metadata(&with_legacy_mode);
 
-    assert!(!metadata.stateless);
-    assert!(metadata
-        .client_session_key
-        .as_deref()
-        .is_some_and(|key| key.contains("mode=anthropic-messages-v1")));
-    assert!(!metadata
+    assert!(!without_mode.stateless);
+    assert_eq!(
+        without_mode.client_session_key,
+        with_legacy_mode.client_session_key
+    );
+    assert_eq!(
+        without_mode.run_admission_key,
+        with_legacy_mode.run_admission_key
+    );
+    assert!(!without_mode
         .client_session_key
         .as_deref()
         .unwrap()
@@ -74,13 +80,13 @@ fn anthropic_messages_uses_external_user_root_session_key() {
 #[test]
 fn openai_responses_external_conversation_changes_do_not_change_root_session_key() {
     let first = flow_run(
-        Some("openai-responses-v1"),
+        None,
         Some("codex-root-session"),
         Some("response-thread-a"),
         "",
     );
     let second = flow_run(
-        Some("openai-responses-v1"),
+        Some("forged-protocol-mode"),
         Some("codex-root-session"),
         Some("response-thread-b"),
         "",
@@ -112,7 +118,6 @@ fn native_debug_run_uses_debug_session_without_raw_session_text() {
 
     let metadata = derive_scheduler_admission_metadata(&run);
 
-    assert_eq!(metadata.compatibility_mode, "native");
     assert!(!metadata.stateless);
     assert!(metadata
         .client_session_key

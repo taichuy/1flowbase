@@ -4,6 +4,7 @@ use super::*;
 async fn anthropic_probe_message_uses_published_native_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Probe Compatible Route App").await;
+    assert_published_anthropic_plan_has_provider_route(state.as_ref()).await;
     let before = flow_run_count(state.as_ref()).await;
 
     let response = post_json(
@@ -11,7 +12,7 @@ async fn anthropic_probe_message_uses_published_native_run() {
         "/v1/messages",
         ("x-api-key", token),
         json!({
-            "model": "anthropic/custom-model:latest",
+            "model": "qwen3.6-35b-a3b",
             "max_tokens": 1,
             "messages": [
                 {"role": "user", "content": "test"}
@@ -40,7 +41,7 @@ async fn anthropic_probe_message_requires_active_publication() {
         "/v1/messages",
         ("x-api-key", token),
         json!({
-            "model": "anthropic/custom-model:latest",
+            "model": "qwen3.6-35b-a3b",
             "max_tokens": 1,
             "messages": [
                 {"role": "user", "content": "test"}
@@ -56,7 +57,7 @@ async fn anthropic_probe_message_requires_active_publication() {
 }
 
 #[tokio::test]
-async fn anthropic_structured_title_message_requires_active_publication() {
+async fn d2_ac_007_anthropic_output_config_is_unsupported_before_publication_lookup() {
     let (app, state) = test_app_with_state().await;
     let token = setup_unpublished_app_key(
         &app,
@@ -69,7 +70,7 @@ async fn anthropic_structured_title_message_requires_active_publication() {
         "/v1/messages",
         ("x-api-key", token),
         json!({
-            "model": "anthropic/custom-model:latest",
+            "model": "qwen3.6-35b-a3b",
             "max_tokens": 64,
             "stream": true,
             "messages": [
@@ -92,8 +93,8 @@ async fn anthropic_structured_title_message_requires_active_publication() {
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["type"], json!("application_not_published"));
+    assert_eq!(payload["error"]["type"], json!("unsupported_feature"));
     assert_eq!(flow_run_count(state.as_ref()).await, 0);
 }

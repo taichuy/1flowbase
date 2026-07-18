@@ -133,6 +133,25 @@ pub struct UpdateFlowRunInput {
     pub finished_at: Option<OffsetDateTime>,
 }
 
+/// The durable half of the published-stream EOF recovery. The status update and both terminal
+/// facts must commit together so a retry cannot observe a failed run with a missing terminal.
+#[derive(Debug, Clone)]
+pub struct FinalizePublishedRunMissingStreamTerminalPersistenceInput {
+    pub flow_run_id: Uuid,
+    pub expected_status: domain::FlowRunStatus,
+    pub output_payload: serde_json::Value,
+    pub error_payload: serde_json::Value,
+    pub terminal_event_payload: serde_json::Value,
+    pub finished_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub enum FinalizePublishedRunMissingStreamTerminalPersistenceOutcome {
+    Finalized(domain::FlowRunRecord),
+    FinalizedWithPostCommitProjectionWarning(domain::FlowRunRecord),
+    CasMiss,
+}
+
 #[derive(Debug, Clone)]
 pub struct CompleteFlowRunInput {
     pub flow_run_id: Uuid,
@@ -675,6 +694,10 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         input: &UpdateFlowRunInput,
         expected_status: domain::FlowRunStatus,
     ) -> anyhow::Result<Option<domain::FlowRunRecord>>;
+    async fn finalize_published_run_missing_stream_terminal(
+        &self,
+        input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+    ) -> anyhow::Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome>;
     async fn complete_flow_run(
         &self,
         input: &CompleteFlowRunInput,

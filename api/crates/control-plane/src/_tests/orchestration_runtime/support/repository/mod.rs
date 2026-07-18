@@ -45,6 +45,9 @@ struct InMemoryOrchestrationRuntimeState {
     file_tables_by_id: HashMap<Uuid, domain::FileTableRecord>,
     status_after_next_get: Option<(Uuid, domain::FlowRunStatus)>,
     status_before_next_flow_update: Option<(Uuid, domain::FlowRunStatus)>,
+    stream_terminal_failure_before_next_flow_update: Option<Uuid>,
+    fail_next_runtime_event_append: bool,
+    fail_next_published_stream_terminal_projection: bool,
     application_run_detail_read_count: usize,
 }
 
@@ -910,6 +913,36 @@ impl InMemoryOrchestrationRuntimeRepository {
             .lock()
             .expect("runtime repo mutex poisoned")
             .status_before_next_flow_update = Some((flow_run_id, status));
+    }
+
+    pub(super) fn force_stream_terminal_failure_before_next_flow_update(&self, flow_run_id: Uuid) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .stream_terminal_failure_before_next_flow_update = Some(flow_run_id);
+    }
+
+    pub(super) fn force_flow_run_mode(&self, flow_run_id: Uuid, run_mode: domain::FlowRunMode) {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let flow_run = inner
+            .flow_runs_by_id
+            .get_mut(&flow_run_id)
+            .expect("flow run should exist for test");
+        flow_run.run_mode = run_mode;
+    }
+
+    pub(super) fn fail_next_runtime_event_append(&self) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .fail_next_runtime_event_append = true;
+    }
+
+    pub(super) fn fail_next_published_stream_terminal_projection(&self) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .fail_next_published_stream_terminal_projection = true;
     }
 }
 

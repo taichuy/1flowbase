@@ -4,7 +4,7 @@ use control_plane::application_public_api::run_service::{
 };
 
 #[tokio::test]
-async fn orchestration_runtime_repository_round_trips_published_public_run_metadata() {
+async fn orchestration_runtime_repository_round_trips_canonical_published_public_run_metadata() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -36,7 +36,7 @@ async fn orchestration_runtime_repository_round_trips_published_public_run_metad
             external_user: Some("external-user-1".to_string()),
             external_conversation_id: Some("conversation-1".to_string()),
             external_trace_id: Some("trace-1".to_string()),
-            compatibility_mode: Some("native-v1".to_string()),
+            compatibility_mode: None,
             idempotency_key: Some("idem-1".to_string()),
         },
     )
@@ -54,7 +54,7 @@ async fn orchestration_runtime_repository_round_trips_published_public_run_metad
         Some("conversation-1")
     );
     assert_eq!(created.external_trace_id.as_deref(), Some("trace-1"));
-    assert_eq!(created.compatibility_mode.as_deref(), Some("native-v1"));
+    assert!(created.compatibility_mode.is_none());
     assert_eq!(created.idempotency_key.as_deref(), Some("idem-1"));
 
     let fetched = <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_flow_run(
@@ -74,7 +74,7 @@ async fn orchestration_runtime_repository_round_trips_published_public_run_metad
         Some("conversation-1")
     );
     assert_eq!(fetched.external_trace_id.as_deref(), Some("trace-1"));
-    assert_eq!(fetched.compatibility_mode.as_deref(), Some("native-v1"));
+    assert!(fetched.compatibility_mode.is_none());
     assert_eq!(fetched.idempotency_key.as_deref(), Some("idem-1"));
 
     let completed = <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
@@ -101,7 +101,7 @@ async fn orchestration_runtime_repository_round_trips_published_public_run_metad
         Some("conversation-1")
     );
     assert_eq!(completed.external_trace_id.as_deref(), Some("trace-1"));
-    assert_eq!(completed.compatibility_mode.as_deref(), Some("native-v1"));
+    assert!(completed.compatibility_mode.is_none());
     assert_eq!(completed.idempotency_key.as_deref(), Some("idem-1"));
 }
 

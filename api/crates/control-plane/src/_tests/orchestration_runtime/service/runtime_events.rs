@@ -1,7 +1,8 @@
 use super::*;
 use crate::orchestration_runtime::debug_stream_events;
 use control_plane::ports::{
-    RuntimeEventClosure, RuntimeEventStreamPolicy, RuntimeEventSubscription, RuntimeEventTrimPolicy,
+    AppendTerminalIfMissingAndCloseOutcome, RuntimeEventClosure, RuntimeEventStreamPolicy,
+    RuntimeEventSubscription, RuntimeEventTrimPolicy,
 };
 use std::sync::Mutex;
 
@@ -23,6 +24,7 @@ struct OpenTestRuntimeEventStream {
     events: Mutex<Vec<RuntimeEventEnvelope>>,
     subscribers: Mutex<Vec<tokio::sync::mpsc::UnboundedSender<RuntimeEventEnvelope>>>,
     closure: Mutex<Option<RuntimeEventClosure>>,
+    terminal_claim: Mutex<()>,
 }
 
 #[async_trait::async_trait]
@@ -32,6 +34,10 @@ impl RuntimeEventStream for OpenTestRuntimeEventStream {
         _run_id: Uuid,
         _policy: RuntimeEventStreamPolicy,
     ) -> anyhow::Result<()> {
+        let _terminal_claim = self
+            .terminal_claim
+            .lock()
+            .expect("terminal claim lock should be available");
         *self
             .closure
             .lock()
@@ -44,6 +50,18 @@ impl RuntimeEventStream for OpenTestRuntimeEventStream {
         run_id: Uuid,
         event: RuntimeEventPayload,
     ) -> anyhow::Result<RuntimeEventEnvelope> {
+        let _terminal_claim = self
+            .terminal_claim
+            .lock()
+            .expect("terminal claim lock should be available");
+        if self
+            .closure
+            .lock()
+            .expect("closure lock should be available")
+            .is_some()
+        {
+            anyhow::bail!("runtime event stream is closed");
+        }
         let envelope = {
             let mut events = self.events.lock().expect("events lock should be available");
             let envelope = RuntimeEventEnvelope::new(run_id, events.len() as i64 + 1, event);
@@ -55,6 +73,85 @@ impl RuntimeEventStream for OpenTestRuntimeEventStream {
             .expect("subscribers lock should be available")
             .retain(|sender| sender.send(envelope.clone()).is_ok());
         Ok(envelope)
+    }
+
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        run_id: Uuid,
+        event: RuntimeEventPayload,
+    ) -> anyhow::Result<AppendTerminalIfMissingAndCloseOutcome> {
+        let incoming_reason = RuntimeEventCloseReason::from_terminal_event_type(&event.event_type)
+            .ok_or_else(|| {
+                anyhow::anyhow!("runtime event stream terminal append requires a terminal event")
+            })?;
+        let _terminal_claim = self
+            .terminal_claim
+            .lock()
+            .expect("terminal claim lock should be available");
+        let existing_terminal_reason = self
+            .events
+            .lock()
+            .expect("events lock should be available")
+            .iter()
+            .find_map(|existing| {
+                (existing.run_id == run_id)
+                    .then(|| {
+                        RuntimeEventCloseReason::from_terminal_event_type(&existing.event_type)
+                    })
+                    .flatten()
+            });
+        let is_closed = self
+            .closure
+            .lock()
+            .expect("closure lock should be available")
+            .is_some();
+        if is_closed {
+            if existing_terminal_reason.is_some() {
+                return Ok(AppendTerminalIfMissingAndCloseOutcome::ExistingTerminal);
+            }
+            anyhow::bail!("runtime event stream is closed without a terminal event");
+        }
+
+        let (outcome, close_reason) = if let Some(existing_reason) = existing_terminal_reason {
+            (
+                AppendTerminalIfMissingAndCloseOutcome::ExistingTerminal,
+                existing_reason,
+            )
+        } else {
+            let envelope = {
+                let mut events = self.events.lock().expect("events lock should be available");
+                let envelope = RuntimeEventEnvelope::new(run_id, events.len() as i64 + 1, event);
+                events.push(envelope.clone());
+                envelope
+            };
+            self.subscribers
+                .lock()
+                .expect("subscribers lock should be available")
+                .retain(|sender| sender.send(envelope.clone()).is_ok());
+            (
+                AppendTerminalIfMissingAndCloseOutcome::Appended,
+                incoming_reason,
+            )
+        };
+        let final_sequence = self
+            .events
+            .lock()
+            .expect("events lock should be available")
+            .last()
+            .map(|existing| existing.sequence)
+            .unwrap_or(0);
+        *self
+            .closure
+            .lock()
+            .expect("closure lock should be available") = Some(RuntimeEventClosure {
+            reason: close_reason,
+            final_sequence,
+        });
+        self.subscribers
+            .lock()
+            .expect("subscribers lock should be available")
+            .clear();
+        Ok(outcome)
     }
 
     async fn subscribe(
@@ -111,6 +208,10 @@ impl RuntimeEventStream for OpenTestRuntimeEventStream {
         _run_id: Uuid,
         reason: RuntimeEventCloseReason,
     ) -> anyhow::Result<()> {
+        let _terminal_claim = self
+            .terminal_claim
+            .lock()
+            .expect("terminal claim lock should be available");
         let final_sequence = self
             .events
             .lock()
@@ -410,6 +511,53 @@ async fn runtime_event_persister_flushes_pending_delta_before_cancelled_terminal
     assert_eq!(
         runtime_events[1].layer,
         domain::RuntimeEventLayer::AgentTransition
+    );
+}
+
+#[tokio::test]
+async fn runtime_debug_event_persister_stops_after_incomplete_terminal_event() {
+    let repository =
+        crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let stream = std::sync::Arc::new(OpenTestRuntimeEventStream::default());
+    let run_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .expect("open the debug stream");
+    let mut handle = control_plane::orchestration_runtime::spawn_runtime_debug_event_persister(
+        repository.clone(),
+        stream.clone(),
+        run_id,
+    );
+
+    stream
+        .append(
+            run_id,
+            debug_stream_events::flow_incomplete(
+                run_id,
+                json!({ "answer": "partial output at the limit" }),
+            ),
+        )
+        .await
+        .expect("publish incomplete terminal");
+
+    let completion = tokio::time::timeout(std::time::Duration::from_millis(250), &mut handle).await;
+    if completion.is_err() {
+        handle.abort();
+    }
+    assert!(
+        matches!(completion, Ok(Ok(()))),
+        "incomplete must flush the batch and stop the persister: {completion:?}"
+    );
+    let persisted = repository
+        .list_runtime_events(run_id, 0)
+        .await
+        .expect("read persisted debug events");
+    assert!(
+        persisted
+            .iter()
+            .any(|event| event.event_type == "flow_incomplete"),
+        "incomplete terminal must be durable before the persister stops"
     );
 }
 
@@ -797,11 +945,25 @@ async fn provider_error_after_live_delta_drains_runtime_event_stream_forwarding(
         .unwrap();
 
     assert_eq!(failed_detail.flow_run.status, domain::FlowRunStatus::Failed);
-    assert!(failed_detail.flow_run.error_payload.is_some_and(|payload| {
-        payload["message"]
-            .as_str()
-            .is_some_and(|message| message.contains("provider failed after live events"))
-    }));
+    let error_payload = failed_detail
+        .flow_run
+        .error_payload
+        .as_ref()
+        .expect("provider failure must retain its canonical error");
+    assert_eq!(
+        error_payload["error_code"],
+        json!("provider_invalid_response")
+    );
+    assert_eq!(
+        error_payload["message"],
+        json!("provider returned an invalid response")
+    );
+    assert!(
+        !error_payload
+            .to_string()
+            .contains("provider failed after live events"),
+        "raw provider error text must not become durable public error content"
+    );
     let event_types = stream
         .events()
         .into_iter()
@@ -822,7 +984,7 @@ async fn provider_error_after_live_delta_drains_runtime_event_stream_forwarding(
 }
 
 #[tokio::test]
-async fn provider_error_after_live_delta_exposes_error_text_to_answer_contract() {
+async fn provider_error_after_live_delta_keeps_failure_out_of_answer_contract() {
     let service = OrchestrationRuntimeService::for_tests_with_live_events_then_error(vec![
         plugin_framework::provider_contract::ProviderStreamEvent::TextDelta {
             delta: "partial before error".to_string(),
@@ -854,22 +1016,27 @@ async fn provider_error_after_live_delta_exposes_error_text_to_answer_contract()
         .unwrap();
 
     assert_eq!(failed_detail.flow_run.status, domain::FlowRunStatus::Failed);
-    assert_eq!(
-        failed_detail.flow_run.output_payload["answer"],
-        json!("provider failed after live events")
+    assert!(
+        failed_detail
+            .flow_run
+            .output_payload
+            .get("answer")
+            .is_none(),
+        "provider failure text must not become an Answer"
     );
     let llm_node = node_run(&failed_detail, "node-llm");
     assert_eq!(llm_node.status, domain::NodeRunStatus::Failed);
-    assert_eq!(
-        llm_node.output_payload["text"],
-        json!("provider failed after live events")
-    );
+    assert!(llm_node.output_payload.get("text").is_none());
     assert!(llm_node.output_payload.get("usage").is_none());
     assert!(llm_node.output_payload.get("tool_calls").is_none());
     assert_eq!(
-        node_run(&failed_detail, "node-answer").status,
-        domain::NodeRunStatus::Succeeded
+        llm_node.error_payload.as_ref().unwrap()["error_code"],
+        json!("provider_invalid_response")
     );
+    assert!(failed_detail
+        .node_runs
+        .iter()
+        .all(|node_run| node_run.node_id != "node-answer"));
 }
 
 #[tokio::test]

@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn openai_responses_waiting_callback_streams_function_call_added_done_and_completed() {
+async fn openai_responses_waiting_callback_is_explicitly_unsupported() {
     let run = native_run();
     let callback_task_id = Uuid::from_u128(0xcccccccccccccccccccccccccccccccc);
     let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, false);
@@ -40,29 +40,15 @@ async fn openai_responses_waiting_callback_streams_function_call_added_done_and_
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    let added_index = body
-        .find("event: response.output_item.added")
-        .unwrap_or_else(|| panic!("Responses function_call should emit output_item.added: {body}"));
-    let done_index = body
-        .find("event: response.output_item.done")
-        .unwrap_or_else(|| panic!("Responses function_call should emit output_item.done: {body}"));
-    let completed_index = body
-        .find("event: response.completed")
-        .unwrap_or_else(|| panic!("Responses function_call should complete the response: {body}"));
-    assert!(
-        added_index < done_index && done_index < completed_index,
-        "Responses function_call events should follow added -> done -> completed: {body}"
-    );
-    assert!(body.contains("\"type\":\"function_call\""), "{body}");
-    assert!(body.contains("\"name\":\"lookup_inventory\""), "{body}");
-    assert!(
-        body.contains("\"arguments\":\"{\\\"sku\\\":\\\"sku_123\\\"}\""),
-        "{body}"
-    );
+    assert!(body.contains("event: response.failed"), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("lookup_inventory"), "{body}");
+    assert!(!body.contains("\"type\":\"function_call\""), "{body}");
+    assert!(!body.contains("event: response.completed"), "{body}");
 }
 
 #[tokio::test]
-async fn openai_responses_waiting_internal_llm_tool_callback_completes_without_function_call() {
+async fn openai_responses_waiting_internal_llm_tool_callback_is_explicitly_unsupported() {
     let mut run = native_run();
     let callback_task_id = Uuid::from_u128(0x34343434343434343434343434343434);
     run.status = NativeRunStatus::Waiting;
@@ -111,7 +97,8 @@ async fn openai_responses_waiting_internal_llm_tool_callback_completes_without_f
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("event: response.completed"), "{body}");
+    assert!(body.contains("event: response.failed"), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
     assert!(!body.contains("\"type\":\"function_call\""), "{body}");
-    assert!(!body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("event: response.completed"), "{body}");
 }

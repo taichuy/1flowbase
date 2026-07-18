@@ -1,7 +1,59 @@
 use super::*;
+use axum::body::Bytes;
 use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
+use control_plane::application_public_api::protocol_translation::{
+    TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
+};
 use time::OffsetDateTime;
 use uuid::Uuid;
+
+fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
+    NativeRunResult {
+        id: Uuid::nil(),
+        application_id: Uuid::nil(),
+        api_key_id: Uuid::nil(),
+        publication_version_id: Uuid::nil(),
+        status,
+        node_input_payload: json!({}),
+        metadata: json!({}),
+        answer: Some("must-not-successify".to_string()),
+        answer_segments: None,
+        required_action: None,
+        tool_calls: None,
+        usage: None,
+        error: None,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+    }
+}
+
+#[test]
+fn d2_ac_001_anthropic_malformed_json_has_one_safe_adapter_receipt() {
+    let sentinel = "D2-ANTHROPIC-MALFORMED-JSON-MUST-NOT-REACH-RECEIPT";
+    let error = parse_anthropic_json_body(Bytes::from(format!("{{\"raw\":\"{sentinel}\"")))
+        .expect_err("malformed Anthropic JSON must be rejected by the adapter boundary");
+    let AnthropicRouteError::Compat(error) = error else {
+        panic!("malformed JSON must remain an Anthropic adapter error");
+    };
+
+    assert_eq!(
+        error.report.protocol,
+        TranslationProtocol::AnthropicMessages
+    );
+    assert_eq!(error.report.decisions.len(), 1);
+    let decision = &error.report.decisions[0];
+    assert_eq!(decision.source_path, "$.body");
+    assert_eq!(decision.kind, TranslationDecisionKind::Rejected);
+    assert_eq!(
+        decision.effective_value,
+        TranslationSafeRepresentation::Present
+    );
+    assert!(
+        !serde_json::to_string(&error.report)
+            .expect("receipt should serialize")
+            .contains(sentinel),
+        "malformed JSON must not be retained in the receipt"
+    );
+}
 
 #[test]
 fn anthropic_response_projects_native_tool_calls() {
@@ -28,8 +80,10 @@ fn anthropic_response_projects_native_tool_calls() {
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 
-    let payload = serde_json::to_value(to_anthropic_response(run, "provider/model".into()))
-        .expect("anthropic response serializes");
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into()).expect("succeeded run should project"),
+    )
+    .expect("anthropic response serializes");
 
     assert_eq!(payload["stop_reason"], json!("tool_use"));
     assert_eq!(payload["content"][0]["type"], json!("tool_use"));
@@ -48,7 +102,7 @@ fn anthropic_response_filters_internal_visible_llm_tool_calls() {
         application_id: Uuid::nil(),
         api_key_id: Uuid::nil(),
         publication_version_id: Uuid::nil(),
-        status: NativeRunStatus::Waiting,
+        status: NativeRunStatus::Succeeded,
         node_input_payload: json!({}),
         metadata: json!({}),
         answer: Some("visible internal LLM output".to_string()),
@@ -73,8 +127,10 @@ fn anthropic_response_filters_internal_visible_llm_tool_calls() {
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 
-    let payload = serde_json::to_value(to_anthropic_response(run, "provider/model".into()))
-        .expect("anthropic response serializes");
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into()).expect("succeeded run should project"),
+    )
+    .expect("anthropic response serializes");
 
     assert_eq!(payload["stop_reason"], json!("end_turn"));
     assert_eq!(payload["content"][0]["type"], json!("text"));
@@ -90,7 +146,7 @@ fn anthropic_response_filters_internal_visible_llm_tool_calls() {
 }
 
 #[test]
-fn anthropic_response_projects_only_visible_assistant_text() {
+fn anthropic_response_preserves_canonical_answer_with_marker_like_text() {
     let run = NativeRunResult {
             id: Uuid::nil(),
             application_id: Uuid::nil(),
@@ -111,30 +167,31 @@ fn anthropic_response_projects_only_visible_assistant_text() {
             created_at: OffsetDateTime::UNIX_EPOCH,
         };
 
-    let payload = serde_json::to_value(to_anthropic_response(run, "provider/model".into()))
-        .expect("anthropic response serializes");
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into()).expect("succeeded run should project"),
+    )
+    .expect("anthropic response serializes");
 
-    assert_eq!(payload["content"][0]["text"], json!("Visible answer"));
+    assert_eq!(
+        payload["content"][0]["text"],
+        json!("<think>private reasoning</think>raw draft<tool_call>{}</tool_call>\n\n---\n\n下面是美化后内容\n\nVisible answer")
+    );
 }
 
 #[test]
-fn anthropic_count_tokens_estimates_messages_and_tools() {
-    let without_tools = anthropic_count_input_tokens(&json!({
+fn anthropic_count_tokens_estimates_supported_request_content() {
+    let minimal = anthropic_count_input_tokens(&json!({
         "model": "1flowbase",
         "messages": [{"role": "user", "content": "hello"}]
     }));
-    let with_tools = anthropic_count_input_tokens(&json!({
+    let with_system = anthropic_count_input_tokens(&json!({
         "model": "1flowbase",
         "messages": [{"role": "user", "content": "hello"}],
-        "tools": [{
-            "name": "lookup_order",
-            "description": "Find an order",
-            "input_schema": {"type": "object"}
-        }]
+        "system": "Use the support playbook."
     }));
 
-    assert!(without_tools > 0);
-    assert!(with_tools > without_tools);
+    assert!(minimal > 0);
+    assert!(with_system > minimal);
 }
 
 #[test]
@@ -199,7 +256,7 @@ fn anthropic_response_encodes_callback_task_id_into_tool_use_ids() {
         application_id: Uuid::nil(),
         api_key_id: Uuid::nil(),
         publication_version_id: Uuid::nil(),
-        status: NativeRunStatus::Waiting,
+        status: NativeRunStatus::Succeeded,
         node_input_payload: json!({}),
         metadata: json!({}),
         answer: None,
@@ -220,8 +277,10 @@ fn anthropic_response_encodes_callback_task_id_into_tool_use_ids() {
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 
-    let payload = serde_json::to_value(to_anthropic_response(run, "provider/model".into()))
-        .expect("anthropic response serializes");
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into()).expect("succeeded run should project"),
+    )
+    .expect("anthropic response serializes");
 
     let tool_use_id = payload["content"][0]["id"]
         .as_str()
@@ -233,474 +292,62 @@ fn anthropic_response_encodes_callback_task_id_into_tool_use_ids() {
 }
 
 #[test]
-fn anthropic_tool_resume_request_decodes_tool_result_blocks() {
-    let callback_task_id = Uuid::from_u128(0xffffffffffffffffffffffffffffffff);
-    let tool_use_id = encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_123");
-
-    let resume = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": tool_use_id,
-                    "name": "lookup_order",
-                    "input": {}
-                }]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": [{"type": "text", "text": "{\"order\":\"ready\"}"}]
-                    }
-                ]
-            }
-        ]
-    }))
-    .expect("tool_result should parse")
-    .expect("encoded tool_result should resume callback");
-
-    assert_eq!(resume.callback_task_id, callback_task_id);
-    assert_eq!(resume.tool_results[0]["tool_call_id"], json!("toolu_123"));
+fn d2_ac_004_anthropic_blocking_terminal_status_matrix() {
+    let incomplete = serde_json::to_value(
+        to_anthropic_response(
+            blocking_run(NativeRunStatus::Incomplete),
+            "provider/model".into(),
+        )
+        .expect("incomplete Anthropic run should project"),
+    )
+    .expect("Anthropic response serializes");
+    assert_eq!(incomplete["stop_reason"], json!("max_tokens"));
     assert_eq!(
-        resume.tool_results[0]["content"],
-        json!("{\"order\":\"ready\"}")
+        incomplete["content"][0]["text"],
+        json!("must-not-successify")
     );
-}
 
-#[test]
-fn anthropic_tool_resume_request_accepts_hidden_system_reminder_text() {
-    let callback_task_id = Uuid::from_u128(0xffffffffffffffffffffffffffffffff);
-    let tool_use_id = encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_123");
-
-    let resume = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": tool_use_id,
-                    "name": "Grep",
-                    "input": {}
-                }]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": "Found 3 files"
-                    },
-                    {
-                        "type": "text",
-                        "text": "<system-reminder>Claude Code internal reminder</system-reminder>"
-                    }
-                ]
-            }
-        ]
-    }))
-    .expect("tool_result with hidden reminder should parse")
-    .expect("encoded tool_result should resume callback");
-
-    assert_eq!(resume.callback_task_id, callback_task_id);
-    assert_eq!(resume.tool_results[0]["tool_call_id"], json!("toolu_123"));
-    assert_eq!(resume.tool_results[0]["content"], json!("Found 3 files"));
-}
-
-#[test]
-fn anthropic_tool_resume_request_decodes_latest_message_only_tool_result() {
-    let callback_task_id = Uuid::from_u128(0xffffffffffffffffffffffffffffffff);
-    let tool_use_id = encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_123");
-
-    let resume = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": "Found 3 files"
-                    }
-                ]
-            }
-        ]
-    }))
-    .expect("latest-message-only tool_result should parse")
-    .expect("encoded tool_result should resume callback");
-
-    assert_eq!(resume.callback_task_id, callback_task_id);
-    assert_eq!(resume.tool_results[0]["tool_call_id"], json!("toolu_123"));
-    assert_eq!(resume.tool_results[0]["content"], json!("Found 3 files"));
-}
-
-#[test]
-fn anthropic_tool_resume_request_uses_latest_callback_from_latest_message_only_results() {
-    let previous_callback_task_id = Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
-    let current_callback_task_id = Uuid::from_u128(0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb);
-    let previous_tool_use_id =
-        encode_anthropic_callback_tool_use_id(previous_callback_task_id, "toolu_previous");
-    let current_tool_use_id =
-        encode_anthropic_callback_tool_use_id(current_callback_task_id, "toolu_current");
-
-    let resume = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": previous_tool_use_id,
-                        "content": "old result replayed"
-                    },
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": current_tool_use_id,
-                        "content": "new result"
-                    }
-                ]
-            }
-        ]
-    }))
-    .expect("latest-message-only tool_result replay should parse")
-    .expect("latest callback should be resumed");
-
-    assert_eq!(resume.callback_task_id, current_callback_task_id);
-    assert_eq!(resume.tool_results.as_array().unwrap().len(), 1);
-    assert_eq!(
-        resume.tool_results[0]["tool_call_id"],
-        json!("toolu_current")
-    );
-    assert_eq!(resume.tool_results[0]["content"], json!("new result"));
-}
-
-#[test]
-fn anthropic_tool_resume_request_rejects_orphan_trailing_tool_result() {
-    let error = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": "toolu_123",
-                        "content": "stale result"
-                    }
-                ]
-            }
-        ]
-    }))
-    .expect_err("orphan tool_result should not create a run");
-
-    match error {
-        AnthropicRouteError::Compat(error) => {
-            assert_eq!(error.error_type, "tool_result_only_orphan");
-        }
-        other => panic!("unexpected error: {other:?}"),
+    for status in [NativeRunStatus::Failed, NativeRunStatus::Cancelled] {
+        assert!(matches!(
+            to_anthropic_response(blocking_run(status), "provider/model".into()),
+            Err(AnthropicRouteError::Native(_))
+        ));
     }
+    assert!(matches!(
+        to_anthropic_response(
+            blocking_run(NativeRunStatus::Waiting),
+            "provider/model".into(),
+        ),
+        Err(AnthropicRouteError::RequiredAction)
+    ));
 }
 
 #[test]
-fn anthropic_tool_resume_request_rejects_tool_result_without_callback_encoding() {
-    let resume = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": "toolu_read",
-                    "name": "Read",
-                    "input": {}
-                }]
-            },
-            {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": "toolu_read",
-                    "content": "plain Anthropic tool result"
-                }]
-            }
-        ]
-    }));
+fn d2_ac_007_anthropic_tool_and_prompt_marker_controls_are_explicitly_unsupported() {
+    let tool_error =
+        control_plane::application_public_api::compat::anthropic::translate_messages_request(
+            json!({
+                "model": "1flowbase",
+                "messages": [{"role": "user", "content": "continue"}],
+                "tools": [{"name": "lookup", "input_schema": {"type": "object"}}]
+            }),
+        )
+        .expect_err("tools have no D2 canonical owner");
+    assert!(tool_error.report.has_decision(
+        "$.tools",
+        control_plane::application_public_api::protocol_translation::TranslationDecisionKind::Unsupported,
+    ));
 
-    let error = resume.expect_err("unencoded tool_result should not create a run");
-    match error {
-        AnthropicRouteError::Compat(error) => {
-            assert_eq!(error.error_type, "tool_result_only_orphan");
-        }
-        other => panic!("unexpected error: {other:?}"),
-    }
-}
-
-#[test]
-fn anthropic_tool_resume_request_preserves_media_tool_result_content() {
-    let callback_task_id = Uuid::from_u128(0x99999999999999999999999999999999);
-    let tool_use_id = encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_image");
-
-    let resume = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": tool_use_id,
-                    "name": "Read",
-                    "input": {}
-                }]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/png",
-                                    "data": "aW1hZ2U="
-                                }
-                            }
-                        ]
-                    }
-                ]
-            }
-        ]
-    }))
-    .expect("tool_result should parse")
-    .expect("encoded tool_result should resume callback");
-
-    assert_eq!(resume.callback_task_id, callback_task_id);
-    assert_eq!(resume.tool_results[0]["tool_call_id"], json!("toolu_image"));
-    assert_eq!(resume.tool_results[0]["content"][0]["type"], json!("image"));
-    assert_eq!(
-        resume.tool_results[0]["content"][0]["source"]["media_type"],
-        json!("image/png")
-    );
-}
-
-#[test]
-fn anthropic_tool_resume_request_uses_latest_trailing_tool_result_message() {
-    let previous_callback_task_id = Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
-    let current_callback_task_id = Uuid::from_u128(0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb);
-    let previous_tool_use_id =
-        encode_anthropic_callback_tool_use_id(previous_callback_task_id, "toolu_previous");
-    let current_tool_use_id =
-        encode_anthropic_callback_tool_use_id(current_callback_task_id, "toolu_current");
-
-    let resume = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {"role": "user", "content": "first"},
-            {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": previous_tool_use_id,
-                    "name": "lookup_previous",
-                    "input": {}
-                }]
-            },
-            {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": previous_tool_use_id,
-                    "content": "old result"
-                }]
-            },
-            {"role": "assistant", "content": "old answer"},
-            {"role": "user", "content": "next"},
-            {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": current_tool_use_id,
-                    "name": "lookup_current",
-                    "input": {}
-                }]
-            },
-            {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": current_tool_use_id,
-                    "content": "new result"
-                }]
-            }
-        ]
-    }))
-    .expect("resume request should parse")
-    .expect("trailing tool_result should resume callback");
-
-    assert_eq!(resume.callback_task_id, current_callback_task_id);
-    assert_eq!(resume.tool_results.as_array().unwrap().len(), 1);
-    assert_eq!(
-        resume.tool_results[0]["tool_call_id"],
-        json!("toolu_current")
-    );
-    assert_eq!(resume.tool_results[0]["content"], json!("new result"));
-}
-
-#[test]
-fn anthropic_tool_resume_request_ignores_historical_tool_results_before_latest_user_text() {
-    let callback_task_id = Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
-    let tool_use_id = encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_previous");
-
-    let resume = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {"role": "user", "content": "first"},
-            {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": tool_use_id,
-                    "name": "lookup_previous",
-                    "input": {}
-                }]
-            },
-            {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": tool_use_id,
-                    "content": "old result"
-                }]
-            },
-            {"role": "assistant", "content": "old answer"},
-            {"role": "user", "content": "next question"}
-        ]
-    }))
-    .expect("historical tool_result should parse");
-
-    assert!(resume.is_none());
-}
-
-#[test]
-fn anthropic_tool_resume_request_ignores_tool_result_mixed_with_new_user_text() {
-    let callback_task_id = Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
-    let tool_use_id = encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_previous");
-
-    let resume = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": tool_use_id,
-                    "name": "Read",
-                    "input": {}
-                }]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": [{
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/png",
-                                "data": "aW1hZ2U="
-                            }
-                        }]
-                    },
-                    {
-                        "type": "text",
-                        "text": "帮我找找这个代码位置"
-                    }
-                ]
-            }
-        ]
-    }))
-    .expect("mixed tool_result and text should parse");
-
-    assert!(resume.is_none());
-}
-
-#[test]
-fn anthropic_tool_resume_request_uses_latest_callback_from_contiguous_tool_results() {
-    let previous_callback_task_id = Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
-    let current_callback_task_id = Uuid::from_u128(0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb);
-    let previous_tool_use_id =
-        encode_anthropic_callback_tool_use_id(previous_callback_task_id, "toolu_previous");
-    let current_tool_use_id =
-        encode_anthropic_callback_tool_use_id(current_callback_task_id, "toolu_current");
-
-    let resume = anthropic_tool_resume_request(&json!({
-        "model": "1flowbase",
-        "messages": [
-            {"role": "user", "content": "first"},
-            {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": previous_tool_use_id,
-                    "name": "lookup_previous",
-                    "input": {}
-                }]
-            },
-            {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": previous_tool_use_id,
-                    "content": "old result"
-                }]
-            },
-            {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": current_tool_use_id,
-                    "name": "lookup_current",
-                    "input": {}
-                }]
-            },
-            {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": previous_tool_use_id,
-                    "content": "old result replayed"
-                }]
-            },
-            {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": current_tool_use_id,
-                    "content": "new result"
-                }]
-            }
-        ]
-    }))
-    .expect("mixed trailing tool_result history should parse")
-    .expect("latest callback should be resumed");
-
-    assert_eq!(resume.callback_task_id, current_callback_task_id);
-    assert_eq!(resume.tool_results.as_array().unwrap().len(), 1);
-    assert_eq!(
-        resume.tool_results[0]["tool_call_id"],
-        json!("toolu_current")
-    );
-    assert_eq!(resume.tool_results[0]["content"], json!("new result"));
+    let marker_error = control_plane::application_public_api::compat::anthropic::translate_messages_request(
+        json!({
+            "model": "1flowbase",
+            "system": "Generate a concise, sentence-case title. Return JSON with a single \"title\" field",
+            "messages": [{"role": "user", "content": "continue"}]
+        }),
+    )
+    .expect_err("prompt-marker control has no D2 canonical owner");
+    assert!(marker_error.report.has_decision(
+        "$.system",
+        control_plane::application_public_api::protocol_translation::TranslationDecisionKind::Unsupported,
+    ));
 }

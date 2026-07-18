@@ -281,7 +281,7 @@ async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
 }
 
 #[tokio::test]
-async fn callback_resume_does_not_repeat_final_live_answer_presentation() {
+async fn callback_resume_persists_final_answer_without_reopening_waiting_stream() {
     use plugin_framework::provider_contract::{
         ProviderFinishReason, ProviderInvocationResult, ProviderStreamEvent, ProviderToolCall,
     };
@@ -427,11 +427,18 @@ async fn callback_resume_does_not_repeat_final_live_answer_presentation() {
         .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
         .filter_map(|event| event.payload["text"].as_str().map(str::to_string))
         .collect::<String>();
-    assert_eq!(streamed_text, expected_presentation);
+    assert_eq!(streamed_text, "我先检查文件。");
     assert_eq!(
         streamed_text.matches(final_answer).count(),
-        1,
-        "the compatible SSE source must receive the callback final answer exactly once: {streamed_text}"
+        0,
+        "the waiting stream must not reopen to append a later callback terminal: {streamed_text}"
+    );
+    assert_eq!(
+        stream.close_calls(),
+        vec![(
+            completed.flow_run.id,
+            crate::ports::RuntimeEventCloseReason::WaitingCallback
+        )]
     );
 }
 

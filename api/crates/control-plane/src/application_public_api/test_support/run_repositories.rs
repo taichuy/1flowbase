@@ -309,7 +309,6 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
                     && run.external_user.as_deref() == Some(input.external_user.as_str())
                     && run.external_conversation_id.as_deref()
                         == Some(input.external_conversation_id.as_str())
-                    && run.compatibility_mode.as_deref() == Some(input.compatibility_mode.as_str())
             })
             .map(|run| (run.started_at, run.id))
             .collect::<Vec<_>>();

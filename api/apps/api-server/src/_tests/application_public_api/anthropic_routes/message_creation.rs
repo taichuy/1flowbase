@@ -2,22 +2,24 @@ use super::*;
 
 #[tokio::test]
 async fn anthropic_messages_accepts_x_api_key_and_preserves_model() {
-    let (app, _) = test_app_with_state().await;
+    let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Compatible Route App").await;
+    assert_published_anthropic_plan_has_provider_route(state.as_ref()).await;
 
     let response = post_json(&app, "/v1/messages", ("x-api-key", token), anthropic_body()).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
     assert_eq!(payload["type"], json!("message"));
-    assert_eq!(payload["model"], json!("anthropic/custom-model:latest"));
+    assert_eq!(payload["model"], json!("qwen3.6-35b-a3b"));
     assert_eq!(payload["content"][0]["type"], json!("text"));
 }
 
 #[tokio::test]
 async fn anthropic_messages_accepts_last_user_multimodal_content() {
-    let (app, _) = test_app_with_state().await;
+    let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Multimodal Compatible Route App").await;
+    assert_published_anthropic_plan_has_provider_route(state.as_ref()).await;
 
     let response = post_json(
         &app,
@@ -37,9 +39,10 @@ async fn anthropic_messages_accepts_last_user_multimodal_content() {
 }
 
 #[tokio::test]
-async fn anthropic_messages_accepts_agent_tool_definitions() {
-    let (app, _) = test_app_with_state().await;
-    let token = setup_published_app(&app, "Anthropic Tool Compatible Route App").await;
+async fn d2_ac_007_anthropic_messages_reject_tools_before_creating_a_run() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "Anthropic Unsupported Tool Route App").await;
+    let before = flow_run_count(state.as_ref()).await;
     let mut body = anthropic_body();
     body["tools"] = json!([
         {
@@ -57,14 +60,69 @@ async fn anthropic_messages_accepts_agent_tool_definitions() {
 
     let response = post_json(&app, "/v1/messages", ("x-api-key", token), body).await;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let payload = response_json(response).await;
-    assert_eq!(payload["type"], json!("message"));
-    assert_eq!(payload["model"], json!("anthropic/custom-model:latest"));
+    assert_eq!(payload["error"]["type"], json!("unsupported_feature"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
-async fn anthropic_messages_rehydrates_session_history_from_durable_turns() {
+async fn d2_ac_001_anthropic_nested_unknown_fields_reject_before_run_or_provider() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "Anthropic Nested Unknown Field App").await;
+    let before = flow_run_count(state.as_ref()).await;
+    let requests = [
+        json!({
+            "model": "qwen3.6-35b-a3b",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": "hello",
+                    "unexpected": "no canonical owner"
+                }]
+            }]
+        }),
+        json!({
+            "model": "qwen3.6-35b-a3b",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": "aW1hZ2U=",
+                        "unexpected": "no canonical owner"
+                    }
+                }]
+            }]
+        }),
+        json!({
+            "model": "qwen3.6-35b-a3b",
+            "system": [{
+                "type": "text",
+                "text": "Use the support playbook.",
+                "cache_control": {
+                    "type": "ephemeral",
+                    "unexpected": "no canonical owner"
+                }
+            }],
+            "messages": [{"role": "user", "content": "hello"}]
+        }),
+    ];
+
+    for body in requests {
+        let response = post_json(&app, "/v1/messages", ("x-api-key", token.clone()), body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let payload = response_json(response).await;
+        assert_eq!(payload["error"]["type"], json!("invalid_request"));
+    }
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
+}
+
+#[tokio::test]
+async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Session History Route App").await;
     let session_id = "claude-code-session-1".to_string();
@@ -78,8 +136,9 @@ async fn anthropic_messages_rehydrates_session_history_from_durable_turns() {
         ("x-api-key", token.clone()),
         vec![("x-claude-code-session-id", session_id.clone())],
         json!({
-            "model": "anthropic/custom-model:latest",
+            "model": "qwen3.6-35b-a3b",
             "max_tokens": 64,
+            "stream": true,
             "messages": [
                 {"role": "user", "content": "Describe uploads/agent-flow-preview-debug.png"}
             ],
@@ -95,8 +154,9 @@ async fn anthropic_messages_rehydrates_session_history_from_durable_turns() {
         ("x-api-key", token.clone()),
         vec![("x-claude-code-session-id", session_id.clone())],
         json!({
-            "model": "anthropic/custom-model:latest",
+            "model": "qwen3.6-35b-a3b",
             "max_tokens": 64,
+            "stream": true,
             "messages": [
                 {"role": "user", "content": "Find the corresponding code"}
             ],
@@ -106,36 +166,13 @@ async fn anthropic_messages_rehydrates_session_history_from_durable_turns() {
     .await;
     assert_eq!(second.status(), StatusCode::OK);
 
-    let runs = sqlx::query_scalar::<_, Value>(
-        r#"
-        select input_payload
-        from flow_runs
-        where compatibility_mode = 'anthropic-messages-v1'
-        order by created_at asc, id asc
-        "#,
+    let compatibility_modes = sqlx::query_scalar::<_, Option<String>>(
+        "select compatibility_mode from flow_runs order by created_at asc, id asc",
     )
     .fetch_all(state.store.pool())
     .await
     .unwrap();
-    assert_eq!(runs.len(), 2);
-    let history = runs[1]["node-start"]["history"]
-        .as_array()
-        .expect("second run should receive rehydrated history");
-    assert_eq!(history.len(), 2);
-    assert_eq!(
-        history[0],
-        json!({
-            "role": "user",
-            "content": "Describe uploads/agent-flow-preview-debug.png"
-        })
-    );
-    assert_eq!(history[1]["role"], json!("assistant"));
-    assert!(
-        history[1]["content"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty()),
-        "{history:?}"
-    );
+    assert_eq!(compatibility_modes, vec![None, None]);
 
     let third = post_json_with_headers(
         &app,
@@ -143,8 +180,9 @@ async fn anthropic_messages_rehydrates_session_history_from_durable_turns() {
         ("x-api-key", token.clone()),
         vec![("x-claude-code-session-id", session_id)],
         json!({
-            "model": "anthropic/custom-model:latest",
+            "model": "qwen3.6-35b-a3b",
             "max_tokens": 64,
+            "stream": true,
             "messages": [
                 {"role": "user", "content": "Keep going"}
             ],
@@ -154,34 +192,11 @@ async fn anthropic_messages_rehydrates_session_history_from_durable_turns() {
     .await;
     assert_eq!(third.status(), StatusCode::OK);
 
-    let runs = sqlx::query_scalar::<_, Value>(
-        r#"
-        select input_payload
-        from flow_runs
-        where compatibility_mode = 'anthropic-messages-v1'
-        order by created_at asc, id asc
-        "#,
+    let compatibility_modes = sqlx::query_scalar::<_, Option<String>>(
+        "select compatibility_mode from flow_runs order by created_at asc, id asc",
     )
     .fetch_all(state.store.pool())
     .await
     .unwrap();
-    assert_eq!(runs.len(), 3);
-    let third_history = runs[2]["node-start"]["history"]
-        .as_array()
-        .expect("third run should receive unique prior turns");
-    assert_eq!(
-        third_history
-            .iter()
-            .map(|message| message["role"].as_str().unwrap_or_default())
-            .collect::<Vec<_>>(),
-        vec!["user", "assistant", "user", "assistant"]
-    );
-    assert_eq!(
-        third_history[0]["content"],
-        json!("Describe uploads/agent-flow-preview-debug.png")
-    );
-    assert_eq!(
-        third_history[2]["content"],
-        json!("Find the corresponding code")
-    );
+    assert_eq!(compatibility_modes, vec![None, None, None]);
 }

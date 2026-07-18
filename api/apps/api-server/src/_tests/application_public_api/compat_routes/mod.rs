@@ -1,6 +1,11 @@
 use crate::{
-    _tests::support::{
-        login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config,
+    _tests::{
+        create_gated_provider_instance, create_marker_output_provider_instance,
+        create_ready_provider_instance,
+        support::{
+            login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config,
+        },
+        ProviderInvocationGate, PROVIDER_MARKER_LIKE_OUTPUT,
     },
     app_state::ApiState,
     host_infrastructure::LocalRuntimeEventStream,
@@ -12,15 +17,10 @@ use axum::{
     http::{Request, StatusCode},
     Router,
 };
-use control_plane::{
-    application_public_api::compat::openai::run_id_from_response_id,
-    orchestration_runtime::debug_stream_events,
-    ports::{
-        CreateCallbackTaskInput, CreateCheckpointInput, CreateNodeRunInput,
-        OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventEnvelope,
-        RuntimeEventPayload, RuntimeEventStream, RuntimeEventStreamPolicy,
-        RuntimeEventSubscription, RuntimeEventTrimPolicy, UpdateFlowRunInput,
-    },
+use control_plane::ports::{
+    AppendTerminalIfMissingAndCloseOutcome, RuntimeEventCloseReason, RuntimeEventEnvelope,
+    RuntimeEventPayload, RuntimeEventStream, RuntimeEventStreamPolicy, RuntimeEventSubscription,
+    RuntimeEventTrimPolicy,
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -73,6 +73,18 @@ impl RuntimeEventStream for DropTerminalRuntimeEventStream {
         self.inner.append(run_id, event).await
     }
 
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        run_id: uuid::Uuid,
+        event: RuntimeEventPayload,
+    ) -> anyhow::Result<AppendTerminalIfMissingAndCloseOutcome> {
+        // This fault-injection wrapper only drops legacy terminal `append` calls. Recovery uses
+        // the stream's atomic primitive so the test double does not turn recovery into a lie.
+        self.inner
+            .append_terminal_if_missing_and_close(run_id, event)
+            .await
+    }
+
     async fn subscribe(
         &self,
         run_id: uuid::Uuid,
@@ -121,6 +133,16 @@ impl RuntimeEventStream for NeverCloseDropTerminalRuntimeEventStream {
         self.inner.append(run_id, event).await
     }
 
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        run_id: uuid::Uuid,
+        event: RuntimeEventPayload,
+    ) -> anyhow::Result<AppendTerminalIfMissingAndCloseOutcome> {
+        self.inner
+            .append_terminal_if_missing_and_close(run_id, event)
+            .await
+    }
+
     async fn subscribe(
         &self,
         run_id: uuid::Uuid,
@@ -154,7 +176,12 @@ impl RuntimeEventStream for NeverCloseDropTerminalRuntimeEventStream {
 fn is_terminal_runtime_event(event_type: &str) -> bool {
     matches!(
         event_type,
-        "flow_finished" | "flow_failed" | "flow_cancelled" | "waiting_human" | "waiting_callback"
+        "flow_finished"
+            | "flow_incomplete"
+            | "flow_failed"
+            | "flow_cancelled"
+            | "waiting_human"
+            | "waiting_callback"
     )
 }
 
@@ -244,6 +271,18 @@ async fn create_application_key_with_id(
 }
 
 async fn publish_application(app: &Router, cookie: &str, csrf: &str, application_id: &str) {
+    let provider_instance_id = create_ready_provider_instance(app, cookie, csrf).await;
+    publish_application_with_provider(app, cookie, csrf, application_id, &provider_instance_id)
+        .await;
+}
+
+async fn publish_application_with_provider(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    application_id: &str,
+    provider_instance_id: &str,
+) {
     let state = app
         .clone()
         .oneshot(
@@ -260,32 +299,44 @@ async fn publish_application(app: &Router, cookie: &str, csrf: &str, application
         .unwrap();
     assert_eq!(state.status(), StatusCode::OK);
     let mut document = response_json(state).await["data"]["draft"]["document"].clone();
-    let start_node = document["graph"]["nodes"]
+    let nodes = document["graph"]["nodes"]
         .as_array_mut()
-        .expect("nodes array")
-        .iter_mut()
-        .find(|node| node["type"] == "start")
-        .expect("default draft should include a start node");
-    start_node["config"]["model_list"] = json!([
-        {
-            "id": "qwen3.6-35b-a3b",
-            "name": "Qwen 3.6 35B",
-            "context_window": 128000,
-            "max_output_tokens": 32000,
-            "auto_compact_token_limit": 110000,
-            "capabilities": {
-                "reasoning": true,
-                "tool_call": true,
-                "multimodal": false,
-                "structured_output": true
+        .expect("nodes array");
+    {
+        let start_node = nodes
+            .iter_mut()
+            .find(|node| node["type"] == "start")
+            .expect("default draft should include a start node");
+        start_node["config"]["model_list"] = json!([
+            {
+                "id": "qwen3.6-35b-a3b",
+                "name": "Qwen 3.6 35B",
+                "context_window": 128000,
+                "max_output_tokens": 32000,
+                "auto_compact_token_limit": 110000,
+                "capabilities": {
+                    "reasoning": true,
+                    "tool_call": true,
+                    "multimodal": false,
+                    "structured_output": true
+                },
+                "reasoning": {
+                    "default_effort": "medium",
+                    "supported_efforts": ["low", "medium", "high"]
+                }
             },
-            "reasoning": {
-                "default_effort": "medium",
-                "supported_efforts": ["low", "medium", "high"]
-            }
-        },
-        "deepseek-v4-flash"
-    ]);
+            "deepseek-v4-flash"
+        ]);
+    }
+    let llm_node = nodes
+        .iter_mut()
+        .find(|node| node["type"] == "llm")
+        .expect("default draft should include an LLM node");
+    llm_node["config"]["model_provider"] = json!({
+        "provider_code": "fixture_provider",
+        "source_instance_id": provider_instance_id,
+        "model_id": "fixture_chat"
+    });
 
     let save = app
         .clone()
@@ -302,7 +353,7 @@ async fn publish_application(app: &Router, cookie: &str, csrf: &str, application
                     json!({
                         "document": document,
                         "change_kind": "logical",
-                        "summary": "Configure compatible model list"
+                        "summary": "Configure compatible model list and provider route"
                     })
                     .to_string(),
                 ))
@@ -360,6 +411,29 @@ async fn setup_published_app(app: &Router, name: &str) -> String {
     token
 }
 
+async fn setup_published_app_with_provider_gate(
+    app: &Router,
+    name: &str,
+) -> (String, ProviderInvocationGate) {
+    let (cookie, csrf) = login_and_capture_cookie(app, "root", "change-me").await;
+    let application_id = create_application(app, &cookie, &csrf, name).await;
+    let token = create_application_key(app, &cookie, &csrf, &application_id).await;
+    let (provider_instance_id, gate) = create_gated_provider_instance(app, &cookie, &csrf).await;
+    publish_application_with_provider(app, &cookie, &csrf, &application_id, &provider_instance_id)
+        .await;
+    (token, gate)
+}
+
+async fn setup_published_app_with_marker_output_provider(app: &Router, name: &str) -> String {
+    let (cookie, csrf) = login_and_capture_cookie(app, "root", "change-me").await;
+    let application_id = create_application(app, &cookie, &csrf, name).await;
+    let token = create_application_key(app, &cookie, &csrf, &application_id).await;
+    let provider_instance_id = create_marker_output_provider_instance(app, &cookie, &csrf).await;
+    publish_application_with_provider(app, &cookie, &csrf, &application_id, &provider_instance_id)
+        .await;
+    token
+}
+
 async fn setup_published_app_with_key_id(app: &Router, name: &str) -> (String, uuid::Uuid) {
     let (cookie, csrf) = login_and_capture_cookie(app, "root", "change-me").await;
     let application_id = create_application(app, &cookie, &csrf, name).await;
@@ -380,6 +454,37 @@ async fn test_app_with_state() -> (Router, std::sync::Arc<crate::app_state::ApiS
     let config = test_config();
     let app = crate::app_with_state_and_config(state.clone(), &config);
     (app, state)
+}
+
+async fn flow_run_count(state: &ApiState) -> i64 {
+    sqlx::query_scalar("select count(*) from flow_runs")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap()
+}
+
+async fn assert_published_compat_plan_has_provider_route(state: &ApiState) {
+    let plan: Value = sqlx::query_scalar(
+        "select plan from flow_compiled_plans order by created_at desc, id desc limit 1",
+    )
+    .fetch_one(state.store.pool())
+    .await
+    .unwrap();
+
+    assert_eq!(plan["compile_issues"], json!([]), "{plan}");
+    let runtime = &plan["nodes"]["node-llm"]["llm_runtime"];
+    assert_eq!(
+        runtime["provider_code"],
+        json!("fixture_provider"),
+        "{plan}"
+    );
+    assert_eq!(runtime["model"], json!("fixture_chat"), "{plan}");
+    assert!(
+        runtime["provider_instance_id"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()),
+        "{plan}"
+    );
 }
 
 pub(super) async fn test_app_with_runtime_event_stream(
@@ -419,109 +524,6 @@ pub(super) async fn test_app_with_runtime_event_stream(
     });
     let app = crate::app_with_state_and_config(state.clone(), &config);
     (app, state)
-}
-
-async fn seed_llm_callback_for_response_run(
-    state: &crate::app_state::ApiState,
-    flow_run_id: uuid::Uuid,
-) -> domain::CallbackTaskRecord {
-    state
-        .store
-        .update_flow_run(&UpdateFlowRunInput {
-            flow_run_id,
-            status: domain::FlowRunStatus::WaitingCallback,
-            output_payload: json!({
-                "tool_calls": [
-                    {
-                        "id": "call_inventory",
-                        "name": "lookup_inventory",
-                        "arguments": { "sku": "sku_123" }
-                    }
-                ]
-            }),
-            error_payload: None,
-            finished_at: None,
-        })
-        .await
-        .unwrap();
-    let node_run = state
-        .store
-        .create_node_run(&CreateNodeRunInput {
-            flow_run_id,
-            node_id: "node-llm".to_string(),
-            node_type: "llm".to_string(),
-            node_alias: "LLM".to_string(),
-            status: domain::NodeRunStatus::WaitingCallback,
-            input_payload: json!({}),
-            debug_payload: json!({ "llm_rounds": [] }),
-            started_at: OffsetDateTime::now_utc(),
-        })
-        .await
-        .unwrap();
-
-    state
-        .store
-        .create_callback_task(&CreateCallbackTaskInput {
-            flow_run_id,
-            node_run_id: node_run.id,
-            callback_kind: "llm_tool_calls".to_string(),
-            request_payload: json!({
-                "tool_calls": [
-                    {
-                        "id": "call_inventory",
-                        "name": "lookup_inventory",
-                        "arguments": { "sku": "sku_123" }
-                    }
-                ],
-                "finish_reason": "tool_call"
-            }),
-            external_ref_payload: None,
-        })
-        .await
-        .unwrap()
-}
-
-async fn seed_llm_callback_checkpoint_for_response_run(
-    state: &crate::app_state::ApiState,
-    callback_task: &domain::CallbackTaskRecord,
-) {
-    state
-        .store
-        .create_checkpoint(&CreateCheckpointInput {
-            flow_run_id: callback_task.flow_run_id,
-            node_run_id: Some(callback_task.node_run_id),
-            status: "waiting_callback".to_string(),
-            reason: "等待 callback 回填".to_string(),
-            locator_payload: json!({
-                "node_id": "node-llm",
-                "next_node_index": 1
-            }),
-            variable_snapshot: json!({
-                "node-start": {
-                    "query": "Final question"
-                },
-                "node-llm": {
-                    "__llm_tool_callback": {
-                        "callback_kind": "llm_tool_calls",
-                        "pending_tool_calls": callback_task.request_payload["tool_calls"],
-                        "history": [
-                            {
-                                "role": "user",
-                                "content": "Final question"
-                            },
-                            {
-                                "role": "assistant",
-                                "content": "",
-                                "tool_calls": callback_task.request_payload["tool_calls"]
-                            }
-                        ]
-                    }
-                }
-            }),
-            external_ref_payload: Some(callback_task.request_payload.clone()),
-        })
-        .await
-        .unwrap();
 }
 
 async fn application_api_key_last_used_at(
@@ -601,7 +603,7 @@ fn responses_body(stream: bool) -> Value {
 
 fn anthropic_body(stream: bool) -> Value {
     json!({
-        "model": "anthropic/custom-model:latest",
+        "model": "qwen3.6-35b-a3b",
         "max_tokens": 512,
         "stream": stream,
         "system": "Use the support playbook.",

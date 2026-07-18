@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use control_plane::ports::{
-    CacheStore, ClaimedTask, DistributedLock, EventBus, RateLimitDecision, RateLimitStore,
-    RuntimeEventCloseReason, RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventSource,
-    RuntimeEventStream, RuntimeEventStreamPolicy, RuntimeEventSubscription, RuntimeEventTrimPolicy,
-    TaskQueue,
+    AppendTerminalIfMissingAndCloseOutcome, CacheStore, ClaimedTask, DistributedLock, EventBus,
+    RateLimitDecision, RateLimitStore, RuntimeEventCloseReason, RuntimeEventEnvelope,
+    RuntimeEventPayload, RuntimeEventSource, RuntimeEventStream, RuntimeEventStreamPolicy,
+    RuntimeEventSubscription, RuntimeEventTrimPolicy, TaskQueue,
 };
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
@@ -160,6 +160,14 @@ impl RuntimeEventStream for FakeInfrastructure {
         event: RuntimeEventPayload,
     ) -> anyhow::Result<RuntimeEventEnvelope> {
         Ok(RuntimeEventEnvelope::new(run_id, 1, event))
+    }
+
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        _run_id: Uuid,
+        _event: RuntimeEventPayload,
+    ) -> anyhow::Result<AppendTerminalIfMissingAndCloseOutcome> {
+        anyhow::bail!("object-safety fake does not support atomic terminal claims")
     }
 
     async fn subscribe(

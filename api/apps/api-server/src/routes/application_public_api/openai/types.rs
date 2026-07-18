@@ -170,7 +170,14 @@ pub struct OpenAiResponsesObject {
     pub output_text: String,
     pub usage: OpenAiResponsesUsage,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub incomplete_details: Option<OpenAiResponsesIncompleteDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_response_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OpenAiResponsesIncompleteDetails {
+    pub reason: &'static str,
 }
 
 #[derive(Debug, Default, Serialize, ToSchema)]

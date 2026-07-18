@@ -243,7 +243,7 @@ fn run_conversation_projection_page_preserves_existing_response_shape_and_cursor
 }
 
 #[tokio::test]
-async fn run_conversation_hides_claude_code_control_history_from_imported_context() {
+async fn run_conversation_preserves_marker_like_history_regardless_of_legacy_mode() {
     let run_id = Uuid::now_v7();
     let run = domain::FlowRunRecord {
         id: run_id,
@@ -320,8 +320,8 @@ async fn run_conversation_hides_claude_code_control_history_from_imported_contex
         .collect::<Vec<_>>()
         .join("\n");
 
-    assert!(!visible_text.contains("This session is being continued"));
-    assert!(!visible_text.contains("已恢复上下文"));
+    assert!(visible_text.contains("This session is being continued"));
+    assert!(visible_text.contains("已恢复上下文"));
     assert!(visible_text.contains("visible old question"));
     assert!(visible_text.contains("visible old answer"));
     assert!(visible_text.contains("那你帮我拉一下最新代码"));

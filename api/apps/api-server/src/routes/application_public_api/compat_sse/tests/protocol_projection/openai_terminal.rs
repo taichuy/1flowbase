@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn openai_chat_live_answer_delta_is_not_duplicated_by_durable_drain() {
+async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_becomes_unsupported() {
     let mut run = native_run();
     let node_run_id = Uuid::from_u128(0x77777777777777777777777777777777);
     let callback_task_id = Uuid::from_u128(0x99999999999999999999999999999999);
@@ -162,9 +162,12 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_by_durable_drain() {
     let body = String::from_utf8(body.to_vec()).unwrap();
 
     assert_eq!(body.matches("prior node answer").count(), 1, "{body}");
-    assert!(body.contains("lookup_next"), "{body}");
-    assert!(body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
-    assert!(body.contains("[DONE]"), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("lookup_next"), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"length\""), "{body}");
+    assert!(!body.contains("[DONE]"), "{body}");
 }
 
 #[test]
@@ -185,20 +188,46 @@ fn openai_responses_resume_terminal_answer_fallback_emits_output_delta() {
 }
 
 #[tokio::test]
-async fn openai_chat_failed_terminal_with_answer_finishes_without_error_event() {
+async fn d2_ac_008_openai_chat_failed_terminal_with_partial_output_remains_error() {
     let mut run = native_run();
     run.status = NativeRunStatus::Failed;
-    run.answer = Some("工具失败后的回答".to_string());
+    run.answer = Some("must-not-replay".to_string());
+    run.error = Some(NativeError {
+        code: "runtime_error".to_string(),
+        message: "safe canonical failure".to_string(),
+        details: json!({}),
+    });
     let mut mapper =
         OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
-    let events = mapper.runtime_event_to_sse(
+    let mut events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
             run.id,
             1,
-            debug_stream_events::flow_failed(run.id, json!({ "message": "tool callback failed" })),
+            debug_stream_events::answer_text_delta(
+                "node-answer",
+                "real partial delta".to_string(),
+                0,
+                Some("node-llm"),
+                None,
+                Some("text"),
+            ),
         ),
     );
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            debug_stream_events::flow_failed(
+                run.id,
+                json!({
+                    "message": "provider raw secret",
+                    "answer_segments": [{"kind": "reasoning", "text": "must-not-replay"}]
+                }),
+            ),
+        ),
+    ));
 
     let response = completed_compatible_stream(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -206,26 +235,54 @@ async fn openai_chat_failed_terminal_with_answer_finishes_without_error_event() 
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("工具失败后的回答"), "{body}");
-    assert!(body.contains("\"finish_reason\":\"stop\""), "{body}");
-    assert!(!body.contains("\"error\""), "{body}");
-    assert!(body.contains("[DONE]"), "{body}");
+    assert!(body.contains("real partial delta"), "{body}");
+    assert!(body.contains("safe canonical failure"), "{body}");
+    assert!(!body.contains("must-not-replay"), "{body}");
+    assert!(!body.contains("provider raw secret"), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
+    assert!(!body.contains("[DONE]"), "{body}");
 }
 
 #[tokio::test]
-async fn openai_responses_failed_terminal_with_answer_completes_without_failed_event() {
+async fn d2_ac_008_openai_responses_failed_terminal_with_partial_output_remains_failed() {
     let mut run = native_run();
     run.status = NativeRunStatus::Failed;
-    run.answer = Some("工具失败后的回答".to_string());
+    run.answer = Some("must-not-replay".to_string());
+    run.error = Some(NativeError {
+        code: "runtime_error".to_string(),
+        message: "safe canonical failure".to_string(),
+        details: json!({}),
+    });
     let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
-    let events = mapper.runtime_event_to_sse(
+    let mut events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
             run.id,
             1,
-            debug_stream_events::flow_failed(run.id, json!({ "message": "tool callback failed" })),
+            debug_stream_events::answer_text_delta(
+                "node-answer",
+                "real partial delta".to_string(),
+                0,
+                Some("node-llm"),
+                None,
+                Some("text"),
+            ),
         ),
     );
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            debug_stream_events::flow_failed(
+                run.id,
+                json!({
+                    "message": "provider raw secret",
+                    "answer_segments": [{"kind": "reasoning", "text": "must-not-replay"}]
+                }),
+            ),
+        ),
+    ));
 
     let response = completed_compatible_stream(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -234,7 +291,167 @@ async fn openai_responses_failed_terminal_with_answer_completes_without_failed_e
     let body = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(body.contains("event: response.output_text.delta"), "{body}");
-    assert!(body.contains("工具失败后的回答"), "{body}");
-    assert!(body.contains("event: response.completed"), "{body}");
-    assert!(!body.contains("event: response.failed"), "{body}");
+    assert!(body.contains("real partial delta"), "{body}");
+    assert!(body.contains("safe canonical failure"), "{body}");
+    assert!(!body.contains("must-not-replay"), "{body}");
+    assert!(!body.contains("provider raw secret"), "{body}");
+    assert!(body.contains("event: response.failed"), "{body}");
+    assert!(!body.contains("event: response.completed"), "{body}");
+}
+
+#[tokio::test]
+async fn d2_ac_008_openai_chat_incomplete_terminal_uses_length_and_done() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Incomplete;
+    run.answer = Some("output limit partial".to_string());
+    let mut mapper =
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+    let events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            debug_stream_events::flow_incomplete(
+                run.id,
+                json!({ "answer": "output limit partial" }),
+            ),
+        ),
+    );
+
+    let response = completed_compatible_stream(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(body.contains("output limit partial"), "{body}");
+    assert!(body.contains("\"finish_reason\":\"length\""), "{body}");
+    assert!(body.contains("[DONE]"), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
+}
+
+#[tokio::test]
+async fn d2_ac_008_openai_responses_incomplete_terminal_uses_response_incomplete() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Incomplete;
+    run.answer = Some("output limit partial".to_string());
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            debug_stream_events::flow_incomplete(
+                run.id,
+                json!({ "answer": "output limit partial" }),
+            ),
+        ),
+    );
+
+    let response = completed_compatible_stream(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(body.contains("output limit partial"), "{body}");
+    assert!(body.contains("event: response.incomplete"), "{body}");
+    assert!(body.contains("\"status\":\"incomplete\""), "{body}");
+    assert!(!body.contains("event: response.completed"), "{body}");
+}
+
+#[tokio::test]
+async fn d2_ac_004_openai_chat_cancelled_terminal_is_error_without_done() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Cancelled;
+    run.answer = Some("must-not-replay".to_string());
+    let mut mapper =
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+    let events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_cancelled(run.id)),
+    );
+
+    let response = completed_compatible_stream(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(body.contains("\"code\":\"run_cancelled\""), "{body}");
+    assert!(!body.contains("must-not-replay"), "{body}");
+    assert!(!body.contains("\"finish_reason\""), "{body}");
+    assert!(!body.contains("[DONE]"), "{body}");
+}
+
+#[tokio::test]
+async fn d2_ac_004_openai_responses_cancelled_terminal_is_failed_without_completed() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Cancelled;
+    run.answer = Some("must-not-replay".to_string());
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_cancelled(run.id)),
+    );
+
+    let response = completed_compatible_stream(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(body.contains("event: response.failed"), "{body}");
+    assert!(body.contains("\"code\":\"run_cancelled\""), "{body}");
+    assert!(!body.contains("must-not-replay"), "{body}");
+    assert!(!body.contains("event: response.completed"), "{body}");
+}
+
+#[tokio::test]
+async fn d2_ac_004_openai_waiting_terminal_is_adapter_unsupported_without_success_signal() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Waiting;
+    let waiting = RuntimeEventPayload {
+        event_type: "waiting_callback".to_string(),
+        source: RuntimeEventSource::Runtime,
+        durability: RuntimeEventDurability::DurableRequired,
+        persist_required: true,
+        trace_visible: true,
+        payload: json!({
+            "callback_kind": "llm_tool_calls",
+            "callback_task_id": Uuid::nil(),
+            "tool_calls": [{"id": "must-not-project", "name": "lookup", "arguments": {}}]
+        }),
+    };
+    let mut chat =
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+    let chat_body = {
+        let response = completed_compatible_stream(
+            chat.runtime_event_to_sse(&run, RuntimeEventEnvelope::new(run.id, 1, waiting.clone())),
+        );
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        String::from_utf8(body.to_vec()).unwrap()
+    };
+    assert!(
+        chat_body.contains("required_action_not_supported"),
+        "{chat_body}"
+    );
+    assert!(!chat_body.contains("must-not-project"), "{chat_body}");
+    assert!(!chat_body.contains("\"finish_reason\""), "{chat_body}");
+    assert!(!chat_body.contains("[DONE]"), "{chat_body}");
+
+    let mut responses = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let response = completed_compatible_stream(
+        responses.runtime_event_to_sse(&run, RuntimeEventEnvelope::new(run.id, 1, waiting)),
+    );
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body.contains("event: response.failed"), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("must-not-project"), "{body}");
+    assert!(!body.contains("event: response.completed"), "{body}");
 }
