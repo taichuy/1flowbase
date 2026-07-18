@@ -61,6 +61,7 @@ describe('style boundary registry', () => {
       'page.embedded-apps',
       'page.templates',
       'page.settings',
+      'page.settings-system-runtime',
       'page.settings-applications',
       'page.settings-mcp-management',
       'page.settings-docs',
@@ -75,6 +76,7 @@ describe('style boundary registry', () => {
       'page.application-detail',
       'page.application-api',
       'page.settings',
+      'page.settings-system-runtime',
       'page.settings-applications',
       'page.settings-mcp-management',
       'page.settings-docs',
@@ -95,6 +97,7 @@ describe('style boundary registry', () => {
       ])
     ).toEqual([
       'page.settings',
+      'page.settings-system-runtime',
       'page.settings-applications',
       'page.settings-mcp-management',
       'page.settings-docs'
