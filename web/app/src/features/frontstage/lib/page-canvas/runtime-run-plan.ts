@@ -10,6 +10,7 @@ import type {
   FrontstagePageCanvasRuntimeSource,
   FrontstagePageCanvasRuntimeSourceState
 } from './runtime-source';
+import { createFrontstageBlockBindingRuntimeLimits } from '../jsx-studio/block-data-binding';
 
 export type FrontstagePageCanvasRuntimeRunPlanStatus =
   | 'run_plan_ready'
@@ -166,7 +167,9 @@ function createRuntimeRunPlanItem({
     catalogEntry,
     code: source.code,
     contextSnapshot: resolveContextSnapshot(contextSnapshot, source, sourceIndex),
-    limits
+    limits: limits
+      ? createFrontstageBlockBindingRuntimeLimits(source.block, limits)
+      : undefined
   });
 
   if (!runPlanResult.ok) {

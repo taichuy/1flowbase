@@ -115,7 +115,9 @@ type RenderPlanSlotProps = {
 
 const blockFrameBaseStyle: CSSProperties = {
   width: '100%',
+  height: '100%',
   minWidth: 0,
+  boxSizing: 'border-box',
   borderRadius: 8,
   background: '#fff',
   overflow: 'hidden',
@@ -184,6 +186,9 @@ function RenderPlanSlot({
       return (
         <div
           style={{
+            height: '100%',
+            boxSizing: 'border-box',
+            overflow: 'auto',
             padding: isDesignMode ? '48px clamp(16px, 5vw, 72px) 28px' : 12
           }}
         >
@@ -196,7 +201,14 @@ function RenderPlanSlot({
 
     if (runtimeSessionEntry?.status === 'factory_failed') {
       return (
-        <div style={{ padding: isDesignMode ? '48px 24px 28px' : 12 }}>
+        <div
+          style={{
+            height: '100%',
+            boxSizing: 'border-box',
+            overflow: 'auto',
+            padding: isDesignMode ? '48px 24px 28px' : 12
+          }}
+        >
           <Alert
             type="error"
             showIcon
@@ -214,6 +226,9 @@ function RenderPlanSlot({
     return (
       <div
         style={{
+          height: '100%',
+          boxSizing: 'border-box',
+          overflow: 'auto',
           padding: '24px 12px',
           paddingTop: isDesignMode ? 56 : 24,
           textAlign: 'center',
@@ -429,7 +444,8 @@ export const PageCanvas: FC<PageCanvasProps> = ({
             margin={[16, 16]}
             isDraggable={isDesignMode && !toolbarDisabled}
             isResizable={isDesignMode && !toolbarDisabled}
-            draggableCancel="button, input, textarea, select, a"
+            draggableHandle=".frontstage-block-drag-handle"
+            draggableCancel="button:not(.frontstage-block-drag-handle), input, textarea, select, a"
             onLayoutChange={(_layout: Layout, nextLayouts) => {
               latestLayouts.current = nextLayouts;
             }}
@@ -445,22 +461,23 @@ export const PageCanvas: FC<PageCanvasProps> = ({
             }}
           >
             {renderItems.map((item, slotIndex) => (
-              <RenderPlanSlot
-                key={item.blockId}
-                item={item}
-                runtimeSessionEntry={findRuntimeSessionEntryForSlot({
-                  item,
-                  slotIndex,
-                  runtimeSessionEntries
-                })}
-                isSelected={item.blockId === selectedBlockId}
-                onSelectBlock={onSelectBlock}
-                isDesignMode={isDesignMode}
-                designActions={designActions}
-                toolbarDisabled={toolbarDisabled}
-                canMoveUp={slotIndex > 0}
-                canMoveDown={slotIndex < renderItems.length - 1}
-              />
+              <div key={item.blockId}>
+                <RenderPlanSlot
+                  item={item}
+                  runtimeSessionEntry={findRuntimeSessionEntryForSlot({
+                    item,
+                    slotIndex,
+                    runtimeSessionEntries
+                  })}
+                  isSelected={item.blockId === selectedBlockId}
+                  onSelectBlock={onSelectBlock}
+                  isDesignMode={isDesignMode}
+                  designActions={designActions}
+                  toolbarDisabled={toolbarDisabled}
+                  canMoveUp={slotIndex > 0}
+                  canMoveDown={slotIndex < renderItems.length - 1}
+                />
+              </div>
             ))}
           </ResponsiveGridLayout>
         </div>

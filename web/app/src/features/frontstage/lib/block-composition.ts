@@ -313,6 +313,34 @@ export function updateFrontstageBlockLayout(
   };
 }
 
+export function updateFrontstageBlockProps(
+  state: FrontstageBlockCompositionState,
+  blockId: string,
+  props: Record<string, unknown>
+): FrontstageBlockCompositionState {
+  if (!state.document.blocks.some((block) => block.id === blockId)) {
+    return state;
+  }
+
+  const document = withBlocks(
+    state.document,
+    state.document.blocks.map((block) =>
+      block.id === blockId
+        ? {
+            ...block,
+            props: { ...props }
+          }
+        : block
+    ),
+    false
+  );
+
+  return {
+    document,
+    selectedBlockId: normalizeSelection(document, state.selectedBlockId)
+  };
+}
+
 export function selectFrontstageBlock(
   state: FrontstageBlockCompositionState,
   blockId: string | null

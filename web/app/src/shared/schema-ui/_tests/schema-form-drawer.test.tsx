@@ -171,10 +171,12 @@ describe('SchemaFormDrawer', () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText('标识'), {
-      target: { value: 'password-updated' }
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('标识'), {
+        target: { value: 'password-updated' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
     });
-    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
 
     expect(antdMocks.modalConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -264,7 +266,7 @@ describe('SchemaFormDrawer', () => {
       fireEvent.mouseMove(document, { clientX: 460 });
       fireEvent.mouseMove(document, { clientX: 450 });
 
-      expect(document.body).toHaveClass('schema-form-drawer--resizing');
+      expect(document.body).toHaveClass('resizable-drawer--resizing');
       expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
       expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
 
@@ -277,7 +279,7 @@ describe('SchemaFormDrawer', () => {
 
       fireEvent.mouseUp(document);
       expect(resizeHandle).toHaveAttribute('aria-valuenow', '570');
-      expect(document.body).not.toHaveClass('schema-form-drawer--resizing');
+      expect(document.body).not.toHaveClass('resizable-drawer--resizing');
 
       fireEvent.keyDown(resizeHandle, { key: 'Home' });
       expect(resizeHandle).toHaveAttribute('aria-valuenow', '480');

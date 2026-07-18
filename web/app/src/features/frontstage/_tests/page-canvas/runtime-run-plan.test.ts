@@ -339,6 +339,50 @@ describe('frontstage page canvas runtime run plan model', () => {
     ]);
   });
 
+  test('derives each block runtime allowlist from its persisted dataBinding', () => {
+    const sourceState = createSourceState([
+      createReadySource({
+        block: createBlock({
+          props: {
+            dataBinding: [
+              {
+                key: 'ordersList',
+                id: 'frontstage.data_model.record.list',
+                kind: 'query',
+                params: { model: 'orders' }
+              },
+              {
+                key: 'createOrder',
+                id: 'frontstage.data_model.record.create',
+                kind: 'action',
+                params: { model: 'orders' }
+              }
+            ]
+          }
+        })
+      })
+    ]);
+
+    const runPlanState = createFrontstagePageCanvasRuntimeRunPlanState({
+      sourceState,
+      catalogEntries: [createCatalogEntry()],
+      contextSnapshot: {},
+      limits: createLimits({
+        allowedQueries: ['stale.query'],
+        allowedActions: ['stale.action']
+      })
+    });
+
+    const [item] = runPlanState.items;
+    if (item?.status !== 'run_plan_ready') {
+      throw new Error('Expected a ready run plan.');
+    }
+    expect(item.runPlan.mediatorPolicy).toMatchObject({
+      allowedQueries: ['frontstage.data_model.record.list'],
+      allowedActions: ['frontstage.data_model.record.create']
+    });
+  });
+
   test('marks non-ready sources as source_not_ready without resolving runtime context', () => {
     const sourceState = createSourceState([
       createNotReadySource('loading', 0),

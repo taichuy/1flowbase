@@ -7,20 +7,13 @@ import {
   MoreOutlined,
   SettingOutlined
 } from '@ant-design/icons';
-import {
-  Button,
-  Divider,
-  Popconfirm,
-  Popover,
-  Space,
-  Tooltip,
-  Typography,
-  message
-} from 'antd';
-import type { CSSProperties, FC } from 'react';
+import { App as AntdApp, Button, Divider, Tooltip, message } from 'antd';
+import type { FC, MouseEvent } from 'react';
 import { useState } from 'react';
+
 import { i18nText } from '../../../shared/i18n/text';
-import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
+import { copyTextToClipboard } from '../../../shared/ui/clipboard/copy-text';
+import { FrontstageNodeActionButton } from './FrontstageNodeActionButton';
 
 type BlockHoverToolbarProps = {
   blockId: string;
@@ -35,19 +28,6 @@ type BlockHoverToolbarProps = {
   disabled?: boolean;
 };
 
-const toolbarStyle: CSSProperties = {
-  position: 'absolute',
-  top: 10,
-  right: 10,
-  zIndex: 10,
-  background: '#fff',
-  border: `1px solid ${FRONTSTAGE_DESIGN_BLUE.toolbarBorder}`,
-  borderRadius: 8,
-  boxShadow: FRONTSTAGE_DESIGN_BLUE.toolbarShadow,
-  padding: 3,
-  transition: 'opacity 0.15s ease'
-};
-
 export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
   blockId,
   onMoveUp,
@@ -60,228 +40,131 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
   isVisible,
   disabled = false
 }) => {
-  const [isMovePopoverOpen, setIsMovePopoverOpen] = useState(false);
-  const [isMorePopoverOpen, setIsMorePopoverOpen] = useState(false);
-  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const { modal } = AntdApp.useApp();
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
   const copyBlockUid = () => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      void navigator.clipboard.writeText(blockId).then(
-        () => {
-          void message.success(i18nText('frontstage', 'auto.uid_copied'));
-        },
-        () => {
-          void message.warning(i18nText('frontstage', 'auto.copy_uid_failed'));
-        }
-      );
-      return;
-    }
-
-    void message.warning(i18nText('frontstage', 'auto.auto_copy_unsupported'));
+    void copyTextToClipboard(blockId).then(
+      () => message.success(i18nText('frontstage', 'auto.uid_copied')),
+      () => message.warning(i18nText('frontstage', 'auto.copy_uid_failed'))
+    );
   };
 
-  const menuButtonStyle: CSSProperties = {
-    width: '100%',
-    justifyContent: 'flex-start',
-    textAlign: 'left'
+  const menuAction = (action: () => void) => (event: MouseEvent) => {
+    event.stopPropagation();
+    setIsMoreMenuOpen(false);
+    action();
   };
-
-  const moveContent = (
-    <Space direction="vertical" size={4} style={{ minWidth: 132 }}>
-      <Button
-        size="small"
-        type="text"
-        block
-        icon={<ArrowUpOutlined />}
-        aria-label={i18nText('frontstage', 'auto.move_block_up')}
-        disabled={disabled || !canMoveUp}
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsMovePopoverOpen(false);
-          onMoveUp();
-        }}
-        style={menuButtonStyle}
-      >
-        {i18nText('frontstage', 'auto.move_block_up')}
-      </Button>
-      <Button
-        size="small"
-        type="text"
-        block
-        icon={<ArrowDownOutlined />}
-        aria-label={i18nText('frontstage', 'auto.move_block_down')}
-        disabled={disabled || !canMoveDown}
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsMovePopoverOpen(false);
-          onMoveDown();
-        }}
-        style={menuButtonStyle}
-      >
-        {i18nText('frontstage', 'auto.move_block_down')}
-      </Button>
-    </Space>
-  );
-
-  const moreContent = (
-    <div
-      style={{ minWidth: 168 }}
-      onClick={(event) => {
-        event.stopPropagation();
-      }}
-    >
-      <Space direction="vertical" size={2} style={{ width: '100%' }}>
-        <Button
-          size="small"
-          type="text"
-          block
-          aria-label={i18nText('frontstage', 'auto.save_as_template')}
-          disabled
-          style={menuButtonStyle}
-        >
-          {i18nText('frontstage', 'auto.save_as_template')}
-        </Button>
-        <Button
-          size="small"
-          type="text"
-          block
-          aria-label={i18nText('frontstage', 'auto.copy_uid')}
-          disabled={disabled}
-          onClick={(event) => {
-            event.stopPropagation();
-            setIsMorePopoverOpen(false);
-            copyBlockUid();
-          }}
-          style={menuButtonStyle}
-        >
-          {i18nText('frontstage', 'auto.copy_uid')}
-        </Button>
-        <Divider style={{ margin: '4px 0' }} />
-        <Popconfirm
-          title={i18nText('frontstage', 'auto.confirm_delete_this_block')}
-          trigger="click"
-          okText={i18nText('frontstage', 'auto.delete')}
-          cancelText={i18nText('frontstage', 'auto.cancel')}
-          okButtonProps={{
-            'aria-label': i18nText('frontstage', 'auto.confirm_delete_block')
-          }}
-          open={isDeleteConfirmOpen}
-          onOpenChange={(open) => {
-            setIsDeleteConfirmOpen(open);
-            if (open) {
-              setIsMorePopoverOpen(true);
-            }
-          }}
-          destroyOnHidden
-          onConfirm={() => {
-            setIsDeleteConfirmOpen(false);
-            setIsMorePopoverOpen(false);
-            onDelete();
-          }}
-          onCancel={() => setIsDeleteConfirmOpen(false)}
-        >
-          <Button
-            size="small"
-            type="text"
-            block
-            danger
-            icon={<DeleteOutlined />}
-            aria-label={i18nText('frontstage', 'auto.delete_block')}
-            disabled={disabled}
-            onClick={(event) => {
-              event.stopPropagation();
-              setIsDeleteConfirmOpen(true);
-              setIsMorePopoverOpen(true);
-            }}
-            style={menuButtonStyle}
-          >
-            {i18nText('frontstage', 'auto.delete')}
-          </Button>
-        </Popconfirm>
-      </Space>
-      <Typography.Text
-        type="secondary"
-        style={{ display: 'block', marginTop: 8, fontSize: 11 }}
-      >
-        {i18nText('frontstage', 'auto.save_as_template_unavailable')}
-      </Typography.Text>
-    </div>
-  );
 
   return (
     <div
-      style={{
-        ...toolbarStyle,
-        opacity: isVisible ? 1 : 0,
-        pointerEvents: isVisible ? 'auto' : 'none'
-      }}
+      className="frontstage-block-hover-actions"
+      data-testid="frontstage-block-hover-actions"
+      data-visible={isVisible ? 'true' : 'false'}
       onClick={(event) => event.stopPropagation()}
     >
-      <Space size={2}>
-        <Popover
-          content={moveContent}
-          trigger="click"
-          placement="bottomRight"
-          open={isMovePopoverOpen}
-          destroyOnHidden
-          onOpenChange={setIsMovePopoverOpen}
-        >
-          <Button
-            size="small"
-            type="text"
-            icon={<HolderOutlined />}
-            disabled={disabled}
-            aria-label={i18nText('frontstage', 'auto.move_or_sort_block')}
-          />
-        </Popover>
-        <Tooltip title={i18nText('frontstage', 'auto.block_configuration')}>
-          <Button
-            size="small"
-            type="text"
-            icon={<SettingOutlined />}
-            disabled={disabled}
-            onClick={(event) => {
-              event.stopPropagation();
-              onConfigure();
-            }}
-            aria-label={i18nText('frontstage', 'auto.block_configuration')}
-          />
-        </Tooltip>
-        <Tooltip title={i18nText('frontstage', 'auto.block_code')}>
-          <Button
-            size="small"
-            type="text"
-            icon={<CodeOutlined />}
-            disabled={disabled}
-            onClick={(event) => {
-              event.stopPropagation();
-              onEditCode();
-            }}
-            aria-label={i18nText('frontstage', 'auto.block_code')}
-          />
-        </Tooltip>
-        <Popover
-          content={moreContent}
-          trigger="click"
-          placement="bottomRight"
-          open={isMorePopoverOpen}
-          destroyOnHidden
-          onOpenChange={(open) => {
-            if (!open && isDeleteConfirmOpen) {
-              return;
-            }
-            setIsMorePopoverOpen(open);
+      <Tooltip title={i18nText('frontstage', 'auto.move_or_sort_block')}>
+        <FrontstageNodeActionButton
+          aria-label={i18nText('frontstage', 'auto.move_or_sort_block')}
+          className="frontstage-block-drag-handle"
+          disabled={disabled}
+          icon={<HolderOutlined />}
+        />
+      </Tooltip>
+      <Tooltip title={i18nText('frontstage', 'auto.block_configuration')}>
+        <FrontstageNodeActionButton
+          aria-label={i18nText('frontstage', 'auto.block_configuration')}
+          disabled={disabled}
+          icon={<SettingOutlined />}
+          onClick={(event) => {
+            event.stopPropagation();
+            onConfigure();
           }}
-        >
-          <Button
-            size="small"
-            type="text"
-            icon={<MoreOutlined />}
-            disabled={disabled}
-            aria-label={i18nText('frontstage', 'auto.more_block_operations')}
-          />
-        </Popover>
-      </Space>
+        />
+      </Tooltip>
+      <Tooltip title={i18nText('frontstage', 'auto.block_code')}>
+        <FrontstageNodeActionButton
+          aria-label={i18nText('frontstage', 'auto.block_code')}
+          disabled={disabled}
+          icon={<CodeOutlined />}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEditCode();
+          }}
+        />
+      </Tooltip>
+      <span className="frontstage-block-hover-actions__more-trigger">
+        <FrontstageNodeActionButton
+          aria-expanded={isMoreMenuOpen}
+          aria-haspopup="menu"
+          aria-label={i18nText('frontstage', 'auto.more_block_operations')}
+          disabled={disabled}
+          icon={<MoreOutlined />}
+          onClick={(event) => {
+            event.stopPropagation();
+            setIsMoreMenuOpen((open) => !open);
+          }}
+        />
+        {isMoreMenuOpen ? (
+          <div
+            className="frontstage-block-hover-actions__menu"
+            role="menu"
+          >
+            <Button
+              block
+              type="text"
+              role="menuitem"
+              icon={<ArrowUpOutlined />}
+              disabled={disabled || !canMoveUp}
+              onClick={menuAction(onMoveUp)}
+            >
+              {i18nText('frontstage', 'auto.move_block_up')}
+            </Button>
+            <Button
+              block
+              type="text"
+              role="menuitem"
+              icon={<ArrowDownOutlined />}
+              disabled={disabled || !canMoveDown}
+              onClick={menuAction(onMoveDown)}
+            >
+              {i18nText('frontstage', 'auto.move_block_down')}
+            </Button>
+            <Button
+              block
+              type="text"
+              role="menuitem"
+              disabled={disabled}
+              onClick={menuAction(copyBlockUid)}
+            >
+              {i18nText('frontstage', 'auto.copy_uid')}
+            </Button>
+            <Divider />
+            <Button
+              block
+              danger
+              type="text"
+              role="menuitem"
+              icon={<DeleteOutlined />}
+              disabled={disabled}
+              onClick={menuAction(() => {
+                modal.confirm({
+                  title: i18nText(
+                    'frontstage',
+                    'auto.confirm_delete_this_block'
+                  ),
+                  okText: i18nText('frontstage', 'auto.delete'),
+                  cancelText: i18nText('frontstage', 'auto.cancel'),
+                  okButtonProps: { danger: true },
+                  onOk: onDelete
+                });
+              })}
+            >
+              {i18nText('frontstage', 'auto.delete')}
+            </Button>
+          </div>
+        ) : null}
+      </span>
     </div>
   );
 };

@@ -7,7 +7,8 @@ import {
   moveFrontstageBlock,
   removeFrontstageBlock,
   selectFrontstageBlock,
-  updateFrontstageBlockLayout
+  updateFrontstageBlockLayout,
+  updateFrontstageBlockProps
 } from '../lib/block-composition';
 import type {
   FrontstageBlockInstance,
@@ -196,6 +197,30 @@ describe('frontstage block composition', () => {
       0,
       1
     ]);
+    expect(nextState.selectedBlockId).toBe('hero');
+  });
+
+  test('updates structured block props without changing layout or selection', () => {
+    const state = createFrontstageBlockCompositionState(
+      createDocument([
+        createBlock({
+          id: 'hero',
+          props: { title: 'Old title' },
+          layout: { order: 0, width: 12 }
+        })
+      ]),
+      'hero'
+    );
+
+    const nextState = updateFrontstageBlockProps(state, 'hero', {
+      title: 'New title',
+      dataBinding: []
+    });
+
+    expect(nextState.document.blocks[0]).toMatchObject({
+      props: { title: 'New title', dataBinding: [] },
+      layout: { order: 0, width: 12 }
+    });
     expect(nextState.selectedBlockId).toBe('hero');
   });
 

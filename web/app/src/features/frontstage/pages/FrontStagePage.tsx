@@ -4,7 +4,6 @@ import {
   App as AntdApp,
   Button,
   Divider,
-  Drawer,
   Empty,
   Form,
   Tooltip,
@@ -18,15 +17,18 @@ import { useAuthStore } from '../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-mode-store';
 import { saveFrontstageBlockCode } from '../api/block-code';
 import type { FrontstagePageContent } from '../api/page-content';
-import { BlockCodeEditorDrawer } from '../components/BlockCodeEditorDrawer';
-import { BlockConfigurationDrawer } from '../components/BlockConfigurationDrawer';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstageNodeActionButton } from '../components/FrontstageNodeActionButton';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import { PageCanvas } from '../components/PageCanvas';
+import {
+  FrontstageJsxStudioDrawer
+} from '../components/jsx-studio/FrontstageJsxStudioDrawer';
+import type {
+  FrontstageJsxStudioSection
+} from '../components/jsx-studio/JsxStudioResourcePanel';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
-import { useFrontstageBlockCode } from '../hooks/use-frontstage-block-code';
 import { useFrontstagePageCanvasRuntimeSessions } from '../hooks/use-frontstage-page-canvas-runtime-sessions';
 import { useFrontstagePageCanvasRuntimeSources } from '../hooks/use-frontstage-page-canvas-runtime-sources';
 import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-content-save';
@@ -36,14 +38,16 @@ import {
   moveFrontstageBlock,
   removeFrontstageBlock,
   updateFrontstageBlockLayout,
+  updateFrontstageBlockProps,
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
-import { createFrontstageBlockConfigurationModel } from '../lib/block-configuration';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
+import { createFrontstageBlockBindingRuntimeLimits } from '../lib/jsx-studio/block-data-binding';
 import {
   createFrontstagePageDocument,
-  createFrontstagePageDocumentSaveInput
+  createFrontstagePageDocumentSaveInput,
+  type FrontstageBlockInstance
 } from '../lib/page-document';
 import { createFrontstagePageRenderPlan } from '../lib/page-canvas/render-plan';
 import { createFrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
@@ -136,10 +140,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const [isPageTreeIconPickerOpen, setIsPageTreeIconPickerOpen] =
     useState(false);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [isBlockCodeEditorOpen, setIsBlockCodeEditorOpen] = useState(false);
-  const [isBlockConfigurationOpen, setIsBlockConfigurationOpen] =
-    useState(false);
-  const [isJsBlockTrialPanelOpen, setIsJsBlockTrialPanelOpen] = useState(false);
+  const [isJsxStudioOpen, setIsJsxStudioOpen] = useState(false);
+  const [jsxStudioInitialSection, setJsxStudioInitialSection] =
+    useState<FrontstageJsxStudioSection>('code');
   const [jsBlockTrialContextSnapshot, setJsBlockTrialContextSnapshot] =
     useState<Record<string, unknown>>({});
   const [jsBlockTrialLimits, setJsBlockTrialLimits] =
@@ -287,16 +290,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     blockCompositionState &&
     selectedBlock
   );
-  const canRunSelectedBlockAction =
-    canShowSelectedBlockActions &&
-    !isPageContentLoading &&
-    !hasPageContentLoadError &&
-    !isPageContentSavePending;
-  const selectedBlockCode = useFrontstageBlockCode({
-    workspaceId: canShowSelectedBlockActions ? workspaceId : null,
-    pageId: canShowSelectedBlockActions ? selectedPageId : null,
-    codeRef: canShowSelectedBlockActions ? selectedBlock?.codeRef : null
-  });
   const matchingJsBlockCatalogEntry = useMemo(
     () =>
       findMatchingFrontstageBlockCatalogEntry(
@@ -316,16 +309,15 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     }),
     [activePageContent, selectedBlock, selectedPageId, workspaceId]
   );
-  const selectedBlockConfigurationModel = useMemo(
+  const selectedBlockRuntimeLimits = useMemo(
     () =>
       selectedBlock
-        ? createFrontstageBlockConfigurationModel({
-            block: selectedBlock,
-            catalogEntry: matchingJsBlockCatalogEntry,
-            limits: jsBlockTrialLimits
-          })
-        : null,
-    [jsBlockTrialLimits, matchingJsBlockCatalogEntry, selectedBlock]
+        ? createFrontstageBlockBindingRuntimeLimits(
+            selectedBlock,
+            jsBlockTrialLimits
+          )
+        : jsBlockTrialLimits,
+    [jsBlockTrialLimits, selectedBlock]
   );
   useEffect(() => {
     const resolution =
@@ -362,9 +354,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   useEffect(() => {
     setSavedPageContent(null);
     setSelectedBlockId(null);
-    setIsBlockCodeEditorOpen(false);
-    setIsBlockConfigurationOpen(false);
-    setIsJsBlockTrialPanelOpen(false);
+    setIsJsxStudioOpen(false);
     setBlockSaveError(null);
   }, [selectedPageId]);
 
@@ -372,9 +362,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     setSavedPageContent(null);
     setSelectedBlockId((currentBlockId) => {
       if (!currentBlockId || !pageContent) {
-        setIsBlockCodeEditorOpen(false);
-        setIsBlockConfigurationOpen(false);
-        setIsJsBlockTrialPanelOpen(false);
+        setIsJsxStudioOpen(false);
         return null;
       }
 
@@ -383,9 +371,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         (block) => block.id === currentBlockId
       );
       if (!hasCurrentBlock) {
-        setIsBlockCodeEditorOpen(false);
-        setIsBlockConfigurationOpen(false);
-        setIsJsBlockTrialPanelOpen(false);
+        setIsJsxStudioOpen(false);
       }
 
       return hasCurrentBlock ? currentBlockId : null;
@@ -394,9 +380,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
 
   useEffect(() => {
     if (!canShowSelectedBlockActions) {
-      setIsBlockCodeEditorOpen(false);
-      setIsBlockConfigurationOpen(false);
-      setIsJsBlockTrialPanelOpen(false);
+      setIsJsxStudioOpen(false);
     }
   }, [canShowSelectedBlockActions]);
 
@@ -418,9 +402,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   useEffect(() => {
     if (!canEnterDesignMode || !isDesignMode) {
       setSelectedBlockId(null);
-      setIsBlockCodeEditorOpen(false);
-      setIsBlockConfigurationOpen(false);
-      setIsJsBlockTrialPanelOpen(false);
+      setIsJsxStudioOpen(false);
     }
   }, [canEnterDesignMode, isDesignMode]);
 
@@ -481,13 +463,31 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
 
         setSavedPageContent(nextContent);
         setSelectedBlockId(compositionState.selectedBlockId);
+        return true;
       } catch (error) {
         setBlockSaveError(toDisplayErrorMessage(error));
+        return false;
       } finally {
         setIsBlockSavePending(false);
       }
     },
     [pageContentSave]
+  );
+
+  const saveStudioBlock = useCallback(
+    async (nextBlock: FrontstageBlockInstance) => {
+      if (!blockCompositionState || !activePageContent) {
+        return false;
+      }
+
+      const nextCompositionState = updateFrontstageBlockProps(
+        blockCompositionState,
+        nextBlock.id,
+        nextBlock.props
+      );
+      return saveBlockComposition(activePageContent, nextCompositionState);
+    },
+    [activePageContent, blockCompositionState, saveBlockComposition]
   );
 
   const designActions = useMemo(() => {
@@ -526,11 +526,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       },
       onConfigure: (blockId: string) => {
         setSelectedBlockId(blockId);
-        setIsBlockConfigurationOpen(true);
+        setJsxStudioInitialSection('configuration');
+        setIsJsxStudioOpen(true);
       },
       onEditCode: (blockId: string) => {
         setSelectedBlockId(blockId);
-        setIsBlockCodeEditorOpen(true);
+        setJsxStudioInitialSection('code');
+        setIsJsxStudioOpen(true);
       },
       onDelete: (blockId: string) => {
         if (!blockCompositionState || !activePageContent) return;
@@ -546,8 +548,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     activePageContent,
     saveBlockComposition,
     setSelectedBlockId,
-    setIsBlockConfigurationOpen,
-    setIsBlockCodeEditorOpen
+    setIsJsxStudioOpen,
+    setJsxStudioInitialSection
   ]);
 
   if (initialPageTree === undefined && isPageTreeLoading) {
@@ -1068,16 +1070,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     }
   };
 
-  const handleOpenJsBlockTrialPanel = () => {
-    if (!canRunSelectedBlockAction) {
-      return;
-    }
-
-    setJsBlockTrialContextSnapshot(defaultJsBlockTrialContextSnapshot);
-    setJsBlockTrialLimits(DEFAULT_JS_BLOCK_TRIAL_LIMITS);
-    setIsJsBlockTrialPanelOpen(true);
-  };
-
   const canEditPageTree = canEnterDesignMode && isDesignMode;
   const frontstageSidebar = (
     <FrontStagePageTreeSidebar
@@ -1275,27 +1267,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               frontstageTabContent
             )}
           </div>
-          <Drawer
-            title={i18nText('frontstage', 'auto.js_block_trial_run')}
-            open={isJsBlockTrialPanelOpen}
-            onClose={() => setIsJsBlockTrialPanelOpen(false)}
-            width={600}
-            destroyOnClose
-          >
-            {selectedBlock && (
-              <JsBlockTrialPanel
-                block={selectedBlock}
-                catalogEntry={matchingJsBlockCatalogEntry}
-                code={selectedBlockCode.draft}
-                contextSnapshot={jsBlockTrialContextSnapshot}
-                handlers={jsBlockCapabilityHandlers}
-                limits={jsBlockTrialLimits}
-                onCodeChange={selectedBlockCode.setDraft}
-                onContextSnapshotChange={setJsBlockTrialContextSnapshot}
-                onLimitsChange={setJsBlockTrialLimits}
-              />
-            )}
-          </Drawer>
         </section>
         <PageTreeFormModal
           dialog={pageTreeFormDialog}
@@ -1308,21 +1279,33 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             void handleSubmitPageTreeForm();
           }}
         />
-        <BlockCodeEditorDrawer
-          open={isBlockCodeEditorOpen && canShowSelectedBlockActions}
-          onClose={() => setIsBlockCodeEditorOpen(false)}
-          onOpenTrialPanel={handleOpenJsBlockTrialPanel}
-          workspaceId={workspaceId}
-          pageId={selectedPageId}
-          block={canShowSelectedBlockActions ? selectedBlock : null}
-        />
-        <BlockConfigurationDrawer
-          open={isBlockConfigurationOpen && canShowSelectedBlockActions}
-          onClose={() => setIsBlockConfigurationOpen(false)}
-          model={
-            canShowSelectedBlockActions ? selectedBlockConfigurationModel : null
-          }
-        />
+        {selectedBlock && selectedPageId ? (
+          <FrontstageJsxStudioDrawer
+            open={isJsxStudioOpen && canShowSelectedBlockActions}
+            initialSection={jsxStudioInitialSection}
+            workspaceId={workspaceId}
+            pageId={selectedPageId}
+            tabId={tabId}
+            block={selectedBlock}
+            catalogEntry={matchingJsBlockCatalogEntry}
+            diagnostics={[]}
+            onClose={() => setIsJsxStudioOpen(false)}
+            onSaveBlock={saveStudioBlock}
+            runPanel={({ code, onCodeChange }) => (
+              <JsBlockTrialPanel
+                block={selectedBlock}
+                catalogEntry={matchingJsBlockCatalogEntry}
+                code={code}
+                contextSnapshot={jsBlockTrialContextSnapshot}
+                handlers={jsBlockCapabilityHandlers}
+                limits={selectedBlockRuntimeLimits}
+                onCodeChange={onCodeChange}
+                onContextSnapshotChange={setJsBlockTrialContextSnapshot}
+                onLimitsChange={setJsBlockTrialLimits}
+              />
+            )}
+          />
+        ) : null}
       </>
     </SectionPageLayout>
   );

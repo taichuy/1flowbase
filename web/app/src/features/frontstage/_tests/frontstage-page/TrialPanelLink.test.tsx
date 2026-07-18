@@ -3,11 +3,13 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor
+  waitFor,
+  within
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { AppProviders } from '../../../../app/AppProviders';
+import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import {
   resetFrontstageDesignModeStore,
@@ -27,6 +29,9 @@ const blockCodeHook = vi.hoisted(() => ({
 const runtimeSessionsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasRuntimeSessions: vi.fn()
 }));
+const dataCapabilitiesHook = vi.hoisted(() => ({
+  useFrontstageDataCapabilities: vi.fn()
+}));
 vi.mock(
   '../../hooks/use-frontstage-page-content-save',
   () => pageContentSaveHook
@@ -37,6 +42,15 @@ vi.mock(
   '../../hooks/use-frontstage-page-canvas-runtime-sessions',
   () => runtimeSessionsHook
 );
+vi.mock(
+  '../../hooks/use-frontstage-data-capabilities',
+  () => dataCapabilitiesHook
+);
+vi.mock('@monaco-editor/react', () => ({
+  default: ({ value }: { value?: string }) => (
+    <textarea aria-label="JSX source" readOnly value={value} />
+  )
+}));
 
 function authenticate() {
   useAuthStore.getState().setAuthenticated({
@@ -67,7 +81,15 @@ function createPageContent(blocks?: Array<Record<string, unknown>>) {
     {
       id: 'cta',
       codeRef: 'cta-code',
-      contribution: { code: 'blocks.cta' },
+      catalog: {
+        providerCode: '1flowbase',
+        installationId: 'builtin-installation'
+      },
+      contribution: {
+        pluginId: 'builtin-frontstage',
+        pluginVersion: '1.0.0',
+        code: 'frontstage.js-ui-block'
+      },
       props: {},
       'x-layout': { order: 1, region: 'main' },
       runtime: { kind: 'js-ui', entry: null, hint: 'js-ui' }
@@ -112,7 +134,8 @@ function exitDesignMode() {
 }
 
 describe('FrontStagePage trial panel link', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await appI18n.changeLanguage('zh_Hans');
     resetAuthStore();
     resetFrontstageDesignModeStore();
     vi.clearAllMocks();
@@ -125,7 +148,33 @@ describe('FrontStagePage trial panel link', () => {
       clearError: vi.fn()
     });
     blockCatalogHook.useFrontstageBlockCatalog.mockReturnValue({
-      items: [],
+      items: [
+        {
+          id: '1flowbase:frontstage.js-ui-block',
+          runtimeKind: 'iframe',
+          installationId: 'builtin-installation',
+          providerCode: '1flowbase',
+          pluginId: 'builtin-frontstage',
+          pluginVersion: '1.0.0',
+          contributionCode: 'frontstage.js-ui-block',
+          title: 'JSX 区块',
+          entry: 'index.js',
+          permissions: {
+            network: 'none',
+            storage: 'none',
+            secrets: 'none'
+          },
+          contextContract: { primitives: [], inputSchema: {} },
+          uiCapabilities: ['configurable', 'data_binding'],
+          codeCapabilities: {
+            template: null,
+            allowedImports: ['@1flowbase/block-renderer/antd-facade'],
+            monacoExtraLibs: [],
+            workerModuleSources: ['@1flowbase/block-renderer/antd-facade']
+          },
+          raw: {}
+        }
+      ],
       diagnostics: [],
       loading: false,
       error: null
@@ -139,7 +188,13 @@ describe('FrontStagePage trial panel link', () => {
       error: null,
       setDraft: vi.fn(),
       reset: vi.fn(),
-      save: vi.fn()
+      save: vi.fn(),
+      permissionDenied: false
+    });
+    dataCapabilitiesHook.useFrontstageDataCapabilities.mockReturnValue({
+      data: { queries: [], actions: [], models: [] },
+      loading: false,
+      error: null
     });
     runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions.mockReturnValue({
       entries: [],
@@ -149,34 +204,42 @@ describe('FrontStagePage trial panel link', () => {
     });
   });
 
-  test('opens JS Block Trial panel from the JSX code drawer', async () => {
+  test('opens the run preview inside the shared JSX Studio', async () => {
     authenticate();
     renderFrontStagePage();
 
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
     fireEvent.click(screen.getByRole('button', { name: '区块代码' }));
-    fireEvent.click(screen.getByRole('button', { name: 'JS Block 试运行' }));
+    const studio = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    fireEvent.click(
+      within(studio).getByRole('button', { name: '运行预览' })
+    );
 
-    expect(await screen.findByText('JS 区块试运行')).toBeInTheDocument();
+    expect(within(studio).getByText('JS Block 试运行')).toBeInTheDocument();
   }, 10000);
 
-  test('closes JS Block Trial panel when exiting design mode', async () => {
+  test('closes the whole JSX Studio when exiting design mode', async () => {
     authenticate();
     renderFrontStagePage();
 
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
     fireEvent.click(screen.getByRole('button', { name: '区块代码' }));
-    fireEvent.click(screen.getByRole('button', { name: 'JS Block 试运行' }));
+    const studio = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    fireEvent.click(
+      within(studio).getByRole('button', { name: '运行预览' })
+    );
 
-    expect(await screen.findByText('JS 区块试运行')).toBeInTheDocument();
+    expect(within(studio).getByText('JS Block 试运行')).toBeInTheDocument();
 
     // Exit design mode — Drawer should close
     exitDesignMode();
 
     await waitFor(() => {
-      expect(screen.queryByText('JS 区块试运行')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('dialog', { name: 'JSX Studio' })
+      ).not.toBeInTheDocument();
     });
   }, 20_000);
 });
