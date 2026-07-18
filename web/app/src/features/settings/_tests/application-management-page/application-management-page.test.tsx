@@ -432,18 +432,29 @@ describe('ApplicationManagementPanel', () => {
     });
     expect(document.querySelector('.ant-modal-content')).not.toBeNull();
     expect(document.querySelector('.ant-drawer')).toBeNull();
+    expect(document.querySelector('.ant-descriptions')).toBeNull();
     expect(
       await within(drawer).findByDisplayValue('Order Extension')
     ).toBeEnabled();
-    expect(await within(drawer).findByText('POST')).toBeInTheDocument();
+    await within(drawer).findByDisplayValue('POST');
     expect(
-      await within(drawer).findByText('/api/ex/orders/create')
-    ).toBeInTheDocument();
-    expect(within(drawer).getByText('同步')).toBeInTheDocument();
+      within(drawer).getByRole('textbox', { name: '请求方式' })
+    ).toHaveValue('POST');
     expect(
-      within(drawer).getByText('body · customer_id · string')
-    ).toBeInTheDocument();
-    expect(within(drawer).getByText('order_id · string')).toBeInTheDocument();
+      within(drawer).getByRole('textbox', { name: '接口子路径' })
+    ).toHaveValue('/api/ex/orders/create');
+    expect(
+      within(drawer).getByRole('textbox', { name: '响应方式' })
+    ).toHaveValue('同步');
+    expect(
+      within(drawer).getByRole('textbox', { name: '触发方式' })
+    ).toHaveValue('扩展接口触发');
+    expect(
+      within(drawer).getByRole('textbox', { name: '请求参数' })
+    ).toHaveValue('body · customer_id · string');
+    expect(
+      within(drawer).getByRole('textbox', { name: '响应字段' })
+    ).toHaveValue('order_id · string');
     expect(
       within(drawer).queryByRole('textbox', { name: '接口路径' })
     ).not.toBeInTheDocument();

@@ -119,7 +119,7 @@ describe('ApplicationFormModal create intent', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: /Workflow/i }));
     const triggerTypeSelect = screen.getByRole('combobox', {
-      name: /workflow_trigger_type/
+      name: '触发方式'
     });
     fireEvent.mouseDown(triggerTypeSelect);
     const triggerOptions = document.querySelectorAll<HTMLElement>(

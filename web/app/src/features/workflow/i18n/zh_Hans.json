@@ -1,5 +1,6 @@
 {
   "auto": {
+    "workflow_trigger_type": "触发方式",
     "workflow_start_description": "定义工作流输入参数。",
     "workflow_end_description": "声明同步成功返回字段。",
     "input_parameters": "输入参数",

@@ -2,14 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
-  Descriptions,
   Form,
   Input,
   Radio,
   Select,
   Space,
   Switch,
-  Tag,
   Typography
 } from 'antd';
 import { useEffect, useMemo } from 'react';
@@ -338,14 +336,23 @@ export function ApplicationFormModal({
             />
           ) : null}
 
-          <Form.Item label={t('auto.type')} name="application_type">
-            {isEdit ? (
-              <Tag>
-                {application?.application_type === 'workflow'
-                  ? t('auto.application_type_workflow')
-                  : t('auto.application_type_agent_flow')}
-              </Tag>
-            ) : (
+          {isEdit ? (
+            <Form.Item
+              label={t('auto.type')}
+              htmlFor="readonly_application_type"
+            >
+              <Input
+                id="readonly_application_type"
+                readOnly
+                value={
+                  application?.application_type === 'workflow'
+                    ? t('auto.application_type_workflow')
+                    : t('auto.application_type_agent_flow')
+                }
+              />
+            </Form.Item>
+          ) : (
+            <Form.Item label={t('auto.type')} name="application_type">
               <Radio.Group>
                 <Space direction="vertical" size="small">
                   <Radio value="agent_flow">
@@ -356,66 +363,117 @@ export function ApplicationFormModal({
                   </Radio>
                 </Space>
               </Radio.Group>
-            )}
-          </Form.Item>
+            </Form.Item>
+          )}
 
           {showWorkflow ? (
-            <Form.Item
-              label={workflowT('auto.workflow_trigger_type')}
-              name="trigger_type"
-            >
-              {isEdit ? (
-                <Tag>{workflowT(workflowTriggerTypeLabelKey(triggerType))}</Tag>
-              ) : (
+            isEdit ? (
+              <Form.Item
+                label={workflowT('auto.workflow_trigger_type')}
+                htmlFor="readonly_trigger_type"
+              >
+                <Input
+                  id="readonly_trigger_type"
+                  readOnly
+                  value={workflowT(workflowTriggerTypeLabelKey(triggerType))}
+                />
+              </Form.Item>
+            ) : (
+              <Form.Item
+                label={workflowT('auto.workflow_trigger_type')}
+                name="trigger_type"
+              >
                 <Select<ConsoleWorkflowTriggerType>
                   options={WORKFLOW_TRIGGER_TYPE_OPTIONS.map((type) => ({
                     value: type,
                     label: workflowT(workflowTriggerTypeLabelKey(type))
                   }))}
                 />
-              )}
-            </Form.Item>
+              </Form.Item>
+            )
           ) : null}
 
           {showWorkflow && triggerType === 'extension' ? (
             isEdit ? (
-              <Descriptions bordered size="small" column={1}>
-                <Descriptions.Item label={t('auto.http_method')}>
-                  <Tag color="blue">{extension?.method}</Tag>
-                </Descriptions.Item>
-                <Descriptions.Item label={t('auto.extension_subpath')}>
-                  <Typography.Text code>
-                    {extension ? `/api/ex/${extension.slug}` : '—'}
-                  </Typography.Text>
-                </Descriptions.Item>
-                <Descriptions.Item label={t('auto.response_mode')}>
-                  {extension?.response_mode === 'async'
-                    ? t('auto.response_mode_async')
-                    : t('auto.response_mode_sync')}
-                </Descriptions.Item>
-                <Descriptions.Item label={t('auto.request_parameters')}>
-                  <Space wrap>
-                    {extensionContract.requestFields.length > 0
-                      ? extensionContract.requestFields.map((field) => (
-                          <Tag key={`${field.source}:${field.key}`}>
-                            {field.source} · {field.key} · {field.valueType}
-                          </Tag>
-                        ))
-                      : t('auto.no_request_parameters')}
-                  </Space>
-                </Descriptions.Item>
-                <Descriptions.Item label={t('auto.response_fields')}>
-                  <Space wrap>
-                    {extensionContract.responseFields.length > 0
-                      ? extensionContract.responseFields.map((field) => (
-                          <Tag key={field.key}>
-                            {field.key} · {field.valueType}
-                          </Tag>
-                        ))
-                      : t('auto.no_response_fields')}
-                  </Space>
-                </Descriptions.Item>
-              </Descriptions>
+              <>
+                <Form.Item
+                  label={t('auto.http_method')}
+                  htmlFor="readonly_http_method"
+                >
+                  <Input
+                    id="readonly_http_method"
+                    readOnly
+                    value={extension?.method ?? '—'}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={t('auto.extension_subpath')}
+                  htmlFor="readonly_extension_subpath"
+                >
+                  <Input
+                    id="readonly_extension_subpath"
+                    readOnly
+                    value={extension ? `/api/ex/${extension.slug}` : '—'}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={t('auto.response_mode')}
+                  htmlFor="readonly_response_mode"
+                >
+                  <Input
+                    id="readonly_response_mode"
+                    readOnly
+                    value={
+                      extension?.response_mode === 'async'
+                        ? t('auto.response_mode_async')
+                        : t('auto.response_mode_sync')
+                    }
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={t('auto.request_parameters')}
+                  htmlFor="readonly_request_parameters"
+                >
+                  <Input.TextArea
+                    id="readonly_request_parameters"
+                    readOnly
+                    rows={Math.min(
+                      4,
+                      Math.max(1, extensionContract.requestFields.length)
+                    )}
+                    value={
+                      extensionContract.requestFields.length > 0
+                        ? extensionContract.requestFields
+                            .map(
+                              (field) =>
+                                `${field.source} · ${field.key} · ${field.valueType}`
+                            )
+                            .join('\n')
+                        : t('auto.no_request_parameters')
+                    }
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={t('auto.response_fields')}
+                  htmlFor="readonly_response_fields"
+                >
+                  <Input.TextArea
+                    id="readonly_response_fields"
+                    readOnly
+                    rows={Math.min(
+                      4,
+                      Math.max(1, extensionContract.responseFields.length)
+                    )}
+                    value={
+                      extensionContract.responseFields.length > 0
+                        ? extensionContract.responseFields
+                            .map((field) => `${field.key} · ${field.valueType}`)
+                            .join('\n')
+                        : t('auto.no_response_fields')
+                    }
+                  />
+                </Form.Item>
+              </>
             ) : (
               <>
                 <Form.Item
