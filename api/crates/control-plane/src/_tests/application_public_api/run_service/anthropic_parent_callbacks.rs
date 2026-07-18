@@ -6,15 +6,7 @@ async fn start_anthropic_run_does_not_dispatch_by_legacy_protocol_mode() {
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Anthropic Session App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let first = service
@@ -58,15 +50,7 @@ async fn start_anthropic_subagent_run_keeps_parent_waiting_callback_alive() {
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Anthropic Subagent App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let parent = service
@@ -110,15 +94,7 @@ async fn start_anthropic_builtin_agent_run_keeps_parent_waiting_callback_alive()
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Anthropic Builtin Agent App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let parent = service
@@ -165,15 +141,7 @@ async fn start_anthropic_tool_result_continuation_keeps_parent_waiting_callback_
     let application =
         harness.seed_application(actor_user_id(), "Anthropic Tool Result Continuation App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let parent = service
@@ -220,15 +188,7 @@ async fn start_anthropic_claude_code_control_run_keeps_parent_waiting_callback_a
     let application =
         harness.seed_application(actor_user_id(), "Anthropic Claude Code Control App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let parent = service
@@ -275,15 +235,7 @@ async fn start_anthropic_away_summary_run_keeps_parent_waiting_callback_alive() 
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Anthropic Away Summary App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let parent = service
@@ -327,15 +279,7 @@ async fn start_anthropic_compact_resume_run_keeps_parent_waiting_callback_alive(
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Anthropic Compact Resume App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let parent = service
@@ -380,15 +324,7 @@ async fn start_anthropic_compact_resume_run_does_not_dispatch_by_prompt_marker()
     let application =
         harness.seed_application(actor_user_id(), "Anthropic Compact Control Cleanup App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let parent = service

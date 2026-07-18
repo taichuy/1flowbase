@@ -9,15 +9,7 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Published Native App");
     let token = issue_key(&harness, application.id).await;
-    let publication = ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    let publication = publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let result = service
@@ -46,6 +38,10 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
     );
     assert_eq!(flow_run.document_hash, publication.document_hash);
     assert_eq!(flow_run.publication_version_id, Some(publication.id));
+    assert_eq!(
+        flow_run.target_node_id.as_deref(),
+        Some("node-published-llm")
+    );
     assert_eq!(flow_run.title, "Summarize the incident");
     assert_eq!(flow_run.external_user.as_deref(), Some("customer-1"));
     assert_eq!(
@@ -74,15 +70,7 @@ async fn d2_f1_anthropic_trace_id_reaches_canonical_metadata_and_durable_flow_ru
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Anthropic Trace Id App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let translated = translate_messages_request(json!({
         "model": "claude-compatible-custom",
         "messages": [{"role": "user", "content": "trace this request"}],
@@ -128,15 +116,7 @@ async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtim
     let application = harness.seed_application(actor_user_id(), "Published Native Reasoning App");
     let token = issue_key(&harness, application.id).await;
     save_start_model_catalog(&repository, &application).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let result = service
@@ -194,15 +174,7 @@ async fn ac_004_start_native_run_freezes_external_max_output_tokens_for_runtime(
     let application = harness.seed_application(actor_user_id(), "Published Native Token App");
     let token = issue_key(&harness, application.id).await;
     save_start_model_catalog(&repository, &application).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let result = service
@@ -259,15 +231,7 @@ async fn start_native_run_rejects_external_reasoning_for_unknown_model() {
     let application = harness.seed_application(actor_user_id(), "Published Native Unknown App");
     let token = issue_key(&harness, application.id).await;
     save_start_model_catalog(&repository, &application).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let result = service
@@ -298,15 +262,7 @@ async fn start_native_run_rejects_external_reasoning_for_unsupported_model() {
     let application = harness.seed_application(actor_user_id(), "Published Native Plain App");
     let token = issue_key(&harness, application.id).await;
     save_start_model_catalog(&repository, &application).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let result = service
@@ -339,15 +295,7 @@ async fn start_native_run_rejects_unsupported_reasoning_effort() {
     let application = harness.seed_application(actor_user_id(), "Published Native Effort App");
     let token = issue_key(&harness, application.id).await;
     save_start_model_catalog(&repository, &application).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let result = service
@@ -380,15 +328,7 @@ async fn ac_004_start_native_run_rejects_max_output_tokens_over_model_limit() {
     let application = harness.seed_application(actor_user_id(), "Published Native Output App");
     let token = issue_key(&harness, application.id).await;
     save_start_model_catalog(&repository, &application).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let mut request =
@@ -425,15 +365,7 @@ async fn start_native_run_rejects_reasoning_budget_over_model_output_limit() {
     let application = harness.seed_application(actor_user_id(), "Published Native Budget App");
     let token = issue_key(&harness, application.id).await;
     save_start_model_catalog(&repository, &application).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let result = service
@@ -466,15 +398,7 @@ async fn start_native_run_freezes_application_environment_variables() {
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Published Native Env App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     ApplicationRepository::replace_application_environment_variables(
         &repository,
         &ReplaceApplicationEnvironmentVariablesInput {
@@ -534,15 +458,7 @@ async fn start_native_run_uses_expand_id_and_truncates_title() {
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Expanded Native User App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
     let long_query = "Q".repeat(300);
     let expected_title = "Q".repeat(255);
@@ -589,15 +505,7 @@ async fn start_native_run_replays_existing_run_for_same_idempotency_key() {
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Idempotent Native App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let first = service
@@ -626,15 +534,7 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
     let application = harness.seed_application(actor_user_id(), "Typed Reasoning Effort App");
     let token = issue_key(&harness, application.id).await;
     save_start_model_catalog(&repository, &application).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
     let request_with_effort = |idempotency_key: &str, effort: &str| {
         serde_json::from_value(json!({
@@ -695,15 +595,7 @@ async fn start_native_run_rejects_same_idempotency_key_with_different_request() 
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Idempotent Native App");
     let token = issue_key(&harness, application.id).await;
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: published_mapping(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_runnable_application(&repository, application.id).await;
     let service = ApplicationPublishedRunService::new(repository.clone());
     service
         .start_native_run(CreateNativeRunCommand {

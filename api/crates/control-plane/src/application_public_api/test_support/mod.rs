@@ -60,6 +60,8 @@ struct ApplicationPublicApiTestRepositoryInner {
     next_workflow_schedule_ordinal: u128,
     api_key_last_used_write_counts: HashMap<Uuid, usize>,
     fail_mark_api_key_used: bool,
+    published_generate_capability_supported: Option<bool>,
+    published_generate_capability_checks: usize,
 }
 
 #[derive(Clone, Default)]
@@ -206,6 +208,90 @@ impl ApplicationPublicApiTestRepository {
             .lock()
             .expect("application public api test repo mutex poisoned")
             .fail_mark_api_key_used = fail;
+    }
+
+    pub fn set_published_generate_capability_supported(&self, supported: bool) {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .published_generate_capability_supported = Some(supported);
+    }
+
+    pub fn published_generate_capability_checks(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .published_generate_capability_checks
+    }
+
+    pub fn configure_published_generate_route(
+        &self,
+        application_id: Uuid,
+        target_node_id: &str,
+        llm_runtime: orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+    ) {
+        use orchestration_runtime::compiled_plan::{CompiledNode, CompiledPlan};
+
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let publication = inner
+            .publications
+            .values_mut()
+            .find(|publication| publication.application_id == application_id)
+            .expect("published generate route fixture requires a publication");
+        publication.operation_bindings.generate =
+            Some(mapping::ApplicationOperationTargetBinding {
+                target_node_id: target_node_id.to_string(),
+            });
+        let compiled_plan_id = publication.compiled_plan_id;
+        let compiled_plan = inner
+            .compiled_plans
+            .get_mut(&compiled_plan_id)
+            .expect("published generate route fixture requires a compiled plan");
+        let node = CompiledNode {
+            node_id: target_node_id.to_string(),
+            node_type: "llm".to_string(),
+            alias: "Published target".to_string(),
+            container_id: None,
+            dependency_node_ids: Vec::new(),
+            downstream_node_ids: Vec::new(),
+            bindings: Default::default(),
+            outputs: Vec::new(),
+            config: serde_json::json!({}),
+            plugin_runtime: None,
+            llm_runtime: Some(llm_runtime),
+            code_runtime: None,
+        };
+        let mut plan: CompiledPlan = serde_json::from_value(compiled_plan.plan.clone())
+            .expect("published generate route fixture requires a valid compiled plan");
+        plan.nodes.insert(target_node_id.to_string(), node);
+        if !plan
+            .topological_order
+            .iter()
+            .any(|node_id| node_id == target_node_id)
+        {
+            plan.topological_order.push(target_node_id.to_string());
+        }
+        compiled_plan.plan =
+            serde_json::to_value(plan).expect("published generate route fixture must serialize");
+    }
+
+    pub fn configure_runnable_published_generate_route(&self, application_id: Uuid) {
+        self.configure_published_generate_route(
+            application_id,
+            "node-published-llm",
+            orchestration_runtime::compiled_plan::CompiledLlmRuntime {
+                provider_instance_id: Uuid::from_u128(0x55555555555555555555555555555555)
+                    .to_string(),
+                provider_instance_display_name: "Published Provider Fixture".into(),
+                provider_code: "published_provider_fixture".into(),
+                protocol: "published_protocol_fixture".into(),
+                model: "published-model-fixture".into(),
+                routing: None,
+            },
+        );
     }
 }
 
@@ -504,4 +590,5 @@ mod compiled_plan_repository;
 mod flow_repository;
 mod publication_repository;
 mod repository_seeders;
+mod resolved_route;
 mod run_repositories;

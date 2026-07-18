@@ -148,7 +148,8 @@ pub struct AnthropicCountTokensResponse {
         (status = 400, body = AnthropicErrorBody),
         (status = 401, body = AnthropicErrorBody),
         (status = 403, body = AnthropicErrorBody),
-        (status = 409, body = AnthropicErrorBody)
+        (status = 409, body = AnthropicErrorBody),
+        (status = 422, body = AnthropicErrorBody)
     )
 )]
 pub async fn create_message(

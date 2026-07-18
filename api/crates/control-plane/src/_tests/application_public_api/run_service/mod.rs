@@ -2,17 +2,24 @@ use control_plane::application_public_api::{
     api_keys::{ApplicationApiKeyService, CreateApplicationApiKeyCommand},
     mapping::{
         ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
+        ApplicationApiMappingService, ApplicationOperationBindings,
+        ApplicationOperationTargetBinding, ReplaceApplicationApiMappingCommand,
     },
     native::{
         translate_native_run_request, CreateNativeRunCommand, NativeRunRequest,
         NativeRunValidationError,
     },
     publications::{ApplicationPublicationService, PublishApplicationCommand},
-    run_service::{ApplicationPublishedRunControlRepository, ApplicationPublishedRunService},
-    ApplicationPublicApiTestHarness,
+    run_service::{
+        ApplicationPublishedRunControlRepository, ApplicationPublishedRunService,
+        GenerateExecutionProfile, PublishedRouteDispatch, PublishedRouteResolutionError,
+        PublishedRouteResolver, ResolvedPublishedRoute,
+    },
+    ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
 };
 use control_plane::ports::{
-    ApplicationEnvironmentVariableInput, ApplicationRepository, FlowRepository,
+    ApplicationCompiledPlanRepository, ApplicationEnvironmentVariableInput,
+    ApplicationPublicationRepository, ApplicationRepository, FlowRepository,
     ReplaceApplicationEnvironmentVariablesInput,
 };
 use plugin_framework::provider_contract::NativePromptBlock;
@@ -134,6 +141,38 @@ fn published_mapping() -> ApplicationApiMappingConfig {
         output: ApplicationApiMappingOutput::default(),
         extension: None,
     }
+}
+
+fn published_llm_runtime() -> orchestration_runtime::compiled_plan::CompiledLlmRuntime {
+    orchestration_runtime::compiled_plan::CompiledLlmRuntime {
+        provider_instance_id: Uuid::now_v7().to_string(),
+        provider_instance_display_name: "Frozen Provider".into(),
+        provider_code: "frozen_provider".into(),
+        protocol: "frozen_protocol".into(),
+        model: "frozen-model".into(),
+        routing: None,
+    }
+}
+
+async fn publish_runnable_application(
+    repository: &ApplicationPublicApiTestRepository,
+    application_id: Uuid,
+) -> control_plane::application_public_api::publications::ApplicationPublicationVersionRecord {
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    repository.configure_runnable_published_generate_route(application_id);
+    repository
+        .load_active_application_publication(application_id)
+        .await
+        .unwrap()
+        .unwrap()
 }
 
 async fn issue_key(harness: &ApplicationPublicApiTestHarness, application_id: Uuid) -> String {

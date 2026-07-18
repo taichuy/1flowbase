@@ -21,6 +21,7 @@ use super::{
 mod conversation_history;
 mod native_results;
 mod repository_contracts;
+mod resolved_route;
 mod run_input;
 
 use crate::{
@@ -41,6 +42,11 @@ pub use repository_contracts::{
     CancelPublishedFlowRunInput, CreatePublishedFlowRunResult,
     ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunPendingCallback,
     PublishedRunStreamState,
+};
+pub use resolved_route::{
+    GenerateExecutionProfile, PublishedProviderManifestCapabilityRepository,
+    PublishedRouteDispatch, PublishedRouteResolutionError, PublishedRouteResolver,
+    ResolvedProviderRoute, ResolvedPublishedRoute,
 };
 use run_input::{
     compiled_plan_start_node_id, freeze_run_input_environment, generate_external_conversation_id,
@@ -73,6 +79,7 @@ where
         + ApplicationPublishedRunControlRepository
         + ApplicationPublishedCallbackAttemptRepository
         + ApplicationPublicConversationRepository
+        + PublishedProviderManifestCapabilityRepository
         + Clone,
 {
     pub fn new(repository: R) -> Self {
@@ -126,6 +133,20 @@ where
             .await
             .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
             .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
+        let resolved_route = PublishedRouteResolver::new(&self.repository)
+            .resolve_generate(
+                actor.workspace_id,
+                &publication,
+                &compiled_plan,
+                PublishedRouteDispatch::OperationBinding,
+                GenerateExecutionProfile::Standard,
+            )
+            .await
+            .map_err(NativeRunValidationError::RouteUnavailable)?;
+        let target_node_id = match resolved_route {
+            ResolvedPublishedRoute::ApplicationFlow { .. } => None,
+            ResolvedPublishedRoute::Provider(route) => Some(route.target_node_id),
+        };
 
         let mapped = NativeInputMapper::map(&request, &publication.mapping_snapshot)
             .map_err(|_| NativeRunValidationError::InvalidMapping)?;
@@ -178,7 +199,7 @@ where
                 flow_schema_version: publication.flow_schema_version.clone(),
                 document_hash: publication.document_hash.clone(),
                 run_mode: domain::FlowRunMode::PublishedApiRun,
-                target_node_id: None,
+                target_node_id,
                 title: build_flow_run_title(request.title.as_deref(), &request.query),
                 status: domain::FlowRunStatus::Queued,
                 input_payload,

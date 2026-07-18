@@ -68,7 +68,8 @@ struct OpenAiCredential {
         (status = 400, body = OpenAiErrorBody),
         (status = 401, body = OpenAiErrorBody),
         (status = 403, body = OpenAiErrorBody),
-        (status = 409, body = OpenAiErrorBody)
+        (status = 409, body = OpenAiErrorBody),
+        (status = 422, body = OpenAiErrorBody)
     )
 )]
 pub async fn create_chat_completion(
@@ -161,7 +162,8 @@ pub async fn create_chat_completion(
         (status = 400, body = OpenAiErrorBody),
         (status = 401, body = OpenAiErrorBody),
         (status = 403, body = OpenAiErrorBody),
-        (status = 409, body = OpenAiErrorBody)
+        (status = 409, body = OpenAiErrorBody),
+        (status = 422, body = OpenAiErrorBody)
     )
 )]
 pub async fn create_response(

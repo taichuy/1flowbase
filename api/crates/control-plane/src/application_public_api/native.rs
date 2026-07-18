@@ -824,6 +824,7 @@ pub enum NativeRunValidationError {
     InvalidToolResults(String),
     InvalidState,
     IdempotencyConflict,
+    RouteUnavailable(super::run_service::PublishedRouteResolutionError),
 }
 
 pub struct ApplicationNativeRunService<R> {
@@ -842,6 +843,7 @@ where
         + ApplicationPublishedRunControlRepository
         + ApplicationPublishedCallbackAttemptRepository
         + ApplicationPublicConversationRepository
+        + super::run_service::PublishedProviderManifestCapabilityRepository
         + Clone,
 {
     pub fn new(repository: R) -> Self {

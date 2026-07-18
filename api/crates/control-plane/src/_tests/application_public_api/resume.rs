@@ -60,7 +60,7 @@ async fn issue_key(
         .token
 }
 
-async fn publish_application(
+async fn publish_runnable_application(
     harness: &ApplicationPublicApiTestHarness,
     application_id: Uuid,
     owner_user_id: Uuid,
@@ -74,6 +74,9 @@ async fn publish_application(
         })
         .await
         .unwrap();
+    harness
+        .repository()
+        .configure_runnable_published_generate_route(application_id);
 }
 
 fn anthropic_request(query: &str) -> NativeRunRequest {
@@ -108,7 +111,7 @@ async fn native_resume_rejects_callback_task_from_another_run() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Resume App");
     let token = issue_key(&harness, application.id, actor_user_id()).await;
-    publish_application(&harness, application.id, actor_user_id()).await;
+    publish_runnable_application(&harness, application.id, actor_user_id()).await;
     let repository = harness.repository();
     let service = ApplicationNativeRunService::new(repository.clone());
     let first = service
@@ -160,8 +163,8 @@ async fn native_resume_validates_ownership_before_execution_continuation_boundar
     let second_application = harness.seed_application(other_user_id(), "Other Resume App");
     let first_token = issue_key(&harness, first_application.id, actor_user_id()).await;
     let second_token = issue_key(&harness, second_application.id, other_user_id()).await;
-    publish_application(&harness, first_application.id, actor_user_id()).await;
-    publish_application(&harness, second_application.id, other_user_id()).await;
+    publish_runnable_application(&harness, first_application.id, actor_user_id()).await;
+    publish_runnable_application(&harness, second_application.id, other_user_id()).await;
     let repository = harness.repository();
     let service = ApplicationNativeRunService::new(repository.clone());
     let run = service
@@ -204,7 +207,7 @@ async fn native_get_run_exposes_pending_callback_required_action() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Required Action App");
     let token = issue_key(&harness, application.id, actor_user_id()).await;
-    publish_application(&harness, application.id, actor_user_id()).await;
+    publish_runnable_application(&harness, application.id, actor_user_id()).await;
     let repository = harness.repository();
     let service = ApplicationNativeRunService::new(repository.clone());
     let run = service
@@ -286,7 +289,7 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Unified Resume App");
     let token = issue_key(&harness, application.id, actor_user_id()).await;
-    publish_application(&harness, application.id, actor_user_id()).await;
+    publish_runnable_application(&harness, application.id, actor_user_id()).await;
     let repository = harness.repository();
     let native_service = ApplicationNativeRunService::new(repository.clone());
     let run = native_service
@@ -348,7 +351,7 @@ async fn d2_ac_007_callback_resume_treats_legacy_compatibility_mode_as_opaque() 
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Canonical Callback Resume App");
     let token = issue_key(&harness, application.id, actor_user_id()).await;
-    publish_application(&harness, application.id, actor_user_id()).await;
+    publish_runnable_application(&harness, application.id, actor_user_id()).await;
     let repository = harness.repository();
     let run_service = ApplicationPublishedRunService::new(repository.clone());
     let agent_prompt = "Search the 1flowbase frontend for the navigation code.";
@@ -474,7 +477,7 @@ async fn native_cancel_clears_pending_callback_required_action() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Cancel Pending Callback App");
     let token = issue_key(&harness, application.id, actor_user_id()).await;
-    publish_application(&harness, application.id, actor_user_id()).await;
+    publish_runnable_application(&harness, application.id, actor_user_id()).await;
     let repository = harness.repository();
     let native_service = ApplicationNativeRunService::new(repository.clone());
     let run = native_service

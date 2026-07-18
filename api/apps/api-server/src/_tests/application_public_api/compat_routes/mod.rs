@@ -449,6 +449,58 @@ async fn setup_unpublished_app_key(app: &Router, name: &str) -> String {
     create_application_key(app, &cookie, &csrf, &application_id).await
 }
 
+async fn setup_unbound_published_app_key(app: &Router, name: &str) -> String {
+    let (cookie, csrf) = login_and_capture_cookie(app, "root", "change-me").await;
+    let application_id = create_application(app, &cookie, &csrf, name).await;
+    let token = create_application_key(app, &cookie, &csrf, &application_id).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-publications"
+                ))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "mapping": {
+                            "input": {
+                                "query_target": "node-start.query",
+                                "model_target": null,
+                                "inputs_target": null,
+                                "history_target": "node-start.history",
+                                "attachments_target": null
+                            },
+                            "output": {
+                                "answer_selector": "answer",
+                                "usage_selector": null,
+                                "files_selector": null,
+                                "error_selector": null
+                            },
+                            "operation_bindings": {
+                                "generate": null,
+                                "count_tokens": null,
+                                "compact": {
+                                    "responses_compact": null,
+                                    "responses_compaction_v2": null
+                                }
+                            }
+                        },
+                        "api_enabled": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    token
+}
+
 async fn test_app_with_state() -> (Router, std::sync::Arc<crate::app_state::ApiState>) {
     let (state, _) = test_api_state_with_database_url().await;
     let config = test_config();

@@ -49,7 +49,7 @@ async fn issue_key(
         .token
 }
 
-async fn publish_application(
+async fn publish_runnable_application(
     harness: &ApplicationPublicApiTestHarness,
     application_id: Uuid,
     owner_user_id: Uuid,
@@ -63,6 +63,9 @@ async fn publish_application(
         })
         .await
         .unwrap();
+    harness
+        .repository()
+        .configure_runnable_published_generate_route(application_id);
 }
 
 #[tokio::test]
@@ -70,7 +73,7 @@ async fn native_run_generates_external_conversation_id_when_missing() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Generated Conversation App");
     let token = issue_key(&harness, application.id, actor_user_id()).await;
-    publish_application(&harness, application.id, actor_user_id()).await;
+    publish_runnable_application(&harness, application.id, actor_user_id()).await;
     let service = ApplicationNativeRunService::new(harness.repository());
 
     let run = service
@@ -109,8 +112,8 @@ async fn native_run_conversation_binding_is_scoped_to_application_and_api_key() 
     let second_application = harness.seed_application(other_user_id(), "Second Conversation App");
     let first_token = issue_key(&harness, first_application.id, actor_user_id()).await;
     let second_token = issue_key(&harness, second_application.id, other_user_id()).await;
-    publish_application(&harness, first_application.id, actor_user_id()).await;
-    publish_application(&harness, second_application.id, other_user_id()).await;
+    publish_runnable_application(&harness, first_application.id, actor_user_id()).await;
+    publish_runnable_application(&harness, second_application.id, other_user_id()).await;
     let service = ApplicationNativeRunService::new(harness.repository());
 
     let first = service

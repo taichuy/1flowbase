@@ -57,6 +57,58 @@ async fn compatible_routes_return_not_published_for_unpublished_key_application(
     assert_eq!(payload["error"]["type"], json!("application_not_published"));
 }
 
+/// Root #1366 AC-003 / AC-005: Native, OpenAI and Anthropic share one pre-run route failure.
+#[tokio::test]
+async fn three_ingress_routes_fail_unbound_generate_before_creating_a_run() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_unbound_published_app_key(&app, "Three Ingress Unbound App").await;
+    let before = flow_run_count(state.as_ref()).await;
+
+    let native = post_json(
+        &app,
+        "/api/agent/v1/runs",
+        ("authorization", format!("Bearer {token}")),
+        json!({
+            "query": "Summarize the incident",
+            "model": "fixture-model",
+            "response_mode": "blocking"
+        }),
+    )
+    .await;
+    assert_eq!(native.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        response_json(native).await["code"],
+        json!("operation_unbound")
+    );
+
+    let openai = post_json(
+        &app,
+        "/v1/chat/completions",
+        ("authorization", format!("Bearer {token}")),
+        openai_body(false),
+    )
+    .await;
+    assert_eq!(openai.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        response_json(openai).await["error"]["code"],
+        json!("operation_unbound")
+    );
+
+    let anthropic = post_json(
+        &app,
+        "/v1/messages",
+        ("x-api-key", token),
+        anthropic_body(false),
+    )
+    .await;
+    assert_eq!(anthropic.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        response_json(anthropic).await["error"]["type"],
+        json!("operation_unbound")
+    );
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
+}
+
 async fn assert_run_creation_route_uses_last_used_cache(
     app: &Router,
     state: &ApiState,
