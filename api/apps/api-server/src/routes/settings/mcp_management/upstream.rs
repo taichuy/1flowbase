@@ -82,6 +82,26 @@ pub struct McpUpstreamTestResponse {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct TestMcpUpstreamConnectionDraftBody {
+    pub connection_id: Option<String>,
+    pub endpoint: String,
+    pub transport: String,
+    pub auth_type: String,
+    pub custom_header_name: Option<String>,
+    pub credential: Option<SaveMcpUpstreamCredentialBody>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpUpstreamDraftTestResponse {
+    pub ok: bool,
+    pub server_name: Option<String>,
+    pub server_version: Option<String>,
+    pub protocol_version: Option<String>,
+    pub tested_at: String,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct McpUpstreamToolResponse {
     pub remote_tool_name: String,
@@ -163,6 +183,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             .delete(
                 delete_credentials,
                 ConsoleOperation("mcp.upstream_credentials.delete".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/upstream-connections/test",
+            console_post(
+                test_draft_connection,
+                ConsoleOperation("mcp.upstream_connections.test".to_string()),
             ),
         )
         .route(
@@ -304,6 +331,89 @@ pub async fn delete_credentials(
         .delete_upstream_credential(context.user.id, parse_connection_id(&connection_id)?)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(post, path = "/api/console/mcp/upstream-connections/test", request_body = TestMcpUpstreamConnectionDraftBody, responses((status = 200, body = McpUpstreamDraftTestResponse)))]
+pub async fn test_draft_connection(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<TestMcpUpstreamConnectionDraftBody>,
+) -> Result<Json<ApiSuccess<McpUpstreamDraftTestResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    parse_upstream_transport(&body.transport)?;
+    let auth_type = parse_upstream_auth_type(&body.auth_type)?;
+    let service = McpManagementService::new(state.store.clone());
+    let stored_secret = if let Some(connection_id) = body.connection_id.as_deref() {
+        let (_, secret) = service
+            .prepare_upstream_management_action(
+                context.user.id,
+                parse_connection_id(connection_id)?,
+                &state.provider_secret_master_key,
+            )
+            .await?;
+        secret
+    } else {
+        None
+    };
+    let provided_secret = match (auth_type, body.credential) {
+        (domain::McpUpstreamAuthType::None, None) => None,
+        (
+            domain::McpUpstreamAuthType::Bearer,
+            Some(SaveMcpUpstreamCredentialBody::Bearer { token }),
+        ) if !token.trim().is_empty() => Some(serde_json::json!({"token":token})),
+        (
+            domain::McpUpstreamAuthType::CustomHeader,
+            Some(SaveMcpUpstreamCredentialBody::CustomHeader {
+                header_name,
+                header_value,
+            }),
+        ) if body.custom_header_name.as_deref() == Some(header_name.as_str())
+            && !header_value.is_empty() =>
+        {
+            Some(serde_json::json!({
+                "header_name":header_name,
+                "header_value":header_value
+            }))
+        }
+        (_, None) => None,
+        _ => {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput("credential").into())
+        }
+    };
+    let secret = provided_secret.or(stored_secret);
+    let tested_at = OffsetDateTime::now_utc();
+    let tested_at_response = format_timestamp(tested_at)?;
+    let result = match McpStreamableHttpClient::connect_configuration(
+        &body.endpoint,
+        auth_type,
+        body.custom_header_name.as_deref(),
+        secret.as_ref(),
+    )
+    .await
+    {
+        Ok(client) => client.initialize().await,
+        Err(error) => Err(error),
+    };
+    let response = match result {
+        Ok(server) => McpUpstreamDraftTestResponse {
+            ok: true,
+            server_name: server.name,
+            server_version: server.version,
+            protocol_version: Some(server.protocol_version),
+            tested_at: tested_at_response,
+            error: None,
+        },
+        Err(error) => McpUpstreamDraftTestResponse {
+            ok: false,
+            server_name: None,
+            server_version: None,
+            protocol_version: None,
+            tested_at: tested_at_response,
+            error: Some(error.to_string()),
+        },
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/upstream-connections/{connection_id}/test", responses((status = 200, body = McpUpstreamTestResponse)))]
@@ -527,20 +637,8 @@ fn connection_command(
     connection_id: Option<Uuid>,
     body: SaveMcpUpstreamConnectionBody,
 ) -> Result<SaveMcpUpstreamConnectionCommand, ApiError> {
-    let transport = match body.transport.as_str() {
-        "streamable_http" => domain::McpUpstreamTransport::StreamableHttp,
-        _ => {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput("transport").into());
-        }
-    };
-    let auth_type = match body.auth_type.as_str() {
-        "none" => domain::McpUpstreamAuthType::None,
-        "bearer" => domain::McpUpstreamAuthType::Bearer,
-        "custom_header" => domain::McpUpstreamAuthType::CustomHeader,
-        _ => {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput("auth_type").into());
-        }
-    };
+    let transport = parse_upstream_transport(&body.transport)?;
+    let auth_type = parse_upstream_auth_type(&body.auth_type)?;
     let status = match body.status.as_str() {
         "enabled" => domain::McpUpstreamConnectionStatus::Enabled,
         "disabled" => domain::McpUpstreamConnectionStatus::Disabled,
@@ -556,6 +654,26 @@ fn connection_command(
         custom_header_name: body.custom_header_name,
         status,
     })
+}
+
+fn parse_upstream_transport(value: &str) -> Result<domain::McpUpstreamTransport, ApiError> {
+    match value {
+        "streamable_http" => Ok(domain::McpUpstreamTransport::StreamableHttp),
+        _ => {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput("transport").into());
+        }
+    }
+}
+
+fn parse_upstream_auth_type(value: &str) -> Result<domain::McpUpstreamAuthType, ApiError> {
+    match value {
+        "none" => Ok(domain::McpUpstreamAuthType::None),
+        "bearer" => Ok(domain::McpUpstreamAuthType::Bearer),
+        "custom_header" => Ok(domain::McpUpstreamAuthType::CustomHeader),
+        _ => {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput("auth_type").into());
+        }
+    }
 }
 
 fn parse_connection_id(value: &str) -> Result<Uuid, ApiError> {

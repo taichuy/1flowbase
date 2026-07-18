@@ -396,6 +396,24 @@ export interface ConsoleMcpUpstreamConnectionTestResult {
   error: string | null;
 }
 
+export interface ConsoleMcpUpstreamConnectionDraftTestResult {
+  ok: boolean;
+  server_name: string | null;
+  server_version: string | null;
+  protocol_version: string | null;
+  tested_at: string;
+  error: string | null;
+}
+
+export interface TestConsoleMcpUpstreamConnectionDraftBody {
+  connection_id: string | null;
+  endpoint: string;
+  transport: ConsoleMcpUpstreamTransport;
+  auth_type: ConsoleMcpUpstreamAuthType;
+  custom_header_name: string | null;
+  credential: SaveConsoleMcpUpstreamConnectionCredentialsBody | null;
+}
+
 export type ConsoleMcpUpstreamToolSourceStatus =
   | 'not_imported'
   | 'imported'
@@ -948,6 +966,20 @@ export function testConsoleMcpUpstreamConnection(
   return apiFetch<ConsoleMcpUpstreamConnectionTestResult>({
     path: `/api/console/mcp/upstream-connections/${encodeURIComponent(connectionId)}/test`,
     method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function testConsoleMcpUpstreamConnectionDraft(
+  body: TestConsoleMcpUpstreamConnectionDraftBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpUpstreamConnectionDraftTestResult>({
+    path: '/api/console/mcp/upstream-connections/test',
+    method: 'POST',
+    body,
     csrfToken,
     baseUrl
   });

@@ -733,6 +733,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                     "POST",
                     "/api/console/mcp/upstream-connections/{connection_id}/test",
                 ),
+                ("POST", "/api/console/mcp/upstream-connections/test"),
                 (
                     "POST",
                     "/api/console/mcp/upstream-connections/{connection_id}/discover",

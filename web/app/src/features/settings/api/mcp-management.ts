@@ -32,6 +32,7 @@ import {
   saveConsoleMcpClientCredential,
   saveConsoleMcpUpstreamConnectionCredentials,
   testConsoleMcpUpstreamConnection,
+  testConsoleMcpUpstreamConnectionDraft,
   updateConsoleMcpInstance,
   updateConsoleMcpInstanceDiscoveryPolicy,
   updateConsoleMcpTool,
@@ -51,6 +52,7 @@ import {
   type SaveConsoleMcpToolBody,
   type SaveConsoleMcpUpstreamConnectionBody,
   type SaveConsoleMcpUpstreamConnectionCredentialsBody,
+  type TestConsoleMcpUpstreamConnectionDraftBody,
   type ImportConsoleMcpUpstreamToolsBody,
   type UpdateConsoleMcpInstanceDiscoveryPolicyBody,
   type UpdateConsoleMcpToolBody
@@ -152,6 +154,13 @@ export function testSettingsMcpUpstreamConnection(
   csrfToken: string
 ) {
   return testConsoleMcpUpstreamConnection(connectionId, csrfToken);
+}
+
+export function testSettingsMcpUpstreamConnectionDraft(
+  body: TestConsoleMcpUpstreamConnectionDraftBody,
+  csrfToken: string
+) {
+  return testConsoleMcpUpstreamConnectionDraft(body, csrfToken);
 }
 
 export function discoverSettingsMcpUpstreamConnection(

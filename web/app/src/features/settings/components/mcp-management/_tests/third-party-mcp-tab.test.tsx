@@ -22,6 +22,7 @@ const upstreamApi = vi.hoisted(() => ({
   importSettingsMcpUpstreamTools: vi.fn(),
   saveSettingsMcpUpstreamConnectionCredentials: vi.fn(),
   testSettingsMcpUpstreamConnection: vi.fn(),
+  testSettingsMcpUpstreamConnectionDraft: vi.fn(),
   updateSettingsMcpUpstreamConnection: vi.fn()
 }));
 
@@ -74,6 +75,14 @@ describe('ThirdPartyMcpTab', () => {
       ok: true,
       server_name: 'Acme Server',
       server_version: '1.2.3',
+      protocol_version: '2025-03-26',
+      tested_at: '2026-07-14T08:30:00Z',
+      error: null
+    });
+    upstreamApi.testSettingsMcpUpstreamConnectionDraft.mockResolvedValue({
+      ok: true,
+      server_name: 'Draft Server',
+      server_version: '2.0.0',
       protocol_version: '2025-03-26',
       tested_at: '2026-07-14T08:30:00Z',
       error: null
@@ -189,6 +198,96 @@ describe('ThirdPartyMcpTab', () => {
         screen.queryByRole('dialog', { name: '连接测试' })
       ).not.toBeInTheDocument();
     });
+  });
+
+  test('tests the current form without saving and keeps cancel-test-save footer order', async () => {
+    renderTab();
+    expect(await screen.findByText('Acme MCP')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '新增连接' }));
+
+    const dialog = screen.getByRole('dialog', { name: '新增第三方 MCP 连接' });
+    fireEvent.change(within(dialog).getByLabelText('连接名称'), {
+      target: { value: 'Draft MCP' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('Endpoint'), {
+      target: { value: 'https://draft.example/mcp' }
+    });
+    const cancelButton = within(dialog).getByRole('button', { name: '取消' });
+    const testButton = within(dialog).getByRole('button', { name: '测试连接' });
+    const saveButton = within(dialog).getByRole('button', { name: '保存' });
+    expect(
+      cancelButton.compareDocumentPosition(testButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      testButton.compareDocumentPosition(saveButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    fireEvent.click(testButton);
+
+    await waitFor(() => {
+      expect(
+        upstreamApi.testSettingsMcpUpstreamConnectionDraft
+      ).toHaveBeenCalledWith(
+        {
+          connection_id: null,
+          endpoint: 'https://draft.example/mcp',
+          transport: 'streamable_http',
+          auth_type: 'none',
+          custom_header_name: null,
+          credential: null
+        },
+        ''
+      );
+    });
+    expect(
+      upstreamApi.createSettingsMcpUpstreamConnection
+    ).not.toHaveBeenCalled();
+    expect(await screen.findByText('Draft Server')).toBeInTheDocument();
+  });
+
+  test('tests an edited connection with its saved credential when the credential field is blank', async () => {
+    upstreamApi.fetchSettingsMcpUpstreamConnections.mockResolvedValue([
+      {
+        ...connection,
+        auth_type: 'bearer',
+        credentials_status: 'configured'
+      }
+    ]);
+    renderTab();
+    expect(await screen.findByText('Acme MCP')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '编辑连接 Acme MCP' }));
+
+    const dialog = screen.getByRole('dialog', {
+      name: '编辑第三方 MCP 连接'
+    });
+    fireEvent.change(within(dialog).getByLabelText('Endpoint'), {
+      target: { value: 'https://edited.example/mcp' }
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: '测试连接' }));
+
+    await waitFor(() => {
+      expect(
+        upstreamApi.testSettingsMcpUpstreamConnectionDraft
+      ).toHaveBeenCalledWith(
+        {
+          connection_id: connection.connection_id,
+          endpoint: 'https://edited.example/mcp',
+          transport: 'streamable_http',
+          auth_type: 'bearer',
+          custom_header_name: null,
+          credential: null
+        },
+        ''
+      );
+    });
+    expect(
+      upstreamApi.updateSettingsMcpUpstreamConnection
+    ).not.toHaveBeenCalled();
+    expect(
+      upstreamApi.saveSettingsMcpUpstreamConnectionCredentials
+    ).not.toHaveBeenCalled();
   });
 
   test('AC-007 AC-008 AC-015 discovers, searches, previews differences, and imports a selection', async () => {

@@ -93,6 +93,55 @@ async fn issue_1246_upstream_connection_api_timestamps_are_rfc3339() {
 }
 
 #[tokio::test]
+async fn form_connection_test_uses_request_config_without_persisting_connection() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let tested = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/upstream-connections/test")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "connection_id":null,
+                        "endpoint":"http://127.0.0.1/mcp",
+                        "transport":"streamable_http",
+                        "auth_type":"none",
+                        "custom_header_name":null,
+                        "credential":null
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(tested.status(), StatusCode::OK);
+    let tested = response_json(tested).await;
+    assert_eq!(tested["data"]["ok"], json!(false));
+    assert_eq!(tested["data"]["error"], json!("invalid upstream endpoint"));
+    OffsetDateTime::parse(tested["data"]["tested_at"].as_str().unwrap(), &Rfc3339).unwrap();
+
+    let listed = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/mcp/upstream-connections")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(listed.status(), StatusCode::OK);
+    assert_eq!(response_json(listed).await["data"], json!([]));
+}
+
+#[tokio::test]
 async fn issue_1246_ac_004_ac_018_upstream_connection_writes_require_session_and_csrf() {
     let app = test_app().await;
     let unauthenticated = app

@@ -226,14 +226,44 @@ impl McpStreamableHttpClient {
         connection: &domain::McpUpstreamConnectionRecord,
         secret: Option<&Value>,
     ) -> Result<Self, McpUpstreamClientError> {
-        Self::connect_with_policy(connection, secret, McpEgressPolicy::PublicHttps).await
+        Self::connect_configuration_with_policy(
+            &connection.endpoint,
+            connection.auth_type,
+            connection.custom_header_name.as_deref(),
+            secret,
+            McpEgressPolicy::PublicHttps,
+        )
+        .await
+    }
+
+    pub async fn connect_configuration(
+        endpoint: &str,
+        auth_type: domain::McpUpstreamAuthType,
+        custom_header_name: Option<&str>,
+        secret: Option<&Value>,
+    ) -> Result<Self, McpUpstreamClientError> {
+        Self::connect_configuration_with_policy(
+            endpoint,
+            auth_type,
+            custom_header_name,
+            secret,
+            McpEgressPolicy::PublicHttps,
+        )
+        .await
     }
 
     #[cfg(test)]
     async fn connect_test_loopback(
         connection: &domain::McpUpstreamConnectionRecord,
     ) -> Result<Self, McpUpstreamClientError> {
-        Self::connect_with_policy(connection, None, McpEgressPolicy::TestLoopbackHttp).await
+        Self::connect_configuration_with_policy(
+            &connection.endpoint,
+            connection.auth_type,
+            connection.custom_header_name.as_deref(),
+            None,
+            McpEgressPolicy::TestLoopbackHttp,
+        )
+        .await
     }
 
     pub async fn connect_and_discover(
@@ -269,13 +299,14 @@ impl McpStreamableHttpClient {
         .map_err(|_| McpUpstreamClientError::DiscoveryBudgetExceeded("deadline"))?
     }
 
-    async fn connect_with_policy(
-        connection: &domain::McpUpstreamConnectionRecord,
+    async fn connect_configuration_with_policy(
+        endpoint: &str,
+        auth_type: domain::McpUpstreamAuthType,
+        custom_header_name: Option<&str>,
         secret: Option<&Value>,
         policy: McpEgressPolicy,
     ) -> Result<Self, McpUpstreamClientError> {
-        let endpoint = Url::parse(&connection.endpoint)
-            .map_err(|_| McpUpstreamClientError::InvalidEndpoint)?;
+        let endpoint = Url::parse(endpoint).map_err(|_| McpUpstreamClientError::InvalidEndpoint)?;
         let valid_scheme = match policy {
             McpEgressPolicy::PublicHttps => endpoint.scheme() == "https",
             #[cfg(test)]
@@ -320,7 +351,7 @@ impl McpStreamableHttpClient {
         let client = builder
             .build()
             .map_err(|error| McpUpstreamClientError::Request(error.to_string()))?;
-        let authentication_headers = authentication_headers(connection, secret)?;
+        let authentication_headers = authentication_headers(auth_type, custom_header_name, secret)?;
         Ok(Self {
             client,
             endpoint,
@@ -555,11 +586,12 @@ struct RpcResponse {
 }
 
 fn authentication_headers(
-    connection: &domain::McpUpstreamConnectionRecord,
+    auth_type: domain::McpUpstreamAuthType,
+    custom_header_name: Option<&str>,
     secret: Option<&Value>,
 ) -> Result<HeaderMap, McpUpstreamClientError> {
     let mut headers = HeaderMap::new();
-    match connection.auth_type {
+    match auth_type {
         domain::McpUpstreamAuthType::None => {}
         domain::McpUpstreamAuthType::Bearer => {
             let token = secret
@@ -571,10 +603,7 @@ fn authentication_headers(
             headers.insert(AUTHORIZATION, value);
         }
         domain::McpUpstreamAuthType::CustomHeader => {
-            let name = connection
-                .custom_header_name
-                .as_deref()
-                .ok_or(McpUpstreamClientError::InvalidAuthentication)?;
+            let name = custom_header_name.ok_or(McpUpstreamClientError::InvalidAuthentication)?;
             let value = secret
                 .and_then(|value| value.get("header_value"))
                 .and_then(Value::as_str)
