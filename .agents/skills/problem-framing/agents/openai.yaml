@@ -1,4 +1,4 @@
 interface:
   display_name: "Problem Framing"
-  short_description: "对齐结果与验收，选择 Single Issue 或长计划 Issue Tree"
-  default_prompt: "使用 $problem-framing 对齐目标、成功标准与停止条件，并选择 Single Issue 或长计划 Issue Tree。"
+  short_description: "对齐产品诊断与需求，以三方向收敛决策与计划"
+  default_prompt: "使用 $problem-framing 先推理后结论，按现状、需求分析、保守 / 平衡 / 激进、最终建议的固定结构对齐需求，再选择 Single Issue 或两层 Issue Tree。"
