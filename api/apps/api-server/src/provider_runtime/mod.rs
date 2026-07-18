@@ -24,7 +24,10 @@ use plugin_framework::{
         DataSourceResourceDescriptor, DataSourceUpdateRecordInput, DataSourceUpdateRecordOutput,
     },
     error::PluginFrameworkError,
-    provider_contract::{ProviderBalanceResult, ProviderInvocationInput, ProviderModelDescriptor},
+    provider_contract::{
+        ProviderBalanceResult, ProviderCountTokensInput, ProviderCountTokensResult,
+        ProviderInvocationInput, ProviderModelDescriptor,
+    },
 };
 use plugin_runner::{
     capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
@@ -236,6 +239,29 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             .await
             .map(|output| output.balance)
             .map_err(map_provider_framework_error)
+    }
+
+    async fn count_tokens(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+        input: ProviderCountTokensInput,
+    ) -> anyhow::Result<ProviderCountTokensResult> {
+        let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
+        self.ensure_provider_loaded(installation).await?;
+        let operation = {
+            let host = self.services.provider_host.read().await;
+            host.count_tokens_operation(&installation.plugin_id, input)
+                .map_err(anyhow::Error::new)
+        };
+        let result = match operation {
+            Ok(operation) => operation
+                .await
+                .map(|output| output.result)
+                .map_err(anyhow::Error::new),
+            Err(error) => Err(error),
+        };
+        finish_runtime_activity(activity, &result);
+        result
     }
 
     async fn invoke_stream(

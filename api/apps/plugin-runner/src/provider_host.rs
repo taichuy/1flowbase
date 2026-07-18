@@ -12,9 +12,11 @@ use plugin_framework::{
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::PluginExecutionMode,
     provider_contract::{
-        ModelDiscoveryMode, ProviderBalanceResult, ProviderInvocationInput,
-        ProviderInvocationResult, ProviderModelDescriptor, ProviderStdioMethod,
-        ProviderStdioRequest, ProviderStreamEvent, CURRENT_PROVIDER_CONTRACT,
+        ModelDiscoveryMode, ProviderBalanceResult, ProviderCountTokensError,
+        ProviderCountTokensInput, ProviderCountTokensResult, ProviderInvocationInput,
+        ProviderInvocationResult, ProviderModelDescriptor, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest, ProviderStreamEvent,
+        ProviderWireOperation, CURRENT_PROVIDER_CONTRACT,
     },
     PluginRuntimeLimits,
 };
@@ -91,6 +93,11 @@ pub struct ProviderModelsOutput {
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderBalanceOutput {
     pub balance: ProviderBalanceResult,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ProviderCountTokensOutput {
+    pub result: ProviderCountTokensResult,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -411,6 +418,66 @@ impl ProviderHost {
         })
     }
 
+    pub async fn count_tokens(
+        &self,
+        plugin_id: &str,
+        input: ProviderCountTokensInput,
+    ) -> Result<ProviderCountTokensOutput, ProviderCountTokensError> {
+        self.count_tokens_operation(plugin_id, input)?.await
+    }
+
+    pub fn count_tokens_operation(
+        &self,
+        plugin_id: &str,
+        input: ProviderCountTokensInput,
+    ) -> Result<
+        impl std::future::Future<
+                Output = Result<ProviderCountTokensOutput, ProviderCountTokensError>,
+            > + Send
+            + 'static,
+        ProviderCountTokensError,
+    > {
+        let loaded = self
+            .loaded_package(plugin_id)
+            .map_err(count_tokens_framework_error)?
+            .clone();
+        let provider_workers = Arc::clone(&self.provider_workers);
+        Ok(async move {
+            let wire_input = current_provider_count_tokens_wire_input(&loaded, &input)?;
+            tracing::info!(
+                provider_code = %input.provider_code,
+                model = %input.model,
+                "provider count tokens wire prepared"
+            );
+            let output = Self::call_runtime_loaded(
+                loaded,
+                provider_workers,
+                ProviderStdioMethod::Invoke,
+                wire_input,
+            )
+            .await
+            .map_err(count_tokens_framework_error)?;
+            let result =
+                serde_json::from_value::<ProviderCountTokensResult>(output).map_err(|error| {
+                    ProviderCountTokensError::Runtime {
+                        error: ProviderRuntimeError::new(
+                            ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                            format!("provider CountTokens result is malformed: {error}"),
+                        ),
+                    }
+                })?;
+            if result.operation != ProviderWireOperation::CountTokens {
+                return Err(ProviderCountTokensError::Runtime {
+                    error: ProviderRuntimeError::new(
+                        ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                        "provider CountTokens result must declare operation=count_tokens",
+                    ),
+                });
+            }
+            Ok(ProviderCountTokensOutput { result })
+        })
+    }
+
     pub async fn invoke_stream(
         &self,
         plugin_id: &str,
@@ -675,6 +742,45 @@ fn current_provider_wire_input(
     input.to_current_provider_wire_value(&loaded.package.manifest.runtime.capabilities)
 }
 
+fn current_provider_count_tokens_wire_input(
+    loaded: &LoadedProviderPackage,
+    input: &ProviderCountTokensInput,
+) -> Result<Value, ProviderCountTokensError> {
+    if loaded.package.manifest.contract_version != CURRENT_PROVIDER_CONTRACT {
+        return Err(ProviderCountTokensError::InvalidContract {
+            message: format!(
+                "unsupported provider package contract: expected {CURRENT_PROVIDER_CONTRACT}, found {}",
+                loaded.package.manifest.contract_version
+            ),
+        });
+    }
+
+    input.to_current_provider_wire_value(&loaded.package.manifest.runtime.capabilities)
+}
+
+fn count_tokens_framework_error(error: PluginFrameworkError) -> ProviderCountTokensError {
+    match error {
+        PluginFrameworkError::RuntimeContract { error } => {
+            ProviderCountTokensError::Runtime { error: *error }
+        }
+        PluginFrameworkError::Serialization { message, .. } => ProviderCountTokensError::Runtime {
+            error: ProviderRuntimeError::new(
+                ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                format!("provider CountTokens response is malformed: {message}"),
+            ),
+        },
+        PluginFrameworkError::Io { message, .. } => ProviderCountTokensError::Runtime {
+            error: ProviderRuntimeError::new(
+                ProviderRuntimeErrorKind::EndpointUnreachable,
+                format!("provider CountTokens runtime is unavailable: {message}"),
+            ),
+        },
+        other => ProviderCountTokensError::InvalidContract {
+            message: other.to_string(),
+        },
+    }
+}
+
 mod operations;
 
 use operations::{
@@ -789,6 +895,43 @@ config_schema: []
                 &format!(
                     "#!/usr/bin/env bash\nset -euo pipefail\ntouch '{}'\nprintf '%s\\n' '{{\"type\":\"result\",\"result\":{{\"final_content\":\"unexpected spawn\",\"finish_reason\":\"stop\"}}}}'\n",
                     marker.display()
+                ),
+            );
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+
+                let path = self.path().join("bin/fixture_provider");
+                let mut permissions = fs::metadata(&path).unwrap().permissions();
+                permissions.set_mode(0o755);
+                fs::set_permissions(path, permissions).unwrap();
+            }
+        }
+
+        fn declare_count_tokens_capability(&self) {
+            let manifest_path = self.path().join("manifest.yaml");
+            let manifest = fs::read_to_string(&manifest_path)
+                .expect("fixture provider manifest should be readable");
+            let manifest = manifest.replace(
+                "  limits:\n",
+                "  capabilities:\n    - count_tokens\n  limits:\n",
+            );
+            fs::write(&manifest_path, manifest)
+                .expect("fixture provider manifest should declare CountTokens");
+        }
+
+        fn write_count_tokens_response_runtime(&self, response: &str) {
+            self.write(
+                "bin/fixture_provider",
+                &format!(
+                    r#"#!/usr/bin/env bash
+set -euo pipefail
+payload="$(cat)"
+case "${{payload}}" in
+  *'"operation":"count_tokens"'*) printf '%s\n' '{response}' ;;
+  *) printf '%s\n' '{{"ok":false,"error":{{"kind":"provider_invalid_response","message":"missing CountTokens tag"}}}}' ;;
+esac
+"#
                 ),
             );
             #[cfg(unix)]
@@ -1012,6 +1155,19 @@ done
         }
     }
 
+    fn count_tokens_input(model: &str) -> ProviderCountTokensInput {
+        ProviderCountTokensInput {
+            operation: ProviderWireOperation::CountTokens,
+            contract_version: Default::default(),
+            provider_instance_id: "provider-1".to_string(),
+            provider_code: "fixture_provider".to_string(),
+            protocol: "anthropic_messages".to_string(),
+            model: model.to_string(),
+            provider_config: json!({}),
+            ..ProviderCountTokensInput::default()
+        }
+    }
+
     async fn wait_for_active_streams(host: &ProviderHost, count: usize) {
         for _ in 0..20 {
             if host.active_stream_snapshot().await.streams.len() == count {
@@ -1078,6 +1234,89 @@ done
         assert!(lock_provider_worker_registry(&host.provider_workers)
             .expect("provider worker registry should be available")
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn c1_count_tokens_missing_capability_fails_before_spawn_side_effect() {
+        let package = TempProviderPackage::new();
+        let spawn_marker = package.path().join("count-tokens-spawn-side-effect-marker");
+        package.write_spawn_side_effect_runtime(&spawn_marker);
+        let mut host = ProviderHost::default();
+        let plugin_id = host
+            .load(package.path().to_str().unwrap())
+            .unwrap()
+            .plugin_id;
+
+        let error = host
+            .count_tokens(&plugin_id, count_tokens_input("fixture-model"))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ProviderCountTokensError::Unsupported { capabilities }
+                if capabilities == vec!["count_tokens"]
+        ));
+        assert!(
+            !spawn_marker.exists(),
+            "missing CountTokens capability must fail before provider spawn"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1_count_tokens_preserves_typed_upstream_and_malformed_result_errors() {
+        let package = TempProviderPackage::new();
+        package.declare_count_tokens_capability();
+        package.write_count_tokens_response_runtime(
+            r#"{"ok":false,"error":{"kind":"provider_upstream_error","message":"upstream CountTokens failed"}}"#,
+        );
+        let mut host = ProviderHost::default();
+        let plugin_id = host
+            .load(package.path().to_str().unwrap())
+            .unwrap()
+            .plugin_id;
+
+        let upstream = host
+            .count_tokens(&plugin_id, count_tokens_input("fixture-model"))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            upstream,
+            ProviderCountTokensError::Runtime { error }
+                if error.kind == ProviderRuntimeErrorKind::ProviderUpstreamError
+                    && error.message == "upstream CountTokens failed"
+        ));
+
+        package.write_count_tokens_response_runtime(
+            r#"{"ok":true,"result":{"operation":"count_tokens","input_tokens":37}}"#,
+        );
+        let plugin_id = host
+            .load(package.path().to_str().unwrap())
+            .unwrap()
+            .plugin_id;
+        let counted = host
+            .count_tokens(&plugin_id, count_tokens_input("fixture-model"))
+            .await
+            .expect("tagged CountTokens result should project");
+        assert_eq!(counted.result.input_tokens, 37);
+
+        package.write_count_tokens_response_runtime(
+            r#"{"ok":true,"result":{"operation":"count_tokens","input_tokens":"not-a-number"}}"#,
+        );
+        let plugin_id = host
+            .load(package.path().to_str().unwrap())
+            .unwrap()
+            .plugin_id;
+        let malformed = host
+            .count_tokens(&plugin_id, count_tokens_input("fixture-model"))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            malformed,
+            ProviderCountTokensError::Runtime { error }
+                if error.kind == ProviderRuntimeErrorKind::ProviderInvalidResponse
+                    && error.message.contains("CountTokens result is malformed")
+        ));
     }
 
     #[tokio::test]

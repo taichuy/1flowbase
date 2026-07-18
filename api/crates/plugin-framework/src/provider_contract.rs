@@ -12,6 +12,7 @@ pub const CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY: &str = "__client_protocol_envelo
 pub const NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY: &str = "__native_model_prompt_context";
 pub const NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY: &str = "__native_model_request_context";
 pub const CURRENT_PROVIDER_CONTRACT: &str = "1flowbase.provider/v2";
+pub const PROVIDER_COUNT_TOKENS_CAPABILITY: &str = "count_tokens";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -388,6 +389,7 @@ pub enum ProviderInvocationContractVersion {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderInvocationCapability {
+    CountTokens,
     SystemPromptBlocks,
     SystemPromptCacheControl,
     EndUserReference,
@@ -452,10 +454,97 @@ pub struct ProviderInvocationInput {
     pub run_context: BTreeMap<String, Value>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderWireOperation {
     Generate,
+    CountTokens,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderCountTokensInput {
+    pub operation: ProviderWireOperation,
+    pub contract_version: ProviderInvocationContractVersion,
+    pub provider_instance_id: String,
+    pub provider_code: String,
+    pub protocol: String,
+    pub model: String,
+    #[serde(default)]
+    pub provider_config: Value,
+    #[serde(default)]
+    pub messages: Vec<ProviderMessage>,
+    #[serde(default)]
+    pub system: Vec<NativePromptBlock>,
+    #[serde(default, skip_serializing_if = "NativeModelRequestContext::is_empty")]
+    pub request_context: NativeModelRequestContext,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub required_capabilities: BTreeSet<ProviderInvocationCapability>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
+}
+
+impl Default for ProviderCountTokensInput {
+    fn default() -> Self {
+        Self {
+            operation: ProviderWireOperation::CountTokens,
+            contract_version: ProviderInvocationContractVersion::default(),
+            provider_instance_id: String::new(),
+            provider_code: String::new(),
+            protocol: String::new(),
+            model: String::new(),
+            provider_config: Value::Null,
+            messages: Vec::new(),
+            system: Vec::new(),
+            request_context: NativeModelRequestContext::default(),
+            required_capabilities: BTreeSet::new(),
+            client_protocol_envelope: None,
+        }
+    }
+}
+
+impl ProviderCountTokensInput {
+    pub fn required_capabilities(&self) -> BTreeSet<ProviderInvocationCapability> {
+        let mut capabilities = self.required_capabilities.clone();
+        capabilities.insert(ProviderInvocationCapability::CountTokens);
+        capabilities.extend(semantic_required_capabilities(
+            &self.system,
+            &self.request_context,
+        ));
+        capabilities
+    }
+
+    pub fn to_current_provider_wire_value(
+        &self,
+        declared_capabilities: &[String],
+    ) -> Result<Value, ProviderCountTokensError> {
+        if self.operation != ProviderWireOperation::CountTokens {
+            return Err(ProviderCountTokensError::InvalidContract {
+                message: "CountTokens input must declare operation=count_tokens".to_string(),
+            });
+        }
+        let unsupported =
+            undeclared_provider_capabilities(&self.required_capabilities(), declared_capabilities);
+        if !unsupported.is_empty() {
+            return Err(ProviderCountTokensError::Unsupported {
+                capabilities: unsupported
+                    .iter()
+                    .map(provider_invocation_capability_name)
+                    .collect(),
+            });
+        }
+
+        serde_json::to_value(self).map_err(|error| ProviderCountTokensError::InvalidContract {
+            message: error.to_string(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderCountTokensResult {
+    pub operation: ProviderWireOperation,
+    pub input_tokens: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -494,15 +583,7 @@ impl ProviderInvocationInput {
     }
 
     pub fn semantic_required_capabilities(&self) -> BTreeSet<ProviderInvocationCapability> {
-        let mut capabilities = BTreeSet::new();
-        if self.system.iter().any(NativePromptBlock::has_cache_control) {
-            capabilities.insert(ProviderInvocationCapability::SystemPromptBlocks);
-            capabilities.insert(ProviderInvocationCapability::SystemPromptCacheControl);
-        }
-        if self.request_context.end_user_reference.is_some() {
-            capabilities.insert(ProviderInvocationCapability::EndUserReference);
-        }
-        capabilities
+        semantic_required_capabilities(&self.system, &self.request_context)
     }
 
     pub fn to_current_provider_wire_value(
@@ -511,18 +592,10 @@ impl ProviderInvocationInput {
     ) -> Result<Value, PluginFrameworkError> {
         let mut invocation = self.clone();
         invocation.synchronize_required_capabilities();
-        let declared_capabilities = declared_capabilities
-            .iter()
-            .map(String::as_str)
-            .collect::<BTreeSet<_>>();
-        let unsupported = invocation
-            .required_capabilities
-            .iter()
-            .filter(|capability| {
-                !declared_capabilities.contains(provider_invocation_capability_name(capability))
-            })
-            .copied()
-            .collect::<Vec<_>>();
+        let unsupported = undeclared_provider_capabilities(
+            &invocation.required_capabilities,
+            declared_capabilities,
+        );
 
         if !unsupported.is_empty() {
             return Err(PluginFrameworkError::invalid_provider_contract(format!(
@@ -578,10 +651,43 @@ fn bounded_wire_count(length: usize) -> u32 {
 
 fn provider_invocation_capability_name(capability: &ProviderInvocationCapability) -> &'static str {
     match capability {
+        ProviderInvocationCapability::CountTokens => PROVIDER_COUNT_TOKENS_CAPABILITY,
         ProviderInvocationCapability::SystemPromptBlocks => "system_prompt_blocks",
         ProviderInvocationCapability::SystemPromptCacheControl => "system_prompt_cache_control",
         ProviderInvocationCapability::EndUserReference => "end_user_reference",
     }
+}
+
+fn semantic_required_capabilities(
+    system: &[NativePromptBlock],
+    request_context: &NativeModelRequestContext,
+) -> BTreeSet<ProviderInvocationCapability> {
+    let mut capabilities = BTreeSet::new();
+    if system.iter().any(NativePromptBlock::has_cache_control) {
+        capabilities.insert(ProviderInvocationCapability::SystemPromptBlocks);
+        capabilities.insert(ProviderInvocationCapability::SystemPromptCacheControl);
+    }
+    if request_context.end_user_reference.is_some() {
+        capabilities.insert(ProviderInvocationCapability::EndUserReference);
+    }
+    capabilities
+}
+
+fn undeclared_provider_capabilities(
+    required_capabilities: &BTreeSet<ProviderInvocationCapability>,
+    declared_capabilities: &[String],
+) -> Vec<ProviderInvocationCapability> {
+    let declared_capabilities = declared_capabilities
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    required_capabilities
+        .iter()
+        .filter(|capability| {
+            !declared_capabilities.contains(provider_invocation_capability_name(capability))
+        })
+        .copied()
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -695,6 +801,31 @@ impl fmt::Display for ProviderRuntimeError {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProviderCountTokensError {
+    Unsupported { capabilities: Vec<&'static str> },
+    InvalidContract { message: String },
+    Runtime { error: ProviderRuntimeError },
+}
+
+impl fmt::Display for ProviderCountTokensError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unsupported { capabilities } => write!(
+                f,
+                "provider does not declare required CountTokens capabilities: {}",
+                capabilities.join(", ")
+            ),
+            Self::InvalidContract { message } => {
+                write!(f, "provider CountTokens contract is invalid: {message}")
+            }
+            Self::Runtime { error } => write!(f, "provider CountTokens runtime error: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for ProviderCountTokensError {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

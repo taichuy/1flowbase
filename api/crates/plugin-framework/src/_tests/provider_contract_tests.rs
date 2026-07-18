@@ -5,10 +5,11 @@ use plugin_framework::{
     provider_contract::{
         ClientProtocolEnvelope, ModelDiscoveryMode, NativeModelRequestContext, NativePromptBlock,
         NativePromptCacheControl, NativePromptCacheControlType, ProviderBalanceInfo,
-        ProviderBalanceResult, ProviderInvocationInput, ProviderInvocationResult, ProviderMessage,
-        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine,
-        ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent,
-        ProviderToolCall, ProviderUsage,
+        ProviderBalanceResult, ProviderCountTokensError, ProviderCountTokensInput,
+        ProviderCountTokensResult, ProviderInvocationInput, ProviderInvocationResult,
+        ProviderMessage, ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind,
+        ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse,
+        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::json;
@@ -254,6 +255,55 @@ fn ac_002_current_provider_fails_closed_when_required_capability_is_missing() {
     let message = error.to_string();
     assert!(message.contains("system_prompt_cache_control"));
     assert!(message.contains("end_user_reference"));
+}
+
+#[test]
+fn c1_count_tokens_wire_is_tagged_and_requires_a_declared_capability() {
+    let input = ProviderCountTokensInput {
+        operation: ProviderWireOperation::CountTokens,
+        contract_version: Default::default(),
+        provider_instance_id: "provider-1".to_string(),
+        provider_code: "anthropic".to_string(),
+        protocol: "anthropic_messages".to_string(),
+        model: "claude-fixture".to_string(),
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::User,
+            content: "count this exact prompt".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: None,
+        }],
+        ..ProviderCountTokensInput::default()
+    };
+
+    let wire = input
+        .to_current_provider_wire_value(&["count_tokens".to_string()])
+        .expect("declared CountTokens capability should serialize the current typed operation");
+    assert_eq!(wire["operation"], json!("count_tokens"));
+    assert_eq!(wire["contract_version"], json!("1flowbase.provider/v2"));
+    assert_eq!(
+        wire["messages"][0]["content"],
+        json!("count this exact prompt")
+    );
+    assert!(wire.get("tools").is_none());
+
+    let result = serde_json::to_value(ProviderCountTokensResult {
+        operation: ProviderWireOperation::CountTokens,
+        input_tokens: 37,
+    })
+    .expect("typed CountTokens result should serialize");
+    assert_eq!(
+        result,
+        json!({ "operation": "count_tokens", "input_tokens": 37 })
+    );
+
+    assert!(matches!(
+        input.to_current_provider_wire_value(&[]),
+        Err(ProviderCountTokensError::Unsupported { capabilities })
+            if capabilities == vec!["count_tokens"]
+    ));
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn anthropic_count_tokens_returns_usage_without_creating_run() {
+async fn c1_anthropic_count_tokens_never_falls_back_to_a_local_estimate() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Count Tokens Compatible Route App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -19,12 +19,10 @@ async fn anthropic_count_tokens_returns_usage_without_creating_run() {
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let payload = response_json(response).await;
-    assert!(
-        payload["input_tokens"].as_u64().unwrap_or_default() > 0,
-        "{payload}"
-    );
+    assert_eq!(payload["error"]["type"], json!("operation_unbound"));
+    assert!(payload.get("input_tokens").is_none(), "{payload}");
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 

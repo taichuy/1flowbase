@@ -8,7 +8,6 @@ use axum::{
     Json,
 };
 use control_plane::application_public_api::{
-    api_keys::ApplicationApiKeyService,
     client_protocol_envelope::{
         capture_client_protocol_envelope, merge_anthropic_messages_envelopes,
         ClientProtocolIngressPolicy,
@@ -16,12 +15,13 @@ use control_plane::application_public_api::{
     compat::anthropic::{translate_messages_request, AnthropicCompatError},
     native::{
         ApplicationNativeRunService, CreateNativeRunCommand, NativeRunRequest, NativeRunResult,
-        NativeRunStatus, NativeRunValidationError,
+        NativeRunStatus,
     },
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
         TranslationSafeRepresentation,
     },
+    run_service::{ApplicationPublishedCountTokensService, CountTokensCommand},
 };
 use plugin_framework::provider_contract::ClientProtocolEnvelope;
 use serde::Serialize;
@@ -41,8 +41,6 @@ use crate::{
         tool_callback_ids::encode_anthropic_callback_tool_use_id,
     },
 };
-#[cfg(test)]
-use token_count::anthropic_count_input_tokens;
 use token_count::{anthropic_usage, to_anthropic_count_tokens_response};
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -192,7 +190,11 @@ pub async fn create_message(
     responses(
         (status = 200, body = AnthropicCountTokensResponse),
         (status = 400, body = AnthropicErrorBody),
-        (status = 401, body = AnthropicErrorBody)
+        (status = 401, body = AnthropicErrorBody),
+        (status = 409, body = AnthropicErrorBody),
+        (status = 422, body = AnthropicErrorBody),
+        (status = 429, body = AnthropicErrorBody),
+        (status = 502, body = AnthropicErrorBody)
     )
 )]
 pub async fn count_message_tokens(
@@ -203,14 +205,31 @@ pub async fn count_message_tokens(
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
     merge_claude_code_session_header(&mut value, &headers);
-    let translation = translate_messages_request(value.clone())?;
+    let mut translation = translate_messages_request(value)?;
+    translation.request.client_protocol_envelope = merge_anthropic_messages_envelopes(
+        anthropic_client_protocol_envelope_from_headers(&headers),
+        translation.request.client_protocol_envelope,
+    );
     debug!(
         route = "messages_count_tokens",
         translation_decision_count = translation.report.decisions.len(),
         "anthropic count tokens request translated"
     );
-    authenticate_anthropic_token(state.as_ref(), &bearer_token).await?;
-    Ok(Json(to_anthropic_count_tokens_response(&value)))
+    let result = ApplicationPublishedCountTokensService::new(
+        state.store.clone(),
+        native::api_provider_runtime(state.as_ref()),
+        state.provider_secret_master_key.clone(),
+    )
+    .with_last_used_cache(state.infrastructure.cache_store())
+    .count_tokens(CountTokensCommand {
+        bearer_token,
+        request: translation.request,
+    })
+    .await
+    .map_err(token_count::anthropic_count_tokens_error)?;
+    Ok(Json(to_anthropic_count_tokens_response(
+        result.input_tokens,
+    )))
 }
 
 fn anthropic_token(headers: &HeaderMap) -> Result<String, native::NativeApiError> {
@@ -281,18 +300,6 @@ fn anthropic_client_protocol_envelope_from_headers(
             .iter()
             .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
     )
-}
-
-async fn authenticate_anthropic_token(
-    state: &ApiState,
-    bearer_token: &str,
-) -> Result<(), native::NativeApiError> {
-    ApplicationApiKeyService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .authenticate_bearer_token(bearer_token)
-        .await
-        .map(|_| ())
-        .map_err(|_| native::native_error(NativeRunValidationError::NotAuthenticated))
 }
 
 async fn create_native_run(

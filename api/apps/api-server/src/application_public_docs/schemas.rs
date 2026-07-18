@@ -293,7 +293,17 @@ pub(super) fn anthropic_count_tokens_responses(docs: &DocTextResolver) -> Value 
             anthropic_count_tokens_response_schema()
         ),
         "400": json_response(docs.response_description("invalid_request"), anthropic_error_body_schema()),
-        "401": json_response(docs.response_description("invalid_application_api_key"), anthropic_error_body_schema())
+        "401": json_response(docs.response_description("invalid_application_api_key"), anthropic_error_body_schema()),
+        "409": json_response(
+            docs.response_description("application_not_published_or_run_state_not_supported"),
+            anthropic_error_body_schema()
+        ),
+        "422": json_response(
+            docs.response_description("published_count_tokens_unavailable"),
+            anthropic_error_body_schema()
+        ),
+        "429": json_response(docs.response_description("provider_rate_limited"), anthropic_error_body_schema()),
+        "502": json_response(docs.response_description("provider_count_tokens_failure"), anthropic_error_body_schema())
     })
 }
 
@@ -746,7 +756,7 @@ fn anthropic_count_tokens_response_schema() -> Value {
         "type": "object",
         "required": ["input_tokens"],
         "properties": {
-            "input_tokens": {"type": "integer", "minimum": 1}
+            "input_tokens": {"type": "integer", "minimum": 0}
         }
     })
 }

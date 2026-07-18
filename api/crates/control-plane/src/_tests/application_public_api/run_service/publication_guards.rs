@@ -207,6 +207,92 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
     );
 }
 
+/// Root #1366 AC-003 / #1369: CountTokens resolves its frozen binding and never falls back.
+#[tokio::test]
+async fn count_tokens_uses_the_frozen_bound_provider_route() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Frozen CountTokens Route App");
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let frozen_runtime = published_llm_runtime();
+    repository.configure_published_count_tokens_route(
+        application.id,
+        "node-frozen-count-tokens",
+        frozen_runtime.clone(),
+    );
+    let publication_before_draft_mutation = repository
+        .load_active_application_publication(application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    ApplicationApiMappingService::new(repository.clone())
+        .replace_mapping_draft(
+            ReplaceApplicationApiMappingCommand {
+                actor_user_id: actor_user_id(),
+                application_id: application.id,
+                mapping: published_mapping(),
+            },
+            Some(ApplicationOperationBindings {
+                count_tokens: Some(ApplicationOperationTargetBinding {
+                    target_node_id: "node-draft-count-tokens".into(),
+                }),
+                ..ApplicationOperationBindings::default()
+            }),
+        )
+        .await
+        .unwrap();
+    let publication = repository
+        .load_active_application_publication(application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let compiled_plan = repository
+        .get_application_compiled_plan(publication.compiled_plan_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(publication, publication_before_draft_mutation);
+    assert_eq!(
+        publication
+            .operation_bindings
+            .count_tokens
+            .as_ref()
+            .unwrap()
+            .target_node_id,
+        "node-frozen-count-tokens"
+    );
+
+    let resolver = PublishedRouteResolver::new(&repository);
+    let route = resolver
+        .resolve_count_tokens(application.workspace_id, &publication, &compiled_plan)
+        .await
+        .unwrap();
+    assert_eq!(route.operation, ProviderWireOperation::CountTokens);
+    assert_eq!(route.target_node_id, "node-frozen-count-tokens");
+    assert_eq!(route.llm_runtime, frozen_runtime);
+    assert_eq!(repository.published_count_tokens_capability_checks(), 1);
+
+    repository.set_published_count_tokens_capability_supported(false);
+    let mismatch = resolver
+        .resolve_count_tokens(application.workspace_id, &publication, &compiled_plan)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        mismatch,
+        PublishedRouteResolutionError::ProviderCapabilityMismatch
+    );
+    assert_eq!(repository.published_count_tokens_capability_checks(), 2);
+}
+
 /// Root #1366 AC-003 / AC-005: stale, non-LLM, and incomplete targets fail before capability.
 #[tokio::test]
 async fn generate_invalid_targets_fail_before_capability_lookup() {
@@ -272,8 +358,7 @@ async fn generate_invalid_targets_fail_before_capability_lookup() {
         .unwrap_err();
 
     let mut non_llm_plan = compiled_plan.clone();
-    non_llm_plan.plan["nodes"]["node-frozen-llm"]["node_type"] =
-        serde_json::json!("http_request");
+    non_llm_plan.plan["nodes"]["node-frozen-llm"]["node_type"] = serde_json::json!("http_request");
     let non_llm = resolver
         .resolve_generate(
             application.workspace_id,

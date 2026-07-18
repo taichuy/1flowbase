@@ -463,6 +463,7 @@ runtime:
     - system_prompt_blocks
     - system_prompt_cache_control
     - end_user_reference
+    - count_tokens
 "#;
 
     let manifest = parse_plugin_manifest(raw).expect("provider v2 manifest should parse");
@@ -473,7 +474,8 @@ runtime:
         vec![
             "system_prompt_blocks",
             "system_prompt_cache_control",
-            "end_user_reference"
+            "end_user_reference",
+            "count_tokens"
         ]
     );
 }

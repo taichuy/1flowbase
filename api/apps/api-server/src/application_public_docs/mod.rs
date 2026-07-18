@@ -254,7 +254,7 @@ impl DocTextResolver {
                 "将 Anthropic Messages 请求适配为原生公开运行。"
             }
             ("application_public_api.anthropic.count_message_tokens", DocsLocale::ZhHans) => {
-                "校验应用 API 密钥并返回 Anthropic Messages 请求的输入 token 估算值，不创建原生公开运行。"
+                "将 Anthropic Messages 请求转为当前发布版本绑定的 provider CountTokens 调用。只有声明 count_tokens 能力的 provider 可调用；未绑定或不支持会返回明确错误，不创建原生公开运行。"
             }
             ("application_public_api.native.create_run", DocsLocale::EnUs) => {
                 "Creates a run against the active published application version."
@@ -287,7 +287,7 @@ impl DocTextResolver {
                 "Adapts an Anthropic Messages request to a Native public run."
             }
             ("application_public_api.anthropic.count_message_tokens", DocsLocale::EnUs) => {
-                "Authenticates the application API key and returns an input token estimate for an Anthropic Messages request without creating a Native public run."
+                "Translates an Anthropic Messages request into the active published binding's provider CountTokens call. Only a provider that declares count_tokens may run it; unbound or unsupported targets return an explicit error and never create a Native public run."
             }
             _ => "Public API operation.",
         }
@@ -430,6 +430,13 @@ impl DocTextResolver {
         match (key, self.locale) {
             ("compatible_response", DocsLocale::ZhHans) => "兼容响应",
             ("compatible_token_count", DocsLocale::ZhHans) => "兼容输入 token 统计",
+            ("published_count_tokens_unavailable", DocsLocale::ZhHans) => {
+                "已发布 CountTokens 操作未绑定、目标不可用或 provider 未声明该能力"
+            }
+            ("provider_rate_limited", DocsLocale::ZhHans) => "provider token 统计请求被限流",
+            ("provider_count_tokens_failure", DocsLocale::ZhHans) => {
+                "provider token 统计请求失败或返回无效响应"
+            }
             ("compatible_model_list", DocsLocale::ZhHans) => "OpenAI 兼容模型列表",
             ("native_model_list", DocsLocale::ZhHans) => "原生模型能力列表",
             ("native_run", DocsLocale::ZhHans) => "原生运行",
@@ -444,6 +451,13 @@ impl DocTextResolver {
             }
             ("compatible_response", DocsLocale::EnUs) => "Compatible response",
             ("compatible_token_count", DocsLocale::EnUs) => "Compatible input token count",
+            ("published_count_tokens_unavailable", DocsLocale::EnUs) => {
+                "Published CountTokens operation is unbound, unavailable, or not declared by its provider"
+            }
+            ("provider_rate_limited", DocsLocale::EnUs) => "Provider CountTokens request was rate limited",
+            ("provider_count_tokens_failure", DocsLocale::EnUs) => {
+                "Provider CountTokens request failed or returned an invalid response"
+            }
             ("compatible_model_list", DocsLocale::EnUs) => "OpenAI-compatible model list",
             ("native_model_list", DocsLocale::EnUs) => "Native model capability list",
             ("native_run", DocsLocale::EnUs) => "Native run",
@@ -825,8 +839,8 @@ static PUBLIC_OPERATION_REGISTRY: &[PublicOperation] = &[
         request_body: Some(anthropic_count_message_tokens_request_body),
         responses: anthropic_count_tokens_responses,
         notes: OperationNotes::Text {
-            zh_hans: "该端点用于 Claude Code 等客户端的输入预估请求；只返回兼容形状的 token 估算结果，不写入运行记录。",
-            en_us: "This endpoint supports input estimation requests from clients such as Claude Code; it returns a compatible token estimate and does not persist a run.",
+            zh_hans: "该端点调用当前发布 CountTokens 绑定的 provider；provider 未声明 count_tokens 时会在启动 provider 前失败，不会使用本地估算，也不写入运行记录。",
+            en_us: "This endpoint calls the current published CountTokens provider binding. A provider without count_tokens fails before provider startup; the endpoint never uses a local estimate or persists a run.",
         },
     },
 ];

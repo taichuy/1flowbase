@@ -1441,6 +1441,15 @@ pub trait ProviderRuntimePort: Send + Sync {
         let _ = provider_config;
         anyhow::bail!("provider balance is not implemented by this runtime")
     }
+    async fn count_tokens(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+        input: ProviderCountTokensInput,
+    ) -> anyhow::Result<ProviderCountTokensResult> {
+        let _ = installation;
+        let _ = input;
+        anyhow::bail!("provider CountTokens is not implemented by this runtime")
+    }
     async fn invoke_stream(
         &self,
         installation: &domain::PluginInstallationRecord,

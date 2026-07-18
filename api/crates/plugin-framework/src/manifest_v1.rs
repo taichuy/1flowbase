@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashSet};
 use crate::{
     capability_kind::PluginConsumptionKind,
     error::{FrameworkResult, PluginFrameworkError},
-    provider_contract::CURRENT_PROVIDER_CONTRACT,
+    provider_contract::{CURRENT_PROVIDER_CONTRACT, PROVIDER_COUNT_TOKENS_CAPABILITY},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -1026,6 +1026,7 @@ fn validate_provider_runtime_capabilities(manifest: &PluginManifestV1) -> Framew
                 "system_prompt_blocks",
                 "system_prompt_cache_control",
                 "end_user_reference",
+                PROVIDER_COUNT_TOKENS_CAPABILITY,
             ],
         )?;
         if !seen.insert(capability.as_str()) {

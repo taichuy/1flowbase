@@ -179,19 +179,35 @@ fn anthropic_response_preserves_canonical_answer_with_marker_like_text() {
 }
 
 #[test]
-fn anthropic_count_tokens_estimates_supported_request_content() {
-    let minimal = anthropic_count_input_tokens(&json!({
-        "model": "1flowbase",
-        "messages": [{"role": "user", "content": "hello"}]
-    }));
-    let with_system = anthropic_count_input_tokens(&json!({
-        "model": "1flowbase",
-        "messages": [{"role": "user", "content": "hello"}],
-        "system": "Use the support playbook."
-    }));
+fn c1_count_tokens_projects_typed_unsupported_and_malformed_provider_errors() {
+    let unsupported = token_count::anthropic_count_tokens_error(
+        control_plane::application_public_api::run_service::PublishedCountTokensError::Provider(
+            plugin_framework::provider_contract::ProviderCountTokensError::Unsupported {
+                capabilities: vec!["count_tokens"],
+            },
+        ),
+    );
+    let AnthropicRouteError::Native(unsupported) = unsupported else {
+        panic!("CountTokens capability rejection must stay a typed native error");
+    };
+    assert_eq!(unsupported.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(unsupported.code, "provider_count_tokens_unsupported");
 
-    assert!(minimal > 0);
-    assert!(with_system > minimal);
+    let malformed = token_count::anthropic_count_tokens_error(
+        control_plane::application_public_api::run_service::PublishedCountTokensError::Provider(
+            plugin_framework::provider_contract::ProviderCountTokensError::Runtime {
+                error: plugin_framework::provider_contract::ProviderRuntimeError::new(
+                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                    "malformed upstream CountTokens result",
+                ),
+            },
+        ),
+    );
+    let AnthropicRouteError::Native(malformed) = malformed else {
+        panic!("malformed upstream CountTokens result must stay a typed native error");
+    };
+    assert_eq!(malformed.status, StatusCode::BAD_GATEWAY);
+    assert_eq!(malformed.code, "provider_invalid_response");
 }
 
 #[test]

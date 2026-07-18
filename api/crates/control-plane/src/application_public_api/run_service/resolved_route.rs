@@ -1,11 +1,16 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use orchestration_runtime::compiled_plan::{CompiledLlmRuntime, CompiledPlan};
-use plugin_framework::provider_contract::{ProviderWireOperation, CURRENT_PROVIDER_CONTRACT};
+use plugin_framework::provider_contract::ProviderWireOperation;
 use uuid::Uuid;
 
 #[cfg(not(test))]
 use crate::ports::{ModelProviderRepository, PluginRepository};
+#[cfg(not(test))]
+use plugin_framework::{
+    provider_contract::{CURRENT_PROVIDER_CONTRACT, PROVIDER_COUNT_TOKENS_CAPABILITY},
+    provider_package::ProviderPackage,
+};
 
 use super::super::publications::ApplicationPublicationVersionRecord;
 
@@ -34,6 +39,13 @@ pub enum PublishedRouteDispatch {
 pub struct ResolvedProviderRoute {
     pub operation: ProviderWireOperation,
     pub profile: GenerateExecutionProfile,
+    pub target_node_id: String,
+    pub llm_runtime: CompiledLlmRuntime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedCountTokensProviderRoute {
+    pub operation: ProviderWireOperation,
     pub target_node_id: String,
     pub llm_runtime: CompiledLlmRuntime,
 }
@@ -76,6 +88,11 @@ pub trait PublishedProviderManifestCapabilityRepository: Send + Sync {
         workspace_id: Uuid,
         runtime: &CompiledLlmRuntime,
         profile: GenerateExecutionProfile,
+    ) -> Result<bool>;
+    async fn supports_published_count_tokens(
+        &self,
+        workspace_id: Uuid,
+        runtime: &CompiledLlmRuntime,
     ) -> Result<bool>;
 }
 
@@ -129,6 +146,67 @@ where
             if installation.contract_version != CURRENT_PROVIDER_CONTRACT
                 || installation.provider_code != provider_code
                 || installation.protocol != protocol
+            {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
+
+    async fn supports_published_count_tokens(
+        &self,
+        workspace_id: Uuid,
+        runtime: &CompiledLlmRuntime,
+    ) -> Result<bool> {
+        let mut targets = vec![(
+            runtime.provider_instance_id.as_str(),
+            runtime.provider_code.as_str(),
+            runtime.protocol.as_str(),
+        )];
+        if let Some(routing) = runtime.routing.as_ref() {
+            targets.extend(routing.queue_targets.iter().map(|target| {
+                (
+                    target.provider_instance_id.as_str(),
+                    target.provider_code.as_str(),
+                    target.protocol.as_str(),
+                )
+            }));
+        }
+        targets.sort_unstable();
+        targets.dedup();
+
+        for (provider_instance_id, provider_code, protocol) in targets {
+            let Ok(provider_instance_id) = Uuid::parse_str(provider_instance_id) else {
+                return Ok(false);
+            };
+            let Some(instance) = self
+                .get_instance(workspace_id, provider_instance_id)
+                .await?
+            else {
+                return Ok(false);
+            };
+            if instance.provider_code != provider_code || instance.protocol != protocol {
+                return Ok(false);
+            }
+            let Some(installation) = self.get_installation(instance.installation_id).await? else {
+                return Ok(false);
+            };
+            if installation.contract_version != CURRENT_PROVIDER_CONTRACT
+                || installation.provider_code != provider_code
+                || installation.protocol != protocol
+            {
+                return Ok(false);
+            }
+            let Ok(package) = ProviderPackage::load_from_dir(&installation.installed_path) else {
+                return Ok(false);
+            };
+            if !package
+                .manifest
+                .runtime
+                .capabilities
+                .iter()
+                .any(|capability| capability == PROVIDER_COUNT_TOKENS_CAPABILITY)
             {
                 return Ok(false);
             }
@@ -202,6 +280,52 @@ where
             target_node_id: binding.target_node_id.clone(),
             llm_runtime: runtime.clone(),
         }))
+    }
+
+    pub async fn resolve_count_tokens(
+        &self,
+        workspace_id: Uuid,
+        publication: &ApplicationPublicationVersionRecord,
+        compiled_plan_record: &domain::CompiledPlanRecord,
+    ) -> std::result::Result<ResolvedCountTokensProviderRoute, PublishedRouteResolutionError> {
+        if compiled_plan_record.id != publication.compiled_plan_id {
+            return Err(PublishedRouteResolutionError::CompiledPlanMismatch);
+        }
+
+        let binding = publication
+            .operation_bindings
+            .count_tokens
+            .as_ref()
+            .ok_or(PublishedRouteResolutionError::OperationUnbound)?;
+        let compiled_plan: CompiledPlan = serde_json::from_value(compiled_plan_record.plan.clone())
+            .map_err(|_| PublishedRouteResolutionError::CompiledPlanInvalid)?;
+        let node = compiled_plan
+            .nodes
+            .get(&binding.target_node_id)
+            .filter(|node| node.node_id == binding.target_node_id)
+            .ok_or(PublishedRouteResolutionError::TargetMissing)?;
+        if node.node_type != "llm" {
+            return Err(PublishedRouteResolutionError::TargetNotLlm);
+        }
+        let runtime = node
+            .llm_runtime
+            .as_ref()
+            .filter(|runtime| llm_runtime_is_complete(runtime))
+            .ok_or(PublishedRouteResolutionError::IncompleteLlmRuntime)?;
+        let supported = self
+            .repository
+            .supports_published_count_tokens(workspace_id, runtime)
+            .await
+            .unwrap_or(false);
+        if !supported {
+            return Err(PublishedRouteResolutionError::ProviderCapabilityMismatch);
+        }
+
+        Ok(ResolvedCountTokensProviderRoute {
+            operation: ProviderWireOperation::CountTokens,
+            target_node_id: binding.target_node_id.clone(),
+            llm_runtime: runtime.clone(),
+        })
     }
 }
 
