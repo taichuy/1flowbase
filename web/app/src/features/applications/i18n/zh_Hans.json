@@ -19,7 +19,7 @@
     "operation_binding_generate": "生成",
     "operation_binding_count_tokens": "计算 Tokens",
     "operation_binding_responses_compact": "Responses Compact",
-    "operation_binding_responses_compaction_v2": "Responses Compaction v2",
+    "operation_binding_responses_compaction_version_two": "Responses Compaction v2",
     "operation_binding_status_supported": "已支持",
     "operation_binding_status_unsupported": "不支持",
     "operation_binding_publication_id": "发布 ID",

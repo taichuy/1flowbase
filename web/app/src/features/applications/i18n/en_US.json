@@ -19,7 +19,7 @@
     "operation_binding_generate": "Generate",
     "operation_binding_count_tokens": "Count tokens",
     "operation_binding_responses_compact": "Responses compact",
-    "operation_binding_responses_compaction_v2": "Responses compaction v2",
+    "operation_binding_responses_compaction_version_two": "Responses compaction v2",
     "operation_binding_status_supported": "Supported",
     "operation_binding_status_unsupported": "Unsupported",
     "operation_binding_publication_id": "Publication ID",

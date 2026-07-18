@@ -169,7 +169,7 @@ export function ApplicationApiMappingPanel({
       case 'compact.responses_compact':
         return t('auto.operation_binding_responses_compact');
       case 'compact.responses_compaction_v2':
-        return t('auto.operation_binding_responses_compaction_v2');
+        return t('auto.operation_binding_responses_compaction_version_two');
     }
 
     return operation;
@@ -303,6 +303,7 @@ export function ApplicationApiMappingPanel({
                           <Select
                             allowClear={canEdit}
                             aria-label={operationLabel(option.operation)}
+                            aria-disabled={canEdit ? undefined : true}
                             disabled={!canEdit}
                             notFoundContent={null}
                             options={option.targets.map((target) => ({
