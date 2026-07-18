@@ -1,6 +1,8 @@
 use super::*;
 
-use crate::application_public_api::mapping::ApplicationApiMappingConfig;
+use crate::application_public_api::mapping::{
+    ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationOperationBindings,
+};
 use crate::application_public_api::publications::ApplicationPublicationJsDependencySnapshot;
 use crate::application_public_api::workflow_schedule::WorkflowScheduleTriggerRecord;
 
@@ -9,6 +11,7 @@ pub struct ReplaceApplicationApiMappingInput {
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
     pub mapping: ApplicationApiMappingConfig,
+    pub operation_bindings: ApplicationOperationBindings,
 }
 
 #[derive(Debug, Clone)]
@@ -16,6 +19,7 @@ pub struct CreateApplicationPublicationVersionInput {
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
     pub mapping_snapshot: ApplicationApiMappingConfig,
+    pub operation_bindings: ApplicationOperationBindings,
     pub extension_slug: Option<String>,
     pub api_enabled: bool,
     pub compiled_plan_id: Uuid,
@@ -58,7 +62,7 @@ pub trait ApplicationApiMappingRepository: Send + Sync {
     async fn get_application_api_mapping(
         &self,
         application_id: Uuid,
-    ) -> anyhow::Result<Option<ApplicationApiMappingConfig>>;
+    ) -> anyhow::Result<Option<ApplicationApiMappingDraft>>;
 
     async fn load_application_api_mapping_application_id_by_extension_slug(
         &self,
@@ -68,7 +72,7 @@ pub trait ApplicationApiMappingRepository: Send + Sync {
     async fn replace_application_api_mapping(
         &self,
         input: &ReplaceApplicationApiMappingInput,
-    ) -> anyhow::Result<ApplicationApiMappingConfig>;
+    ) -> anyhow::Result<ApplicationApiMappingDraft>;
 }
 
 #[async_trait]

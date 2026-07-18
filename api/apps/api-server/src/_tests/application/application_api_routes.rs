@@ -402,6 +402,8 @@ async fn application_api_mapping_routes_get_and_replace_nullable_model_target() 
         default_payload["data"]["input"]["model_target"].as_str(),
         Some("node-start.model")
     );
+    assert!(default_payload["data"]["operation_bindings"]["generate"].is_null());
+    assert!(default_payload["data"]["operation_bindings"]["count_tokens"].is_null());
 
     let replace = app
         .clone()
@@ -428,6 +430,14 @@ async fn application_api_mapping_routes_get_and_replace_nullable_model_target() 
                             "usage_selector": null,
                             "files_selector": "end.files",
                             "error_selector": "end.error"
+                        },
+                        "operation_bindings": {
+                            "generate": null,
+                            "count_tokens": null,
+                            "compact": {
+                                "responses_compact": null,
+                                "responses_compaction_v2": null
+                            }
                         }
                     })
                     .to_string(),
@@ -447,6 +457,7 @@ async fn application_api_mapping_routes_get_and_replace_nullable_model_target() 
         replace_payload["data"]["output"]["answer_selector"].as_str(),
         Some("end.answer")
     );
+    assert!(replace_payload["data"]["operation_bindings"]["generate"].is_null());
 }
 
 #[tokio::test]
@@ -688,6 +699,14 @@ async fn application_api_publication_routes_publish_and_patch_api_enabled_state(
             "usage_selector": null,
             "files_selector": null,
             "error_selector": null
+        },
+        "operation_bindings": {
+            "generate": null,
+            "count_tokens": null,
+            "compact": {
+                "responses_compact": null,
+                "responses_compaction_v2": null
+            }
         }
     });
 
@@ -746,7 +765,7 @@ async fn application_api_publication_routes_publish_and_patch_api_enabled_state(
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "mapping": mapping,
+                        "mapping": mapping.clone(),
                         "api_enabled": true
                     })
                     .to_string(),
@@ -771,6 +790,35 @@ async fn application_api_publication_routes_publish_and_patch_api_enabled_state(
         publish_payload["data"]["public_url"].as_str(),
         Some("/api/agent/v1/runs")
     );
+    assert!(publish_payload["data"]["operation_bindings"]["generate"].is_null());
+
+    let mut invalid_binding_mapping = mapping.clone();
+    invalid_binding_mapping["operation_bindings"]["generate"] = json!({
+        "target_node_id": "missing-llm-node"
+    });
+    let invalid_publish = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-publications"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "mapping": invalid_binding_mapping,
+                        "api_enabled": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(invalid_publish.status(), StatusCode::BAD_REQUEST);
 
     let patch_status = app
         .clone()

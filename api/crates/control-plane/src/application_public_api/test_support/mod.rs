@@ -37,7 +37,7 @@ struct ApplicationPublicApiTestRepositoryInner {
     run_conversations: HashMap<Uuid, Uuid>,
     actor_permissions: Vec<String>,
     console_policies: Vec<domain::RoleConsolePolicy>,
-    mappings: HashMap<Uuid, mapping::ApplicationApiMappingConfig>,
+    mappings: HashMap<Uuid, mapping::ApplicationApiMappingDraft>,
     editor_states: HashMap<Uuid, domain::FlowEditorState>,
     compiled_plans: HashMap<Uuid, domain::CompiledPlanRecord>,
     publications: HashMap<Uuid, publications::ApplicationPublicationVersionRecord>,

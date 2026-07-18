@@ -26,6 +26,12 @@ pub struct ReplaceApplicationApiMappingCommand {
     pub mapping: ApplicationApiMappingConfig,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationApiMappingDraft {
+    pub mapping: ApplicationApiMappingConfig,
+    pub operation_bindings: ApplicationOperationBindings,
+}
+
 pub struct ApplicationApiMappingService<R> {
     repository: R,
 }
@@ -54,16 +60,41 @@ where
         ensure_application_view_permission(&self.repository, &actor, &application).await?;
 
         Ok(self
-            .repository
-            .get_application_api_mapping(application.id)
+            .get_mapping_draft_for_application(application.id)
             .await?
-            .unwrap_or_else(ApplicationApiMappingConfig::default_native))
+            .mapping)
+    }
+
+    pub async fn get_mapping_draft(
+        &self,
+        command: GetApplicationApiMappingCommand,
+    ) -> Result<ApplicationApiMappingDraft> {
+        let actor = self
+            .repository
+            .load_actor_context_for_user(command.actor_user_id)
+            .await?;
+        let application = self
+            .repository
+            .get_application(actor.current_workspace_id, command.application_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+        ensure_application_view_permission(&self.repository, &actor, &application).await?;
+
+        self.get_mapping_draft_for_application(application.id).await
     }
 
     pub async fn replace_mapping(
         &self,
         command: ReplaceApplicationApiMappingCommand,
     ) -> Result<ApplicationApiMappingConfig> {
+        Ok(self.replace_mapping_draft(command, None).await?.mapping)
+    }
+
+    pub async fn replace_mapping_draft(
+        &self,
+        command: ReplaceApplicationApiMappingCommand,
+        operation_bindings: Option<ApplicationOperationBindings>,
+    ) -> Result<ApplicationApiMappingDraft> {
         validate_application_api_mapping(&command.mapping)?;
         let actor = self
             .repository
@@ -75,12 +106,10 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
-        let current_mapping = self
-            .repository
-            .get_application_api_mapping(application.id)
-            .await?
-            .unwrap_or_else(ApplicationApiMappingConfig::default_native);
-        ensure_extension_registration_unchanged(&current_mapping, &command.mapping)?;
+        let current_draft = self
+            .get_mapping_draft_for_application(application.id)
+            .await?;
+        ensure_extension_registration_unchanged(&current_draft.mapping, &command.mapping)?;
         if let Some(slug) = command.mapping.extension_slug() {
             if let Some(existing_application_id) = self
                 .repository
@@ -107,8 +136,20 @@ where
                 actor_user_id: command.actor_user_id,
                 application_id: application.id,
                 mapping: command.mapping,
+                operation_bindings: operation_bindings.unwrap_or(current_draft.operation_bindings),
             })
             .await
+    }
+
+    async fn get_mapping_draft_for_application(
+        &self,
+        application_id: Uuid,
+    ) -> Result<ApplicationApiMappingDraft> {
+        Ok(self
+            .repository
+            .get_application_api_mapping(application_id)
+            .await?
+            .unwrap_or_else(ApplicationApiMappingDraft::default_native))
     }
 }
 
@@ -161,6 +202,37 @@ impl ApplicationApiMappingConfig {
             .as_ref()
             .map(|extension| extension.slug.as_str())
     }
+}
+
+impl ApplicationApiMappingDraft {
+    pub fn default_native() -> Self {
+        Self {
+            mapping: ApplicationApiMappingConfig::default_native(),
+            operation_bindings: ApplicationOperationBindings::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApplicationOperationTargetBinding {
+    pub target_node_id: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApplicationCompactOperationBindings {
+    pub responses_compact: Option<ApplicationOperationTargetBinding>,
+    pub responses_compaction_v2: Option<ApplicationOperationTargetBinding>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApplicationOperationBindings {
+    pub generate: Option<ApplicationOperationTargetBinding>,
+    pub count_tokens: Option<ApplicationOperationTargetBinding>,
+    #[serde(default)]
+    pub compact: ApplicationCompactOperationBindings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

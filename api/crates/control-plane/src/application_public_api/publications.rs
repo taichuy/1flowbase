@@ -1,5 +1,8 @@
 use anyhow::{anyhow, Result};
-use orchestration_runtime::compiler::FlowCompiler;
+use orchestration_runtime::{
+    compiled_plan::{CompiledLlmRuntime, CompiledNode, CompiledPlan},
+    compiler::FlowCompiler,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use time::OffsetDateTime;
@@ -7,7 +10,8 @@ use uuid::Uuid;
 
 use super::mapping::{
     ensure_extension_registration_unchanged, validate_application_api_mapping,
-    ApplicationApiMappingConfig, ApplicationApiMappingOutput,
+    ApplicationApiMappingConfig, ApplicationApiMappingOutput, ApplicationOperationBindings,
+    ApplicationOperationTargetBinding,
 };
 use crate::{
     application::{
@@ -95,6 +99,7 @@ pub struct ApplicationPublicationVersionRecord {
     pub flow_id: Uuid,
     pub flow_version_id: Uuid,
     pub mapping_snapshot: ApplicationApiMappingConfig,
+    pub operation_bindings: ApplicationOperationBindings,
     pub extension_slug: Option<String>,
     pub compiled_plan_id: Uuid,
     pub version_sequence: i64,
@@ -135,6 +140,24 @@ where
             + FlowRepository
             + Clone,
     {
+        self.publish_active_version_with_operation_bindings(command, None)
+            .await
+    }
+
+    pub async fn publish_active_version_with_operation_bindings(
+        &self,
+        command: PublishApplicationCommand,
+        operation_bindings: Option<ApplicationOperationBindings>,
+    ) -> Result<ApplicationPublicationVersionRecord>
+    where
+        R: ApplicationPublicationRepository
+            + ApplicationApiMappingRepository
+            + ApplicationCompiledPlanRepository
+            + ApplicationCompileContextRepository
+            + ApplicationJsDependencySelectionRepository
+            + FlowRepository
+            + Clone,
+    {
         validate_application_api_mapping(&command.mapping)?;
         let output_selector = output_selector_snapshot(&command.mapping.output);
         let actor = self
@@ -161,12 +184,14 @@ where
                 ApplicationNonCrudConsoleOperation::Publish,
             )?;
         }
-        let current_mapping = self
+        let stored_draft = self
             .repository
             .get_application_api_mapping(application.id)
-            .await?
-            .unwrap_or_else(ApplicationApiMappingConfig::default_native);
-        ensure_extension_registration_unchanged(&current_mapping, &command.mapping)?;
+            .await?;
+        let current_draft = stored_draft
+            .clone()
+            .unwrap_or_else(super::mapping::ApplicationApiMappingDraft::default_native);
+        ensure_extension_registration_unchanged(&current_draft.mapping, &command.mapping)?;
         let extension_slug = command.mapping.extension_slug().map(ToOwned::to_owned);
         if let Some(slug) = extension_slug.as_deref() {
             if let Some(existing_publication) = self
@@ -220,6 +245,10 @@ where
                 &compile_context,
             )?,
         };
+        let operation_bindings = operation_bindings
+            .or_else(|| stored_draft.map(|draft| draft.operation_bindings))
+            .unwrap_or_else(|| preview_legacy_operation_bindings(&compiled_plan));
+        validate_operation_binding_targets(&operation_bindings, &compiled_plan)?;
         let compiled_plan = self
             .repository
             .upsert_application_compiled_plan(&build_compiled_plan_input(
@@ -236,6 +265,7 @@ where
                     actor_user_id: command.actor_user_id,
                     application_id: application.id,
                     mapping_snapshot: command.mapping,
+                    operation_bindings,
                     extension_slug,
                     api_enabled: command.api_enabled,
                     compiled_plan_id: compiled_plan.id,
@@ -375,6 +405,101 @@ where
             })
             .await
     }
+}
+
+pub(crate) fn preview_legacy_operation_bindings(
+    compiled_plan: &CompiledPlan,
+) -> ApplicationOperationBindings {
+    let mut runnable_llm_nodes = compiled_plan.nodes.iter().filter_map(|(key, node)| {
+        (key == &node.node_id
+            && node.node_type == "llm"
+            && node.node_id.trim() == node.node_id
+            && !node.node_id.is_empty()
+            && node
+                .llm_runtime
+                .as_ref()
+                .is_some_and(llm_runtime_is_complete))
+        .then_some(node)
+    });
+    let generate = runnable_llm_nodes.next().and_then(|node| {
+        runnable_llm_nodes
+            .next()
+            .is_none()
+            .then(|| ApplicationOperationTargetBinding {
+                target_node_id: node.node_id.clone(),
+            })
+    });
+
+    ApplicationOperationBindings {
+        generate,
+        ..ApplicationOperationBindings::default()
+    }
+}
+
+pub(crate) fn validate_operation_binding_targets(
+    bindings: &ApplicationOperationBindings,
+    compiled_plan: &CompiledPlan,
+) -> Result<()> {
+    for (field, binding) in [
+        ("operation_bindings.generate", bindings.generate.as_ref()),
+        (
+            "operation_bindings.count_tokens",
+            bindings.count_tokens.as_ref(),
+        ),
+        (
+            "operation_bindings.compact.responses_compact",
+            bindings.compact.responses_compact.as_ref(),
+        ),
+        (
+            "operation_bindings.compact.responses_compaction_v2",
+            bindings.compact.responses_compaction_v2.as_ref(),
+        ),
+    ] {
+        let Some(binding) = binding else {
+            continue;
+        };
+        validate_operation_binding_target(field, binding, compiled_plan)?;
+    }
+    Ok(())
+}
+
+fn validate_operation_binding_target(
+    field: &'static str,
+    binding: &ApplicationOperationTargetBinding,
+    compiled_plan: &CompiledPlan,
+) -> Result<()> {
+    if binding.target_node_id.trim() != binding.target_node_id || binding.target_node_id.is_empty()
+    {
+        return Err(ControlPlaneError::InvalidInput(field).into());
+    }
+    let node = compiled_plan
+        .nodes
+        .get(&binding.target_node_id)
+        .filter(|node| node.node_id == binding.target_node_id)
+        .ok_or(ControlPlaneError::InvalidInput(field))?;
+    if !operation_binding_target_is_runnable_llm(node) {
+        return Err(ControlPlaneError::InvalidInput(field).into());
+    }
+    Ok(())
+}
+
+fn operation_binding_target_is_runnable_llm(node: &CompiledNode) -> bool {
+    node.node_type == "llm"
+        && node
+            .llm_runtime
+            .as_ref()
+            .is_some_and(llm_runtime_is_complete)
+}
+
+fn llm_runtime_is_complete(runtime: &CompiledLlmRuntime) -> bool {
+    [
+        runtime.provider_instance_id.as_str(),
+        runtime.provider_code.as_str(),
+        runtime.protocol.as_str(),
+        runtime.model.as_str(),
+    ]
+    .into_iter()
+    .all(|value| !value.trim().is_empty() && value.trim() == value)
 }
 
 fn latest_flow_version(

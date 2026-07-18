@@ -5,7 +5,7 @@ impl ApplicationApiMappingRepository for ApplicationPublicApiTestRepository {
     async fn get_application_api_mapping(
         &self,
         application_id: Uuid,
-    ) -> Result<Option<mapping::ApplicationApiMappingConfig>> {
+    ) -> Result<Option<mapping::ApplicationApiMappingDraft>> {
         Ok(self
             .inner
             .lock()
@@ -25,14 +25,14 @@ impl ApplicationApiMappingRepository for ApplicationPublicApiTestRepository {
             .expect("application public api test repo mutex poisoned")
             .mappings
             .iter()
-            .find(|(_, mapping)| mapping.extension_slug() == Some(slug))
+            .find(|(_, draft)| draft.mapping.extension_slug() == Some(slug))
             .map(|(application_id, _)| *application_id))
     }
 
     async fn replace_application_api_mapping(
         &self,
         input: &ReplaceApplicationApiMappingInput,
-    ) -> Result<mapping::ApplicationApiMappingConfig> {
+    ) -> Result<mapping::ApplicationApiMappingDraft> {
         let mut inner = self
             .inner
             .lock()
@@ -41,16 +41,19 @@ impl ApplicationApiMappingRepository for ApplicationPublicApiTestRepository {
             return Err(ControlPlaneError::NotFound("application").into());
         }
         if let Some(slug) = input.mapping.extension_slug() {
-            if inner.mappings.iter().any(|(application_id, mapping)| {
-                *application_id != input.application_id && mapping.extension_slug() == Some(slug)
+            if inner.mappings.iter().any(|(application_id, draft)| {
+                *application_id != input.application_id
+                    && draft.mapping.extension_slug() == Some(slug)
             }) {
                 return Err(ControlPlaneError::Conflict("extension_slug").into());
             }
         }
-        inner
-            .mappings
-            .insert(input.application_id, input.mapping.clone());
-        Ok(input.mapping.clone())
+        let draft = mapping::ApplicationApiMappingDraft {
+            mapping: input.mapping.clone(),
+            operation_bindings: input.operation_bindings.clone(),
+        };
+        inner.mappings.insert(input.application_id, draft.clone());
+        Ok(draft)
     }
 }
 

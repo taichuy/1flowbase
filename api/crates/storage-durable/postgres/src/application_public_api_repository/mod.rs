@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::{
     application_public_api::{
-        mapping::ApplicationApiMappingConfig, publications::ApplicationPublicationVersionRecord,
+        mapping::ApplicationApiMappingDraft, publications::ApplicationPublicationVersionRecord,
         workflow_schedule::WorkflowScheduleTriggerRecord,
     },
     errors::ControlPlaneError,
@@ -23,17 +23,15 @@ impl ApplicationApiMappingRepository for PgControlPlaneStore {
     async fn get_application_api_mapping(
         &self,
         application_id: Uuid,
-    ) -> Result<Option<ApplicationApiMappingConfig>> {
-        let mapping = sqlx::query_scalar::<_, serde_json::Value>(
-            "select mapping_config from application_api_mappings where application_id = $1",
+    ) -> Result<Option<ApplicationApiMappingDraft>> {
+        let row = sqlx::query(
+            "select mapping_config, operation_bindings from application_api_mappings where application_id = $1",
         )
         .bind(application_id)
         .fetch_optional(self.pool())
-        .await?
-        .map(serde_json::from_value)
-        .transpose()?;
+        .await?;
 
-        Ok(mapping)
+        row.map(map_mapping_draft_row).transpose()
     }
 
     async fn load_application_api_mapping_application_id_by_extension_slug(
@@ -52,10 +50,11 @@ impl ApplicationApiMappingRepository for PgControlPlaneStore {
     async fn replace_application_api_mapping(
         &self,
         input: &ReplaceApplicationApiMappingInput,
-    ) -> Result<ApplicationApiMappingConfig> {
+    ) -> Result<ApplicationApiMappingDraft> {
         let mapping = serde_json::to_value(&input.mapping)?;
+        let operation_bindings = serde_json::to_value(&input.operation_bindings)?;
         let extension_slug = input.mapping.extension_slug();
-        let row = sqlx::query_scalar::<_, serde_json::Value>(
+        let row = sqlx::query(
             r#"
             insert into application_api_mappings (
                 id,
@@ -63,6 +62,7 @@ impl ApplicationApiMappingRepository for PgControlPlaneStore {
                 scope_id,
                 extension_slug,
                 mapping_config,
+                operation_bindings,
                 created_by,
                 updated_by
             )
@@ -73,28 +73,31 @@ impl ApplicationApiMappingRepository for PgControlPlaneStore {
                 $3,
                 $4,
                 $5,
-                $5
+                $6,
+                $6
             from applications
             where applications.id = $2
             on conflict (application_id) do update
             set scope_id = excluded.scope_id,
                 extension_slug = excluded.extension_slug,
                 mapping_config = excluded.mapping_config,
+                operation_bindings = excluded.operation_bindings,
                 updated_by = excluded.updated_by,
                 updated_at = now()
-            returning mapping_config
+            returning mapping_config, operation_bindings
             "#,
         )
         .bind(Uuid::now_v7())
         .bind(input.application_id)
         .bind(extension_slug)
         .bind(mapping)
+        .bind(operation_bindings)
         .bind(input.actor_user_id)
         .fetch_one(self.pool())
         .await
         .map_err(map_extension_slug_sqlx_error)?;
 
-        serde_json::from_value(row).map_err(Into::into)
+        map_mapping_draft_row(row)
     }
 }
 
@@ -282,13 +285,14 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
                 document_hash,
                 document_snapshot,
                 mapping_snapshot,
+                operation_bindings,
                 runtime_profile_snapshot,
                 output_selector,
                 dependency_snapshot,
                 created_by,
                 updated_by
             ) values (
-                $1, $2, (select scope_id from applications where id = $2), $3, $4, $5, $6, 1, true, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15
+                $1, $2, (select scope_id from applications where id = $2), $3, $4, $5, $6, 1, true, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16
             )
             on conflict (application_id) do update
             set scope_id = excluded.scope_id,
@@ -303,6 +307,7 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
                 document_hash = excluded.document_hash,
                 document_snapshot = excluded.document_snapshot,
                 mapping_snapshot = excluded.mapping_snapshot,
+                operation_bindings = excluded.operation_bindings,
                 runtime_profile_snapshot = excluded.runtime_profile_snapshot,
                 output_selector = excluded.output_selector,
                 dependency_snapshot = excluded.dependency_snapshot,
@@ -324,6 +329,7 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
                 document_hash,
                 document_snapshot,
                 mapping_snapshot,
+                operation_bindings,
                 runtime_profile_snapshot,
                 output_selector,
                 dependency_snapshot,
@@ -342,6 +348,7 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         .bind(&input.document_hash)
         .bind(&input.document_snapshot)
         .bind(serde_json::to_value(&input.mapping_snapshot)?)
+        .bind(serde_json::to_value(&input.operation_bindings)?)
         .bind(&input.runtime_profile_snapshot)
         .bind(&input.output_selector)
         .bind(serde_json::to_value(&input.dependency_snapshot)?)
@@ -513,6 +520,7 @@ fn publication_select_sql(predicate: &str) -> String {
             document_hash,
             document_snapshot,
             mapping_snapshot,
+            operation_bindings,
             runtime_profile_snapshot,
             output_selector,
             dependency_snapshot,
@@ -539,11 +547,19 @@ fn map_publication_row(row: sqlx::postgres::PgRow) -> Result<ApplicationPublicat
         document_hash: row.get("document_hash"),
         document_snapshot: row.get("document_snapshot"),
         mapping_snapshot: serde_json::from_value(row.get("mapping_snapshot"))?,
+        operation_bindings: serde_json::from_value(row.get("operation_bindings"))?,
         runtime_profile_snapshot: row.get("runtime_profile_snapshot"),
         output_selector: row.get("output_selector"),
         dependency_snapshot: serde_json::from_value(row.get("dependency_snapshot"))?,
         created_by: row.get("created_by"),
         created_at: row.get("created_at"),
+    })
+}
+
+fn map_mapping_draft_row(row: sqlx::postgres::PgRow) -> Result<ApplicationApiMappingDraft> {
+    Ok(ApplicationApiMappingDraft {
+        mapping: serde_json::from_value(row.get("mapping_config"))?,
+        operation_bindings: serde_json::from_value(row.get("operation_bindings"))?,
     })
 }
 

@@ -1,10 +1,10 @@
 use control_plane::{
     application_public_api::{
         mapping::{
-            ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
-            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
-            WorkflowExtensionParameterMapping, WorkflowExtensionParameterSource,
-            WorkflowExtensionResponseMode,
+            ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationApiMappingInput,
+            ApplicationApiMappingOutput, ApplicationOperationBindings, WorkflowExtensionApiConfig,
+            WorkflowExtensionHttpMethod, WorkflowExtensionParameterMapping,
+            WorkflowExtensionParameterSource, WorkflowExtensionResponseMode,
         },
         publications::ApplicationPublicationJsDependencySnapshot,
     },
@@ -15,7 +15,9 @@ use control_plane::{
         WorkflowScheduleTriggerRepository,
     },
 };
+use sqlx::migrate::Migrator;
 use sqlx::PgPool;
+use std::borrow::Cow;
 use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
@@ -40,6 +42,32 @@ async fn current_schema(pool: &PgPool) -> String {
         .fetch_one(pool)
         .await
         .unwrap()
+}
+
+const APPLICATION_OPERATION_BINDINGS_MIGRATION_VERSION: i64 = 20260718120000;
+
+fn application_operation_bindings_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version <= APPLICATION_OPERATION_BINDINGS_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+fn before_application_operation_bindings_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < APPLICATION_OPERATION_BINDINGS_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
 }
 
 async fn root_tenant_id(store: &PgControlPlaneStore) -> Uuid {
@@ -151,6 +179,21 @@ async fn seed_flow_version_and_compiled_plan(
     application_id: Uuid,
     actor_user_id: Uuid,
 ) -> (Uuid, Uuid, Uuid, serde_json::Value) {
+    seed_flow_version_and_compiled_plan_with_plan(
+        store,
+        application_id,
+        actor_user_id,
+        serde_json::json!({"schema_version": domain::FLOW_SCHEMA_VERSION}),
+    )
+    .await
+}
+
+async fn seed_flow_version_and_compiled_plan_with_plan(
+    store: &PgControlPlaneStore,
+    application_id: Uuid,
+    actor_user_id: Uuid,
+    compiled_plan: serde_json::Value,
+) -> (Uuid, Uuid, Uuid, serde_json::Value) {
     let flow_id = Uuid::now_v7();
     let draft_id = Uuid::now_v7();
     let version_id = Uuid::now_v7();
@@ -207,7 +250,7 @@ async fn seed_flow_version_and_compiled_plan(
     .bind(flow_id)
     .bind(draft_id)
     .bind(domain::FLOW_SCHEMA_VERSION)
-    .bind(serde_json::json!({"schema_version": domain::FLOW_SCHEMA_VERSION}))
+    .bind(compiled_plan)
     .bind(actor_user_id)
     .execute(store.pool())
     .await
@@ -423,7 +466,7 @@ async fn application_public_api_repository_mapping_round_trips_default_and_repla
         ApplicationApiMappingRepository::get_application_api_mapping(&store, application_id)
             .await
             .unwrap()
-            .unwrap_or_else(ApplicationApiMappingConfig::default_native);
+            .unwrap_or_else(ApplicationApiMappingDraft::default_native);
     let replacement = ApplicationApiMappingConfig {
         input: ApplicationApiMappingInput {
             query_target: "start.query".into(),
@@ -446,6 +489,7 @@ async fn application_public_api_repository_mapping_round_trips_default_and_repla
             actor_user_id,
             application_id,
             mapping: replacement.clone(),
+            operation_bindings: ApplicationOperationBindings::default(),
         },
     )
     .await
@@ -458,9 +502,9 @@ async fn application_public_api_repository_mapping_round_trips_default_and_repla
 
     assert_eq!(
         default_mapping,
-        ApplicationApiMappingConfig::default_native()
+        ApplicationApiMappingDraft::default_native()
     );
-    assert_eq!(stored, replacement);
+    assert_eq!(stored.mapping, replacement);
 }
 
 #[tokio::test]
@@ -482,6 +526,7 @@ async fn application_public_api_repository_mapping_extension_slug_round_trips_an
             actor_user_id,
             application_id: first_application_id,
             mapping: mapping.clone(),
+            operation_bindings: ApplicationOperationBindings::default(),
         },
     )
     .await
@@ -504,11 +549,12 @@ async fn application_public_api_repository_mapping_extension_slug_round_trips_an
             actor_user_id,
             application_id: second_application_id,
             mapping,
+            operation_bindings: ApplicationOperationBindings::default(),
         },
     )
     .await;
 
-    assert_eq!(stored.extension_slug(), Some("open-ticket-pg"));
+    assert_eq!(stored.mapping.extension_slug(), Some("open-ticket-pg"));
     assert_eq!(owner, Some(first_application_id));
     assert!(duplicate
         .unwrap_err()
@@ -593,6 +639,7 @@ async fn application_public_api_repository_publication_insert_uses_real_foreign_
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id,
@@ -661,6 +708,7 @@ async fn application_public_api_repository_publication_extension_slug_lookup_lis
                 actor_user_id,
                 application_id: first_application_id,
                 mapping_snapshot: mapping.clone(),
+                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: Some("open-ticket-pg-publication".into()),
                 api_enabled: true,
                 compiled_plan_id: first_compiled_plan_id,
@@ -694,6 +742,7 @@ async fn application_public_api_repository_publication_extension_slug_lookup_lis
                 actor_user_id,
                 application_id: second_application_id,
                 mapping_snapshot: mapping,
+                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: Some("open-ticket-pg-publication".into()),
                 api_enabled: true,
                 compiled_plan_id: second_compiled_plan_id,
@@ -708,6 +757,12 @@ async fn application_public_api_repository_publication_extension_slug_lookup_lis
             },
         )
         .await;
+    let duplicate_application_api_enabled: bool =
+        sqlx::query_scalar("select api_enabled from applications where id = $1")
+            .bind(second_application_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
     assert_eq!(
         publication.extension_slug.as_deref(),
@@ -723,6 +778,10 @@ async fn application_public_api_repository_publication_extension_slug_lookup_lis
         .unwrap_err()
         .to_string()
         .contains("extension_slug"));
+    assert!(
+        !duplicate_application_api_enabled,
+        "publication conflict must roll back the application api_enabled write"
+    );
 }
 
 #[tokio::test]
@@ -751,6 +810,7 @@ async fn application_public_api_repository_republish_updates_single_current_publ
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id: first_compiled_plan_id,
@@ -773,6 +833,7 @@ async fn application_public_api_repository_republish_updates_single_current_publ
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: None,
                 api_enabled: false,
                 compiled_plan_id: second_compiled_plan_id,
@@ -851,6 +912,7 @@ async fn application_public_api_js_dependency_snapshot_persists_empty_array_with
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id,
@@ -914,6 +976,7 @@ async fn application_public_api_js_dependency_snapshot_persists_on_publication_v
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
+                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id,
@@ -946,6 +1009,143 @@ async fn application_public_api_js_dependency_snapshot_persists_on_publication_v
     assert_eq!(
         reloaded.dependency_snapshot[0].permissions.network,
         "outbound_only"
+    );
+}
+
+/// Root #1366 AC-003 / AC-006: old snapshots backfill Generate only when identity is unique,
+/// and the reversible migration restores the old readable snapshot shape.
+#[tokio::test]
+async fn operation_binding_migration_backfills_unique_generate_and_rolls_back() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    before_application_operation_bindings_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let workspace_id = seed_workspace(&store, "Operation Binding Migration").await;
+    let actor_user_id = seed_user(&store, workspace_id, "binding-migration-owner").await;
+    let target_inventory = [0_usize, 1, 2];
+    let mut publications = Vec::new();
+
+    for target_count in target_inventory {
+        let application_id = seed_application(
+            &store,
+            workspace_id,
+            actor_user_id,
+            &format!("Binding Migration {target_count}"),
+        )
+        .await;
+        let nodes = (0..target_count)
+            .map(|index| {
+                let node_id = format!("node-llm-{index}");
+                (
+                    node_id.clone(),
+                    serde_json::json!({
+                        "node_id": node_id,
+                        "node_type": "llm",
+                        "llm_runtime": {
+                            "provider_instance_id": Uuid::now_v7().to_string(),
+                            "provider_code": "fixture_provider",
+                            "protocol": "fixture",
+                            "model": "fixture-model"
+                        }
+                    }),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        let (flow_id, flow_version_id, compiled_plan_id, document) =
+            seed_flow_version_and_compiled_plan_with_plan(
+                &store,
+                application_id,
+                actor_user_id,
+                serde_json::json!({"nodes": nodes}),
+            )
+            .await;
+        let publication_id = Uuid::now_v7();
+        sqlx::query(
+            r#"
+            insert into application_publication_versions (
+                id, application_id, scope_id, flow_id, flow_version_id, compiled_plan_id,
+                extension_slug, version_sequence, active, api_enabled, flow_schema_version,
+                document_hash, document_snapshot, mapping_snapshot, runtime_profile_snapshot,
+                output_selector, dependency_snapshot, created_by, updated_by
+            ) values (
+                $1, $2, (select scope_id from applications where id = $2), $3, $4, $5,
+                null, 1, true, true, $6, $7, $8, $9, '{}'::jsonb, '{}'::jsonb,
+                '[]'::jsonb, $10, $10
+            )
+            "#,
+        )
+        .bind(publication_id)
+        .bind(application_id)
+        .bind(flow_id)
+        .bind(flow_version_id)
+        .bind(compiled_plan_id)
+        .bind(domain::FLOW_SCHEMA_VERSION)
+        .bind(format!("sha256:binding-{target_count}"))
+        .bind(document)
+        .bind(serde_json::to_value(ApplicationApiMappingConfig::default_native()).unwrap())
+        .bind(actor_user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        publications.push((target_count, publication_id));
+    }
+
+    application_operation_bindings_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+
+    for (target_count, publication_id) in &publications {
+        let bindings: serde_json::Value = sqlx::query_scalar(
+            "select operation_bindings from application_publication_versions where id = $1",
+        )
+        .bind(publication_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(bindings["count_tokens"].is_null());
+        assert!(bindings["compact"]["responses_compact"].is_null());
+        assert!(bindings["compact"]["responses_compaction_v2"].is_null());
+        if *target_count == 1 {
+            assert_eq!(
+                bindings["generate"]["target_node_id"],
+                serde_json::json!("node-llm-0")
+            );
+        } else {
+            assert!(bindings["generate"].is_null());
+        }
+    }
+
+    application_operation_bindings_migrator()
+        .undo(&pool, APPLICATION_OPERATION_BINDINGS_MIGRATION_VERSION - 1)
+        .await
+        .unwrap();
+    let binding_columns: i64 = sqlx::query_scalar(
+        r#"
+        select count(*)::bigint
+        from information_schema.columns
+        where table_schema = current_schema()
+          and table_name in ('application_api_mappings', 'application_publication_versions')
+          and column_name = 'operation_bindings'
+        "#,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let old_mapping_snapshot: serde_json::Value = sqlx::query_scalar(
+        "select mapping_snapshot from application_publication_versions where id = $1",
+    )
+    .bind(publications[1].1)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(binding_columns, 0);
+    assert_eq!(
+        serde_json::from_value::<ApplicationApiMappingConfig>(old_mapping_snapshot).unwrap(),
+        ApplicationApiMappingConfig::default_native()
     );
 }
 
@@ -1075,6 +1275,7 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
     assert!(tables.contains(&"workflow_schedule_triggers".to_string()));
     assert!(application_columns.contains(&"api_enabled".to_string()));
     assert!(mapping_columns.contains(&"extension_slug".to_string()));
+    assert!(mapping_columns.contains(&"operation_bindings".to_string()));
     for expected_column in [
         "application_id",
         "flow_id",
@@ -1085,6 +1286,7 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
         "api_enabled",
         "document_snapshot",
         "mapping_snapshot",
+        "operation_bindings",
         "runtime_profile_snapshot",
         "output_selector",
         "dependency_snapshot",
