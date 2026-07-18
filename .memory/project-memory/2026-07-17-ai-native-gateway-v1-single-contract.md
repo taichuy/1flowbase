@@ -24,8 +24,8 @@ scope:
 
 - 唯一活动 Root 是 #1366；#1303 及其旧 Delivery 已关闭归档，不作为后续 agent 默认上下文。
 - Root 当前为 `phase:discussion`，用户只授权完成 Scout、Delivery Tree 与 Work Packet 梳理，尚未授权产品开发或测试。
-- 主仓 protected baseline：`dev@9a0960fd30a20cf0a604e1d09b07ac35e8500b95`。
-- 官方插件 baseline：`main@4c6f70be5284d16900924a9e2a7f677cd88c80c7`。
+- Scout 主仓产品代码基线：`dev@9a0960fd30a20cf0a604e1d09b07ac35e8500b95`；之后只有本记忆治理提交，执行授权时再锁定实际 assembly input SHA。
+- Scout 官方插件产品代码基线：`main@4c6f70be5284d16900924a9e2a7f677cd88c80c7`。
 
 ## Delivery Tree
 
