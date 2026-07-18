@@ -34,9 +34,7 @@ use control_plane::{
         run_service::native_result_from_run_detail,
     },
     file_management::{FileUploadService, UploadFileCommand},
-    orchestration_runtime::{
-        debug_stream_events, OrchestrationRuntimeService, StartPublishedFlowRunCommand,
-    },
+    orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
     ports::AuthRepository,
 };
 use serde::{Deserialize, Serialize};
@@ -756,29 +754,15 @@ pub async fn cancel_native_run(
     let bearer_token = bearer_token(&headers)?;
     let run = ApplicationNativeRunService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store())
+        .with_runtime_event_stream(state.runtime_event_stream.clone())
         .cancel_native_run(CancelNativeRunCommand {
             bearer_token,
             run_id,
         })
         .await
         .map_err(native_error)?;
-    if run.status == NativeRunStatus::Cancelled {
-        publish_native_cancelled_terminal(state.as_ref(), run.id).await;
-    }
 
     Ok(Json(ApiSuccess::new(to_native_run_response(run))))
-}
-
-async fn publish_native_cancelled_terminal(state: &ApiState, run_id: Uuid) {
-    if let Err(error) = state
-        .runtime_event_stream
-        .append_terminal_if_missing_and_close(run_id, debug_stream_events::flow_cancelled(run_id))
-        .await
-    {
-        // A non-streaming run has no live event stream. Its durable
-        // `flow_cancelled` event is already committed by the cancel owner.
-        debug!(flow_run_id = %run_id, error = %error, "cancelled run has no open live event stream");
-    }
 }
 
 #[utoipa::path(

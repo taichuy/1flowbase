@@ -146,7 +146,7 @@ async fn cancel_active_streaming_run_and_collect_sse(
             .unwrap()
             .expect("cancelled winner should retain a safe durable error");
     let durable_terminals = sqlx::query_scalar::<_, i64>(
-        "select count(*) from flow_run_events where flow_run_id = $1 and event_type = 'flow_cancelled'",
+        "select count(*) from runtime_events where flow_run_id = $1 and event_type = 'flow_cancelled'",
     )
     .bind(run_id)
     .fetch_one(state.store.pool())
@@ -235,7 +235,7 @@ async fn d2_ac_004_native_cancel_terminal_constraint_failure_rolls_back_status_a
     let run_id = wait_for_active_streaming_run(state.as_ref()).await;
     wait_for_provider_partial_delta(state.as_ref(), run_id, &gate).await;
     sqlx::query(
-        "alter table flow_run_events add constraint reject_flow_cancelled_terminal check (event_type <> 'flow_cancelled')",
+        "alter table runtime_events add constraint reject_flow_cancelled_terminal check (event_type <> 'flow_cancelled')",
     )
     .execute(state.store.pool())
     .await
@@ -273,7 +273,7 @@ async fn d2_ac_004_native_cancel_terminal_constraint_failure_rolls_back_status_a
             .await
             .unwrap();
     let durable_terminals = sqlx::query_scalar::<_, i64>(
-        "select count(*) from flow_run_events where flow_run_id = $1 and event_type = 'flow_cancelled'",
+        "select count(*) from runtime_events where flow_run_id = $1 and event_type = 'flow_cancelled'",
     )
     .bind(run_id)
     .fetch_one(state.store.pool())

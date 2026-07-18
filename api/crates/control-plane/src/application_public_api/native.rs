@@ -32,7 +32,7 @@ use super::{
 use crate::flow_run_title::build_flow_run_title;
 use crate::ports::{
     ApiKeyRepository, ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
-    ApplicationRepository, AuthRepository, CacheStore,
+    ApplicationRepository, AuthRepository, CacheStore, RuntimeEventDurability, RuntimeEventStream,
 };
 
 mod compaction;
@@ -835,6 +835,7 @@ pub enum NativeRunValidationError {
 pub struct ApplicationNativeRunService<R> {
     repository: R,
     last_used_cache: Option<Arc<dyn CacheStore>>,
+    runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
 }
 
 impl<R> ApplicationNativeRunService<R>
@@ -855,11 +856,17 @@ where
         Self {
             repository,
             last_used_cache: None,
+            runtime_event_stream: None,
         }
     }
 
     pub fn with_last_used_cache(mut self, cache: Arc<dyn CacheStore>) -> Self {
         self.last_used_cache = Some(cache);
+        self
+    }
+
+    pub fn with_runtime_event_stream(mut self, stream: Arc<dyn RuntimeEventStream>) -> Self {
+        self.runtime_event_stream = Some(stream);
         self
     }
 
@@ -946,6 +953,8 @@ where
             .cancel_published_run(&actor, &flow_run)
             .await?;
         if cancelled.status == domain::FlowRunStatus::Cancelled {
+            self.project_committed_cancellation_terminal(&cancelled)
+                .await;
             let completed_at = cancelled
                 .finished_at
                 .unwrap_or_else(OffsetDateTime::now_utc);
@@ -1008,6 +1017,31 @@ where
         match &self.last_used_cache {
             Some(cache) => service.with_last_used_cache(cache.clone()),
             None => service,
+        }
+    }
+
+    async fn project_committed_cancellation_terminal(&self, flow_run: &domain::FlowRunRecord) {
+        let Some(stream) = &self.runtime_event_stream else {
+            return;
+        };
+
+        // The durable terminal has already won inside `cancel_published_run`.
+        // This projection only closes an open live stream; it must not create a
+        // second durable terminal record.
+        let mut terminal_event =
+            crate::orchestration_runtime::debug_stream_events::flow_cancelled(flow_run.id);
+        terminal_event.persist_required = false;
+        terminal_event.durability = RuntimeEventDurability::Ephemeral;
+        if let Err(error) = stream
+            .append_terminal_if_missing_and_close(flow_run.id, terminal_event)
+            .await
+        {
+            tracing::warn!(
+                flow_run_id = %flow_run.id,
+                application_id = %flow_run.application_id,
+                error = %error,
+                "failed to project committed public cancellation terminal to runtime event stream"
+            );
         }
     }
 }
