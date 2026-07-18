@@ -121,7 +121,13 @@ where
         &self,
         command: CreateNativeRunCommand,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        if command.request.execution.compaction_intent().is_none() {
+        if command
+            .request
+            .execution
+            .execution_operation()
+            .compaction_intent()
+            .is_none()
+        {
             return Err(NativeRunValidationError::InvalidMapping);
         }
         self.start_native_run_for_dispatch(command, PublishedRouteDispatch::ApplicationFlow)
@@ -147,6 +153,7 @@ where
         let client_request = command.request;
         let generate_profile = client_request
             .execution
+            .execution_operation()
             .generate_profile()
             .unwrap_or(GenerateExecutionProfile::Standard);
         let external_model_parameters = validate_external_model_parameters(

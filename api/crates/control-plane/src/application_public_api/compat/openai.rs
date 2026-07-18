@@ -81,6 +81,7 @@ impl OpenAiCompatError {
 mod compaction;
 mod request_translation;
 
+use compaction::classify_response_operation;
 pub use compaction::{OpenAiResponsesEndpoint, OpenAiResponsesRequestContext};
 pub use request_translation::{
     translate_chat_completion_request, translate_response_request,

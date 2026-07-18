@@ -709,7 +709,8 @@ async fn preview_executor_rejects_compact_response_without_simulating_a_profile_
         &invoker,
     )
     .await
-    .expect_err("Compact Response should require a real typed ingress, not a preview simulator");
+    .err()
+    .expect("Compact Response should require a real typed ingress, not a preview simulator");
 
     assert!(error.to_string().contains("do not support preview"));
     assert!(invoker

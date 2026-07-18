@@ -7,7 +7,7 @@ use super::super::{
     OrchestrationRuntimeService,
 };
 
-pub(super) async fn project_committed_terminal<R, H>(
+pub(in crate::orchestration_runtime) async fn project_committed_terminal<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     flow_run: &domain::FlowRunRecord,
 ) where
