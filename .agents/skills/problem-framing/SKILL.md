@@ -93,6 +93,7 @@ source of truth / owner -> 必要复杂度
 | issue、Issue Tree、ADR、discussion brief、handoff | `references/artifacts.md` |
 | 计划形态、grade、labels、批准与关闭 | `references/issue-lifecycle.md` |
 | 长计划、多 agent、跨上下文或持续集成控制 | `references/long-running-work.md` |
+| Delivery 结束观测、预算聚合或历史校准 | `references/budget-calibration.md` |
 | defaults、contract、schema、state、permissions、migration、history、runtime behavior、user content | `references/domain-matrix.md` |
 | 高风险方向比较或反方评审 | `references/options-and-red-team.md` |
 | 新公共抽象、接口、flag、通用 helper、重复校验或 pass-through | `../_shared/design-rules.md` |

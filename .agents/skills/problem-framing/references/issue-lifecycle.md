@@ -76,7 +76,7 @@ discussion -> ready -> implementation -> qa -> user-acceptance -> closed
 - AI 可以起草、实施和提供证据，不能替用户批准关键方向或完成最终用户验收。
 - 方向确认只授权创建或重构计划；Single Issue 或 Tree Root 确认后授权实现其既定范围。
 - Delivery 可在 Root 批准后直接进入实现；新增 Delivery、改变 Root AC、source of truth、用户内容或数据影响时回到 `problem-framing`。
-- Delivery 内局部实现判断不追加计划 comment；发现预算接近两倍、第二个独立结果或同根因连续两次 review 失败时，阶段返回 `discussion` 并重构活动真值。
+- Delivery 内局部实现判断不追加计划 comment；agent control interval 到 60 分钟仍无新证据或有界下一结果、到达 P80 仍无 candidate、预算向量越界且一次有界重估无法收敛、出现第二个独立结果，或同根因连续两次 review 失败时，阶段返回 `discussion` 并重构活动真值。
 - Single Issue 在 AC 结算并完成用户验收后进入 `phase:closed` 并关闭。
 - Delivery 在结果进入 Root 集成基线、证据回写 Root 后关闭；局部 commit、分支测试或评论不构成完成。
 - Root 在所有 AC 结算、最终 QA 通过并由用户验收后进入 `phase:closed` 并关闭。

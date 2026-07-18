@@ -113,7 +113,10 @@
 - 当前已集成基线：
 - 当前 Delivery、owner 与状态：
 - candidate / review / integration 证据：
-- Delivery 预算与当前消耗：
+- Delivery 预算合同：started_at / P50 / P80 / external deadline / confidence / assumptions
+- 当前 agent control interval：started_at / 30m target / 60m mandatory return
+- 当前消耗与 utilization：phase / critical path / agent elapsed / external wait / contexts / heavy validations / rework
+- 下一预算检查点：
 - 剩余验收风险：
 - 活动 agent、worktree、进程与端口：
 - 已知阻塞 / 不确定性 / 外部扰动：
@@ -154,9 +157,13 @@
 
 ## 执行与验证预算
 - 主要开发 owner / worktree：
-- 预计时间、影响面与 agent 上限：
+- evidence probe 上限与估算依据：
+- started_at / P50 / P80 / external deadline / feasibility / confidence / assumptions：
+- agent control interval：30m target / 60m mandatory return / follow-up owner
+- critical path / agent elapsed / external wait / contexts / heavy validations / rework 上限：
 - 最小本地证据与延后门禁：
 - candidate review 层级：
+- 预算检查点与有界例外：
 
 ## 停止与上报条件
 
@@ -171,6 +178,7 @@
 - Delivery 必须产生纵向、可集成结果并减少 Root 验收风险；类型、mapper、migration、测试或评论等实现步骤不单独建 issue。
 - Root 获批后即授权执行正文列出的 Delivery；Delivery 不重复等待用户批准。扩大 Root 边界时返回 `problem-framing`。
 - 一个计划只有一个在线真值。重构计划时替换旧结构并关闭 superseded 节点，只保留证据链接，不并行维护两套计划。
+- 长计划按 `budget-calibration.md` 在 Delivery integrated / reframed / blocked / cancelled 时写结构化 `budget_observation`；预算耗尽不构成完成证据。
 
 ## ADR
 
