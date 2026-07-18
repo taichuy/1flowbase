@@ -17,6 +17,28 @@ description: 1flowbase 需求对齐与动工前决策 Skill。用于功能、缺
 
 优先用高信息关系、反例或最小案例催化，不堆模型已知常识和同义说明。催化词只改变搜索方向，不替代证据、领域精度或硬边界，也不作为口号复述。
 
+## Architecture Catalysts
+
+- `Deep Modules / Information Hiding`：公共接口只暴露调用方决策所需的最小充分信息；状态判断、协议细节与兼容分支留在内部。
+- `Conservation of Complexity + Requisite Variety`（`Tesler's Law` / `Ashby's Law`）：必要复杂度不能消失；由拥有足够状态与动作空间的语义 owner 吸收。
+- `Observability × Controllability ⇒ Ownership`：看不见相关状态或不能控制其转移的模块，不拥有该复杂度。
+- `Proven Mechanisms over Ad-hoc Rules`：优先成熟数学关系、算法、数据结构、状态机、约束与调度机制，不用临时规则堆叠代替。
+
+用以下 complexity placement heuristic 选择 owner；这是本 Skill 的架构判定式，不是经典控制论原公式：
+
+```text
+owner*(x) =
+  argmin_m [C_leak(m) + C_coordination(m) + C_failure(m)]
+
+subject to:
+  SourceOfTruth_m(x)
+  ∧ Observable_m(x)
+  ∧ Controllable_m(x)
+  ∧ Variety_m ≥ Variety_x
+```
+
+`C_leak` 是泄漏给调用方的兼容、分支与隐式约定；`C_coordination` 是跨 owner 协调成本；`C_failure` 是复杂度错置造成的失败成本。
+
 ## Decision Field
 
 把请求看作受约束决策；用关系筛选信息，不在回答中机械复述字段：
@@ -33,8 +55,6 @@ source of truth / owner -> 必要复杂度
 
 - 用户描述提供线索，结论强度不超过证据；安全、数据、权限与已确认 contract 是硬边界，工作偏好只改变方向权重。
 - 方案范围不超过授权与非目标；新增范围同时产生成功标准、owner、证据和预算债务。
-- 复杂度留在最理解语义、最靠近变化源的 owner；接口保持窄而深，把状态判断和协议细节收敛在内部，不让调用方承担兼容分支或隐式约定。
-- 优先复用成熟数学关系、算法、数据结构、状态机、约束或调度机制；若不能降低复杂度或风险，或无法验证，则不采用；不为展示技术增加抽象。
 - 只处理会改变可行域或推荐的未知；其他缺口使用有界假设。下一步不能减少决策残差时停止。
 - 后端是 contract 与状态唯一数据来源；前端不承担输出兼容，接口字段保持后端 DTO / 领域语义原名。
 
