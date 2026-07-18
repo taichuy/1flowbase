@@ -125,7 +125,7 @@ describe('workflow authoring defaults', () => {
 });
 
 describe('compact dispatch authoring defaults', () => {
-  it('keeps legacy Start documents transparent when compact dispatch is absent', () => {
+  it('AC-008 seeds Start config with the explicit transparent compact dispatch default', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const startNode = document.graph.nodes.find(
       (node) => node.type === 'start'
@@ -133,8 +133,17 @@ describe('compact dispatch authoring defaults', () => {
 
     expect(DEFAULT_START_COMPACT_DISPATCH).toBe('transparent');
     expect(COMPACT_SOURCE_HANDLE_ID).toBe('compact');
-    expect(startNode?.config.compact_dispatch).toBe('transparent');
-    expect(getStartCompactDispatch({ input_fields: [] })).toBe('transparent');
+    expect(startNode?.config).toEqual({
+      input_fields: [],
+      model_list: [],
+      compact_dispatch: 'transparent'
+    });
+  });
+
+  it('keeps legacy Start documents transparent when compact dispatch is absent', () => {
+    expect(getStartCompactDispatch({ input_fields: [], model_list: [] })).toBe(
+      'transparent'
+    );
     expect(
       getStartCompactDispatch({ compact_dispatch: 'application_flow' })
     ).toBe('application_flow');

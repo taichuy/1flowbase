@@ -544,7 +544,8 @@ export function createDefaultAgentFlowDocument({
           configVersion: 1,
           config: {
             input_fields: [...DEFAULT_START_NODE_CONFIG.input_fields],
-            model_list: [...DEFAULT_START_NODE_CONFIG.model_list]
+            model_list: [...DEFAULT_START_NODE_CONFIG.model_list],
+            compact_dispatch: DEFAULT_START_NODE_CONFIG.compact_dispatch
           },
           bindings: {},
           outputs: []
