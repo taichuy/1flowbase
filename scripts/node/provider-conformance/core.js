@@ -278,7 +278,7 @@ function assertManifest(provider, actual) {
     runtime: {
       protocol: actual.runtime.protocol,
       entry: actual.runtime.entry,
-      capabilities: [...actual.runtime.capabilities].sort(),
+      capabilities: [...(actual.runtime.capabilities ?? [])].sort(),
     },
   };
   requireCondition(
