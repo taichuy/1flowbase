@@ -23,10 +23,11 @@ use control_plane::{
         AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, AttachCompiledPlanToFlowRunInput,
         CallbackResumeContext, CallbackResumeWaitingNode, ClearModelProviderRequestLogsBatchInput,
-        ClearModelProviderRequestLogsBatchResult, CompleteCallbackTaskInput, CompleteFlowRunInput,
-        CompleteNodeRunInput, CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
-        CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
-        DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
+        ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
+        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
+        CompleteFlowRunInput, CompleteNodeRunInput, CreateCallbackTaskInput, CreateCheckpointInput,
+        CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
+        CreateRuntimeDebugArtifactInput, DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
         DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
         FailQueuedFlowRunShellInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
         FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
@@ -147,6 +148,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         expected_status: domain::FlowRunStatus,
     ) -> Result<Option<domain::FlowRunRecord>> {
         PgControlPlaneStore::update_flow_run_if_status(self, input, expected_status).await
+    }
+
+    async fn commit_flow_run_terminal(
+        &self,
+        input: &CommitFlowRunTerminalInput,
+    ) -> Result<CommitFlowRunTerminalReceipt> {
+        PgControlPlaneStore::commit_flow_run_terminal(self, input).await
     }
 
     async fn finalize_published_run_missing_stream_terminal(

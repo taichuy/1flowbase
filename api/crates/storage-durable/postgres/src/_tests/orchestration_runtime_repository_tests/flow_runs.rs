@@ -392,3 +392,238 @@ async fn update_flow_run_if_status_returns_not_found_for_missing_run() {
         Some(ControlPlaneError::NotFound("flow_run"))
     ));
 }
+
+/// #1366 AC-001: PostgreSQL CAS chooses one terminal owner, and only that owner's result and
+/// canonical durable terminal are committed.
+#[tokio::test]
+async fn competing_terminal_commits_persist_exactly_one_winner() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = Arc::new(PgControlPlaneStore::new(pool));
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        OffsetDateTime::now_utc(),
+        FlowRunMode::DebugFlowRun,
+        None,
+    )
+    .await;
+    let flow_run_id = run.id;
+    let barrier = Arc::new(Barrier::new(2));
+    let finished_at = OffsetDateTime::now_utc();
+
+    let succeeded = {
+        let store = Arc::clone(&store);
+        let barrier = Arc::clone(&barrier);
+        tokio::spawn(async move {
+            barrier.wait().await;
+            <PgControlPlaneStore as OrchestrationRuntimeRepository>::commit_flow_run_terminal(
+                &store,
+                &CommitFlowRunTerminalInput {
+                    flow_run_id,
+                    expected_status: FlowRunStatus::Running,
+                    result: CommitFlowRunTerminalResult::Succeeded {
+                        output_payload: json!({ "answer": "succeeded winner" }),
+                    },
+                    flow_run_event_payload: json!({ "answer": "succeeded winner" }),
+                    terminal_event_payload: json!({
+                        "type": "flow_finished",
+                        "run_id": flow_run_id,
+                        "status": "succeeded",
+                        "output": { "answer": "succeeded winner" }
+                    }),
+                    finished_at,
+                },
+            )
+            .await
+            .unwrap()
+        })
+    };
+    let failed = {
+        let store = Arc::clone(&store);
+        let barrier = Arc::clone(&barrier);
+        tokio::spawn(async move {
+            barrier.wait().await;
+            <PgControlPlaneStore as OrchestrationRuntimeRepository>::commit_flow_run_terminal(
+                &store,
+                &CommitFlowRunTerminalInput {
+                    flow_run_id,
+                    expected_status: FlowRunStatus::Running,
+                    result: CommitFlowRunTerminalResult::Failed {
+                        output_payload: json!({ "partial": "failed winner" }),
+                        error_payload: json!({ "code": "fixture_failure" }),
+                    },
+                    flow_run_event_payload: json!({ "code": "fixture_failure" }),
+                    terminal_event_payload: json!({
+                        "type": "flow_failed",
+                        "run_id": flow_run_id,
+                        "error_payload": { "code": "fixture_failure" }
+                    }),
+                    finished_at,
+                },
+            )
+            .await
+            .unwrap()
+        })
+    };
+
+    let succeeded = succeeded.await.unwrap();
+    let failed = failed.await.unwrap();
+    let winner = match (succeeded, failed) {
+        (CommitFlowRunTerminalReceipt::Winner(winner), CommitFlowRunTerminalReceipt::Loser)
+        | (
+            CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(winner),
+            CommitFlowRunTerminalReceipt::Loser,
+        )
+        | (CommitFlowRunTerminalReceipt::Loser, CommitFlowRunTerminalReceipt::Winner(winner))
+        | (
+            CommitFlowRunTerminalReceipt::Loser,
+            CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(winner),
+        ) => winner,
+        receipts => panic!("expected one terminal winner and one loser, got {receipts:?}"),
+    };
+
+    let stored = <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_flow_run(
+        &store,
+        seeded.application_id,
+        flow_run_id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(stored.status, winner.status);
+    assert_eq!(stored.output_payload, winner.output_payload);
+    assert_eq!(stored.error_payload, winner.error_payload);
+
+    let flow_events = sqlx::query_as::<_, (String, serde_json::Value)>(
+        "select event_type, payload from flow_run_events where flow_run_id = $1",
+    )
+    .bind(flow_run_id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    let runtime_events = sqlx::query_as::<_, (String, serde_json::Value)>(
+        "select event_type, payload from runtime_events where flow_run_id = $1",
+    )
+    .bind(flow_run_id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(flow_events.len(), 1);
+    assert_eq!(runtime_events.len(), 1);
+
+    match winner.status {
+        FlowRunStatus::Succeeded => {
+            assert_eq!(flow_events[0].0, "flow_run_completed");
+            assert_eq!(runtime_events[0].0, "flow_finished");
+            assert_eq!(runtime_events[0].1["status"], "succeeded");
+            assert!(stored.error_payload.is_none());
+        }
+        FlowRunStatus::Failed => {
+            assert_eq!(flow_events[0].0, "flow_run_failed");
+            assert_eq!(runtime_events[0].0, "flow_failed");
+            assert_eq!(runtime_events[0].1["type"], "flow_failed");
+            assert_eq!(
+                stored.error_payload,
+                Some(json!({ "code": "fixture_failure" }))
+            );
+        }
+        status => panic!("unexpected competing terminal winner: {status:?}"),
+    }
+}
+
+/// #1366 AC-001 authenticity: a real database failure after the CAS/update statement rolls the
+/// result and both terminal facts back instead of leaving a half-committed winner.
+#[tokio::test]
+async fn terminal_commit_rolls_back_state_result_and_events_when_terminal_insert_fails() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        OffsetDateTime::now_utc(),
+        FlowRunMode::DebugFlowRun,
+        None,
+    )
+    .await;
+    sqlx::query(
+        r#"
+        create function reject_terminal_commit_fixture() returns trigger
+        language plpgsql as $$
+        begin
+            raise exception 'forced terminal insert failure';
+        end;
+        $$;
+        "#,
+    )
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        create trigger reject_terminal_commit_fixture
+        before insert on runtime_events
+        for each row execute function reject_terminal_commit_fixture()
+        "#,
+    )
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let error = <PgControlPlaneStore as OrchestrationRuntimeRepository>::commit_flow_run_terminal(
+        &store,
+        &CommitFlowRunTerminalInput {
+            flow_run_id: run.id,
+            expected_status: FlowRunStatus::Running,
+            result: CommitFlowRunTerminalResult::Failed {
+                output_payload: json!({ "partial": "must roll back" }),
+                error_payload: json!({ "code": "must_roll_back" }),
+            },
+            flow_run_event_payload: json!({ "code": "must_roll_back" }),
+            terminal_event_payload: json!({
+                "type": "flow_failed",
+                "run_id": run.id,
+                "error_payload": { "code": "must_roll_back" }
+            }),
+            finished_at: OffsetDateTime::now_utc(),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("forced terminal insert failure"));
+
+    let stored = <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_flow_run(
+        &store,
+        seeded.application_id,
+        run.id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(stored.status, FlowRunStatus::Running);
+    assert_eq!(stored.output_payload, json!({}));
+    assert!(stored.error_payload.is_none());
+    assert!(stored.finished_at.is_none());
+
+    let flow_event_count: i64 =
+        sqlx::query_scalar("select count(*) from flow_run_events where flow_run_id = $1")
+            .bind(run.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    let runtime_event_count: i64 =
+        sqlx::query_scalar("select count(*) from runtime_events where flow_run_id = $1")
+            .bind(run.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(flow_event_count, 0);
+    assert_eq!(runtime_event_count, 0);
+}

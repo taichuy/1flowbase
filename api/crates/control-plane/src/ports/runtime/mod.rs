@@ -133,6 +133,92 @@ pub struct UpdateFlowRunInput {
     pub finished_at: Option<OffsetDateTime>,
 }
 
+/// A terminal flow result owns the canonical status and both terminal event names. Keeping those
+/// facts in one type prevents a failed or partial result from being persisted as a successful
+/// terminal.
+#[derive(Debug, Clone)]
+pub enum CommitFlowRunTerminalResult {
+    Succeeded {
+        output_payload: serde_json::Value,
+    },
+    Incomplete {
+        output_payload: serde_json::Value,
+    },
+    Failed {
+        output_payload: serde_json::Value,
+        error_payload: serde_json::Value,
+    },
+    Cancelled {
+        output_payload: serde_json::Value,
+        error_payload: Option<serde_json::Value>,
+    },
+}
+
+impl CommitFlowRunTerminalResult {
+    pub fn status(&self) -> domain::FlowRunStatus {
+        match self {
+            Self::Succeeded { .. } => domain::FlowRunStatus::Succeeded,
+            Self::Incomplete { .. } => domain::FlowRunStatus::Incomplete,
+            Self::Failed { .. } => domain::FlowRunStatus::Failed,
+            Self::Cancelled { .. } => domain::FlowRunStatus::Cancelled,
+        }
+    }
+
+    pub fn output_payload(&self) -> &serde_json::Value {
+        match self {
+            Self::Succeeded { output_payload }
+            | Self::Incomplete { output_payload }
+            | Self::Failed { output_payload, .. }
+            | Self::Cancelled { output_payload, .. } => output_payload,
+        }
+    }
+
+    pub fn error_payload(&self) -> Option<&serde_json::Value> {
+        match self {
+            Self::Failed { error_payload, .. } => Some(error_payload),
+            Self::Cancelled { error_payload, .. } => error_payload.as_ref(),
+            Self::Succeeded { .. } | Self::Incomplete { .. } => None,
+        }
+    }
+
+    pub fn flow_run_event_type(&self) -> &'static str {
+        match self {
+            Self::Succeeded { .. } => "flow_run_completed",
+            Self::Incomplete { .. } => "flow_run_incomplete",
+            Self::Failed { .. } => "flow_run_failed",
+            Self::Cancelled { .. } => "flow_run_cancelled",
+        }
+    }
+
+    pub fn runtime_event_type(&self) -> &'static str {
+        match self {
+            Self::Succeeded { .. } => "flow_finished",
+            Self::Incomplete { .. } => "flow_incomplete",
+            Self::Failed { .. } => "flow_failed",
+            Self::Cancelled { .. } => "flow_cancelled",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CommitFlowRunTerminalInput {
+    pub flow_run_id: Uuid,
+    pub expected_status: domain::FlowRunStatus,
+    pub result: CommitFlowRunTerminalResult,
+    pub flow_run_event_payload: serde_json::Value,
+    pub terminal_event_payload: serde_json::Value,
+    pub finished_at: OffsetDateTime,
+}
+
+/// A loser receipt deliberately carries no proposed result. The caller must re-read the durable
+/// winner instead of treating its stale candidate as a second terminal owner.
+#[derive(Debug, Clone)]
+pub enum CommitFlowRunTerminalReceipt {
+    Winner(domain::FlowRunRecord),
+    WinnerWithPostCommitProjectionWarning(domain::FlowRunRecord),
+    Loser,
+}
+
 /// The durable half of the published-stream EOF recovery. The status update and both terminal
 /// facts must commit together so a retry cannot observe a failed run with a missing terminal.
 #[derive(Debug, Clone)]
@@ -694,6 +780,10 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         input: &UpdateFlowRunInput,
         expected_status: domain::FlowRunStatus,
     ) -> anyhow::Result<Option<domain::FlowRunRecord>>;
+    async fn commit_flow_run_terminal(
+        &self,
+        input: &CommitFlowRunTerminalInput,
+    ) -> anyhow::Result<CommitFlowRunTerminalReceipt>;
     async fn finalize_published_run_missing_stream_terminal(
         &self,
         input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,

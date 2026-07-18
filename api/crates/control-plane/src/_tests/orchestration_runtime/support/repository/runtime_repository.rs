@@ -5,6 +5,7 @@ use super::runtime_repository_helpers::{
 };
 use super::*;
 use crate::ports::{
+    CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
     FinalizePublishedRunMissingStreamTerminalPersistenceInput,
     FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
 };
@@ -206,24 +207,31 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         Ok(Some(record.clone()))
     }
 
-    async fn finalize_published_run_missing_stream_terminal(
+    async fn commit_flow_run_terminal(
         &self,
-        input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
-    ) -> Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome> {
+        input: &CommitFlowRunTerminalInput,
+    ) -> Result<CommitFlowRunTerminalReceipt> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         force_status_before_next_flow_update(&mut inner, input.flow_run_id);
-        force_stream_terminal_failure_before_next_flow_update(&mut inner, input.flow_run_id);
         let Some(existing) = inner.flow_runs_by_id.get(&input.flow_run_id).cloned() else {
             return Err(ControlPlaneError::NotFound("flow_run").into());
         };
-        if existing.status != input.expected_status {
-            return Ok(FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::CasMiss);
+        if existing.status != input.expected_status
+            || matches!(
+                existing.status,
+                domain::FlowRunStatus::Succeeded
+                    | domain::FlowRunStatus::Incomplete
+                    | domain::FlowRunStatus::Failed
+                    | domain::FlowRunStatus::Cancelled
+            )
+        {
+            return Ok(CommitFlowRunTerminalReceipt::Loser);
         }
 
         let mut recovered = existing;
-        recovered.status = domain::FlowRunStatus::Failed;
-        recovered.output_payload = input.output_payload.clone();
-        recovered.error_payload = Some(input.error_payload.clone());
+        recovered.status = input.result.status();
+        recovered.output_payload = input.result.output_payload().clone();
+        recovered.error_payload = input.result.error_payload().cloned();
         recovered.finished_at = Some(input.finished_at);
         recovered.updated_at = input.finished_at;
 
@@ -236,8 +244,8 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                 .get(&recovered.id)
                 .map_or(0, Vec::len) as i64
                 + 1,
-            event_type: "flow_run_failed".to_string(),
-            payload: input.error_payload.clone(),
+            event_type: input.result.flow_run_event_type().to_string(),
+            payload: input.flow_run_event_payload.clone(),
             created_at: OffsetDateTime::now_utc(),
         };
         let runtime_event = domain::RuntimeEventRecord {
@@ -251,7 +259,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                 .get(&recovered.id)
                 .map_or(0, Vec::len) as i64
                 + 1,
-            event_type: "flow_failed".to_string(),
+            event_type: input.result.runtime_event_type().to_string(),
             layer: domain::RuntimeEventLayer::AgentTransition,
             source: domain::RuntimeEventSource::Host,
             trust_level: domain::RuntimeTrustLevel::HostFact,
@@ -284,10 +292,44 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             .push(runtime_event);
         if std::mem::take(&mut inner.fail_next_published_stream_terminal_projection) {
             return Ok(
-                FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::FinalizedWithPostCommitProjectionWarning(recovered),
+                CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(recovered),
             );
         }
-        Ok(FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::Finalized(recovered))
+        Ok(CommitFlowRunTerminalReceipt::Winner(recovered))
+    }
+
+    async fn finalize_published_run_missing_stream_terminal(
+        &self,
+        input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+    ) -> Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome> {
+        {
+            let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+            force_stream_terminal_failure_before_next_flow_update(&mut inner, input.flow_run_id);
+        }
+        let receipt = self
+            .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
+                flow_run_id: input.flow_run_id,
+                expected_status: input.expected_status,
+                result: CommitFlowRunTerminalResult::Failed {
+                    output_payload: input.output_payload.clone(),
+                    error_payload: input.error_payload.clone(),
+                },
+                flow_run_event_payload: input.error_payload.clone(),
+                terminal_event_payload: input.terminal_event_payload.clone(),
+                finished_at: input.finished_at,
+            })
+            .await?;
+        Ok(match receipt {
+            CommitFlowRunTerminalReceipt::Winner(flow_run) => {
+                FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::Finalized(flow_run)
+            }
+            CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(flow_run) => {
+                FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::FinalizedWithPostCommitProjectionWarning(flow_run)
+            }
+            CommitFlowRunTerminalReceipt::Loser => {
+                FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::CasMiss
+            }
+        })
     }
 
     async fn complete_flow_run(

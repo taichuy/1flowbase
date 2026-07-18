@@ -901,12 +901,12 @@ impl PgControlPlaneStore {
         Ok(None)
     }
 
-    async fn finalize_published_run_missing_stream_terminal(
+    async fn commit_flow_run_terminal(
         &self,
-        input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
-    ) -> Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome> {
+        input: &CommitFlowRunTerminalInput,
+    ) -> Result<CommitFlowRunTerminalReceipt> {
         let mut tx = self.pool().begin().await?;
-        let error_payload = Some(input.error_payload.clone());
+        let error_payload = input.result.error_payload().cloned();
         let row = sqlx::query(
             r#"
             update flow_runs
@@ -917,6 +917,7 @@ impl PgControlPlaneStore {
                 updated_at = $5
             where id = $1
               and status = $6
+              and status not in ('succeeded', 'incomplete', 'failed', 'cancelled')
             returning
                 id,
                 application_id,
@@ -949,8 +950,8 @@ impl PgControlPlaneStore {
             "#,
         )
         .bind(input.flow_run_id)
-        .bind(domain::FlowRunStatus::Failed.as_str())
-        .bind(&input.output_payload)
+        .bind(input.result.status().as_str())
+        .bind(input.result.output_payload())
         .bind(&error_payload)
         .bind(input.finished_at)
         .bind(input.expected_status.as_str())
@@ -970,7 +971,7 @@ impl PgControlPlaneStore {
             if !exists {
                 return Err(ControlPlaneError::NotFound("flow_run").into());
             }
-            return Ok(FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::CasMiss);
+            return Ok(CommitFlowRunTerminalReceipt::Loser);
         };
 
         let flow_run = map_flow_run_record(row)?;
@@ -990,14 +991,15 @@ impl PgControlPlaneStore {
                 sequence,
                 event_type,
                 payload
-            ) values ($1, $2, $3, null, $4, 'flow_run_failed', $5)
+            ) values ($1, $2, $3, null, $4, $5, $6)
             "#,
         )
         .bind(Uuid::now_v7())
         .bind(scope_id)
         .bind(flow_run.id)
         .bind(flow_event_sequence)
-        .bind(&input.error_payload)
+        .bind(input.result.flow_run_event_type())
+        .bind(&input.flow_run_event_payload)
         .execute(&mut *tx)
         .await?;
 
@@ -1021,33 +1023,65 @@ impl PgControlPlaneStore {
                 visibility,
                 durability
             ) values (
-                $1, $2, null, null, null, $3, 'flow_failed', 'agent_transition',
-                'host', 'host_fact', null, null, $4, 'workspace', 'durable'
+                $1, $2, null, null, null, $3, $4, 'agent_transition',
+                'host', 'host_fact', null, null, $5, 'workspace', 'durable'
             )
             "#,
         )
         .bind(Uuid::now_v7())
         .bind(flow_run.id)
         .bind(runtime_event_sequence)
+        .bind(input.result.runtime_event_type())
         .bind(&input.terminal_event_payload)
         .execute(&mut *tx)
         .await?;
 
         tx.commit().await?;
-        match self.upsert_application_conversation_messages_for_flow_run(&flow_run).await {
-            Ok(()) => Ok(FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::Finalized(
-                flow_run,
-            )),
+        match self
+            .upsert_application_conversation_messages_for_flow_run(&flow_run)
+            .await
+        {
+            Ok(()) => Ok(CommitFlowRunTerminalReceipt::Winner(flow_run)),
             Err(error) => {
                 tracing::warn!(
                     flow_run_id = %flow_run.id,
                     application_id = %flow_run.application_id,
                     error = %error,
-                    "published stream EOF recovery committed canonical failure but conversation projection failed"
+                    "flow run terminal commit won but its post-commit conversation projection failed"
                 );
-                Ok(FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::FinalizedWithPostCommitProjectionWarning(flow_run))
+                Ok(CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(flow_run))
             }
         }
+    }
+
+    async fn finalize_published_run_missing_stream_terminal(
+        &self,
+        input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+    ) -> Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome> {
+        let receipt = self
+            .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
+                flow_run_id: input.flow_run_id,
+                expected_status: input.expected_status,
+                result: CommitFlowRunTerminalResult::Failed {
+                    output_payload: input.output_payload.clone(),
+                    error_payload: input.error_payload.clone(),
+                },
+                flow_run_event_payload: input.error_payload.clone(),
+                terminal_event_payload: input.terminal_event_payload.clone(),
+                finished_at: input.finished_at,
+            })
+            .await?;
+        Ok(match receipt {
+            CommitFlowRunTerminalReceipt::Winner(flow_run) => {
+                FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::Finalized(flow_run)
+            }
+            CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(flow_run) => {
+                FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::FinalizedWithPostCommitProjectionWarning(flow_run)
+            }
+            CommitFlowRunTerminalReceipt::Loser => {
+                FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::CasMiss
+            }
+        })
     }
 
     async fn complete_flow_run(
