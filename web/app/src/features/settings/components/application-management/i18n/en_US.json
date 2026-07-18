@@ -5,7 +5,6 @@
     "application_management_trigger": "Trigger",
     "application_management_publication_status": "Publication status",
     "application_management_creator": "Creator",
-    "application_management_creator_id": "Creator ID",
     "application_management_tags": "Tags",
     "application_management_actions": "Actions",
     "application_management_all_types": "All application types",
@@ -15,6 +14,24 @@
     "application_management_sort": "Sort",
     "application_management_sort_updated_desc": "Recently updated",
     "application_management_sort_created_desc": "Recently created",
-    "application_management_sort_name_asc": "Name ascending"
+    "application_management_sort_name_asc": "Name ascending",
+    "application_management_details_named": "Application details-{{value1}}",
+    "application_management_basic_information": "Basic information",
+    "application_management_icon": "Icon",
+    "application_management_icon_type": "Icon type",
+    "application_management_icon_background": "Icon background",
+    "application_management_schedule_configuration": "Schedule configuration",
+    "application_management_schedule_enabled": "Enable schedule",
+    "application_management_trigger_load_failed": "Failed to load trigger configuration",
+    "application_management_extension_contract": "Extension API",
+    "application_management_extension_immutable_notice": "The endpoint URL, HTTP method, and response mode are locked after creation. Request and response shapes follow the Workflow Start / End contract.",
+    "application_management_request_parameters": "Request parameters",
+    "application_management_no_request_parameters": "No request parameters are defined",
+    "application_management_response_fields": "Response fields",
+    "application_management_no_response_fields": "No response fields are defined",
+    "application_management_all_creators": "All creators",
+    "application_management_export_csv": "Export CSV",
+    "application_management_permission_required": "Application edit permission is required",
+    "application_management_export_failed": "Failed to export applications"
   }
 }

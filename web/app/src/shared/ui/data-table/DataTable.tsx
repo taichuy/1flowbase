@@ -139,6 +139,7 @@ export function DataTable<T extends object>({
   pageSize,
   rowClassName,
   rowKey,
+  onRow,
   rowSelection,
   total,
   onPageChange
@@ -152,6 +153,7 @@ export function DataTable<T extends object>({
   pageSize: number;
   rowClassName?: (record: T, index: number) => string;
   rowKey: keyof T | ((record: T) => Key);
+  onRow?: TableProps<T>['onRow'];
   rowSelection?: DataTableRowSelection<T>;
   total: number;
   onPageChange: (page: number) => void;
@@ -269,6 +271,7 @@ export function DataTable<T extends object>({
             }
           }}
           pagination={false}
+          onRow={onRow}
           rowClassName={rowClassName}
           rowSelection={rowSelection}
           columns={tableColumns}

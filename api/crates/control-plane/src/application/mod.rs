@@ -47,6 +47,9 @@ pub struct UpdateApplicationCommand {
     pub name: String,
     pub description: String,
     pub tag_ids: Vec<Uuid>,
+    pub icon: Option<String>,
+    pub icon_type: Option<String>,
+    pub icon_background: Option<String>,
 }
 
 pub struct DeleteApplicationCommand {
@@ -264,6 +267,9 @@ where
                 name: normalize_required_text(&command.name, "name")?,
                 description: command.description.trim().to_string(),
                 tag_ids: dedupe_tag_ids(command.tag_ids),
+                icon: command.icon.map(normalize_optional_text),
+                icon_type: command.icon_type.map(normalize_optional_text),
+                icon_background: command.icon_background.map(normalize_optional_text),
             })
             .await?;
         self.repository
@@ -706,6 +712,11 @@ fn normalize_required_text(value: &str, field: &'static str) -> Result<String, C
     Ok(normalized.to_string())
 }
 
+fn normalize_optional_text(value: String) -> Option<String> {
+    let normalized = value.trim();
+    (!normalized.is_empty()).then(|| normalized.to_string())
+}
+
 fn dedupe_tag_ids(tag_ids: Vec<Uuid>) -> Vec<Uuid> {
     let mut seen = HashSet::new();
     let mut deduped = Vec::new();
@@ -1145,6 +1156,15 @@ impl ApplicationRepository for InMemoryApplicationRepository {
             .ok_or(ControlPlaneError::NotFound("application"))?;
         application.name = input.name.clone();
         application.description = input.description.clone();
+        if let Some(icon) = &input.icon {
+            application.icon = icon.clone();
+        }
+        if let Some(icon_type) = &input.icon_type {
+            application.icon_type = icon_type.clone();
+        }
+        if let Some(icon_background) = &input.icon_background {
+            application.icon_background = icon_background.clone();
+        }
         application.updated_at = time::OffsetDateTime::now_utc();
         application.tags = tags;
 

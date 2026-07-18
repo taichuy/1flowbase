@@ -5,7 +5,6 @@
     "application_management_trigger": "触发方式",
     "application_management_publication_status": "发布状态",
     "application_management_creator": "创建者",
-    "application_management_creator_id": "创建者 ID",
     "application_management_tags": "标签",
     "application_management_actions": "操作",
     "application_management_all_types": "全部应用类型",
@@ -15,6 +14,24 @@
     "application_management_sort": "排序",
     "application_management_sort_updated_desc": "最近更新",
     "application_management_sort_created_desc": "最近创建",
-    "application_management_sort_name_asc": "名称升序"
+    "application_management_sort_name_asc": "名称升序",
+    "application_management_details_named": "应用详情-{{value1}}",
+    "application_management_basic_information": "基本信息",
+    "application_management_icon": "图标",
+    "application_management_icon_type": "图标类型",
+    "application_management_icon_background": "图标背景",
+    "application_management_schedule_configuration": "定时器配置",
+    "application_management_schedule_enabled": "启用定时器",
+    "application_management_trigger_load_failed": "触发器配置加载失败",
+    "application_management_extension_contract": "扩展接口",
+    "application_management_extension_immutable_notice": "接口地址、HTTP 方法与同步模式在创建后锁定；请求和响应结构随 Workflow Start / End 契约演进。",
+    "application_management_request_parameters": "请求参数",
+    "application_management_no_request_parameters": "当前未定义请求参数",
+    "application_management_response_fields": "响应字段",
+    "application_management_no_response_fields": "当前未定义响应字段",
+    "application_management_all_creators": "全部创建者",
+    "application_management_export_csv": "导出 CSV",
+    "application_management_permission_required": "缺少应用编辑权限",
+    "application_management_export_failed": "导出应用清单失败"
   }
 }

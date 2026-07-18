@@ -245,6 +245,9 @@ async fn ac_005_console_policy_update_and_delete_use_real_owner() {
             name: "Updated".into(),
             description: "updated".into(),
             tag_ids: Vec::new(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
         })
         .await
         .unwrap();
@@ -257,6 +260,9 @@ async fn ac_005_console_policy_update_and_delete_use_real_owner() {
             name: "Forbidden".into(),
             description: "forbidden".into(),
             tag_ids: Vec::new(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
         })
         .await
         .unwrap_err();
@@ -329,6 +335,9 @@ async fn ac_006_console_policy_scope_all_cannot_cross_workspace() {
             name: "Blocked".into(),
             description: "blocked".into(),
             tag_ids: Vec::new(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
         })
         .await
         .unwrap_err();
@@ -755,6 +764,9 @@ async fn update_application_requires_console_update_operation() {
             name: "Updated".into(),
             description: "updated".into(),
             tag_ids: Vec::new(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
         })
         .await
         .unwrap_err();
@@ -806,6 +818,9 @@ async fn update_application_replaces_basic_metadata_and_tags() {
             name: "Updated".into(),
             description: "updated".into(),
             tag_ids: vec![tag.id],
+            icon: Some("ApiOutlined".into()),
+            icon_type: Some("iconfont-v2".into()),
+            icon_background: Some("#123456".into()),
         })
         .await
         .unwrap();
@@ -814,6 +829,9 @@ async fn update_application_replaces_basic_metadata_and_tags() {
     assert_eq!(updated.description, "updated");
     assert_eq!(updated.tags.len(), 1);
     assert_eq!(updated.tags[0].name, "客服");
+    assert_eq!(updated.icon.as_deref(), Some("ApiOutlined"));
+    assert_eq!(updated.icon_type.as_deref(), Some("iconfont-v2"));
+    assert_eq!(updated.icon_background.as_deref(), Some("#123456"));
 }
 
 #[tokio::test]

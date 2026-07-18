@@ -426,6 +426,9 @@ impl ApplicationRepository for PgControlPlaneStore {
                 name = $3,
                 description = $4,
                 updated_by = $5,
+                icon = case when $6 then $7 else icon end,
+                icon_type = case when $8 then $9 else icon_type end,
+                icon_background = case when $10 then $11 else icon_background end,
                 updated_at = now()
             where workspace_id = $1
               and id = $2
@@ -436,6 +439,17 @@ impl ApplicationRepository for PgControlPlaneStore {
         .bind(&input.name)
         .bind(&input.description)
         .bind(input.actor_user_id)
+        .bind(input.icon.is_some())
+        .bind(input.icon.as_ref().and_then(|value| value.as_deref()))
+        .bind(input.icon_type.is_some())
+        .bind(input.icon_type.as_ref().and_then(|value| value.as_deref()))
+        .bind(input.icon_background.is_some())
+        .bind(
+            input
+                .icon_background
+                .as_ref()
+                .and_then(|value| value.as_deref()),
+        )
         .execute(&mut *tx)
         .await?
         .rows_affected();

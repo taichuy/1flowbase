@@ -22,7 +22,8 @@ import {
   type ConsoleApplicationEnvironmentVariable,
   type ConsoleApplicationSummary,
   type ConsoleApplicationTagCatalogEntry,
-  type CreateConsoleApplicationInput
+  type CreateConsoleApplicationInput,
+  type UpdateConsoleApplicationInput
 } from '@1flowbase/api-client';
 
 export type Application = ConsoleApplicationSummary;
@@ -43,11 +44,7 @@ export type AgentFlowTemplatePreview = ConsoleAgentFlowTemplatePreview;
 export type ImportAgentFlowTemplateInput = ImportConsoleAgentFlowTemplateInput;
 export type ImportAgentFlowTemplateResponse =
   ImportConsoleAgentFlowTemplateResponse;
-export interface UpdateApplicationInput {
-  name: string;
-  description: string;
-  tag_ids: string[];
-}
+export type UpdateApplicationInput = UpdateConsoleApplicationInput;
 export interface CreateApplicationTagInput {
   name: string;
 }

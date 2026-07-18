@@ -3,9 +3,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   ExportOutlined,
-  MoreOutlined,
-  RollbackOutlined,
-  TagOutlined
+  MoreOutlined
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -17,7 +15,9 @@ import {
   Modal,
   Select,
   Space,
+  Switch,
   Tag,
+  Tooltip,
   Typography,
   type MenuProps
 } from 'antd';
@@ -36,29 +36,41 @@ import {
   applicationCatalogQueryKey,
   applicationsQueryKey,
   createApplication,
-  createApplicationTag,
   deleteApplication,
   exportAgentFlowTemplate,
   fetchApplicationCatalog,
   updateApplication
 } from '../../../applications/api/applications';
-import { ApplicationEditModal } from '../../../applications/components/ApplicationEditModal';
-import { ApplicationTagManagerModal } from '../../../applications/components/ApplicationTagManagerModal';
-import { unpublishApplicationApiVersion } from '../../../applications/api/public-api';
+import {
+  fetchApplicationApiMapping,
+  publishApplicationApiVersion,
+  saveWorkflowScheduleTrigger,
+  unpublishApplicationApiVersion
+} from '../../../applications/api/public-api';
 import { downloadTemplateFile } from '../../../applications/lib/template-download';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import {
   fetchSettingsApplicationManagement,
+  fetchAllSettingsApplicationManagement,
   settingsApplicationManagementQueryKey,
   settingsApplicationManagementQueryPrefix,
   type SettingsApplicationManagementItem,
   type SettingsApplicationManagementQuery
 } from '../../api/application-management';
+import { fetchSettingsMembers, settingsMembersQueryKey } from '../../api/members';
+import {
+  ApplicationDetailsDrawer,
+  type ApplicationDetailsValues
+} from './ApplicationDetailsDrawer';
 import {
   pushApplicationManagementRouteState,
   readApplicationManagementRouteState,
   type ApplicationManagementRouteState
 } from './application-management-route-state';
+import {
+  buildApplicationManagementCsv,
+  downloadApplicationManagementCsv
+} from './application-management-export';
 import './application-management-panel.css';
 
 const PAGE_SIZE = 20;
@@ -122,9 +134,7 @@ export function ApplicationManagementPanel() {
     readApplicationManagementRouteState
   );
   const [keywordDraft, setKeywordDraft] = useState(routeState.keyword ?? '');
-  const [editingApplication, setEditingApplication] =
-    useState<SettingsApplicationManagementItem | null>(null);
-  const [taggingApplication, setTaggingApplication] =
+  const [detailsApplication, setDetailsApplication] =
     useState<SettingsApplicationManagementItem | null>(null);
 
   useEffect(() => {
@@ -162,6 +172,11 @@ export function ApplicationManagementPanel() {
     queryKey: applicationCatalogQueryKey,
     queryFn: fetchApplicationCatalog
   });
+  const membersQuery = useQuery({
+    queryKey: settingsMembersQueryKey,
+    queryFn: fetchSettingsMembers,
+    retry: false
+  });
 
   const invalidateApplications = useCallback(async () => {
     await Promise.all([
@@ -173,22 +188,39 @@ export function ApplicationManagementPanel() {
     ]);
   }, [queryClient]);
   const updateMutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       application,
-      name,
-      description,
-      tagIds
+      values
     }: {
       application: SettingsApplicationManagementItem;
-      name: string;
-      description: string;
-      tagIds: string[];
-    }) =>
-      updateApplication(
+      values: ApplicationDetailsValues;
+    }) => {
+      const updated = await updateApplication(
         application.id,
-        { name, description, tag_ids: tagIds },
+        {
+          name: values.name,
+          description: values.description,
+          tag_ids: values.tag_ids,
+          icon: values.icon.trim(),
+          icon_type: values.icon_type.trim(),
+          icon_background: values.icon_background.trim()
+        },
         csrfToken
-      ),
+      );
+      if (application.workflow_trigger_type === 'schedule') {
+        await saveWorkflowScheduleTrigger(
+          application.id,
+          {
+            enabled: Boolean(values.schedule_enabled),
+            cron: values.schedule_cron?.trim() ?? '',
+            timezone: values.schedule_timezone?.trim() ?? '',
+            input_payload: values.schedule_input_payload ?? {}
+          },
+          csrfToken
+        );
+      }
+      return updated;
+    },
     onSuccess: invalidateApplications,
     onError: () => messageApi.error(i18nText('applications', 'auto.save_failed'))
   });
@@ -251,14 +283,48 @@ export function ApplicationManagementPanel() {
     onError: () =>
       messageApi.error(i18nText('applications', 'auto.revert_to_draft_failed'))
   });
-  const createTagMutation = useMutation({
-    mutationFn: (name: string) => createApplicationTag({ name }, csrfToken),
-    onSuccess: invalidateApplications
+  const publishMutation = useMutation({
+    mutationFn: async (applicationId: string) => {
+      const mapping = await fetchApplicationApiMapping(applicationId);
+      return publishApplicationApiVersion(applicationId, mapping, csrfToken);
+    },
+    onSuccess: async () => {
+      await invalidateApplications();
+      messageApi.success(i18nText('agentFlow', 'auto.posted_successfully'));
+    },
+    onError: () =>
+      messageApi.error(i18nText('agentFlow', 'auto.publishing_failed'))
+  });
+  const exportCsvMutation = useMutation({
+    mutationFn: () =>
+      fetchAllSettingsApplicationManagement({
+        filter: managementQuery.filter,
+        sort: managementQuery.sort
+      }),
+    onSuccess: (applications) => {
+      downloadApplicationManagementCsv(
+        buildApplicationManagementCsv(applications)
+      );
+    },
+    onError: () =>
+      messageApi.error(
+        i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_export_failed'
+        )
+      )
   });
   const copyApplication = copyMutation.mutate;
   const exportApplication = exportMutation.mutate;
   const deleteApplicationById = deleteMutation.mutateAsync;
   const revertToDraft = revertToDraftMutation.mutateAsync;
+  const publishApplication = publishMutation.mutate;
+  const publishingApplicationId = publishMutation.isPending
+    ? publishMutation.variables
+    : null;
+  const revertingApplicationId = revertToDraftMutation.isPending
+    ? revertToDraftMutation.variables
+    : null;
 
   const permissions = me?.permissions ?? [];
   const isRoot = actor?.effective_display_role === 'root';
@@ -318,11 +384,9 @@ export function ApplicationManagementPanel() {
         width: 260,
         render: (_, application) => (
           <Flex vertical gap={2}>
-            <Typography.Link
-              href={`/applications/${encodeURIComponent(application.id)}/orchestration`}
-            >
+            <Typography.Text strong>
               {application.name}
-            </Typography.Link>
+            </Typography.Text>
             <Typography.Text type="secondary" ellipsis>
               {application.description ||
                 i18nText('applications', 'auto.application_description_empty')}
@@ -419,23 +483,11 @@ export function ApplicationManagementPanel() {
           'settingsApplicationManagement',
           'auto.application_management_actions'
         ),
-        width: 90,
+        width: 210,
         render: (_, application) => {
           const editAllowed = canEdit(application);
           const deleteAllowed = canDelete(application);
           const items: MenuProps['items'] = [
-            {
-              key: 'edit',
-              icon: <EditOutlined />,
-              label: i18nText('applications', 'auto.edit_information'),
-              disabled: !editAllowed
-            },
-            {
-              key: 'tags',
-              icon: <TagOutlined />,
-              label: i18nText('applications', 'auto.manage_tags'),
-              disabled: !editAllowed
-            },
             {
               key: 'copy',
               icon: <CopyOutlined />,
@@ -448,12 +500,6 @@ export function ApplicationManagementPanel() {
               label: i18nText('applications', 'auto.export_template'),
               disabled: application.application_type !== 'agent_flow'
             },
-            {
-              key: 'revert_to_draft',
-              icon: <RollbackOutlined />,
-              label: i18nText('applications', 'auto.revert_to_draft'),
-              disabled: application.publication_status !== 'published'
-            },
             { type: 'divider' },
             {
               key: 'delete',
@@ -464,21 +510,60 @@ export function ApplicationManagementPanel() {
             }
           ];
           return (
-            <Dropdown
-              menu={{
-                items,
-                onClick: ({ key }) => {
-                  if (key === 'edit') setEditingApplication(application);
-                  if (key === 'tags') setTaggingApplication(application);
-                  if (key === 'copy') copyApplication(application);
-                  if (key === 'export') exportApplication(application.id);
-                  if (key === 'revert_to_draft')
-                    confirmRevertToDraft(application);
-                  if (key === 'delete') confirmDelete(application);
+            <Space size={8} onClick={(event) => event.stopPropagation()}>
+              <Tooltip
+                title={
+                  editAllowed
+                    ? undefined
+                    : i18nText(
+                        'settingsApplicationManagement',
+                        'auto.application_management_permission_required'
+                      )
                 }
-              }}
-              trigger={['click']}
-            >
+              >
+                <span>
+                  <Button
+                    icon={<EditOutlined />}
+                    disabled={!editAllowed}
+                    onClick={() => setDetailsApplication(application)}
+                  >
+                    {i18nText('applications', 'auto.edit_information')}
+                  </Button>
+                </span>
+              </Tooltip>
+              <Tooltip
+                title={i18nText(
+                  'settingsApplicationManagement',
+                  'auto.application_management_publication_status'
+                )}
+              >
+                <Switch
+                  checked={application.publication_status === 'published'}
+                  disabled={!editAllowed}
+                  loading={
+                    publishingApplicationId === application.id ||
+                    revertingApplicationId === application.id
+                  }
+                  onChange={(published) => {
+                    if (published) {
+                      publishApplication(application.id);
+                    } else {
+                      confirmRevertToDraft(application);
+                    }
+                  }}
+                />
+              </Tooltip>
+              <Dropdown
+                menu={{
+                  items,
+                  onClick: ({ key }) => {
+                    if (key === 'copy') copyApplication(application);
+                    if (key === 'export') exportApplication(application.id);
+                    if (key === 'delete') confirmDelete(application);
+                  }
+                }}
+                trigger={['click']}
+              >
               <Button
                 type="text"
                 icon={<MoreOutlined />}
@@ -488,7 +573,8 @@ export function ApplicationManagementPanel() {
                   { value1: application.name }
                 )}
               />
-            </Dropdown>
+              </Dropdown>
+            </Space>
           );
         }
       }
@@ -500,7 +586,10 @@ export function ApplicationManagementPanel() {
       confirmDelete,
       confirmRevertToDraft,
       copyApplication,
-      exportApplication
+      exportApplication,
+      publishApplication,
+      publishingApplicationId,
+      revertingApplicationId
     ]
   );
   const tableConfiguration = usePersistedDataTableConfiguration({
@@ -558,21 +647,28 @@ export function ApplicationManagementPanel() {
                 updateRouteState({ page: 1, publication_status })
               }
             />
-            <Input
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
               aria-label={i18nText(
                 'settingsApplicationManagement',
-                'auto.application_management_creator_id'
+                'auto.application_management_creator'
               )}
               placeholder={i18nText(
                 'settingsApplicationManagement',
-                'auto.application_management_creator_id'
+                'auto.application_management_all_creators'
               )}
-              value={routeState.created_by ?? ''}
+              value={routeState.created_by}
+              options={(membersQuery.data ?? []).map((member) => ({
+                value: member.id,
+                label: member.name || member.nickname || member.account
+              }))}
               style={{ width: 190 }}
-              onChange={(event) =>
+              onChange={(created_by) =>
                 updateRouteState({
                   page: 1,
-                  created_by: event.target.value.trim() || undefined
+                  created_by
                 })
               }
             />
@@ -647,6 +743,16 @@ export function ApplicationManagementPanel() {
             />
           </Flex>
           <Space>
+            <Button
+              icon={<ExportOutlined />}
+              loading={exportCsvMutation.isPending}
+              onClick={() => exportCsvMutation.mutate()}
+            >
+              {i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_export_csv'
+              )}
+            </Button>
             <Button onClick={() => applicationsQuery.refetch()}>
               {i18nText('settings', 'auto.refresh')}
             </Button>
@@ -670,51 +776,33 @@ export function ApplicationManagementPanel() {
           pageSize={PAGE_SIZE}
           rowKey="id"
           total={applicationsQuery.data?.total ?? 0}
+          onRow={(application) => ({
+            className: 'application-management-panel__row',
+            onClick: (event) => {
+              const target = event.target as HTMLElement;
+              if (target.closest('button, a, input, [role="switch"]')) {
+                return;
+              }
+              setDetailsApplication(application);
+            }
+          })}
           onPageChange={(page) => updateRouteState({ page })}
         />
       </div>
 
-      {editingApplication ? (
-        <ApplicationEditModal
-          open
-          application={editingApplication}
-          saving={updateMutation.isPending}
-          onCancel={() => setEditingApplication(null)}
-          onSubmit={(values) => {
-            updateMutation.mutate(
-              {
-                application: editingApplication,
-                name: values.name,
-                description: values.description,
-                tagIds: editingApplication.tags.map((tag) => tag.id)
-              },
-              { onSuccess: () => setEditingApplication(null) }
-            );
-          }}
-        />
-      ) : null}
-      {taggingApplication ? (
-        <ApplicationTagManagerModal
-          open
-          application={taggingApplication}
-          catalogTags={catalog.tags}
-          saving={updateMutation.isPending}
-          creating={createTagMutation.isPending}
-          onCancel={() => setTaggingApplication(null)}
-          onSubmit={(tagIds) => {
-            updateMutation.mutate(
-              {
-                application: taggingApplication,
-                name: taggingApplication.name,
-                description: taggingApplication.description,
-                tagIds
-              },
-              { onSuccess: () => setTaggingApplication(null) }
-            );
-          }}
-          onCreateTag={(name) => createTagMutation.mutateAsync(name)}
-        />
-      ) : null}
+      <ApplicationDetailsDrawer
+        application={detailsApplication}
+        catalogTags={catalog.tags}
+        saving={updateMutation.isPending}
+        onClose={() => setDetailsApplication(null)}
+        onSubmit={(values) => {
+          if (!detailsApplication) return;
+          updateMutation.mutate(
+            { application: detailsApplication, values },
+            { onSuccess: () => setDetailsApplication(null) }
+          );
+        }}
+      />
     </SettingsSectionSurface>
   );
 }
