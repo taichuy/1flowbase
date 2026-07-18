@@ -3,6 +3,9 @@ use super::*;
 use crate::application_public_api::mapping::{
     ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationOperationBindings,
 };
+use crate::application_public_api::operation_bindings::{
+    ApplicationOperationBindingCapabilitySupport, ApplicationOperationBindingOperation,
+};
 use crate::application_public_api::publications::ApplicationPublicationJsDependencySnapshot;
 use crate::application_public_api::workflow_schedule::WorkflowScheduleTriggerRecord;
 
@@ -73,6 +76,19 @@ pub trait ApplicationApiMappingRepository: Send + Sync {
         &self,
         input: &ReplaceApplicationApiMappingInput,
     ) -> anyhow::Result<ApplicationApiMappingDraft>;
+}
+
+/// Reads the current Provider package declaration for a frozen compiled LLM
+/// target. The operation-binding console projection owns this narrow query so
+/// UI consumers never reconstruct capability truth from provider metadata.
+#[async_trait]
+pub trait ApplicationOperationBindingCapabilityRepository: Send + Sync {
+    async fn application_operation_binding_capability(
+        &self,
+        workspace_id: Uuid,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        operation: ApplicationOperationBindingOperation,
+    ) -> anyhow::Result<ApplicationOperationBindingCapabilitySupport>;
 }
 
 #[async_trait]

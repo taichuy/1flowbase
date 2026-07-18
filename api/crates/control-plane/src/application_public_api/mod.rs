@@ -7,6 +7,7 @@ pub mod conversations;
 pub mod mapping;
 pub mod model_catalog;
 pub mod native;
+pub mod operation_bindings;
 pub mod protocol_translation;
 pub mod publications;
 pub mod run_service;
@@ -16,6 +17,7 @@ pub mod workflow_start_http_inputs;
 
 use crate::{
     application::{effective_application_row_scope, ensure_application_console_row_scope},
+    errors::ControlPlaneError,
     ports::ApplicationRepository,
 };
 
@@ -49,13 +51,28 @@ pub(crate) async fn ensure_application_edit_permission<R>(
 where
     R: ApplicationRepository,
 {
+    if application_is_editable(repository, actor, application).await? {
+        Ok(())
+    } else {
+        Err(ControlPlaneError::PermissionDenied("permission_denied").into())
+    }
+}
+
+pub(crate) async fn application_is_editable<R>(
+    repository: &R,
+    actor: &domain::ActorContext,
+    application: &domain::ApplicationRecord,
+) -> anyhow::Result<bool>
+where
+    R: ApplicationRepository,
+{
     if actor.is_root {
-        return Ok(());
+        return Ok(true);
     }
     let policies = repository
         .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
         .await?;
-    ensure_application_console_row_scope(
+    Ok(ensure_application_console_row_scope(
         actor,
         application,
         effective_application_row_scope(
@@ -63,7 +80,7 @@ where
             access_control::APPLICATIONS_UPDATE_OPERATION_ID,
         ),
     )
-    .map_err(Into::into)
+    .is_ok())
 }
 
 #[cfg(test)]

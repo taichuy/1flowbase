@@ -65,6 +65,18 @@ use crate::{
 
 const PUBLIC_RUNS_PATH: &str = "/api/agent/v1/runs";
 
+pub(crate) mod operation_bindings;
+
+pub use operation_bindings::{
+    get_application_operation_bindings, ApplicationDraftOperationBindingProjectionResponse,
+    ApplicationOperationBindingOperationResponse, ApplicationOperationBindingOptionsResponse,
+    ApplicationOperationBindingProjectionResponse, ApplicationOperationBindingTargetOptionResponse,
+    ApplicationOperationBindingUnsupportedReasonResponse,
+    ApplicationPublishedOperationBindingProjectionResponse,
+    ApplicationPublishedOperationBindingStatusResponse,
+    ApplicationPublishedOperationBindingsProjectionResponse,
+};
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApplicationApiKeyBody {
     pub name: String,
@@ -339,6 +351,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             .put(
                 replace_application_api_mapping,
                 ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:application_id/api-operation-bindings",
+            console_get(
+                get_application_operation_bindings,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
             ),
         )
         .route(
