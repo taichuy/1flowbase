@@ -779,6 +779,85 @@
     ]
   },
   {
+    "id": "page.settings-system-runtime",
+    "kind": "page",
+    "title": "Settings System Runtime Page",
+    "impactFiles": [
+      "web/app/src/styles/tokens.css",
+      "web/app/src/styles/globals.css",
+      "web/app/src/app-shell/app-shell.css",
+      "web/packages/ui/src/index.tsx",
+      "web/app/src/app-shell/AppShellFrame.tsx",
+      "web/app/src/app-shell/Navigation.tsx",
+      "web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx",
+      "web/app/src/shared/ui/section-page-layout/section-page-layout.css",
+      "web/app/src/features/settings/pages/SettingsPage.tsx",
+      "web/app/src/features/settings/pages/settings-page/SettingsNavigation.tsx",
+      "web/app/src/features/settings/pages/settings-page/SettingsRouteShell.tsx",
+      "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "web/app/src/features/settings/lib/settings-sections.tsx",
+      "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
+      "web/app/src/features/settings/components/settings-section-surface.css",
+      "web/app/src/features/settings/components/SystemRuntimePanel.tsx",
+      "web/app/src/features/settings/components/system-runtime/RuntimeMetricsChart.tsx",
+      "web/app/src/features/settings/components/system-runtime/system-runtime-panel.css",
+      "web/app/src/features/settings/api/system-runtime.ts",
+      "web/app/src/features/settings/i18n/zh_Hans.json",
+      "web/app/src/features/settings/i18n/en_US.json",
+      "web/app/src/style-boundary/scene-fixtures.ts",
+      "web/app/src/style-boundary/SettingsSystemRuntimeStyleBoundaryScene.tsx",
+      "web/app/src/style-boundary/renderers.tsx",
+      "web/app/src/app/router.tsx",
+      "web/packages/api-client/src/console-system.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "runtime-panel",
+        "selector": ".system-runtime-panel",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          },
+          {
+            "property": "align-content",
+            "expected": "start"
+          }
+        ]
+      },
+      {
+        "id": "runtime-service-list",
+        "selector": ".system-runtime-panel__service-list",
+        "propertyAssertions": [
+          {
+            "property": "overflow",
+            "expected": "hidden"
+          }
+        ]
+      },
+      {
+        "id": "runtime-metric-strip",
+        "selector": ".system-runtime-panel__metric-strip",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "runtime-chart-panel",
+        "selector": ".system-runtime-panel__chart-panel",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "id": "page.settings-applications",
     "kind": "page",
     "title": "Settings Applications Page",

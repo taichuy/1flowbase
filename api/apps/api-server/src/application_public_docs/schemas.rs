@@ -30,6 +30,7 @@ pub(super) fn native_create_run_request_body(docs: &DocTextResolver) -> Value {
             "inputs": {"priority": "high"},
             "execution": {
                 "model_parameters": {
+                    "max_output_tokens": 4096,
                     "reasoning": {
                         "enabled": true,
                         "effort": "high"

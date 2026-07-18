@@ -82,6 +82,11 @@ pub async fn invoke_workflow_extension(
                 domain::FlowRunStatus::Succeeded => {
                     Ok((StatusCode::OK, Json(detail.flow_run.output_payload)).into_response())
                 }
+                domain::FlowRunStatus::Incomplete => Err(NativeApiError::new(
+                    StatusCode::CONFLICT,
+                    "workflow_incomplete",
+                    "workflow run reached its output limit",
+                )),
                 domain::FlowRunStatus::Queued
                 | domain::FlowRunStatus::Running
                 | domain::FlowRunStatus::WaitingCallback

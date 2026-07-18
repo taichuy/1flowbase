@@ -13,6 +13,8 @@ pub(super) struct LlmInvocationDebugContext {
     compatibility_promotions: Vec<Value>,
     system_sources: Vec<Value>,
     previous_response_id: Option<String>,
+    effective_max_output_tokens: Option<u64>,
+    max_output_tokens_source: &'static str,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -26,6 +28,7 @@ impl LlmInvocationDebugContext {
         context_policy: Value,
         previous_response_id: Option<String>,
         context: &ProviderPromptContext,
+        model_parameters: &ResolvedLlmModelParameters,
     ) -> Self {
         Self {
             context_policy,
@@ -34,10 +37,12 @@ impl LlmInvocationDebugContext {
             compatibility_promotions: context.compatibility_promotions.clone(),
             system_sources: context.system_sources.clone(),
             previous_response_id,
+            effective_max_output_tokens: model_parameters.effective_max_output_tokens,
+            max_output_tokens_source: model_parameters.max_output_tokens_source,
         }
     }
 
-    pub(super) fn to_payload(&self) -> Value {
+    pub(super) fn to_payload(&self, result: Option<&ProviderInvocationResult>) -> Value {
         let mut payload = Map::new();
         payload.insert("context_policy".to_string(), self.context_policy.clone());
         payload.insert(
@@ -62,6 +67,22 @@ impl LlmInvocationDebugContext {
                 Value::String(previous_response_id.clone()),
             );
         }
+        let effective_max_output_tokens = result
+            .and_then(|result| {
+                result
+                    .provider_metadata
+                    .get("effective_max_output_tokens")
+                    .and_then(Value::as_u64)
+            })
+            .or(self.effective_max_output_tokens);
+        payload.insert(
+            "effective_max_output_tokens".to_string(),
+            effective_max_output_tokens.map_or(Value::Null, Value::from),
+        );
+        payload.insert(
+            "max_output_tokens_source".to_string(),
+            Value::String(self.max_output_tokens_source.to_string()),
+        );
         Value::Object(payload)
     }
 }
@@ -134,10 +155,12 @@ pub(super) fn build_provider_invocation(
         ("node_id".to_string(), node.node_id.clone()),
         ("node_alias".to_string(), node.alias.clone()),
     ]);
+    let model_parameters = resolve_model_parameters(node, runtime, variable_pool)?;
     let debug_context = LlmInvocationDebugContext::from_provider_context(
         context_policy,
         previous_response_id.clone(),
         &provider_context,
+        &model_parameters,
     );
 
     let mut run_context = BTreeMap::from([(
@@ -169,7 +192,7 @@ pub(super) fn build_provider_invocation(
         ),
         mcp_bindings: Vec::new(),
         response_format: build_response_format(&node.config),
-        model_parameters: build_model_parameters(node, runtime, variable_pool),
+        model_parameters: model_parameters.values,
         client_protocol_envelope: runtime_context.client_protocol_envelope.clone(),
         trace_context,
         run_context,

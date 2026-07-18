@@ -11,7 +11,8 @@ use control_plane::{
         run_service::{
             ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
             CancelPublishedFlowRunInput, CreatePublishedFlowRunResult,
-            ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunStreamState,
+            ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage,
+            PublishedRunPendingCallback, PublishedRunStreamState,
         },
     },
     errors::ControlPlaneError,
@@ -21,15 +22,17 @@ use control_plane::{
         AppendRunEventInput, AppendRuntimeEventInput, AppendRuntimeItemInput,
         AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, AttachCompiledPlanToFlowRunInput,
-        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
-        CompleteCallbackTaskInput, CompleteFlowRunInput, CompleteNodeRunInput,
-        CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
+        CallbackResumeContext, CallbackResumeWaitingNode, ClearModelProviderRequestLogsBatchInput,
+        ClearModelProviderRequestLogsBatchResult, CompleteCallbackTaskInput, CompleteFlowRunInput,
+        CompleteNodeRunInput, CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
         CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
         DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
         DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
-        FailQueuedFlowRunShellInput, FinishFlowRunCallbackResumeAttemptInput,
-        GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
-        LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
+        FailQueuedFlowRunShellInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+        FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
+        FinishFlowRunCallbackResumeAttemptInput, GetApplicationRunMonitoringReportInput,
+        GetRuntimeDebugArtifactInput, LinkUsageLedgerToModelFailoverAttemptInput,
+        ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, ModelProviderRequestLogsPage,
@@ -146,6 +149,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         PgControlPlaneStore::update_flow_run_if_status(self, input, expected_status).await
     }
 
+    async fn finalize_published_run_missing_stream_terminal(
+        &self,
+        input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+    ) -> Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome> {
+        PgControlPlaneStore::finalize_published_run_missing_stream_terminal(self, input).await
+    }
+
     async fn complete_flow_run(
         &self,
         input: &CompleteFlowRunInput,
@@ -180,6 +190,15 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         callback_task_id: Uuid,
     ) -> Result<Option<domain::CallbackTaskRecord>> {
         PgControlPlaneStore::get_callback_task(self, callback_task_id).await
+    }
+
+    async fn get_callback_resume_context(
+        &self,
+        application_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> Result<Option<CallbackResumeContext>> {
+        PgControlPlaneStore::get_callback_resume_context(self, application_id, callback_task_id)
+            .await
     }
 
     async fn complete_callback_task(
@@ -437,6 +456,19 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         after_sequence: i64,
     ) -> Result<Vec<domain::RuntimeEventRecord>> {
         PgControlPlaneStore::list_runtime_events(self, flow_run_id, after_sequence).await
+    }
+
+    async fn get_runtime_event_sequence_for_callback_task(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> Result<Option<i64>> {
+        PgControlPlaneStore::get_runtime_event_sequence_for_callback_task(
+            self,
+            flow_run_id,
+            callback_task_id,
+        )
+        .await
     }
 
     async fn list_runtime_event_backfill_page(
@@ -865,7 +897,6 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
               and api_key_id = $2
               and external_user = $3
               and external_conversation_id = $4
-              and compatibility_mode = $5
               and run_mode = 'published_api_run'
               and status = 'waiting_callback'
             order by started_at asc, id asc
@@ -875,7 +906,6 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         .bind(input.api_key_id)
         .bind(&input.external_user)
         .bind(&input.external_conversation_id)
-        .bind(&input.compatibility_mode)
         .fetch_all(self.pool())
         .await?;
 
@@ -886,7 +916,35 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         &self,
         callback_task_id: Uuid,
     ) -> Result<Option<domain::CallbackTaskRecord>> {
-        PgControlPlaneStore::get_callback_task(self, callback_task_id).await
+        let row = sqlx::query(
+            r#"
+            select
+                id,
+                flow_run_id,
+                node_run_id,
+                callback_kind,
+                status,
+                case
+                    when callback_kind = 'llm_tool_calls'
+                    then jsonb_build_object('tool_calls', request_payload -> 'tool_calls')
+                    else request_payload
+                end as request_payload,
+                response_payload,
+                case
+                    when callback_kind = 'llm_tool_calls' then null
+                    else external_ref_payload
+                end as external_ref_payload,
+                created_at,
+                completed_at
+            from flow_run_callback_tasks
+            where id = $1
+            "#,
+        )
+        .bind(callback_task_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(map_callback_task_record).transpose()
     }
 
     async fn get_published_run_stream_state(
@@ -942,19 +1000,21 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
                 output_usage: row.get("output_usage"),
             })
             .collect();
-        let latest_pending_callback_task = sqlx::query(
+        let latest_pending_callback = sqlx::query(
             r#"
             select
                 id,
                 flow_run_id,
                 node_run_id,
                 callback_kind,
-                status,
-                request_payload,
-                response_payload,
-                external_ref_payload,
-                created_at,
-                completed_at
+                case
+                    when callback_kind = 'llm_tool_calls' then null
+                    else request_payload
+                end as request_payload,
+                case
+                    when callback_kind = 'llm_tool_calls' then request_payload -> 'tool_calls'
+                    else null
+                end as tool_calls
             from flow_run_callback_tasks
             where flow_run_id = $1
               and status = 'pending'
@@ -965,8 +1025,14 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         .bind(flow_run_id)
         .fetch_optional(self.pool())
         .await?
-        .map(map_callback_task_record)
-        .transpose()?;
+        .map(|row| PublishedRunPendingCallback {
+            id: row.get("id"),
+            flow_run_id: row.get("flow_run_id"),
+            node_run_id: row.get("node_run_id"),
+            callback_kind: row.get("callback_kind"),
+            request_payload: row.get("request_payload"),
+            tool_calls: row.get("tool_calls"),
+        });
 
         Ok(Some(PublishedRunStreamState {
             status: crate::mappers::orchestration_runtime_mapper::parse_flow_run_status(
@@ -975,23 +1041,8 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
             output_payload: row.get("output_payload"),
             error_payload: row.get("error_payload"),
             node_usages,
-            latest_pending_callback_task,
+            latest_pending_callback,
         }))
-    }
-
-    async fn get_published_run_detail(
-        &self,
-        application_id: Uuid,
-        flow_run_id: Uuid,
-    ) -> Result<Option<domain::ApplicationRunDetail>> {
-        let detail =
-            PgControlPlaneStore::get_application_run_detail(self, application_id, flow_run_id)
-                .await?;
-
-        Ok(
-            detail
-                .filter(|detail| detail.flow_run.run_mode == domain::FlowRunMode::PublishedApiRun),
-        )
     }
 }
 

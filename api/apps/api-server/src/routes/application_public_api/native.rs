@@ -22,8 +22,13 @@ use control_plane::{
             AgentModelDescriptor, AgentModelReasoning,
         },
         native::{
-            ApplicationNativeRunService, CancelNativeRunCommand, CreateNativeRunCommand,
-            GetNativeRunCommand, NativeRunRequest, NativeRunResult, NativeRunValidationError,
+            translate_native_run_request, ApplicationNativeRunService, CancelNativeRunCommand,
+            CreateNativeRunCommand, GetNativeRunCommand, NativeRunRequest, NativeRunResult,
+            NativeRunStatus, NativeRunValidationError,
+        },
+        protocol_translation::{
+            TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol,
+            TranslationReport, TranslationSafeRepresentation,
         },
         publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
         run_service::native_result_from_run_detail,
@@ -35,10 +40,10 @@ use control_plane::{
     ports::AuthRepository,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
-use tracing::error;
+use tracing::{debug, error};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -46,7 +51,12 @@ use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
-    routes::{application_public_api::sse, files::UploadedFileResponse},
+    routes::{
+        application_public_api::{
+            sse, stream_terminal_fallback::recover_missing_stream_terminal_winner,
+        },
+        files::UploadedFileResponse,
+    },
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
@@ -135,6 +145,14 @@ pub struct NativeApiError {
     pub(crate) status: StatusCode,
     pub(crate) code: &'static str,
     pub(crate) message: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct NativeRunRequestParseError {
+    pub(crate) code: &'static str,
+    pub(crate) message: String,
+    #[cfg(test)]
+    pub(crate) report: TranslationReport,
 }
 
 impl NativeApiError {
@@ -365,73 +383,46 @@ fn is_llm_tool_result_validation_error(message: &str) -> bool {
     .any(|prefix| message.starts_with(prefix))
 }
 
-fn parse_native_run_request(bytes: Bytes) -> Result<NativeRunRequest, NativeApiError> {
-    let value = serde_json::from_slice::<Value>(&bytes)
-        .map_err(|_| NativeApiError::new(StatusCode::BAD_REQUEST, "json", "invalid JSON body"))?;
-    if let Some(field) = invalid_native_field(&value) {
-        return Err(NativeApiError::new(
-            StatusCode::BAD_REQUEST,
-            field,
-            format!("invalid native request field: {field}"),
-        ));
-    }
-    let mut request: NativeRunRequest = serde_json::from_value(value)
-        .map_err(|error| NativeApiError::new(StatusCode::BAD_REQUEST, "body", error.to_string()))?;
-    request.protocol_compatibility_mode = Some("native-v1".to_string());
-    Ok(request)
-}
-
-fn invalid_native_field(value: &Value) -> Option<&'static str> {
-    if !value.is_object() {
-        return Some("body");
-    }
-    let field = |name: &str| value.get(name);
-    if !field("query").is_some_and(Value::is_string) {
-        return Some("query");
-    }
-    if field("model").is_some_and(|value| !value.is_string()) {
-        return Some("model");
-    }
-    if field("inputs").is_some_and(|value| !value.is_object()) {
-        return Some("inputs");
-    }
-    if field("history").is_some_and(|value| !value.is_array()) {
-        return Some("history");
-    }
-    if field("attachments").is_some_and(|value| !value.is_array()) {
-        return Some("attachments");
-    }
-    if field("conversation").is_some_and(|value| !value.is_object()) {
-        return Some("conversation");
-    }
-    if field("expand_id").is_some_and(|value| !value.is_string()) {
-        return Some("expand_id");
-    }
-    if field("user_id").is_some() {
-        return Some("user_id");
-    }
-    if field("response_mode").is_some_and(|value| !value.is_string()) {
-        return Some("response_mode");
-    }
-    if field("stream_options").is_some_and(|value| !value.is_object()) {
-        return Some("stream_options");
-    }
-    if field("execution").is_some_and(|value| !value.is_object()) {
-        return Some("execution");
-    }
-    if field("metadata").is_some_and(|value| !value.is_object()) {
-        return Some("metadata");
-    }
-    if field("title").is_some_and(|value| !value.is_string()) {
-        return Some("title");
-    }
-    if field("compatibility_mode").is_some_and(|value| !value.is_string()) {
-        return Some("compatibility_mode");
-    }
-    None
+pub(crate) fn parse_native_run_request(
+    bytes: Bytes,
+) -> Result<TranslatedNativeRunRequest, NativeRunRequestParseError> {
+    let value = serde_json::from_slice::<Value>(&bytes).map_err(|_| {
+        let mut report = TranslationReport::new(TranslationProtocol::Native);
+        report.record(
+            "$.body",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("invalid JSON body"),
+            TranslationSafeRepresentation::Present,
+        );
+        NativeRunRequestParseError {
+            code: "json",
+            message: "invalid JSON body".to_string(),
+            #[cfg(test)]
+            report,
+        }
+    })?;
+    translate_native_run_request(value).map_err(|error| {
+        debug!(
+            route = "native_runs",
+            translation_decision_count = error.report.decisions.len(),
+            code = error.code,
+            "Native request rejected by protocol adapter"
+        );
+        NativeRunRequestParseError {
+            code: error.code,
+            message: error.message,
+            #[cfg(test)]
+            report: error.report,
+        }
+    })
 }
 
 pub(crate) fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse {
+    let exposes_answer = matches!(
+        run.status,
+        NativeRunStatus::Succeeded | NativeRunStatus::Incomplete
+    );
     NativeRunResponse {
         id: run.id,
         application_id: run.application_id,
@@ -443,9 +434,10 @@ pub(crate) fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse 
             .unwrap_or_else(|| "unknown".to_string()),
         node_input_payload: run.node_input_payload,
         metadata: run.metadata,
-        answer: run.answer,
-        answer_segments: run
-            .answer_segments
+        answer: exposes_answer.then_some(run.answer).flatten(),
+        answer_segments: exposes_answer
+            .then_some(run.answer_segments)
+            .flatten()
             .and_then(|segments| serde_json::to_value(segments).ok()),
         required_action: run
             .required_action
@@ -455,24 +447,6 @@ pub(crate) fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse 
         error: run.error.and_then(|value| serde_json::to_value(value).ok()),
         created_at: run.created_at.to_string(),
     }
-}
-
-pub(crate) fn published_run_metadata(flow_run: &domain::FlowRunRecord) -> Value {
-    json!({
-        "title": flow_run.title,
-        "expand_id": flow_run.external_user,
-        "external_user": flow_run.external_user,
-        "external_conversation_id": flow_run.external_conversation_id,
-        "external_trace_id": flow_run.external_trace_id,
-        "compatibility_mode": flow_run.compatibility_mode,
-        "idempotency_key": flow_run.idempotency_key,
-        "request": {
-            "conversation": {
-                "id": flow_run.external_conversation_id,
-                "user": flow_run.external_user,
-            }
-        }
-    })
 }
 
 pub(crate) async fn execute_blocking_native_run(
@@ -526,6 +500,50 @@ pub(crate) async fn execute_blocking_native_run(
     }
 }
 
+pub(crate) fn blocking_run_projection_error(run: &NativeRunResult) -> NativeApiError {
+    match run.status {
+        NativeRunStatus::Failed => {
+            let status = run
+                .error
+                .as_ref()
+                .and_then(|error| error.details.get("status_code"))
+                .and_then(Value::as_u64)
+                .and_then(|status| u16::try_from(status).ok())
+                .and_then(|status| StatusCode::from_u16(status).ok())
+                .filter(|status| status.is_client_error() || status.is_server_error())
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            let message = run
+                .error
+                .as_ref()
+                .map(|error| error.message.as_str())
+                .unwrap_or("published run failed");
+            NativeApiError::new(status, "runtime_error", message)
+        }
+        NativeRunStatus::Cancelled => NativeApiError::new(
+            StatusCode::CONFLICT,
+            "run_cancelled",
+            "published run cancelled",
+        ),
+        NativeRunStatus::Waiting => NativeApiError::new(
+            StatusCode::CONFLICT,
+            "required_action_not_supported",
+            "waiting states are not supported by compatible endpoints; use the Native API to inspect and resume required_action runs",
+        ),
+        NativeRunStatus::Created | NativeRunStatus::Queued | NativeRunStatus::Running => {
+            NativeApiError::new(
+                StatusCode::CONFLICT,
+                "run_not_terminal",
+                "blocking run did not reach a terminal state",
+            )
+        }
+        NativeRunStatus::Succeeded | NativeRunStatus::Incomplete => NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "projection_error",
+            "terminal run cannot be projected as an error",
+        ),
+    }
+}
+
 #[utoipa::path(
     post,
     path = "/api/agent/v1/runs",
@@ -544,7 +562,14 @@ pub async fn create_native_run(
     body: Bytes,
 ) -> Result<Response, NativeApiError> {
     let bearer_token = bearer_token(&headers)?;
-    let request = parse_native_run_request(body)?;
+    let translated = parse_native_run_request(body)
+        .map_err(|error| NativeApiError::new(StatusCode::BAD_REQUEST, error.code, error.message))?;
+    debug!(
+        route = "native_runs",
+        translation_decision_count = translated.report.decisions.len(),
+        "Native request translated"
+    );
+    let request = translated.request;
     let response_mode = request.response_mode.clone();
     let include_workflow_events = include_workflow_events(&request);
     let run = ApplicationNativeRunService::new(state.store.clone())
@@ -615,9 +640,10 @@ async fn start_native_run_stream(
     ));
 
     let background_state = state.clone();
+    let background_run = run.clone();
     tokio::spawn(async move {
         let _execution_activity = background_state.runtime_activity.start(
-            run.application_id,
+            background_run.application_id,
             ApplicationActivityKind::ApplicationExecution,
         );
         let runtime_service = OrchestrationRuntimeService::new(
@@ -635,34 +661,27 @@ async fn start_native_run_stream(
         .with_provider_request_log_queue(background_state.infrastructure.task_queue())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         if let Err(runtime_error) = scope_application_activity(
-            run.application_id,
+            background_run.application_id,
             runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
-                application_id: run.application_id,
-                flow_run_id: run.id,
+                application_id: background_run.application_id,
+                flow_run_id: background_run.id,
             }),
         )
         .await
         {
-            let _ = background_state
-                .runtime_event_stream
-                .append(
-                    run.id,
-                    debug_stream_events::flow_failed(
-                        run.id,
-                        serde_json::json!({ "message": runtime_error.to_string() }),
-                    ),
-                )
-                .await;
-            let _ = background_state
-                .runtime_event_stream
-                .close_run(
-                    run.id,
-                    control_plane::ports::RuntimeEventCloseReason::Failed,
-                )
-                .await;
+            if let Err(recovery_error) =
+                recover_missing_stream_terminal_winner(&background_state, &background_run).await
+            {
+                error!(
+                    application_id = %background_run.application_id,
+                    flow_run_id = %background_run.id,
+                    error = %recovery_error,
+                    "failed to recover the durable winner after native streaming execution ended"
+                );
+            }
             error!(
-                application_id = %run.application_id,
-                flow_run_id = %run.id,
+                application_id = %background_run.application_id,
+                flow_run_id = %background_run.id,
                 error = %runtime_error,
                 "failed to execute native streaming published run"
             );
@@ -737,8 +756,23 @@ pub async fn cancel_native_run(
         })
         .await
         .map_err(native_error)?;
+    if run.status == NativeRunStatus::Cancelled {
+        publish_native_cancelled_terminal(state.as_ref(), run.id).await;
+    }
 
     Ok(Json(ApiSuccess::new(to_native_run_response(run))))
+}
+
+async fn publish_native_cancelled_terminal(state: &ApiState, run_id: Uuid) {
+    if let Err(error) = state
+        .runtime_event_stream
+        .append_terminal_if_missing_and_close(run_id, debug_stream_events::flow_cancelled(run_id))
+        .await
+    {
+        // A non-streaming run has no live event stream. Its durable
+        // `flow_cancelled` event is already committed by the cancel owner.
+        debug!(flow_run_id = %run_id, error = %error, "cancelled run has no open live event stream");
+    }
 }
 
 #[utoipa::path(
@@ -790,10 +824,7 @@ pub async fn resume_native_run(
             })
             .await
             .map_err(service_error)?;
-    let run = control_plane::application_public_api::run_service::native_result_from_run_detail(
-        &result.detail,
-        published_run_metadata(&result.detail.flow_run),
-    );
+    let run = result.run;
 
     Ok(Json(ApiSuccess::new(to_native_run_response(run))).into_response())
 }

@@ -1,6 +1,6 @@
 use control_plane::{
-    application_public_api::publications::UnpublishApplicationCommand,
-    errors::ControlPlaneError, ports::ApplicationPublicationRepository,
+    application_public_api::publications::UnpublishApplicationCommand, errors::ControlPlaneError,
+    ports::ApplicationPublicationRepository,
 };
 
 use super::*;

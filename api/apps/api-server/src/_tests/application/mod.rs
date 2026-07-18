@@ -11,3 +11,8 @@ mod application_runtime_stream_routes;
 mod model_definition_routes;
 mod node_contribution_routes;
 mod runtime_model_routes;
+
+pub(crate) use application_runtime_routes::{
+    create_gated_provider_instance, create_marker_output_provider_instance,
+    create_ready_provider_instance, ProviderInvocationGate, PROVIDER_MARKER_LIKE_OUTPUT,
+};

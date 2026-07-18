@@ -575,6 +575,20 @@ where
                     .then_with(|| right.id.cmp(&left.id))
             });
         }
+        let official_by_provider = match self.official_source.list_official_catalog().await {
+            Ok(snapshot) => normalize_official_entries(snapshot.entries)
+                .into_iter()
+                .filter(|entry| entry.plugin_type == "model_provider")
+                .map(|entry| (entry.provider_code.clone(), entry))
+                .collect::<HashMap<_, _>>(),
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "official plugin catalog unavailable while listing provider families; using installed versions"
+                );
+                HashMap::new()
+            }
+        };
         let mut families = Vec::with_capacity(assignments.len());
         let mut i18n_catalog = BTreeMap::new();
         for assignment in assignments {
@@ -596,7 +610,7 @@ where
                 &mut i18n_catalog,
                 trim_json_bundles(&namespace, &projection.i18n_bundles, &locales),
             );
-            let latest_version = installations_by_provider
+            let latest_installed_version = installations_by_provider
                 .get(&assignment.provider_code)
                 .into_iter()
                 .flatten()
@@ -607,6 +621,10 @@ where
                         .then_with(|| left.id.cmp(&right.id))
                 })
                 .map(|installation| installation.plugin_version.clone());
+            let latest_version = official_by_provider
+                .get(&assignment.provider_code)
+                .map(|entry| entry.latest_version.clone())
+                .or(latest_installed_version);
             let installed_versions = installations_by_provider
                 .get(&assignment.provider_code)
                 .into_iter()

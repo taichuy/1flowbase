@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn anthropic_resume_replay_terminal_drains_route_callback_as_tool_use() {
+async fn anthropic_resume_replay_terminal_returns_explicit_unsupported() {
     let mut run = native_run();
     let route_node_run_id = Uuid::from_u128(0x77777777777777777777777777777777);
     let previous_callback_task_id = Uuid::from_u128(0x88888888888888888888888888888888);
@@ -155,13 +155,16 @@ async fn anthropic_resume_replay_terminal_drains_route_callback_as_tool_use() {
     let body = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(body.contains("event: message_start"), "{body}");
-    assert!(body.contains("\"type\":\"tool_use\""), "{body}");
-    assert!(body.contains("\"name\":\"Read\""), "{body}");
+    assert!(body.contains("event: error"), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("\"type\":\"tool_use\""), "{body}");
+    assert!(!body.contains("\"name\":\"Read\""), "{body}");
     assert!(
-        body.contains("agent-flow-node-detail-icon-aligned.png"),
+        !body.contains("agent-flow-node-detail-icon-aligned.png"),
         "{body}"
     );
-    assert!(body.contains("\"stop_reason\":\"tool_use\""), "{body}");
-    assert!(body.contains("event: message_stop"), "{body}");
+    assert!(!body.contains("\"stop_reason\":\"tool_use\""), "{body}");
+    assert!(!body.contains("\"stop_reason\":\"end_turn\""), "{body}");
+    assert!(!body.contains("event: message_stop"), "{body}");
     assert!(!body.contains("uploads/old.png"), "{body}");
 }

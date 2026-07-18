@@ -1,5 +1,54 @@
 use super::*;
 
+#[test]
+fn waiting_callback_event_references_large_request_without_copying_it() {
+    let flow_run_id = Uuid::now_v7();
+    let node_run_id = Uuid::now_v7();
+    let callback_task = domain::CallbackTaskRecord {
+        id: Uuid::now_v7(),
+        flow_run_id,
+        node_run_id,
+        callback_kind: "llm_tool_calls".to_string(),
+        status: domain::CallbackTaskStatus::Pending,
+        request_payload: json!({
+            "history": "x".repeat(2 * 1024 * 1024),
+            "tool_calls": [{
+                "id": "call_weather",
+                "name": "lookup_weather",
+                "arguments": { "city": "Shanghai" }
+            }]
+        }),
+        response_payload: None,
+        external_ref_payload: None,
+        created_at: time::OffsetDateTime::now_utc(),
+        completed_at: None,
+    };
+
+    let event = crate::orchestration_runtime::debug_stream_events::waiting_callback_with_task(
+        flow_run_id,
+        node_run_id,
+        "node-llm",
+        &callback_task,
+    );
+
+    assert!(event.payload.get("request_payload").is_none());
+    assert!(event.payload["required_action"]["payload"]
+        .get("request_payload")
+        .is_none());
+    assert_eq!(
+        event.payload["required_action"]["payload"]["callback_task_id"],
+        json!(callback_task.id)
+    );
+    assert_eq!(
+        event.payload["required_action"]["payload"]["tool_calls"][0]["id"],
+        json!("call_weather")
+    );
+    assert!(
+        serde_json::to_vec(&event.payload).unwrap().len()
+            < crate::ports::EPHEMERAL_PAYLOAD_MAX_BYTES
+    );
+}
+
 #[tokio::test]
 async fn live_llm_tool_calls_create_callback_task_and_pause_downstream() {
     use plugin_framework::provider_contract::{
@@ -82,11 +131,15 @@ async fn live_llm_tool_calls_create_callback_task_and_pause_downstream() {
         waiting_detail.callback_tasks[0].request_payload["tool_calls"][0]["id"],
         "call_weather"
     );
+    assert!(waiting_detail.callback_tasks[0]
+        .external_ref_payload
+        .is_none());
     let checkpoint = waiting_detail
         .checkpoints
         .last()
         .expect("llm tool wait should store checkpoint");
     assert_eq!(checkpoint.locator_payload["node_id"], "node-llm");
+    assert!(checkpoint.external_ref_payload.is_none());
     assert_eq!(checkpoint.locator_payload["next_node_index"], json!(1));
     assert_eq!(
         checkpoint.variable_snapshot["node-llm"]["__llm_tool_callback"]["pending_tool_calls"][0]
@@ -154,6 +207,7 @@ async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
         .await
         .unwrap();
 
+    service.reset_application_run_detail_read_count();
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             actor_user_id: seeded.actor_user_id,
@@ -171,6 +225,7 @@ async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
         .await
         .unwrap();
 
+    assert_eq!(service.application_run_detail_read_count(), 1);
     assert_eq!(completed.flow_run.status, domain::FlowRunStatus::Succeeded);
     assert_eq!(
         completed.flow_run.output_payload["answer"],
@@ -226,7 +281,7 @@ async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
 }
 
 #[tokio::test]
-async fn callback_resume_does_not_repeat_final_live_answer_presentation() {
+async fn callback_resume_persists_final_answer_without_reopening_waiting_stream() {
     use plugin_framework::provider_contract::{
         ProviderFinishReason, ProviderInvocationResult, ProviderStreamEvent, ProviderToolCall,
     };
@@ -298,6 +353,25 @@ async fn callback_resume_does_not_repeat_final_live_answer_presentation() {
         })
         .await
         .unwrap();
+    let waiting_presentation = service
+        .list_runtime_events(waiting.flow_run.id, 0)
+        .await
+        .into_iter()
+        .filter(|event| event.event_type == "text_delta")
+        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
+        .filter_map(|event| event.payload["text"].as_str().map(str::to_string))
+        .collect::<String>();
+    let waiting_streamed_presentation = stream
+        .events()
+        .into_iter()
+        .filter(|event| event.event_type == "text_delta")
+        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
+        .filter_map(|event| event.payload["text"].as_str().map(str::to_string))
+        .collect::<String>();
+    assert_eq!(
+        waiting_presentation, "我先检查文件。",
+        "streamed waiting presentation: {waiting_streamed_presentation}"
+    );
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
@@ -331,7 +405,10 @@ async fn callback_resume_does_not_repeat_final_live_answer_presentation() {
         .filter_map(|event| event.payload["text"].as_str())
         .collect::<String>();
     let expected_presentation = format!("我先检查文件。{final_answer}");
-    assert_eq!(presentation_text, expected_presentation);
+    assert_eq!(
+        presentation_text, expected_presentation,
+        "persisted Answer Presentation events: {presentation_events:#?}"
+    );
     assert_eq!(
         presentation_text.matches(final_answer).count(),
         1,
@@ -350,11 +427,18 @@ async fn callback_resume_does_not_repeat_final_live_answer_presentation() {
         .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
         .filter_map(|event| event.payload["text"].as_str().map(str::to_string))
         .collect::<String>();
-    assert_eq!(streamed_text, expected_presentation);
+    assert_eq!(streamed_text, "我先检查文件。");
     assert_eq!(
         streamed_text.matches(final_answer).count(),
-        1,
-        "the compatible SSE source must receive the callback final answer exactly once: {streamed_text}"
+        0,
+        "the waiting stream must not reopen to append a later callback terminal: {streamed_text}"
+    );
+    assert_eq!(
+        stream.close_calls(),
+        vec![(
+            completed.flow_run.id,
+            crate::ports::RuntimeEventCloseReason::WaitingCallback
+        )]
     );
 }
 

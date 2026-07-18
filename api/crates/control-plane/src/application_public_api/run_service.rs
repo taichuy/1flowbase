@@ -13,8 +13,8 @@ use super::{
         ListApplicationPublicConversationMessagesInput,
     },
     native::{
-        CreateNativeRunCommand, NativeInputMapper, NativeProtocolRequestKind, NativeRunRequest,
-        NativeRunResult, NativeRunValidationError,
+        CreateNativeRunCommand, NativeInputMapper, NativeRunRequest, NativeRunResult,
+        NativeRunValidationError,
     },
     publications::ApplicationPublicationVersionRecord,
 };
@@ -39,7 +39,8 @@ pub use native_results::{
 pub use repository_contracts::{
     ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
     CancelPublishedFlowRunInput, CreatePublishedFlowRunResult,
-    ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunStreamState,
+    ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunPendingCallback,
+    PublishedRunStreamState,
 };
 use run_input::{
     compiled_plan_start_node_id, freeze_run_input_environment, generate_external_conversation_id,
@@ -52,8 +53,9 @@ pub(crate) use run_input::{
 };
 
 const APPLICATION_PUBLIC_CONVERSATION_HISTORY_LIMIT: i64 = 50;
-const ANTHROPIC_MESSAGES_COMPATIBILITY_MODE: &str = "anthropic-messages-v1";
 const PUBLIC_RUN_IDEMPOTENCY_FINGERPRINT: &str = "public_run_idempotency_fingerprint";
+const PUBLISHED_RUN_CANCELLED_ERROR_CODE: &str = "cancelled";
+const PUBLISHED_RUN_CANCELLED_ERROR_MESSAGE: &str = "published run cancelled";
 
 pub struct ApplicationPublishedRunService<R> {
     repository: R,
@@ -101,10 +103,14 @@ where
 
         let publication = self.load_enabled_publication(&actor).await?;
         let client_request = command.request;
+        let external_model_parameters = validate_external_model_parameters(
+            client_request.execution.model_parameters(),
+            client_request.model.as_deref(),
+            &publication.document_snapshot,
+        )?;
         let idempotency_key = client_request
             .execution
-            .get("idempotency_key")
-            .and_then(Value::as_str)
+            .idempotency_key()
             .map(ToOwned::to_owned);
         let idempotency_fingerprint = idempotency_key
             .as_ref()
@@ -113,8 +119,6 @@ where
         let request = self
             .bind_conversation(actor.application_id, actor.api_key_id, client_request)
             .await?;
-        let external_model_parameters =
-            validate_external_model_parameters(&request, &publication.document_snapshot)?;
 
         let compiled_plan = self
             .repository
@@ -146,9 +150,6 @@ where
             }
         }
 
-        self.cancel_previous_anthropic_waiting_callback_runs(&actor, &request)
-            .await?;
-
         let environment_variables = self
             .repository
             .list_application_environment_variables(actor.workspace_id, actor.application_id)
@@ -158,7 +159,7 @@ where
         let input_payload = freeze_run_input_environment(
             mapped.node_input_payload,
             &environment_variables,
-            external_model_parameters,
+            external_model_parameters.as_ref(),
             compiled_plan_start_node_id(&compiled_plan.plan).as_deref(),
         );
         let input_payload = with_public_run_idempotency_fingerprint(
@@ -196,10 +197,7 @@ where
                     .get("external_trace_id")
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned),
-                compatibility_mode: metadata
-                    .get("compatibility_mode")
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned),
+                compatibility_mode: None,
                 idempotency_key,
             })
             .await
@@ -232,15 +230,32 @@ where
             .cancel_published_flow_run(&CancelPublishedFlowRunInput {
                 flow_run_id: flow_run.id,
                 from_status: flow_run.status,
-                output_payload: flow_run.output_payload.clone(),
-                error_payload: flow_run.error_payload.clone(),
+                // Cancellation owns a failed terminal result. Do not retain a
+                // stale answer/error payload that could make it look successful.
+                output_payload: json!({}),
+                error_payload: Some(json!({
+                    "code": PUBLISHED_RUN_CANCELLED_ERROR_CODE,
+                    "message": PUBLISHED_RUN_CANCELLED_ERROR_MESSAGE,
+                })),
                 finished_at: OffsetDateTime::now_utc(),
             })
             .await
-            .map_err(|_| NativeRunValidationError::InvalidState)?
-            .unwrap_or_else(|| flow_run.clone());
+            .map_err(|_| NativeRunValidationError::InvalidState)?;
+        let (cancelled, cancellation_won) = match cancelled {
+            Some(cancelled) => (cancelled, true),
+            None => (
+                self.repository
+                    .get_published_flow_run(flow_run.id)
+                    .await
+                    .map_err(|_| NativeRunValidationError::InvalidState)?
+                    .ok_or(NativeRunValidationError::InvalidState)?,
+                false,
+            ),
+        };
 
-        self.append_cancelled_audit(actor, &cancelled).await;
+        if cancellation_won {
+            self.append_cancelled_audit(actor, &cancelled).await;
+        }
 
         Ok(cancelled)
     }
@@ -318,7 +333,6 @@ where
                 .and_then(|request| request.get("response_mode"))
                 .cloned()
                 .unwrap_or(Value::Null),
-            "compatibility_mode": flow_run.compatibility_mode,
             "admission": admission,
         });
 
@@ -358,7 +372,6 @@ where
             "external_user": flow_run.external_user,
             "external_conversation_id": flow_run.external_conversation_id,
             "external_trace_id": flow_run.external_trace_id,
-            "compatibility_mode": flow_run.compatibility_mode,
             "reason": "manual_stop",
         });
         let _ = self
@@ -382,118 +395,6 @@ where
             ),
         )
         .await;
-    }
-
-    async fn cancel_previous_anthropic_waiting_callback_runs(
-        &self,
-        actor: &ApplicationApiKeyActor,
-        request: &NativeRunRequest,
-    ) -> std::result::Result<(), NativeRunValidationError> {
-        if request.protocol_compatibility_mode.as_deref()
-            != Some(ANTHROPIC_MESSAGES_COMPATIBILITY_MODE)
-        {
-            return Ok(());
-        }
-        if is_claude_code_subagent_request(request) {
-            return Ok(());
-        }
-        if is_anthropic_tool_result_continuation_request(request) {
-            return Ok(());
-        }
-        let current_request_is_claude_code_control = is_claude_code_control_request(request);
-        let Some(external_user) = request.conversation.string("user") else {
-            return Ok(());
-        };
-        let Some(external_conversation_id) = request.conversation.string("id") else {
-            return Ok(());
-        };
-
-        let waiting_run_ids = self
-            .repository
-            .list_waiting_callback_published_flow_run_ids_for_conversation(
-                &ListWaitingCallbackPublishedRunsInput {
-                    application_id: actor.application_id,
-                    api_key_id: actor.api_key_id,
-                    external_user,
-                    external_conversation_id,
-                    compatibility_mode: ANTHROPIC_MESSAGES_COMPATIBILITY_MODE.to_string(),
-                },
-            )
-            .await
-            .map_err(|_| NativeRunValidationError::InvalidState)?;
-
-        for waiting_run_id in waiting_run_ids {
-            let Some(waiting_run) = self
-                .repository
-                .get_published_flow_run(waiting_run_id)
-                .await
-                .map_err(|_| NativeRunValidationError::InvalidState)?
-            else {
-                continue;
-            };
-            if current_request_is_claude_code_control
-                && !is_claude_code_control_flow_run(&waiting_run)
-            {
-                continue;
-            }
-            let cancelled = self.cancel_published_run(actor, &waiting_run).await?;
-            if cancelled.status == domain::FlowRunStatus::Cancelled {
-                let completed_at = cancelled
-                    .finished_at
-                    .unwrap_or_else(OffsetDateTime::now_utc);
-                self.cancel_callback_state_for_run(cancelled.id, completed_at)
-                    .await?;
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn cancel_callback_state_for_run(
-        &self,
-        flow_run_id: Uuid,
-        completed_at: OffsetDateTime,
-    ) -> std::result::Result<(), NativeRunValidationError> {
-        let cancelled_callback_tasks = self
-            .repository
-            .cancel_published_pending_callback_tasks_for_run(flow_run_id, completed_at)
-            .await
-            .map_err(|_| NativeRunValidationError::InvalidState)?;
-        for callback_task in cancelled_callback_tasks {
-            self.repository
-                .append_published_run_event(&crate::ports::AppendRunEventInput {
-                    flow_run_id,
-                    node_run_id: Some(callback_task.node_run_id),
-                    event_type: "public_run_callback_cancelled".to_string(),
-                    payload: json!({
-                        "callback_task_id": callback_task.id,
-                        "callback_kind": callback_task.callback_kind,
-                    }),
-                })
-                .await
-                .map_err(|_| NativeRunValidationError::InvalidMapping)?;
-        }
-        let cancelled_attempts = self
-            .repository
-            .cancel_published_callback_resume_attempts_for_run(flow_run_id, completed_at)
-            .await
-            .map_err(|_| NativeRunValidationError::InvalidState)?;
-        for attempt in cancelled_attempts {
-            self.repository
-                .append_published_run_event(&crate::ports::AppendRunEventInput {
-                    flow_run_id,
-                    node_run_id: None,
-                    event_type: "public_run_resume_cancelled".to_string(),
-                    payload: json!({
-                        "callback_task_id": attempt.callback_task_id,
-                        "resume_attempt_id": attempt.id,
-                    }),
-                })
-                .await
-                .map_err(|_| NativeRunValidationError::InvalidMapping)?;
-        }
-
-        Ok(())
     }
 
     async fn bind_conversation(
@@ -551,72 +452,19 @@ where
 fn public_run_idempotency_fingerprint(
     request: &NativeRunRequest,
 ) -> std::result::Result<String, NativeRunValidationError> {
-    let value =
+    let mut value =
         serde_json::to_value(request).map_err(|_| NativeRunValidationError::InvalidMapping)?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert(
+            "execution".to_string(),
+            request.execution.fingerprint_value(),
+        );
+    }
     let mut canonical = Vec::new();
     write_canonical_json(&value, &mut canonical)
         .map_err(|_| NativeRunValidationError::InvalidMapping)?;
     let hash = Sha256::digest(canonical);
     Ok(format!("sha256:{}", hex_lower(&hash)))
-}
-
-fn is_claude_code_subagent_request(request: &NativeRunRequest) -> bool {
-    request.system_text().as_deref().is_some_and(|system| {
-        system.contains("cc_is_subagent=true")
-            || (system.contains("Agent threads always have their cwd reset between bash calls")
-                && system.contains("the parent agent reads your text output"))
-    })
-}
-
-fn is_anthropic_tool_result_continuation_request(request: &NativeRunRequest) -> bool {
-    matches!(
-        request.protocol_request_kind,
-        Some(NativeProtocolRequestKind::AnthropicToolResultContinuation)
-    )
-}
-
-fn is_claude_code_control_request(request: &NativeRunRequest) -> bool {
-    request
-        .inputs
-        .get("compatibility")
-        .and_then(|compatibility| compatibility.get("claude_code_control"))
-        .and_then(Value::as_str)
-        .is_some()
-        || super::compat::anthropic::claude_code_control_kind(&request.query).is_some()
-}
-
-fn is_claude_code_control_flow_run(flow_run: &domain::FlowRunRecord) -> bool {
-    flow_run.compatibility_mode.as_deref() == Some(ANTHROPIC_MESSAGES_COMPATIBILITY_MODE)
-        && (application_public_run_start_payload(&flow_run.input_payload)
-            .get("compatibility")
-            .and_then(|compatibility| compatibility.get("claude_code_control"))
-            .and_then(Value::as_str)
-            .is_some()
-            || application_public_run_query(&flow_run.input_payload)
-                .as_deref()
-                .and_then(super::compat::anthropic::claude_code_control_kind)
-                .is_some())
-}
-
-fn application_public_run_query(payload: &Value) -> Option<String> {
-    for source in [payload, application_public_run_start_payload(payload)] {
-        if let Some(query) = source
-            .get("query")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|query| !query.is_empty())
-        {
-            return Some(query.to_string());
-        }
-    }
-    None
-}
-
-fn application_public_run_start_payload(payload: &Value) -> &Value {
-    payload
-        .get("node-start")
-        .or_else(|| payload.get("start"))
-        .unwrap_or(payload)
 }
 
 fn write_canonical_json(value: &Value, out: &mut Vec<u8>) -> serde_json::Result<()> {
@@ -814,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn conversation_history_rehydration_filters_internal_claude_code_payloads() {
+    fn conversation_history_rehydration_preserves_canonical_order_and_marker_like_text() {
         let messages = vec![
             conversation_message(
                 "user",
@@ -851,12 +699,14 @@ mod tests {
         assert_eq!(
             history,
             vec![
-                json!({"role": "user", "content": "hi ?"}),
-                json!({"role": "assistant", "content": "嗨，有什么需要我帮忙的？"}),
+                json!({"role": "user", "content": "<system-reminder>internal skills</system-reminder>\n\nhi ?"}),
+                json!({"role": "assistant", "content": "<think>private reasoning</think>嗨，有什么需要我帮忙的？"}),
                 json!({"role": "user", "content": "Describe image"}),
-                json!({"role": "assistant", "content": "The diagram is an Agent scheduler."}),
+                json!({"role": "assistant", "content": "<think>need file</think><tool_call>read image</tool_call>Reading image"}),
+                json!({"role": "user", "content": "Describe image"}),
+                json!({"role": "assistant", "content": "<think>done</think>The diagram is an Agent scheduler."}),
                 json!({"role": "user", "content": "Find related code"}),
-                json!({"role": "assistant", "content": "Final visible answer"}),
+                json!({"role": "assistant", "content": "<think>search</think>Raw preface<tool_call>grep</tool_call>\n\n---\n\n下面是美化后内容\n\nFinal visible answer"}),
             ]
         );
     }

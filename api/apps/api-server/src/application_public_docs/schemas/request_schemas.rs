@@ -24,7 +24,15 @@ pub(super) fn native_create_run_schema(docs: &DocTextResolver) -> Value {
             },
             "history": {
                 "type": "array",
-                "items": {"type": "object", "additionalProperties": true},
+                "items": {
+                    "type": "object",
+                    "required": ["role", "content"],
+                    "properties": {
+                        "role": {"type": "string", "enum": ["system", "user", "assistant"]},
+                        "content": {"type": "string"}
+                    },
+                    "additionalProperties": false
+                },
                 "description": docs.field_description("application_public_api.native.create_run.request.history")
             },
             "attachments": {
@@ -64,9 +72,15 @@ pub(super) fn native_create_run_schema(docs: &DocTextResolver) -> Value {
                     "idempotency_key": {"type": "string"},
                     "model_parameters": {
                         "type": "object",
+                        "additionalProperties": false,
                         "properties": {
+                            "max_output_tokens": {
+                                "type": "integer",
+                                "minimum": 1
+                            },
                             "reasoning": {
                                 "type": "object",
+                                "additionalProperties": false,
                                 "properties": {
                                     "enabled": {"type": "boolean"},
                                     "effort": {"type": "string", "enum": ["minimal", "low", "medium", "high", "xhigh"]},
@@ -79,7 +93,10 @@ pub(super) fn native_create_run_schema(docs: &DocTextResolver) -> Value {
             },
             "metadata": {
                 "type": "object",
-                "additionalProperties": true,
+                "properties": {
+                    "trace_id": {"type": "string"}
+                },
+                "additionalProperties": false,
                 "description": docs.field_description("application_public_api.native.create_run.request.metadata")
             }
         }
@@ -89,6 +106,7 @@ pub(super) fn native_create_run_schema(docs: &DocTextResolver) -> Value {
 fn native_attachment_schema(docs: &DocTextResolver) -> Value {
     json!({
         "type": "object",
+        "required": ["source", "value"],
         "properties": {
             "source": {
                 "type": "string",
@@ -101,7 +119,8 @@ fn native_attachment_schema(docs: &DocTextResolver) -> Value {
             "name": {"type": "string"},
             "mime_type": {"type": "string"},
             "metadata": {"type": "object", "additionalProperties": true}
-        }
+        },
+        "additionalProperties": false
     })
 }
 
@@ -208,7 +227,11 @@ pub(super) fn openai_chat_completion_schema(docs: &DocTextResolver) -> Value {
                     {"type": "object", "additionalProperties": true}
                 ]
             },
-            "metadata": {"type": "object", "additionalProperties": true}
+            "metadata": {
+                "type": "object",
+                "properties": {"trace_id": {"type": "string"}},
+                "additionalProperties": false
+            }
         }
     })
 }
@@ -266,7 +289,11 @@ pub(super) fn openai_response_create_schema(docs: &DocTextResolver) -> Value {
                     {"type": "object", "additionalProperties": true}
                 ]
             },
-            "metadata": {"type": "object", "additionalProperties": true}
+            "metadata": {
+                "type": "object",
+                "properties": {"trace_id": {"type": "string"}},
+                "additionalProperties": false
+            }
         }
     })
 }
@@ -332,10 +359,12 @@ pub(super) fn anthropic_message_schema(docs: &DocTextResolver) -> Value {
             "metadata": {
                 "type": "object",
                 "properties": {
+                    "user_id": {"type": "string"},
                     "expand_id": {"type": "string"},
+                    "session_id": {"type": "string"},
                     "trace_id": {"type": "string"}
                 },
-                "additionalProperties": true,
+                "additionalProperties": false,
                 "description": docs.field_description("application_public_api.anthropic.message.request.metadata")
             }
         }
@@ -394,7 +423,16 @@ pub(super) fn anthropic_count_tokens_schema() -> Value {
             "thinking": {"type": "object", "additionalProperties": true},
             "container": {"type": "object", "additionalProperties": true},
             "context_management": {"type": "object", "additionalProperties": true},
-            "metadata": {"type": "object", "additionalProperties": true}
+            "metadata": {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                    "expand_id": {"type": "string"},
+                    "session_id": {"type": "string"},
+                    "trace_id": {"type": "string"}
+                },
+                "additionalProperties": false
+            }
         },
         "additionalProperties": true
     })

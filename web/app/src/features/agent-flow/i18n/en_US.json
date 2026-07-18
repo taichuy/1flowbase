@@ -45,6 +45,8 @@
     "add_tool_registration": "Add tool",
     "save_tool": "Save tool",
     "follow_external_reasoning": "Reasoning effort",
+    "follow_external_max_output_tokens": "Follow external maximum output tokens",
+    "follow_external_max_output_tokens_help": "Use the external request maximum output tokens; an enabled max_tokens value on the LLM node takes precedence.",
     "system_variable_model_parameters": "Model runtime parameters",
     "edit_model": "Edit model",
     "save_model": "Save model",

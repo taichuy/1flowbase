@@ -1,8 +1,13 @@
 use super::runtime_repository_helpers::{
     flow_run_record_from_create_input, flow_run_shell_record_from_input,
-    force_status_before_next_flow_update, node_run_record_from_create_input,
+    force_status_before_next_flow_update, force_stream_terminal_failure_before_next_flow_update,
+    node_run_record_from_create_input,
 };
 use super::*;
+use crate::ports::{
+    FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+    FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
+};
 
 use async_trait::async_trait;
 
@@ -201,6 +206,90 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         Ok(Some(record.clone()))
     }
 
+    async fn finalize_published_run_missing_stream_terminal(
+        &self,
+        input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+    ) -> Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        force_status_before_next_flow_update(&mut inner, input.flow_run_id);
+        force_stream_terminal_failure_before_next_flow_update(&mut inner, input.flow_run_id);
+        let Some(existing) = inner.flow_runs_by_id.get(&input.flow_run_id).cloned() else {
+            return Err(ControlPlaneError::NotFound("flow_run").into());
+        };
+        if existing.status != input.expected_status {
+            return Ok(FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::CasMiss);
+        }
+
+        let mut recovered = existing;
+        recovered.status = domain::FlowRunStatus::Failed;
+        recovered.output_payload = input.output_payload.clone();
+        recovered.error_payload = Some(input.error_payload.clone());
+        recovered.finished_at = Some(input.finished_at);
+        recovered.updated_at = input.finished_at;
+
+        let flow_event = domain::RunEventRecord {
+            id: Uuid::now_v7(),
+            flow_run_id: recovered.id,
+            node_run_id: None,
+            sequence: inner
+                .events_by_flow_run_id
+                .get(&recovered.id)
+                .map_or(0, Vec::len) as i64
+                + 1,
+            event_type: "flow_run_failed".to_string(),
+            payload: input.error_payload.clone(),
+            created_at: OffsetDateTime::now_utc(),
+        };
+        let runtime_event = domain::RuntimeEventRecord {
+            id: Uuid::now_v7(),
+            flow_run_id: recovered.id,
+            node_run_id: None,
+            span_id: None,
+            parent_span_id: None,
+            sequence: inner
+                .runtime_events_by_flow_run_id
+                .get(&recovered.id)
+                .map_or(0, Vec::len) as i64
+                + 1,
+            event_type: "flow_failed".to_string(),
+            layer: domain::RuntimeEventLayer::AgentTransition,
+            source: domain::RuntimeEventSource::Host,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            payload: input.terminal_event_payload.clone(),
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+            created_at: OffsetDateTime::now_utc(),
+        };
+
+        // This test seam models a database error after the statement set is assembled but before
+        // the transaction commits. The real PostgreSQL implementation uses one transaction.
+        if std::mem::take(&mut inner.fail_next_runtime_event_append) {
+            return Err(anyhow::anyhow!("simulated runtime event append failure"));
+        }
+
+        inner
+            .flow_runs_by_id
+            .insert(recovered.id, recovered.clone());
+        inner
+            .events_by_flow_run_id
+            .entry(recovered.id)
+            .or_default()
+            .push(flow_event);
+        inner
+            .runtime_events_by_flow_run_id
+            .entry(recovered.id)
+            .or_default()
+            .push(runtime_event);
+        if std::mem::take(&mut inner.fail_next_published_stream_terminal_projection) {
+            return Ok(
+                FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::FinalizedWithPostCommitProjectionWarning(recovered),
+            );
+        }
+        Ok(FinalizePublishedRunMissingStreamTerminalPersistenceOutcome::Finalized(recovered))
+    }
+
     async fn complete_flow_run(
         &self,
         input: &CompleteFlowRunInput,
@@ -283,7 +372,14 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         record.status = domain::CallbackTaskStatus::Completed;
         record.response_payload = Some(input.response_payload.clone());
         record.completed_at = Some(input.completed_at);
-        Ok(record.clone())
+        let mut completed = record.clone();
+        if completed.callback_kind == "llm_tool_calls" {
+            completed.request_payload = json!({
+                "tool_calls": completed.request_payload.get("tool_calls").cloned()
+            });
+            completed.external_ref_payload = None;
+        }
+        Ok(completed)
     }
 
     async fn get_callback_task(
@@ -292,6 +388,71 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
     ) -> Result<Option<domain::CallbackTaskRecord>> {
         let inner = self.inner.lock().expect("runtime repo mutex poisoned");
         Ok(inner.callback_tasks_by_id.get(&callback_task_id).cloned())
+    }
+
+    async fn get_callback_resume_context(
+        &self,
+        application_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> Result<Option<CallbackResumeContext>> {
+        let inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let Some(mut callback_task) = inner.callback_tasks_by_id.get(&callback_task_id).cloned()
+        else {
+            return Ok(None);
+        };
+        if callback_task.callback_kind == "llm_tool_calls" {
+            callback_task.request_payload = json!({
+                "tool_calls": callback_task.request_payload.get("tool_calls").cloned()
+            });
+            callback_task.external_ref_payload = None;
+        }
+        let Some(flow_run) = inner
+            .flow_runs_by_id
+            .get(&callback_task.flow_run_id)
+            .filter(|flow_run| flow_run.application_id == application_id)
+            .cloned()
+        else {
+            return Ok(None);
+        };
+        let checkpoint = inner
+            .checkpoints_by_id
+            .values()
+            .filter(|checkpoint| {
+                checkpoint.flow_run_id == flow_run.id
+                    && checkpoint.node_run_id == Some(callback_task.node_run_id)
+            })
+            .max_by(|left, right| {
+                left.created_at
+                    .cmp(&right.created_at)
+                    .then(left.id.cmp(&right.id))
+            })
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("checkpoint not found for callback task"))?;
+        let waiting_node = inner
+            .node_runs_by_id
+            .get(&callback_task.node_run_id)
+            .filter(|node_run| node_run.flow_run_id == flow_run.id)
+            .ok_or_else(|| anyhow::anyhow!("waiting node run not found for callback task"))?;
+        let next_node_started_at = inner
+            .node_runs_by_id
+            .values()
+            .filter(|node_run| node_run.flow_run_id == flow_run.id)
+            .map(|node_run| node_run.started_at)
+            .max()
+            .map(|started_at| started_at + time::Duration::seconds(1))
+            .unwrap_or_else(OffsetDateTime::now_utc);
+
+        Ok(Some(CallbackResumeContext {
+            flow_run,
+            callback_task,
+            checkpoint,
+            waiting_node: CallbackResumeWaitingNode {
+                id: waiting_node.id,
+                status: waiting_node.status,
+                output_payload: waiting_node.output_payload.clone(),
+            },
+            next_node_started_at,
+        }))
     }
 
     async fn upsert_debug_variable_cache_entry(
@@ -534,6 +695,9 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         input: &AppendRuntimeEventInput,
     ) -> Result<domain::RuntimeEventRecord> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        if std::mem::take(&mut inner.fail_next_runtime_event_append) {
+            return Err(anyhow::anyhow!("simulated runtime event append failure"));
+        }
         let events = inner
             .runtime_events_by_flow_run_id
             .entry(input.flow_run_id)
@@ -904,6 +1068,29 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             .collect())
     }
 
+    async fn get_runtime_event_sequence_for_callback_task(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> Result<Option<i64>> {
+        let inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        Ok(inner
+            .runtime_events_by_flow_run_id
+            .get(&flow_run_id)
+            .into_iter()
+            .flatten()
+            .filter(|event| {
+                event
+                    .payload
+                    .get("callback_task_id")
+                    .and_then(Value::as_str)
+                    .and_then(|value| Uuid::parse_str(value).ok())
+                    == Some(callback_task_id)
+            })
+            .map(|event| event.sequence)
+            .max())
+    }
+
     async fn list_runtime_items(
         &self,
         flow_run_id: Uuid,
@@ -1082,7 +1269,8 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> Result<Option<domain::ApplicationRunDetail>> {
-        let inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        inner.application_run_detail_read_count += 1;
         let Some(flow_run) = inner.flow_runs_by_id.get(&flow_run_id).cloned() else {
             return Ok(None);
         };

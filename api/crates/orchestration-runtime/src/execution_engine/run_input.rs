@@ -189,6 +189,9 @@ pub(crate) fn materialize_start_builtin_defaults(start_payload: &mut Map<String,
         .entry("reasoning_effort".to_string())
         .or_insert_with(|| Value::String(String::new()));
     start_payload
+        .entry("max_output_tokens".to_string())
+        .or_insert(Value::Null);
+    start_payload
         .entry("history".to_string())
         .or_insert_with(|| Value::Array(Vec::new()));
     start_payload

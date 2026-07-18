@@ -1,4 +1,3 @@
-use super::super::event_forwarding::advance_durable_cursor_for_forwarded_event;
 use super::super::protocol_mappers::{
     anthropic_delta_payload, openai_delta_chunk_payload, openai_finish_chunk_payload,
     openai_response_function_call_output_items, openai_tool_call_chunk_payload,
@@ -6,64 +5,546 @@ use super::super::protocol_mappers::{
 };
 use super::super::*;
 use super::support::*;
+use crate::{
+    app_state::ApiState,
+    host_infrastructure::LocalRuntimeEventStream,
+    routes::application_public_api::sse::{
+        send_native_runtime_event_stream, IncludeWorkflowEvents,
+    },
+};
+use axum::response::IntoResponse;
 use control_plane::{
-    application_public_api::native::{AnswerProjectionSegment, NativeRequiredAction},
-    ports::{RuntimeEventDurability, RuntimeEventPayload, RuntimeEventSource},
+    application_public_api::{
+        callback_resume::{
+            PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+            ResumePublishedCallbackCommand,
+        },
+        native::{AnswerProjectionSegment, NativeError, NativeRequiredAction},
+    },
+    ports::{
+        OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventDurability,
+        RuntimeEventPayload, RuntimeEventSource, RuntimeEventStream, RuntimeEventStreamPolicy,
+        UpdateFlowRunInput,
+    },
 };
 use serde_json::json;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-#[tokio::test]
-async fn forwarded_answer_delta_advances_matching_durable_cursor() {
-    let run = native_run();
-    let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
+async fn native_sse_body_from_replay(
+    base_state: &ApiState,
+    run: NativeRunResult,
+    replay: Vec<RuntimeEventEnvelope>,
+    from_sequence: Option<i64>,
+) -> String {
+    let runtime_event_stream = Arc::new(
+        ReplayBeforeFallbackRuntimeEventStream::with_closed_subscription_replay(
+            replay,
+            Vec::new(),
+            RuntimeEventCloseReason::Incomplete,
+        ),
+    );
+    let mut state = (*base_state).clone();
+    state.runtime_event_stream = runtime_event_stream;
+    let (sender, mut receiver) = mpsc::channel(32);
+
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        send_native_runtime_event_stream(
+            Arc::new(state),
+            run,
+            IncludeWorkflowEvents::None,
+            from_sequence,
+            None,
+            sender,
+        ),
+    )
+    .await
+    .expect("Native SSE replay should stop at an incomplete terminal");
+
+    let mut events = Vec::new();
+    while let Some(event) = receiver.recv().await {
+        events.push(event);
+    }
+    let response = axum::response::sse::Sse::new(tokio_stream::iter(events)).into_response();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("Native SSE response body should be readable");
+    String::from_utf8(body.to_vec()).expect("Native SSE response body should be UTF-8")
+}
+
+async fn running_run_with_closed_stream() -> (NativeRunResult, Arc<ApiState>) {
     let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
     seed_flow_run_for_compat_sse_test(&base_state, &run).await;
-    append_compat_sse_runtime_event(
-        &base_state,
-        run.id,
-        "text_delta",
-        json!({
-            "type": "text_delta",
-            "node_id": "node-answer",
-            "text": "prior node answer",
-            "presentation": {
-                "kind": "answer",
-                "answer_node_id": "node-answer",
-                "source_node_id": "node-llm",
-                "source_output_key": "text",
-                "segment_index": 0
-            }
-        }),
+    base_state
+        .store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: domain::FlowRunStatus::Running,
+            output_payload: json!({ "answer": "partial output" }),
+            error_payload: None,
+            finished_at: None,
+        })
+        .await
+        .expect("seed a published running run");
+
+    let runtime_event_stream = Arc::new(LocalRuntimeEventStream::new());
+    runtime_event_stream
+        .open_run(run.id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .expect("open the live stream");
+    runtime_event_stream
+        .close_run(run.id, RuntimeEventCloseReason::Failed)
+        .await
+        .expect("close the live stream without a terminal");
+    let mut state = (*base_state).clone();
+    state.runtime_event_stream = runtime_event_stream;
+    (run, Arc::new(state))
+}
+
+async fn sse_body(
+    events: Vec<Result<axum::response::sse::Event, std::convert::Infallible>>,
+) -> String {
+    let response = axum::response::sse::Sse::new(tokio_stream::iter(events)).into_response();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("SSE response body should be readable");
+    String::from_utf8(body.to_vec()).expect("SSE response body should be UTF-8")
+}
+
+#[tokio::test]
+async fn d2_ac_008_native_eof_fallback_finalizes_running_winner_before_projection() {
+    let (run, state) = running_run_with_closed_stream().await;
+    let (sender, mut receiver) = mpsc::channel(32);
+
+    send_native_runtime_event_stream(
+        state.clone(),
+        run.clone(),
+        IncludeWorkflowEvents::None,
+        None,
+        None,
+        sender,
     )
     .await;
-    let event = RuntimeEventEnvelope::new(
+
+    let mut events = Vec::new();
+    while let Some(event) = receiver.recv().await {
+        events.push(event);
+    }
+    let body = sse_body(events).await;
+    let recovered = state
+        .store
+        .get_flow_run(run.application_id, run.id)
+        .await
+        .expect("read durable run")
+        .expect("seeded run remains present");
+    let runtime_events = state
+        .store
+        .list_runtime_events(run.id, 0)
+        .await
+        .expect("read durable runtime events");
+
+    assert_eq!(recovered.status, domain::FlowRunStatus::Failed);
+    assert_eq!(
+        recovered.error_payload,
+        Some(json!({
+            "code": "stream_terminal_missing",
+            "message": "runtime event stream ended without a terminal event"
+        }))
+    );
+    assert_eq!(
+        runtime_events
+            .iter()
+            .filter(|event| event.event_type == "flow_failed")
+            .count(),
+        1,
+        "EOF recovery must write one durable canonical failure"
+    );
+    assert!(body.contains("event: run.failed"), "{body}");
+    assert!(!body.contains("event: run.completed"), "{body}");
+}
+
+#[tokio::test]
+async fn d2_ac_008_compatible_eof_fallback_projects_recovered_failed_winner() {
+    let (run, state) = running_run_with_closed_stream().await;
+    let (sender, _receiver) = mpsc::channel(32);
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mapper_seen = seen.clone();
+
+    send_compatible_runtime_event_stream(
+        state.clone(),
+        run.clone(),
+        OPENAI_CHAT_SSE_PROJECTION,
+        None,
+        None,
+        sender,
+        move |winner, envelope| {
+            mapper_seen
+                .lock()
+                .expect("mapper observation lock should be available")
+                .push((format!("{:?}", winner.status), envelope.event_type));
+            Vec::new()
+        },
+    )
+    .await;
+
+    let recovered = state
+        .store
+        .get_flow_run(run.application_id, run.id)
+        .await
+        .expect("read durable run")
+        .expect("seeded run remains present");
+    let runtime_events = state
+        .store
+        .list_runtime_events(run.id, 0)
+        .await
+        .expect("read durable runtime events");
+
+    assert_eq!(recovered.status, domain::FlowRunStatus::Failed);
+    assert_eq!(
+        runtime_events
+            .iter()
+            .filter(|event| event.event_type == "flow_failed")
+            .count(),
+        1,
+        "EOF recovery must write one durable canonical failure"
+    );
+    assert!(
+        seen.lock()
+            .expect("mapper observation lock should be available")
+            .iter()
+            .any(|(status, event_type)| status == "Failed" && event_type == "flow_failed"),
+        "compatible mapper must receive the reloaded durable failed winner"
+    );
+}
+
+#[tokio::test]
+async fn d2_ac_008_compatible_resume_waiting_winner_is_adapter_unsupported_without_durable_failure()
+{
+    let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&base_state, &run).await;
+
+    let response = start_openai_chat_resume_stream(
+        base_state.clone(),
+        run.clone(),
+        "1flowbase".to_string(),
+        "chatcmpl-resume-unsupported".to_string(),
+        ResumePublishedCallbackCommand {
+            bearer_token: "not-used-by-unsupported-adapter".to_string(),
+            target: PublishedCallbackResumeTarget::FlowRun {
+                flow_run_id: run.id,
+                callback_task_id: Uuid::now_v7(),
+            },
+            source: PublishedCallbackResumeSource::OpenAiChat,
+            response_payload: json!({ "result": "ignored" }),
+            response_mode: Some("streaming".to_string()),
+        },
+    )
+    .await
+    .expect("unsupported adapter should return a protocol stream response");
+    let body = tokio::time::timeout(
+        Duration::from_secs(2),
+        axum::body::to_bytes(response.into_body(), usize::MAX),
+    )
+    .await
+    .expect("unsupported protocol stream should close")
+    .expect("unsupported protocol stream body should be readable");
+    let body = String::from_utf8(body.to_vec()).expect("unsupported protocol body should be UTF-8");
+    let durable = base_state
+        .store
+        .get_flow_run(run.application_id, run.id)
+        .await
+        .expect("read durable waiting run")
+        .expect("seeded run remains present");
+    let runtime_events = base_state
+        .store
+        .list_runtime_events(run.id, 0)
+        .await
+        .expect("read durable runtime events");
+
+    assert!(body.contains("event: error"), "{body}");
+    assert!(body.contains("unsupported_feature"), "{body}");
+    assert!(!body.contains("[DONE]"), "{body}");
+    assert!(!body.contains("response.completed"), "{body}");
+    assert!(!body.contains("message_stop"), "{body}");
+    assert_eq!(durable.status, domain::FlowRunStatus::WaitingCallback);
+    assert!(durable.error_payload.is_none());
+    assert!(
+        runtime_events
+            .iter()
+            .all(|event| event.event_type != "flow_failed"),
+        "adapter-level unsupported resume must not mutate the waiting durable winner"
+    );
+}
+
+#[test]
+fn live_answer_chunks_claim_the_same_coalesced_durable_delta_once() {
+    let run = native_run();
+    let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
+    let mut first = RuntimeEventEnvelope::new(
         run.id,
-        7,
+        1,
         debug_stream_events::answer_text_delta(
             "node-answer",
-            "prior node answer".to_string(),
+            "最终".to_string(),
             0,
             Some("node-llm"),
             Some(node_run_id),
             Some("text"),
         ),
     );
-    let mut durable_sequence = 0;
-
-    advance_durable_cursor_for_forwarded_event(&base_state, run.id, &event, &mut durable_sequence)
-        .await;
-
-    assert!(
-        durable_sequence > 0,
-        "forwarded answer delta should mark matching durable record as consumed"
+    let mut second = RuntimeEventEnvelope::new(
+        run.id,
+        2,
+        debug_stream_events::answer_text_delta(
+            "node-answer",
+            "回答".to_string(),
+            0,
+            Some("node-llm"),
+            Some(node_run_id),
+            Some("text"),
+        ),
     );
+    let mut durable = RuntimeEventEnvelope::new(
+        run.id,
+        3,
+        debug_stream_events::answer_text_delta(
+            "node-answer",
+            "最终回答".to_string(),
+            0,
+            Some("node-llm"),
+            Some(node_run_id),
+            Some("text"),
+        ),
+    );
+    durable.payload["event_ids"] = json!([format!("{}:1", run.id), format!("{}:2", run.id)]);
+    let mut stats = CompatibleStreamStats::default();
+
+    assert!(stats.claim_runtime_event(&mut first));
+    assert!(stats.claim_runtime_event(&mut second));
+    assert!(!stats.claim_runtime_event(&mut durable));
+}
+
+#[test]
+fn live_answer_chunks_claim_multiple_coalesced_durable_deltas_once() {
+    let run = native_run();
+    let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
+    let chunks = [
+        "现在三层",
+        "的现状清楚了。关键发现：",
+        "\n- 页面层已接 DesignHoverFrame，需换",
+        "蓝。\n- 区块层：#66e",
+        "0ad / #00c875，",
+        "统一重构。",
+    ];
+    let mut live = chunks
+        .iter()
+        .enumerate()
+        .map(|(index, text)| {
+            RuntimeEventEnvelope::new(
+                run.id,
+                index as i64 + 1,
+                debug_stream_events::answer_text_delta(
+                    "node-answer",
+                    (*text).to_string(),
+                    0,
+                    Some("node-llm"),
+                    Some(node_run_id),
+                    Some("text"),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut stats = CompatibleStreamStats::default();
+
+    for event in &mut live {
+        assert!(stats.claim_runtime_event(event));
+    }
+
+    let durable_batches = [
+        (vec![0], chunks[0].to_string()),
+        (vec![1, 2], format!("{}{}", chunks[1], chunks[2])),
+        (vec![3], chunks[3].to_string()),
+        (vec![4, 5], format!("{}{}", chunks[4], chunks[5])),
+    ];
+    let replayed = durable_batches
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, (source_indexes, text))| {
+            let mut durable = RuntimeEventEnvelope::new(
+                run.id,
+                index as i64 + 100,
+                debug_stream_events::answer_text_delta(
+                    "node-answer",
+                    text,
+                    0,
+                    Some("node-llm"),
+                    Some(node_run_id),
+                    Some("text"),
+                ),
+            );
+            durable.payload["event_ids"] = json!(source_indexes
+                .into_iter()
+                .map(|source_index| live[source_index].event_id.clone())
+                .collect::<Vec<_>>());
+            stats
+                .claim_runtime_event(&mut durable)
+                .then_some(durable.text.unwrap_or_default())
+        })
+        .collect::<String>();
+
+    assert!(replayed.is_empty(), "durable replay leaked: {replayed}");
+}
+
+#[test]
+fn live_answer_prefix_claims_only_missing_suffix_across_durable_batches() {
+    let run = native_run();
+    let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
+    let chunks = ["实时", "前缀", "补齐", "完成"];
+    let mut source_events = chunks
+        .iter()
+        .enumerate()
+        .map(|(index, text)| {
+            RuntimeEventEnvelope::new(
+                run.id,
+                index as i64 + 1,
+                debug_stream_events::answer_text_delta(
+                    "node-answer",
+                    (*text).to_string(),
+                    0,
+                    Some("node-llm"),
+                    Some(node_run_id),
+                    Some("text"),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut stats = CompatibleStreamStats::default();
+    assert!(stats.claim_runtime_event(&mut source_events[0]));
+    assert!(stats.claim_runtime_event(&mut source_events[1]));
+
+    let durable_batches = [
+        (vec![0], chunks[0].to_string()),
+        (vec![1, 2], format!("{}{}", chunks[1], chunks[2])),
+        (vec![3], chunks[3].to_string()),
+    ];
+    let reconciled = durable_batches
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, (source_indexes, text))| {
+            let mut durable = RuntimeEventEnvelope::new(
+                run.id,
+                index as i64 + 100,
+                debug_stream_events::answer_text_delta(
+                    "node-answer",
+                    text,
+                    0,
+                    Some("node-llm"),
+                    Some(node_run_id),
+                    Some("text"),
+                ),
+            );
+            durable.payload["event_ids"] = json!(source_indexes
+                .into_iter()
+                .map(|source_index| source_events[source_index].event_id.clone())
+                .collect::<Vec<_>>());
+            stats
+                .claim_runtime_event(&mut durable)
+                .then_some(durable.text.unwrap_or_default())
+        })
+        .collect::<String>();
+
+    assert_eq!(reconciled, "补齐完成");
+}
+
+#[test]
+fn live_answer_chunks_are_not_treated_as_cumulative_snapshots() {
+    let run = native_run();
+    let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
+    let mut first = RuntimeEventEnvelope::new(
+        run.id,
+        1,
+        debug_stream_events::answer_text_delta(
+            "node-answer",
+            "a".to_string(),
+            0,
+            Some("node-llm"),
+            Some(node_run_id),
+            Some("text"),
+        ),
+    );
+    let mut second = RuntimeEventEnvelope::new(
+        run.id,
+        2,
+        debug_stream_events::answer_text_delta(
+            "node-answer",
+            "ab".to_string(),
+            0,
+            Some("node-llm"),
+            Some(node_run_id),
+            Some("text"),
+        ),
+    );
+    let mut stats = CompatibleStreamStats::default();
+
+    assert!(stats.claim_runtime_event(&mut first));
+    assert!(stats.claim_runtime_event(&mut second));
+    assert_eq!(second.text.as_deref(), Some("ab"));
 }
 
 #[tokio::test]
-async fn anthropic_live_flow_started_is_not_duplicated_by_durable_drain() {
+async fn d1_ac_007_native_sse_initial_and_durable_replay_keep_incomplete_distinct_from_completed() {
+    let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let mut run = native_run();
+    run.status = NativeRunStatus::Incomplete;
+    run.answer = Some("partial output at the limit".to_string());
+
+    let initial_stream = native_sse_body_from_replay(
+        &base_state,
+        run.clone(),
+        vec![
+            RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
+            RuntimeEventEnvelope::new(
+                run.id,
+                2,
+                debug_stream_events::flow_incomplete(
+                    run.id,
+                    json!({ "answer": "partial output at the limit" }),
+                ),
+            ),
+        ],
+        None,
+    )
+    .await;
+    let replay_stream = native_sse_body_from_replay(
+        &base_state,
+        run.clone(),
+        vec![RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            debug_stream_events::flow_incomplete(
+                run.id,
+                json!({ "answer": "partial output at the limit" }),
+            ),
+        )],
+        Some(1),
+    )
+    .await;
+
+    for body in [initial_stream, replay_stream] {
+        assert_eq!(body.matches("event: run.incomplete").count(), 1, "{body}");
+        assert!(body.contains("\"status\":\"incomplete\""), "{body}");
+        assert!(body.contains("partial output at the limit"), "{body}");
+        assert!(!body.contains("event: run.completed"), "{body}");
+        assert!(!body.contains("\"status\":\"succeeded\""), "{body}");
+    }
+}
+
+#[tokio::test]
+async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_becomes_unsupported() {
     let mut run = native_run();
     let node_run_id = Uuid::from_u128(0x77777777777777777777777777777777);
     let callback_task_id = Uuid::from_u128(0x99999999999999999999999999999999);
@@ -135,13 +616,14 @@ async fn anthropic_live_flow_started_is_not_duplicated_by_durable_drain() {
     .await;
 
     let runtime_event_stream = Arc::new(
-        ReplayBeforeFallbackRuntimeEventStream::with_subscription_replay(
+        ReplayBeforeFallbackRuntimeEventStream::with_closed_subscription_replay(
             vec![RuntimeEventEnvelope::new(
                 run.id,
                 1,
                 debug_stream_events::flow_started(run.id),
             )],
             Vec::new(),
+            RuntimeEventCloseReason::WaitingCallback,
         ),
     );
     let state = Arc::new(ApiState {
@@ -204,8 +686,10 @@ async fn anthropic_live_flow_started_is_not_duplicated_by_durable_drain() {
 
     assert_eq!(body.matches("event: message_start").count(), 1, "{body}");
     assert!(body.contains("prior node answer"), "{body}");
-    assert!(body.contains("lookup_next"), "{body}");
-    assert!(body.contains("\"stop_reason\":\"tool_use\""), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("lookup_next"), "{body}");
+    assert!(!body.contains("event: message_stop"), "{body}");
+    assert!(!body.contains("\"stop_reason\":\"tool_use\""), "{body}");
 }
 
 #[tokio::test]
@@ -519,17 +1003,76 @@ async fn anthropic_terminal_answer_fallback_emits_text_before_stop() {
 }
 
 #[tokio::test]
-async fn anthropic_failed_terminal_with_answer_finishes_without_error_event() {
+async fn d2_ac_008_anthropic_failed_terminal_with_partial_output_remains_error() {
     let mut run = native_run();
     run.status = NativeRunStatus::Failed;
-    run.answer = Some("工具失败后的回答".to_string());
+    run.answer = Some("must-not-replay".to_string());
+    run.error = Some(NativeError {
+        code: "runtime_error".to_string(),
+        message: "safe canonical failure".to_string(),
+        details: json!({}),
+    });
+    let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
+    let mut events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            debug_stream_events::answer_text_delta(
+                "node-answer",
+                "real partial delta".to_string(),
+                0,
+                Some("node-llm"),
+                None,
+                Some("text"),
+            ),
+        ),
+    );
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            debug_stream_events::flow_failed(
+                run.id,
+                json!({
+                    "message": "provider raw secret",
+                    "answer_segments": [{"kind": "reasoning", "text": "must-not-replay"}]
+                }),
+            ),
+        ),
+    ));
+
+    let response = completed_compatible_stream(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(body.contains("real partial delta"), "{body}");
+    assert!(body.contains("safe canonical failure"), "{body}");
+    assert!(!body.contains("must-not-replay"), "{body}");
+    assert!(!body.contains("provider raw secret"), "{body}");
+    assert!(body.contains("event: error"), "{body}");
+    assert!(!body.contains("event: message_stop"), "{body}");
+    assert!(!body.contains("\"stop_reason\":\"end_turn\""), "{body}");
+}
+
+#[tokio::test]
+async fn d2_ac_008_anthropic_incomplete_terminal_uses_max_tokens_and_message_stop() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Incomplete;
+    run.answer = Some("output limit partial".to_string());
     let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
             run.id,
             1,
-            debug_stream_events::flow_failed(run.id, json!({ "message": "tool callback failed" })),
+            debug_stream_events::flow_incomplete(
+                run.id,
+                json!({ "answer": "output limit partial" }),
+            ),
         ),
     );
 
@@ -539,9 +1082,72 @@ async fn anthropic_failed_terminal_with_answer_finishes_without_error_event() {
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("工具失败后的回答"), "{body}");
+    assert!(body.contains("output limit partial"), "{body}");
+    assert!(body.contains("\"stop_reason\":\"max_tokens\""), "{body}");
     assert!(body.contains("event: message_stop"), "{body}");
-    assert!(!body.contains("event: error"), "{body}");
+    assert!(!body.contains("\"stop_reason\":\"end_turn\""), "{body}");
+}
+
+#[tokio::test]
+async fn d2_ac_004_anthropic_cancelled_terminal_is_error_without_message_stop() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Cancelled;
+    run.answer = Some("must-not-replay".to_string());
+    let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
+    let events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_cancelled(run.id)),
+    );
+
+    let response = completed_compatible_stream(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(body.contains("event: error"), "{body}");
+    assert!(body.contains("published run cancelled"), "{body}");
+    assert!(!body.contains("must-not-replay"), "{body}");
+    assert!(!body.contains("event: message_stop"), "{body}");
+    assert!(!body.contains("\"stop_reason\""), "{body}");
+}
+
+#[tokio::test]
+async fn d2_ac_004_anthropic_waiting_terminal_is_adapter_unsupported_without_message_stop() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Waiting;
+    let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
+    let events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            RuntimeEventPayload {
+                event_type: "waiting_callback".to_string(),
+                source: RuntimeEventSource::Runtime,
+                durability: RuntimeEventDurability::DurableRequired,
+                persist_required: true,
+                trace_visible: true,
+                payload: json!({
+                    "callback_kind": "llm_tool_calls",
+                    "callback_task_id": Uuid::nil(),
+                    "tool_calls": [{"id": "must-not-project", "name": "lookup", "arguments": {}}]
+                }),
+            },
+        ),
+    );
+
+    let response = completed_compatible_stream(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(body.contains("event: error"), "{body}");
+    assert!(body.contains("required_action_not_supported"), "{body}");
+    assert!(!body.contains("must-not-project"), "{body}");
+    assert!(!body.contains("event: message_stop"), "{body}");
+    assert!(!body.contains("\"stop_reason\""), "{body}");
 }
 
 #[test]

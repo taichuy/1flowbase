@@ -1,83 +1,102 @@
 ---
 name: problem-framing
-description: 1flowbase 需求对齐与动工前决策 Skill。用于功能、缺陷、交互、重构、规则、文档、架构、数学或算法表达、状态、权限、数据、API contract 或跨前后端需求；先理解现状与真正问题，再以保守 / 平衡 / 激进三个方向帮助用户拍板。确认前不实现。纯查询、机械精确改动，或用户明确要求直接实现时可跳过。
+description: 1flowbase 需求对齐与动工前决策 Skill。用于功能、缺陷、交互、重构、规则、文档、架构、数学或算法表达、状态、权限、数据、API contract 或跨前后端需求；从证据中收敛目标、成功标准、边界、验证和停止条件，以保守 / 平衡 / 激进三个方向帮助用户拍板，并在确认后选择 Single Issue（普通任务）或两层 Issue Tree（长计划）。确认前不实现；纯查询、机械精确改动或用户明确要求直接实现时可跳过。
 ---
 
 # Problem Framing
 
-## Goal
+## Outcome
 
-先理解问题，再选择方案。只保留会改变目标、方向、边界或验收的信息。
+把请求收敛成可决策、可执行、可验收的结果，不替实现者规定完整路径。完成时，现状有证据，结果可观察，范围、owner 与授权闭合，验证足以结算风险，并有唯一建议和停止条件。
 
-本 Skill 负责需求对齐，不修改产品代码、测试、migration、schema 或运行时行为。
+本 Skill 只形成决策，不修改产品代码、测试、migration、schema 或运行时行为。
 
-## Principles
+## Reasoning Catalysts
 
-- 以始为终。先分析，后方案；先推理，后结论。使用第一性原理、奥卡姆剃刀和隐藏因果，表达通俗易懂。
-- 把用户描述视为问题线索，而不是搜索边界。解释关键判断即可，不用方法论、术语或固定步骤替代实际分析。
-- 生成方案时优先复用成熟的数学关系、算法、数据结构、状态机、图、队列、约束、概率或调度机制。只在它们能降低复杂度、提高一致性、改善体验或减少资源成本时采用，不为技术展示增加抽象。
-- 类 / 模块 / 架构设计优先降低组件和系统复杂度、提升可维护性。
-- 接口保持窄而深：调用方式简单清晰，复杂性收敛在实现内部；不要让调用方理解被调用方内部状态
-- 软件设计不是消灭复杂度，而是把必要复杂度收敛到最理解业务语义、最靠近变化源的模块。避免把复杂度扩散为调用方分支、隐式约定、兼容层或无领域语义的抽象。
+`先推理后结论`：先定义理想结果，再用`第一性原理`拆出事实、隐藏因果、硬约束与失败模式；用`奥卡姆剃刀`选择足以解释证据的最小机制；先`升温发散`真实方向，再`降温收敛`唯一建议，最终`通俗易懂`但不牺牲准确性。
 
-## Workflow
+优先用高信息关系、反例或最小案例催化，不堆模型已知常识和同义说明。催化词只改变搜索方向，不替代证据、领域精度或硬边界，也不作为口号复述。
 
-1. 核对当前请求和直接相关证据，区分事实、假设与未知。
-2. 先说明现状，再拆解真正需求及会改变决策的隐藏因果。
-3. 完整给出保守、平衡、激进三个可执行方向，再给唯一建议。
-4. 停止并等待用户确认；缺少关键信息时集中追问，不凑方案。
+## Architecture Catalysts
 
-普通需求保持简短。复杂度来自问题本身时再展开；每段内容都应帮助判断、行动或验证。
+- `Deep Modules / Information Hiding`：公共接口只暴露调用方决策所需的最小充分信息；状态判断、协议细节与兼容分支留在内部。
+- `Conservation of Complexity + Requisite Variety`（`Tesler's Law` / `Ashby's Law`）：必要复杂度不能消失；由拥有足够状态与动作空间的语义 owner 吸收。
+- `Observability × Controllability ⇒ Ownership`：看不见相关状态或不能控制其转移的模块，不拥有该复杂度。
+- `Proven Mechanisms over Ad-hoc Rules`：优先成熟数学关系、算法、数据结构、状态机、约束与调度机制，不用临时规则堆叠代替。
 
-## Output
+用以下 complexity placement heuristic 选择 owner；这是本 Skill 的架构判定式，不是经典控制论原公式：
 
-```markdown
-## 现状
-...
+```text
+owner*(x) =
+  argmin_m [C_leak(m) + C_coordination(m) + C_failure(m)]
 
-## 需求分析
-真正目标、关键约束与会改变决策的因果。
-
-## 三个方向(升温发散)
-### 保守
-- 方案内容：...
-- 方案收益：收益、代价与主要风险。
-
-### 平衡
-- 方案内容：...
-- 方案收益：收益、代价与主要风险。
-
-### 激进
-- 方案内容：...
-- 方案收益：收益、代价与主要风险。
-
-## 最终建议(降温收敛)
-唯一推荐、关键理由及需要用户确认的点。
+subject to:
+  SourceOfTruth_m(x)
+  ∧ Observable_m(x)
+  ∧ Controllable_m(x)
+  ∧ Variety_m ≥ Variety_x
 ```
 
-三个方向必须真实可行且有实质差异；推荐只能出现在三个方向之后。
+`C_leak` 是泄漏给调用方的兼容、分支与隐式约定；`C_coordination` 是跨 owner 协调成本；`C_failure` 是复杂度错置造成的失败成本。
 
-涉及 UI、UX、页面流程、状态流或复杂逻辑时，用短 ASCII 图补充关键结构或主路径，不做高保真设计。
+## Decision Field
 
-## Boundaries
+把请求看作受约束决策；用关系筛选信息，不在回答中机械复述字段：
 
-- 需求未确认前不进入实现；用户明确要求直接实现时除外。
-- 能从代码、文档、issue 或日志确认的事实，不询问用户。
-- 只追问会改变方案、contract、数据、权限、用户内容或验收的问题；一次集中提出，并给出推荐默认值及影响。
-- 用户方案与证据或项目硬约束冲突时，明确指出冲突、后果和更合理方向。
-- 后端是唯一数据来源；前端不承担输出兼容。接口字段保持后端 DTO / 领域语义原名。
-- 不把狭窄需求扩展成路线图、平台重设计或清理专项。
-- 不在同一轮越过“方向确认 → issue 确认 → 实现”，除非用户明确要求直接推进。
+```text
+证据 -> 现状 -> 与目标的差距 -> 可观察成功标准
+source of truth / owner -> 必要复杂度
+授权 / contract -> 可行方向
+失败风险 -> 验证强度
+潜在决策变化 × 影响 > 获取成本 -> 新证据
+```
 
-## Progressive Disclosure
+维持以下守恒关系：
 
-只在命中场景时读取对应 reference：
+- 用户描述提供线索，结论强度不超过证据；安全、数据、权限与已确认 contract 是硬边界，工作偏好只改变方向权重。
+- 方案范围不超过授权与非目标；新增范围同时产生成功标准、owner、证据和预算债务。
+- 只处理会改变可行域或推荐的未知；其他缺口使用有界假设。下一步不能减少决策残差时停止。
+- 后端是 contract 与状态唯一数据来源；前端不承担输出兼容，接口字段保持后端 DTO / 领域语义原名。
 
-- 需要 discussion brief、issue、ADR 或 implementation handoff：读取 `references/artifacts.md`。
-- 判断 Standalone Complete Issue 或 issue 树，以及 grade、level、labels 和生命周期：读取 `references/issue-lifecycle.md`；默认使用单体完整 issue。
-- 涉及 defaults、contract、schema、state、permissions、migration、history、runtime behavior 或 user content：读取 `references/domain-matrix.md`。
-- 高风险决策需要正式比较或反方评审：读取 `references/options-and-red-team.md`。
-- 方案新增公共抽象、接口、flag、通用 helper、重复校验或 pass-through：读取 `../_shared/design-rules.md`。
-- 需要查看输出尺度而非复制答案：读取 `references/examples.md`。
+## Control Loop
 
-方向确认后，按用户要求进入 issue 或实现。实现使用 `frontend-development`、`backend-development` 和 `test-driven-development`；验收与交付使用 `qa-evaluation`。新问题若扩大已确认边界，返回本 Skill。
+```text
+[证据与结果差距] -> [三个真实方向] -> [唯一建议] -> [用户决策]
+       ^                                      |
+       +---- 边界、语义或授权发生变化 --------+
+```
+
+- 已有事实足以判定可行域、约束冲突或推荐时直接收敛；否则只获取可能改变结论的最小证据，能查明的事实不询问用户。
+- 三个方向解决同一目标，在范围、复杂度归属或风险偏好上有真实差异；缺少关键事实时集中追问并给推荐默认值。
+- 证据与用户方案冲突时说明后果和更小可行方向；狭窄需求不扩张，每条信息只表达一次。
+
+## Response Contract
+
+输出顺序固定为：`现状` → `需求分析` → `三个方向（升温发散：保守 / 平衡 / 激进）` → `最终建议（降温收敛）`。
+
+- `现状`：已确认事实、证据和会改变决策的未知。
+- `需求分析`：理想结果、可观察成功标准、关键约束、隐藏因果与复杂度归属。
+- 每个方向只写 `方案内容` 与 `综合收益`；综合收益同时包含代价和主要失败模式，不用不可执行方向凑数。
+- `最终建议`：唯一推荐、理由、成功与停止口径，以及需要确认的事项。
+- 普通需求保持短，复杂问题才展开；UI、UX、状态或复杂关系用短 ASCII 图表达主路径。
+
+## Decision Gate
+
+- 用户未确认方向时停止，不进入实现；用户明确要求直接实现时可跳过 issue 确认，但必须把结果、成功标准、权限、验证与停止条件交给 implementation Skill。
+- 方向确认后只选择 Single Issue 或两层 Issue Tree；读取 `references/issue-lifecycle.md`。长计划还需满足 `references/long-running-work.md` 的 Delivery readiness。
+- 新问题改变目标、source of truth、contract、数据影响、权限、用户内容或成功标准时，回到本 Skill；既定边界内的局部实现选择不重复请求批准。
+
+## Reference Routes
+
+| 信号 | 读取 |
+| --- | --- |
+| issue、Issue Tree、ADR、discussion brief、handoff | `references/artifacts.md` |
+| 计划形态、grade、labels、批准与关闭 | `references/issue-lifecycle.md` |
+| 长计划、多 agent、跨上下文或持续集成控制 | `references/long-running-work.md` |
+| Delivery 结束观测、预算聚合或历史校准 | `references/budget-calibration.md` |
+| defaults、contract、schema、state、permissions、migration、history、runtime behavior、user content | `references/domain-matrix.md` |
+| 高风险方向比较或反方评审 | `references/options-and-red-team.md` |
+| 新公共抽象、接口、flag、通用 helper、重复校验或 pass-through | `../_shared/design-rules.md` |
+| 只需校准输出尺度 | `references/examples.md` |
+
+获批后使用对应 implementation Skill 与 `test-driven-development`；验收和交付使用 `qa-evaluation`。

@@ -47,7 +47,6 @@ pub struct ListWaitingCallbackPublishedRunsInput {
     pub api_key_id: Uuid,
     pub external_user: String,
     pub external_conversation_id: String,
-    pub compatibility_mode: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -56,13 +55,23 @@ pub struct PublishedRunNodeUsage {
     pub output_usage: Option<Value>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublishedRunPendingCallback {
+    pub id: Uuid,
+    pub flow_run_id: Uuid,
+    pub node_run_id: Uuid,
+    pub callback_kind: String,
+    pub request_payload: Option<Value>,
+    pub tool_calls: Option<Value>,
+}
+
 #[derive(Debug, Clone)]
 pub struct PublishedRunStreamState {
     pub status: domain::FlowRunStatus,
     pub output_payload: Value,
     pub error_payload: Option<Value>,
     pub node_usages: Vec<PublishedRunNodeUsage>,
-    pub latest_pending_callback_task: Option<domain::CallbackTaskRecord>,
+    pub latest_pending_callback: Option<PublishedRunPendingCallback>,
 }
 
 #[async_trait]
@@ -98,10 +107,4 @@ pub trait ApplicationPublishedRunControlRepository: Send + Sync {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> Result<Option<PublishedRunStreamState>>;
-
-    async fn get_published_run_detail(
-        &self,
-        application_id: Uuid,
-        flow_run_id: Uuid,
-    ) -> Result<Option<domain::ApplicationRunDetail>>;
 }

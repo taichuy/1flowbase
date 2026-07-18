@@ -387,12 +387,11 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         &self,
         application_id: Uuid,
     ) -> Result<Option<ApplicationPublicationVersionRecord>> {
-        let row = sqlx::query(
-            publication_select_sql("where active and application_id = $1").as_str(),
-        )
-        .bind(application_id)
-        .fetch_optional(self.pool())
-        .await?;
+        let row =
+            sqlx::query(publication_select_sql("where active and application_id = $1").as_str())
+                .bind(application_id)
+                .fetch_optional(self.pool())
+                .await?;
 
         row.map(map_publication_row).transpose()
     }

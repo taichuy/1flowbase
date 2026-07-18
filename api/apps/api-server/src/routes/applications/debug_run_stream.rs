@@ -2,7 +2,8 @@ use std::{convert::Infallible, sync::Arc};
 
 use axum::response::sse::Event;
 use control_plane::ports::{
-    OrchestrationRuntimeRepository, RuntimeEventEnvelope, RuntimeEventStream,
+    OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventEnvelope,
+    RuntimeEventStream,
 };
 use serde::Serialize;
 use time::format_description::well_known::Rfc3339;
@@ -253,10 +254,7 @@ fn replay_gap_to_sse(
 }
 
 fn is_terminal_runtime_event(event_type: &str) -> bool {
-    matches!(
-        event_type,
-        "flow_finished" | "flow_failed" | "flow_cancelled" | "waiting_human" | "waiting_callback"
-    )
+    RuntimeEventCloseReason::from_terminal_event_type(event_type).is_some()
 }
 
 pub async fn send_runtime_event_stream(
@@ -526,6 +524,48 @@ mod tests {
             matches!(closed, Ok(None)),
             "sender should close after flow_cancelled terminal event"
         );
+    }
+
+    #[tokio::test]
+    async fn send_runtime_event_stream_returns_after_flow_incomplete_terminal_event() {
+        let stream = Arc::new(LocalRuntimeEventStream::new());
+        let run_id = Uuid::now_v7();
+        stream
+            .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+            .await
+            .unwrap();
+        let (sender, mut receiver) = mpsc::channel(8);
+        let backfill = Arc::new(RecordingBackfillSource::default());
+
+        let handle = tokio::spawn(send_runtime_event_stream(
+            stream.clone(),
+            backfill,
+            run_id,
+            None,
+            sender,
+        ));
+        stream
+            .append(run_id, runtime_event("flow_incomplete"))
+            .await
+            .unwrap();
+
+        let _ = timeout(Duration::from_secs(1), receiver.recv())
+            .await
+            .expect("incomplete terminal event should be sent")
+            .expect("incomplete terminal event should be available")
+            .expect("sse event should be valid");
+
+        let closed = timeout(Duration::from_millis(100), receiver.recv()).await;
+        if !matches!(closed, Ok(None)) {
+            handle.abort();
+        }
+        assert!(
+            matches!(closed, Ok(None)),
+            "sender should close after flow_incomplete terminal event"
+        );
+        handle
+            .await
+            .expect("incomplete terminal stream task should finish");
     }
 
     #[tokio::test]

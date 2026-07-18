@@ -1,4 +1,4 @@
-use std::{convert::Infallible, sync::Arc, time::Duration};
+use std::{convert::Infallible, sync::Arc};
 
 use axum::response::sse::Event;
 use control_plane::{
@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     routes::application_public_api::stream_terminal_fallback::{
-        load_latest_native_run_for_terminal_fallback, terminal_answer_deltas_from_payload,
+        recover_missing_stream_terminal_winner, terminal_answer_deltas_from_payload,
         terminal_runtime_event_from_native_run, TerminalAnswerDelta, TerminalAnswerDeltaKind,
     },
 };
@@ -65,30 +65,23 @@ fn native_terminal_payload(
     envelope: &RuntimeEventEnvelope,
     status: &'static str,
 ) -> NativeSsePayload {
-    let output = envelope
-        .payload
-        .get("output")
-        .cloned()
-        .unwrap_or(Value::Null);
     NativeSsePayload {
         run_id: initial_run.id,
         status,
         created_at: event_created_at(envelope),
         delta: None,
-        answer: output
-            .get("answer")
-            .or_else(|| output.get("text"))
-            .or_else(|| output.get("output"))
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned),
+        answer: initial_run.answer.clone(),
         conversation: initial_run.metadata.get("request").and_then(|request| {
             request
                 .get("conversation")
                 .cloned()
                 .filter(|value| !value.is_null())
         }),
-        usage: output.get("usage").cloned(),
-        attachments: output.get("attachments").cloned(),
+        usage: initial_run
+            .usage
+            .as_ref()
+            .and_then(|usage| serde_json::to_value(usage).ok()),
+        attachments: None,
         metadata: Some(initial_run.metadata.clone()),
         error: None,
         workflow: None,
@@ -236,6 +229,10 @@ fn native_sse_payload_for_runtime_event(
             "run.completed",
             native_terminal_payload(initial_run, &envelope, "succeeded"),
         ),
+        "flow_incomplete" => (
+            "run.incomplete",
+            native_terminal_payload(initial_run, &envelope, "incomplete"),
+        ),
         "flow_failed" => (
             "run.failed",
             NativeSsePayload {
@@ -253,14 +250,18 @@ fn native_sse_payload_for_runtime_event(
                 usage: None,
                 attachments: None,
                 metadata: Some(initial_run.metadata.clone()),
-                error: Some(json!({
-                    "code": "runtime_error",
-                    "message": envelope
-                        .payload
-                        .get("error")
-                        .and_then(Value::as_str)
-                        .unwrap_or("published run failed"),
-                })),
+                error: Some(
+                    initial_run
+                        .error
+                        .as_ref()
+                        .and_then(|error| serde_json::to_value(error).ok())
+                        .unwrap_or_else(|| {
+                            json!({
+                                "code": "runtime_error",
+                                "message": "published run failed",
+                            })
+                        }),
+                ),
                 workflow: None,
                 required_action: None,
             },
@@ -282,7 +283,10 @@ fn native_sse_payload_for_runtime_event(
                 usage: None,
                 attachments: None,
                 metadata: Some(initial_run.metadata.clone()),
-                error: None,
+                error: Some(json!({
+                    "code": "run_cancelled",
+                    "message": "published run cancelled",
+                })),
                 workflow: None,
                 required_action: None,
             },
@@ -327,7 +331,12 @@ fn native_required_action_payload(
 fn is_public_terminal_runtime_event(event_type: &str) -> bool {
     matches!(
         event_type,
-        "flow_finished" | "flow_failed" | "flow_cancelled" | "waiting_human" | "waiting_callback"
+        "flow_finished"
+            | "flow_incomplete"
+            | "flow_failed"
+            | "flow_cancelled"
+            | "waiting_human"
+            | "waiting_callback"
     )
 }
 
@@ -379,56 +388,45 @@ pub async fn send_native_runtime_event_stream(
         }
     }
 
-    let mut durable_terminal_check = tokio::time::interval(Duration::from_millis(500));
-    durable_terminal_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    loop {
-        tokio::select! {
-            maybe_event = subscription.live_events.recv() => {
-                let Some(event) = maybe_event else {
-                    break;
-                };
-                if is_ignored_waiting_callback(&event, ignored_waiting_callback_task_id) {
-                    continue;
-                }
-                let event_type = event.event_type.clone();
-                let is_terminal = is_public_terminal_runtime_event(&event_type);
-                let is_answer_delta = is_answer_presentation_delta(&event);
-                if is_terminal && !emitted_answer_delta {
-                    let answer_events =
-                        terminal_answer_delta_sse_events(&initial_run, include_workflow_events, &event);
-                    emitted_answer_delta |= !answer_events.is_empty();
-                    if !send_native_sse_events(&sender, answer_events).await {
-                        return;
-                    }
-                }
-                let sse = runtime_event_to_native_sse(&initial_run, include_workflow_events, event);
-                emitted_public_event |= sse.is_some();
-                emitted_answer_delta |= is_answer_delta && sse.is_some();
-                if !send_native_sse_event(&sender, sse).await {
-                    return;
-                }
-                if is_terminal {
-                    return;
-                }
-            }
-            _ = durable_terminal_check.tick() => {
-                if emit_native_terminal_fallback(NativeTerminalFallback {
-                    state: &state,
-                    initial_run: &initial_run,
-                    include_workflow_events,
-                    sender: &sender,
-                    emitted_public_event,
-                    emitted_answer_delta,
-                    trigger: "durable_poll",
-                    warn_if_not_terminal: false,
-                    ignored_waiting_callback_task_id,
-                })
-                .await
-                {
-                    return;
-                }
+    while let Some(event) = subscription.live_events.recv().await {
+        if is_ignored_waiting_callback(&event, ignored_waiting_callback_task_id) {
+            continue;
+        }
+        let event_type = event.event_type.clone();
+        let is_terminal = is_public_terminal_runtime_event(&event_type);
+        let is_answer_delta = is_answer_presentation_delta(&event);
+        if is_terminal && !emitted_answer_delta {
+            let answer_events =
+                terminal_answer_delta_sse_events(&initial_run, include_workflow_events, &event);
+            emitted_answer_delta |= !answer_events.is_empty();
+            if !send_native_sse_events(&sender, answer_events).await {
+                return;
             }
         }
+        let sse = runtime_event_to_native_sse(&initial_run, include_workflow_events, event);
+        emitted_public_event |= sse.is_some();
+        emitted_answer_delta |= is_answer_delta && sse.is_some();
+        if !send_native_sse_event(&sender, sse).await {
+            return;
+        }
+        if is_terminal {
+            return;
+        }
+    }
+
+    match *subscription.closure.borrow() {
+        Some(closure) => debug!(
+            flow_run_id = %initial_run.id,
+            application_id = %initial_run.application_id,
+            close_reason = ?closure.reason,
+            final_sequence = closure.final_sequence,
+            "native public API runtime event stream closed"
+        ),
+        None => warn!(
+            flow_run_id = %initial_run.id,
+            application_id = %initial_run.application_id,
+            "native public API runtime event receiver ended without a close signal"
+        ),
     }
 
     emit_native_terminal_fallback(NativeTerminalFallback {
@@ -492,7 +490,19 @@ async fn emit_native_terminal_fallback(fallback: NativeTerminalFallback<'_>) -> 
         ignored_waiting_callback_task_id,
     } = fallback;
 
-    let latest_run = load_latest_native_run_for_terminal_fallback(state, initial_run).await;
+    let latest_run = match recover_missing_stream_terminal_winner(state, initial_run).await {
+        Ok(run) => run,
+        Err(error) => {
+            warn!(
+                flow_run_id = %initial_run.id,
+                application_id = %initial_run.application_id,
+                error = %error,
+                trigger = %trigger,
+                "failed to recover the durable winner after native stream EOF"
+            );
+            return false;
+        }
+    };
     let Some(terminal_event) = terminal_runtime_event_from_native_run(&latest_run) else {
         if warn_if_not_terminal {
             warn!(
@@ -723,6 +733,85 @@ mod tests {
 
         assert_eq!(event_name, "message.delta");
         assert_eq!(payload["delta"], json!("answer presentation"));
+    }
+
+    #[test]
+    fn d1_ac_007_native_sse_projects_incomplete_without_completed_terminal() {
+        let mut run = native_run();
+        run.status = control_plane::application_public_api::native::NativeRunStatus::Incomplete;
+        let event = RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            debug_stream_events::flow_incomplete(
+                run.id,
+                json!({ "answer": "partial output at the limit" }),
+            ),
+        );
+
+        let (event_name, payload) =
+            native_sse_payload_for_runtime_event(&run, IncludeWorkflowEvents::None, event)
+                .expect("incomplete terminal should be projected to Native SSE");
+        let payload = serde_json::to_value(payload).expect("payload serializes");
+
+        assert_eq!(event_name, "run.incomplete");
+        assert_eq!(payload["status"], json!("incomplete"));
+        assert_eq!(payload["answer"], json!("partial output at the limit"));
+        assert_ne!(event_name, "run.completed");
+    }
+
+    #[test]
+    fn d2_ac_008_native_failed_terminal_keeps_prior_partial_without_answer_or_raw_error() {
+        let mut run = native_run();
+        run.status = control_plane::application_public_api::native::NativeRunStatus::Failed;
+        run.answer = Some("must-not-replay".to_string());
+        run.error = Some(control_plane::application_public_api::native::NativeError {
+            code: "runtime_error".to_string(),
+            message: "safe canonical failure".to_string(),
+            details: json!({}),
+        });
+        let partial = RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            debug_stream_events::answer_text_delta(
+                "node-answer",
+                "real partial delta".to_string(),
+                0,
+                Some("node-llm"),
+                None,
+                Some("text"),
+            ),
+        );
+        let failed = RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            debug_stream_events::flow_failed(
+                run.id,
+                json!({
+                    "error": "provider raw secret",
+                    "answer": "must-not-replay"
+                }),
+            ),
+        );
+
+        let (partial_event, partial_payload) =
+            native_sse_payload_for_runtime_event(&run, IncludeWorkflowEvents::None, partial)
+                .expect("answer presentation delta should remain public");
+        let (_, failed_payload) =
+            native_sse_payload_for_runtime_event(&run, IncludeWorkflowEvents::None, failed)
+                .expect("failed terminal should be public");
+        let partial_payload = serde_json::to_value(partial_payload).expect("partial serializes");
+        let failed_payload = serde_json::to_value(failed_payload).expect("failed serializes");
+
+        assert_eq!(partial_event, "message.delta");
+        assert_eq!(partial_payload["delta"], json!("real partial delta"));
+        assert_eq!(failed_payload["status"], json!("failed"));
+        assert_eq!(
+            failed_payload["error"]["message"],
+            json!("safe canonical failure")
+        );
+        assert!(failed_payload.get("answer").is_none());
+        assert!(!failed_payload.to_string().contains("must-not-replay"));
+        assert!(!failed_payload.to_string().contains("provider raw secret"));
     }
 
     #[tokio::test]

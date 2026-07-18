@@ -110,6 +110,22 @@ where
                 mpsc::unbounded_channel::<ProviderStreamEvent>();
             live_forward_handle = Some(tokio::spawn(async move {
                 let mut think_tag_splitter = ThinkTagStreamSplitter::default();
+                let (mut answer_persistence_sender, answer_persistence_handle) =
+                    if answer_presentation.is_some()
+                        && runtime_event_stream.is_some()
+                        && flow_run_id.is_some()
+                    {
+                        let (sender, receiver) = mpsc::channel(
+                            runtime_event_persister::RUNTIME_EVENT_PERSISTENCE_QUEUE_CAPACITY,
+                        );
+                        let handle = runtime_event_persister::spawn_batched_runtime_event_persister(
+                            repository.clone(),
+                            receiver,
+                        );
+                        (Some(sender), Some(handle))
+                    } else {
+                        (None, None)
+                    };
                 while let Some(mut event) = provider_receiver.recv().await {
                     orchestration_runtime::execution_engine::canonicalize_provider_stream_event_tool_call_name(
                             &mut event,
@@ -195,49 +211,78 @@ where
                                 debug_stream_events::is_answer_presentation_delta_payload(
                                     &runtime_event.payload,
                                 );
-                            if is_answer_presentation {
-                                if let Err(error) =
-                                    runtime_event_persister::persist_runtime_event_payload(
-                                        &repository,
-                                        flow_run_id,
-                                        &runtime_event,
-                                    )
-                                    .await
-                                {
-                                    tracing::warn!(
-                                        flow_run_id = %flow_run_id,
-                                        event_type = %runtime_event.event_type,
-                                        error = %error,
-                                        "failed to persist answer presentation runtime event"
-                                    );
-                                }
-                            }
+                            let persistence_fallback =
+                                is_answer_presentation.then(|| runtime_event.clone());
                             let event_type = runtime_event.event_type.clone();
                             let source = runtime_event.source;
                             let mut stream_event = runtime_event;
                             if is_answer_presentation {
                                 stream_event.persist_required = false;
                             }
-                            if let Err(error) = stream.append(flow_run_id, stream_event).await {
-                                if is_expected_runtime_event_stream_closed_error(&error) {
-                                    tracing::debug!(
-                                        flow_run_id = %flow_run_id,
-                                        event_type = %event_type,
-                                        source = ?source,
-                                        error = %error,
-                                        "provider runtime event append skipped because stream is already closed"
-                                    );
-                                } else {
+                            let event_for_persistence = match stream
+                                .append(flow_run_id, stream_event)
+                                .await
+                            {
+                                Ok(mut envelope) if is_answer_presentation => {
+                                    envelope.persist_required = true;
+                                    Some(envelope)
+                                }
+                                Ok(_) => None,
+                                Err(error) => {
+                                    if is_expected_runtime_event_stream_closed_error(&error) {
+                                        tracing::debug!(
+                                            flow_run_id = %flow_run_id,
+                                            event_type = %event_type,
+                                            source = ?source,
+                                            error = %error,
+                                            "provider runtime event append skipped because stream is already closed"
+                                        );
+                                    } else {
+                                        tracing::warn!(
+                                            flow_run_id = %flow_run_id,
+                                            event_type = %event_type,
+                                            source = ?source,
+                                            error = %error,
+                                            "failed to append provider runtime event"
+                                        );
+                                    }
+                                    persistence_fallback.map(|event| {
+                                        RuntimeEventEnvelope::new(flow_run_id, 0, event)
+                                    })
+                                }
+                            };
+                            if let (Some(sender), Some(event)) =
+                                (answer_persistence_sender.as_ref(), event_for_persistence)
+                            {
+                                if let Err(error) = sender.try_send(event) {
                                     tracing::warn!(
                                         flow_run_id = %flow_run_id,
                                         event_type = %event_type,
-                                        source = ?source,
                                         error = %error,
-                                        "failed to append provider runtime event"
+                                        "answer presentation persistence queue stopped accepting events; durable suffix recovery will preserve the final answer"
                                     );
+                                    // Stop at a durable prefix. Persisting later deltas after a gap
+                                    // would make terminal suffix recovery duplicate the final answer.
+                                    answer_persistence_sender = None;
                                 }
                             }
                         }
+                    }
+                }
+                drop(answer_persistence_sender);
+                if let Some(handle) = answer_persistence_handle {
+                    match handle.await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => tracing::warn!(
+                            flow_run_id = ?flow_run_id,
+                            error = %error,
+                            "failed to flush answer presentation runtime event batch"
+                        ),
+                        Err(error) => tracing::warn!(
+                            flow_run_id = ?flow_run_id,
+                            error = %error,
+                            "answer presentation runtime event persister panicked"
+                        ),
                     }
                 }
             }));

@@ -5,24 +5,31 @@ use serde_json::{json, Value};
 
 use crate::application_public_api::native::{self, NativeRunResult, NativeRunStatus};
 
-use super::repository_contracts::PublishedRunStreamState;
+use super::repository_contracts::{PublishedRunPendingCallback, PublishedRunStreamState};
 
 pub fn native_result_from_flow_run(
     flow_run: &domain::FlowRunRecord,
     metadata: Value,
 ) -> NativeRunResult {
+    let status = native_status(flow_run.status);
     NativeRunResult {
         id: flow_run.id,
         application_id: flow_run.application_id,
         api_key_id: flow_run.api_key_id.unwrap_or_default(),
         publication_version_id: flow_run.publication_version_id.unwrap_or_default(),
-        status: native_status(flow_run.status),
+        status,
         node_input_payload: flow_run.input_payload.clone(),
         metadata,
-        answer: extract_answer(&flow_run.output_payload),
-        answer_segments: extract_answer_segments(&flow_run.output_payload),
+        answer: native_status_exposes_answer(status)
+            .then(|| extract_answer(&flow_run.output_payload))
+            .flatten(),
+        answer_segments: native_status_exposes_answer(status)
+            .then(|| extract_answer_segments(&flow_run.output_payload))
+            .flatten(),
         required_action: None,
-        tool_calls: extract_tool_calls(&flow_run.output_payload),
+        tool_calls: native_status_exposes_tool_calls(status)
+            .then(|| extract_tool_calls(&flow_run.output_payload))
+            .flatten(),
         usage: extract_usage(&flow_run.output_payload),
         error: native_error_from_payload(flow_run.error_payload.as_ref()),
         created_at: flow_run.created_at,
@@ -31,7 +38,6 @@ pub fn native_result_from_flow_run(
 
 fn native_error_from_payload(payload: Option<&Value>) -> Option<native::NativeError> {
     payload.map(|payload| {
-        let public_details = public_native_error_details(payload);
         let message = payload
             .get("message")
             .or_else(|| payload.get("error"))
@@ -40,64 +46,51 @@ fn native_error_from_payload(payload: Option<&Value>) -> Option<native::NativeEr
             .unwrap_or_else(|| payload.to_string());
         native::NativeError {
             code: payload
-                .get("code")
+                .get("error_code")
+                .or_else(|| payload.get("code"))
                 .and_then(Value::as_str)
                 .unwrap_or("runtime_error")
                 .to_string(),
             message: public_native_error_message(payload, &message),
-            details: public_details,
+            details: public_native_error_details(payload),
         }
     })
 }
 
 fn public_native_error_details(payload: &Value) -> Value {
-    let mut details = payload.clone();
-    if let Value::Object(object) = &mut details {
-        if object.get("error_code").and_then(Value::as_str) == Some("provider_upstream_error") {
-            if public_provider_upstream_message_contains_raw_body(payload, object.get("message")) {
-                object.insert(
-                    "message".to_string(),
-                    Value::String("provider upstream request failed".to_string()),
-                );
-            }
-            object.remove("provider_summary");
+    let mut details = serde_json::Map::new();
+    for key in ["provider_code", "node_id", "node_alias"] {
+        if let Some(value) = payload.get(key) {
+            details.insert(key.to_string(), value.clone());
         }
-        object.remove("provider_details");
     }
-    details
+    let status_code = payload
+        .get("status_code")
+        .and_then(Value::as_u64)
+        .or_else(|| {
+            payload
+                .get("provider_details")
+                .and_then(|details| details.get("status"))
+                .and_then(Value::as_u64)
+        })
+        .and_then(|status| u16::try_from(status).ok())
+        .filter(|status| (100..=599).contains(status));
+    if let Some(status_code) = status_code {
+        details.insert("status_code".to_string(), json!(status_code));
+    }
+    Value::Object(details)
 }
 
 fn public_native_error_message(payload: &Value, message: &str) -> String {
-    if payload.get("error_code").and_then(Value::as_str) != Some("provider_upstream_error") {
-        return message.to_string();
+    match payload.get("error_code").and_then(Value::as_str) {
+        Some("auth_failed") => "provider authentication failed".to_string(),
+        Some("endpoint_unreachable") => "provider endpoint is unreachable".to_string(),
+        Some("model_not_found") => "provider model was not found".to_string(),
+        Some("rate_limited") => "provider rate limit exceeded".to_string(),
+        Some("provider_upstream_error") => "provider upstream request failed".to_string(),
+        Some("provider_invalid_response") => "provider returned an invalid response".to_string(),
+        _ => message.to_string(),
     }
-
-    if public_provider_upstream_message_contains_raw_body(
-        payload,
-        Some(&Value::String(message.to_string())),
-    ) {
-        "provider upstream request failed".to_string()
-    } else {
-        message.to_string()
-    }
-}
-
-fn public_provider_upstream_message_contains_raw_body(
-    payload: &Value,
-    message: Option<&Value>,
-) -> bool {
-    let Some(message) = message.and_then(Value::as_str) else {
-        return false;
-    };
-    let Some(raw_body) = payload
-        .get("provider_details")
-        .and_then(|details| details.get("raw_body"))
-        .and_then(Value::as_str)
-        .filter(|raw_body| !raw_body.trim().is_empty())
-    else {
-        return false;
-    };
-    message.contains(raw_body)
 }
 
 pub fn native_result_from_run_detail(
@@ -126,10 +119,16 @@ pub fn native_result_from_run_stream_state(
 ) -> NativeRunResult {
     let mut result = initial_run.clone();
     result.status = native_status(stream_state.status);
-    result.answer = extract_answer(&stream_state.output_payload);
-    result.answer_segments = extract_answer_segments(&stream_state.output_payload);
+    result.answer = native_status_exposes_answer(result.status)
+        .then(|| extract_answer(&stream_state.output_payload))
+        .flatten();
+    result.answer_segments = native_status_exposes_answer(result.status)
+        .then(|| extract_answer_segments(&stream_state.output_payload))
+        .flatten();
     result.required_action = None;
-    result.tool_calls = extract_tool_calls(&stream_state.output_payload);
+    result.tool_calls = native_status_exposes_tool_calls(result.status)
+        .then(|| extract_tool_calls(&stream_state.output_payload))
+        .flatten();
     result.usage = extract_usage(&stream_state.output_payload).or_else(|| {
         aggregate_usage_payloads(stream_state.node_usages.iter().map(|node_usage| {
             (
@@ -139,10 +138,7 @@ pub fn native_result_from_run_stream_state(
         }))
     });
     result.error = native_error_from_payload(stream_state.error_payload.as_ref());
-    apply_pending_callback_task(
-        &mut result,
-        stream_state.latest_pending_callback_task.as_ref(),
-    );
+    apply_pending_callback_state(&mut result, stream_state.latest_pending_callback.as_ref());
     result
 }
 
@@ -172,6 +168,36 @@ fn apply_pending_callback_task(
     }
 }
 
+fn apply_pending_callback_state(
+    result: &mut NativeRunResult,
+    callback: Option<&PublishedRunPendingCallback>,
+) {
+    let Some(callback) = callback else {
+        return;
+    };
+    let action_type = if callback.callback_kind == "llm_tool_calls" {
+        "submit_tool_outputs"
+    } else {
+        "callback"
+    };
+    let mut payload = json!({
+        "callback_task_id": callback.id,
+        "callback_kind": callback.callback_kind,
+        "flow_run_id": callback.flow_run_id,
+        "node_run_id": callback.node_run_id,
+    });
+    if callback.callback_kind == "llm_tool_calls" {
+        payload["tool_calls"] = callback.tool_calls.clone().unwrap_or(Value::Null);
+        result.tool_calls = callback.tool_calls.clone();
+    } else if let Some(request_payload) = &callback.request_payload {
+        payload["request_payload"] = request_payload.clone();
+    }
+    result.required_action = Some(native::NativeRequiredAction {
+        action_type: action_type.to_string(),
+        payload,
+    });
+}
+
 fn native_required_action_from_callback_task(
     task: &domain::CallbackTaskRecord,
 ) -> native::NativeRequiredAction {
@@ -180,20 +206,24 @@ fn native_required_action_from_callback_task(
     } else {
         "callback"
     };
+    let mut payload = json!({
+        "callback_task_id": task.id,
+        "callback_kind": task.callback_kind,
+        "flow_run_id": task.flow_run_id,
+        "node_run_id": task.node_run_id,
+    });
+    if task.callback_kind == "llm_tool_calls" {
+        payload["tool_calls"] = task
+            .request_payload
+            .get("tool_calls")
+            .cloned()
+            .unwrap_or(Value::Null);
+    } else {
+        payload["request_payload"] = task.request_payload.clone();
+    }
     native::NativeRequiredAction {
         action_type: action_type.to_string(),
-        payload: json!({
-            "callback_task_id": task.id,
-            "callback_kind": task.callback_kind,
-            "flow_run_id": task.flow_run_id,
-            "node_run_id": task.node_run_id,
-            "request_payload": task.request_payload,
-            "tool_calls": task
-                .request_payload
-                .get("tool_calls")
-                .cloned()
-                .unwrap_or(Value::Null),
-        }),
+        payload,
     }
 }
 
@@ -330,7 +360,22 @@ fn native_status(status: domain::FlowRunStatus) -> NativeRunStatus {
         }
         domain::FlowRunStatus::Paused => NativeRunStatus::Running,
         domain::FlowRunStatus::Succeeded => NativeRunStatus::Succeeded,
+        domain::FlowRunStatus::Incomplete => NativeRunStatus::Incomplete,
         domain::FlowRunStatus::Failed => NativeRunStatus::Failed,
         domain::FlowRunStatus::Cancelled => NativeRunStatus::Cancelled,
     }
+}
+
+fn native_status_exposes_answer(status: NativeRunStatus) -> bool {
+    matches!(
+        status,
+        NativeRunStatus::Succeeded | NativeRunStatus::Incomplete
+    )
+}
+
+fn native_status_exposes_tool_calls(status: NativeRunStatus) -> bool {
+    matches!(
+        status,
+        NativeRunStatus::Succeeded | NativeRunStatus::Waiting
+    )
 }

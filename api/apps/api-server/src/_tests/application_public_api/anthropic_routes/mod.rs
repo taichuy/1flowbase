@@ -1,21 +1,18 @@
 use crate::{
-    _tests::support::{login_and_capture_cookie, test_api_state_with_database_url, test_config},
+    _tests::{
+        create_ready_provider_instance,
+        support::{login_and_capture_cookie, test_api_state_with_database_url, test_config},
+    },
     app_state::ApiState,
-    routes::application_public_api::tool_callback_ids::encode_anthropic_callback_tool_use_id,
 };
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
     Router,
 };
-use control_plane::ports::{
-    CreateCallbackTaskInput, CreateNodeRunInput, OrchestrationRuntimeRepository, UpdateFlowRunInput,
-};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use time::OffsetDateTime;
 use tower::ServiceExt;
-use uuid::Uuid;
 
 async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -92,6 +89,7 @@ async fn create_application_key(
 }
 
 async fn publish_application(app: &Router, cookie: &str, csrf: &str, application_id: &str) {
+    let provider_instance_id = create_ready_provider_instance(app, cookie, csrf).await;
     let state = app
         .clone()
         .oneshot(
@@ -108,32 +106,44 @@ async fn publish_application(app: &Router, cookie: &str, csrf: &str, application
         .unwrap();
     assert_eq!(state.status(), StatusCode::OK);
     let mut document = response_json(state).await["data"]["draft"]["document"].clone();
-    let start_node = document["graph"]["nodes"]
+    let nodes = document["graph"]["nodes"]
         .as_array_mut()
-        .expect("nodes array")
-        .iter_mut()
-        .find(|node| node["type"] == "start")
-        .expect("default draft should include a start node");
-    start_node["config"]["model_list"] = json!([
-        {
-            "id": "qwen3.6-35b-a3b",
-            "name": "Qwen 3.6 35B",
-            "context_window": 128000,
-            "max_output_tokens": 32000,
-            "auto_compact_token_limit": 110000,
-            "capabilities": {
-                "reasoning": true,
-                "tool_call": true,
-                "multimodal": false,
-                "structured_output": true
+        .expect("nodes array");
+    {
+        let start_node = nodes
+            .iter_mut()
+            .find(|node| node["type"] == "start")
+            .expect("default draft should include a start node");
+        start_node["config"]["model_list"] = json!([
+            {
+                "id": "qwen3.6-35b-a3b",
+                "name": "Qwen 3.6 35B",
+                "context_window": 128000,
+                "max_output_tokens": 32000,
+                "auto_compact_token_limit": 110000,
+                "capabilities": {
+                    "reasoning": true,
+                    "tool_call": true,
+                    "multimodal": false,
+                    "structured_output": true
+                },
+                "reasoning": {
+                    "default_effort": "medium",
+                    "supported_efforts": ["low", "medium", "high"]
+                }
             },
-            "reasoning": {
-                "default_effort": "medium",
-                "supported_efforts": ["low", "medium", "high"]
-            }
-        },
-        "deepseek-v4-flash"
-    ]);
+            "deepseek-v4-flash"
+        ]);
+    }
+    let llm_node = nodes
+        .iter_mut()
+        .find(|node| node["type"] == "llm")
+        .expect("default draft should include an LLM node");
+    llm_node["config"]["model_provider"] = json!({
+        "provider_code": "fixture_provider",
+        "source_instance_id": provider_instance_id,
+        "model_id": "fixture_chat"
+    });
 
     let save = app
         .clone()
@@ -228,69 +238,28 @@ async fn flow_run_count(state: &ApiState) -> i64 {
         .unwrap()
 }
 
-async fn seed_pending_anthropic_llm_callback(
-    state: &ApiState,
-    flow_run_id: Uuid,
-    tool_use_id: &str,
-) -> domain::CallbackTaskRecord {
-    seed_pending_anthropic_llm_callback_with_tools(state, flow_run_id, &[tool_use_id]).await
-}
+async fn assert_published_anthropic_plan_has_provider_route(state: &ApiState) {
+    let plan: Value = sqlx::query_scalar(
+        "select plan from flow_compiled_plans order by created_at desc, id desc limit 1",
+    )
+    .fetch_one(state.store.pool())
+    .await
+    .unwrap();
 
-async fn seed_pending_anthropic_llm_callback_with_tools(
-    state: &ApiState,
-    flow_run_id: Uuid,
-    tool_use_ids: &[&str],
-) -> domain::CallbackTaskRecord {
-    let tool_calls = tool_use_ids
-        .iter()
-        .map(|tool_use_id| {
-            json!({
-                "id": tool_use_id,
-                "name": "Grep",
-                "arguments": { "pattern": "image-1.png" }
-            })
-        })
-        .collect::<Vec<_>>();
-    state
-        .store
-        .update_flow_run(&UpdateFlowRunInput {
-            flow_run_id,
-            status: domain::FlowRunStatus::WaitingCallback,
-            output_payload: json!({ "tool_calls": tool_calls.clone() }),
-            error_payload: None,
-            finished_at: None,
-        })
-        .await
-        .unwrap();
-    let node_run = state
-        .store
-        .create_node_run(&CreateNodeRunInput {
-            flow_run_id,
-            node_id: "node-llm".to_string(),
-            node_type: "llm".to_string(),
-            node_alias: "LLM".to_string(),
-            status: domain::NodeRunStatus::WaitingCallback,
-            input_payload: json!({}),
-            debug_payload: json!({ "llm_rounds": [] }),
-            started_at: OffsetDateTime::now_utc(),
-        })
-        .await
-        .unwrap();
-
-    state
-        .store
-        .create_callback_task(&CreateCallbackTaskInput {
-            flow_run_id,
-            node_run_id: node_run.id,
-            callback_kind: "llm_tool_calls".to_string(),
-            request_payload: json!({
-                "tool_calls": tool_calls,
-                "finish_reason": "tool_call"
-            }),
-            external_ref_payload: None,
-        })
-        .await
-        .unwrap()
+    assert_eq!(plan["compile_issues"], json!([]), "{plan}");
+    let runtime = &plan["nodes"]["node-llm"]["llm_runtime"];
+    assert_eq!(
+        runtime["provider_code"],
+        json!("fixture_provider"),
+        "{plan}"
+    );
+    assert_eq!(runtime["model"], json!("fixture_chat"), "{plan}");
+    assert!(
+        runtime["provider_instance_id"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()),
+        "{plan}"
+    );
 }
 
 async fn post_json(
@@ -326,7 +295,7 @@ async fn post_json_with_headers(
 
 fn anthropic_body() -> Value {
     json!({
-        "model": "anthropic/custom-model:latest",
+        "model": "qwen3.6-35b-a3b",
         "max_tokens": 64,
         "messages": [
             {"role": "user", "content": "Earlier question"},

@@ -25,7 +25,7 @@ description: Use when implementing 1flowbase features, bug fixes, refactors, bac
 
 开始 TDD 前先确认实现入口：
 
-- 1flowbase 功能、缺陷、重构或行为变化：必须已有用户确认的 Standalone Complete Issue，或 issue 树中的 L3 implementation issue。
+- 1flowbase 功能、缺陷、重构或行为变化：必须已有用户确认的 Single Issue，或已批准 Issue Tree Root 下的 Delivery Issue。
 - 可接受替代证据：用户在当前任务中明确说跳过 issue、直接实现或无需确认。
 - 没有 issue 或跳过证据时，停止；回到 `problem-framing` 创建 / 更新 issue 并等待用户确认。
 - 后端 API / 状态入口测试必须承接已确认的验收预期；缺少预期时回到 `problem-framing`，不要在 TDD 阶段重定需求。
@@ -38,9 +38,11 @@ description: Use when implementing 1flowbase features, bug fixes, refactors, bac
 2. 运行定向测试，确认失败原因符合预期。
 3. 写最小实现让测试通过。
 4. 绿灯后再重构，重构后保持绿灯。
-5. 按变更风险补必要回归：定向测试优先，只补当前任务结果和直接风险所需的类型、lint、build 或 smoke。
-6. workspace 级 cargo / pnpm build、clippy、full test、服务重启、`api-debug`，或超过 3 条重验证命令的收益和成本，必须在 `problem-framing` / 已确认 issue / handoff 阶段前置说明。实现期发现未预期重验证需求时，默认不打断开发，交付说明标为 beta / CI / 全局门禁未验证；只有缺少该证据会让继续实现不安全或无法判断当前任务是否完成时，才暂停并说明原因。
-7. 同一 worktree 同时只运行一条 Cargo 命令；单条命令内部默认使用机器逻辑 CPU 的一半，不写死 `CARGO_BUILD_JOBS=1/4`。仓库包装命令会自动读取；直接运行定向 Cargo 时使用 `CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo ...`。只有复现资源问题或本地配置明确限流时才降低。
+5. 把同一行为族或有限字段矩阵作为一个 red → green 批次；先固定 inventory 和判定函数，再批量实现，不按单个字段进行 patch → test 微循环。
+6. 只有覆盖代码、fixture、expectation 或环境发生相关变化后才重跑同一命令。candidate 前第三次运行同一套件是 churn 信号：先批量收敛剩余变化或回到 `problem-framing`，不靠继续重跑寻找完成感。
+7. 按变更风险补必要回归：定向测试优先，只补当前任务结果和直接风险所需的类型、lint、build 或 smoke。
+8. workspace 级 cargo / pnpm build、clippy、full test、服务重启、`api-debug`，或超过 3 条重验证命令的收益和成本，必须在 `problem-framing` / 已确认计划 / handoff 阶段前置说明。实现期发现未预期重验证需求时，默认不打断开发，交付说明标为 beta / CI / 全局门禁未验证；只有缺少该证据会让继续实现不安全或无法判断当前任务是否完成时，才暂停并说明原因。
+9. 同一 worktree 同时只运行一条 Cargo 命令；单条命令内部默认使用机器逻辑 CPU 的一半，不写死 `CARGO_BUILD_JOBS=1/4`。仓库包装命令会自动读取；直接运行定向 Cargo 时使用 `CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo ...`。只有复现资源问题或本地配置明确限流时才降低。
 
 ## Test Authenticity Gate
 
@@ -84,5 +86,6 @@ warning 与 coverage 产物统一落到 `tmp/test-governance/`。
 - 用空壳测试、宽松断言或未绑定真实代码的测试结算验收点。
 - 后端接口只测 service 内部逻辑，没有覆盖 route 认证、DTO、status / error shape 或状态副作用。
 - 为了通过测试扩大实现范围。
+- 按字段或断言进行 patch → test 微循环，反复重跑没有相关输入变化的同一套件。
 - 把全局质量门禁当成本地 TDD 收尾默认步骤，导致长任务验证成本失控。
 - 跳过 TDD 但没有说明原因和替代验证。

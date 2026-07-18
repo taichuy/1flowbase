@@ -238,7 +238,9 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             runtime_activity: std::sync::Arc::new(
                 api_server::runtime_activity::ApplicationRuntimeActivityTracker::default(),
             ),
-            api_runtime_profile: std::sync::Arc::new(HostApiRuntimeProfileCollector),
+            api_runtime_profile: std::sync::Arc::new(
+                HostApiRuntimeProfileCollector::new(process_started_at).unwrap(),
+            ),
             plugin_runner_system: std::sync::Arc::new(UnreachablePluginRunnerSystemClient),
             official_plugin_source: std::sync::Arc::new(NoopOfficialPluginSource),
             official_agent_flow_template_source: std::sync::Arc::new(

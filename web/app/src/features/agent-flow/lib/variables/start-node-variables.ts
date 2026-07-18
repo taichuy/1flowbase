@@ -80,6 +80,11 @@ export const startSystemVariables = [
     valueType: 'string'
   },
   {
+    key: 'max_output_tokens',
+    title: 'userinput.max_output_tokens',
+    valueType: 'number'
+  },
+  {
     key: 'history',
     title: 'userinput.history',
     valueType: 'array',

@@ -15,9 +15,7 @@ use serde_json::{json, Value};
 use utoipa::ToSchema;
 
 use crate::{
-    app_state::ApiState,
-    error_response::ApiError,
-    middleware::require_session::require_session,
+    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
     response::ApiSuccess,
 };
 
@@ -108,7 +106,6 @@ fn parse_capability_sorts(
         _ => Err(ControlPlaneError::InvalidInput("sort").into()),
     }
 }
-
 
 struct DataCapabilityContext {
     actor: domain::ActorContext,
@@ -427,10 +424,7 @@ fn model_param_schema(extra: Value) -> Value {
             "model": { "type": "string", "description": "Data model code" }
         }
     });
-    if let (Some(base), Some(extra)) = (
-        schema["properties"].as_object_mut(),
-        extra.as_object(),
-    ) {
+    if let (Some(base), Some(extra)) = (schema["properties"].as_object_mut(), extra.as_object()) {
         for (key, value) in extra {
             base.insert(key.clone(), value.clone());
         }

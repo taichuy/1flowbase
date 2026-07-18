@@ -333,10 +333,10 @@ impl DocTextResolver {
                 DocsLocale::ZhHans,
             ) => "流式返回选项，include_workflow_events=public 会启用公开工作流事件。",
             ("application_public_api.native.create_run.request.execution", DocsLocale::ZhHans) => {
-                "发布运行的执行选项。支持 model_parameters.reasoning 作为运行时 reasoning 偏好。"
+                "发布运行的执行选项。支持 model_parameters.max_output_tokens 与 model_parameters.reasoning 作为运行时大语言模型参数；execution.compatibility_mode 不受支持。"
             }
             ("application_public_api.native.create_run.request.metadata", DocsLocale::ZhHans) => {
-                "调用方元数据，会随公开运行持久化。"
+                "调用方 metadata 只会在初始运行响应中回显；持久化的公开运行字段仅限已定义的 trace 与会话标识。"
             }
             ("application_public_api.anthropic.message.request.metadata", DocsLocale::ZhHans) => {
                 "附加元数据。metadata.expand_id 会映射为公开运行的外部用户标识。"
@@ -398,10 +398,10 @@ impl DocTextResolver {
                 "Streaming options. include_workflow_events=public enables public workflow events."
             }
             ("application_public_api.native.create_run.request.execution", DocsLocale::EnUs) => {
-                "Execution options for the published run. Supports model_parameters.reasoning as runtime reasoning preference."
+                "Execution options for the published run. Supports model_parameters.max_output_tokens and model_parameters.reasoning as runtime language-model parameters; execution.compatibility_mode is unsupported."
             }
             ("application_public_api.native.create_run.request.metadata", DocsLocale::EnUs) => {
-                "Caller metadata persisted with the public run."
+                "Caller metadata is echoed only in the initial run response; durable public-run fields are limited to defined trace and conversation identities."
             }
             ("application_public_api.anthropic.message.request.metadata", DocsLocale::EnUs) => {
                 "Additional metadata. metadata.expand_id maps to the public run external user id."

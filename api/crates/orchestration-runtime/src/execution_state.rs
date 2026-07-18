@@ -19,9 +19,15 @@ pub struct PendingCallbackTask {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecutionStopReason {
     Completed,
+    Incomplete(ExecutionIncompleteReason),
     WaitingHuman(PendingHumanInput),
     WaitingCallback(PendingCallbackTask),
     Failed(NodeExecutionFailure),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionIncompleteReason {
+    OutputLimit,
 }
 
 #[derive(Debug, Clone, PartialEq)]

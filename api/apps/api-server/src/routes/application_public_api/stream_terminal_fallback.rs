@@ -11,6 +11,7 @@ use control_plane::{
     },
     orchestration_runtime::{
         debug_artifacts::is_runtime_debug_artifact_preview, debug_stream_events,
+        FinalizePublishedRunMissingStreamTerminalCommand, OrchestrationRuntimeService,
     },
     ports::{
         FileManagementRepository, GetRuntimeDebugArtifactInput, OrchestrationRuntimeRepository,
@@ -21,7 +22,7 @@ use serde_json::{json, Value};
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::app_state::ApiState;
+use crate::{app_state::ApiState, provider_runtime::ApiProviderRuntime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TerminalAnswerDeltaKind {
@@ -39,20 +40,8 @@ pub(crate) async fn load_latest_native_run_for_terminal_fallback(
     state: &ApiState,
     initial_run: &NativeRunResult,
 ) -> NativeRunResult {
-    match state
-        .store
-        .get_published_run_stream_state(initial_run.application_id, initial_run.id)
-        .await
-    {
-        Ok(Some(stream_state)) => native_result_from_run_stream_state(initial_run, &stream_state),
-        Ok(None) => {
-            warn!(
-                flow_run_id = %initial_run.id,
-                application_id = %initial_run.application_id,
-                "compatible/native stream closed without terminal event and no durable run state was found"
-            );
-            initial_run.clone()
-        }
+    match load_latest_native_run_strict(state, initial_run).await {
+        Ok(run) => run,
         Err(error) => {
             warn!(
                 flow_run_id = %initial_run.id,
@@ -65,12 +54,88 @@ pub(crate) async fn load_latest_native_run_for_terminal_fallback(
     }
 }
 
+/// Resolves a confirmed producer EOF to the durable winner before an API adapter projects it.
+/// Callers must use this only after execution has ended or a runtime stream closed without a
+/// terminal event; transport failures and client disconnects are not EOF evidence.
+pub(crate) async fn recover_missing_stream_terminal_winner(
+    state: &ApiState,
+    initial_run: &NativeRunResult,
+) -> anyhow::Result<NativeRunResult> {
+    let current = load_latest_native_run_strict(state, initial_run).await?;
+    if !matches!(
+        current.status,
+        NativeRunStatus::Queued | NativeRunStatus::Running
+    ) {
+        return Ok(current);
+    }
+
+    let recovery_service = OrchestrationRuntimeService::new(
+        state.store.clone(),
+        ApiProviderRuntime::new(state.provider_runtime.clone()),
+        state.runtime_engine.clone(),
+        state.provider_secret_master_key.clone(),
+    )
+    .with_runtime_event_stream(state.runtime_event_stream.clone());
+    let recovery_result = recovery_service
+        .finalize_published_run_missing_stream_terminal(
+            FinalizePublishedRunMissingStreamTerminalCommand {
+                application_id: initial_run.application_id,
+                flow_run_id: initial_run.id,
+            },
+        )
+        .await;
+
+    // Live publication can fail after the durable transaction commits (for example a stream
+    // already closed). The fresh durable winner, rather than that delivery error, is the source
+    // of truth for the fallback projection.
+    let winner = load_latest_native_run_strict(state, initial_run).await?;
+    if !matches!(
+        winner.status,
+        NativeRunStatus::Queued | NativeRunStatus::Running
+    ) {
+        if let Err(error) = recovery_result {
+            warn!(
+                flow_run_id = %initial_run.id,
+                application_id = %initial_run.application_id,
+                error = %error,
+                "published stream EOF recovery committed a durable winner but could not publish its live terminal"
+            );
+        }
+        return Ok(winner);
+    }
+
+    match recovery_result {
+        Ok(_) => Err(anyhow::anyhow!(
+            "published stream EOF recovery returned a nonterminal durable winner"
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+async fn load_latest_native_run_strict(
+    state: &ApiState,
+    initial_run: &NativeRunResult,
+) -> anyhow::Result<NativeRunResult> {
+    let stream_state = state
+        .store
+        .get_published_run_stream_state(initial_run.application_id, initial_run.id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("published run stream state not found"))?;
+    Ok(native_result_from_run_stream_state(
+        initial_run,
+        &stream_state,
+    ))
+}
+
 pub(crate) fn terminal_runtime_event_from_native_run(
     run: &NativeRunResult,
 ) -> Option<RuntimeEventEnvelope> {
     let payload = match run.status {
         NativeRunStatus::Succeeded => {
             debug_stream_events::flow_finished(run.id, terminal_output_payload(run))
+        }
+        NativeRunStatus::Incomplete => {
+            debug_stream_events::flow_incomplete(run.id, terminal_output_payload(run))
         }
         NativeRunStatus::Failed => {
             debug_stream_events::flow_failed(run.id, terminal_error_payload(run))
@@ -89,7 +154,10 @@ pub(crate) async fn enrich_terminal_runtime_event_with_durable_answer(
     run: &NativeRunResult,
     mut event: RuntimeEventEnvelope,
 ) -> RuntimeEventEnvelope {
-    if !matches!(event.event_type.as_str(), "flow_finished" | "flow_failed") {
+    if !matches!(
+        event.event_type.as_str(),
+        "flow_finished" | "flow_incomplete" | "flow_failed"
+    ) {
         return event;
     }
     if !terminal_answer_deltas_from_payload(&event.payload).is_empty()
@@ -137,7 +205,10 @@ pub(crate) async fn recover_terminal_answer_deltas_from_durable_runtime_events(
     }
 
     for record in records.iter().rev() {
-        if !matches!(record.event_type.as_str(), "flow_finished" | "flow_failed") {
+        if !matches!(
+            record.event_type.as_str(),
+            "flow_finished" | "flow_incomplete" | "flow_failed"
+        ) {
             continue;
         }
         let deltas =
@@ -216,12 +287,6 @@ fn waiting_callback_payload(run: &NativeRunResult) -> Option<RuntimeEventPayload
         .get("callback_kind")
         .cloned()
         .unwrap_or(Value::Null);
-    let tool_calls = run
-        .tool_calls
-        .clone()
-        .or_else(|| action.payload.get("tool_calls").cloned())
-        .unwrap_or(Value::Null);
-
     Some(RuntimeEventPayload {
         event_type: "waiting_callback".to_string(),
         source: RuntimeEventSource::Runtime,
@@ -239,12 +304,6 @@ fn waiting_callback_payload(run: &NativeRunResult) -> Option<RuntimeEventPayload
                 .get("node_run_id")
                 .cloned()
                 .unwrap_or(Value::Null),
-            "request_payload": action
-                .payload
-                .get("request_payload")
-                .cloned()
-                .unwrap_or(Value::Null),
-            "tool_calls": tool_calls,
             "required_action": action,
         }),
     })
@@ -610,7 +669,7 @@ fn put_terminal_answer_in_payload(event_type: &str, payload: &mut Value, answer:
     let Some(object) = payload.as_object_mut() else {
         return;
     };
-    if event_type == "flow_finished" {
+    if matches!(event_type, "flow_finished" | "flow_incomplete") {
         let output = object.entry("output").or_insert_with(|| json!({}));
         if !output.is_object() {
             *output = json!({});
@@ -672,6 +731,17 @@ mod tests {
     }
 
     #[test]
+    fn d1_ac_007_terminal_fallback_maps_incomplete_native_run_to_flow_incomplete() {
+        let event =
+            terminal_runtime_event_from_native_run(&native_run(NativeRunStatus::Incomplete))
+                .expect("incomplete run should synthesize a terminal runtime event");
+
+        assert_eq!(event.event_type, "flow_incomplete");
+        assert_eq!(event.payload["status"], json!("incomplete"));
+        assert_ne!(event.event_type, "flow_finished");
+    }
+
+    #[test]
     fn terminal_fallback_ignores_non_terminal_native_run() {
         assert!(
             terminal_runtime_event_from_native_run(&native_run(NativeRunStatus::Running)).is_none()
@@ -697,7 +767,10 @@ mod tests {
 
         assert_eq!(event.event_type, "waiting_callback");
         assert_eq!(event.payload["callback_kind"], json!("llm_tool_calls"));
-        assert_eq!(event.payload["tool_calls"][0]["name"], json!("Read"));
+        assert_eq!(
+            event.payload["required_action"]["payload"]["tool_calls"][0]["name"],
+            json!("Read")
+        );
     }
 
     #[test]

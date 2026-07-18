@@ -273,7 +273,8 @@ describe('start node variables', () => {
     expect(options.map((option) => option.value)).toEqual(
       expect.arrayContaining([
         ['sys', 'model_parameters'],
-        ['node-start', 'reasoning_effort']
+        ['node-start', 'reasoning_effort'],
+        ['node-start', 'max_output_tokens']
       ])
     );
     expect(options.map((option) => option.value)).not.toContainEqual([
@@ -699,6 +700,7 @@ describe('start node variables', () => {
           system: '',
           model: '',
           reasoning_effort: '',
+          max_output_tokens: null,
           history: [],
           query: ''
         }
@@ -744,6 +746,7 @@ describe('start node variables', () => {
           system: '',
           model: '',
           reasoning_effort: '',
+          max_output_tokens: null,
           history: [],
           files: [],
           tools: [],

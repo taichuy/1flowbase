@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn provider_error_marks_flow_failed_and_redacts_summary() {
+async fn d1_ac_008_provider_failure_keeps_only_allowlisted_durable_error_facts() {
     let outcome = start_flow_debug_run(
         &base_plan(),
         &json!({ "node-start": { "query": "退款政策" } }),
@@ -23,24 +23,20 @@ async fn provider_error_marks_flow_failed_and_redacts_summary() {
                 json!("auth_failed")
             );
             assert_eq!(
-                outcome.node_traces[1].output_payload["text"],
-                failure.error_payload["message"]
+                failure.error_payload["message"],
+                json!("provider authentication failed")
             );
-            assert_eq!(
-                outcome.variable_pool["node-llm"]["text"],
-                failure.error_payload["message"]
-            );
-            assert!(failure.error_payload["provider_summary"]
-                .as_str()
-                .unwrap()
-                .contains("[REDACTED]"));
+            assert!(outcome.node_traces[1].output_payload.get("text").is_none());
+            assert!(!outcome.variable_pool.contains_key("node-llm"));
+            assert!(failure.error_payload.get("provider_summary").is_none());
+            assert!(failure.error_payload.get("provider_details").is_none());
         }
         other => panic!("expected failed stop reason, got {other:?}"),
     }
 }
 
 #[tokio::test]
-async fn provider_upstream_error_keeps_raw_details_in_error_payload() {
+async fn d1_ac_008_provider_upstream_error_discards_raw_body_before_durable_trace() {
     let outcome = start_flow_debug_run(
         &base_plan(),
         &json!({ "node-start": { "query": "退款政策" } }),
@@ -56,43 +52,34 @@ async fn provider_upstream_error_keeps_raw_details_in_error_payload() {
                 failure.error_payload["error_code"],
                 json!("provider_upstream_error")
             );
-            assert!(failure.error_payload["message"]
-                .as_str()
-                .expect("message should be a string")
-                .contains("OpenAI codex passthrough requires a non-empty instructions field"));
-            assert!(failure.error_payload["provider_summary"]
-                .as_str()
-                .expect("provider_summary should be a string")
-                .contains("[REDACTED]"));
-
-            let provider_details = &failure.error_payload["provider_details"];
-            assert_eq!(provider_details["status"], json!(400));
             assert_eq!(
-                provider_details["content_type"],
-                json!("application/json; charset=utf-8")
+                failure.error_payload["message"],
+                json!("provider upstream request failed")
             );
+            assert_eq!(failure.error_payload["status_code"], json!(400));
+            assert!(failure.error_payload.get("provider_summary").is_none());
+            assert!(failure.error_payload.get("provider_details").is_none());
             assert_eq!(
-                provider_details["headers"]["x-request-id"],
-                json!("req_123")
+                outcome.node_traces[1].error_payload.as_ref(),
+                Some(&failure.error_payload)
             );
-            assert_eq!(
-                provider_details["raw_body"],
-                json!(concat!(
-                    "{\"error\":{\"message\":\"OpenAI codex passthrough requires a non-empty instructions field\"}}\n",
-                    "data: {\"type\":\"response.failed\"}\n\n"
-                ))
-            );
-            assert_eq!(
-                outcome.node_traces[1].error_payload.as_ref().unwrap()["provider_details"],
-                failure.error_payload["provider_details"]
-            );
+            let raw_body = "OpenAI codex passthrough requires a non-empty instructions field";
+            assert!(!failure.error_payload.to_string().contains(raw_body));
+            assert!(!outcome.node_traces[1]
+                .debug_payload
+                .to_string()
+                .contains(raw_body));
+            assert!(outcome.node_traces[1]
+                .provider_events
+                .iter()
+                .all(|event| !serde_json::to_string(event).unwrap().contains(raw_body)));
         }
         other => panic!("expected failed stop reason, got {other:?}"),
     }
 }
 
 #[tokio::test]
-async fn provider_runtime_contract_error_is_renormalized_for_llm_output() {
+async fn d1_ac_008_provider_runtime_contract_error_stays_out_of_llm_output() {
     let outcome = start_flow_debug_run(
         &base_plan(),
         &json!({ "node-start": { "query": "退款政策" } }),
@@ -107,27 +94,21 @@ async fn provider_runtime_contract_error_is_renormalized_for_llm_output() {
             assert_eq!(failure.error_payload["error_code"], json!("auth_failed"));
             assert_eq!(
                 failure.error_payload["message"],
-                json!("401 401 Unauthorized: Incorrect API key provided")
+                json!("provider authentication failed")
             );
             assert_eq!(
                 outcome.node_traces[1].error_payload.as_ref().unwrap()["message"],
-                json!("401 401 Unauthorized: Incorrect API key provided")
+                json!("provider authentication failed")
             );
-            assert_eq!(
-                outcome.node_traces[1].output_payload["text"],
-                failure.error_payload["message"]
-            );
-            assert_eq!(
-                outcome.variable_pool["node-llm"]["text"],
-                failure.error_payload["message"]
-            );
+            assert!(outcome.node_traces[1].output_payload.get("text").is_none());
+            assert!(!outcome.variable_pool.contains_key("node-llm"));
         }
         other => panic!("expected failed stop reason, got {other:?}"),
     }
 }
 
 #[tokio::test]
-async fn llm_failure_after_first_token_writes_error_text_to_public_output() {
+async fn d1_ac_008_partial_delta_remains_separate_from_failed_output() {
     let outcome = start_flow_debug_run(
         &base_plan(),
         &json!({ "node-start": { "query": "退款政策" } }),
@@ -147,13 +128,17 @@ async fn llm_failure_after_first_token_writes_error_text_to_public_output() {
                 outcome.node_traces[1].error_payload.as_ref().unwrap()["error_code"],
                 json!("provider_invalid_response")
             );
+            assert!(outcome.node_traces[1].output_payload.get("text").is_none());
+            assert!(!outcome.variable_pool.contains_key("node-llm"));
             assert_eq!(
-                outcome.node_traces[1].output_payload["text"],
-                failure.error_payload["message"]
+                outcome.node_traces[1].provider_events[0],
+                ProviderStreamEvent::TextDelta {
+                    delta: "partial answer".to_string()
+                }
             );
             assert_eq!(
-                outcome.variable_pool["node-llm"]["text"],
-                failure.error_payload["message"]
+                outcome.node_traces[1].debug_payload["provider_events"][0],
+                json!({ "type": "text_delta", "delta": "partial answer" })
             );
             assert_eq!(
                 outcome.node_traces[1].metrics_payload["attempts"][0]["failed_after_first_token"],
@@ -162,6 +147,77 @@ async fn llm_failure_after_first_token_writes_error_text_to_public_output() {
         }
         other => panic!("expected failed stop reason, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn d1_ac_007_output_limit_has_an_incomplete_terminal_not_succeeded() {
+    let (invoker, _captured_inputs) = sequential_tool_invoker(vec![ProviderInvocationResult {
+        final_content: Some("partial response at output limit".to_string()),
+        finish_reason: Some(ProviderFinishReason::Length),
+        ..ProviderInvocationResult::default()
+    }]);
+
+    let outcome = start_flow_debug_run(
+        &llm_answer_plan(),
+        &json!({ "node-start": { "query": "hello" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Incomplete(_)
+    ));
+}
+
+#[tokio::test]
+async fn d1_ac_010_legacy_max_tokens_is_rejected_before_provider_invocation() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config = json!({
+        "llm_parameters": {
+            "schema_version": "1.0.0",
+            "items": {
+                "max_tokens": { "enabled": true, "value": 8192 }
+            }
+        }
+    });
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: Arc::clone(&captured_input),
+        final_content: "should not be invoked".to_string(),
+    };
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": "hello" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(ref failure) => {
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("unsupported_model_parameter")
+            );
+            assert_eq!(
+                failure.error_payload["field"],
+                json!("llm_parameters.items.max_tokens")
+            );
+        }
+        other => panic!("legacy max_tokens must fail before provider invocation, got {other:?}"),
+    }
+    assert!(captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .is_none());
 }
 
 #[tokio::test]
@@ -519,6 +575,165 @@ async fn llm_runtime_maps_external_reasoning_parameters_for_bailian_runtime() {
     assert!(!captured_input
         .model_parameters
         .contains_key("thinking_budget_tokens"));
+}
+
+#[tokio::test]
+async fn ac_005_llm_runtime_follows_external_max_output_tokens_by_default() {
+    let plan = base_plan();
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: Arc::new(Mutex::new(None)),
+        final_content: "ok".to_string(),
+    };
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": { "query": "hello" },
+            "sys": {
+                "model_parameters": {
+                    "max_output_tokens": 32768
+                }
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let captured_input = invoker
+        .captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+
+    assert_eq!(
+        captured_input.model_parameters.get("max_output_tokens"),
+        Some(&json!(32768))
+    );
+    assert!(!captured_input.model_parameters.contains_key("max_tokens"));
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["effective_max_output_tokens"],
+        json!(32768)
+    );
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["max_output_tokens_source"],
+        json!("external_request")
+    );
+}
+
+#[tokio::test]
+async fn ac_005_llm_runtime_can_disable_external_max_output_tokens_and_trace_provider_default() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config = json!({
+        "external_model_parameter_policy": {
+            "follow_external_max_output_tokens": false
+        }
+    });
+    let (invoker, captured_inputs) = sequential_tool_invoker(vec![ProviderInvocationResult {
+        final_content: Some("ok".to_string()),
+        finish_reason: Some(ProviderFinishReason::Stop),
+        provider_metadata: json!({
+            "effective_max_output_tokens": 4096
+        }),
+        ..ProviderInvocationResult::default()
+    }]);
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": { "query": "hello" },
+            "sys": {
+                "model_parameters": {
+                    "max_output_tokens": 32768
+                }
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let captured_inputs = captured_inputs
+        .lock()
+        .expect("captured inputs mutex poisoned");
+    assert!(!captured_inputs[0]
+        .model_parameters
+        .contains_key("max_output_tokens"));
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["effective_max_output_tokens"],
+        json!(4096)
+    );
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["max_output_tokens_source"],
+        json!("provider_default")
+    );
+}
+
+#[tokio::test]
+async fn ac_006_llm_runtime_keeps_enabled_node_max_output_tokens_over_external_limit() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config = json!({
+        "llm_parameters": {
+            "schema_version": "1.0.0",
+            "items": {
+                "max_output_tokens": { "enabled": true, "value": 8192 }
+            }
+        },
+        "external_model_parameter_policy": {
+            "follow_external_max_output_tokens": true
+        }
+    });
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: Arc::new(Mutex::new(None)),
+        final_content: "ok".to_string(),
+    };
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": { "query": "hello" },
+            "sys": {
+                "model_parameters": {
+                    "max_output_tokens": 32768
+                }
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let captured_input = invoker
+        .captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+
+    assert_eq!(
+        captured_input.model_parameters.get("max_output_tokens"),
+        Some(&json!(8192))
+    );
+    assert!(!captured_input.model_parameters.contains_key("max_tokens"));
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["effective_max_output_tokens"],
+        json!(8192)
+    );
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["max_output_tokens_source"],
+        json!("llm_node")
+    );
 }
 
 #[tokio::test]

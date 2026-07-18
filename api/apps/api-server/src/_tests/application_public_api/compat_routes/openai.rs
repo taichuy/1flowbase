@@ -2,8 +2,9 @@ use super::*;
 
 #[tokio::test]
 async fn openai_chat_completions_accepts_bearer_and_preserves_model() {
-    let app = test_app().await;
+    let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Compatible Route App").await;
+    assert_published_compat_plan_has_provider_route(state.as_ref()).await;
 
     let response = post_json(
         &app,
@@ -13,8 +14,9 @@ async fn openai_chat_completions_accepts_bearer_and_preserves_model() {
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    let status = response.status();
     let payload = response_json(response).await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
     assert_eq!(payload["object"], json!("chat.completion"));
     assert_eq!(payload["model"], json!("provider/custom-model:latest"));
     assert_eq!(payload["choices"][0]["message"]["role"], json!("assistant"));
@@ -101,6 +103,37 @@ async fn openai_responses_accepts_blocking_text_input() {
 }
 
 #[tokio::test]
+async fn d2_ac_007_openai_public_runs_persist_no_compatibility_mode() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "OpenAI Canonical Contract App").await;
+
+    let chat = post_json(
+        &app,
+        "/v1/chat/completions",
+        ("authorization", format!("Bearer {token}")),
+        openai_body(true),
+    )
+    .await;
+    assert_eq!(chat.status(), StatusCode::OK);
+    let responses = post_json(
+        &app,
+        "/v1/responses",
+        ("authorization", format!("Bearer {token}")),
+        responses_body(true),
+    )
+    .await;
+    assert_eq!(responses.status(), StatusCode::OK);
+
+    let modes = sqlx::query_scalar::<_, Option<String>>(
+        "select compatibility_mode from flow_runs order by created_at asc, id asc",
+    )
+    .fetch_all(state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(modes, vec![None, None]);
+}
+
+#[tokio::test]
 async fn openai_responses_accepts_root_endpoint_for_plain_base_url_clients() {
     let app = test_app().await;
     let token = setup_published_app(&app, "OpenAI Responses Root Base URL App").await;
@@ -121,40 +154,31 @@ async fn openai_responses_accepts_root_endpoint_for_plain_base_url_clients() {
 }
 
 #[tokio::test]
-async fn openai_responses_continues_from_previous_response_id() {
-    let app = test_app().await;
-    let token = setup_published_app(&app, "OpenAI Responses Continuation App").await;
+async fn d2_ac_007_openai_responses_rejects_previous_response_id_before_creating_a_run() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "OpenAI Responses Unsupported Continuation App").await;
+    let before = flow_run_count(state.as_ref()).await;
+    let mut body = responses_body(false);
+    body["previous_response_id"] = json!("resp_11111111-1111-1111-1111-111111111111");
 
-    let first = post_json(
+    let response = post_json(
         &app,
         "/v1/responses",
         ("authorization", format!("Bearer {token}")),
-        responses_body(false),
-    )
-    .await;
-    assert_eq!(first.status(), StatusCode::OK);
-    let first_payload = response_json(first).await;
-    let previous_response_id = first_payload["id"].as_str().unwrap().to_string();
-
-    let mut next_body = responses_body(false);
-    next_body["input"] = json!("Follow up");
-    next_body["previous_response_id"] = json!(previous_response_id);
-    let next = post_json(
-        &app,
-        "/v1/responses",
-        ("authorization", format!("Bearer {token}")),
-        next_body,
+        body,
     )
     .await;
 
-    assert_eq!(next.status(), StatusCode::OK);
-    let next_payload = response_json(next).await;
-    assert_eq!(next_payload["previous_response_id"], first_payload["id"]);
-    assert_ne!(next_payload["id"], first_payload["id"]);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let payload = response_json(response).await;
+    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
+    assert_eq!(payload["error"]["param"], json!("previous_response_id"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
-async fn openai_responses_rejects_invalid_previous_response_id() {
+async fn d2_ac_007_openai_responses_treats_malformed_previous_response_id_as_unsupported_before_lookup(
+) {
     let app = test_app().await;
     let token = setup_published_app(&app, "OpenAI Responses Invalid Previous App").await;
     let mut body = responses_body(false);
@@ -171,77 +195,46 @@ async fn openai_responses_rejects_invalid_previous_response_id() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let payload = response_json(response).await;
     assert_eq!(payload["error"]["param"], json!("previous_response_id"));
-    assert_eq!(payload["error"]["code"], json!("invalid_request"));
+    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
 }
 
 #[tokio::test]
-async fn openai_responses_rejects_previous_response_from_another_api_key() {
-    let app = test_app().await;
-    let first_token = setup_published_app(&app, "OpenAI Responses Previous Owner App").await;
-    let second_token = setup_published_app(&app, "OpenAI Responses Previous Consumer App").await;
-
-    let first = post_json(
-        &app,
-        "/v1/responses",
-        ("authorization", format!("Bearer {first_token}")),
-        responses_body(false),
-    )
-    .await;
-    assert_eq!(first.status(), StatusCode::OK);
-    let first_payload = response_json(first).await;
-
+async fn d2_ac_007_openai_responses_rejects_previous_response_id_before_cross_key_lookup() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "OpenAI Responses Previous Consumer App").await;
+    let before = flow_run_count(state.as_ref()).await;
     let mut body = responses_body(false);
-    body["previous_response_id"] = first_payload["id"].clone();
+    body["previous_response_id"] = json!("resp_11111111-1111-1111-1111-111111111111");
     let response = post_json(
         &app,
         "/v1/responses",
-        ("authorization", format!("Bearer {second_token}")),
+        ("authorization", format!("Bearer {token}")),
         body,
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("application_run_forbidden"));
+    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
+    assert_eq!(payload["error"]["param"], json!("previous_response_id"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
-async fn openai_responses_rejects_function_call_output_when_previous_response_mismatches_callback_run(
-) {
+async fn d2_ac_007_openai_responses_function_call_output_is_rejected_before_run_creation() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Responses Callback Binding App").await;
-
-    let first = post_json(
-        &app,
-        "/v1/responses",
-        ("authorization", format!("Bearer {token}")),
-        responses_body(false),
-    )
-    .await;
-    assert_eq!(first.status(), StatusCode::OK);
-    let first_payload = response_json(first).await;
-    let first_run_id = run_id_from_response_id(first_payload["id"].as_str().unwrap()).unwrap();
-    let callback_task = seed_llm_callback_for_response_run(state.as_ref(), first_run_id).await;
-
-    let mut second_body = responses_body(false);
-    second_body["input"] = json!("Different response");
-    let second = post_json(
-        &app,
-        "/v1/responses",
-        ("authorization", format!("Bearer {token}")),
-        second_body,
-    )
-    .await;
-    assert_eq!(second.status(), StatusCode::OK);
-    let second_payload = response_json(second).await;
+    let before = flow_run_count(state.as_ref()).await;
 
     let body = json!({
         "model": "provider/custom-model:latest",
-        "previous_response_id": second_payload["id"],
         "input": [
             {
                 "type": "function_call_output",
-                "call_id": encode_openai_callback_tool_call_id(callback_task.id, "call_inventory"),
+                "call_id": encode_openai_callback_tool_call_id(
+                    uuid::Uuid::from_u128(0x55555555555555555555555555555555),
+                    "call_inventory"
+                ),
                 "output": { "stock": 7 }
             }
         ]
@@ -256,15 +249,91 @@ async fn openai_responses_rejects_function_call_output_when_previous_response_mi
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["param"], json!("previous_response_id"));
-    assert_eq!(payload["error"]["code"], json!("invalid_request"));
-    let stored_task = state
-        .store
-        .get_callback_task(callback_task.id)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(stored_task.status, domain::CallbackTaskStatus::Pending);
+    assert_eq!(payload["error"]["param"], json!("input"));
+    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
+}
+
+#[tokio::test]
+async fn d2_ac_007_openai_responses_nested_input_file_is_rejected_before_run_creation() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "OpenAI Responses Nested Input File App").await;
+    let before = flow_run_count(state.as_ref()).await;
+    let body = json!({
+        "model": "provider/custom-model:latest",
+        "input": [{
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_file", "file_id": "file_123"}]
+        }]
+    });
+
+    let response = post_json(
+        &app,
+        "/v1/responses",
+        ("authorization", format!("Bearer {token}")),
+        body,
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let payload = response_json(response).await;
+    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
+    assert_eq!(payload["error"]["param"], json!("input"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
+}
+
+#[tokio::test]
+async fn d2_ac_001_openai_nested_unknown_content_fields_reject_before_run_or_provider() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "OpenAI Nested Unknown Content Field App").await;
+    let before = flow_run_count(state.as_ref()).await;
+
+    let chat = post_json(
+        &app,
+        "/v1/chat/completions",
+        ("authorization", format!("Bearer {token}")),
+        json!({
+            "model": "provider/custom-model:latest",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": "hello",
+                    "unexpected": "no canonical owner"
+                }]
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(chat.status(), StatusCode::BAD_REQUEST);
+    let chat_payload = response_json(chat).await;
+    assert_eq!(chat_payload["error"]["code"], json!("invalid_request"));
+
+    let responses = post_json(
+        &app,
+        "/v1/responses",
+        ("authorization", format!("Bearer {token}")),
+        json!({
+            "model": "provider/custom-model:latest",
+            "input": [{
+                "type": "message",
+                "role": "user",
+                "content": [{
+                    "type": "input_image",
+                    "image_url": {
+                        "url": "https://example.com/cat.png",
+                        "unexpected": "no canonical owner"
+                    }
+                }]
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(responses.status(), StatusCode::BAD_REQUEST);
+    let responses_payload = response_json(responses).await;
+    assert_eq!(responses_payload["error"]["code"], json!("invalid_request"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
@@ -360,9 +429,10 @@ async fn openai_models_accepts_full_chat_completions_base_url_alias() {
 }
 
 #[tokio::test]
-async fn openai_chat_completions_accepts_tools_for_agent_framework_compatibility() {
-    let app = test_app().await;
-    let token = setup_published_app(&app, "OpenAI Tool Compatible Route App").await;
+async fn d2_ac_007_openai_chat_rejects_tools_before_creating_a_run() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "OpenAI Unsupported Tool Route App").await;
+    let before = flow_run_count(state.as_ref()).await;
     let mut body = openai_body(false);
     body["tools"] = json!([{"type": "function", "function": {"name": "lookup"}}]);
     body["tool_choice"] = json!("auto");
@@ -375,8 +445,8 @@ async fn openai_chat_completions_accepts_tools_for_agent_framework_compatibility
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let payload = response_json(response).await;
-    assert_eq!(payload["object"], json!("chat.completion"));
-    assert_eq!(payload["model"], json!("provider/custom-model:latest"));
+    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
 }

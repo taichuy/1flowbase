@@ -26,12 +26,12 @@ use super::support::{
 };
 
 #[tokio::test]
-async fn plugin_management_service_lists_provider_families_with_current_and_latest_versions() {
+async fn plugin_management_service_lists_latest_installable_official_provider_version() {
     #[derive(Clone)]
-    struct OutdatedOfficialSource;
+    struct NewerOfficialSource;
 
     #[async_trait]
-    impl OfficialPluginSourcePort for OutdatedOfficialSource {
+    impl OfficialPluginSourcePort for NewerOfficialSource {
         async fn list_official_catalog(&self) -> Result<OfficialPluginCatalogSnapshot> {
             Ok(OfficialPluginCatalogSnapshot {
                 source: OfficialPluginCatalogSource {
@@ -79,7 +79,7 @@ async fn plugin_management_service_lists_provider_families_with_current_and_late
     let service = PluginManagementService::new(
         repository.clone(),
         MemoryProviderRuntime::default(),
-        Arc::new(OutdatedOfficialSource),
+        Arc::new(NewerOfficialSource),
         &install_root,
     );
 
@@ -88,14 +88,6 @@ async fn plugin_management_service_lists_provider_families_with_current_and_late
         &install_root,
         "openai_compatible",
         "0.1.0",
-        PluginDesiredState::ActiveRequested,
-    )
-    .await;
-    let _installation_v2 = seed_test_installation(
-        &repository,
-        &install_root,
-        "openai_compatible",
-        "0.2.0",
         PluginDesiredState::ActiveRequested,
     )
     .await;
@@ -567,8 +559,8 @@ async fn plugin_management_service_keeps_only_latest_official_entry_per_provider
         .unwrap();
     assert_eq!(families.entries.len(), 1);
     assert_eq!(families.entries[0].current_version, "0.1.0");
-    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.1.0"));
-    assert!(!families.entries[0].has_update);
+    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.2.0"));
+    assert!(families.entries[0].has_update);
 }
 
 #[tokio::test]

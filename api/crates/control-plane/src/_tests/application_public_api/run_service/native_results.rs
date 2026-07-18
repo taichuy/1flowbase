@@ -2,7 +2,7 @@ use control_plane::application_public_api::{
     native::{NativeRunStatus, NativeUsage},
     run_service::{
         native_result_from_flow_run, native_result_from_run_stream_state, PublishedRunNodeUsage,
-        PublishedRunStreamState,
+        PublishedRunPendingCallback, PublishedRunStreamState,
     },
 };
 use serde_json::json;
@@ -68,8 +68,9 @@ fn native_result_omits_provider_upstream_raw_details_from_public_error() {
         .error
         .expect("failed native run should expose an error");
 
-    assert_eq!(error.message, "400 Bad Request: missing instructions");
-    assert_eq!(error.details["error_code"], "provider_upstream_error");
+    assert_eq!(error.code, "provider_upstream_error");
+    assert_eq!(error.message, "provider upstream request failed");
+    assert_eq!(error.details["status_code"], json!(400));
     assert!(error.details.get("provider_summary").is_none());
     assert!(error.details.get("provider_details").is_none());
 }
@@ -96,12 +97,77 @@ fn native_result_sanitizes_legacy_provider_upstream_raw_body_from_public_error()
         .error
         .expect("failed native run should expose an error");
 
+    assert_eq!(error.code, "provider_upstream_error");
     assert_eq!(error.message, "provider upstream request failed");
-    assert_eq!(error.details["error_code"], "provider_upstream_error");
+    assert_eq!(error.details["status_code"], json!(400));
     assert!(error.details.get("provider_summary").is_none());
     assert!(error.details.get("provider_details").is_none());
     assert!(!error.message.contains(raw_body));
     assert!(!error.details.to_string().contains(raw_body));
+}
+
+#[test]
+fn d1_ac_001_failed_native_result_never_projects_an_answer_or_success_artifact() {
+    let raw_provider_body = "429 rate limit: upstream diagnostic body";
+    let mut flow_run = failed_published_flow_run(json!({
+        "error_code": "provider_upstream_error",
+        "message": raw_provider_body,
+        "provider_details": { "raw_body": raw_provider_body }
+    }));
+    flow_run.output_payload = json!({
+        "answer": raw_provider_body,
+        "answer_segments": [{ "kind": "message", "text": raw_provider_body }],
+        "finish_reason": "stop"
+    });
+
+    let result = native_result_from_flow_run(&flow_run, json!({}));
+
+    assert_eq!(result.status, NativeRunStatus::Failed);
+    assert!(
+        result.answer.is_none(),
+        "D1-AC-001: a failed run cannot expose provider error text as an Answer"
+    );
+    assert!(
+        result.answer_segments.is_none(),
+        "D1-AC-001: a failed run cannot expose a successful answer artifact"
+    );
+    let error = result
+        .error
+        .expect("failed run should expose a sanitized error");
+    assert!(!error.message.contains(raw_provider_body));
+    assert!(!error.details.to_string().contains(raw_provider_body));
+}
+
+#[test]
+fn d1_ac_007_durable_incomplete_run_projects_the_same_non_success_terminal() {
+    let mut flow_run = failed_published_flow_run(json!({}));
+    flow_run.status = domain::FlowRunStatus::Incomplete;
+    flow_run.error_payload = None;
+    flow_run.output_payload = json!({ "answer": "partial output at the limit" });
+
+    let initial = native_result_from_flow_run(&flow_run, json!({}));
+
+    assert_eq!(initial.status, NativeRunStatus::Incomplete);
+    assert_eq!(
+        initial.answer.as_deref(),
+        Some("partial output at the limit")
+    );
+    assert!(initial.error.is_none());
+
+    let replay = native_result_from_run_stream_state(
+        &initial,
+        &PublishedRunStreamState {
+            status: domain::FlowRunStatus::Incomplete,
+            output_payload: flow_run.output_payload.clone(),
+            error_payload: None,
+            node_usages: Vec::new(),
+            latest_pending_callback: None,
+        },
+    );
+
+    assert_eq!(replay.status, NativeRunStatus::Incomplete);
+    assert_eq!(replay.answer, initial.answer);
+    assert!(replay.error.is_none());
 }
 
 #[test]
@@ -137,7 +203,14 @@ fn native_result_from_stream_state_preserves_usage_and_pending_tool_callback_con
             metrics_usage: Some(json!({ "input_tokens": 21, "output_tokens": 8 })),
             output_usage: Some(json!({ "prompt_tokens": 999, "completion_tokens": 999 })),
         }],
-        latest_pending_callback_task: Some(callback_task.clone()),
+        latest_pending_callback: Some(PublishedRunPendingCallback {
+            id: callback_task.id,
+            flow_run_id: callback_task.flow_run_id,
+            node_run_id: callback_task.node_run_id,
+            callback_kind: callback_task.callback_kind.clone(),
+            request_payload: None,
+            tool_calls: callback_task.request_payload.get("tool_calls").cloned(),
+        }),
     };
 
     let result = native_result_from_run_stream_state(&initial, &stream_state);

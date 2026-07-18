@@ -133,6 +133,25 @@ pub struct UpdateFlowRunInput {
     pub finished_at: Option<OffsetDateTime>,
 }
 
+/// The durable half of the published-stream EOF recovery. The status update and both terminal
+/// facts must commit together so a retry cannot observe a failed run with a missing terminal.
+#[derive(Debug, Clone)]
+pub struct FinalizePublishedRunMissingStreamTerminalPersistenceInput {
+    pub flow_run_id: Uuid,
+    pub expected_status: domain::FlowRunStatus,
+    pub output_payload: serde_json::Value,
+    pub error_payload: serde_json::Value,
+    pub terminal_event_payload: serde_json::Value,
+    pub finished_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub enum FinalizePublishedRunMissingStreamTerminalPersistenceOutcome {
+    Finalized(domain::FlowRunRecord),
+    FinalizedWithPostCommitProjectionWarning(domain::FlowRunRecord),
+    CasMiss,
+}
+
 #[derive(Debug, Clone)]
 pub struct CompleteFlowRunInput {
     pub flow_run_id: Uuid,
@@ -511,6 +530,22 @@ pub struct CreateCallbackTaskInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct CallbackResumeWaitingNode {
+    pub id: Uuid,
+    pub status: domain::NodeRunStatus,
+    pub output_payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct CallbackResumeContext {
+    pub flow_run: domain::FlowRunRecord,
+    pub callback_task: domain::CallbackTaskRecord,
+    pub checkpoint: domain::CheckpointRecord,
+    pub waiting_node: CallbackResumeWaitingNode,
+    pub next_node_started_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
 pub struct CompleteCallbackTaskInput {
     pub callback_task_id: Uuid,
     pub response_payload: serde_json::Value,
@@ -659,6 +694,10 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         input: &UpdateFlowRunInput,
         expected_status: domain::FlowRunStatus,
     ) -> anyhow::Result<Option<domain::FlowRunRecord>>;
+    async fn finalize_published_run_missing_stream_terminal(
+        &self,
+        input: &FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+    ) -> anyhow::Result<FinalizePublishedRunMissingStreamTerminalPersistenceOutcome>;
     async fn complete_flow_run(
         &self,
         input: &CompleteFlowRunInput,
@@ -682,6 +721,14 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<Option<domain::CallbackTaskRecord>> {
         let _ = callback_task_id;
         anyhow::bail!("get_callback_task not implemented")
+    }
+    async fn get_callback_resume_context(
+        &self,
+        application_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> anyhow::Result<Option<CallbackResumeContext>> {
+        let _ = (application_id, callback_task_id);
+        anyhow::bail!("get_callback_resume_context not implemented")
     }
     async fn complete_callback_task(
         &self,
@@ -886,6 +933,11 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         flow_run_id: Uuid,
         after_sequence: i64,
     ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>>;
+    async fn get_runtime_event_sequence_for_callback_task(
+        &self,
+        flow_run_id: Uuid,
+        callback_task_id: Uuid,
+    ) -> anyhow::Result<Option<i64>>;
     async fn list_runtime_event_backfill_page(
         &self,
         flow_run_id: Uuid,

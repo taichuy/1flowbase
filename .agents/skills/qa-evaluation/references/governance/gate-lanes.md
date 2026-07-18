@@ -21,7 +21,7 @@
 - `existing-codebase` 默认按 introduced-only 判断 blocker：本次 diff 引入的问题、被本次触发的回归或已确认验收点失败才阻断；历史债务和旧 warning 进入残余风险或后续 issue。
 - 样式、文案、布局微调默认不跑完整前端门禁；优先 `git diff --check`、截图、局部 page-debug 或定向 smoke。
 - 共享组件、公共 API、状态入口、契约、migration、权限或高 blast radius 才升级门禁。
-- 需要启动服务、运行 `api-debug`、跑 workspace 级 cargo / pnpm build，或累计超过 3 条重验证命令时，收益和成本应在对齐 / L3 issue / handoff 阶段前置说明。实现期发现未预期重验证需求时，默认不打断开发，写 `未验证，不下确定结论` 并交给 beta / CI；只有缺少该证据会影响继续实现安全性或当前任务完成判断时才暂停。
+- 需要启动服务、运行 `api-debug`、跑 workspace 级 cargo / pnpm build，或累计超过 3 条重验证命令时，收益和成本应在对齐 / 已批准计划 / handoff 阶段前置说明。实现期发现未预期重验证需求时，默认不打断开发，写 `未验证，不下确定结论` 并交给 beta / CI；只有缺少该证据会影响继续实现安全性或当前任务完成判断时才暂停。
 
 ## PR Merge Gate
 

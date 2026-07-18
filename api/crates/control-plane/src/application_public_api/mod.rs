@@ -7,6 +7,7 @@ pub mod conversations;
 pub mod mapping;
 pub mod model_catalog;
 pub mod native;
+pub mod protocol_translation;
 pub mod publications;
 pub mod run_service;
 pub mod workflow_extension;

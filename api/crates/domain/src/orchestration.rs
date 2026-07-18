@@ -71,6 +71,7 @@ pub enum FlowRunStatus {
     WaitingHuman,
     Paused,
     Succeeded,
+    Incomplete,
     Failed,
     Cancelled,
 }
@@ -84,6 +85,7 @@ impl FlowRunStatus {
             Self::WaitingHuman => "waiting_human",
             Self::Paused => "paused",
             Self::Succeeded => "succeeded",
+            Self::Incomplete => "incomplete",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
         }

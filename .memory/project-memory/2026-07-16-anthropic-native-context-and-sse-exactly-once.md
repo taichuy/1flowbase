@@ -11,8 +11,8 @@ keywords:
   - sse
   - exactly once
 created_at: 2026-07-16 12
-updated_at: 2026-07-16 23
-last_verified_at: 2026-07-16 23
+updated_at: 2026-07-17 17
+last_verified_at: 2026-07-17 13
 decision_policy: verify_before_decision
 status: delivered
 scope:
@@ -39,6 +39,7 @@ AI 按用户要求修复 Claude Code 经 AionUI 调用 1flowbase 时的续聊上
 - LLM 的 integration context 从 Native prompt context 构造 `NativeModelInvocationV2`，不再依赖 LLM 与 start node 是否直接相邻；显式 `context_selector` 和 `integration_context=disabled` 语义保持不变。
 - Provider 请求仍只从 AI Native 生成；没有新增 raw Anthropic body、协议 envelope 正文或插件侧历史回填。
 - Compatible SSE 在协议 mapper 前按 Answer Presentation 的 event type、text、answer node、segment 与 source identity 做单 run exactly-once；Provider raw delta 不参与该去重。
+- live delta 与 durable 合并记录的切分边界可以不同；compatible SSE 必须按同一 Answer Presentation identity 累计 durable 文本，再与已发送 live 前缀对账，不能逐个 durable batch 和完整 live 文本做前缀比较。
 - subagent callback 的 system 识别优先读取 Native prompt context 的类型化 Text Blocks，旧 run 才回退 start projection。
 - `sys / env / conversation / trigger` 是运行级全局命名空间；普通节点输出仅对连接器可达下游可见，编译、首次运行、恢复和预览共用同一契约。
 - `orchestration-runtime` 是唯一执行状态机；control-plane 只负责生命周期、持久化、事件和权限，不再保留第二套首次执行循环。
@@ -56,7 +57,16 @@ AI 按用户要求修复 Claude Code 经 AionUI 调用 1flowbase 时的续聊上
 - 最新自动化证据：orchestration-runtime 253 passed、control-plane orchestration 178 passed、前端变量/预览/节点目录 96 passed、TypeScript 通过、scoped clippy `-D warnings` 通过、Rust static warnings=0。
 - AionUI SQLite 对旧 session `a889e49c-f1b2-4d3e-ad60-e9023c0d2f63` 的 text/thinking exact duplicate groups=0；因此未修改 AionUI。
 - OOM 复现样本的旧完整详情会展开约 485 MB 历史 JSON；轻量投影只读取约 1.9 KB 当前状态数据。repository 红绿测试、control-plane stream-state contract 测试、compatible SSE 41 项回归和 Rust static gate 均通过；新后端启动后 RSS 约 100 MB。
+- 2026-07-17 run `019f6e3d-8148-74d0-8204-cfcea2984990` 证明 64 KiB / 20 ms durable batching 改变 chunk 边界后，旧逐 batch 前缀判断会把 2,263 bytes 再投影一次；新增多 batch 红灯精确复现截图中的残缺重复，累计 durable 前缀修复后 compatible SSE 定向回归 44 passed。
 
 ## 截止日期与动机
 
 2026-07-16 已交付；动机是继续坚持 `Anthropic -> AI Native -> Anthropic`，让图拓扑、持久化 replay 和客户端 UI 都不能建立第二份协议真值。
+
+## 2026-07-17 输出 Token 决策
+
+- Anthropic `max_tokens` 先映射为 Native `execution.model_parameters.max_output_tokens`，再冻结到 `sys.model_parameters.max_output_tokens` 与 Start `max_output_tokens`；供应商字段不成为宿主真值。
+- LLM 节点的 `external_model_parameter_policy.follow_external_max_output_tokens` 默认开启；运行时优先级为节点显式 `max_tokens`、外部 `max_output_tokens`、供应商兜底，节点显式值不自动修改策略开关。
+- LLM trace 记录 `effective_max_output_tokens` 与 `max_output_tokens_source`；Anthropic 插件把实际发送值写入 provider metadata，因此缺省 `4096` 也可复盘。
+- Anthropic provider 的可选 `max_tokens` 默认关闭，插件版本升级为 `0.1.19`；兼容 SSE 将 runtime `length` 映射为 Anthropic `stop_reason=max_tokens`。
+- Claude Code 客户端 meta 消息继续完整落库与展示，不隐藏、不清洗。

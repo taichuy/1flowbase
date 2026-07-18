@@ -694,6 +694,60 @@ export function seedStyleBoundaryTemplateFetch() {
   };
 }
 
+function createStyleBoundaryRuntimeMetrics(
+  cpuUsagePercent: number,
+  processBytes: number
+) {
+  return {
+    captured_at_unix_milliseconds: 1_752_745_600_000,
+    sample_interval_milliseconds: 2000,
+    cpu: {
+      availability: 'available',
+      scope_kind: 'cgroup',
+      usage_percent: cpuUsagePercent,
+      logical_count: 8,
+      limit_cores: 2
+    },
+    memory: {
+      availability: 'available',
+      scope_kind: 'cgroup',
+      total_bytes: 4_294_967_296,
+      available_bytes: 3_221_225_472,
+      used_bytes: 1_073_741_824,
+      process_bytes: processBytes,
+      related_process_bytes: processBytes,
+      related_process_count: 1,
+      cgroup_composition: {
+        anonymous_bytes: 536_870_912,
+        file_bytes: 268_435_456,
+        kernel_bytes: 67_108_864,
+        shared_memory_bytes: 16_777_216
+      }
+    },
+    storage: {
+      availability: 'available',
+      scope_kind: 'runtime_visible',
+      mount_point: '/',
+      file_system: 'overlay',
+      total_bytes: 68_719_476_736,
+      available_bytes: 51_539_607_552,
+      used_bytes: 17_179_869_184
+    },
+    network: {
+      availability: 'available',
+      scope_kind: 'runtime_visible',
+      received_bytes_per_second: 2048,
+      transmitted_bytes_per_second: 1024
+    },
+    disk_io: {
+      availability: 'available',
+      scope_kind: 'runtime_visible',
+      read_bytes_per_second: 4096,
+      written_bytes_per_second: 8192
+    }
+  };
+}
+
 export function seedStyleBoundarySettingsFetch() {
   if (typeof globalThis.fetch !== 'function') {
     return;
@@ -710,6 +764,82 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (commonResponse) {
       return commonResponse;
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/system/runtime-profile'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          provider_install_root: '/opt/1flowbase/plugins',
+          host_extension_dropin_root:
+            '/opt/1flowbase/plugins/host-extension/dropins',
+          locale_meta: {
+            requested_locale: null,
+            resolved_locale: 'zh_Hans',
+            source: 'fallback',
+            fallback_locale: 'en_US',
+            supported_locales: ['zh_Hans', 'en_US']
+          },
+          topology: { relationship: 'same_host' },
+          related_process_memory_complete: true,
+          services: {
+            api_server: {
+              reachable: true,
+              service: 'api-server',
+              status: 'ok',
+              version: '0.2.6',
+              host_fingerprint: 'host-boundary'
+            },
+            plugin_runner: {
+              reachable: true,
+              service: 'plugin-runner',
+              status: 'ok',
+              version: '0.2.6',
+              host_fingerprint: 'host-boundary'
+            }
+          },
+          hosts: [
+            {
+              host_fingerprint: 'host-boundary',
+              platform: {
+                os: 'linux',
+                arch: 'amd64',
+                libc: 'musl',
+                rust_target_triple: 'x86_64-unknown-linux-musl'
+              },
+              cpu: { logical_count: 8 },
+              related_process_bytes: 402_653_184,
+              related_process_count: 2,
+              memory: {
+                total_bytes: 4_294_967_296,
+                total_gb: 4,
+                available_bytes: 3_221_225_472,
+                available_gb: 3,
+                process_bytes: 268_435_456,
+                process_gb: 0.25
+              },
+              services: ['api-server', 'plugin-runner']
+            }
+          ],
+          runtime_targets: [
+            {
+              target_id: 'api-server',
+              reachable: true,
+              host_fingerprint: 'host-boundary',
+              metrics: createStyleBoundaryRuntimeMetrics(12.5, 268_435_456)
+            },
+            {
+              target_id: 'plugin-runner',
+              reachable: true,
+              host_fingerprint: 'host-boundary',
+              metrics: createStyleBoundaryRuntimeMetrics(8.5, 134_217_728)
+            }
+          ]
+        },
+        meta: null
+      });
     }
 
     if (url.includes('/api/console/docs/catalog')) {

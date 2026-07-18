@@ -48,28 +48,6 @@ pub(super) fn answer_output_payload_with_error(
     output_payload
 }
 
-pub(super) fn can_continue_to_terminal_template_nodes(
-    plan: &CompiledPlan,
-    failed_node_index: usize,
-    active_node_ids: &BTreeSet<String>,
-) -> bool {
-    let mut has_terminal_template_node = false;
-    for node_id in plan.topological_order.iter().skip(failed_node_index + 1) {
-        if !active_node_ids.contains(node_id) {
-            continue;
-        }
-
-        let Some(node) = plan.nodes.get(node_id) else {
-            return false;
-        };
-        if !matches!(node.node_type.as_str(), "template_transform" | "answer") {
-            return false;
-        }
-        has_terminal_template_node = true;
-    }
-    has_terminal_template_node
-}
-
 pub(super) fn build_failed_llm_execution(
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,
@@ -79,19 +57,12 @@ pub(super) fn build_failed_llm_execution(
     include_output_payload: bool,
     debug_invocation: LlmDebugInvocation<'_>,
 ) -> Result<LlmNodeExecution> {
-    let mut executor_output = Map::new();
-    executor_output.insert(
-        first_output_key(node),
-        Value::String(failed_llm_output_text(&error_payload)),
-    );
-    executor_output.insert(
-        "provider_route".to_string(),
-        build_llm_provider_route_payload(runtime),
-    );
-    executor_output.insert("finish_reason".to_string(), json!("error"));
-
+    let provider_events = durable_provider_events(provider_events);
     let raw = RawNodeExecutionResult {
-        executor_output,
+        // A failed provider invocation has error facts and may have transient
+        // partial deltas, but it never manufactures a successful node output.
+        // Error policies own any explicit fallback or error branch.
+        executor_output: Map::new(),
         metrics_facts: object_from_value(metrics_payload)?,
         error_facts: object_from_value(error_payload)?,
         debug_facts: build_llm_debug_facts(
@@ -117,17 +88,6 @@ pub(super) fn build_failed_llm_execution(
         provider_events,
         pending_callback: None,
     })
-}
-
-pub(super) fn failed_llm_output_text(error_payload: &Value) -> String {
-    error_payload
-        .get("message")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| error_payload.get("error_message").and_then(Value::as_str))
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("LLM node failed")
-        .to_string()
 }
 
 pub(super) fn build_successful_llm_execution(
@@ -288,7 +248,7 @@ pub(super) fn build_llm_debug_facts(
     if let Some(invocation_debug_context) = invocation_debug_context {
         debug.insert(
             "llm_context".to_string(),
-            invocation_debug_context.to_payload(),
+            invocation_debug_context.to_payload(result),
         );
     }
 

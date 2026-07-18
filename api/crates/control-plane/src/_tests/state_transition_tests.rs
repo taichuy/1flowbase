@@ -97,6 +97,35 @@ fn flow_run_rejects_terminal_resume() {
 }
 
 #[test]
+fn d1_ac_007_flow_run_incomplete_is_terminal_and_cannot_be_reclassified() {
+    assert!(ensure_flow_run_transition(
+        FlowRunStatus::Running,
+        FlowRunStatus::Incomplete,
+        "persist_flow_incomplete",
+    )
+    .is_ok());
+
+    for next_status in [
+        FlowRunStatus::Succeeded,
+        FlowRunStatus::Failed,
+        FlowRunStatus::Cancelled,
+    ] {
+        let error = ensure_flow_run_transition(
+            FlowRunStatus::Incomplete,
+            next_status,
+            "replace_incomplete_terminal",
+        )
+        .expect_err("D1-AC-007: incomplete must remain its own terminal result");
+
+        assert!(matches!(
+            error,
+            ControlPlaneError::InvalidStateTransition { resource, from, to, .. }
+                if resource == "flow_run" && from == "incomplete" && to == next_status.as_str()
+        ));
+    }
+}
+
+#[test]
 fn node_run_rejects_promoting_failed_run_back_to_success() {
     let error = ensure_node_run_transition(
         NodeRunStatus::Failed,

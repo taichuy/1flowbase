@@ -56,6 +56,22 @@ impl ApplicationPublicApiTestRepository {
             .clear();
     }
 
+    pub fn set_flow_run_compatibility_mode_for_test(
+        &self,
+        flow_run_id: Uuid,
+        compatibility_mode: Option<&str>,
+    ) {
+        if let Some(flow_run) = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .flow_runs
+            .get_mut(&flow_run_id)
+        {
+            flow_run.compatibility_mode = compatibility_mode.map(ToOwned::to_owned);
+        }
+    }
+
     pub fn conversation_record_id_for_run(&self, flow_run_id: Uuid) -> Option<Uuid> {
         self.inner
             .lock()
@@ -193,6 +209,14 @@ impl ApplicationPublicApiTestRepository {
             .lock()
             .expect("application public api test repo mutex poisoned")
             .flow_runs
+            .len()
+    }
+
+    pub fn conversation_count(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .conversations
             .len()
     }
 

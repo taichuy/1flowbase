@@ -4,10 +4,12 @@ import {
   DEFAULT_LLM_PARAMETERS,
   DEFAULT_LLM_CONTEXT_POLICY,
   DEFAULT_LLM_EXTERNAL_REASONING_POLICY,
+  DEFAULT_LLM_EXTERNAL_MODEL_PARAMETER_POLICY,
   DEFAULT_LLM_VISIBLE_INTERNAL_TOOLS_ENABLED,
   DEFAULT_LLM_VISIBLE_INTERNAL_TOOLS,
   getLlmContextPolicy,
   getLlmExternalReasoningPolicy,
+  getLlmExternalModelParameterPolicy,
   getLlmParameterDefaultValue,
   getLlmModelProvider,
   getLlmParameters,
@@ -98,6 +100,21 @@ describe('llm-node-config', () => {
       })
     ).toEqual({
       follow_external_reasoning: true
+    });
+  });
+
+  test('AC-007 external max output tokens follow policy defaults to enabled', () => {
+    expect(getLlmExternalModelParameterPolicy({})).toEqual(
+      DEFAULT_LLM_EXTERNAL_MODEL_PARAMETER_POLICY
+    );
+    expect(
+      getLlmExternalModelParameterPolicy({
+        external_model_parameter_policy: {
+          follow_external_max_output_tokens: false
+        }
+      })
+    ).toEqual({
+      follow_external_max_output_tokens: false
     });
   });
 

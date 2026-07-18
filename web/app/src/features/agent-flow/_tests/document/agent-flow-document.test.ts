@@ -151,6 +151,9 @@ describe('agent flow document helpers', () => {
     expect(llmNode?.outputs).toEqual(
       getBuiltinNodeRuntimeContract('llm')?.defaults.outputs
     );
+    expect(llmNode?.config.external_model_parameter_policy).toEqual({
+      follow_external_max_output_tokens: true
+    });
 
     expect(answerNode?.outputs).toEqual(DEFAULT_ANSWER_NODE_OUTPUTS);
     expect(answerNode?.outputs).toEqual(

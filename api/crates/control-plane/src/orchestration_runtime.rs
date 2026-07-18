@@ -1,5 +1,7 @@
 use std::{
+    future::Future,
     path::PathBuf,
+    pin::Pin,
     sync::{Arc, Mutex},
 };
 
@@ -27,9 +29,10 @@ use crate::{
     plugin_management::ready_current_node_plugin_installation,
     ports::{
         AppendRunEventInput, ApplicationJsDependencySelectionRepository, ApplicationRepository,
-        CacheStore, CompleteCallbackTaskInput, FlowRepository, ModelDefinitionRepository,
-        ModelProviderRepository, NodeContributionRepository, OrchestrationRuntimeRepository,
-        PluginRepository, ProviderRuntimePort, RuntimeEventEnvelope, RuntimeEventStream, TaskQueue,
+        CacheStore, CallbackResumeWaitingNode, CompleteCallbackTaskInput, FlowRepository,
+        ModelDefinitionRepository, ModelProviderRepository, NodeContributionRepository,
+        OrchestrationRuntimeRepository, PluginRepository, ProviderRuntimePort,
+        RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventStream, TaskQueue,
         UpdateFlowRunInput, UpdateNodeRunInput,
     },
     state_transition::{ensure_flow_run_transition, ensure_node_run_transition},
@@ -51,7 +54,10 @@ mod persistence;
 mod provider_invoker;
 mod runtime_event_persister;
 pub mod scheduler_admission;
+mod stream_terminal_recovery;
 pub mod trace_projection;
+
+pub use stream_terminal_recovery::FinalizePublishedRunMissingStreamTerminalCommand;
 
 #[cfg(test)]
 pub(crate) use provider_invoker::test_support;
@@ -1011,8 +1017,23 @@ where
 
     pub async fn complete_callback_task(
         &self,
-        mut command: CompleteCallbackTaskCommand,
+        command: CompleteCallbackTaskCommand,
     ) -> Result<domain::ApplicationRunDetail>
+    where
+        R: crate::ports::FileManagementRepository,
+    {
+        let application_id = command.application_id;
+        let flow_run = self.complete_callback_task_run(command).await?;
+        self.repository
+            .get_application_run_detail(application_id, flow_run.id)
+            .await?
+            .ok_or_else(|| anyhow!("flow run detail not found"))
+    }
+
+    pub(crate) async fn complete_callback_task_run(
+        &self,
+        mut command: CompleteCallbackTaskCommand,
+    ) -> Result<domain::FlowRunRecord>
     where
         R: crate::ports::FileManagementRepository,
     {
@@ -1021,11 +1042,25 @@ where
             .load_application_run_context(command.actor_user_id, command.application_id)
             .await?;
         let ApplicationRunContext { actor, application } = context;
-        let pending_callback_task = self
+        let resume_context = self
             .repository
-            .get_callback_task(command.callback_task_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("callback_task"))?;
+            .get_callback_resume_context(command.application_id, command.callback_task_id)
+            .await?;
+        let resume_context = match resume_context {
+            Some(context) => context,
+            None => {
+                if self
+                    .repository
+                    .get_callback_task(command.callback_task_id)
+                    .await?
+                    .is_some()
+                {
+                    return Err(anyhow!("flow run not found for callback task"));
+                }
+                return Err(ControlPlaneError::NotFound("callback_task").into());
+            }
+        };
+        let pending_callback_task = &resume_context.callback_task;
         if pending_callback_task.callback_kind == "data_model_side_effect_confirmation" {
             let confirmation_payload = pending_callback_task
                 .external_ref_payload
@@ -1040,19 +1075,10 @@ where
                 &command.response_payload,
             )?;
         }
-        let detail = self
-            .repository
-            .get_application_run_detail(command.application_id, pending_callback_task.flow_run_id)
-            .await?
-            .ok_or_else(|| anyhow!("flow run not found for callback task"))?;
-        let checkpoint = detail
-            .checkpoints
-            .iter()
-            .rev()
-            .find(|record| record.node_run_id == Some(pending_callback_task.node_run_id))
-            .cloned()
-            .ok_or_else(|| anyhow!("checkpoint not found for callback task"))?;
-        let flow_run = detail.flow_run.clone();
+        let checkpoint = resume_context.checkpoint;
+        let flow_run = resume_context.flow_run;
+        let waiting_node = resume_context.waiting_node;
+        let base_started_at = resume_context.next_node_started_at;
         let compiled_plan_id = flow_run
             .compiled_plan_id
             .ok_or_else(|| anyhow!("flow run compiled plan is not attached"))?;
@@ -1078,7 +1104,8 @@ where
                     command,
                     &actor,
                     &callback_task,
-                    &detail,
+                    &waiting_node,
+                    base_started_at,
                     &application,
                     &checkpoint,
                     &flow_run,
@@ -1088,11 +1115,6 @@ where
         }
         let snapshot = checkpoint_snapshot_from_record(&checkpoint)?;
         let waiting_node_id = checkpoint_node_id(&checkpoint)?;
-        let waiting_node = detail
-            .node_runs
-            .iter()
-            .find(|record| record.id == callback_task.node_run_id)
-            .ok_or_else(|| anyhow!("waiting node run not found for callback task"))?;
         let execution = self
             .resume_execution_segment(ResumeExecutionSegmentInput {
                 actor: &actor,
@@ -1114,7 +1136,7 @@ where
                 .ok_or_else(|| anyhow!("completed callback task is missing response payload"))?
         };
 
-        self.persist_flow_debug_outcome(PersistFlowDebugOutcomeInput {
+        self.persist_flow_debug_outcome_record(PersistFlowDebugOutcomeInput {
             scope_id: application.workspace_id,
             application_name: &application.name,
             task_queue: self.provider_request_log_queue.as_ref(),
@@ -1128,7 +1150,7 @@ where
                 "callback_task_id": callback_task.id,
                 "response_payload": command.response_payload,
             }),
-            base_started_at: next_node_started_at(&detail),
+            base_started_at,
             waiting_node_resume: Some(WaitingNodeResumeUpdate {
                 node_run_id: callback_task.node_run_id,
                 from_status: waiting_node.status,
@@ -1152,12 +1174,13 @@ where
         command: CompleteCallbackTaskCommand,
         actor: &domain::ActorContext,
         callback_task: &domain::CallbackTaskRecord,
-        detail: &domain::ApplicationRunDetail,
+        waiting_node: &CallbackResumeWaitingNode,
+        base_started_at: OffsetDateTime,
         application: &domain::ApplicationRecord,
         checkpoint: &domain::CheckpointRecord,
         flow_run: &domain::FlowRunRecord,
         compiled_plan: &orchestration_runtime::compiled_plan::CompiledPlan,
-    ) -> Result<domain::ApplicationRunDetail>
+    ) -> Result<domain::FlowRunRecord>
     where
         R: crate::ports::FileManagementRepository,
     {
@@ -1166,11 +1189,6 @@ where
             .nodes
             .get(&waiting_node_id)
             .ok_or_else(|| anyhow!("waiting data_model node not found in compiled plan"))?;
-        let waiting_node = detail
-            .node_runs
-            .iter()
-            .find(|record| record.id == callback_task.node_run_id)
-            .ok_or_else(|| anyhow!("waiting node run not found for callback task"))?;
         let confirmation_payload = callback_task
             .external_ref_payload
             .as_ref()
@@ -1216,7 +1234,8 @@ where
                 domain::FlowRunStatus::Failed,
                 "complete_data_model_side_effect_callback",
             )?;
-            self.repository
+            let failed_flow_run = self
+                .repository
                 .update_flow_run(&UpdateFlowRunInput {
                     flow_run_id: flow_run.id,
                     status: domain::FlowRunStatus::Failed,
@@ -1233,11 +1252,7 @@ where
                     payload: error_payload,
                 })
                 .await?;
-            return self
-                .repository
-                .get_application_run_detail(command.application_id, flow_run.id)
-                .await?
-                .ok_or_else(|| anyhow!("flow run detail not found"));
+            return Ok(failed_flow_run);
         }
 
         let snapshot = checkpoint_snapshot_from_record(checkpoint)?;
@@ -1259,7 +1274,7 @@ where
             .cloned()
             .unwrap_or(Value::Null);
 
-        self.persist_flow_debug_outcome(PersistFlowDebugOutcomeInput {
+        self.persist_flow_debug_outcome_record(PersistFlowDebugOutcomeInput {
             scope_id: application.workspace_id,
             application_name: &application.name,
             task_queue: self.provider_request_log_queue.as_ref(),
@@ -1274,7 +1289,7 @@ where
                 "response_payload": command.response_payload,
                 "side_effect_receipt": side_effect_receipt,
             }),
-            base_started_at: next_node_started_at(detail),
+            base_started_at,
             waiting_node_resume: Some(WaitingNodeResumeUpdate {
                 node_run_id: callback_task.node_run_id,
                 from_status: waiting_node.status,
@@ -1299,16 +1314,33 @@ where
         .await
     }
 
-    async fn persist_flow_debug_outcome(
+    fn persist_flow_debug_outcome<'a>(
+        &'a self,
+        input: PersistFlowDebugOutcomeInput<'a>,
+    ) -> Pin<Box<dyn Future<Output = Result<domain::ApplicationRunDetail>> + Send + 'a>> {
+        // Keep the full-detail adapter from expanding the already-deep runtime handler future.
+        Box::pin(async move {
+            let application_id = input.application_id;
+            let flow_run_id = input.flow_run.id;
+            self.persist_flow_debug_outcome_record(input).await?;
+            self.repository
+                .get_application_run_detail(application_id, flow_run_id)
+                .await?
+                .ok_or_else(|| anyhow!("persisted flow run detail not found"))
+        })
+    }
+
+    async fn persist_flow_debug_outcome_record(
         &self,
         input: PersistFlowDebugOutcomeInput<'_>,
-    ) -> Result<domain::ApplicationRunDetail> {
+    ) -> Result<domain::FlowRunRecord> {
         let flow_run_id = input.flow_run.id;
         let persisted = persist_flow_debug_outcome(&self.repository, input).await?;
         if let Some(stream) = &self.runtime_event_stream {
             for event in &persisted.stream_events {
                 let mut stream_event = event.clone();
                 stream_event.persist_required = false;
+                stream_event.durability = RuntimeEventDurability::Ephemeral;
                 if let Err(error) = stream.append(flow_run_id, stream_event).await {
                     if is_expected_runtime_event_stream_closed_error(&error) {
                         tracing::debug!(
@@ -1345,7 +1377,7 @@ where
                 }
             }
         }
-        Ok(persisted.detail)
+        Ok(persisted.flow_run)
     }
 
     async fn append_published_terminal_audit(
@@ -1360,6 +1392,10 @@ where
             domain::FlowRunStatus::Succeeded => (
                 "public_run_succeeded",
                 "application_public_api.run_succeeded",
+            ),
+            domain::FlowRunStatus::Incomplete => (
+                "public_run_incomplete",
+                "application_public_api.run_incomplete",
             ),
             domain::FlowRunStatus::Failed => {
                 ("public_run_failed", "application_public_api.run_failed")

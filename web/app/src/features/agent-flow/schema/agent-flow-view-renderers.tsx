@@ -37,7 +37,10 @@ import type { NodeLastRun } from '../api/runtime';
 import { getAgentFlowNodeTypeIcon } from '../lib/node-type-icons';
 import { getRegisteredNodeDefinition } from '../lib/node-definitions/registry';
 import { getBuiltinNodeRuntimeContract } from '../lib/node-definitions/contracts';
-import { getLlmExternalReasoningPolicy } from '../lib/llm-node-config';
+import {
+  getLlmExternalModelParameterPolicy,
+  getLlmExternalReasoningPolicy
+} from '../lib/llm-node-config';
 import { i18nText } from '../../../shared/i18n/text';
 
 function getNode(adapter: SchemaViewRendererProps['adapter']) {
@@ -260,6 +263,11 @@ function PolicyGroupView({ adapter }: SchemaViewRendererProps) {
       'config.external_reasoning_policy'
     )
   });
+  const externalModelParameterPolicy = getLlmExternalModelParameterPolicy({
+    external_model_parameter_policy: adapter.getValue(
+      'config.external_model_parameter_policy'
+    )
+  });
 
   function openDefaultOutputEditor() {
     setDefaultOutputText(
@@ -314,30 +322,72 @@ function PolicyGroupView({ adapter }: SchemaViewRendererProps) {
   return (
     <div className="agent-flow-node-detail__policies">
       {node?.type === 'llm' ? (
-        <div
-          className="agent-flow-node-detail__policy-row"
-          data-testid="node-policy-row"
-        >
-          <Typography.Text className="agent-flow-node-detail__policy-label">
-            {i18nText('agentFlow', 'auto.follow_external_reasoning')}
-            <Tooltip title="使用外部传入推理强度">
-              <QuestionCircleOutlined
-                aria-label="使用外部传入推理强度"
-                className="agent-flow-node-detail__policy-help"
-              />
-            </Tooltip>
-          </Typography.Text>
-          <Switch
-            aria-label={i18nText('agentFlow', 'auto.follow_external_reasoning')}
-            checked={externalReasoningPolicy.follow_external_reasoning}
-            className="agent-flow-node-detail__policy-control"
-            onChange={(checked) =>
-              adapter.setValue('config.external_reasoning_policy', {
-                follow_external_reasoning: checked
-              })
-            }
-          />
-        </div>
+        <>
+          <div
+            className="agent-flow-node-detail__policy-row"
+            data-testid="node-policy-row"
+          >
+            <Typography.Text className="agent-flow-node-detail__policy-label">
+              {i18nText('agentFlow', 'auto.follow_external_reasoning')}
+              <Tooltip title="使用外部传入推理强度">
+                <QuestionCircleOutlined
+                  aria-label="使用外部传入推理强度"
+                  className="agent-flow-node-detail__policy-help"
+                />
+              </Tooltip>
+            </Typography.Text>
+            <Switch
+              aria-label={i18nText(
+                'agentFlow',
+                'auto.follow_external_reasoning'
+              )}
+              checked={externalReasoningPolicy.follow_external_reasoning}
+              className="agent-flow-node-detail__policy-control"
+              onChange={(checked) =>
+                adapter.setValue('config.external_reasoning_policy', {
+                  follow_external_reasoning: checked
+                })
+              }
+            />
+          </div>
+          <div
+            className="agent-flow-node-detail__policy-row"
+            data-testid="node-policy-row"
+          >
+            <Typography.Text className="agent-flow-node-detail__policy-label">
+              {i18nText('agentFlow', 'auto.follow_external_max_output_tokens')}
+              <Tooltip
+                title={i18nText(
+                  'agentFlow',
+                  'auto.follow_external_max_output_tokens_help'
+                )}
+              >
+                <QuestionCircleOutlined
+                  aria-label={i18nText(
+                    'agentFlow',
+                    'auto.follow_external_max_output_tokens_help'
+                  )}
+                  className="agent-flow-node-detail__policy-help"
+                />
+              </Tooltip>
+            </Typography.Text>
+            <Switch
+              aria-label={i18nText(
+                'agentFlow',
+                'auto.follow_external_max_output_tokens'
+              )}
+              checked={
+                externalModelParameterPolicy.follow_external_max_output_tokens
+              }
+              className="agent-flow-node-detail__policy-control"
+              onChange={(checked) =>
+                adapter.setValue('config.external_model_parameter_policy', {
+                  follow_external_max_output_tokens: checked
+                })
+              }
+            />
+          </div>
+        </>
       ) : null}
       <div
         className="agent-flow-node-detail__policy-row"

@@ -1,4 +1,7 @@
 use super::*;
+use control_plane::application_public_api::{
+    compat::anthropic::translate_messages_request, protocol_translation::TranslationDecisionKind,
+};
 
 #[tokio::test]
 async fn start_native_run_creates_published_api_flow_run_from_frozen_publication() {
@@ -57,11 +60,65 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
             "env": {},
             "node-start": {
                 "query": "Summarize the incident",
-                "priority": "high"
+                "priority": "high",
+                "system": []
             }
         })
     );
     assert_eq!(result.metadata["model"], json!("public-model/pass-through"));
+}
+
+#[tokio::test]
+async fn d2_f1_anthropic_trace_id_reaches_canonical_metadata_and_durable_flow_run() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Anthropic Trace Id App");
+    let token = issue_key(&harness, application.id).await;
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let translated = translate_messages_request(json!({
+        "model": "claude-compatible-custom",
+        "messages": [{"role": "user", "content": "trace this request"}],
+        "metadata": {"trace_id": "anthropic-trace-42"}
+    }))
+    .expect("Anthropic trace_id should map into the canonical Native request");
+    assert_eq!(
+        serde_json::to_value(&translated.request).expect("canonical Native request serializes")
+            ["metadata"],
+        json!({"trace_id": "anthropic-trace-42"})
+    );
+    assert!(translated
+        .report
+        .has_decision("$.metadata.trace_id", TranslationDecisionKind::Normalized));
+
+    let result = ApplicationPublishedRunService::new(repository.clone())
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request: translated.request,
+        })
+        .await
+        .expect("the mapped Native request should create a flow run");
+    let flow_run = repository
+        .get_flow_run(application.id, result.id)
+        .await
+        .unwrap()
+        .expect("published flow run should be durable");
+
+    assert_eq!(
+        flow_run.external_trace_id.as_deref(),
+        Some("anthropic-trace-42")
+    );
+    assert_eq!(
+        result.metadata["external_trace_id"],
+        json!("anthropic-trace-42")
+    );
 }
 
 #[tokio::test]
@@ -131,10 +188,10 @@ async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtim
 }
 
 #[tokio::test]
-async fn start_native_run_rejects_context_window_as_runtime_model_parameter() {
+async fn ac_004_start_native_run_freezes_external_max_output_tokens_for_runtime() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
-    let application = harness.seed_application(actor_user_id(), "Published Native Context App");
+    let application = harness.seed_application(actor_user_id(), "Published Native Token App");
     let token = issue_key(&harness, application.id).await;
     save_start_model_catalog(&repository, &application).await;
     ApplicationPublicationService::new(repository.clone())
@@ -153,19 +210,46 @@ async fn start_native_run_rejects_context_window_as_runtime_model_parameter() {
             bearer_token: token,
             request: native_request_with_model_parameters(
                 "gpt-5.4",
-                json!({
-                    "context_window": 128000
-                }),
+                json!({ "max_output_tokens": 32000 }),
             ),
         })
-        .await;
+        .await
+        .unwrap();
+    let flow_run = repository
+        .get_flow_run(application.id, result.id)
+        .await
+        .unwrap()
+        .expect("published flow run should be durable");
 
     assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters(
-            "execution.model_parameters"
-        ))
+        flow_run.input_payload["sys"]["model_parameters"]["max_output_tokens"],
+        json!(32000)
     );
+    assert_eq!(
+        flow_run.input_payload["node-start"]["max_output_tokens"],
+        json!(32000)
+    );
+}
+
+#[test]
+fn native_adapter_rejects_context_window_as_runtime_model_parameter() {
+    let error = translate_native_run_request(json!({
+        "query": "Summarize the incident",
+        "model": "gpt-5.4",
+        "execution": {
+            "model_parameters": {
+                "context_window": 128000
+            }
+        }
+    }))
+    .expect_err("unknown model parameters must fail at the Native adapter");
+
+    assert_eq!(error.code, "invalid_model_parameters");
+    assert!(error
+        .report
+        .decisions
+        .iter()
+        .any(|decision| { decision.source_path == "$.execution.model_parameters.<unknown>[0]" }));
 }
 
 #[tokio::test]
@@ -287,6 +371,51 @@ async fn start_native_run_rejects_unsupported_reasoning_effort() {
             "execution.model_parameters.reasoning.effort"
         ))
     );
+}
+
+#[tokio::test]
+async fn ac_004_start_native_run_rejects_max_output_tokens_over_model_limit() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Published Native Output App");
+    let token = issue_key(&harness, application.id).await;
+    save_start_model_catalog(&repository, &application).await;
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let service = ApplicationPublishedRunService::new(repository.clone());
+
+    let mut request =
+        native_request_with_model_parameters("gpt-5.4", json!({ "max_output_tokens": 32001 }));
+    request.conversation = serde_json::from_value(json!({
+        "id": "catalog-over-limit-conversation",
+        "user": "catalog-over-limit-user"
+    }))
+    .expect("conversation fixture must be valid Native data");
+    let conversations_before = repository.conversation_count();
+    let flow_runs_before = repository.flow_run_count();
+
+    let result = service
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request,
+        })
+        .await;
+
+    assert_eq!(
+        result,
+        Err(NativeRunValidationError::InvalidModelParameters(
+            "execution.model_parameters.max_output_tokens"
+        ))
+    );
+    assert_eq!(repository.conversation_count(), conversations_before);
+    assert_eq!(repository.flow_run_count(), flow_runs_before);
 }
 
 #[tokio::test]
@@ -488,6 +617,76 @@ async fn start_native_run_replays_existing_run_for_same_idempotency_key() {
 
     assert_eq!(first.id, second.id);
     assert_eq!(repository.flow_run_count(), 1);
+}
+
+#[tokio::test]
+async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_normalized_runtime() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Typed Reasoning Effort App");
+    let token = issue_key(&harness, application.id).await;
+    save_start_model_catalog(&repository, &application).await;
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let service = ApplicationPublishedRunService::new(repository.clone());
+    let request_with_effort = |idempotency_key: &str, effort: &str| {
+        serde_json::from_value(json!({
+            "query": "Summarize the incident",
+            "model": "gpt-5.4",
+            "execution": {
+                "idempotency_key": idempotency_key,
+                "model_parameters": {"reasoning": {"effort": effort}}
+            }
+        }))
+        .expect("valid reasoning effort fixture")
+    };
+
+    let normal = service
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token.clone(),
+            request: request_with_effort("normal-effort", "high"),
+        })
+        .await
+        .unwrap();
+    let spaced = service
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token.clone(),
+            request: request_with_effort("spaced-effort", " high "),
+        })
+        .await
+        .unwrap();
+    let conflict = service
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request: request_with_effort("normal-effort", " high "),
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(conflict, NativeRunValidationError::IdempotencyConflict);
+    for run_id in [normal.id, spaced.id] {
+        let run = repository
+            .get_flow_run(application.id, run_id)
+            .await
+            .unwrap()
+            .expect("typed reasoning run should be durable");
+        assert_eq!(
+            run.input_payload["sys"]["model_parameters"]["reasoning"]["effort"],
+            json!("high")
+        );
+        assert_eq!(
+            run.input_payload["node-start"]["reasoning_effort"],
+            json!("high")
+        );
+    }
+    assert_eq!(repository.flow_run_count(), 2);
 }
 
 #[tokio::test]

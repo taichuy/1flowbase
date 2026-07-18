@@ -198,6 +198,63 @@ async fn orchestration_runtime_repository_lists_runtime_event_backfill_page_by_s
 }
 
 #[tokio::test]
+async fn orchestration_runtime_repository_finds_callback_event_sequence_without_loading_history() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-04-17 09:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let callback_task_id = Uuid::now_v7();
+
+    let events = <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_runtime_events(
+        &store,
+        &[
+            AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: None,
+                span_id: None,
+                parent_span_id: None,
+                event_type: "debug_blob".into(),
+                layer: domain::RuntimeEventLayer::Diagnostic,
+                source: domain::RuntimeEventSource::Host,
+                trust_level: domain::RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: json!({ "history": "x".repeat(2 * 1024 * 1024) }),
+                visibility: domain::RuntimeEventVisibility::Workspace,
+                durability: domain::RuntimeEventDurability::Durable,
+            },
+            AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: None,
+                span_id: None,
+                parent_span_id: None,
+                event_type: "waiting_callback".into(),
+                layer: domain::RuntimeEventLayer::AgentTransition,
+                source: domain::RuntimeEventSource::Host,
+                trust_level: domain::RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: json!({ "callback_task_id": callback_task_id }),
+                visibility: domain::RuntimeEventVisibility::Workspace,
+                durability: domain::RuntimeEventDurability::Durable,
+            },
+        ],
+    )
+    .await
+    .unwrap();
+
+    let sequence = <PgControlPlaneStore as OrchestrationRuntimeRepository>::
+        get_runtime_event_sequence_for_callback_task(&store, run.id, callback_task_id)
+        .await
+        .unwrap();
+
+    assert_eq!(sequence, Some(events[1].sequence));
+}
+
+#[tokio::test]
 async fn orchestration_runtime_repository_serializes_concurrent_run_event_sequences() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
@@ -587,7 +644,6 @@ async fn published_run_control_lists_waiting_callback_runs_for_conversation() {
                 api_key_id,
                 external_user: "claude-user".to_string(),
                 external_conversation_id: "session-1".to_string(),
-                compatibility_mode: "anthropic-messages-v1".to_string(),
             },
         )
         .await

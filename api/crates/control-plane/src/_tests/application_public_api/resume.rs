@@ -77,19 +77,16 @@ async fn publish_application(
 }
 
 fn anthropic_request(query: &str) -> NativeRunRequest {
-    let mut request: NativeRunRequest = serde_json::from_value(json!({
+    serde_json::from_value(json!({
         "query": query,
         "model": "1flowbase",
         "conversation": {
             "user": "claude-code-user",
             "id": "claude-code-session"
         },
-        "response_mode": "streaming",
-        "compatibility_mode": "anthropic-messages-v1"
+        "response_mode": "streaming"
     }))
-    .unwrap();
-    request.protocol_compatibility_mode = Some("anthropic-messages-v1".to_string());
-    request
+    .unwrap()
 }
 
 fn anthropic_builtin_agent_request(query: &str) -> NativeRunRequest {
@@ -267,7 +264,7 @@ impl ApplicationPublishedCallbackConsumer for RecordingCallbackConsumer {
     async fn complete_published_callback(
         &self,
         input: CompletePublishedCallbackInput,
-    ) -> anyhow::Result<domain::ApplicationRunDetail> {
+    ) -> anyhow::Result<domain::FlowRunRecord> {
         self.calls
             .lock()
             .expect("recording callback consumer mutex poisoned")
@@ -278,9 +275,9 @@ impl ApplicationPublishedCallbackConsumer for RecordingCallbackConsumer {
             .await?
             .expect("callback task should exist");
         self.repository
-            .get_published_run_detail(input.application_id, callback_task.flow_run_id)
+            .get_published_flow_run(callback_task.flow_run_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("published run detail should exist"))
+            .ok_or_else(|| anyhow::anyhow!("published run should exist"))
     }
 }
 
@@ -347,117 +344,129 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
 }
 
 #[tokio::test]
-async fn anthropic_agent_callback_result_projects_matching_subagent_terminal_output() {
+async fn d2_ac_007_callback_resume_treats_legacy_compatibility_mode_as_opaque() {
     let harness = ApplicationPublicApiTestHarness::new();
-    let application = harness.seed_application(actor_user_id(), "Anthropic Agent Resume App");
+    let application = harness.seed_application(actor_user_id(), "Canonical Callback Resume App");
     let token = issue_key(&harness, application.id, actor_user_id()).await;
-    ApplicationPublicationService::new(harness.repository())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
+    publish_application(&harness, application.id, actor_user_id()).await;
     let repository = harness.repository();
     let run_service = ApplicationPublishedRunService::new(repository.clone());
-    let parent = run_service
+    let agent_prompt = "Search the 1flowbase frontend for the navigation code.";
+
+    let absent_parent = run_service
         .start_native_run(CreateNativeRunCommand {
             bearer_token: token.clone(),
-            request: anthropic_request("uploads/image-1.png 这部分代码在哪里？"),
+            request: anthropic_request("Find the navigation code"),
         })
         .await
         .unwrap();
-    let agent_prompt = "Search the 1flowbase frontend for the navigation code.";
-    let parent_callback = repository.seed_pending_llm_tool_callback_task(
-        parent.id,
+    let absent_parent_callback = repository.seed_pending_llm_tool_callback_task(
+        absent_parent.id,
         json!({
-            "tool_calls": [
-                {
-                    "id": "call_agent_1",
-                    "name": "Agent",
-                    "arguments": {
-                        "description": "Find navigation code",
-                        "prompt": agent_prompt,
-                        "subagent_type": "Explore"
-                    }
-                }
-            ]
+            "tool_calls": [{
+                "id": "call_agent_absent",
+                "name": "Agent",
+                "arguments": {"prompt": agent_prompt}
+            }]
         }),
     );
-    let subagent = run_service
+    let absent_subagent = run_service
         .start_native_run(CreateNativeRunCommand {
             bearer_token: token.clone(),
             request: anthropic_builtin_agent_request(agent_prompt),
         })
         .await
         .unwrap();
-    let subagent_callback = repository.seed_pending_llm_tool_callback_task(
-        subagent.id,
+    let absent_subagent_callback = repository.seed_pending_callback_task(absent_subagent.id);
+
+    let legacy_parent = run_service
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token.clone(),
+            request: anthropic_request("Find the navigation code"),
+        })
+        .await
+        .unwrap();
+    let legacy_parent_callback = repository.seed_pending_llm_tool_callback_task(
+        legacy_parent.id,
         json!({
-            "tool_calls": [
-                {
-                    "id": "call_read_1",
-                    "name": "Read",
-                    "arguments": { "file_path": "/home/taichu/git/1flowbase/web/app/src/app-shell/Navigation.tsx" }
-                }
-            ]
+            "tool_calls": [{
+                "id": "call_agent_legacy",
+                "name": "Agent",
+                "arguments": {"prompt": agent_prompt}
+            }]
         }),
     );
-    let agent_report = "Navigation lives in web/app/src/app-shell/Navigation.tsx.";
+    let legacy_subagent = run_service
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token.clone(),
+            request: anthropic_builtin_agent_request(agent_prompt),
+        })
+        .await
+        .unwrap();
+    let legacy_subagent_callback = repository.seed_pending_callback_task(legacy_subagent.id);
+    repository
+        .set_flow_run_compatibility_mode_for_test(legacy_parent.id, Some("anthropic-messages-v1"));
+    repository.set_flow_run_compatibility_mode_for_test(
+        legacy_subagent.id,
+        Some("anthropic-messages-v1"),
+    );
+
     let consumer = RecordingCallbackConsumer {
         repository: repository.clone(),
         ..RecordingCallbackConsumer::default()
     };
+    for (flow_run_id, callback_task_id, tool_call_id) in [
+        (
+            absent_parent.id,
+            absent_parent_callback.id,
+            "call_agent_absent",
+        ),
+        (
+            legacy_parent.id,
+            legacy_parent_callback.id,
+            "call_agent_legacy",
+        ),
+    ] {
+        ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
+            .resume_callback(ResumePublishedCallbackCommand {
+                bearer_token: token.clone(),
+                target: PublishedCallbackResumeTarget::FlowRun {
+                    flow_run_id,
+                    callback_task_id,
+                },
+                source: PublishedCallbackResumeSource::AnthropicMessages,
+                response_payload: json!({
+                    "tool_results": [{
+                        "tool_call_id": tool_call_id,
+                        "content": "Navigation lives in web/app/src/app-shell/Navigation.tsx."
+                    }]
+                }),
+                response_mode: Some("streaming".into()),
+            })
+            .await
+            .unwrap();
+    }
 
-    ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
-        .resume_callback(ResumePublishedCallbackCommand {
-            bearer_token: token,
-            target: PublishedCallbackResumeTarget::FlowRun {
-                flow_run_id: parent.id,
-                callback_task_id: parent_callback.id,
-            },
-            source: PublishedCallbackResumeSource::AnthropicMessages,
-            response_payload: json!({
-                "tool_results": [
-                    {
-                        "tool_call_id": "call_agent_1",
-                        "content": agent_report
-                    }
-                ]
-            }),
-            response_mode: Some("streaming".into()),
-        })
-        .await
-        .unwrap();
-
-    let projected = repository
-        .get_flow_run(application.id, subagent.id)
-        .await
-        .unwrap()
-        .expect("subagent run should remain durable");
-    assert_eq!(projected.status, domain::FlowRunStatus::Succeeded);
-    assert_eq!(projected.output_payload["answer"], json!(agent_report));
-    assert!(projected.finished_at.is_some());
-    let projected_node = repository
-        .get_node_run(subagent_callback.node_run_id)
-        .expect("subagent waiting node should remain durable");
-    assert_eq!(projected_node.status, domain::NodeRunStatus::Succeeded);
-    assert_eq!(projected_node.output_payload["answer"], json!(agent_report));
-    assert!(projected_node.finished_at.is_some());
-    let subagent_callback = repository
-        .get_published_callback_task(subagent_callback.id)
-        .await
-        .unwrap()
-        .expect("subagent callback task should remain durable");
-    assert_eq!(
-        subagent_callback.status,
-        domain::CallbackTaskStatus::Cancelled
-    );
-    let subagent_events = repository.run_event_types(subagent.id);
-    assert!(subagent_events.contains(&"public_run_internal_agent_result_projected".to_string()));
-    assert!(subagent_events.contains(&"public_run_callback_cancelled".to_string()));
+    for (subagent_id, callback_task_id) in [
+        (absent_subagent.id, absent_subagent_callback.id),
+        (legacy_subagent.id, legacy_subagent_callback.id),
+    ] {
+        let subagent = repository
+            .get_flow_run(application.id, subagent_id)
+            .await
+            .unwrap()
+            .expect("subagent run should remain durable");
+        let callback_task = repository
+            .get_published_callback_task(callback_task_id)
+            .await
+            .unwrap()
+            .expect("subagent callback task should remain durable");
+        assert_eq!(subagent.status, domain::FlowRunStatus::WaitingCallback);
+        assert_eq!(callback_task.status, domain::CallbackTaskStatus::Pending);
+        let events = repository.run_event_types(subagent_id);
+        assert!(!events.contains(&"public_run_internal_agent_result_projected".to_string()));
+        assert!(!events.contains(&"public_run_callback_cancelled".to_string()));
+    }
 }
 
 #[tokio::test]

@@ -55,6 +55,9 @@ pub(super) fn inject_system_variables(
                 .as_ref()
                 .and_then(external_reasoning_effort)
         });
+    let max_output_tokens = model_parameters
+        .as_ref()
+        .and_then(external_max_output_tokens);
 
     sys["conversation_id"] = json!(conversation_id);
     sys["dialog_count"] = json!(0);
@@ -65,10 +68,11 @@ pub(super) fn inject_system_variables(
 
     variable_pool.insert("sys".to_string(), sys);
     if start_has_reasoning_effort || sys_has_reasoning_effort || has_model_parameters {
-        insert_start_reasoning_effort(
+        insert_start_model_parameters(
             variable_pool,
             start_node_id,
             reasoning_effort.unwrap_or_default(),
+            max_output_tokens,
         );
     }
 }
@@ -83,10 +87,11 @@ pub(super) fn compiled_plan_start_node_id(
         .map(|node| node.node_id.as_str())
 }
 
-fn insert_start_reasoning_effort(
+fn insert_start_model_parameters(
     variable_pool: &mut Map<String, Value>,
     start_node_id: Option<&str>,
     reasoning_effort: String,
+    max_output_tokens: Option<u64>,
 ) {
     let start_node_id = start_node_id
         .map(str::trim)
@@ -104,6 +109,9 @@ fn insert_start_reasoning_effort(
             "reasoning_effort".to_string(),
             Value::String(reasoning_effort),
         );
+        if let Some(max_output_tokens) = max_output_tokens {
+            start_payload.insert("max_output_tokens".to_string(), json!(max_output_tokens));
+        }
     }
 }
 
@@ -115,6 +123,13 @@ fn external_reasoning_effort(model_parameters: &Value) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
+
+fn external_max_output_tokens(model_parameters: &Value) -> Option<u64> {
+    model_parameters
+        .get("max_output_tokens")
+        .and_then(Value::as_u64)
+        .filter(|value| *value > 0)
 }
 
 pub(super) fn inject_application_environment_variables(
