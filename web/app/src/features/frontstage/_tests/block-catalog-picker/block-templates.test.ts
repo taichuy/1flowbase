@@ -72,7 +72,7 @@ describe('frontstage block templates', () => {
       'edit-form',
       'search-table'
     ]);
-    expect(nextTemplates[0].title).toBe('JSX 示例区块');
+    expect(nextTemplates[0].title).toBe('代码示例区块');
   });
 
   test('creates built-in JS block source by stable template id', () => {
@@ -168,9 +168,9 @@ describe('frontstage block templates', () => {
     expect(code).toContain("codeRef: 'frontstage-js-block-1-code'");
     expect(code).toContain("contributionCode: 'frontstage.js-ui-block'");
     expect(code).toContain("id: 'frontstage-js-block-1'");
-    expect(code).toContain("title: 'JSX 示例区块'");
+    expect(code).toContain("title: '代码示例区块'");
     expect(code).toContain('render()');
-    expect(code).toContain('<Title>JSX 示例区块</Title>');
+    expect(code).toContain('<Title>代码示例区块</Title>');
     expect(code).not.toContain('ctx.data.query');
     expect(code).not.toContain('ctx.actions.invoke');
   });
@@ -216,12 +216,12 @@ describe('frontstage block templates', () => {
           children: [
             {
               primitive: 'Title',
-              props: { children: 'JSX 示例区块' }
+              props: { children: '代码示例区块' }
             },
             {
               primitive: 'Text',
               props: {
-                children: '点击区块右上角的编辑图标修改这段 JSX。'
+                children: '点击区块右上角的编辑图标修改这段 TSX。'
               }
             }
           ]

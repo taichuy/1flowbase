@@ -35,7 +35,7 @@ export const FRONTSTAGE_DESIGN_BLUE = {
   /** Floating toolbar chrome. */
   toolbarBorder: 'rgba(59, 130, 246, 0.2)',
   toolbarShadow: '0 8px 24px rgba(37, 99, 235, 0.16)',
-  /** Small pill label ("JS 区块" etc.) chrome. */
+  /** Small pill label ("代码区块" etc.) chrome. */
   labelBg: 'rgba(59, 130, 246, 0.1)',
   labelText: '#2563eb'
 } as const;

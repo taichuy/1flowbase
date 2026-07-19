@@ -4,23 +4,16 @@ import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
 export const JSX_PRAGMA = 'h';
 export const JSX_FRAGMENT_PRAGMA = 'Fragment';
-export const JSX_RUNTIME_IMPORT_SOURCE = '@1flowbase/block-renderer/antd-facade';
+export const JSX_RUNTIME_IMPORT_SOURCE =
+  '@1flowbase/block-renderer/antd-facade';
 
-export type JsBlockJsxCompileResult =
+export type JsBlockTsxCompileResult =
   | { ok: true; code: string; changed: boolean }
   | { ok: false; errors: BlockProtocolError[] };
 
-const JSX_MARKER_PATTERN = /<\s*[A-Za-z>/]/;
-
-export function sourceLooksLikeJsx(source: string): boolean {
-  return JSX_MARKER_PATTERN.test(source);
-}
-
-export function compileJsBlockJsxSource(source: string): JsBlockJsxCompileResult {
-  if (!sourceLooksLikeJsx(source)) {
-    return { ok: true, code: source, changed: false };
-  }
-
+export function compileJsBlockTsxSource(
+  source: string
+): JsBlockTsxCompileResult {
   let compiled: string;
   try {
     compiled = transform(source, {
@@ -28,7 +21,8 @@ export function compileJsBlockJsxSource(source: string): JsBlockJsxCompileResult
       jsxPragma: JSX_PRAGMA,
       jsxFragmentPragma: JSX_FRAGMENT_PRAGMA,
       production: true,
-      disableESTransforms: true
+      disableESTransforms: true,
+      keepUnusedImports: true
     }).code;
   } catch (error) {
     return {
@@ -36,8 +30,8 @@ export function compileJsBlockJsxSource(source: string): JsBlockJsxCompileResult
       errors: [
         {
           code: 'transform_failed',
-          path: 'source.jsx',
-          message: `JS block JSX compile failed: ${
+          path: 'source.tsx',
+          message: `Code block TSX compile failed: ${
             error instanceof Error ? error.message : String(error)
           }`
         }

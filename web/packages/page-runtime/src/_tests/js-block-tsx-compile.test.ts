@@ -3,10 +3,7 @@ import { describe, expect, test } from 'vitest';
 import * as antdFacade from '@1flowbase/block-renderer/antd-facade';
 import * as blockSdk from '@1flowbase/block-sdk';
 
-import {
-  compileJsBlockJsxSource,
-  sourceLooksLikeJsx
-} from '../js-block-jsx-compile';
+import { compileJsBlockTsxSource } from '../js-block-tsx-compile';
 import { evaluateJsBlockSource } from '../js-block-source-evaluator';
 
 const modules = {
@@ -14,20 +11,41 @@ const modules = {
   '@1flowbase/block-renderer/antd-facade': antdFacade as Record<string, unknown>
 };
 
-describe('compileJsBlockJsxSource', () => {
-  test('passes non-JSX source through unchanged', () => {
-    const source = "const value = 1 < 2;\nexport default value;";
-    // `1 < 2` looks JSX-ish to the cheap marker, so it goes through sucrase,
-    // but the output must stay semantically identical (no pragma injected).
-    const result = compileJsBlockJsxSource(source);
+describe('compileJsBlockTsxSource', () => {
+  test('AC-001 strips pure TypeScript syntax even when the source has no JSX', () => {
+    const source = [
+      'type Greeting = { message: string };',
+      "const greeting: Greeting = { message: 'hello' };",
+      'export default { render() { return greeting.message; } };'
+    ].join('\n');
+
+    const result = compileJsBlockTsxSource(source);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.code).not.toContain("from '@1flowbase/block-renderer/antd-facade'");
+      expect(result.changed).toBe(true);
+      expect(result.code).not.toContain('type Greeting');
+      expect(result.code).not.toContain(': Greeting');
+      expect(result.code).toContain("const greeting = { message: 'hello' }");
     }
   });
 
-  test('detects JSX markers', () => {
-    expect(sourceLooksLikeJsx('return <Stack />;')).toBe(true);
+  test('preserves plain JavaScript semantics without injecting a JSX runtime', () => {
+    const source = 'const value = 1 < 2;\nexport default value;';
+    const result = compileJsBlockTsxSource(source);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.code).not.toContain(
+        "from '@1flowbase/block-renderer/antd-facade'"
+      );
+    }
+  });
+
+  test('preserves imports for the source policy', () => {
+    const source = "import React from 'react';\nexport default {};";
+
+    const result = compileJsBlockTsxSource(source);
+
+    expect(result).toEqual({ ok: true, code: source, changed: false });
   });
 
   test('compiles JSX into h() calls and injects the runtime import', () => {
@@ -41,12 +59,16 @@ describe('compileJsBlockJsxSource', () => {
       '});'
     ].join('\n');
 
-    const result = compileJsBlockJsxSource(source);
+    const result = compileJsBlockTsxSource(source);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.changed).toBe(true);
       expect(result.code).toContain('h(');
-      expect(result.code.startsWith("import { h, Fragment } from '@1flowbase/block-renderer/antd-facade';")).toBe(true);
+      expect(
+        result.code.startsWith(
+          "import { h, Fragment } from '@1flowbase/block-renderer/antd-facade';"
+        )
+      ).toBe(true);
     }
   });
 
@@ -56,7 +78,7 @@ describe('compileJsBlockJsxSource', () => {
       'export default { render() { return <Stack />; } };'
     ].join('\n');
 
-    const result = compileJsBlockJsxSource(source);
+    const result = compileJsBlockTsxSource(source);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(
@@ -66,16 +88,16 @@ describe('compileJsBlockJsxSource', () => {
   });
 
   test('reports a structured error for malformed JSX', () => {
-    const result = compileJsBlockJsxSource('export default <Stack;');
+    const result = compileJsBlockTsxSource('export default <Stack;');
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.errors[0]?.code).toBe('transform_failed');
-      expect(result.errors[0]?.path).toBe('source.jsx');
+      expect(result.errors[0]?.path).toBe('source.tsx');
     }
   });
 });
 
-describe('evaluateJsBlockSource with JSX', () => {
+describe('evaluateJsBlockSource with TSX and JSX', () => {
   test('evaluates a JSX block end-to-end into a UI schema', async () => {
     const source = [
       "import { defineBlock } from '@1flowbase/block-sdk';",
@@ -122,7 +144,7 @@ describe('evaluateJsBlockSource with JSX', () => {
       '    const error = ctx.state.error;',
       '    return (',
       '      <Stack>',
-      "        {error ? <Alert type=\"error\" message={error} /> : null}",
+      '        {error ? <Alert type="error" message={error} /> : null}',
       '        <Button actionId="data_model.orders.list">Refresh</Button>',
       '      </Stack>',
       '    );',

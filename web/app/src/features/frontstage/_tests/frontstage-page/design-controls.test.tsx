@@ -511,7 +511,7 @@ describe('FrontStagePage - design controls', () => {
       screen.queryByRole('button', { name: '创建区块' })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'JS Block 试运行' })
+      screen.queryByRole('button', { name: '代码区块试运行' })
     ).not.toBeInTheDocument();
     expect(screen.queryByText('页面树已同步')).not.toBeInTheDocument();
 
@@ -520,7 +520,7 @@ describe('FrontStagePage - design controls', () => {
       screen.getByRole('button', { name: '创建区块' })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'JS Block 试运行' })
+      screen.queryByRole('button', { name: '代码区块试运行' })
     ).not.toBeInTheDocument();
     expect(screen.queryByText('页面树已同步')).not.toBeInTheDocument();
     expect(
@@ -546,7 +546,7 @@ describe('FrontStagePage - design controls', () => {
       screen.queryByRole('button', { name: '创建区块' })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'JS Block 试运行' })
+      screen.queryByRole('button', { name: '代码区块试运行' })
     ).not.toBeInTheDocument();
     expect(screen.queryByText('页面树已同步')).not.toBeInTheDocument();
     expect(
@@ -662,7 +662,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
     expect(screen.getByText('结构化配置')).toBeInTheDocument();
     expect(

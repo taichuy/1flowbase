@@ -61,7 +61,7 @@ vi.mock('../../components/jsx-studio/FrontstageJsxStudioDrawer', () => ({
     open ? (
       <dialog
         open
-        aria-label="JSX Studio"
+        aria-label="TSX 编辑器"
         data-initial-section={initialSection}
       >
         <span>workspace:{workspaceId ?? 'none'}</span>
@@ -391,9 +391,7 @@ async function confirmBlockDelete(blockId: string) {
     throw new Error('Missing block delete action');
   }
   await clickAndFlush(deleteAction);
-  await clickAndFlush(
-    await screen.findByRole('button', { name: /删\s*除/ })
-  );
+  await clickAndFlush(await screen.findByRole('button', { name: /删\s*除/ }));
 }
 
 function activateDesignMode() {
@@ -540,7 +538,7 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块代码');
 
-    const dialog = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    const dialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     expect(dialog).toHaveAttribute('data-initial-section', 'code');
     expect(
       within(dialog).getByText('workspace:workspace-1')
@@ -572,7 +570,7 @@ describe('FrontStagePage block arrange actions', () => {
     ).not.toBeInTheDocument();
 
     fireEvent.click(configurationButton);
-    const studio = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     expect(studio).toHaveAttribute('data-initial-section', 'configuration');
   });
 
@@ -683,7 +681,7 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
 
-    const dialog = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    const dialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     expect(dialog).toHaveAttribute('data-initial-section', 'configuration');
     expect(within(dialog).getByText('block:hero')).toBeInTheDocument();
     expect(within(dialog).getByText('code:hero-code')).toBeInTheDocument();
@@ -718,13 +716,13 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
 
     await exitDesignMode();
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
 
@@ -732,20 +730,20 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
 
     await clickAndFlush(getBlockRow('hero'));
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
 
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
 
     // Switch page
@@ -783,7 +781,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
   }, 25000);
@@ -817,13 +815,13 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块代码');
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
 
     await exitDesignMode();
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
 
@@ -831,7 +829,7 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块代码');
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
 
     fireEvent.click(
@@ -868,7 +866,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
   });
