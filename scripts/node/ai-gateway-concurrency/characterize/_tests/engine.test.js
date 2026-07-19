@@ -8,6 +8,8 @@ const {
   authorizationHeadersByTransport,
   executeCharacterizePlan,
   normalizeHeadersByTransport,
+  normalizeModelByTransport,
+  requirePublishedModelsByTransport,
   validateRequestResult,
 } = require('../engine');
 const { CHARACTERIZE_CONCURRENCY, CHARACTERIZE_PLAN } = require('../plan');
@@ -31,6 +33,7 @@ async function withMock(run) {
 
 test('AC-003/004/005: finite characterize fixture classifies transports, failures, cancellation, and peak', async () => {
   await withMock(async ({ mock, endpointSet }) => {
+    const directMockModels = [];
     const plan = [
       { transport: TRANSPORT.RESPONSES_SSE, scenario: SCENARIO.NORMAL, concurrency: 2 },
       { transport: TRANSPORT.ANTHROPIC_SSE, scenario: SCENARIO.NORMAL, concurrency: 1 },
@@ -43,6 +46,10 @@ test('AC-003/004/005: finite characterize fixture classifies transports, failure
     const result = await executeCharacterizePlan({
       endpointSet,
       plan,
+      fetchImpl(url, options) {
+        directMockModels.push(JSON.parse(options.body).model);
+        return fetch(url, options);
+      },
       mockSnapshot: mock.snapshot,
       timeoutMs: 1_000,
     });
@@ -54,6 +61,7 @@ test('AC-003/004/005: finite characterize fixture classifies transports, failure
     assert.equal(result.summary.batches.every((batch) => batch.pass), true);
     assert.equal(result.summary.batches.every((batch) => typeof batch.metrics.throughputRps === 'number'), true);
     assert.equal(result.summary.batches.some((batch) => typeof batch.metrics.derivedQueueMaxMs === 'number'), true);
+    assert.equal(directMockModels.every((model) => model === 'mock-model'), true);
     const cancelled = result.events.find((event) => event.kind === 'request' && event.scenario === SCENARIO.CANCEL_OBSERVATION);
     assert.equal(cancelled.outcome, 'cancelled');
     assert.equal(cancelled.terminalCount, 0);
@@ -79,18 +87,27 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
   await withMock(async ({ mock, endpointSet }) => {
     const fetchCalls = [];
     const websocketCalls = [];
+    const websocketRequests = [];
     const fetchImpl = (url, options) => {
       fetchCalls.push({
         url: String(url),
         authorization: options.headers.authorization,
         clientNonce: JSON.parse(options.body).metadata.request_nonce,
+        model: JSON.parse(options.body).model,
       });
       return fetch(url, options);
     };
     const WebSocketImpl = new Proxy(WebSocket, {
       construct(Target, args) {
         websocketCalls.push(args);
-        return Reflect.construct(Target, args);
+        const socket = Reflect.construct(Target, args);
+        const send = socket.send.bind(socket);
+        socket.send = (value) => {
+          const request = JSON.parse(value);
+          if (request.type === 'response.create') websocketRequests.push(request);
+          return send(value);
+        };
+        return socket;
       },
     });
     const result = await executeCharacterizePlan({
@@ -104,6 +121,10 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
         [TRANSPORT.RESPONSES_SSE]: { authorization: 'Bearer responses-key' },
         [TRANSPORT.ANTHROPIC_SSE]: { authorization: 'Bearer anthropic-key' },
       },
+      modelByTransport: {
+        [TRANSPORT.RESPONSES_SSE]: 'published-openai-model',
+        [TRANSPORT.ANTHROPIC_SSE]: 'published-anthropic-model',
+      },
       fetchImpl,
       WebSocketImpl,
       mockSnapshot: mock.snapshot,
@@ -115,6 +136,7 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
       'Bearer anthropic-key',
     ]);
     assert.deepEqual(fetchCalls.map((call) => call.clientNonce), ['load-000001', 'load-000003']);
+    assert.deepEqual(fetchCalls.map((call) => call.model), ['published-openai-model', 'published-anthropic-model']);
     assert.deepEqual(
       result.events.filter((event) => event.kind === 'request').map((event) => event.clientNonce),
       ['load-000001', 'load-000002', 'load-000003'],
@@ -122,6 +144,9 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
     assert.equal(websocketCalls.length, 1);
     assert.equal(websocketCalls[0].length, 1);
     assert.equal(String(websocketCalls[0][0]).includes('key'), false);
+    assert.equal(websocketRequests.length, 1);
+    assert.equal(websocketRequests[0].response.model, 'mock-model');
+    assert.equal(websocketRequests[0].response.metadata.request_nonce, 'load-000002');
   });
 });
 
@@ -148,6 +173,21 @@ test('AC-003 controlled negatives: WebSocket, unknown, missing, and shared autho
       [TRANSPORT.ANTHROPIC_SSE]: 'shared-key',
     }),
     /must use distinct Application API keys/u,
+  );
+});
+
+test('AC-003 controlled negatives: WebSocket, unknown, and missing published models fail closed', () => {
+  assert.throws(
+    () => normalizeModelByTransport({ [TRANSPORT.RESPONSES_WEBSOCKET]: 'forbidden-model' }),
+    /model is not allowed for transport: responses-websocket/u,
+  );
+  assert.throws(
+    () => normalizeModelByTransport({ unknown: 'unknown-model' }),
+    /model is not allowed for transport: unknown/u,
+  );
+  assert.throws(
+    () => requirePublishedModelsByTransport({ [TRANSPORT.RESPONSES_SSE]: 'published-openai-model' }),
+    /published model is required for transport: anthropic-sse/u,
   );
 });
 

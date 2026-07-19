@@ -29,6 +29,8 @@ test('AC-003/007: gateway CLI reads distinct Application keys from two named env
     '--anthropic-sse-url', 'http://127.0.0.1:7801/v1/messages',
     '--openai-api-key-env', 'OPENAI_FIXTURE_API_KEY',
     '--anthropic-api-key-env', 'ANTHROPIC_FIXTURE_API_KEY',
+    '--openai-model', 'gateway-openai-model',
+    '--anthropic-model', 'gateway-anthropic-model',
   ], {
     OPENAI_FIXTURE_API_KEY: 'responses-fixture-secret',
     ANTHROPIC_FIXTURE_API_KEY: 'anthropic-fixture-secret',
@@ -36,6 +38,10 @@ test('AC-003/007: gateway CLI reads distinct Application keys from two named env
   assert.deepEqual(parsed.authorizationTokenByTransport, {
     [TRANSPORT.RESPONSES_SSE]: 'responses-fixture-secret',
     [TRANSPORT.ANTHROPIC_SSE]: 'anthropic-fixture-secret',
+  });
+  assert.deepEqual(parsed.modelByTransport, {
+    [TRANSPORT.RESPONSES_SSE]: 'gateway-openai-model',
+    [TRANSPORT.ANTHROPIC_SSE]: 'gateway-anthropic-model',
   });
   assert.deepEqual(parsed.endpointSet, {
     [TRANSPORT.RESPONSES_SSE]: 'http://127.0.0.1:7800/v1/responses',
@@ -62,6 +68,8 @@ test('AC-003 controlled negatives: ambiguous or identical gateway keys fail clos
     '--responses-sse-url', 'http://127.0.0.1:7800/v1/responses',
     '--mock-responses-websocket-url', 'ws://127.0.0.1:7802/v1/responses',
     '--anthropic-sse-url', 'http://127.0.0.1:7801/v1/messages',
+    '--openai-model', 'gateway-openai-model',
+    '--anthropic-model', 'gateway-anthropic-model',
   ];
   assert.throws(
     () => parseCliArgs([...base, '--api-key-env', 'AMBIGUOUS_KEY'], { AMBIGUOUS_KEY: 'secret' }),

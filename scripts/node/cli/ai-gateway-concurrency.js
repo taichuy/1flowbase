@@ -14,6 +14,7 @@ function usage() {
   node scripts/node/cli/ai-gateway-concurrency.js --profile characterize --mode gateway \\
     --responses-sse-url <url> --mock-responses-websocket-url <url> --anthropic-sse-url <url> \\
     --openai-api-key-env <environment-variable> --anthropic-api-key-env <environment-variable> \\
+    --openai-model <published-model> --anthropic-model <published-model> \\
     [--repo-root <path>] [--timeout-ms <ms>]
 
 Writes report.md, summary.json, and events.jsonl below
@@ -30,6 +31,7 @@ function parseCliArgs(argv, env = process.env) {
     '--profile', '--mode', '--repo-root', '--timeout-ms', '--responses-sse-url',
     '--mock-responses-websocket-url', '--anthropic-sse-url',
     '--openai-api-key-env', '--anthropic-api-key-env',
+    '--openai-model', '--anthropic-model',
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -61,6 +63,8 @@ function parseCliArgs(argv, env = process.env) {
     '--anthropic-sse-url',
     '--openai-api-key-env',
     '--anthropic-api-key-env',
+    '--openai-model',
+    '--anthropic-model',
   ];
   if (mode === 'direct-mock') {
     for (const argument of gatewayArgs) {
@@ -81,6 +85,10 @@ function parseCliArgs(argv, env = process.env) {
   if (!responsesApiKey?.trim()) throw new Error(`API key environment variable is empty: ${responsesApiKeyEnvironment}`);
   if (!anthropicApiKey?.trim()) throw new Error(`API key environment variable is empty: ${anthropicApiKeyEnvironment}`);
   if (responsesApiKey === anthropicApiKey) throw new Error('OpenAI and Anthropic Application API keys must be distinct');
+  const openaiModel = values.get('--openai-model').trim();
+  const anthropicModel = values.get('--anthropic-model').trim();
+  if (!openaiModel) throw new Error('--openai-model must name a published model');
+  if (!anthropicModel) throw new Error('--anthropic-model must name a published model');
   return {
     help: false,
     mode,
@@ -89,6 +97,10 @@ function parseCliArgs(argv, env = process.env) {
     authorizationTokenByTransport: {
       [TRANSPORT.RESPONSES_SSE]: responsesApiKey,
       [TRANSPORT.ANTHROPIC_SSE]: anthropicApiKey,
+    },
+    modelByTransport: {
+      [TRANSPORT.RESPONSES_SSE]: openaiModel,
+      [TRANSPORT.ANTHROPIC_SSE]: anthropicModel,
     },
     endpointSet: {
       [TRANSPORT.RESPONSES_SSE]: values.get('--responses-sse-url'),

@@ -51,11 +51,11 @@ function endpointUrl(endpointSet, transport) {
   return url;
 }
 
-function requestBody(transport, scenario, clientNonce) {
+function requestBody(transport, scenario, clientNonce, model = 'mock-model') {
   const metadata = { mock_scenario: scenario, request_nonce: clientNonce };
   if (transport === TRANSPORT.ANTHROPIC_SSE) {
     return {
-      model: 'mock-model',
+      model,
       max_tokens: 32,
       stream: true,
       metadata,
@@ -63,7 +63,7 @@ function requestBody(transport, scenario, clientNonce) {
     };
   }
   return {
-    model: 'mock-model',
+    model,
     stream: true,
     metadata,
     input: [{ role: 'user', content: [{ type: 'input_text', text: `concurrency probe ${clientNonce}` }] }],
@@ -135,7 +135,32 @@ function authorizationHeadersByTransport(authorizationTokenByTransport) {
   ]));
 }
 
-async function runSseRequest({ endpoint, transport, scenario, clientNonce, headers, timeoutMs, batchStartedAt, fetchImpl }) {
+function normalizeModelByTransport(modelByTransport = {}) {
+  if (!modelByTransport || typeof modelByTransport !== 'object' || Array.isArray(modelByTransport)) {
+    throw new Error('modelByTransport must be an object');
+  }
+  const normalized = {};
+  for (const [transport, model] of Object.entries(modelByTransport)) {
+    if (!AUTHORIZED_HTTP_TRANSPORTS.includes(transport)) {
+      throw new Error(`model is not allowed for transport: ${transport}`);
+    }
+    if (typeof model !== 'string' || model.trim() === '') {
+      throw new Error(`published model is required for transport: ${transport}`);
+    }
+    normalized[transport] = model.trim();
+  }
+  return normalized;
+}
+
+function requirePublishedModelsByTransport(modelByTransport) {
+  const normalized = normalizeModelByTransport(modelByTransport);
+  for (const transport of AUTHORIZED_HTTP_TRANSPORTS) {
+    if (!normalized[transport]) throw new Error(`published model is required for transport: ${transport}`);
+  }
+  return normalized;
+}
+
+async function runSseRequest({ endpoint, transport, scenario, clientNonce, model, headers, timeoutMs, batchStartedAt, fetchImpl }) {
   const startedAt = performance.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('request timeout')), timeoutMs);
@@ -154,7 +179,7 @@ async function runSseRequest({ endpoint, transport, scenario, clientNonce, heade
         [MOCK_SCENARIO_HEADER]: scenario,
         ...headers,
       },
-      body: JSON.stringify(requestBody(transport, scenario, clientNonce)),
+      body: JSON.stringify(requestBody(transport, scenario, clientNonce, model)),
       signal: controller.signal,
     });
     httpStatus = response.status;
@@ -251,7 +276,7 @@ function runWebSocketRequest({ endpoint, scenario, clientNonce, timeoutMs, batch
     }, timeoutMs);
     socket.addEventListener('open', () => socket.send(JSON.stringify({
       type: 'response.create',
-      response: requestBody(TRANSPORT.RESPONSES_WEBSOCKET, scenario, clientNonce),
+      response: requestBody(TRANSPORT.RESPONSES_WEBSOCKET, scenario, clientNonce, 'mock-model'),
     })));
     socket.addEventListener('message', (message) => {
       let event;
@@ -410,6 +435,7 @@ async function executeCharacterizePlan({
   endpointSet,
   plan,
   headersByTransport = {},
+  modelByTransport = {},
   mockSnapshot,
   timeoutMs = 5_000,
   fetchImpl = globalThis.fetch,
@@ -418,6 +444,7 @@ async function executeCharacterizePlan({
   if (!Array.isArray(plan) || plan.length === 0) throw new Error('characterize plan must not be empty');
   if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is unavailable');
   const requestHeaders = normalizeHeadersByTransport(headersByTransport);
+  const requestModels = normalizeModelByTransport(modelByTransport);
   const batches = [];
   const events = [];
   let nonceSequence = 0;
@@ -437,6 +464,9 @@ async function executeCharacterizePlan({
         transport: row.transport,
         scenario: row.scenario,
         clientNonce: createClientNonce(nonceSequence),
+        model: row.transport === TRANSPORT.RESPONSES_WEBSOCKET
+          ? 'mock-model'
+          : (requestModels[row.transport] ?? 'mock-model'),
         timeoutMs,
         batchStartedAt,
       };
@@ -513,12 +543,21 @@ async function runDirectMockCharacterize({ repoRoot, timeoutMs }) {
   }
 }
 
-async function runGatewayCharacterize({ repoRoot, endpointSet, authorizationTokenByTransport, mockSnapshot, timeoutMs }) {
+async function runGatewayCharacterize({
+  repoRoot,
+  endpointSet,
+  authorizationTokenByTransport,
+  modelByTransport,
+  mockSnapshot,
+  timeoutMs,
+}) {
   const headersByTransport = authorizationHeadersByTransport(authorizationTokenByTransport);
+  const publishedModels = requirePublishedModelsByTransport(modelByTransport);
   const result = await executeCharacterizePlan({
     endpointSet,
     plan: CHARACTERIZE_PLAN,
     headersByTransport,
+    modelByTransport: publishedModels,
     mockSnapshot,
     timeoutMs,
   });
@@ -529,6 +568,8 @@ module.exports = {
   authorizationHeadersByTransport,
   executeCharacterizePlan,
   normalizeHeadersByTransport,
+  normalizeModelByTransport,
+  requirePublishedModelsByTransport,
   runDirectMockCharacterize,
   runGatewayCharacterize,
   validateRequestResult,
