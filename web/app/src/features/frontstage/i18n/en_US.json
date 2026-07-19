@@ -91,7 +91,6 @@
     "effect_data": "data",
     "effect_event": "event",
     "effects": "Effects",
-    "empty_page_tree_hint": "The current workspace page tree is empty. Please create the page in the design state and the tree structure will be displayed.",
     "enabled": "Enabled",
     "error_summary": "Error summary",
     "events": "Events",

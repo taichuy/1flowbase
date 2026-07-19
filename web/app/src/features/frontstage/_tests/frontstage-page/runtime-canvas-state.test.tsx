@@ -4,9 +4,7 @@ import { expect, vi } from 'vitest';
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
-import {
-  resetFrontstageDesignModeStore
-} from '../../../../state/frontstage-design-mode-store';
+import { resetFrontstageDesignModeStore } from '../../../../state/frontstage-design-mode-store';
 import type {
   FrontstagePageContent,
   SaveFrontstageTabDocumentInput
@@ -15,7 +13,8 @@ import {
   createFrontstagePageContentFixture,
   type FrontstagePageContentFixtureOverrides
 } from '../frontstage-page-content-fixtures';
-import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
+import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
+import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
   moveNodeInTree,
@@ -407,7 +406,8 @@ function mockRuntimeSessions(
     hasError: false,
     ...overrides
   });
-}describe('FrontStagePage - runtime canvas state', () => {
+}
+describe('FrontStagePage - runtime canvas state', () => {
   beforeEach(() => {
     resetAuthStore();
     resetFrontstageDesignModeStore();
@@ -500,7 +500,7 @@ function mockRuntimeSessions(
     expect(await screen.findByText('区块加载中...')).toBeInTheDocument();
   });
 
-  test('shows empty page tree state when pageId is absent', () => {
+  test('keeps the empty page tree free of placeholder content', () => {
     authenticate(['frontstage.page.design']);
     renderPage();
 
@@ -511,14 +511,14 @@ function mockRuntimeSessions(
     ).toBeInTheDocument();
     expect(
       screen
-        .getByTestId('frontstage-page-workspace')
-        .querySelector('.frontstage-page-workspace__header')
+        .queryByTestId('frontstage-page-workspace')
+        ?.querySelector('.frontstage-page-workspace__header')
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText(
-        '当前工作区页面树为空。请在设计态创建页面后将显示树结构。'
-      )
-    ).toBeInTheDocument();
+      document
+        .querySelector('.frontstage-page-tree-sidebar')
+        ?.querySelector('.ant-empty')
+    ).not.toBeInTheDocument();
   });
 
   test('supports nullable page title from initial tree', () => {

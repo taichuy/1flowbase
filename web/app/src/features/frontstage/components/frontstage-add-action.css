@@ -1,40 +1,15 @@
-.frontstage-add-action-button.ant-btn {
-  color: #2563eb !important;
-  border: 1px dashed rgba(59, 130, 246, 0.4) !important;
-  background: rgba(59, 130, 246, 0.12) !important;
-  border-radius: 6px !important;
-  height: 32px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  gap: 6px !important;
-  font-weight: 500 !important;
-  transition: all 0.3s ease !important;
-  box-shadow: none !important;
+.frontstage-page-tree-sidebar__add-item-btn.ant-btn {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 38px;
+  padding-inline: 0 6px;
+  color: #2563eb;
+  border: 1px solid transparent;
+  border-radius: 8px;
 }
 
-.frontstage-add-action-button.ant-btn:hover {
-  background: rgba(59, 130, 246, 0.16) !important;
-  border-color: rgba(59, 130, 246, 0.48) !important;
-  color: #1d4ed8 !important;
-}
-
-.frontstage-add-action-button.ant-btn .anticon {
-  color: #2563eb !important;
-}
-
-.frontstage-add-action-button.ant-btn:hover .anticon {
-  color: #1d4ed8 !important;
-}
-
-.frontstage-add-action-button--full.ant-btn {
-  width: 100% !important;
-  text-align: left !important;
-}
-
-.frontstage-add-action-button--compact.ant-btn {
-  flex: none;
-  width: auto !important;
-  padding-inline: 10px !important;
-  white-space: nowrap;
+.frontstage-page-tree-sidebar__add-item-btn.ant-btn:hover,
+.frontstage-page-tree-sidebar__add-item-btn.ant-btn:focus-visible {
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.08);
 }

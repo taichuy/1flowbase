@@ -2,7 +2,7 @@
 memory_type: feedback
 feedback_category: repository
 topic: Frontstage 未绑定页面空态只显示 Empty
-summary: Frontstage 工作区没有绑定页面时只显示 Ant Design Empty 图形，不增加标题、解释文案、分割线或创建区块入口。
+summary: Frontstage 中央工作区未绑定页面时只显示 Ant Design Empty 图形；左侧页面树不显示 Empty，“添加菜单”始终作为树的末尾行，空树时成为第一行。
 keywords:
   - frontstage
   - empty state
@@ -17,6 +17,7 @@ last_verified_at: 2026-07-19 11
 decision_policy: direct_reference
 scope:
   - web/app/src/features/frontstage/components/PageCanvas.tsx
+  - web/app/src/features/frontstage/components/FrontStagePageTreeSidebar.tsx
   - web/app/src/features/frontstage/pages/FrontStagePage.tsx
 ---
 
@@ -28,7 +29,7 @@ scope:
 
 ## 规则
 
-Frontstage 工作区没有绑定页面时，只渲染 Ant Design `Empty` 图形并关闭 description；不显示技术标题、解释文案、分割线或“创建区块”入口。
+Frontstage 中央工作区没有绑定页面时，只渲染 Ant Design `Empty` 图形并关闭 description；不显示技术标题、解释文案、分割线或“创建区块”入口。左侧页面树不渲染 Empty；“添加菜单”属于树列表，始终紧跟最后一个顶层节点，空树时就是第一行，默认透明、悬停浅蓝。
 
 ## 原因
 
@@ -37,9 +38,9 @@ Frontstage 工作区没有绑定页面时，只渲染 Ant Design `Empty` 图形�
 ## 适用场景
 
 - Frontstage 根工作区没有选中或绑定页面。
-- 页面树为空时的中央工作区空态。
+- 页面树为空时的中央工作区和左侧树入口。
 - 容器 owner 不存在、因此下级资源操作不成立的类似空态。
 
 ## 备注
 
-左侧页面树可以保留自己的页面创建引导；本规则只约束中央页面工作区。
+左侧页面树保留“添加菜单”能力，但不额外显示空态插图或解释文案。

@@ -572,10 +572,46 @@ describe('FrontStagePage - design controls', () => {
     expect(
       within(workspace).queryByRole('button', { name: '创建区块' })
     ).not.toBeInTheDocument();
-    expect(within(workspace).queryByText('未选择页面内容')).not.toBeInTheDocument();
+    expect(
+      within(workspace).queryByText('未选择页面内容')
+    ).not.toBeInTheDocument();
     expect(
       within(workspace).queryByText('选择页面后将显示页面预览。')
     ).not.toBeInTheDocument();
+  });
+
+  test('AC-002 places Add menu as the first tree row when the tree is empty', () => {
+    authenticate(['frontstage.page.design']);
+    renderPage();
+
+    activateDesignMode();
+
+    const sidebar = document.querySelector('.frontstage-page-tree-sidebar');
+    expect(sidebar).toBeInTheDocument();
+    expect(sidebar?.querySelector('.ant-empty')).not.toBeInTheDocument();
+
+    const tree = sidebar?.querySelector('.frontstage-page-tree-sidebar__tree');
+    expect(tree).toBeInTheDocument();
+    expect(tree?.children).toHaveLength(1);
+    expect(
+      within(tree as HTMLElement).getByRole('button', { name: '添加菜单' })
+    ).toBeInTheDocument();
+  });
+
+  test('AC-003 places Add menu after existing top-level nodes', () => {
+    authenticate(['frontstage.page.design']);
+    renderPage('page-1');
+
+    activateDesignMode();
+
+    const tree = document.querySelector('.frontstage-page-tree-sidebar__tree');
+    expect(tree).toBeInTheDocument();
+    expect(tree?.children).toHaveLength(2);
+    expect(
+      within(tree?.lastElementChild as HTMLElement).getByRole('button', {
+        name: '添加菜单'
+      })
+    ).toBeInTheDocument();
   });
 
   test('AC-001 opens the two-action page menu from the page workspace', async () => {
@@ -940,7 +976,7 @@ describe('FrontStagePage - design controls', () => {
     expect(screen.queryByText('1 个区块')).not.toBeInTheDocument();
   });
 
-  test('disables Add Block when no page or no page content is available', () => {
+  test('hides Add Block without a page and disables it without page content', () => {
     authenticate(['frontstage.page.design']);
     const view = render(
       <AppProviders>
@@ -949,9 +985,12 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    expect(screen.getByRole('button', { name: '创建区块' })).toBeDisabled();
+    expect(
+      screen.queryByRole('button', { name: '创建区块' })
+    ).not.toBeInTheDocument();
 
-    view.rerender(
+    view.unmount();
+    render(
       <AppProviders>
         <FrontStagePageHarness
           pageId="page-1"
@@ -960,6 +999,7 @@ describe('FrontStagePage - design controls', () => {
       </AppProviders>
     );
 
+    activateDesignMode();
     expect(screen.getByRole('button', { name: '创建区块' })).toBeDisabled();
   });
 

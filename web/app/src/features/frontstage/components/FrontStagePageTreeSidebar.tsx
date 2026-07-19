@@ -1,5 +1,5 @@
 import * as AntIcons from '@ant-design/icons';
-import { Button, Empty, Typography, Dropdown, Tooltip, Switch } from 'antd';
+import { Button, Typography, Dropdown, Tooltip, Switch } from 'antd';
 import { useState } from 'react';
 import type { ElementType } from 'react';
 import type { DragEvent, FocusEvent } from 'react';
@@ -764,91 +764,84 @@ export function FrontStagePageTreeSidebar({
 
   return (
     <div className="frontstage-page-tree-sidebar">
-      {pageTree.length > 0 ? (
-        <ul className="frontstage-page-tree-sidebar__tree">
-          {pageTree.map((node) =>
-            renderTreeNode({
-              node,
-              pageTree,
-              level: 0,
-              siblings: pageTree,
-              selectedPageId,
-              canEdit,
-              isOperationPending,
-              collapsedGroupIds,
-              toggleGroupCollapse,
-              onUpdateNodeMetadata,
-              onEditNodeTooltip,
-              onAddPageInGroup,
-              onAddNodeAtPosition,
-              onRenameNode,
-              onMoveNode,
-              onMoveNodeToPosition,
-              onMovePageToGroup,
-              onDeleteNode,
-              onSelectPage,
-              draggedNodeId,
-              setDraggedNodeId,
-              dropIndicator,
-              setDropIndicator
-            })
-          )}
-        </ul>
-      ) : (
-        <Empty
-          className="frontstage-page-tree-sidebar__empty"
-          description={
-            <Typography.Text type="secondary">
-              {i18nText('frontstage', 'auto.empty_page_tree_hint')}
-            </Typography.Text>
-          }
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-        />
-      )}
-      {canEdit ? (
-        <div
-          className="frontstage-page-tree-sidebar__actions"
-          onBlur={handleAddMenuBlur}
-          onMouseEnter={() => setIsAddMenuOpen(true)}
-          onMouseLeave={() => setIsAddMenuOpen(false)}
-        >
-          <Button
-            aria-expanded={isAddMenuOpen}
-            aria-haspopup="menu"
-            aria-label={i18nText('frontstage', 'auto.add_menu')}
-            className="frontstage-page-tree-sidebar__add-item-btn frontstage-add-action-button frontstage-add-action-button--full"
-            disabled={isOperationPending}
-            icon={<PlusOutlined />}
-            onClick={() => setIsAddMenuOpen(true)}
-            onFocus={() => setIsAddMenuOpen(true)}
-            size="small"
-          >
-            {i18nText('frontstage', 'auto.add_menu')}
-          </Button>
-          {isAddMenuOpen ? (
-            <div className="frontstage-page-tree-sidebar__add-menu" role="menu">
-              <button
-                className="frontstage-page-tree-sidebar__add-menu-item"
-                onClick={handleAddGroup}
-                role="menuitem"
-                type="button"
+      <ul className="frontstage-page-tree-sidebar__tree">
+        {pageTree.map((node) =>
+          renderTreeNode({
+            node,
+            pageTree,
+            level: 0,
+            siblings: pageTree,
+            selectedPageId,
+            canEdit,
+            isOperationPending,
+            collapsedGroupIds,
+            toggleGroupCollapse,
+            onUpdateNodeMetadata,
+            onEditNodeTooltip,
+            onAddPageInGroup,
+            onAddNodeAtPosition,
+            onRenameNode,
+            onMoveNode,
+            onMoveNodeToPosition,
+            onMovePageToGroup,
+            onDeleteNode,
+            onSelectPage,
+            draggedNodeId,
+            setDraggedNodeId,
+            dropIndicator,
+            setDropIndicator
+          })
+        )}
+        {canEdit ? (
+          <li className="frontstage-page-tree-sidebar__add-row">
+            <div
+              className="frontstage-page-tree-sidebar__actions"
+              onBlur={handleAddMenuBlur}
+              onMouseEnter={() => setIsAddMenuOpen(true)}
+              onMouseLeave={() => setIsAddMenuOpen(false)}
+            >
+              <Button
+                aria-expanded={isAddMenuOpen}
+                aria-haspopup="menu"
+                aria-label={i18nText('frontstage', 'auto.add_menu')}
+                className="frontstage-page-tree-sidebar__add-item-btn"
+                disabled={isOperationPending}
+                icon={<PlusOutlined />}
+                onClick={() => setIsAddMenuOpen(true)}
+                onFocus={() => setIsAddMenuOpen(true)}
+                type="text"
               >
-                <FolderAddOutlined aria-hidden />
-                {i18nText('frontstage', 'auto.add_group')}
-              </button>
-              <button
-                className="frontstage-page-tree-sidebar__add-menu-item"
-                onClick={handleAddPage}
-                role="menuitem"
-                type="button"
-              >
-                <FileAddOutlined aria-hidden />
-                {i18nText('frontstage', 'auto.add_page')}
-              </button>
+                {i18nText('frontstage', 'auto.add_menu')}
+              </Button>
+              {isAddMenuOpen ? (
+                <div
+                  className="frontstage-page-tree-sidebar__add-menu"
+                  role="menu"
+                >
+                  <button
+                    className="frontstage-page-tree-sidebar__add-menu-item"
+                    onClick={handleAddGroup}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <FolderAddOutlined aria-hidden />
+                    {i18nText('frontstage', 'auto.add_group')}
+                  </button>
+                  <button
+                    className="frontstage-page-tree-sidebar__add-menu-item"
+                    onClick={handleAddPage}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <FileAddOutlined aria-hidden />
+                    {i18nText('frontstage', 'auto.add_page')}
+                  </button>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-      ) : null}
+          </li>
+        ) : null}
+      </ul>
     </div>
   );
 }
