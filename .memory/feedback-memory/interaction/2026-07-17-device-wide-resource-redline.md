@@ -2,16 +2,19 @@
 memory_type: feedback
 feedback_category: interaction
 topic: device-wide-resource-redline
-summary: 用户规定的 CPU/内存 90% 红线按整台设备聚合利用率判断，不按单个 Rust/Cargo 进程或本任务占用判断。
+summary: 用户规定的 CPU、物理内存、存储 90% 红线按整台设备聚合利用率判断；raw swap 占用只作观察，不单独阻断。
 keywords:
   - resource budget
   - CPU
   - memory
+  - physical memory
+  - storage
+  - swap
   - Cargo
   - multi-agent
 created_at: 2026-07-17 00
-updated_at: 2026-07-17 00
-last_verified_at: 2026-07-17 00
+updated_at: 2026-07-19 13
+last_verified_at: 2026-07-19 13
 decision_policy: direct_reference
 scope:
   - multi-agent development
@@ -22,7 +25,9 @@ scope:
 
 ## Rule
 
-多 agent 或多 worktree 工作时，CPU 与内存红线按整台设备的聚合指标计算。启动新的 Cargo、服务或重型验证前，检查设备总 CPU 利用率与总内存压力；单一进程的 `100%` 只代表一个逻辑核，不是红线判断依据。
+多 agent 或多 worktree 工作时，CPU、物理内存与存储红线按整台设备的聚合指标计算，三者均须≤90%。启动新的 Cargo、服务或重型验证前，检查设备总 CPU 利用率、物理内存压力与存储使用率；单一进程的 `100%` 只代表一个逻辑核，不是红线判断依据。
+
+raw swap 已用比例不是独立硬停止条件：Linux 可以保留已换出的冷页，即使物理内存仍充足。只有 CPU、物理内存或存储达到红线时停止；swap 可作为诊断记录，结合持续 swap-in/out、OOM 或物理内存压力解释风险，但不能单独把 QA / 构建判为环境阻塞。
 
 ## Reason
 
@@ -36,4 +41,4 @@ scope:
 
 ## Practice
 
-用设备级 CPU 采样和总内存可用量判断是否低于 90%；仍要避免同一 worktree 的 Cargo 并发和不必要的构建缓存争用。达到或接近红线时暂停新进程，已运行的用户/外部进程不得擅自终止。
+用设备级 CPU 采样、物理内存可用量和存储使用率判断是否低于 90%；仍要避免同一 worktree 的 Cargo 并发和不必要的构建缓存争用。达到或接近红线时暂停新进程，已运行的用户/外部进程不得擅自终止；只因 swap 高而物理资源安全时，继续单一重型进程并记录观察值。
