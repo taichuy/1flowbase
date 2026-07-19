@@ -11,7 +11,7 @@ async fn c1_anthropic_count_tokens_never_falls_back_to_a_local_estimate() {
         "/v1/messages/count_tokens",
         ("x-api-key", token),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "messages": [
                 {"role": "user", "content": "Count this prompt"}
             ]
@@ -37,7 +37,7 @@ async fn d2_ac_007_anthropic_count_tokens_rejects_context_management_without_cre
         "/v1/messages/count_tokens",
         ("x-api-key", token),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "messages": [{"role": "user", "content": "Count this prompt"}],
             "context_management": {"edits": []}
         }),
@@ -61,7 +61,7 @@ async fn d2_ac_007_anthropic_count_tokens_rejects_tools_before_any_public_invoca
         "/v1/messages/count_tokens",
         ("x-api-key", token),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "messages": [{"role": "user", "content": "Count this prompt"}],
             "tools": [{
                 "name": "lookup_order",
@@ -89,7 +89,7 @@ async fn d2_f1_anthropic_count_tokens_rejects_unknown_metadata_before_any_public
         "/v1/messages/count_tokens",
         ("x-api-key", token),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "messages": [{"role": "user", "content": "Count this prompt"}],
             "metadata": {
                 "trace_id": "count-trace-1",

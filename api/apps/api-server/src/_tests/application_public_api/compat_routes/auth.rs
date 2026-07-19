@@ -62,6 +62,7 @@ async fn compatible_routes_return_not_published_for_unpublished_key_application(
 async fn three_ingress_routes_fail_unbound_generate_before_creating_a_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_unbound_published_app_key(&app, "Three Ingress Unbound App").await;
+    assert_published_compat_plan_has_provider_route(state.as_ref()).await;
     let before = flow_run_count(state.as_ref()).await;
 
     let native = post_json(
@@ -70,7 +71,7 @@ async fn three_ingress_routes_fail_unbound_generate_before_creating_a_run() {
         ("authorization", format!("Bearer {token}")),
         json!({
             "query": "Summarize the incident",
-            "model": "fixture-model",
+            "model": COMPAT_ROUTE_PROVIDER_MODEL,
             "response_mode": "blocking"
         }),
     )
@@ -81,11 +82,13 @@ async fn three_ingress_routes_fail_unbound_generate_before_creating_a_run() {
         json!("operation_unbound")
     );
 
+    let mut openai_body = openai_body(false);
+    openai_body["model"] = json!(COMPAT_ROUTE_PROVIDER_MODEL);
     let openai = post_json(
         &app,
         "/v1/chat/completions",
         ("authorization", format!("Bearer {token}")),
-        openai_body(false),
+        openai_body,
     )
     .await;
     assert_eq!(openai.status(), StatusCode::UNPROCESSABLE_ENTITY);
@@ -94,13 +97,9 @@ async fn three_ingress_routes_fail_unbound_generate_before_creating_a_run() {
         json!("operation_unbound")
     );
 
-    let anthropic = post_json(
-        &app,
-        "/v1/messages",
-        ("x-api-key", token),
-        anthropic_body(false),
-    )
-    .await;
+    let mut anthropic_body = anthropic_body(false);
+    anthropic_body["model"] = json!(COMPAT_ROUTE_PROVIDER_MODEL);
+    let anthropic = post_json(&app, "/v1/messages", ("x-api-key", token), anthropic_body).await;
     assert_eq!(anthropic.status(), StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(
         response_json(anthropic).await["error"]["type"],

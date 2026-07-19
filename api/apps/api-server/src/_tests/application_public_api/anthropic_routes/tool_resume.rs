@@ -16,7 +16,7 @@ async fn d2_ac_007_anthropic_tool_result_is_rejected_before_run_creation() {
         "/v1/messages",
         ("x-api-key", token),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "max_tokens": 64,
             "messages": [
                 {
@@ -49,7 +49,7 @@ async fn d2_ac_007_anthropic_prompt_marker_is_unsupported_before_run_creation() 
         "/v1/messages",
         ("x-api-key", token),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "max_tokens": 64,
             "system": "Generate a concise, sentence-case title. Return JSON with a single \"title\" field",
             "messages": [{"role": "user", "content": "continue"}]

@@ -28,6 +28,8 @@ use time::OffsetDateTime;
 use tokio::time::{timeout, Duration};
 use tower::ServiceExt;
 
+const COMPAT_ROUTE_PROVIDER_MODEL: &str = "fixture_chat";
+
 pub(super) struct DropTerminalRuntimeEventStream {
     inner: LocalRuntimeEventStream,
 }
@@ -284,6 +286,72 @@ async fn publish_application_with_provider(
     application_id: &str,
     provider_instance_id: &str,
 ) {
+    publish_application_with_provider_and_mapping(
+        app,
+        cookie,
+        csrf,
+        application_id,
+        provider_instance_id,
+        json!([
+            {
+                "id": "qwen3.6-35b-a3b",
+                "name": "Qwen 3.6 35B",
+                "context_window": 128000,
+                "max_output_tokens": 32000,
+                "auto_compact_token_limit": 110000,
+                "capabilities": {
+                    "reasoning": true,
+                    "tool_call": true,
+                    "multimodal": false,
+                    "structured_output": true
+                },
+                "reasoning": {
+                    "default_effort": "medium",
+                    "supported_efforts": ["low", "medium", "high"]
+                }
+            },
+            "deepseek-v4-flash"
+        ]),
+        None,
+    )
+    .await;
+}
+
+async fn publish_unbound_application_with_provider(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    application_id: &str,
+    provider_instance_id: &str,
+) {
+    publish_application_with_provider_and_mapping(
+        app,
+        cookie,
+        csrf,
+        application_id,
+        provider_instance_id,
+        json!([COMPAT_ROUTE_PROVIDER_MODEL]),
+        Some(json!({
+            "generate": null,
+            "count_tokens": null,
+            "compact": {
+                "responses_compact": null,
+                "responses_compaction_v2": null
+            }
+        })),
+    )
+    .await;
+}
+
+async fn publish_application_with_provider_and_mapping(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    application_id: &str,
+    provider_instance_id: &str,
+    advertised_models: Value,
+    operation_bindings: Option<Value>,
+) {
     let state = app
         .clone()
         .oneshot(
@@ -308,26 +376,7 @@ async fn publish_application_with_provider(
             .iter_mut()
             .find(|node| node["type"] == "start")
             .expect("default draft should include a start node");
-        start_node["config"]["model_list"] = json!([
-            {
-                "id": "qwen3.6-35b-a3b",
-                "name": "Qwen 3.6 35B",
-                "context_window": 128000,
-                "max_output_tokens": 32000,
-                "auto_compact_token_limit": 110000,
-                "capabilities": {
-                    "reasoning": true,
-                    "tool_call": true,
-                    "multimodal": false,
-                    "structured_output": true
-                },
-                "reasoning": {
-                    "default_effort": "medium",
-                    "supported_efforts": ["low", "medium", "high"]
-                }
-            },
-            "deepseek-v4-flash"
-        ]);
+        start_node["config"]["model_list"] = advertised_models;
     }
     let llm_node = nodes
         .iter_mut()
@@ -336,7 +385,7 @@ async fn publish_application_with_provider(
     llm_node["config"]["model_provider"] = json!({
         "provider_code": "fixture_provider",
         "source_instance_id": provider_instance_id,
-        "model_id": "fixture_chat"
+        "model_id": COMPAT_ROUTE_PROVIDER_MODEL
     });
 
     let save = app
@@ -364,6 +413,25 @@ async fn publish_application_with_provider(
         .unwrap();
     assert_eq!(save.status(), StatusCode::OK);
 
+    let mut mapping = json!({
+        "input": {
+            "query_target": "node-start.query",
+            "model_target": null,
+            "inputs_target": null,
+            "history_target": "node-start.history",
+            "attachments_target": null
+        },
+        "output": {
+            "answer_selector": "answer",
+            "usage_selector": null,
+            "files_selector": null,
+            "error_selector": null
+        }
+    });
+    if let Some(operation_bindings) = operation_bindings {
+        mapping["operation_bindings"] = operation_bindings;
+    }
+
     let response = app
         .clone()
         .oneshot(
@@ -377,21 +445,7 @@ async fn publish_application_with_provider(
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "mapping": {
-                            "input": {
-                                "query_target": "node-start.query",
-                                "model_target": null,
-                                "inputs_target": null,
-                                "history_target": "node-start.history",
-                                "attachments_target": null
-                            },
-                            "output": {
-                                "answer_selector": "answer",
-                                "usage_selector": null,
-                                "files_selector": null,
-                                "error_selector": null
-                            }
-                        },
+                        "mapping": mapping,
                         "api_enabled": true
                     })
                     .to_string(),
@@ -454,51 +508,15 @@ async fn setup_unbound_published_app_key(app: &Router, name: &str) -> String {
     let (cookie, csrf) = login_and_capture_cookie(app, "root", "change-me").await;
     let application_id = create_application(app, &cookie, &csrf, name).await;
     let token = create_application_key(app, &cookie, &csrf, &application_id).await;
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!(
-                    "/api/console/applications/{application_id}/api-publications"
-                ))
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "mapping": {
-                            "input": {
-                                "query_target": "node-start.query",
-                                "model_target": null,
-                                "inputs_target": null,
-                                "history_target": "node-start.history",
-                                "attachments_target": null
-                            },
-                            "output": {
-                                "answer_selector": "answer",
-                                "usage_selector": null,
-                                "files_selector": null,
-                                "error_selector": null
-                            },
-                            "operation_bindings": {
-                                "generate": null,
-                                "count_tokens": null,
-                                "compact": {
-                                    "responses_compact": null,
-                                    "responses_compaction_v2": null
-                                }
-                            }
-                        },
-                        "api_enabled": true
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::CREATED);
+    let provider_instance_id = create_ready_provider_instance(app, &cookie, &csrf).await;
+    publish_unbound_application_with_provider(
+        app,
+        &cookie,
+        &csrf,
+        &application_id,
+        &provider_instance_id,
+    )
+    .await;
     token
 }
 
@@ -531,7 +549,11 @@ async fn assert_published_compat_plan_has_provider_route(state: &ApiState) {
         json!("fixture_provider"),
         "{plan}"
     );
-    assert_eq!(runtime["model"], json!("fixture_chat"), "{plan}");
+    assert_eq!(
+        runtime["model"],
+        json!(COMPAT_ROUTE_PROVIDER_MODEL),
+        "{plan}"
+    );
     assert!(
         runtime["provider_instance_id"]
             .as_str()

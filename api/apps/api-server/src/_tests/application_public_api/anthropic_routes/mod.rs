@@ -14,6 +14,8 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tower::ServiceExt;
 
+const ANTHROPIC_FIXTURE_MODEL: &str = "fixture_chat";
+
 async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&body).unwrap()
@@ -114,26 +116,7 @@ async fn publish_application(app: &Router, cookie: &str, csrf: &str, application
             .iter_mut()
             .find(|node| node["type"] == "start")
             .expect("default draft should include a start node");
-        start_node["config"]["model_list"] = json!([
-            {
-                "id": "qwen3.6-35b-a3b",
-                "name": "Qwen 3.6 35B",
-                "context_window": 128000,
-                "max_output_tokens": 32000,
-                "auto_compact_token_limit": 110000,
-                "capabilities": {
-                    "reasoning": true,
-                    "tool_call": true,
-                    "multimodal": false,
-                    "structured_output": true
-                },
-                "reasoning": {
-                    "default_effort": "medium",
-                    "supported_efforts": ["low", "medium", "high"]
-                }
-            },
-            "deepseek-v4-flash"
-        ]);
+        start_node["config"]["model_list"] = json!([ANTHROPIC_FIXTURE_MODEL]);
     }
     let llm_node = nodes
         .iter_mut()
@@ -142,7 +125,7 @@ async fn publish_application(app: &Router, cookie: &str, csrf: &str, application
     llm_node["config"]["model_provider"] = json!({
         "provider_code": "fixture_provider",
         "source_instance_id": provider_instance_id,
-        "model_id": "fixture_chat"
+        "model_id": ANTHROPIC_FIXTURE_MODEL
     });
 
     let save = app
@@ -253,7 +236,7 @@ async fn assert_published_anthropic_plan_has_provider_route(state: &ApiState) {
         json!("fixture_provider"),
         "{plan}"
     );
-    assert_eq!(runtime["model"], json!("fixture_chat"), "{plan}");
+    assert_eq!(runtime["model"], json!(ANTHROPIC_FIXTURE_MODEL), "{plan}");
     assert!(
         runtime["provider_instance_id"]
             .as_str()
@@ -295,7 +278,7 @@ async fn post_json_with_headers(
 
 fn anthropic_body() -> Value {
     json!({
-        "model": "qwen3.6-35b-a3b",
+        "model": ANTHROPIC_FIXTURE_MODEL,
         "max_tokens": 64,
         "messages": [
             {"role": "user", "content": "Earlier question"},

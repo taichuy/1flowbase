@@ -11,7 +11,7 @@ async fn anthropic_messages_accepts_x_api_key_and_preserves_model() {
     assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
     assert_eq!(payload["type"], json!("message"));
-    assert_eq!(payload["model"], json!("qwen3.6-35b-a3b"));
+    assert_eq!(payload["model"], json!(ANTHROPIC_FIXTURE_MODEL));
     assert_eq!(payload["content"][0]["type"], json!("text"));
 }
 
@@ -73,7 +73,7 @@ async fn d2_ac_001_anthropic_nested_unknown_fields_reject_before_run_or_provider
     let before = flow_run_count(state.as_ref()).await;
     let requests = [
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "messages": [{
                 "role": "user",
                 "content": [{
@@ -84,7 +84,7 @@ async fn d2_ac_001_anthropic_nested_unknown_fields_reject_before_run_or_provider
             }]
         }),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "messages": [{
                 "role": "user",
                 "content": [{
@@ -99,7 +99,7 @@ async fn d2_ac_001_anthropic_nested_unknown_fields_reject_before_run_or_provider
             }]
         }),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "system": [{
                 "type": "text",
                 "text": "Use the support playbook.",
@@ -136,7 +136,7 @@ async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
         ("x-api-key", token.clone()),
         vec![("x-claude-code-session-id", session_id.clone())],
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "max_tokens": 64,
             "stream": true,
             "messages": [
@@ -154,7 +154,7 @@ async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
         ("x-api-key", token.clone()),
         vec![("x-claude-code-session-id", session_id.clone())],
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "max_tokens": 64,
             "stream": true,
             "messages": [
@@ -180,7 +180,7 @@ async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
         ("x-api-key", token.clone()),
         vec![("x-claude-code-session-id", session_id)],
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "max_tokens": 64,
             "stream": true,
             "messages": [

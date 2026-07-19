@@ -12,7 +12,7 @@ async fn anthropic_probe_message_uses_published_native_run() {
         "/v1/messages",
         ("x-api-key", token),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "max_tokens": 1,
             "messages": [
                 {"role": "user", "content": "test"}
@@ -41,7 +41,7 @@ async fn anthropic_probe_message_requires_active_publication() {
         "/v1/messages",
         ("x-api-key", token),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "max_tokens": 1,
             "messages": [
                 {"role": "user", "content": "test"}
@@ -70,7 +70,7 @@ async fn d2_ac_007_anthropic_output_config_is_unsupported_before_publication_loo
         "/v1/messages",
         ("x-api-key", token),
         json!({
-            "model": "qwen3.6-35b-a3b",
+            "model": ANTHROPIC_FIXTURE_MODEL,
             "max_tokens": 64,
             "stream": true,
             "messages": [
