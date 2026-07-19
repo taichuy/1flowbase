@@ -36,10 +36,13 @@ describe('PageCanvas', () => {
   });
 
   test('renders an unselected empty state without content', () => {
-    render(<PageCanvas content={undefined} />);
+    const { container } = render(<PageCanvas content={undefined} />);
 
-    expect(screen.getByText('未选择页面内容')).toBeInTheDocument();
-    expect(screen.getByText('选择页面后将显示页面预览。')).toBeInTheDocument();
+    expect(container.querySelector('.ant-empty')).toBeInTheDocument();
+    expect(screen.queryByText('未选择页面内容')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('选择页面后将显示页面预览。')
+    ).not.toBeInTheDocument();
   });
 
   test('renders page title and empty content placeholder', () => {

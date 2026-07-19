@@ -444,10 +444,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     : selectedPageId
       ? i18nText('frontstage', 'auto.page_with_id', { value1: selectedPageId })
       : null;
-  const pageLabel = selectedPageLabel
-    ? selectedPageLabel
-    : i18nText('frontstage', 'auto.default_home_page_notice');
-
   const saveBlockComposition = useCallback(
     async (
       sourceContent: FrontstagePageContent,
@@ -1145,14 +1141,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       ) : null}
       <PageCanvas
         content={
-          selectedPageLabel && hasLoadedSelectedPageContent
+          selectedPageNode && hasLoadedSelectedPageContent
             ? displayedPageContent
             : undefined
         }
-        isLoading={Boolean(selectedPageLabel && isPageContentLoading)}
-        hasError={Boolean(selectedPageLabel && hasPageContentLoadError)}
+        isLoading={Boolean(selectedPageNode && isPageContentLoading)}
+        hasError={Boolean(selectedPageNode && hasPageContentLoadError)}
         isPermissionDenied={Boolean(
-          selectedPageLabel && isPageContentPermissionDenied
+          selectedPageNode && isPageContentPermissionDenied
         )}
         selectedBlockId={
           canEnterDesignMode && isDesignMode ? selectedBlockId : null
@@ -1191,7 +1187,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         }
         showTitle={false}
       />
-      {canEnterDesignMode && isDesignMode ? (
+      {canEnterDesignMode && isDesignMode && selectedPageNode ? (
         <Button
           size="middle"
           aria-label={i18nText('frontstage', 'auto.create_block')}
@@ -1245,27 +1241,31 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               : undefined
           }
         >
-          <header className="frontstage-page-workspace__header">
-            <Typography.Title
-              className="frontstage-page-workspace__title"
-              level={4}
-            >
-              {pageLabel}
-            </Typography.Title>
-            {canEditPageTree && selectedPageNode ? (
-              <div className="frontstage-page-workspace__page-action">
-                <PageWorkspaceActionMenu
-                  disabled={isOperationPending}
-                  tabsEnabled={
-                    selectedPageNode.content_presentation === 'tabs'
-                  }
-                  onEdit={() => handleRenameNode(selectedPageNode)}
-                  onTabsEnabledChange={handlePageTabsEnabledChange}
-                />
-              </div>
-            ) : null}
-          </header>
-          <Divider style={{ margin: 0 }} />
+          {selectedPageNode ? (
+            <>
+              <header className="frontstage-page-workspace__header">
+                <Typography.Title
+                  className="frontstage-page-workspace__title"
+                  level={4}
+                >
+                  {selectedPageLabel}
+                </Typography.Title>
+                {canEditPageTree ? (
+                  <div className="frontstage-page-workspace__page-action">
+                    <PageWorkspaceActionMenu
+                      disabled={isOperationPending}
+                      tabsEnabled={
+                        selectedPageNode.content_presentation === 'tabs'
+                      }
+                      onEdit={() => handleRenameNode(selectedPageNode)}
+                      onTabsEnabledChange={handlePageTabsEnabledChange}
+                    />
+                  </div>
+                ) : null}
+              </header>
+              <Divider style={{ margin: 0 }} />
+            </>
+          ) : null}
           <div className="frontstage-page-workspace__body">
             {renderPageTreeErrorBanner}
             {canEnterDesignMode &&

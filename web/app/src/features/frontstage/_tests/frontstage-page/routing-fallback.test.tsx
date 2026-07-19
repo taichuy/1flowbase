@@ -703,10 +703,15 @@ describe('FrontStagePage - routing fallback', () => {
     );
 
     expect(
-      screen.getByRole('heading', {
-        name: '未选择 pageId（将使用默认首页）'
-      })
+      screen
+        .getByTestId('frontstage-page-workspace')
+        .querySelector('.ant-empty')
     ).toBeInTheDocument();
+    expect(
+      screen
+        .getByTestId('frontstage-page-workspace')
+        .querySelector('.frontstage-page-workspace__header')
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('分组 一级')).not.toBeInTheDocument();
     expect(onNavigatePage).not.toHaveBeenCalled();
 

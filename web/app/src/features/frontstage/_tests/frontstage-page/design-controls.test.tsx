@@ -554,6 +554,30 @@ describe('FrontStagePage - design controls', () => {
     ).not.toBeInTheDocument();
   });
 
+  test('AC-001 renders only Ant Empty when no page is bound', () => {
+    authenticate(['frontstage.page.design']);
+    renderPage();
+
+    activateDesignMode();
+
+    const workspace = screen.getByTestId('frontstage-page-workspace');
+    expect(workspace.querySelector('.ant-empty')).toBeInTheDocument();
+    expect(
+      workspace.querySelector('.ant-empty-description')
+    ).not.toBeInTheDocument();
+    expect(
+      workspace.querySelector('.frontstage-page-workspace__header')
+    ).not.toBeInTheDocument();
+    expect(workspace.querySelector('.ant-divider')).not.toBeInTheDocument();
+    expect(
+      within(workspace).queryByRole('button', { name: '创建区块' })
+    ).not.toBeInTheDocument();
+    expect(within(workspace).queryByText('未选择页面内容')).not.toBeInTheDocument();
+    expect(
+      within(workspace).queryByText('选择页面后将显示页面预览。')
+    ).not.toBeInTheDocument();
+  });
+
   test('AC-001 opens the two-action page menu from the page workspace', async () => {
     authenticate(['frontstage.page.design']);
     renderPage('page-1');

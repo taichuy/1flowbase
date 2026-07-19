@@ -431,21 +431,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   }
 
   if (!content || !document || !renderPlan) {
-    return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={
-          <Space direction="vertical" size={2}>
-            <Typography.Text>
-              {i18nText('frontstage', 'auto.no_page_content_selected')}
-            </Typography.Text>
-            <Typography.Text type="secondary">
-              {i18nText('frontstage', 'auto.page_preview_after_select')}
-            </Typography.Text>
-          </Space>
-        }
-      />
-    );
+    return <Empty description={false} />;
   }
 
   return (

@@ -435,8 +435,11 @@ function mockRuntimeSessions(
       screen.getByRole('heading', { name: '页面 page-1' })
     ).toBeInTheDocument();
     expect(screen.queryByText('当前页面：页面 page-1')).not.toBeInTheDocument();
-    expect(screen.getByText('未选择页面内容')).toBeInTheDocument();
-    expect(screen.getByText('选择页面后将显示页面预览。')).toBeInTheDocument();
+    expect(
+      screen
+        .getByTestId('frontstage-page-workspace')
+        .querySelector('.ant-empty')
+    ).toBeInTheDocument();
     expect(screen.getAllByText('页面 page-1').length).toBeGreaterThan(0);
   });
 
@@ -502,10 +505,15 @@ function mockRuntimeSessions(
     renderPage();
 
     expect(
-      screen.getByRole('heading', {
-        name: '未选择 pageId（将使用默认首页）'
-      })
+      screen
+        .getByTestId('frontstage-page-workspace')
+        .querySelector('.ant-empty')
     ).toBeInTheDocument();
+    expect(
+      screen
+        .getByTestId('frontstage-page-workspace')
+        .querySelector('.frontstage-page-workspace__header')
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText(
         '当前工作区页面树为空。请在设计态创建页面后将显示树结构。'
