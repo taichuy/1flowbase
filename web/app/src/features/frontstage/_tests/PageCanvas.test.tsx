@@ -3,28 +3,15 @@ import { describe, expect, test, vi } from 'vitest';
 
 import type { FrontstagePageContent } from '../api/page-content';
 import { PageCanvas } from '../components/PageCanvas';
+import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from './frontstage-page-content-fixtures';
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000'
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 describe('PageCanvas', () => {
@@ -49,10 +36,13 @@ describe('PageCanvas', () => {
   });
 
   test('renders an unselected empty state without content', () => {
-    render(<PageCanvas content={undefined} />);
+    const { container } = render(<PageCanvas content={undefined} />);
 
-    expect(screen.getByText('未选择页面内容')).toBeInTheDocument();
-    expect(screen.getByText('选择页面后将显示页面预览。')).toBeInTheDocument();
+    expect(container.querySelector('.ant-empty')).toBeInTheDocument();
+    expect(screen.queryByText('未选择页面内容')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('选择页面后将显示页面预览。')
+    ).not.toBeInTheDocument();
   });
 
   test('renders page title and empty content placeholder', () => {
@@ -84,6 +74,7 @@ describe('PageCanvas', () => {
               blocks: [
                 {
                   id: 'hero',
+                  renderer_version: 'v1',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
                   runtime: { kind: 'iframe', entry: 'blocks/hero.html' },
@@ -91,6 +82,7 @@ describe('PageCanvas', () => {
                 },
                 {
                   id: 'cta',
+                  renderer_version: 'v1',
                   codeRef: 'cta-code',
                   contributionCode: 'official.cta',
                   runtime: 'inline',
@@ -121,6 +113,7 @@ describe('PageCanvas', () => {
               blocks: [
                 {
                   id: 'hero',
+                  renderer_version: 'v1',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
                   runtime: { kind: 'iframe', entry: 'blocks/hero.js' },
@@ -137,6 +130,31 @@ describe('PageCanvas', () => {
     expect(slots.getByText('区块加载中...')).toBeInTheDocument();
   });
 
+  test('shows an explicit error instead of rendering an unsupported renderer version', () => {
+    render(
+      <PageCanvas
+        content={createPageContent({
+          root: {
+            uid: 'root-1',
+            payload: {
+              blocks: [
+                {
+                  id: 'future',
+                  renderer_version: 'v2',
+                  codeRef: 'future-code',
+                  contributionCode: 'official.future',
+                  runtime: { kind: 'iframe', entry: 'blocks/future.js' }
+                }
+              ]
+            }
+          }
+        })}
+      />
+    );
+
+    expect(screen.getByText('区块渲染版本不受支持')).toBeInTheDocument();
+  });
+
   test('notifies selection changes when clicked in design mode', () => {
     const onSelectBlock = vi.fn();
 
@@ -150,6 +168,7 @@ describe('PageCanvas', () => {
               blocks: [
                 {
                   id: 'hero',
+                  renderer_version: 'v1',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
                   runtime: 'inline'
@@ -180,6 +199,7 @@ describe('PageCanvas', () => {
               blocks: [
                 {
                   id: 'hero',
+                  renderer_version: 'v1',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
                   runtime: 'inline'
@@ -226,6 +246,7 @@ describe('PageCanvas', () => {
                 },
                 {
                   id: 'cta',
+                  renderer_version: 'v1',
                   codeRef: 'cta-code',
                   contributionCode: 'official.cta',
                   runtime: { kind: 'iframe', entry: 'blocks/cta.js' },

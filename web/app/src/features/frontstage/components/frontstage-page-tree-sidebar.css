@@ -12,6 +12,11 @@
   width: 100%;
 }
 
+.frontstage-page-tree-sidebar__add-row {
+  min-width: 0;
+  margin-block: 3px;
+}
+
 .frontstage-page-tree-sidebar__tree,
 .frontstage-page-tree-sidebar__children {
   list-style: none;

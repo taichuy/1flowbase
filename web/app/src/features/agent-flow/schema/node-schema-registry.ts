@@ -1,6 +1,6 @@
 import type { FlowNodeType } from '@1flowbase/flow-schema';
 
-import type { CanvasNodeSchema } from '../../../shared/schema-ui/contracts/canvas-node-schema';
+import type { CanvasNodeSchema } from '../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 import {
   buildCommonConfigBlocks,
   buildCommonLastRunBlocks,

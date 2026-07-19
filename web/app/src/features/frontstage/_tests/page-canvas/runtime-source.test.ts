@@ -38,7 +38,8 @@ function createBlock(
       entry: 'blocks/hero/index.js',
       hint: 'iframe'
     },
-    ...overrides
+    ...overrides,
+    rendererVersion: overrides.rendererVersion ?? 'v1'
   };
 }
 
@@ -124,7 +125,28 @@ describe('frontstage page canvas runtime source model', () => {
       },
       2
     );
-    const renderPlan = createRenderPlan([placeholder, eligible, missingEntry]);
+    const unsupportedRenderer = createSlot(
+      {
+        id: 'future',
+        rendererVersion: 'v2',
+        codeRef: 'future-code',
+        sourceCodeRef: 'future-code',
+        runtime: {
+          kind: 'iframe',
+          entry: 'blocks/future.js',
+          hint: 'iframe'
+        },
+        order: 40,
+        layout: { order: 40, region: 'main' }
+      },
+      3
+    );
+    const renderPlan = createRenderPlan([
+      placeholder,
+      eligible,
+      missingEntry,
+      unsupportedRenderer
+    ]);
 
     const readPlan = createFrontstagePageCanvasBlockCodeReadPlan({
       workspaceId: 'workspace-1',
@@ -149,6 +171,9 @@ describe('frontstage page canvas runtime source model', () => {
       ]
     });
     expect(readPlan.requests[0].requestId).toContain('ready');
+    expect(readPlan.requests).not.toContainEqual(
+      expect.objectContaining({ blockId: 'future' })
+    );
   });
 
   test('merges read results with render slots into runtime source states', () => {

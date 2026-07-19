@@ -86,13 +86,23 @@ function createPageNode(pageId: string, title = `页面 ${pageId}`) {
     kind: 'page' as const,
     parent_id: null,
     rank: '001000',
-    schema_root_uid: `root-${pageId}`,
     placement: 'topbar' as const,
+    content_presentation: 'single' as const,
     slug: 'frontstage'
   };
 }
 
-function createPageContent(pageId: string) {
+function createPageContent(
+  pageId: string,
+  tabOverride: Partial<{
+    id: string;
+    title: string | null;
+    rank: string;
+    isDefault: boolean;
+    routeSegment: string | null;
+    documentRootUid: string;
+  }> = {}
+) {
   return {
     page: {
       id: pageId,
@@ -100,15 +110,19 @@ function createPageContent(pageId: string) {
       kind: 'page' as const,
       parentId: null,
       rank: '001000',
+      contentPresentation: 'single' as const
     },
-    schema: {
-      rootUid: `root-${pageId}`,
-      payload: { blocks: [] }
+    tab: {
+      id: `tab-${pageId}`,
+      pageId,
+      title: '概览',
+      rank: '001000',
+      isDefault: true,
+      routeSegment: null,
+      documentRootUid: `root-${pageId}`,
+      ...tabOverride
     },
-    root: {
-      uid: `root-${pageId}`,
-      payload: { kind: 'frontstage.page.root' }
-    }
+    document: { rootUid: `root-${pageId}`, payload: { blocks: [] } }
   };
 }
 
@@ -157,6 +171,7 @@ describe('frontstage page content query route wiring', () => {
             title: '概览',
             rank: '001000',
             is_default: true,
+            route_segment: null,
             document_root_uid: `root-${pageId}`
           }
         ])
@@ -189,6 +204,63 @@ describe('frontstage page content query route wiring', () => {
     FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT
   );
 
+  test(
+    'AC-004 redirects a legacy UUID tab URL to the stable route segment',
+    async () => {
+      const legacyTabId = '018f6c45-c3f6-7000-8000-000000000001';
+      pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([
+        createPageNode('page-1')
+      ]);
+      pageContentApi.fetchFrontstagePageContent.mockResolvedValue(
+        createPageContent('page-1', {
+          id: legacyTabId,
+          title: '分析',
+          isDefault: false,
+          routeSegment: 'analytics'
+        })
+      );
+
+      renderApp(`/frontstage/pages/page-1/tabs/${legacyTabId}`);
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/frontstage/pages/page-1/tabs/analytics'
+        );
+      });
+      expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        legacyTabId
+      );
+    },
+    FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-004 redirects a legacy default-tab UUID URL to its Page URL',
+    async () => {
+      const legacyTabId = '018f6c45-c3f6-7000-8000-000000000002';
+      pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([
+        createPageNode('page-1')
+      ]);
+      pageContentApi.fetchFrontstagePageContent.mockResolvedValue(
+        createPageContent('page-1', { id: legacyTabId })
+      );
+
+      renderApp(`/frontstage/pages/page-1/tabs/${legacyTabId}`);
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/frontstage/pages/page-1');
+      });
+      expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        legacyTabId
+      );
+    },
+    FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT
+  );
+
   test.each([
     [
       'no default tab',
@@ -199,6 +271,7 @@ describe('frontstage page content query route wiring', () => {
           title: 'Non-default',
           rank: 'a',
           is_default: false,
+          route_segment: 'non-default',
           document_root_uid: 'root-non-default'
         }
       ]
@@ -212,6 +285,7 @@ describe('frontstage page content query route wiring', () => {
           title: 'First',
           rank: 'a',
           is_default: true,
+          route_segment: null,
           document_root_uid: 'root-first'
         },
         {
@@ -220,6 +294,7 @@ describe('frontstage page content query route wiring', () => {
           title: 'Second',
           rank: 'b',
           is_default: true,
+          route_segment: null,
           document_root_uid: 'root-second'
         }
       ]
@@ -312,7 +387,7 @@ describe('frontstage page content query route wiring', () => {
 
       await waitFor(() => {
         expect(window.location.pathname).toBe(
-          '/frontstage/pages/page-1/tabs/tab-page-1'
+          '/frontstage/pages/page-1'
         );
       });
       expect(window.location.pathname).not.toContain('workspace-1');

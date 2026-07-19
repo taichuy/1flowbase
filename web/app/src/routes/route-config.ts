@@ -3,7 +3,7 @@ import type { AppRouteId } from '@1flowbase/shared-types';
 export const FRONTSTAGE_SLUG_PATH = '/$slug';
 export const FRONTSTAGE_SLUG_PAGE_PATH = '/$slug/pages/$pageId';
 export const FRONTSTAGE_SLUG_PAGE_TAB_PATH =
-  '/$slug/pages/$pageId/tabs/$tabId';
+  '/$slug/pages/$pageId/tabs/$tabRef';
 
 export interface AppRouteDefinition {
   id: AppRouteId;

@@ -1,7 +1,7 @@
 import type { FlowNodeDocument } from '@1flowbase/flow-schema';
 import { Button, Empty, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import type { SchemaAdapter } from '../../../../../shared/schema-ui/registry/create-renderer-registry';
+import type { SchemaAdapter } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
 import { useAgentFlowEditorStore } from '../../../store/editor/provider';
 import {

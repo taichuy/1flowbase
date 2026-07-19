@@ -1,6 +1,7 @@
 import { apiFetch } from '../transport';
 
 export type ConsoleFrontstageNavigationPlacement = 'topbar' | 'sidebar';
+export type ConsoleFrontstagePageContentPresentation = 'single' | 'tabs';
 
 export interface ConsoleFrontstagePageTreeNode {
   id: string;
@@ -9,6 +10,7 @@ export interface ConsoleFrontstagePageTreeNode {
   tooltip?: string | null;
   is_hidden?: boolean;
   placement: ConsoleFrontstageNavigationPlacement;
+  content_presentation: ConsoleFrontstagePageContentPresentation;
   slug?: string | null;
   kind: 'group' | 'page';
   children: ConsoleFrontstagePageTreeNode[];
@@ -21,27 +23,37 @@ export interface ConsoleFrontstagePageNode {
   tooltip?: string | null;
   is_hidden?: boolean;
   placement?: ConsoleFrontstageNavigationPlacement;
+  content_presentation: ConsoleFrontstagePageContentPresentation;
   slug?: string | null;
   kind: 'group' | 'page';
   parent_id: string | null;
   rank: string;
-  schema_root_uid: string | null;
 }
 
-export interface ConsoleFrontstagePageSchema {
+export interface ConsoleFrontstagePageTab {
+  id: string;
+  page_id: string;
+  title: string | null;
+  rank: string;
+  is_default: boolean;
+  route_segment: string | null;
+  document_root_uid: string;
+}
+
+export interface ConsoleFrontstageTabDocument {
   root_uid: string;
-  payload: unknown;
-}
-
-export interface ConsoleFrontstagePageRoot {
-  uid: string;
   payload: unknown;
 }
 
 export interface ConsoleFrontstagePageDetail {
   page: ConsoleFrontstagePageNode;
-  schema: ConsoleFrontstagePageSchema;
-  root: ConsoleFrontstagePageRoot;
+  tab: ConsoleFrontstagePageTab;
+  document: ConsoleFrontstageTabDocument;
+}
+
+export interface ConsoleFrontstagePageCreationResponse {
+  page: ConsoleFrontstagePageNode;
+  default_tab: ConsoleFrontstagePageTab;
 }
 
 export interface ConsoleFrontstageBlockCode {
@@ -66,6 +78,7 @@ export interface UpdateFrontstagePageNodeTitleInput {
   tooltip?: string | null;
   is_hidden?: boolean;
   placement?: ConsoleFrontstageNavigationPlacement;
+  content_presentation?: ConsoleFrontstagePageContentPresentation;
   slug?: string | null;
 }
 
@@ -74,13 +87,19 @@ export interface MoveFrontstagePageNodeInput {
   rank?: string | null;
 }
 
-export interface SaveFrontstagePageContentPayloadInput {
-  payload: unknown;
+export interface CreateFrontstagePageTabInput {
+  title: string;
+  route_segment: string;
+  rank?: string;
 }
 
-export interface SaveFrontstagePageContentInput {
-  schema: SaveFrontstagePageContentPayloadInput;
-  root: SaveFrontstagePageContentPayloadInput;
+export interface UpdateFrontstagePageTabInput {
+  title?: string | null;
+  rank?: string;
+}
+
+export interface SaveFrontstageTabDocumentInput {
+  payload: unknown;
 }
 
 export interface SaveFrontstageBlockCodeInput {
@@ -140,13 +159,14 @@ export function listFrontstagePages(
   });
 }
 
-export function getFrontstagePageDetail(
+export function getFrontstagePageTabDetail(
   workspaceId: string,
   pageId: string,
+  tabReference: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageDetail> {
   return apiFetch<ConsoleFrontstagePageDetail>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}`,
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${encodeURIComponent(tabReference)}`,
     method: 'GET',
     baseUrl
   });
@@ -172,8 +192,8 @@ export function createFrontstagePage(
   input: CreateFrontstagePageNodeInput,
   csrfToken: string,
   baseUrl?: string
-): Promise<ConsoleFrontstagePageNode> {
-  return apiFetch<ConsoleFrontstagePageNode>({
+): Promise<ConsoleFrontstagePageCreationResponse> {
+  return apiFetch<ConsoleFrontstagePageCreationResponse>({
     path: `/api/console/frontstage/${workspaceId}/pages`,
     method: 'POST',
     body: input,
@@ -228,15 +248,76 @@ export function deleteFrontstagePageNode(
   });
 }
 
-export function saveFrontstagePageContent(
+export function listFrontstagePageTabs(
   workspaceId: string,
   pageId: string,
-  input: SaveFrontstagePageContentInput,
+  baseUrl?: string
+): Promise<ConsoleFrontstagePageTab[]> {
+  return apiFetch<ConsoleFrontstagePageTab[]>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs`,
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export function createFrontstagePageTab(
+  workspaceId: string,
+  pageId: string,
+  input: CreateFrontstagePageTabInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstagePageTab> {
+  return apiFetch<ConsoleFrontstagePageTab>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateFrontstagePageTab(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: UpdateFrontstagePageTabInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstagePageTab> {
+  return apiFetch<ConsoleFrontstagePageTab>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}`,
+    method: 'PATCH',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteFrontstagePageTab(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<void> {
+  return apiFetch<void>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function saveFrontstageTabDocument(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: SaveFrontstageTabDocumentInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageDetail> {
   return apiFetch<ConsoleFrontstagePageDetail>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/content`,
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/document`,
     method: 'PUT',
     body: input,
     csrfToken,

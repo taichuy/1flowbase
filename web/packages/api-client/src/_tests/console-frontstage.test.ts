@@ -4,13 +4,17 @@ import * as transport from '../transport';
 import {
   createFrontstageGroup,
   createFrontstagePage,
+  createFrontstagePageTab,
+  deleteFrontstagePageTab,
   deleteFrontstagePageNode,
   getFrontstageBlockCode,
-  getFrontstagePageDetail,
+  getFrontstagePageTabDetail,
+  listFrontstagePageTabs,
   listFrontstagePages,
   moveFrontstagePageNode,
   saveFrontstageBlockCode,
-  saveFrontstagePageContent,
+  saveFrontstageTabDocument,
+  updateFrontstagePageTab,
   updateFrontstagePageNodeTitle
 } from '../console/frontstage';
 
@@ -29,10 +33,19 @@ describe('console-frontstage client', () => {
       }
     },
     {
-      name: 'page detail',
-      request: () => getFrontstagePageDetail('workspace-1', 'page-1'),
+      name: 'page tab collection',
+      request: () => listFrontstagePageTabs('workspace-1', 'page-1'),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1',
+        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs',
+        method: 'GET'
+      }
+    },
+    {
+      name: 'page tab detail by route segment',
+      request: () =>
+        getFrontstagePageTabDetail('workspace-1', 'page-1', 'analytics'),
+      expected: {
+        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/analytics',
         method: 'GET'
       }
     },
@@ -172,32 +185,75 @@ describe('console-frontstage client', () => {
       }
     },
     {
-      name: 'page content save',
+      name: 'tab creation',
       request: () =>
-        saveFrontstagePageContent(
+        createFrontstagePageTab(
           'workspace-1',
           'page-1',
           {
-            schema: {
-              payload: { version: 1, nodes: [{ uid: 'hero-1' }] }
-            },
-            root: {
-              payload: { children: ['hero-1'] }
-            }
+            title: 'Analytics',
+            route_segment: 'analytics',
+            rank: '002000'
           },
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/content',
-        method: 'PUT',
+        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs',
+        method: 'POST',
         body: {
-          schema: {
-            payload: { version: 1, nodes: [{ uid: 'hero-1' }] }
-          },
-          root: {
-            payload: { children: ['hero-1'] }
-          }
+          title: 'Analytics',
+          route_segment: 'analytics',
+          rank: '002000'
         },
+        csrfToken: 'csrf-123'
+      }
+    },
+    {
+      name: 'tab metadata patch',
+      request: () =>
+        updateFrontstagePageTab(
+          'workspace-1',
+          'page-1',
+          'tab-1',
+          { title: 'Renamed' },
+          'csrf-123'
+        ),
+      expected: {
+        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1',
+        method: 'PATCH',
+        body: { title: 'Renamed' },
+        csrfToken: 'csrf-123'
+      }
+    },
+    {
+      name: 'tab deletion',
+      request: () =>
+        deleteFrontstagePageTab(
+          'workspace-1',
+          'page-1',
+          'tab-1',
+          'csrf-123'
+        ),
+      expected: {
+        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1',
+        method: 'DELETE',
+        csrfToken: 'csrf-123'
+      }
+    },
+    {
+      name: 'tab document save',
+      request: () =>
+        saveFrontstageTabDocument(
+          'workspace-1',
+          'page-1',
+          'tab-1',
+          { payload: { version: 1, blocks: [{ id: 'hero-1' }] } },
+          'csrf-123'
+        ),
+      expected: {
+        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/document',
+        method: 'PUT',
+        body: { payload: { version: 1, blocks: [{ id: 'hero-1' }] } },
         csrfToken: 'csrf-123'
       }
     },

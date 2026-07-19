@@ -6,6 +6,7 @@ export type FrontStageTreeNode = {
   icon?: string | null;
   tooltip?: string | null;
   is_hidden?: boolean;
+  content_presentation?: 'single' | 'tabs';
   kind: 'group' | 'page';
   children?: FrontStageTreeNode[];
 };
@@ -195,6 +196,12 @@ export function getFirstPageId(nodes: FrontStageTreeNode[]): string | null {
   }
 
   return null;
+}
+
+export function getFirstTopLevelPageId(
+  nodes: FrontStageTreeNode[]
+): string | null {
+  return nodes.find((node) => node.kind === 'page')?.id ?? null;
 }
 
 export function resolveSelectedPageId({

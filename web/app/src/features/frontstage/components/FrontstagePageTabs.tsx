@@ -8,7 +8,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   ConfigProvider,
+  Form,
   Input,
+  Modal,
   Popconfirm,
   Popover,
   Space,
@@ -29,6 +31,7 @@ import {
   frontstagePageTabsQueryKey,
   moveFrontstagePageTab,
   renameFrontstagePageTab,
+  type CreateFrontstagePageTabInput,
   type FrontstagePageTab
 } from '../api/page-tabs';
 import { FrontstageNodeActionButton } from './FrontstageNodeActionButton';
@@ -38,8 +41,9 @@ interface FrontstagePageTabsProps {
   workspaceId: string;
   pageId: string;
   tabId: string;
+  presentation: 'single' | 'tabs';
   isDesignMode: boolean;
-  onNavigateTab: (tabId: string) => void;
+  onNavigateTab: (tab: FrontstagePageTab) => void;
   children: ReactNode;
 }
 
@@ -91,6 +95,7 @@ export function FrontstagePageTabs({
   workspaceId,
   pageId,
   tabId,
+  presentation,
   isDesignMode,
   onNavigateTab,
   children
@@ -101,6 +106,11 @@ export function FrontstagePageTabs({
   const [configuringTab, setConfiguringTab] =
     useState<FrontstagePageTab | null>(null);
   const [configTitle, setConfigTitle] = useState('');
+  const [createForm] = Form.useForm<{
+    title: string;
+    routeSegment: string;
+  }>();
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
   const [dropTargetTabId, setDropTargetTabId] = useState<string | null>(null);
   const queryKey = frontstagePageTabsQueryKey(workspaceId, pageId);
@@ -136,19 +146,14 @@ export function FrontstagePageTabs({
   };
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      createFrontstagePageTab(
-        workspaceId,
-        pageId,
-        { title: null, rank: nextRank(tabs) },
-        csrfToken ?? ''
-      ),
+    mutationFn: (input: CreateFrontstagePageTabInput) =>
+      createFrontstagePageTab(workspaceId, pageId, input, csrfToken ?? ''),
     onSuccess: (createdTab) => {
-      onNavigateTab(createdTab.id);
+      onNavigateTab(createdTab);
     }
   });
 
-  if (!isDesignMode && tabs.length <= 1) {
+  if (presentation === 'single') {
     return <>{children}</>;
   }
 
@@ -198,9 +203,54 @@ export function FrontstagePageTabs({
     ).then((deleted) => {
       closeConfigurePopover();
       if (deleted !== null && nextTab && configuringTab.id === tabId) {
-        onNavigateTab(nextTab.id);
+        if (configuringTab.is_default) {
+          void fetchFrontstagePageTabs(workspaceId, pageId)
+            .then((updatedTabs) => {
+              const promotedDefaultTab = updatedTabs.find(
+                (tab) => tab.is_default
+              );
+              if (promotedDefaultTab) {
+                onNavigateTab(promotedDefaultTab);
+                return;
+              }
+              setError(
+                i18nText('frontstage', 'auto.page_tabs_invalid_default_detail')
+              );
+            })
+            .catch((caughtError) => {
+              setError(
+                caughtError instanceof Error
+                  ? caughtError.message
+                  : i18nText('frontstage', 'auto.page_tab_operation_failed')
+              );
+            });
+          return;
+        }
+        onNavigateTab(nextTab);
       }
     });
+  };
+
+  const handleCreate = async () => {
+    const values = await createForm.validateFields();
+    const createdTab = await runMutation(() =>
+      createMutation.mutateAsync({
+        title: values.title.trim(),
+        route_segment: values.routeSegment.trim(),
+        rank: nextRank(tabs)
+      })
+    );
+    if (createdTab !== null) {
+      createForm.resetFields();
+      setIsCreateModalOpen(false);
+    }
+  };
+
+  const handleTabChange = (nextTabId: string) => {
+    const nextTab = tabs.find((tab) => tab.id === nextTabId);
+    if (nextTab) {
+      onNavigateTab(nextTab);
+    }
   };
 
   const resetDragState = () => {
@@ -291,7 +341,7 @@ export function FrontstagePageTabs({
       >
         <Tabs
           activeKey={tabId}
-          onChange={onNavigateTab}
+          onChange={handleTabChange}
           items={tabs.map((tab) => ({
             key: tab.id,
             label: isDesignMode ? (
@@ -405,9 +455,7 @@ export function FrontstagePageTabs({
                     borderColor: FRONTSTAGE_DESIGN_BLUE.dashed,
                     color: FRONTSTAGE_DESIGN_BLUE.primary
                   }}
-                  onClick={() =>
-                    void runMutation(() => createMutation.mutateAsync())
-                  }
+                  onClick={() => setIsCreateModalOpen(true)}
                 >
                   {i18nText('frontstage', 'auto.create_page_tab')}
                 </Button>
@@ -441,6 +489,53 @@ export function FrontstagePageTabs({
       >
         {children}
       </div>
+      <Modal
+        title={i18nText('frontstage', 'design.create_tab')}
+        open={isCreateModalOpen}
+        okText={i18nText('frontstage', 'auto.create_page_tab')}
+        cancelText={i18nText('frontstage', 'auto.cancel')}
+        confirmLoading={createMutation.isPending}
+        destroyOnHidden
+        onCancel={() => {
+          createForm.resetFields();
+          setIsCreateModalOpen(false);
+        }}
+        onOk={() => {
+          void handleCreate();
+        }}
+      >
+        <Form form={createForm} layout="vertical" preserve={false}>
+          <Form.Item
+            label={i18nText('frontstage', 'auto.page_tab_name')}
+            name="title"
+            rules={[
+              {
+                required: true,
+                whitespace: true,
+                message: i18nText('frontstage', 'auto.name_required')
+              }
+            ]}
+          >
+            <Input autoFocus />
+          </Form.Item>
+          <Form.Item
+            label={i18nText('frontstage', 'design.tab_route_segment')}
+            name="routeSegment"
+            rules={[
+              {
+                required: true,
+                whitespace: true,
+                message: i18nText(
+                  'frontstage',
+                  'design.tab_route_segment_required'
+                )
+              }
+            ]}
+          >
+            <Input prefix="/tabs/" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import type { FrontstageBlockRenderPlanItem } from '../../lib/page-canvas/render
 function renderItem(): FrontstageBlockRenderPlanItem {
   return {
     blockId: 'hero',
+    rendererVersion: 'v1',
     sourceBlockId: null,
     codeRef: 'hero-code',
     sourceCodeRef: null,

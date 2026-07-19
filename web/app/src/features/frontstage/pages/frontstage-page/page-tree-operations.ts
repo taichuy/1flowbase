@@ -13,6 +13,7 @@ type RenamePageTreeNodeInput = {
   title: string | null;
   icon?: string | null;
   tooltip?: string | null;
+  contentPresentation?: 'single' | 'tabs';
 };
 
 type UpdatePageTreeNodeMetadataInput = {
@@ -220,7 +221,10 @@ function updatePageTreeNode(
   nodes: FrontStageTreeNode[],
   targetNodeId: string,
   patch: Partial<
-    Pick<FrontStageTreeNode, 'title' | 'icon' | 'tooltip' | 'is_hidden'>
+    Pick<
+      FrontStageTreeNode,
+      'title' | 'icon' | 'tooltip' | 'is_hidden' | 'content_presentation'
+    >
   >
 ): FrontStageTreeNode[] {
   return nodes.map((node) => {

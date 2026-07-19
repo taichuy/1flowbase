@@ -16,7 +16,7 @@ import {
 import type { InputNumberProps, ThemeConfig } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 
-import type { SchemaDynamicFormRendererProps } from '../../../../../shared/schema-ui/registry/create-renderer-registry';
+import type { SchemaDynamicFormRendererProps } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 import {
   fetchModelProviderOptions,
   modelProviderOptionsQueryKey

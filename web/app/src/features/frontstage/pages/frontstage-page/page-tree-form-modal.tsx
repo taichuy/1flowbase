@@ -33,6 +33,7 @@ type PageTreeFormDialog =
       initialIcon: string;
       initialTooltip: string;
       initialSlug?: string;
+      nodeKind: 'group' | 'page';
       showSlug?: boolean;
     }
   | {

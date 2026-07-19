@@ -18,7 +18,7 @@ import type {
   ConsoleWorkflowExtensionResponseMode,
   ConsoleWorkflowTriggerType
 } from '@1flowbase/api-client';
-import { SchemaModalPanel } from '../../../shared/schema-ui/overlay-shell/SchemaModalPanel';
+import { SchemaModalPanel } from '../../../shared/schema-ui/v1/overlay-shell/SchemaModalPanel';
 import {
   fetchOrchestrationState,
   orchestrationQueryKey

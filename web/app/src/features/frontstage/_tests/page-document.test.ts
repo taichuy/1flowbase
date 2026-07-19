@@ -2,32 +2,19 @@ import { describe, expect, test } from 'vitest';
 
 import type { FrontstagePageContent } from '../api/page-content';
 import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from './frontstage-page-content-fixtures';
+import {
   createFrontstagePageDocument,
   createFrontstagePageDocumentSaveInput,
   type FrontstageBlockInstance
 } from '../lib/page-document';
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000',
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 describe('frontstage page document', () => {
@@ -50,6 +37,7 @@ describe('frontstage page document', () => {
             blocks: [
               {
                 id: 'hero',
+                renderer_version: 'v1',
                 codeRef: 'hero-code',
                 catalog: {
                   providerCode: 'official',
@@ -74,6 +62,7 @@ describe('frontstage page document', () => {
     expect(document.blocks).toEqual([
       {
         id: 'hero',
+        rendererVersion: 'v1',
         sourceId: 'hero',
         codeRef: 'hero-code',
         sourceCodeRef: 'hero-code',
@@ -99,6 +88,53 @@ describe('frontstage page document', () => {
     expect(document.diagnostics).toEqual([]);
   });
 
+  test('preserves the persisted renderer version independently from plugin and template versions', () => {
+    const content = createPageContent({
+      root: {
+        uid: 'root-1',
+        payload: {
+          blocks: [
+            {
+              id: 'hero',
+              renderer_version: 'v1',
+              codeRef: 'hero-code',
+              contribution: {
+                pluginId: 'official.blocks',
+                pluginVersion: '4.2.0',
+                code: 'official.hero'
+              },
+              runtime: {
+                kind: 'iframe',
+                entry: 'blocks/hero.html',
+                code_template_version: '2026-07-01'
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    const document = createFrontstagePageDocument(content);
+    const input = createFrontstagePageDocumentSaveInput(content, document);
+
+    expect(document.blocks[0]).toMatchObject({
+      rendererVersion: 'v1',
+      contribution: { pluginVersion: '4.2.0' },
+      runtime: { code_template_version: '2026-07-01' }
+    });
+    expect(input.payload).toMatchObject({
+      blocks: [
+        expect.objectContaining({
+          renderer_version: 'v1',
+          contribution: expect.objectContaining({ pluginVersion: '4.2.0' }),
+          runtime: expect.objectContaining({
+            code_template_version: '2026-07-01'
+          })
+        })
+      ]
+    });
+  });
+
   test('prefers x-layout over legacy layout when both are present', () => {
     const document = createFrontstagePageDocument(
       createPageContent({
@@ -108,6 +144,7 @@ describe('frontstage page document', () => {
             blocks: [
               {
                 id: 'hero',
+                renderer_version: 'v1',
                 codeRef: 'hero-code',
                 contributionCode: 'official.hero',
                 layout: { region: 'legacy', order: 99, width: 1, height: 1 },
@@ -144,6 +181,7 @@ describe('frontstage page document', () => {
             blocks: [
               {
                 id: 'hero',
+                renderer_version: 'v1',
                 codeRef: 'hero-code',
                 contributionCode: 'official.hero',
                 layout: { region: 'legacy', order: 7, width: 8, height: 2 },
@@ -174,6 +212,7 @@ describe('frontstage page document', () => {
             blocks: [
               {
                 id: 'schema-block',
+                renderer_version: 'v1',
                 code_ref: 'schema-code',
                 contribution_code: 'official.schema',
                 runtime: 'inline'
@@ -212,14 +251,8 @@ describe('frontstage page document', () => {
       {
         severity: 'error',
         code: 'invalid_payload',
-        path: 'root.payload',
-        message: 'Frontstage root payload must be an object.'
-      },
-      {
-        severity: 'error',
-        code: 'invalid_payload',
-        path: 'schema.payload',
-        message: 'Frontstage schema payload must be an object.'
+        path: 'document.payload',
+        message: 'Frontstage document payload must be an object.'
       }
     ]);
   });
@@ -230,7 +263,13 @@ describe('frontstage page document', () => {
         root: {
           uid: 'root-1',
           payload: {
-            blocks: [{ props: 'invalid-props', 'x-layout': 'invalid-layout' }]
+            blocks: [
+              {
+                renderer_version: 'v1',
+                props: 'invalid-props',
+                'x-layout': 'invalid-layout'
+              }
+            ]
           }
         }
       })
@@ -239,6 +278,7 @@ describe('frontstage page document', () => {
     expect(document.blocks).toEqual([
       {
         id: 'block-1',
+        rendererVersion: 'v1',
         sourceId: null,
         codeRef: 'block-1-code',
         sourceCodeRef: null,
@@ -278,8 +318,18 @@ describe('frontstage page document', () => {
           uid: 'root-1',
           payload: {
             blocks: [
-              { id: 'hero', codeRef: 'hero-code', contributionCode: 'hero' },
-              { id: 'hero', codeRef: 'hero-code', contributionCode: 'hero' }
+              {
+                id: 'hero',
+                renderer_version: 'v1',
+                codeRef: 'hero-code',
+                contributionCode: 'hero'
+              },
+              {
+                id: 'hero',
+                renderer_version: 'v1',
+                codeRef: 'hero-code',
+                contributionCode: 'hero'
+              }
             ]
           }
         }
@@ -304,18 +354,11 @@ describe('frontstage page document', () => {
 
   test('creates save payloads for empty documents while preserving non-block fields', () => {
     const content = createPageContent({
-      schema: {
+      document: {
         rootUid: 'root-1',
         payload: {
           version: 1,
-          schemaMeta: { owner: 'frontstage' }
-        }
-      },
-      root: {
-        uid: 'root-1',
-        payload: {
-          kind: 'frontstage.page.root',
-          rootMeta: ['keep']
+          documentMeta: { owner: 'frontstage' }
         }
       }
     });
@@ -324,45 +367,30 @@ describe('frontstage page document', () => {
     const input = createFrontstagePageDocumentSaveInput(content, document);
 
     expect(input).toEqual({
-      schema: {
-        payload: {
-          version: 1,
-          schemaMeta: { owner: 'frontstage' },
-          blocks: []
-        }
-      },
-      root: {
-        payload: {
-          kind: 'frontstage.page.root',
-          rootMeta: ['keep'],
-          blocks: []
-        }
+      payload: {
+        version: 1,
+        documentMeta: { owner: 'frontstage' },
+        blocks: []
       }
     });
   });
 
   test('serializes current blocks without runtime-only document fields', () => {
     const content = createPageContent({
-      schema: {
+      document: {
         rootUid: 'root-1',
         payload: {
           version: 1,
-          blocks: [{ id: 'stale-schema-block', codeRef: 'stale-schema-code' }]
-        }
-      },
-      root: {
-        uid: 'root-1',
-        payload: {
-          kind: 'frontstage.page.root',
-          blocks: [{ id: 'stale-root-block', codeRef: 'stale-root-code' }]
+          blocks: [{ id: 'stale-block', codeRef: 'stale-code' }]
         }
       }
     });
     const block: FrontstageBlockInstance = {
       id: 'hero',
-      sourceId: 'stale-root-block',
+      rendererVersion: 'v1',
+      sourceId: 'stale-block',
       codeRef: 'hero-code',
-      sourceCodeRef: 'stale-root-code',
+      sourceCodeRef: 'stale-code',
       catalog: {
         providerCode: 'official',
         installationId: 'installation-1'
@@ -399,6 +427,7 @@ describe('frontstage page document', () => {
 
     const expectedBlock = {
       id: 'hero',
+      renderer_version: 'v1',
       codeRef: 'hero-code',
       catalog: {
         providerCode: 'official',
@@ -424,31 +453,23 @@ describe('frontstage page document', () => {
       }
     };
 
-    expect(input.schema.payload).toEqual({
+    expect(input.payload).toEqual({
       version: 1,
       blocks: [expectedBlock]
     });
-    expect(input.root.payload).toEqual({
-      kind: 'frontstage.page.root',
-      blocks: [expectedBlock]
-    });
-    expect(input.root.payload).not.toHaveProperty('diagnostics');
-    expect(input.root.payload).not.toHaveProperty('isEmpty');
-    expect(input.root.payload).not.toHaveProperty('sourceId');
-    expect(input.root.payload).not.toHaveProperty('sourceCodeRef');
+    expect(input.payload).not.toHaveProperty('diagnostics');
+    expect(input.payload).not.toHaveProperty('isEmpty');
+    expect(input.payload).not.toHaveProperty('sourceId');
+    expect(input.payload).not.toHaveProperty('sourceCodeRef');
     expect(expectedBlock).not.toHaveProperty('sourceId');
     expect(expectedBlock).not.toHaveProperty('sourceCodeRef');
     expect(expectedBlock).not.toHaveProperty('layout');
 
     const roundTripDocument = createFrontstagePageDocument(
       createPageContent({
-        schema: {
+        document: {
           rootUid: 'root-1',
-          payload: input.schema.payload
-        },
-        root: {
-          uid: 'root-1',
-          payload: input.root.payload
+          payload: input.payload
         }
       })
     );

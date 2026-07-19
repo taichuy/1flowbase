@@ -13,7 +13,7 @@ import {
 } from '@xyflow/react';
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 
-import { SchemaRenderer } from '../../../../shared/schema-ui/runtime/SchemaRenderer';
+import { SchemaRenderer } from '../../../../shared/schema-ui/v1/runtime/SchemaRenderer';
 import { CanvasHandle } from '../canvas/CanvasHandle';
 import { ConnectorAddIcon } from '../canvas/ConnectorAddIcon';
 import { NodePickerPopover } from '../node-picker/NodePickerPopover';

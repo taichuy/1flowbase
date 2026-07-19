@@ -27,7 +27,7 @@ runtime:
   entry: index.js
 block_contributions:
   - contribution_code: frontstage.js-ui-block
-    title: JSX 区块
+    title: 代码区块
     runtime: iframe
     entry: index.js
     code_template: |
@@ -35,13 +35,13 @@ block_contributions:
       import { Stack, Text, Title } from '@1flowbase/block-renderer/antd-facade';
 
       export default defineBlock({
-        title: 'JSX 示例区块',
+        title: '代码示例区块',
 
         render() {
           return (
             <Stack>
-              <Title>JSX 示例区块</Title>
-              <Text>点击区块右上角的编辑图标修改这段 JSX。</Text>
+              <Title>代码示例区块</Title>
+              <Text>点击区块右上角的编辑图标修改这段 TSX。</Text>
             </Stack>
           );
         }

@@ -3,32 +3,19 @@ import { describe, expect, test } from 'vitest';
 
 import type { FrontstagePageContent } from '../../api/page-content';
 import { PageCanvas } from '../../components/PageCanvas';
+import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from '../frontstage-page-content-fixtures';
 import type { FrontstagePageCanvasRuntimeSessionEntry } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import type { FrontstagePageCanvasRuntimeRunPlanState } from '../../lib/page-canvas/runtime-run-plan';
 import type { FrontstagePageCanvasRuntimeSourceState } from '../../lib/page-canvas/runtime-source';
 import type { RestrictedBlockRuntimeHostSnapshot } from '../../lib/restricted-block-runtime-host';
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000',
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 function createRuntimeSnapshot(
@@ -152,6 +139,7 @@ describe('PageCanvas runtime preview UI', () => {
               blocks: [
                 {
                   id: 'ready',
+                  renderer_version: 'v1',
                   codeRef: 'ready-code',
                   contributionCode: 'official.ready',
                   runtime: { kind: 'iframe', entry: 'blocks/ready.js' },
@@ -292,6 +280,7 @@ describe('PageCanvas runtime preview UI', () => {
               blocks: [
                 {
                   id: 'factory-failed',
+                  renderer_version: 'v1',
                   codeRef: 'factory-failed-code',
                   contributionCode: 'official.factory-failed',
                   runtime: {
@@ -302,6 +291,7 @@ describe('PageCanvas runtime preview UI', () => {
                 },
                 {
                   id: 'loading',
+                  renderer_version: 'v1',
                   codeRef: 'loading-code',
                   contributionCode: 'official.loading',
                   runtime: { kind: 'iframe', entry: 'blocks/loading.js' },

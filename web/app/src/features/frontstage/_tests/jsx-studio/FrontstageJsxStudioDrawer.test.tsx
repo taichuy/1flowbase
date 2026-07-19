@@ -56,6 +56,7 @@ vi.mock('@monaco-editor/react', () => ({
 
 const block: FrontstageBlockInstance = {
   id: 'orders-block',
+  rendererVersion: 'v1',
   sourceId: 'orders-block',
   codeRef: 'orders-code',
   sourceCodeRef: 'orders-code',
@@ -167,7 +168,9 @@ describe('FrontstageJsxStudioDrawer', () => {
       />
     );
 
-    expect(screen.getByRole('dialog', { name: 'JSX Studio' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: 'TSX 编辑器' })
+    ).toBeInTheDocument();
     expect(screen.getByLabelText('JSX source')).toBeInTheDocument();
     expect(screen.getByLabelText('JSX source')).toHaveAttribute(
       'data-edit-context',
@@ -179,7 +182,9 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(
       screen.getByText('frontstage.data_model.record.list')
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '绑定 orders 查询列表' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: '绑定 orders 查询列表' })
+    );
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({

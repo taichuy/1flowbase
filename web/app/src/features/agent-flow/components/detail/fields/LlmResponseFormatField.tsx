@@ -1,7 +1,7 @@
 import { Alert, Input, Segmented, Space, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 
-import type { SchemaFieldRendererProps } from '../../../../../shared/schema-ui/registry/create-renderer-registry';
+import type { SchemaFieldRendererProps } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 import {
   getLlmResponseFormat
 } from '../../../lib/llm-node-config';

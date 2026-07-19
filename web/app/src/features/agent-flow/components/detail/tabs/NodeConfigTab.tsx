@@ -1,5 +1,5 @@
-import type { CanvasNodeSchema } from '../../../../../shared/schema-ui/contracts/canvas-node-schema';
-import type { SchemaAdapter } from '../../../../../shared/schema-ui/registry/create-renderer-registry';
+import type { CanvasNodeSchema } from '../../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
+import type { SchemaAdapter } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
 import { NodeInspector } from '../../inspector/NodeInspector';
 import { useNodeSchemaRuntime } from '../../inspector/use-node-schema-runtime';

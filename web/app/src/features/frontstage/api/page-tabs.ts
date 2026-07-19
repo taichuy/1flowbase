@@ -1,18 +1,18 @@
-import { apiFetch } from '@1flowbase/api-client';
+import {
+  createFrontstagePageTab as createPageTab,
+  deleteFrontstagePageTab as deletePageTab,
+  listFrontstagePageTabs,
+  updateFrontstagePageTab,
+  type ConsoleFrontstagePageTab
+} from '@1flowbase/api-client';
 
 import { getFrontstageApiBaseUrl } from './page-tree';
 
-export interface FrontstagePageTab {
-  id: string;
-  page_id: string;
-  title: string | null;
-  rank: string;
-  is_default: boolean;
-  document_root_uid: string;
-}
+export type FrontstagePageTab = ConsoleFrontstagePageTab;
 
 export interface CreateFrontstagePageTabInput {
-  title: string | null;
+  title: string;
+  route_segment: string;
   rank: string;
 }
 
@@ -29,11 +29,7 @@ export function fetchFrontstagePageTabs(
   workspaceId: string,
   pageId: string
 ): Promise<FrontstagePageTab[]> {
-  return apiFetch<FrontstagePageTab[]>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs`,
-    method: 'GET',
-    baseUrl: getFrontstageApiBaseUrl()
-  });
+  return listFrontstagePageTabs(workspaceId, pageId, getFrontstageApiBaseUrl());
 }
 
 export function createFrontstagePageTab(
@@ -42,13 +38,13 @@ export function createFrontstagePageTab(
   input: CreateFrontstagePageTabInput,
   csrfToken: string
 ): Promise<FrontstagePageTab> {
-  return apiFetch<FrontstagePageTab>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs`,
-    method: 'POST',
-    body: input,
+  return createPageTab(
+    workspaceId,
+    pageId,
+    input,
     csrfToken,
-    baseUrl: getFrontstageApiBaseUrl()
-  });
+    getFrontstageApiBaseUrl()
+  );
 }
 
 export function renameFrontstagePageTab(
@@ -58,13 +54,14 @@ export function renameFrontstagePageTab(
   input: RenameFrontstagePageTabInput,
   csrfToken: string
 ): Promise<FrontstagePageTab> {
-  return apiFetch<FrontstagePageTab>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}`,
-    method: 'PATCH',
-    body: input,
+  return updateFrontstagePageTab(
+    workspaceId,
+    pageId,
+    tabId,
+    input,
     csrfToken,
-    baseUrl: getFrontstageApiBaseUrl()
-  });
+    getFrontstageApiBaseUrl()
+  );
 }
 
 export function moveFrontstagePageTab(
@@ -74,13 +71,14 @@ export function moveFrontstagePageTab(
   input: { rank: string },
   csrfToken: string
 ): Promise<FrontstagePageTab> {
-  return apiFetch<FrontstagePageTab>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}`,
-    method: 'PATCH',
-    body: input,
+  return updateFrontstagePageTab(
+    workspaceId,
+    pageId,
+    tabId,
+    input,
     csrfToken,
-    baseUrl: getFrontstageApiBaseUrl()
-  });
+    getFrontstageApiBaseUrl()
+  );
 }
 
 export function deleteFrontstagePageTab(
@@ -89,10 +87,11 @@ export function deleteFrontstagePageTab(
   tabId: string,
   csrfToken: string
 ): Promise<void> {
-  return apiFetch<void>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}`,
-    method: 'DELETE',
+  return deletePageTab(
+    workspaceId,
+    pageId,
+    tabId,
     csrfToken,
-    baseUrl: getFrontstageApiBaseUrl()
-  });
+    getFrontstageApiBaseUrl()
+  );
 }

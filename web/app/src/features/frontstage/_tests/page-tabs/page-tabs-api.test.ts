@@ -11,20 +11,25 @@ import {
 
 describe('frontstage page tab feature api', () => {
   test('AC-005/006 uses page and tab scoped endpoints with backend field names', async () => {
-    const apiFetchSpy = vi.spyOn(apiClient, 'apiFetch');
-    apiFetchSpy
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce({ id: 'tab-2' })
-      .mockResolvedValueOnce({ id: 'tab-2' })
-      .mockResolvedValueOnce({ id: 'tab-2' })
-      .mockResolvedValueOnce(undefined);
+    const listSpy = vi
+      .spyOn(apiClient, 'listFrontstagePageTabs')
+      .mockResolvedValue([]);
+    const createSpy = vi
+      .spyOn(apiClient, 'createFrontstagePageTab')
+      .mockResolvedValue({} as never);
+    const updateSpy = vi
+      .spyOn(apiClient, 'updateFrontstagePageTab')
+      .mockResolvedValue({} as never);
+    const deleteSpy = vi
+      .spyOn(apiClient, 'deleteFrontstagePageTab')
+      .mockResolvedValue();
 
     try {
       await fetchFrontstagePageTabs('workspace-1', 'page-1');
       await createFrontstagePageTab(
         'workspace-1',
         'page-1',
-        { title: '详情', rank: '002000' },
+        { title: '详情', route_segment: 'details', rank: '002000' },
         'csrf-123'
       );
       await renameFrontstagePageTab(
@@ -48,29 +53,48 @@ describe('frontstage page tab feature api', () => {
         'csrf-123'
       );
 
-      expect(apiFetchSpy).toHaveBeenNthCalledWith(2, {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs',
-        method: 'POST',
-        body: { title: '详情', rank: '002000' },
-        csrfToken: 'csrf-123',
-        baseUrl: expect.any(String)
-      });
-      expect(apiFetchSpy).toHaveBeenNthCalledWith(3, {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-2',
-        method: 'PATCH',
-        body: { title: '明细' },
-        csrfToken: 'csrf-123',
-        baseUrl: expect.any(String)
-      });
-      expect(apiFetchSpy).toHaveBeenNthCalledWith(4, {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-2',
-        method: 'PATCH',
-        body: { rank: '001500' },
-        csrfToken: 'csrf-123',
-        baseUrl: expect.any(String)
-      });
+      expect(listSpy).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        expect.any(String)
+      );
+      expect(createSpy).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        { title: '详情', route_segment: 'details', rank: '002000' },
+        'csrf-123',
+        expect.any(String)
+      );
+      expect(updateSpy).toHaveBeenNthCalledWith(
+        1,
+        'workspace-1',
+        'page-1',
+        'tab-2',
+        { title: '明细' },
+        'csrf-123',
+        expect.any(String)
+      );
+      expect(updateSpy).toHaveBeenNthCalledWith(
+        2,
+        'workspace-1',
+        'page-1',
+        'tab-2',
+        { rank: '001500' },
+        'csrf-123',
+        expect.any(String)
+      );
+      expect(deleteSpy).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        'tab-2',
+        'csrf-123',
+        expect.any(String)
+      );
     } finally {
-      apiFetchSpy.mockRestore();
+      listSpy.mockRestore();
+      createSpy.mockRestore();
+      updateSpy.mockRestore();
+      deleteSpy.mockRestore();
     }
   });
 });

@@ -122,7 +122,7 @@ async fn resolve_data_capability_context(
             actor_user_id: input.actor_user_id,
             workspace_id: input.workspace_id,
             page_id: input.page_id,
-            tab_id: input.tab_id,
+            tab_reference: input.tab_id.to_string(),
         })
         .await?;
     let actor = state

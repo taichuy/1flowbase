@@ -31,6 +31,7 @@ function createSnapshot(
 function createBlock(): FrontstageBlockInstance {
   return {
     id: 'block-1',
+    rendererVersion: 'v1',
     sourceId: 'block-1',
     codeRef: 'code-1',
     sourceCodeRef: 'code-1',

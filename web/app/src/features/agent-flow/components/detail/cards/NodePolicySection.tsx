@@ -1,6 +1,6 @@
 import type { FlowNodeDocument } from '@1flowbase/flow-schema';
 import { Select, Switch, Typography } from 'antd';
-import type { SchemaAdapter } from '../../../../../shared/schema-ui/registry/create-renderer-registry';
+import type { SchemaAdapter } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
 import { useInspectorInteractions } from '../../../hooks/interactions/use-inspector-interactions';
 import { useAgentFlowEditorStore } from '../../../store/editor/provider';

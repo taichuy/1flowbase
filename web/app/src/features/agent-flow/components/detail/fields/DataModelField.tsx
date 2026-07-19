@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Select } from 'antd';
 
-import type { SchemaFieldRendererProps } from '../../../../../shared/schema-ui/registry/create-renderer-registry';
+import type { SchemaFieldRendererProps } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 import {
   dataModelOptionsQueryKey,
   fetchDataModelOptions

@@ -101,10 +101,19 @@ function createPageContent(blocks?: Array<Record<string, unknown>>) {
       title: 'Landing',
       kind: 'page' as const,
       parentId: null,
-      rank: '001000'
+      rank: '001000',
+      contentPresentation: 'single' as const
     },
-    schema: { rootUid: 'root-1', payload: { blocks: payload } },
-    root: { uid: 'root-1', payload: { blocks: payload } }
+    tab: {
+      id: 'tab-1',
+      pageId: 'page-1',
+      title: '概览',
+      rank: '001000',
+      isDefault: true,
+      routeSegment: null,
+      documentRootUid: 'root-1'
+    },
+    document: { rootUid: 'root-1', payload: { blocks: payload } }
   };
 }
 
@@ -211,12 +220,10 @@ describe('FrontStagePage trial panel link', () => {
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
     fireEvent.click(screen.getByRole('button', { name: '区块代码' }));
-    const studio = await screen.findByRole('dialog', { name: 'JSX Studio' });
-    fireEvent.click(
-      within(studio).getByRole('button', { name: '运行预览' })
-    );
+    const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
+    fireEvent.click(within(studio).getByRole('button', { name: '运行预览' }));
 
-    expect(within(studio).getByText('JS Block 试运行')).toBeInTheDocument();
+    expect(within(studio).getByText('代码区块试运行')).toBeInTheDocument();
   }, 10000);
 
   test('closes the whole JSX Studio when exiting design mode', async () => {
@@ -226,19 +233,17 @@ describe('FrontStagePage trial panel link', () => {
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
     fireEvent.click(screen.getByRole('button', { name: '区块代码' }));
-    const studio = await screen.findByRole('dialog', { name: 'JSX Studio' });
-    fireEvent.click(
-      within(studio).getByRole('button', { name: '运行预览' })
-    );
+    const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
+    fireEvent.click(within(studio).getByRole('button', { name: '运行预览' }));
 
-    expect(within(studio).getByText('JS Block 试运行')).toBeInTheDocument();
+    expect(within(studio).getByText('代码区块试运行')).toBeInTheDocument();
 
     // Exit design mode — Drawer should close
     exitDesignMode();
 
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
   }, 20_000);

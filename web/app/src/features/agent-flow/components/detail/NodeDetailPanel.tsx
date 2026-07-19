@@ -1,7 +1,7 @@
 import { Tabs } from 'antd';
 import { useMemo } from 'react';
 
-import { SchemaDockPanel } from '../../../../shared/schema-ui/overlay-shell/SchemaDockPanel';
+import { SchemaDockPanel } from '../../../../shared/schema-ui/v1/overlay-shell/SchemaDockPanel';
 import { createAgentFlowNodeSchemaAdapter } from '../../schema/node-schema-adapter';
 import { resolveAgentFlowNodeSchema } from '../../schema/node-schema-registry';
 import { useNodeInteractions } from '../../hooks/interactions/use-node-interactions';

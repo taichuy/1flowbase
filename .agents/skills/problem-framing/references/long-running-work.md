@@ -64,7 +64,7 @@ Root 正文保存唯一活动状态：
 
 ## Scout
 
-- 默认只启动一个 `fork_turns=none`、只读 Scout，覆盖当前 Root、已批准 Delivery、代码、测试和外部仓库；Scout 不实现、不改 Issue、不启动 QA，也不创建子 agent。
+- 默认只启动一个`fork_turns=none`不继承主上下文、只读 Scout，覆盖当前 Root、已批准 Delivery、代码、测试和外部仓库；Scout 不实现、不改 Issue、不启动 QA，也不创建子 agent。
 - Scout 只获取会改变 owner、切片、依赖、验收或 Test Batch 的证据；达到有限 inventory 且继续取证不会改变 packetization 时立即停止。
 - Scout 返回：相关路径与当前行为、已集成 / 缺失结果、依赖和写冲突、有限 inventory、可复用测试入口、未知与停止条件。
 - 一次有界 Scout 仍不能让 Root 形成有限开发 inventory 时停止并 reframe；不靠第二轮泛化探索延长同一问题。

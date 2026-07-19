@@ -84,17 +84,24 @@ function createPageContent(): FrontstagePageContent {
       kind: 'page',
       parentId: null,
       rank: '001000',
+      contentPresentation: 'single'
     },
-    schema: {
+    tab: {
+      id: 'tab-1',
+      pageId: 'page-1',
+      title: '概览',
+      rank: '001000',
+      isDefault: true,
+      routeSegment: null,
+      documentRootUid: 'root-1'
+    },
+    document: {
       rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
       payload: {
         blocks: [
           {
             id: 'hero',
+            renderer_version: 'v1',
             codeRef: 'hero-code',
             contributionCode: 'official.hero',
             runtime: { kind: 'iframe', entry: 'blocks/hero.js' },
@@ -114,17 +121,24 @@ function createCatalogMatchedPageContent(): FrontstagePageContent {
       kind: 'page',
       parentId: null,
       rank: '001000',
+      contentPresentation: 'single'
     },
-    schema: {
+    tab: {
+      id: 'tab-1',
+      pageId: 'page-1',
+      title: '概览',
+      rank: '001000',
+      isDefault: true,
+      routeSegment: null,
+      documentRootUid: 'root-1'
+    },
+    document: {
       rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
       payload: {
         blocks: [
           {
             id: 'hero',
+            renderer_version: 'v1',
             codeRef: 'hero-code',
             catalog: {
               providerCode: 'official',

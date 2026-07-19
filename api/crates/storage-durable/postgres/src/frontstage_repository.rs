@@ -22,6 +22,13 @@ fn map_frontstage_placement_error(error: sqlx::Error) -> anyhow::Error {
         }
     }
     if let sqlx::Error::Database(database_error) = &error {
+        if database_error.constraint()
+            == Some("frontstage_page_tabs_workspace_page_route_segment_uidx")
+        {
+            return ControlPlaneError::Conflict("frontstage_page_tab_route_segment_conflict").into();
+        }
+    }
+    if let sqlx::Error::Database(database_error) = &error {
         if database_error.constraint() == Some("frontstage_pages_parent_child_placement") {
             if database_error
                 .message()
@@ -94,11 +101,12 @@ async fn insert_frontstage_page_tab(
         r#"
         insert into frontstage_page_tabs (
             id, workspace_id, page_id, title, rank, is_default, document_root_uid,
-            created_by, updated_by
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+            route_segment, created_by, updated_by
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
         returning id as tab_id, workspace_id as tab_workspace_id, page_id as tab_page_id,
                   title as tab_title, rank as tab_rank, is_default as tab_is_default,
-                  document_root_uid, created_at as tab_created_at, updated_at as tab_updated_at
+                  route_segment as tab_route_segment, document_root_uid,
+                  created_at as tab_created_at, updated_at as tab_updated_at
         "#,
     )
     .bind(input.id)
@@ -108,9 +116,11 @@ async fn insert_frontstage_page_tab(
     .bind(&input.rank)
     .bind(input.is_default)
     .bind(&input.document_root_uid)
+    .bind(&input.route_segment)
     .bind(input.actor_user_id)
     .fetch_one(&mut **tx)
-    .await?;
+    .await
+    .map_err(map_frontstage_placement_error)?;
     Ok(map_frontstage_tab_row(&row))
 }
 
@@ -123,6 +133,12 @@ fn map_frontstage_page_row(row: &sqlx::postgres::PgRow) -> Result<domain::Fronts
         .ok_or(ControlPlaneError::InvalidInput(
             "frontstage_navigation_placement",
         ))?;
+    let raw_content_presentation: String = row.get("content_presentation");
+    let content_presentation =
+        domain::frontstage::FrontstagePageContentPresentation::from_db(&raw_content_presentation)
+            .ok_or(ControlPlaneError::InvalidInput(
+                "frontstage_page_content_presentation",
+            ))?;
 
     Ok(domain::FrontstagePageRecord {
         id: row.get("id"),
@@ -134,6 +150,7 @@ fn map_frontstage_page_row(row: &sqlx::postgres::PgRow) -> Result<domain::Fronts
         tooltip: row.get("tooltip"),
         is_hidden: row.get("is_hidden"),
         placement,
+        content_presentation,
         slug: row.get("slug"),
         rank: row.get("rank"),
         created_at: row.get("created_at"),
@@ -141,15 +158,14 @@ fn map_frontstage_page_row(row: &sqlx::postgres::PgRow) -> Result<domain::Fronts
     })
 }
 
-fn map_frontstage_schema_row(
+fn map_frontstage_document_row(
     row: &sqlx::postgres::PgRow,
-) -> domain::frontstage::FrontstagePageSchemaRecord {
-    domain::frontstage::FrontstagePageSchemaRecord {
+) -> domain::frontstage::FrontstageTabDocumentRecord {
+    domain::frontstage::FrontstageTabDocumentRecord {
         workspace_id: row.get("schema_workspace_id"),
         tab_id: row.get("schema_tab_id"),
         root_uid: row.get("root_uid"),
-        schema_payload: row.get("schema_payload"),
-        root_payload: row.get("root_payload"),
+        payload: row.get("document_payload"),
         created_at: row.get("schema_created_at"),
         updated_at: row.get("schema_updated_at"),
     }
@@ -165,6 +181,7 @@ fn map_frontstage_tab_row(
         title: row.get("tab_title"),
         rank: row.get("tab_rank"),
         is_default: row.get("tab_is_default"),
+        route_segment: row.get("tab_route_segment"),
         document_root_uid: row.get("document_root_uid"),
         created_at: row.get("tab_created_at"),
         updated_at: row.get("tab_updated_at"),
@@ -244,6 +261,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 tooltip,
                 is_hidden,
                 placement,
+                content_presentation,
                 slug,
                 rank,
                 created_at,
@@ -402,6 +420,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 tooltip,
                 is_hidden,
                 placement,
+                content_presentation,
                 slug,
                 rank,
                 created_at,
@@ -428,7 +447,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
             select
                 id as tab_id, workspace_id as tab_workspace_id, page_id as tab_page_id,
                 title as tab_title, rank as tab_rank, is_default as tab_is_default,
-                document_root_uid, created_at as tab_created_at, updated_at as tab_updated_at
+                route_segment as tab_route_segment, document_root_uid,
+                created_at as tab_created_at, updated_at as tab_updated_at
             from frontstage_page_tabs
             where workspace_id = $1 and page_id = $2
             order by rank, id
@@ -445,31 +465,37 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
-        tab_id: Uuid,
+        tab_reference: &str,
     ) -> Result<Option<domain::frontstage::FrontstagePageDetail>> {
         let row = sqlx::query(
             r#"
             select p.id, p.workspace_id, p.parent_id, p.kind, p.title, p.icon, p.tooltip,
-                   p.is_hidden, p.placement, p.slug, p.rank, p.created_at, p.updated_at,
+                   p.is_hidden, p.placement, p.content_presentation, p.slug, p.rank,
+                   p.created_at, p.updated_at,
                    t.id as tab_id, t.workspace_id as tab_workspace_id, t.page_id as tab_page_id,
                    t.title as tab_title, t.rank as tab_rank, t.is_default as tab_is_default,
-                   t.document_root_uid, t.created_at as tab_created_at, t.updated_at as tab_updated_at,
+                   t.route_segment as tab_route_segment, t.document_root_uid,
+                   t.created_at as tab_created_at, t.updated_at as tab_updated_at,
                    s.workspace_id as schema_workspace_id, s.tab_id as schema_tab_id,
-                   s.root_uid, s.schema_payload, s.root_payload,
+                   s.root_uid, s.document_payload,
                    s.created_at as schema_created_at, s.updated_at as schema_updated_at
             from frontstage_pages p
             join frontstage_page_tabs t on t.workspace_id = p.workspace_id and t.page_id = p.id
             join frontstage_page_schemas s on s.workspace_id = t.workspace_id and s.tab_id = t.id
-            where p.workspace_id = $1 and p.id = $2 and t.id = $3
+            where p.workspace_id = $1
+              and p.id = $2
+              and (t.route_segment = $3 or t.id::text = $3)
             "#,
         )
-        .bind(workspace_id).bind(page_id).bind(tab_id)
+        .bind(workspace_id)
+        .bind(page_id)
+        .bind(tab_reference)
         .fetch_optional(self.pool()).await?;
         row.map(|row| {
             Ok(domain::frontstage::FrontstagePageDetail {
                 page: map_frontstage_page_row(&row)?,
                 tab: map_frontstage_tab_row(&row),
-                schema: map_frontstage_schema_row(&row),
+                document: map_frontstage_document_row(&row),
             })
         })
         .transpose()
@@ -491,11 +517,12 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 icon,
                 tooltip,
                 placement,
+                content_presentation,
                 slug,
                 rank,
                 created_by,
                 updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
             returning
                 id,
                 workspace_id,
@@ -506,6 +533,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 tooltip,
                 is_hidden,
                 placement,
+                content_presentation,
                 slug,
                 rank,
                 created_at,
@@ -520,6 +548,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(&input.icon)
         .bind(&input.tooltip)
         .bind(input.placement.as_str())
+        .bind(input.content_presentation.as_str())
         .bind(&input.slug)
         .bind(&input.rank)
         .bind(input.actor_user_id)
@@ -553,9 +582,10 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                     root_uid,
                     schema_payload,
                     root_payload,
+                    document_payload,
                     created_by,
                     updated_by
-                ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+                ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
                 "#,
             )
             .bind(Uuid::now_v7())
@@ -572,6 +602,11 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 "uid": tab.document_root_uid,
                 "kind": "frontstage.tab.root",
                 "children": []
+            }))
+            .bind(json!({
+                "version": 1,
+                "root_uid": tab.document_root_uid,
+                "blocks": []
             }))
             .bind(input.actor_user_id)
             .execute(&mut *tx)
@@ -601,8 +636,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
             r#"
             insert into frontstage_page_schemas (
                 id, scope_id, tab_id, workspace_id, root_uid, schema_payload, root_payload,
-                created_by, updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+                document_payload, created_by, updated_by
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
             "#,
         )
         .bind(Uuid::now_v7())
@@ -614,6 +649,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(
             json!({"uid": input.document_root_uid, "kind": "frontstage.tab.root", "children": []}),
         )
+        .bind(json!({"version": 1, "root_uid": input.document_root_uid, "blocks": []}))
         .bind(input.actor_user_id)
         .execute(&mut *tx)
         .await?;
@@ -638,7 +674,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
             where workspace_id = $1 and page_id = $2 and id = $3
             returning id as tab_id, workspace_id as tab_workspace_id, page_id as tab_page_id,
                       title as tab_title, rank as tab_rank, is_default as tab_is_default,
-                      document_root_uid, created_at as tab_created_at, updated_at as tab_updated_at
+                      route_segment as tab_route_segment, document_root_uid,
+                      created_at as tab_created_at, updated_at as tab_updated_at
             "#,
         )
         .bind(input.workspace_id)
@@ -670,6 +707,10 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         let hidden_present = input.is_hidden.is_some();
         let placement_present = input.placement.is_some();
         let placement_value = input.placement.map(|placement| placement.as_str());
+        let content_presentation_present = input.content_presentation.is_some();
+        let content_presentation_value = input
+            .content_presentation
+            .map(|content_presentation| content_presentation.as_str());
         let slug_present = input.slug.is_some();
         let slug_value = input.slug.clone().flatten();
         let row = sqlx::query(
@@ -680,7 +721,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 tooltip = case when $7 then $8 else tooltip end,
                 is_hidden = case when $9 then $10 else is_hidden end,
                 placement = case when $11 then $12 else placement end,
-                slug = case when $13 then $14 else slug end,
+                content_presentation = case when $13 then $14 else content_presentation end,
+                slug = case when $15 then $16 else slug end,
                 updated_at = now()
             where workspace_id = $1 and id = $2
             returning
@@ -693,6 +735,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 tooltip,
                 is_hidden,
                 placement,
+                content_presentation,
                 slug,
                 rank,
                 created_at,
@@ -711,6 +754,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(input.is_hidden)
         .bind(placement_present)
         .bind(placement_value)
+        .bind(content_presentation_present)
+        .bind(content_presentation_value)
         .bind(slug_present)
         .bind(&slug_value)
         .fetch_optional(&mut *tx)
@@ -747,6 +792,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 tooltip,
                 is_hidden,
                 placement,
+                content_presentation,
                 slug,
                 rank,
                 created_at,
@@ -832,7 +878,11 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         if deleting_default {
             sqlx::query(
                 r#"
-                update frontstage_page_tabs set is_default = true, updated_by = $3, updated_at = now()
+                update frontstage_page_tabs
+                set is_default = true,
+                    route_segment = null,
+                    updated_by = $3,
+                    updated_at = now()
                 where id = (
                     select id from frontstage_page_tabs
                     where workspace_id = $1 and page_id = $2
@@ -854,22 +904,26 @@ impl FrontstagePageRepository for PgControlPlaneStore {
             with updated_schema as (
                 update frontstage_page_schemas
                 set schema_payload = $4,
-                    root_payload = $5,
-                    updated_by = $6,
+                    root_payload = case
+                        when jsonb_typeof($4->'blocks') = 'array'
+                            then jsonb_set(root_payload, '{blocks}', $4->'blocks', true)
+                        else root_payload
+                    end,
+                    document_payload = $4,
+                    updated_by = $5,
                     updated_at = now()
                 where workspace_id = $1 and tab_id = $3
                 returning
                     workspace_id,
                     tab_id,
                     root_uid,
-                    schema_payload,
-                    root_payload,
+                    document_payload,
                     created_at,
                     updated_at
             ),
             updated_page as (
                 update frontstage_pages
-                set updated_by = $6,
+                set updated_by = $5,
                     updated_at = now()
                 where workspace_id = $1
                   and id = $2
@@ -888,6 +942,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                     tooltip,
                     is_hidden,
                     placement,
+                    content_presentation,
                     slug,
                     rank,
                     created_at,
@@ -903,6 +958,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 p.tooltip,
                 p.is_hidden,
                 p.placement,
+                p.content_presentation,
                 p.slug,
                 p.rank,
                 p.created_at,
@@ -910,11 +966,11 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 s.workspace_id as schema_workspace_id,
                 t.id as tab_id, t.workspace_id as tab_workspace_id, t.page_id as tab_page_id,
                 t.title as tab_title, t.rank as tab_rank, t.is_default as tab_is_default,
-                t.document_root_uid, t.created_at as tab_created_at, t.updated_at as tab_updated_at,
+                t.route_segment as tab_route_segment, t.document_root_uid,
+                t.created_at as tab_created_at, t.updated_at as tab_updated_at,
                 s.tab_id as schema_tab_id,
                 s.root_uid,
-                s.schema_payload,
-                s.root_payload,
+                s.document_payload,
                 s.created_at as schema_created_at,
                 s.updated_at as schema_updated_at
             from updated_page p
@@ -927,8 +983,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(input.page_id)
         .bind(input.tab_id)
-        .bind(&input.schema_payload)
-        .bind(&input.root_payload)
+        .bind(&input.document_payload)
         .bind(input.actor_user_id)
         .fetch_optional(self.pool())
         .await?;
@@ -938,7 +993,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         Ok(domain::frontstage::FrontstagePageDetail {
             page,
             tab: map_frontstage_tab_row(&row),
-            schema: map_frontstage_schema_row(&row),
+            document: map_frontstage_document_row(&row),
         })
     }
 

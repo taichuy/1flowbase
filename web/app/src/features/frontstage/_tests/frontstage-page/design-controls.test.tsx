@@ -17,9 +17,14 @@ import {
 } from '../../../../state/frontstage-design-mode-store';
 import type {
   FrontstagePageContent,
-  SaveFrontstagePageContentInput
+  SaveFrontstageTabDocumentInput
 } from '../../api/page-content';
+import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
+import type { FrontstagePageTab } from '../../api/page-tabs';
 import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
@@ -194,39 +199,22 @@ function updateNodeMetadataInTree(
 }
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000'
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 function createSavedPageContentFromInput(
-  input: SaveFrontstagePageContentInput
+  input: SaveFrontstageTabDocumentInput
 ): FrontstagePageContent {
   return createPageContent({
     schema: {
       rootUid: 'root-1',
-      payload: input.schema.payload
+      payload: input.payload
     },
     root: {
       uid: 'root-1',
-      payload: input.root.payload
+      payload: input.payload
     }
   });
 }
@@ -250,7 +238,7 @@ function FrontStagePageHarness({
   pageId?: string;
   tabId?: string;
   onNavigatePage?: (pageId?: string) => void;
-  onNavigateTab?: (tabId: string) => void;
+  onNavigateTab?: (tab: FrontstagePageTab) => void;
   initialPageTree?: TestFrontStageTreeNode[];
   pageContent?: FrontstagePageContent;
   isPageContentLoading?: boolean;
@@ -360,7 +348,7 @@ function mockPageContentSaveState(
   overrides: Partial<FrontstagePageContentSaveState> = {}
 ): FrontstagePageContentSaveState {
   const state = {
-    save: vi.fn((input: SaveFrontstagePageContentInput) =>
+    save: vi.fn((input: SaveFrontstageTabDocumentInput) =>
       Promise.resolve(createSavedPageContentFromInput(input))
     ),
     saving: false,
@@ -458,8 +446,8 @@ function mockRuntimeSessions(
   });
 }
 
-function getSavedBlocks(input: SaveFrontstagePageContentInput) {
-  const payload = input.root.payload;
+function getSavedBlocks(input: SaveFrontstageTabDocumentInput) {
+  const payload = input.payload;
   if (typeof payload !== 'object' || payload === null) {
     throw new Error('root payload must be an object');
   }
@@ -523,7 +511,7 @@ describe('FrontStagePage - design controls', () => {
       screen.queryByRole('button', { name: '创建区块' })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'JS Block 试运行' })
+      screen.queryByRole('button', { name: '代码区块试运行' })
     ).not.toBeInTheDocument();
     expect(screen.queryByText('页面树已同步')).not.toBeInTheDocument();
 
@@ -532,7 +520,7 @@ describe('FrontStagePage - design controls', () => {
       screen.getByRole('button', { name: '创建区块' })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'JS Block 试运行' })
+      screen.queryByRole('button', { name: '代码区块试运行' })
     ).not.toBeInTheDocument();
     expect(screen.queryByText('页面树已同步')).not.toBeInTheDocument();
     expect(
@@ -558,7 +546,7 @@ describe('FrontStagePage - design controls', () => {
       screen.queryByRole('button', { name: '创建区块' })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'JS Block 试运行' })
+      screen.queryByRole('button', { name: '代码区块试运行' })
     ).not.toBeInTheDocument();
     expect(screen.queryByText('页面树已同步')).not.toBeInTheDocument();
     expect(
@@ -566,7 +554,70 @@ describe('FrontStagePage - design controls', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('#1300 assigns page configuration and selection to the complete page workspace', () => {
+  test('AC-001 renders only Ant Empty when no page is bound', () => {
+    authenticate(['frontstage.page.design']);
+    renderPage();
+
+    activateDesignMode();
+
+    const workspace = screen.getByTestId('frontstage-page-workspace');
+    expect(workspace.querySelector('.ant-empty')).toBeInTheDocument();
+    expect(
+      workspace.querySelector('.ant-empty-description')
+    ).not.toBeInTheDocument();
+    expect(
+      workspace.querySelector('.frontstage-page-workspace__header')
+    ).not.toBeInTheDocument();
+    expect(workspace.querySelector('.ant-divider')).not.toBeInTheDocument();
+    expect(
+      within(workspace).queryByRole('button', { name: '创建区块' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(workspace).queryByText('未选择页面内容')
+    ).not.toBeInTheDocument();
+    expect(
+      within(workspace).queryByText('选择页面后将显示页面预览。')
+    ).not.toBeInTheDocument();
+  });
+
+  test('AC-002 places Add menu as the first tree row when the tree is empty', () => {
+    authenticate(['frontstage.page.design']);
+    renderPage();
+
+    activateDesignMode();
+
+    const sidebar = document.querySelector('.frontstage-page-tree-sidebar');
+    expect(sidebar).toBeInTheDocument();
+    expect(sidebar?.querySelector('.ant-empty')).not.toBeInTheDocument();
+
+    const tree = sidebar?.querySelector('.frontstage-page-tree-sidebar__tree');
+    expect(tree).toBeInTheDocument();
+    expect(tree?.children).toHaveLength(1);
+    expect(
+      within(tree as HTMLElement).getByRole('button', { name: '添加菜单' })
+    ).toHaveClass(
+      'frontstage-add-action-button',
+      'frontstage-add-action-button--full'
+    );
+  });
+
+  test('AC-003 places Add menu after existing top-level nodes', () => {
+    authenticate(['frontstage.page.design']);
+    renderPage('page-1');
+
+    activateDesignMode();
+
+    const tree = document.querySelector('.frontstage-page-tree-sidebar__tree');
+    expect(tree).toBeInTheDocument();
+    expect(tree?.children).toHaveLength(2);
+    expect(
+      within(tree?.lastElementChild as HTMLElement).getByRole('button', {
+        name: '添加菜单'
+      })
+    ).toBeInTheDocument();
+  });
+
+  test('AC-001 opens the two-action page menu from the page workspace', async () => {
     authenticate(['frontstage.page.design']);
     renderPage('page-1');
 
@@ -583,7 +634,21 @@ describe('FrontStagePage - design controls', () => {
     ).toHaveClass('frontstage-page-workspace__header');
 
     fireEvent.click(configurePage);
-    expect(screen.getByText('编辑节点')).toBeInTheDocument();
+
+    const pageMenu = await screen.findByRole('menu');
+    expect(within(pageMenu).getAllByRole('menuitem')).toHaveLength(2);
+    expect(within(pageMenu).getByText('编辑')).toBeInTheDocument();
+    expect(
+      within(pageMenu).getByRole('switch', { name: '开启 Tabs' })
+    ).not.toBeChecked();
+
+    fireEvent.click(within(pageMenu).getByText('编辑'));
+    expect(
+      await screen.findByRole('dialog', { name: '配置页面' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: '内容呈现方式' })
+    ).not.toBeInTheDocument();
   });
 
   test('#1300 keeps the canvas and Add Block action inside the active tab container', async () => {
@@ -615,6 +680,7 @@ describe('FrontStagePage - design controls', () => {
     mockFrontstageBlockCatalog([createCatalogEntry()]);
     const blockPayload = {
       id: 'orders-block',
+      renderer_version: 'v1',
       codeRef: 'orders-code',
       catalog: {
         providerCode: '1flowbase',
@@ -659,7 +725,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
     expect(screen.getByText('结构化配置')).toBeInTheDocument();
     expect(
@@ -764,11 +830,12 @@ describe('FrontStagePage - design controls', () => {
     });
 
     const [saveInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstagePageContentInput
+      SaveFrontstageTabDocumentInput
     ];
     const [block] = getSavedBlocks(saveInput);
 
     expect(block).toMatchObject({
+      renderer_version: 'v1',
       catalog: {
         providerCode: '1flowbase',
         installationId: 'builtin-installation'
@@ -906,13 +973,13 @@ describe('FrontStagePage - design controls', () => {
       expect(saveState.save).toHaveBeenCalledTimes(2);
     });
     const [rollbackInput] = saveState.save.mock.calls[1] as [
-      SaveFrontstagePageContentInput
+      SaveFrontstageTabDocumentInput
     ];
     expect(getSavedBlocks(rollbackInput)).toEqual([]);
     expect(screen.queryByText('1 个区块')).not.toBeInTheDocument();
   });
 
-  test('disables Add Block when no page or no page content is available', () => {
+  test('hides Add Block without a page and disables it without page content', () => {
     authenticate(['frontstage.page.design']);
     const view = render(
       <AppProviders>
@@ -921,9 +988,12 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    expect(screen.getByRole('button', { name: '创建区块' })).toBeDisabled();
+    expect(
+      screen.queryByRole('button', { name: '创建区块' })
+    ).not.toBeInTheDocument();
 
-    view.rerender(
+    view.unmount();
+    render(
       <AppProviders>
         <FrontStagePageHarness
           pageId="page-1"
@@ -932,6 +1002,7 @@ describe('FrontStagePage - design controls', () => {
       </AppProviders>
     );
 
+    activateDesignMode();
     expect(screen.getByRole('button', { name: '创建区块' })).toBeDisabled();
   });
 
@@ -959,7 +1030,7 @@ describe('FrontStagePage - design controls', () => {
         expect(saveState.save).toHaveBeenCalledTimes(1);
       });
       const [saveInput] = saveState.save.mock.calls[0] as [
-        SaveFrontstagePageContentInput
+        SaveFrontstageTabDocumentInput
       ];
       const [createdBlock] = getSavedBlocks(saveInput);
       const createdBlockId = String(createdBlock?.id);

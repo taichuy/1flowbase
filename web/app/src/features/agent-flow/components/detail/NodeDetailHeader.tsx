@@ -1,9 +1,9 @@
 import { BookOutlined, CloseOutlined } from '@ant-design/icons';
 import { Button, Divider, Space } from 'antd';
 
-import type { CanvasNodeSchema } from '../../../../shared/schema-ui/contracts/canvas-node-schema';
-import { SchemaRenderer } from '../../../../shared/schema-ui/runtime/SchemaRenderer';
-import type { SchemaAdapter } from '../../../../shared/schema-ui/registry/create-renderer-registry';
+import type { CanvasNodeSchema } from '../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
+import { SchemaRenderer } from '../../../../shared/schema-ui/v1/runtime/SchemaRenderer';
+import type { SchemaAdapter } from '../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
 import { agentFlowRendererRegistry } from '../../schema/agent-flow-renderer-registry';
 import { useNodeDetailActions } from '../../hooks/interactions/use-node-detail-actions';

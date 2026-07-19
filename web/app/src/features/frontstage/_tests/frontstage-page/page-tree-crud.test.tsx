@@ -17,8 +17,12 @@ import {
 } from '../../../../state/frontstage-design-mode-store';
 import type {
   FrontstagePageContent,
-  SaveFrontstagePageContentInput
+  SaveFrontstageTabDocumentInput
 } from '../../api/page-content';
+import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
@@ -82,6 +86,7 @@ type TestFrontStageTreeNode = {
   icon?: string | null;
   tooltip?: string | null;
   is_hidden?: boolean;
+  content_presentation?: 'single' | 'tabs';
   kind: 'group' | 'page';
   children?: TestFrontStageTreeNode[];
 };
@@ -119,11 +124,17 @@ function authenticate(permissions: string[]) {
   });
 }
 
-function createBackendPage(pageId: string): TestFrontStageTreeNode {
+function createBackendPage(
+  pageId: string,
+  contentPresentation?: 'single' | 'tabs'
+): TestFrontStageTreeNode {
   return {
     id: pageId,
     title: `页面 ${pageId}`,
-    kind: 'page'
+    kind: 'page',
+    ...(contentPresentation
+      ? { content_presentation: contentPresentation }
+      : {})
   };
 }
 
@@ -159,39 +170,22 @@ function updateNodeMetadataInTree(
 }
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000'
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 function createSavedPageContentFromInput(
-  input: SaveFrontstagePageContentInput
+  input: SaveFrontstageTabDocumentInput
 ): FrontstagePageContent {
   return createPageContent({
     schema: {
       rootUid: 'root-1',
-      payload: input.schema.payload
+      payload: input.payload
     },
     root: {
       uid: 'root-1',
-      payload: input.root.payload
+      payload: input.payload
     }
   });
 }
@@ -446,7 +440,7 @@ function mockPageContentSaveState(
   overrides: Partial<FrontstagePageContentSaveState> = {}
 ): FrontstagePageContentSaveState {
   const state = {
-    save: vi.fn((input: SaveFrontstagePageContentInput) =>
+    save: vi.fn((input: SaveFrontstageTabDocumentInput) =>
       Promise.resolve(createSavedPageContentFromInput(input))
     ),
     saving: false,
@@ -622,6 +616,67 @@ describe('FrontStagePage - page tree CRUD', () => {
       await waitFor(() => {
         expect(onDeletePageNode).toHaveBeenCalledWith('page-1');
       });
+    },
+    SLOW_FRONTSTAGE_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-002 persists the Tabs switch immediately and restores the persisted state when disabling Tabs fails',
+    async () => {
+      authenticate(['frontstage.page.design']);
+      const onRenamePageNode = vi
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(
+          new Error(
+            'frontstage_page_single_presentation_requires_default_tab_only'
+          )
+        );
+
+      render(
+        <AppProviders>
+          <FrontStagePage
+            workspaceId="workspace-1"
+            pageId="page-1"
+            initialPageTree={[createBackendPage('page-1', 'single')]}
+            onRenamePageNode={onRenamePageNode}
+          />
+        </AppProviders>
+      );
+
+      activateDesignMode();
+      const workspace = screen.getByTestId('frontstage-page-workspace');
+      await clickAndFlush(
+        within(workspace).getByRole('button', { name: '配置页面' })
+      );
+      const enableTabsSwitch = await screen.findByRole('switch', {
+        name: '开启 Tabs'
+      });
+      expect(enableTabsSwitch).not.toBeChecked();
+      await clickAndFlush(enableTabsSwitch);
+
+      await waitFor(() => {
+        expect(onRenamePageNode).toHaveBeenNthCalledWith(1, 'page-1', {
+          title: '页面 page-1',
+          icon: '',
+          tooltip: '',
+          contentPresentation: 'tabs'
+        });
+      });
+      await waitFor(() => expect(enableTabsSwitch).toBeChecked());
+
+      await clickAndFlush(enableTabsSwitch);
+
+      await waitFor(() => {
+        expect(onRenamePageNode).toHaveBeenNthCalledWith(2, 'page-1', {
+          title: '页面 page-1',
+          icon: '',
+          tooltip: '',
+          contentPresentation: 'single'
+        });
+      });
+      await waitFor(() => expect(enableTabsSwitch).toBeChecked());
+      expect(screen.getByText('操作失败')).toBeInTheDocument();
     },
     SLOW_FRONTSTAGE_TEST_TIMEOUT
   );

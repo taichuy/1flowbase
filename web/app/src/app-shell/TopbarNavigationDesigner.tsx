@@ -70,6 +70,7 @@ export function TopbarNavigationItemLabel({
       initialIcon: node.icon ?? '',
       initialTooltip: node.tooltip ?? '',
       initialSlug: node.slug ?? '',
+      nodeKind: node.kind,
       showSlug: true
     });
   };

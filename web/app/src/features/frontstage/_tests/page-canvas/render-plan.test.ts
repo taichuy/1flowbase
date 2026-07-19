@@ -4,6 +4,10 @@ import { describe, expect, test } from 'vitest';
 
 import type { FrontstagePageContent } from '../../api/page-content';
 import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from '../frontstage-page-content-fixtures';
+import {
   createFrontstagePageDocument,
   type FrontstageBlockInstance
 } from '../../lib/page-document';
@@ -13,26 +17,9 @@ import {
 } from '../../lib/page-canvas/render-plan';
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000',
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 function createBlock(
@@ -40,6 +27,7 @@ function createBlock(
 ): FrontstageBlockInstance {
   return {
     id: 'hero',
+    rendererVersion: 'v1',
     sourceId: 'hero',
     codeRef: 'hero-code',
     sourceCodeRef: 'hero-code',
@@ -74,6 +62,7 @@ describe('frontstage page canvas render plan', () => {
             blocks: [
               {
                 id: 'second',
+                renderer_version: 'v1',
                 codeRef: 'second-code',
                 contributionCode: 'official.second',
                 props: { label: 'Second' },
@@ -82,6 +71,7 @@ describe('frontstage page canvas render plan', () => {
               },
               {
                 id: 'first',
+                renderer_version: 'v1',
                 codeRef: 'first-code',
                 contributionCode: 'official.first',
                 props: { label: 'First' },
@@ -90,6 +80,7 @@ describe('frontstage page canvas render plan', () => {
               },
               {
                 id: 'same-order',
+                renderer_version: 'v1',
                 codeRef: 'same-order-code',
                 contributionCode: 'official.same',
                 runtime: { kind: 'iframe', entry: 'blocks/same.js' },
@@ -147,6 +138,7 @@ describe('frontstage page canvas render plan', () => {
             blocks: [
               {
                 id: 'legacy',
+                renderer_version: 'v1',
                 codeRef: 'legacy-code',
                 contributionCode: 'official.legacy',
                 runtime: { kind: 'inline', entry: 'legacy.js' },
@@ -154,6 +146,7 @@ describe('frontstage page canvas render plan', () => {
               },
               {
                 id: 'unknown',
+                renderer_version: 'v1',
                 codeRef: 'unknown-code',
                 contributionCode: 'official.unknown',
                 runtime: { kind: 'unknown', entry: 'unknown.js' },
@@ -193,6 +186,60 @@ describe('frontstage page canvas render plan', () => {
     ]);
   });
 
+  test('does not enter the JS runtime for missing or unsupported renderer versions', () => {
+    const document = createFrontstagePageDocument(
+      createPageContent({
+        root: {
+          uid: 'root-1',
+          payload: {
+            blocks: [
+              {
+                id: 'future',
+                renderer_version: 'v2',
+                codeRef: 'future-code',
+                contributionCode: 'official.future',
+                runtime: { kind: 'iframe', entry: 'blocks/future.js' }
+              },
+              {
+                id: 'legacy',
+                codeRef: 'legacy-code',
+                contributionCode: 'official.legacy',
+                runtime: { kind: 'iframe', entry: 'blocks/legacy.js' }
+              }
+            ]
+          }
+        }
+      })
+    );
+
+    const plan = createFrontstagePageRenderPlan(document);
+
+    expect(plan.items).toEqual([
+      expect.objectContaining({
+        blockId: 'future',
+        renderMode: 'placeholder',
+        canEnterRestrictedJsRuntime: false,
+        fallbackReasons: [
+          expect.objectContaining({
+            code: 'unsupported_renderer_version',
+            path: 'blocks.0.renderer_version'
+          })
+        ]
+      }),
+      expect.objectContaining({
+        blockId: 'legacy',
+        renderMode: 'placeholder',
+        canEnterRestrictedJsRuntime: false,
+        fallbackReasons: [
+          expect.objectContaining({
+            code: 'missing_renderer_version',
+            path: 'blocks.1.renderer_version'
+          })
+        ]
+      })
+    ]);
+  });
+
   test('keeps normalized fallback fields stable while reporting missing codeRef and entry', () => {
     const document = createFrontstagePageDocument(
       createPageContent({
@@ -201,12 +248,14 @@ describe('frontstage page canvas render plan', () => {
           payload: {
             blocks: [
               {
+                renderer_version: 'v1',
                 contributionCode: 'official.missing',
                 runtime: { kind: 'iframe' },
                 props: 'invalid-props'
               },
               {
                 id: 'explicit',
+                renderer_version: 'v1',
                 codeRef: 'explicit-code',
                 contributionCode: 'official.explicit',
                 runtime: { kind: 'iframe' }

@@ -9,8 +9,8 @@ import {
   type ReactNode
 } from 'react';
 
-import type { SchemaFieldRendererProps } from '../../../../../shared/schema-ui/registry/create-renderer-registry';
-import type { SchemaDynamicFormBlock } from '../../../../../shared/schema-ui/contracts/canvas-node-schema';
+import type { SchemaFieldRendererProps } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
+import type { SchemaDynamicFormBlock } from '../../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 import {
   fetchModelProviderOptions,
   modelProviderOptionsQueryKey

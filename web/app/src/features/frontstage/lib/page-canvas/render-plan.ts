@@ -3,6 +3,7 @@ import {
   isFrontstageBlockRestrictedRuntime,
   type FrontstageBlockRuntimeKind
 } from '../block-catalog';
+import { isSupportedFrontstageBlockRendererVersion } from '../block-renderer-version';
 import type {
   FrontstageBlockCatalogRef,
   FrontstageBlockContributionRef,
@@ -19,8 +20,10 @@ export type FrontstagePageRenderMode =
 
 export type FrontstagePageRenderPlanFallbackReasonCode =
   | 'missing_code_ref'
+  | 'missing_renderer_version'
   | 'missing_runtime_entry'
   | 'unknown_runtime'
+  | 'unsupported_renderer_version'
   | 'unsupported_runtime';
 
 export interface FrontstagePageRenderPlanFallbackReason {
@@ -34,6 +37,7 @@ export interface FrontstageBlockRenderPlanItem {
   sourceBlockId: string | null;
   codeRef: string;
   sourceCodeRef: string | null;
+  rendererVersion: string | null;
   sourceIndex: number;
   order: number;
   renderMode: FrontstagePageRenderMode;
@@ -136,6 +140,28 @@ function createMissingRuntimeEntryReason(
   };
 }
 
+function createMissingRendererVersionReason(
+  sourceIndex: number
+): FrontstagePageRenderPlanFallbackReason {
+  return {
+    code: 'missing_renderer_version',
+    path: `blocks.${sourceIndex}.renderer_version`,
+    message:
+      'Frontstage block cannot enter the runtime without a renderer_version.'
+  };
+}
+
+function createUnsupportedRendererVersionReason(
+  sourceIndex: number,
+  rendererVersion: string
+): FrontstagePageRenderPlanFallbackReason {
+  return {
+    code: 'unsupported_renderer_version',
+    path: `blocks.${sourceIndex}.renderer_version`,
+    message: `Frontstage block renderer version "${rendererVersion}" is not supported by this client.`
+  };
+}
+
 function createUnknownRuntimeReason(
   sourceIndex: number
 ): FrontstagePageRenderPlanFallbackReason {
@@ -178,11 +204,36 @@ function resolveRuntimeReason(
   return null;
 }
 
+function resolveRendererVersionReason(
+  block: FrontstageBlockInstance,
+  sourceIndex: number
+): FrontstagePageRenderPlanFallbackReason | null {
+  const rendererVersion = asRequiredString(block.rendererVersion);
+
+  if (!rendererVersion) {
+    return createMissingRendererVersionReason(sourceIndex);
+  }
+
+  if (!isSupportedFrontstageBlockRendererVersion(rendererVersion)) {
+    return createUnsupportedRendererVersionReason(sourceIndex, rendererVersion);
+  }
+
+  return null;
+}
+
 function createFallbackReasons(
   block: FrontstageBlockInstance,
   sourceIndex: number
 ): FrontstagePageRenderPlanFallbackReason[] {
   const reasons: FrontstagePageRenderPlanFallbackReason[] = [];
+
+  const rendererVersionReason = resolveRendererVersionReason(
+    block,
+    sourceIndex
+  );
+  if (rendererVersionReason) {
+    reasons.push(rendererVersionReason);
+  }
 
   if (
     !asRequiredString(block.codeRef) ||
@@ -231,6 +282,7 @@ export function createFrontstageBlockRenderPlanItem(
     sourceBlockId: block.sourceId,
     codeRef: block.codeRef,
     sourceCodeRef: block.sourceCodeRef,
+    rendererVersion: block.rendererVersion,
     sourceIndex,
     order: block.order,
     renderMode: canEnterRestrictedJsRuntime

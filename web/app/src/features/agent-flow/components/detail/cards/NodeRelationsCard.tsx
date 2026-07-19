@@ -1,6 +1,6 @@
 import { Typography } from 'antd';
 import { HomeOutlined, PlusOutlined } from '@ant-design/icons';
-import type { SchemaAdapter } from '../../../../../shared/schema-ui/registry/create-renderer-registry';
+import type { SchemaAdapter } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
 import {
   getDirectDownstreamNodes

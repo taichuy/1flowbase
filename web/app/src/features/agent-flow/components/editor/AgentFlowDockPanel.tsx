@@ -2,7 +2,7 @@ import { CloseOutlined } from '@ant-design/icons';
 import { Button, Space, Typography } from 'antd';
 import type { ReactNode } from 'react';
 
-import { SchemaDockPanel } from '../../../../shared/schema-ui/overlay-shell/SchemaDockPanel';
+import { SchemaDockPanel } from '../../../../shared/schema-ui/v1/overlay-shell/SchemaDockPanel';
 import { i18nText } from '../../../../shared/i18n/text';
 
 interface AgentFlowDockPanelProps {

@@ -48,6 +48,13 @@ pub enum FrontstageNavigationPlacementResponse {
     Sidebar,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FrontstagePageContentPresentationResponse {
+    Single,
+    Tabs,
+}
+
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FrontstagePageTreeNodeResponse {
     pub id: String,
@@ -57,6 +64,7 @@ pub struct FrontstagePageTreeNodeResponse {
     pub is_hidden: bool,
     pub kind: FrontstagePageTreeNodeKind,
     pub placement: FrontstageNavigationPlacementResponse,
+    pub content_presentation: FrontstagePageContentPresentationResponse,
     pub slug: Option<String>,
     #[serde(default)]
     #[schema(no_recursion)]
@@ -74,6 +82,7 @@ pub struct FrontstagePageResponse {
     pub parent_id: Option<String>,
     pub rank: String,
     pub placement: FrontstageNavigationPlacementResponse,
+    pub content_presentation: FrontstagePageContentPresentationResponse,
     pub slug: Option<String>,
 }
 
@@ -84,6 +93,7 @@ pub struct FrontstagePageTabResponse {
     pub title: Option<String>,
     pub rank: String,
     pub is_default: bool,
+    pub route_segment: Option<String>,
     pub document_root_uid: String,
 }
 
@@ -95,14 +105,8 @@ pub struct FrontstagePageCreationResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct FrontstagePageSchemaResponse {
+pub struct FrontstageTabDocumentResponse {
     pub root_uid: String,
-    pub payload: Value,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct FrontstagePageRootResponse {
-    pub uid: String,
     pub payload: Value,
 }
 
@@ -110,8 +114,7 @@ pub struct FrontstagePageRootResponse {
 pub struct FrontstagePageDetailResponse {
     pub page: FrontstagePageResponse,
     pub tab: FrontstagePageTabResponse,
-    pub schema: FrontstagePageSchemaResponse,
-    pub root: FrontstagePageRootResponse,
+    pub document: FrontstageTabDocumentResponse,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -155,6 +158,7 @@ pub struct UpdateFrontstagePageMetadataBody {
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
     pub placement: Option<FrontstageNavigationPlacementResponse>,
+    pub content_presentation: Option<FrontstagePageContentPresentationResponse>,
     #[serde(default, deserialize_with = "deserialize_present_optional")]
     pub slug: Option<Option<String>>,
 }
@@ -168,6 +172,7 @@ pub struct MoveFrontstagePageBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateFrontstagePageTabBody {
     pub title: Option<String>,
+    pub route_segment: Option<String>,
     pub rank: Option<String>,
 }
 
@@ -179,14 +184,8 @@ pub struct UpdateFrontstagePageTabBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct SaveFrontstageTabDocumentPayloadBody {
-    pub payload: Value,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
 pub struct SaveFrontstageTabDocumentBody {
-    pub schema: SaveFrontstageTabDocumentPayloadBody,
-    pub root: SaveFrontstageTabDocumentPayloadBody,
+    pub payload: Value,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -261,7 +260,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 .post(create_frontstage_page_tab, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id",
+            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference",
             console_get(get_frontstage_page_detail, Authenticated)
                 .patch(update_frontstage_page_tab, Authenticated)
                 .delete(delete_frontstage_page_tab, Authenticated),
@@ -336,7 +335,7 @@ fn frontstage_query_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel,
                         actor_user_id: input.actor_user_id,
                         workspace_id: input.workspace_id,
                         page_id: input.page_id,
-                        tab_id: input.tab_id,
+                        tab_reference: input.tab_id.to_string(),
                     })
                     .await?;
                 Ok(serde_json::to_value(to_page_detail_response(detail))?)
@@ -391,8 +390,7 @@ fn frontstage_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel
                         workspace_id: input.workspace_id,
                         page_id: input.page_id,
                         tab_id: input.tab_id,
-                        schema_payload: body.schema.payload,
-                        root_payload: body.root.payload,
+                        document_payload: body.payload,
                     })
                     .await?;
                 Ok(serde_json::to_value(to_page_detail_response(detail))?)
@@ -575,11 +573,11 @@ pub async fn create_frontstage_page(
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}",
+    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_reference}",
     params(
         ("workspace_id" = String, Path, description = "Workspace id"),
         ("page_id" = String, Path, description = "Page id")
-        ,("tab_id" = String, Path, description = "Tab id")
+        ,("tab_reference" = String, Path, description = "Tab route segment or legacy tab id")
     ),
     responses(
         (status = 200, body = FrontstagePageDetailResponse),
@@ -592,19 +590,18 @@ pub async fn create_frontstage_page(
 pub async fn get_frontstage_page_detail(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
+    Path((workspace_id, page_id, tab_reference)): Path<(String, String, String)>,
 ) -> Result<Json<ApiSuccess<FrontstagePageDetailResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
-    let tab_id = parse_uuid(&tab_id, "tab_id")?;
 
     let detail = FrontstagePageService::new(state.store.clone())
         .get_page_detail(GetFrontstagePageDetailCommand {
             actor_user_id: context.user.id,
             workspace_id,
             page_id,
-            tab_id,
+            tab_reference,
         })
         .await?;
 
@@ -648,6 +645,9 @@ pub async fn update_frontstage_page_title(
             tooltip: body.tooltip,
             is_hidden: body.is_hidden,
             placement: body.placement.map(to_domain_placement),
+            content_presentation: body
+                .content_presentation
+                .map(to_domain_content_presentation),
             slug: body.slug,
         })
         .await?;
@@ -766,6 +766,7 @@ pub async fn create_frontstage_page_tab(
             workspace_id,
             page_id,
             title: body.title,
+            route_segment: body.route_segment,
             rank: body.rank,
         })
         .await?;
@@ -835,8 +836,7 @@ pub async fn save_frontstage_tab_document(
             workspace_id,
             page_id,
             tab_id,
-            schema_payload: body.schema.payload,
-            root_payload: body.root.payload,
+            document_payload: body.payload,
         })
         .await?;
 
@@ -963,6 +963,32 @@ fn to_placement_response(
     }
 }
 
+fn to_domain_content_presentation(
+    content_presentation: FrontstagePageContentPresentationResponse,
+) -> domain::frontstage::FrontstagePageContentPresentation {
+    match content_presentation {
+        FrontstagePageContentPresentationResponse::Single => {
+            domain::frontstage::FrontstagePageContentPresentation::Single
+        }
+        FrontstagePageContentPresentationResponse::Tabs => {
+            domain::frontstage::FrontstagePageContentPresentation::Tabs
+        }
+    }
+}
+
+fn to_content_presentation_response(
+    content_presentation: domain::frontstage::FrontstagePageContentPresentation,
+) -> FrontstagePageContentPresentationResponse {
+    match content_presentation {
+        domain::frontstage::FrontstagePageContentPresentation::Single => {
+            FrontstagePageContentPresentationResponse::Single
+        }
+        domain::frontstage::FrontstagePageContentPresentation::Tabs => {
+            FrontstagePageContentPresentationResponse::Tabs
+        }
+    }
+}
+
 fn to_page_response(page: domain::FrontstagePageRecord) -> FrontstagePageResponse {
     FrontstagePageResponse {
         id: page.id.to_string(),
@@ -974,6 +1000,7 @@ fn to_page_response(page: domain::FrontstagePageRecord) -> FrontstagePageRespons
         parent_id: page.parent_id.map(|id| id.to_string()),
         rank: page.rank,
         placement: to_placement_response(page.placement),
+        content_presentation: to_content_presentation_response(page.content_presentation),
         slug: page.slug,
     }
 }
@@ -985,6 +1012,7 @@ fn to_tab_response(tab: domain::frontstage::FrontstagePageTabRecord) -> Frontsta
         title: tab.title,
         rank: tab.rank,
         is_default: tab.is_default,
+        route_segment: tab.route_segment,
         document_root_uid: tab.document_root_uid,
     }
 }
@@ -995,13 +1023,9 @@ fn to_page_detail_response(
     FrontstagePageDetailResponse {
         page: to_page_response(detail.page),
         tab: to_tab_response(detail.tab),
-        schema: FrontstagePageSchemaResponse {
-            root_uid: detail.schema.root_uid.clone(),
-            payload: detail.schema.schema_payload,
-        },
-        root: FrontstagePageRootResponse {
-            uid: detail.schema.root_uid,
-            payload: detail.schema.root_payload,
+        document: FrontstageTabDocumentResponse {
+            root_uid: detail.document.root_uid,
+            payload: detail.document.payload,
         },
     }
 }
@@ -1025,6 +1049,9 @@ fn to_tree_node_response(node: domain::FrontstagePageTreeNode) -> FrontstagePage
         is_hidden: node.page.is_hidden,
         kind: to_kind_response(node.page.kind),
         placement: to_placement_response(node.page.placement),
+        content_presentation: to_content_presentation_response(
+            node.page.content_presentation,
+        ),
         slug: node.page.slug,
         children: node
             .children

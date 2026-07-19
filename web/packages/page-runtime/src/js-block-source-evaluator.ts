@@ -12,7 +12,7 @@ import {
   type JsBlockSourceTransformResult,
   type JsBlockSourceTransformSuccess
 } from './js-block-source-transform';
-import { compileJsBlockJsxSource } from './js-block-jsx-compile';
+import { compileJsBlockTsxSource } from './js-block-tsx-compile';
 import type { JsBlockRunError } from './js-block-worker-runtime';
 
 export type JsBlockInjectedModuleMap = Partial<
@@ -160,12 +160,12 @@ function compileAndTransformSource(
   source: string,
   allowedImports: string[]
 ): JsBlockSourceTransformResult {
-  const jsxResult = compileJsBlockJsxSource(source);
-  if (!jsxResult.ok) {
-    return { ok: false, errors: jsxResult.errors };
+  const tsxResult = compileJsBlockTsxSource(source);
+  if (!tsxResult.ok) {
+    return { ok: false, errors: tsxResult.errors };
   }
 
-  return transformJsBlockSource(jsxResult.code, { allowedImports });
+  return transformJsBlockSource(tsxResult.code, { allowedImports });
 }
 
 function createEvaluator(

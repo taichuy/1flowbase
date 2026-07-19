@@ -29,8 +29,8 @@ export type CreateBlankJsBlockTemplateCodeInput = Omit<
 export const FRONTSTAGE_BUILT_IN_JS_BLOCK_TEMPLATES = [
   {
     id: 'blank',
-    title: 'JSX 示例区块',
-    description: '从最小、可运行的 JSX 示例开始。'
+    title: '代码示例区块',
+    description: '从最小、可运行的 TSX 示例开始。'
   },
   {
     id: 'data-table',
@@ -109,13 +109,13 @@ import { Stack, Text, Title } from '@1flowbase/block-renderer/antd-facade';
 
 export default defineBlock({
   id: ${quoteJsString(input.blockId)},
-  title: 'JSX 示例区块',
+  title: '代码示例区块',
 
   render() {
     return (
       <Stack>
-        <Title>JSX 示例区块</Title>
-        <Text>点击区块右上角的编辑图标修改这段 JSX。</Text>
+        <Title>代码示例区块</Title>
+        <Text>点击区块右上角的编辑图标修改这段 TSX。</Text>
       </Stack>
     );
   }

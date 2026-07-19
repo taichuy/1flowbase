@@ -1,4 +1,3 @@
-import { MenuOutlined } from '@ant-design/icons';
 import {
   Alert,
   App as AntdApp,
@@ -6,7 +5,6 @@ import {
   Divider,
   Empty,
   Form,
-  Tooltip,
   Typography
 } from 'antd';
 import type { CSSProperties, FC } from 'react';
@@ -18,7 +16,6 @@ import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-m
 import { saveFrontstageBlockCode } from '../api/block-code';
 import type { FrontstagePageContent } from '../api/page-content';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
-import { FrontstageNodeActionButton } from '../components/FrontstageNodeActionButton';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import { PageCanvas } from '../components/PageCanvas';
@@ -81,6 +78,7 @@ import {
   type PageTreeFormDialog,
   type PageTreeFormValues
 } from './frontstage-page/page-tree-form-modal';
+import { PageWorkspaceActionMenu } from './frontstage-page/PageWorkspaceActionMenu';
 import {
   findSiblingContext,
   getNodeAppendRank,
@@ -187,6 +185,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const activePageContent = hasLoadedSelectedPageContent
     ? displayedPageContent
     : undefined;
+  const selectedPageNode = selectedPageId
+    ? findNodeById(pageTree, selectedPageId)
+    : null;
   const displayedPageDocument = useMemo(
     () =>
       activePageContent
@@ -264,7 +265,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     !isPageContentSavePending;
   const operationStatusText = isOperationPending
     ? i18nText('frontstage', 'auto.saving')
-    : i18nText('frontstage', 'auto.operation_failed');
+    : pageTreeMutationError
+      ? toDisplayErrorMessage(pageTreeMutationError)
+      : i18nText('frontstage', 'auto.operation_failed');
 
   const canEnterDesignMode = useMemo(() => {
     return (
@@ -428,7 +431,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       title: pageTreeFormDialog.initialTitle,
       icon: pageTreeFormDialog.initialIcon,
       tooltip: pageTreeFormDialog.initialTooltip,
-      slug: pageTreeFormDialog.initialSlug
+      slug: pageTreeFormDialog.initialSlug,
     });
   }, [pageTreeForm, pageTreeFormDialog]);
 
@@ -441,10 +444,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     : selectedPageId
       ? i18nText('frontstage', 'auto.page_with_id', { value1: selectedPageId })
       : null;
-  const pageLabel = selectedPageLabel
-    ? selectedPageLabel
-    : i18nText('frontstage', 'auto.default_home_page_notice');
-
   const saveBlockComposition = useCallback(
     async (
       sourceContent: FrontstagePageContent,
@@ -650,18 +649,18 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     />
   ) : null;
 
-  const runPageTreeOperation = async <T,>(
-    operation: () => Promise<T | void>
-  ): Promise<T | null> => {
+  const runPageTreeOperation = async (
+    operation: () => Promise<unknown>
+  ): Promise<boolean> => {
     setOperationStatus('pending');
 
     try {
-      const result = await operation();
+      await operation();
       setOperationStatus('idle');
-      return result ?? null;
+      return true;
     } catch {
       setOperationStatus('error');
-      return null;
+      return false;
     }
   };
 
@@ -787,11 +786,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         rank: dialog.rank
       };
 
-      await runPageTreeOperation(async () => {
+      const created = await runPageTreeOperation(async () => {
         await createPageTreeNode(dialog.nodeKind, input);
       });
 
-      setPageTreeFormDialog(null);
+      if (created) {
+        setPageTreeFormDialog(null);
+      }
       return;
     }
 
@@ -799,8 +800,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       const title = values.title ?? '';
       const icon = values.icon ?? null;
       const tooltip = values.tooltip ?? null;
-
-      await runPageTreeOperation(async () => {
+      const renamed = await runPageTreeOperation(async () => {
         await onRenamePageNode?.(dialog.nodeId, {
           title,
           icon,
@@ -814,16 +814,20 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           })
         );
       });
-      setPageTreeFormDialog(null);
+      if (renamed) {
+        setPageTreeFormDialog(null);
+      }
       return;
     }
 
-    await runPageTreeOperation(async () => {
+    const updated = await runPageTreeOperation(async () => {
       await onUpdatePageNodeMetadata?.(dialog.nodeId, {
         tooltip: values.tooltip ?? ''
       });
     });
-    setPageTreeFormDialog(null);
+    if (updated) {
+      setPageTreeFormDialog(null);
+    }
   };
 
   const handleRenameNode = (node: FrontStageTreeNode) => {
@@ -833,7 +837,32 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       initialTitle: node.title ?? '',
       initialIcon: node.icon ?? '',
       initialTooltip: node.tooltip ?? '',
-      title: i18nText('frontstage', 'auto.edit_node')
+      nodeKind: node.kind,
+      title:
+        node.kind === 'page'
+          ? i18nText('frontstage', 'design.configure_page')
+          : i18nText('frontstage', 'auto.edit_node')
+    });
+  };
+
+  const handlePageTabsEnabledChange = (enabled: boolean) => {
+    if (!selectedPageNode || selectedPageNode.kind !== 'page') {
+      return;
+    }
+
+    const contentPresentation = enabled ? 'tabs' : 'single';
+    void runPageTreeOperation(async () => {
+      await onRenamePageNode?.(selectedPageNode.id, {
+        title: selectedPageNode.title ?? '',
+        icon: selectedPageNode.icon ?? '',
+        tooltip: selectedPageNode.tooltip ?? '',
+        contentPresentation
+      });
+      setPageTree((currentTree) =>
+        updatePageTreeNode(currentTree, selectedPageNode.id, {
+          content_presentation: contentPresentation
+        })
+      );
     });
   };
 
@@ -1091,9 +1120,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       onSelectPage={handleSelectPage}
     />
   );
-  const selectedPageNode = selectedPageId
-    ? findNodeById(pageTree, selectedPageId)
-    : null;
   const frontstageTabContent = (
     <>
       {canEnterDesignMode && isDesignMode && isPageContentSavePending ? (
@@ -1115,14 +1141,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       ) : null}
       <PageCanvas
         content={
-          selectedPageLabel && hasLoadedSelectedPageContent
+          selectedPageNode && hasLoadedSelectedPageContent
             ? displayedPageContent
             : undefined
         }
-        isLoading={Boolean(selectedPageLabel && isPageContentLoading)}
-        hasError={Boolean(selectedPageLabel && hasPageContentLoadError)}
+        isLoading={Boolean(selectedPageNode && isPageContentLoading)}
+        hasError={Boolean(selectedPageNode && hasPageContentLoadError)}
         isPermissionDenied={Boolean(
-          selectedPageLabel && isPageContentPermissionDenied
+          selectedPageNode && isPageContentPermissionDenied
         )}
         selectedBlockId={
           canEnterDesignMode && isDesignMode ? selectedBlockId : null
@@ -1161,7 +1187,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         }
         showTitle={false}
       />
-      {canEnterDesignMode && isDesignMode ? (
+      {canEnterDesignMode && isDesignMode && selectedPageNode ? (
         <Button
           size="middle"
           aria-label={i18nText('frontstage', 'auto.create_block')}
@@ -1215,32 +1241,31 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               : undefined
           }
         >
-          <header className="frontstage-page-workspace__header">
-            <Typography.Title
-              className="frontstage-page-workspace__title"
-              level={4}
-            >
-              {pageLabel}
-            </Typography.Title>
-            {canEditPageTree && selectedPageNode ? (
-              <div className="frontstage-page-workspace__page-action">
-                <Tooltip
-                  title={i18nText('frontstage', 'design.configure_page')}
+          {selectedPageNode ? (
+            <>
+              <header className="frontstage-page-workspace__header">
+                <Typography.Title
+                  className="frontstage-page-workspace__title"
+                  level={4}
                 >
-                  <FrontstageNodeActionButton
-                    aria-label={i18nText('frontstage', 'design.configure_page')}
-                    disabled={isOperationPending}
-                    icon={<MenuOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleRenameNode(selectedPageNode);
-                    }}
-                  />
-                </Tooltip>
-              </div>
-            ) : null}
-          </header>
-          <Divider style={{ margin: 0 }} />
+                  {selectedPageLabel}
+                </Typography.Title>
+                {canEditPageTree ? (
+                  <div className="frontstage-page-workspace__page-action">
+                    <PageWorkspaceActionMenu
+                      disabled={isOperationPending}
+                      tabsEnabled={
+                        selectedPageNode.content_presentation === 'tabs'
+                      }
+                      onEdit={() => handleRenameNode(selectedPageNode)}
+                      onTabsEnabledChange={handlePageTabsEnabledChange}
+                    />
+                  </div>
+                ) : null}
+              </header>
+              <Divider style={{ margin: 0 }} />
+            </>
+          ) : null}
           <div className="frontstage-page-workspace__body">
             {renderPageTreeErrorBanner}
             {canEnterDesignMode &&
@@ -1253,11 +1278,12 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                 {operationStatusText}
               </Typography.Text>
             ) : null}
-            {selectedPageId && tabId && onNavigateTab ? (
+            {selectedPageId && tabId && onNavigateTab && activePageContent ? (
               <FrontstagePageTabs
                 workspaceId={workspaceId}
                 pageId={selectedPageId}
                 tabId={tabId}
+                presentation={activePageContent.page.contentPresentation}
                 isDesignMode={canEnterDesignMode && isDesignMode}
                 onNavigateTab={onNavigateTab}
               >

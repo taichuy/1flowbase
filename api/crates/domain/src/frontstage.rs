@@ -16,6 +16,30 @@ pub enum FrontstageNavigationPlacement {
     Sidebar,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrontstagePageContentPresentation {
+    Single,
+    Tabs,
+}
+
+impl FrontstagePageContentPresentation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Single => "single",
+            Self::Tabs => "tabs",
+        }
+    }
+
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "single" => Some(Self::Single),
+            "tabs" => Some(Self::Tabs),
+            _ => None,
+        }
+    }
+}
+
 impl FrontstageNavigationPlacement {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -85,6 +109,7 @@ pub struct FrontstagePageRecord {
     pub tooltip: Option<String>,
     pub is_hidden: bool,
     pub placement: FrontstageNavigationPlacement,
+    pub content_presentation: FrontstagePageContentPresentation,
     pub slug: Option<String>,
     pub rank: String,
     pub created_at: OffsetDateTime,
@@ -110,12 +135,11 @@ pub struct FrontstagePageVisibilityRuleRecord {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FrontstagePageSchemaRecord {
+pub struct FrontstageTabDocumentRecord {
     pub workspace_id: Uuid,
     pub tab_id: Uuid,
     pub root_uid: String,
-    pub schema_payload: serde_json::Value,
-    pub root_payload: serde_json::Value,
+    pub payload: serde_json::Value,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
@@ -124,7 +148,7 @@ pub struct FrontstagePageSchemaRecord {
 pub struct FrontstagePageDetail {
     pub page: FrontstagePageRecord,
     pub tab: FrontstagePageTabRecord,
-    pub schema: FrontstagePageSchemaRecord,
+    pub document: FrontstageTabDocumentRecord,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -141,6 +165,7 @@ pub struct FrontstagePageTabRecord {
     pub title: Option<String>,
     pub rank: String,
     pub is_default: bool,
+    pub route_segment: Option<String>,
     pub document_root_uid: String,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
@@ -184,6 +209,7 @@ mod tests {
             title: Some("Default".to_owned()),
             rank: "a".to_owned(),
             is_default: true,
+            route_segment: None,
             document_root_uid: "frontstage.tab.2.root".to_owned(),
             created_at: now,
             updated_at: now,
@@ -192,6 +218,7 @@ mod tests {
         assert_eq!(tab.page_id, page_id);
         assert_eq!(tab.id, tab_id);
         assert!(tab.is_default);
+        assert_eq!(tab.route_segment, None);
         assert_eq!(tab.document_root_uid, "frontstage.tab.2.root");
     }
 }

@@ -1,7 +1,7 @@
 import type { FlowNodeType } from '@1flowbase/flow-schema';
 import type { EdgeTypes, Node, NodeTypes } from '@xyflow/react';
 
-import type { CanvasNodeSchema } from '../../../../shared/schema-ui/contracts/canvas-node-schema';
+import type { CanvasNodeSchema } from '../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 import type { NodePickerOption } from '../../lib/plugin-node-definitions';
 import { AgentFlowNodeCard } from '../nodes/AgentFlowNodeCard';
 import { AgentFlowCustomEdge, type AgentFlowCanvasEdge } from './custom-edge';

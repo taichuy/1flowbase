@@ -30,7 +30,7 @@ vi.mock('../../schema/node-schema-registry', async () => {
   };
 });
 
-vi.mock('../../../../shared/schema-ui/overlay-shell/SchemaDrawerPanel', () => ({
+vi.mock('../../../../shared/schema-ui/v1/overlay-shell/SchemaDrawerPanel', () => ({
   SchemaDrawerPanel: schemaRuntimeSpies.SchemaDrawerPanel
 }));
 

@@ -3,6 +3,7 @@ import type {
   FrontstageBlockLayout,
   FrontstagePageDocument
 } from './page-document';
+import { FRONTSTAGE_BLOCK_RENDERER_VERSION_V1 } from './block-renderer-version';
 
 export interface FrontstageBlockCompositionState {
   document: FrontstagePageDocument;
@@ -169,6 +170,8 @@ function createBlockFromInput(
 
   return {
     id,
+    rendererVersion:
+      input.rendererVersion ?? FRONTSTAGE_BLOCK_RENDERER_VERSION_V1,
     sourceId: input.sourceId ?? null,
     codeRef,
     sourceCodeRef: input.sourceCodeRef ?? null,

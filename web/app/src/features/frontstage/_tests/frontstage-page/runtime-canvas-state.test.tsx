@@ -4,14 +4,17 @@ import { expect, vi } from 'vitest';
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
-import {
-  resetFrontstageDesignModeStore
-} from '../../../../state/frontstage-design-mode-store';
+import { resetFrontstageDesignModeStore } from '../../../../state/frontstage-design-mode-store';
 import type {
   FrontstagePageContent,
-  SaveFrontstagePageContentInput
+  SaveFrontstageTabDocumentInput
 } from '../../api/page-content';
-import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
+import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from '../frontstage-page-content-fixtures';
+import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
+import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
   moveNodeInTree,
@@ -150,39 +153,22 @@ function updateNodeMetadataInTree(
 }
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000',
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 function createSavedPageContentFromInput(
-  input: SaveFrontstagePageContentInput
+  input: SaveFrontstageTabDocumentInput
 ): FrontstagePageContent {
   return createPageContent({
     schema: {
       rootUid: 'root-1',
-      payload: input.schema.payload
+      payload: input.payload
     },
     root: {
       uid: 'root-1',
-      payload: input.root.payload
+      payload: input.payload
     }
   });
 }
@@ -310,7 +296,7 @@ function mockPageContentSaveState(
   overrides: Partial<FrontstagePageContentSaveState> = {}
 ): FrontstagePageContentSaveState {
   const state = {
-    save: vi.fn((input: SaveFrontstagePageContentInput) =>
+    save: vi.fn((input: SaveFrontstageTabDocumentInput) =>
       Promise.resolve(createSavedPageContentFromInput(input))
     ),
     saving: false,
@@ -358,6 +344,7 @@ function createCatalogMatchedBlockPayload(
 ): Record<string, unknown> {
   return {
     id: 'frontstage-js-block-1',
+    renderer_version: 'v1',
     codeRef: 'frontstage-js-block-1-code',
     catalog: {
       providerCode: '1flowbase',
@@ -419,7 +406,8 @@ function mockRuntimeSessions(
     hasError: false,
     ...overrides
   });
-}describe('FrontStagePage - runtime canvas state', () => {
+}
+describe('FrontStagePage - runtime canvas state', () => {
   beforeEach(() => {
     resetAuthStore();
     resetFrontstageDesignModeStore();
@@ -447,8 +435,11 @@ function mockRuntimeSessions(
       screen.getByRole('heading', { name: '页面 page-1' })
     ).toBeInTheDocument();
     expect(screen.queryByText('当前页面：页面 page-1')).not.toBeInTheDocument();
-    expect(screen.getByText('未选择页面内容')).toBeInTheDocument();
-    expect(screen.getByText('选择页面后将显示页面预览。')).toBeInTheDocument();
+    expect(
+      screen
+        .getByTestId('frontstage-page-workspace')
+        .querySelector('.ant-empty')
+    ).toBeInTheDocument();
     expect(screen.getAllByText('页面 page-1').length).toBeGreaterThan(0);
   });
 
@@ -509,20 +500,25 @@ function mockRuntimeSessions(
     expect(await screen.findByText('区块加载中...')).toBeInTheDocument();
   });
 
-  test('shows empty page tree state when pageId is absent', () => {
+  test('keeps the empty page tree free of placeholder content', () => {
     authenticate(['frontstage.page.design']);
     renderPage();
 
     expect(
-      screen.getByRole('heading', {
-        name: '未选择 pageId（将使用默认首页）'
-      })
+      screen
+        .getByTestId('frontstage-page-workspace')
+        .querySelector('.ant-empty')
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        '当前工作区页面树为空。请在设计态创建页面后将显示树结构。'
-      )
-    ).toBeInTheDocument();
+      screen
+        .queryByTestId('frontstage-page-workspace')
+        ?.querySelector('.frontstage-page-workspace__header')
+    ).not.toBeInTheDocument();
+    expect(
+      document
+        .querySelector('.frontstage-page-tree-sidebar')
+        ?.querySelector('.ant-empty')
+    ).not.toBeInTheDocument();
   });
 
   test('supports nullable page title from initial tree', () => {

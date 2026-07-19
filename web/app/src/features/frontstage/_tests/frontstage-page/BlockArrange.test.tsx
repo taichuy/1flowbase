@@ -17,8 +17,12 @@ import {
 } from '../../../../state/frontstage-design-mode-store';
 import type {
   FrontstagePageContent,
-  SaveFrontstagePageContentInput
+  SaveFrontstageTabDocumentInput
 } from '../../api/page-content';
+import {
+  createFrontstagePageContentFixture,
+  type FrontstagePageContentFixtureOverrides
+} from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { FrontStagePage } from '../../pages/FrontStagePage';
 
@@ -57,7 +61,7 @@ vi.mock('../../components/jsx-studio/FrontstageJsxStudioDrawer', () => ({
     open ? (
       <dialog
         open
-        aria-label="JSX Studio"
+        aria-label="TSX 编辑器"
         data-initial-section={initialSection}
       >
         <span>workspace:{workspaceId ?? 'none'}</span>
@@ -102,26 +106,9 @@ function authenticate(permissions: string[]) {
 }
 
 function createPageContent(
-  overrides: Partial<FrontstagePageContent> = {}
+  overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
-  return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000'
-    },
-    schema: {
-      rootUid: 'root-1',
-      payload: {}
-    },
-    root: {
-      uid: 'root-1',
-      payload: {}
-    },
-    ...overrides
-  };
+  return createFrontstagePageContentFixture(overrides);
 }
 
 function createBlockPayload(blockId: string, order: number) {
@@ -275,22 +262,22 @@ function createPageContentWithBlockPayloads(
 }
 
 function createSavedPageContentFromInput(
-  input: SaveFrontstagePageContentInput
+  input: SaveFrontstageTabDocumentInput
 ): FrontstagePageContent {
   return createPageContent({
     schema: {
       rootUid: 'root-1',
-      payload: input.schema.payload
+      payload: input.payload
     },
     root: {
       uid: 'root-1',
-      payload: input.root.payload
+      payload: input.payload
     }
   });
 }
 
-function getSavedBlocks(input: SaveFrontstagePageContentInput) {
-  const payload = input.root.payload;
+function getSavedBlocks(input: SaveFrontstageTabDocumentInput) {
+  const payload = input.payload;
   if (typeof payload !== 'object' || payload === null) {
     throw new Error('root payload must be an object');
   }
@@ -303,7 +290,7 @@ function getSavedBlocks(input: SaveFrontstagePageContentInput) {
   return blocks as Array<Record<string, unknown>>;
 }
 
-function getSavedBlockIds(input: SaveFrontstagePageContentInput): unknown[] {
+function getSavedBlockIds(input: SaveFrontstageTabDocumentInput): unknown[] {
   return getSavedBlocks(input).map((block) => block.id);
 }
 
@@ -311,7 +298,7 @@ function mockPageContentSaveState(
   overrides: Partial<FrontstagePageContentSaveState> = {}
 ): FrontstagePageContentSaveState {
   const state = {
-    save: vi.fn((input: SaveFrontstagePageContentInput) =>
+    save: vi.fn((input: SaveFrontstageTabDocumentInput) =>
       Promise.resolve(createSavedPageContentFromInput(input))
     ),
     saving: false,
@@ -404,9 +391,7 @@ async function confirmBlockDelete(blockId: string) {
     throw new Error('Missing block delete action');
   }
   await clickAndFlush(deleteAction);
-  await clickAndFlush(
-    await screen.findByRole('button', { name: /删\s*除/ })
-  );
+  await clickAndFlush(await screen.findByRole('button', { name: /删\s*除/ }));
 }
 
 function activateDesignMode() {
@@ -448,7 +433,7 @@ describe('FrontStagePage block arrange actions', () => {
     });
 
     const [saveInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstagePageContentInput
+      SaveFrontstageTabDocumentInput
     ];
     expect(getSavedBlockIds(saveInput)).toEqual(['hero', 'cta']);
 
@@ -475,7 +460,7 @@ describe('FrontStagePage block arrange actions', () => {
     });
 
     const [saveInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstagePageContentInput
+      SaveFrontstageTabDocumentInput
     ];
     expect(getSavedBlockIds(saveInput)).toEqual([]);
 
@@ -500,7 +485,7 @@ describe('FrontStagePage block arrange actions', () => {
     });
 
     const [moveDownInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstagePageContentInput
+      SaveFrontstageTabDocumentInput
     ];
     expect(getSavedBlockIds(moveDownInput)).toEqual(['hero', 'cta', 'feature']);
 
@@ -511,7 +496,7 @@ describe('FrontStagePage block arrange actions', () => {
     });
 
     const [moveUpInput] = saveState.save.mock.calls[1] as [
-      SaveFrontstagePageContentInput
+      SaveFrontstageTabDocumentInput
     ];
     expect(getSavedBlockIds(moveUpInput)).toEqual(['hero', 'feature', 'cta']);
   });
@@ -553,7 +538,7 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块代码');
 
-    const dialog = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    const dialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     expect(dialog).toHaveAttribute('data-initial-section', 'code');
     expect(
       within(dialog).getByText('workspace:workspace-1')
@@ -585,7 +570,7 @@ describe('FrontStagePage block arrange actions', () => {
     ).not.toBeInTheDocument();
 
     fireEvent.click(configurationButton);
-    const studio = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     expect(studio).toHaveAttribute('data-initial-section', 'configuration');
   });
 
@@ -696,7 +681,7 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
 
-    const dialog = await screen.findByRole('dialog', { name: 'JSX Studio' });
+    const dialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     expect(dialog).toHaveAttribute('data-initial-section', 'configuration');
     expect(within(dialog).getByText('block:hero')).toBeInTheDocument();
     expect(within(dialog).getByText('code:hero-code')).toBeInTheDocument();
@@ -731,13 +716,13 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
 
     await exitDesignMode();
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
 
@@ -745,20 +730,20 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
 
     await clickAndFlush(getBlockRow('hero'));
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
 
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块配置');
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
 
     // Switch page
@@ -796,7 +781,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
   }, 25000);
@@ -830,13 +815,13 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块代码');
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
 
     await exitDesignMode();
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
 
@@ -844,7 +829,7 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
     clickBlockToolbar('hero', '区块代码');
     expect(
-      await screen.findByRole('dialog', { name: 'JSX Studio' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
 
     fireEvent.click(
@@ -881,7 +866,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'JSX Studio' })
+        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
       ).not.toBeInTheDocument();
     });
   });
