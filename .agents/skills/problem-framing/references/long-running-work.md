@@ -103,6 +103,8 @@ Root 在任何产品修改前，把达到 Root candidate 所需的全部开发�
 ## Acceptance-First Build And Test Batch
 
 - Root 在分发开发前固定有限 AC matrix、预期结果、命令、fixture owner、重型验证数与延后到 CI / beta 的证据；定义验收不等于提前运行测试。
+- `Source Integration` 与 `Release Artifact` 分开归属：Cross/musl 构建、package archive、package digest / paired-SHA 与 WireAudit 默认由 CI / release workflow 验证和留存，不进入本地 Root Test Batch，也不阻断源码集成。只有用户明确要求本地产物验收时，才把这类验证列为本地 AC。
+- 延后 release artifact evidence 时，在 Ledger 标明 CI workflow / trigger / artifact；本地 QA 只结算源码、API、前端等已批准的 source-integration AC，不用外部镜像、跨平台 runner 或旧产物替代 CI 证据。
 - Scout 提供既有失败证据；缺少时在 Test Batch 标记需要 controlled negative / authenticity fixture。开发 Packet 只写产品代码与指定 fixture，不运行逐包 red、green 或回归。
 - 所有产品与 fixture Packet 完成后，Test Batch 对冻结 assembly SHA 一次执行 controlled negative、targeted green 与影响面回归；相同代码、fixture 和环境不重复执行同一证据。
 - 重型 tool process 可独立等待；同一时刻最多一个 Cargo / build / 重型测试进程。QA agent 不因等待重新探索或扩大矩阵。
