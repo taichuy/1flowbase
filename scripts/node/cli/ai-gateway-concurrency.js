@@ -1,0 +1,104 @@
+#!/usr/bin/env node
+'use strict';
+
+const path = require('node:path');
+const { TRANSPORT } = require('../ai-gateway-concurrency/contracts');
+const {
+  runDirectMockCharacterize,
+  runGatewayCharacterize,
+} = require('../ai-gateway-concurrency/characterize/engine');
+
+function usage() {
+  return `Usage:
+  node scripts/node/cli/ai-gateway-concurrency.js --profile characterize --mode direct-mock [--repo-root <path>] [--timeout-ms <ms>]
+  node scripts/node/cli/ai-gateway-concurrency.js --profile characterize --mode gateway \\
+    --responses-sse-url <url> --mock-responses-websocket-url <url> --anthropic-sse-url <url> \\
+    --api-key-env <environment-variable> [--repo-root <path>] [--timeout-ms <ms>]
+
+Writes report.md, summary.json, and events.jsonl below
+tmp/test-governance/ai-gateway-concurrency/. Characterize applies correctness
+contracts only; timing metrics are observations and have no absolute budget.
+Gateway mode sends SSE to the public gateway URLs and WebSocket only to the
+explicit deterministic Mock URL; it does not define a public WebSocket contract.
+`;
+}
+
+function parseCliArgs(argv, env = process.env) {
+  const values = new Map();
+  const valueArgs = new Set([
+    '--profile', '--mode', '--repo-root', '--timeout-ms', '--responses-sse-url',
+    '--mock-responses-websocket-url', '--anthropic-sse-url', '--api-key-env',
+  ]);
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--help' || argument === '-h') {
+      if (argv.length !== 1) throw new Error('--help cannot be combined with other arguments');
+      return { help: true };
+    }
+    if (!valueArgs.has(argument) || !argv[index + 1] || argv[index + 1].startsWith('--')) {
+      throw new Error(`invalid argument: ${argument}`);
+    }
+    if (values.has(argument)) throw new Error(`duplicate argument: ${argument}`);
+    values.set(argument, argv[index + 1]);
+    index += 1;
+  }
+  if (values.get('--profile') !== 'characterize') {
+    throw new Error('--profile must be characterize; no regression budget is approved');
+  }
+  const mode = values.get('--mode');
+  if (!['direct-mock', 'gateway'].includes(mode)) throw new Error('--mode must be direct-mock or gateway');
+  const repoRoot = path.resolve(values.get('--repo-root') ?? path.join(__dirname, '..', '..', '..'));
+  const timeoutText = values.get('--timeout-ms') ?? '5000';
+  const timeoutMs = Number(timeoutText);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 60_000) {
+    throw new Error('--timeout-ms must be an integer between 100 and 60000');
+  }
+  const gatewayArgs = ['--responses-sse-url', '--mock-responses-websocket-url', '--anthropic-sse-url', '--api-key-env'];
+  if (mode === 'direct-mock') {
+    for (const argument of gatewayArgs) {
+      if (values.has(argument)) throw new Error(`${argument} is only valid in gateway mode`);
+    }
+    return { help: false, mode, repoRoot, timeoutMs };
+  }
+  for (const argument of gatewayArgs) {
+    if (!values.has(argument)) throw new Error(`missing required argument: ${argument}`);
+  }
+  let authorizationToken = null;
+  const apiKeyEnvironment = values.get('--api-key-env');
+  authorizationToken = env[apiKeyEnvironment];
+  if (!authorizationToken) throw new Error(`API key environment variable is empty: ${apiKeyEnvironment}`);
+  return {
+    help: false,
+    mode,
+    repoRoot,
+    timeoutMs,
+    authorizationToken,
+    endpointSet: {
+      [TRANSPORT.RESPONSES_SSE]: values.get('--responses-sse-url'),
+      [TRANSPORT.RESPONSES_WEBSOCKET]: values.get('--mock-responses-websocket-url'),
+      [TRANSPORT.ANTHROPIC_SSE]: values.get('--anthropic-sse-url'),
+    },
+  };
+}
+
+async function main(argv = process.argv.slice(2), env = process.env) {
+  const options = parseCliArgs(argv, env);
+  if (options.help) {
+    process.stdout.write(usage());
+    return 0;
+  }
+  const result = options.mode === 'direct-mock'
+    ? await runDirectMockCharacterize(options)
+    : await runGatewayCharacterize(options);
+  process.stdout.write(`[ai-gateway-concurrency] ${result.summary.verdict}: ${result.artifacts.outputDirectory}\n`);
+  return result.summary.verdict === 'PASS' ? 0 : 1;
+}
+
+if (require.main === module) {
+  main().then((status) => { process.exitCode = status; }).catch((error) => {
+    process.stderr.write(`[ai-gateway-concurrency] ${error.message}\n`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { main, parseCliArgs, usage };

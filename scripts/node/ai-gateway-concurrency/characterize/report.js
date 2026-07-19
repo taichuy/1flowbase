@@ -1,0 +1,47 @@
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ARTIFACT_RELATIVE_DIRECTORY = path.join('tmp', 'test-governance', 'ai-gateway-concurrency');
+
+function markdownReport(summary) {
+  const lines = [
+    '# AI Gateway Concurrency Characterize',
+    '',
+    `- Verdict: **${summary.verdict}**`,
+    `- Profile: \`${summary.profile}\``,
+    `- Requests: ${summary.totals.requests}`,
+    `- Contract failures: ${summary.totals.contractFailures}`,
+    `- Peak observed at mock upstream: ${summary.metrics.mockArrivalPeak}`,
+    '',
+    'Absolute timing values are characterization observations, not performance budgets.',
+    '',
+    '| Transport | Scenario | Concurrency | Pass | Outcomes | TTFT p50 ms | Total p50 ms | Throughput rps | Mock peak | Derived queue max ms |',
+    '| --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |',
+  ];
+  for (const batch of summary.batches) {
+    const outcomes = Object.entries(batch.outcomes).map(([name, count]) => `${name}:${count}`).join(', ');
+    lines.push(`| ${batch.transport} | ${batch.scenario} | ${batch.concurrency} | ${batch.pass ? 'yes' : 'no'} | ${outcomes} | ${batch.metrics.ttftP50Ms ?? '-'} | ${batch.metrics.totalLatencyP50Ms ?? '-'} | ${batch.metrics.throughputRps} | ${batch.metrics.mockArrivalPeak ?? '-'} | ${batch.metrics.derivedQueueMaxMs ?? '-'} |`);
+  }
+  lines.push('', '## Contract failures', '');
+  if (summary.failures.length === 0) lines.push('- None');
+  else for (const failure of summary.failures) lines.push(`- ${failure.batch}: ${failure.message}`);
+  lines.push('');
+  return `${lines.join('\n')}\n`;
+}
+
+function writeCharacterizeArtifacts({ repoRoot, summary, events }) {
+  if (!path.isAbsolute(repoRoot)) throw new Error('repoRoot must be an absolute path');
+  const outputDirectory = path.join(repoRoot, ARTIFACT_RELATIVE_DIRECTORY);
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  const reportPath = path.join(outputDirectory, 'report.md');
+  const summaryPath = path.join(outputDirectory, 'summary.json');
+  const eventsPath = path.join(outputDirectory, 'events.jsonl');
+  fs.writeFileSync(reportPath, markdownReport(summary), 'utf8');
+  fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(eventsPath, events.map((event) => JSON.stringify(event)).join('\n') + (events.length ? '\n' : ''), 'utf8');
+  return { outputDirectory, reportPath, summaryPath, eventsPath };
+}
+
+module.exports = { ARTIFACT_RELATIVE_DIRECTORY, markdownReport, writeCharacterizeArtifacts };
