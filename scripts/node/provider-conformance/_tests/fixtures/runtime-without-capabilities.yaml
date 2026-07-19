@@ -1,0 +1,10 @@
+plugin_id: fixture_runtime_without_capabilities
+version: 1.0.0
+contract_version: 1flowbase.provider/v2
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes:
+  - model_provider
+runtime:
+  protocol: stdio_json
+  entry: bin/runtime-without-capabilities-provider

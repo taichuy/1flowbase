@@ -218,7 +218,11 @@ function parseManifestFacts(manifestPath) {
     if (indent === 0) {
       list = null;
       runtimeList = null;
-      inRuntime = line === 'runtime:';
+      inRuntime = false;
+      if (line === 'runtime:') {
+        inRuntime = true;
+        continue;
+      }
       if (line === 'slot_codes:') {
         list = 'slot_codes';
         continue;
@@ -237,7 +241,12 @@ function parseManifestFacts(manifestPath) {
       continue;
     }
     if (indent === 2) {
-      runtimeList = line === 'capabilities:' ? 'capabilities' : null;
+      runtimeList = null;
+      if (line === 'capabilities:') {
+        facts.runtime.capabilities = [];
+        runtimeList = 'capabilities';
+        continue;
+      }
       const match = /^([a-z_]+):\s*(.*)$/.exec(line);
       if (match && Object.hasOwn(facts.runtime, match[1])) {
         facts.runtime[match[1]] = parseScalar(match[2]);
@@ -278,7 +287,7 @@ function assertManifest(provider, actual) {
     runtime: {
       protocol: actual.runtime.protocol,
       entry: actual.runtime.entry,
-      capabilities: [...(actual.runtime.capabilities ?? [])].sort(),
+      capabilities: [...actual.runtime.capabilities].sort(),
     },
   };
   requireCondition(
@@ -892,6 +901,10 @@ module.exports = {
   ConformanceError,
   PAIR_ARTIFACT_SCHEMA,
   REQUIRED_PROVIDER_CODES,
+  _internal: {
+    assertManifest,
+    parseManifestFacts,
+  },
   runConformance,
   stableJson,
   verifyPairSnapshot,

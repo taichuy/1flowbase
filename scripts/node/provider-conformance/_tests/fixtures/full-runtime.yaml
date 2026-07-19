@@ -1,0 +1,13 @@
+plugin_id: fixture_full_runtime
+version: 1.0.0
+contract_version: 1flowbase.provider/v2
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes:
+  - model_provider
+runtime:
+  protocol: stdio_json
+  entry: bin/full-runtime-provider
+  capabilities:
+    - end_user_reference
+    - system_prompt_blocks
