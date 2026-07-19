@@ -16,7 +16,8 @@ use crate::{
     app_state::ApiState,
     routes::application_public_api::stream_terminal_fallback::{
         recover_missing_stream_terminal_winner, terminal_answer_deltas_from_payload,
-        terminal_runtime_event_from_native_run, TerminalAnswerDelta, TerminalAnswerDeltaKind,
+        terminal_answer_text_from_payload, terminal_runtime_event_from_native_run,
+        TerminalAnswerDelta, TerminalAnswerDeltaKind,
     },
 };
 
@@ -70,7 +71,10 @@ fn native_terminal_payload(
         status,
         created_at: event_created_at(envelope),
         delta: None,
-        answer: initial_run.answer.clone(),
+        answer: initial_run
+            .answer
+            .clone()
+            .or_else(|| terminal_answer_text_from_payload(&envelope.payload)),
         conversation: initial_run.metadata.get("request").and_then(|request| {
             request
                 .get("conversation")
