@@ -24,6 +24,56 @@ async fn anthropic_probe_message_uses_published_native_run() {
     )
     .await;
 
+    if response.status() != StatusCode::OK {
+        let response_status = response.status();
+        let payload = response_json(response).await;
+        let latest_flow_run = if flow_run_count(state.as_ref()).await > before {
+            sqlx::query_as::<_, (String, Option<Value>)>(
+                "select status::text, error_payload from flow_runs order by created_at desc, id desc limit 1",
+            )
+            .fetch_optional(state.store.pool())
+            .await
+            .expect("failure diagnostic should query the latest flow run")
+        } else {
+            None
+        };
+        let (latest_flow_run_status, latest_error_payload) = latest_flow_run
+            .map(|(status, error_payload)| (Some(status), error_payload))
+            .unwrap_or((None, None));
+        let error_payload = latest_error_payload
+            .as_ref()
+            .and_then(Value::as_object)
+            .map(|payload| {
+                Value::Object(
+                    ["code", "stage", "source", "status_code", "message"]
+                        .into_iter()
+                        .filter_map(|field| {
+                            payload
+                                .get(field)
+                                .filter(|value| {
+                                    value.is_string()
+                                        || value.is_number()
+                                        || value.is_boolean()
+                                        || value.is_null()
+                                })
+                                .cloned()
+                                .map(|value| (field.to_string(), value))
+                        })
+                        .collect(),
+                )
+            })
+            .unwrap_or_else(|| json!({}));
+
+        panic!(
+            "expected Anthropic probe status 200; actual_status={response_status}; \
+             anthropic_error.type={:?}; anthropic_error.message={:?}; \
+             latest_flow_run.status={:?}; latest_flow_run.error_payload={error_payload}",
+            payload["error"]["type"].as_str(),
+            payload["error"]["message"].as_str(),
+            latest_flow_run_status,
+        );
+    }
+
     assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
     assert_eq!(payload["type"], json!("message"));
