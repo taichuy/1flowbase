@@ -1,4 +1,5 @@
 import {
+  BlockUiLoadingShell,
   BlockUiRenderer,
   type BlockRendererActionEvent
 } from '@1flowbase/block-renderer';
@@ -38,6 +39,17 @@ export function RestrictedBlockRuntimePreview({
   snapshot,
   onAction
 }: RestrictedBlockRuntimePreviewProps) {
+  if (snapshot.status === 'idle' || snapshot.status === 'running') {
+    return (
+      <div
+        data-testid="restricted-block-runtime-preview"
+        style={{ width: '100%' }}
+      >
+        <BlockUiLoadingShell />
+      </div>
+    );
+  }
+
   const view = getStatusView(snapshot.status);
 
   return (
@@ -47,7 +59,9 @@ export function RestrictedBlockRuntimePreview({
       size="small"
       style={{ width: '100%' }}
     >
-      <Alert type={view.type} showIcon message={view.message} />
+      {snapshot.status === 'ready' ? null : (
+        <Alert type={view.type} showIcon message={view.message} />
+      )}
 
       {snapshot.status === 'ready' ? (
         <Space direction="vertical" size="small" style={{ width: '100%' }}>

@@ -1,4 +1,6 @@
 .frontstage-page-tabs {
+  --frontstage-page-content-inline: 24px;
+
   width: 100%;
 }
 
@@ -46,8 +48,13 @@
 }
 
 .frontstage-page-tabs__content--design-selected {
-  padding: 12px;
-  border: 1px solid var(--frontstage-design-tab-border);
-  border-radius: 8px;
-  box-shadow: var(--frontstage-design-tab-halo);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+@media (max-width: 991px) {
+  .frontstage-page-tabs {
+    --frontstage-page-content-inline: 14px;
+  }
 }

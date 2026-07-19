@@ -350,6 +350,7 @@ function createBlockFromSlot(
     catalog: cloneCatalog(slot.catalog),
     contribution: cloneContribution(slot.contribution),
     props: cloneProps(slot.props),
+    presentation: { ...slot.presentation },
     layout: cloneLayout(slot.layout),
     order: slot.order,
     runtime: cloneRuntime(slot.runtime)

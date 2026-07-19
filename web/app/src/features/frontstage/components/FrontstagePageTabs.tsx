@@ -18,7 +18,7 @@ import {
   Tooltip,
   Typography
 } from 'antd';
-import type { CSSProperties, DragEvent, ReactNode } from 'react';
+import type { DragEvent, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
@@ -342,6 +342,10 @@ export function FrontstagePageTabs({
         <Tabs
           activeKey={tabId}
           onChange={handleTabChange}
+          tabBarStyle={{
+            margin: 0,
+            paddingInline: 'var(--frontstage-page-content-inline)'
+          }}
           items={tabs.map((tab) => ({
             key: tab.id,
             label: isDesignMode ? (
@@ -477,15 +481,6 @@ export function FrontstagePageTabs({
         }
         data-testid="frontstage-tab-content"
         data-design-selected={isDesignMode ? 'true' : 'false'}
-        style={
-          isDesignMode
-            ? ({
-                '--frontstage-design-tab-border':
-                  FRONTSTAGE_DESIGN_BLUE.borderSelected,
-                '--frontstage-design-tab-halo': FRONTSTAGE_DESIGN_BLUE.halo
-              } as CSSProperties)
-            : undefined
-        }
       >
         {children}
       </div>

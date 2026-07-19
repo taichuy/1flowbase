@@ -279,10 +279,12 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
         'block-slot-hero'
       )
     ).toBeInTheDocument();
-    // No runtime session yet, so shows loading placeholder
-    expect(screen.getByTestId('block-slot-hero')).toHaveTextContent(
-      '区块加载中...'
+    const blockSlot = screen.getByTestId('block-slot-hero');
+    expect(within(blockSlot).getByTestId('block-ui-loading-shell')).toHaveAttribute(
+      'aria-busy',
+      'true'
     );
+    expect(blockSlot).not.toHaveTextContent('区块加载中...');
   });
 
   test('connects mocked runtime session snapshots into the PageCanvas preview without creating real workers', async () => {
@@ -295,6 +297,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
         sourceCodeRef: 'hero-code',
         sourceIndex: 0,
         slotIndex: 0,
+        sourceStatus: 'ready',
         runPlanStatus: 'run_plan_ready',
         snapshot: createRuntimeSnapshot({
           status: 'ready',

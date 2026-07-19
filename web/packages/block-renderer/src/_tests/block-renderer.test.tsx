@@ -8,13 +8,22 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import type { BlockUiSchema } from '@1flowbase/page-protocol';
 
-import { BlockUiRenderer } from '../index';
+import { BlockUiLoadingShell, BlockUiRenderer } from '../index';
 
 afterEach(() => {
   document.body.textContent = '';
 });
 
 describe('Block UI host renderer', () => {
+  test('renders a local loading shell without user-facing runtime text', () => {
+    render(<BlockUiLoadingShell />);
+
+    const shell = screen.getByTestId('block-ui-loading-shell');
+    expect(shell).toHaveAttribute('aria-busy', 'true');
+    expect(shell.querySelector('.ant-skeleton')).toBeInTheDocument();
+    expect(shell).toHaveTextContent('');
+  });
+
   test('renders representative Text and Stack schema after protocol validation', () => {
     render(
       <BlockUiRenderer

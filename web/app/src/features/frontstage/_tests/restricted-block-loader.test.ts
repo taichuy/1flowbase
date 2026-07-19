@@ -25,6 +25,7 @@ function createBlock(
       code: 'hero.banner'
     },
     props: { title: 'Hello' },
+    presentation: overrides.presentation ?? { heightMode: 'auto', height: null },
     layout: { order: 10 },
     order: 10,
     runtime: {

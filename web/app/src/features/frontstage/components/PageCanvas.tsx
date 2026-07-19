@@ -1,4 +1,5 @@
 import { Alert, Button, Empty, Space, Typography } from 'antd';
+import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
 import type { CSSProperties, FC } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -26,13 +27,17 @@ import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
   FRONTSTAGE_GRID_BREAKPOINTS,
-  FRONTSTAGE_GRID_COLUMNS
+  FRONTSTAGE_GRID_COLUMNS,
+  FRONTSTAGE_GRID_ROW_HEIGHT,
+  FRONTSTAGE_GRID_ROW_GAP,
+  frontstageGridRowsToPixels,
+  replaceFrontstageBreakpointLayout,
+  type FrontstageGridBreakpoint,
+  type FrontstagePersistedGridLayout
 } from '../lib/responsive-grid-layout';
+import type { FrontstageBlockPresentation } from '../lib/page-document';
 
 type DesignBlockActions = {
-  onMoveUp: (blockId: string) => void;
-  onMoveDown: (blockId: string) => void;
-  onConfigure: (blockId: string) => void;
   onEditCode: (blockId: string) => void;
   onDelete: (blockId: string) => void;
 };
@@ -58,10 +63,11 @@ type PageCanvasProps = {
   toolbarDisabled?: boolean;
   showTitle?: boolean;
   onResponsiveLayoutSave?: (
-    layouts: Record<
-      string,
-      Record<string, { x: number; y: number; w: number; h: number }>
-    >
+    layouts: FrontstagePersistedGridLayout,
+    presentationPatch?: {
+      blockId: string;
+      presentation: FrontstageBlockPresentation;
+    }
   ) => void;
 };
 
@@ -109,8 +115,7 @@ type RenderPlanSlotProps = {
   isDesignMode?: boolean;
   designActions?: DesignBlockActions;
   toolbarDisabled?: boolean;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
+  onAutoHeightChange?: (blockId: string, height: number) => void;
 };
 
 const blockFrameBaseStyle: CSSProperties = {
@@ -178,11 +183,27 @@ function RenderPlanSlot({
   isDesignMode,
   designActions,
   toolbarDisabled,
-  canMoveUp,
-  canMoveDown
+  onAutoHeightChange
 }: RenderPlanSlotProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const blockRef = useRef<HTMLDivElement>(null);
   const rendererVersionError = resolveRendererVersionError(item);
+  const isFixedHeight = item.presentation.heightMode === 'fixed';
+
+  useEffect(() => {
+    const node = blockRef.current;
+    if (!node || isFixedHeight || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) {
+        onAutoHeightChange?.(item.blockId, entry.contentRect.height);
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isFixedHeight, item.blockId, onAutoHeightChange]);
 
   // Determine border style based on mode
   let borderStyle: CSSProperties;
@@ -209,6 +230,12 @@ function RenderPlanSlot({
   }
 
   const isToolbarVisible = !!(isDesignMode && (isHovered || isSelected));
+  const contentViewportStyle: CSSProperties = {
+    height: isFixedHeight ? '100%' : 'auto',
+    boxSizing: 'border-box',
+    overflow: isFixedHeight ? 'auto' : 'visible',
+    padding: isDesignMode ? '40px 24px 20px' : 12
+  };
 
   const handleSelect = () => {
     onSelectBlock?.(item.blockId);
@@ -219,12 +246,7 @@ function RenderPlanSlot({
     if (rendererVersionError) {
       return (
         <div
-          style={{
-            height: '100%',
-            boxSizing: 'border-box',
-            overflow: 'auto',
-            padding: isDesignMode ? '48px 24px 28px' : 12
-          }}
+          style={contentViewportStyle}
         >
           <Alert
             type="error"
@@ -239,12 +261,7 @@ function RenderPlanSlot({
     if (runtimeSessionEntry && 'snapshot' in runtimeSessionEntry) {
       return (
         <div
-          style={{
-            height: '100%',
-            boxSizing: 'border-box',
-            overflow: 'auto',
-            padding: isDesignMode ? '48px clamp(16px, 5vw, 72px) 28px' : 12
-          }}
+          style={contentViewportStyle}
         >
           <RestrictedBlockRuntimePreview
             snapshot={runtimeSessionEntry.snapshot}
@@ -256,12 +273,7 @@ function RenderPlanSlot({
     if (runtimeSessionEntry?.status === 'factory_failed') {
       return (
         <div
-          style={{
-            height: '100%',
-            boxSizing: 'border-box',
-            overflow: 'auto',
-            padding: isDesignMode ? '48px 24px 28px' : 12
-          }}
+          style={contentViewportStyle}
         >
           <Alert
             type="error"
@@ -276,32 +288,39 @@ function RenderPlanSlot({
       );
     }
 
-    // Still loading / not ready — show minimal placeholder
+    const isSourceLoading =
+      runtimeSessionEntry?.status === 'skipped' &&
+      runtimeSessionEntry.skipReason === 'source_not_ready' &&
+      runtimeSessionEntry.sourceStatus === 'loading';
+
+    if (runtimeSessionEntry?.status === 'skipped' && !isSourceLoading) {
+      return (
+        <div
+          style={contentViewportStyle}
+        >
+          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+            {i18nText('frontstage', 'auto.block_skipped_run')}
+          </Typography.Text>
+        </div>
+      );
+    }
+
     return (
       <div
-        style={{
-          height: '100%',
-          boxSizing: 'border-box',
-          overflow: 'auto',
-          padding: '24px 12px',
-          paddingTop: isDesignMode ? 56 : 24,
-          textAlign: 'center',
-          color: '#bbb'
-        }}
+        style={contentViewportStyle}
       >
-        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-          {runtimeSessionEntry?.status === 'skipped'
-            ? i18nText('frontstage', 'auto.block_skipped_run')
-            : i18nText('frontstage', 'auto.block_loading')}
-        </Typography.Text>
+        <BlockUiLoadingShell />
       </div>
     );
   };
 
   return (
     <div
+      ref={blockRef}
       style={{
         ...blockFrameBaseStyle,
+        height: isFixedHeight ? '100%' : 'auto',
+        overflow: isFixedHeight ? 'hidden' : 'visible',
         ...borderStyle,
         position: 'relative',
         transition: 'border-color 0.15s, background 0.15s'
@@ -336,13 +355,8 @@ function RenderPlanSlot({
       {isDesignMode && designActions && isToolbarVisible && (
         <BlockHoverToolbar
           blockId={item.blockId}
-          onMoveUp={() => designActions.onMoveUp(item.blockId)}
-          onMoveDown={() => designActions.onMoveDown(item.blockId)}
-          onConfigure={() => designActions.onConfigure(item.blockId)}
           onEditCode={() => designActions.onEditCode(item.blockId)}
           onDelete={() => designActions.onDelete(item.blockId)}
-          canMoveUp={canMoveUp}
-          canMoveDown={canMoveDown}
           isVisible={isToolbarVisible}
           disabled={toolbarDisabled}
         />
@@ -377,14 +391,43 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     [document]
   );
   const renderItems = useMemo(() => renderPlan?.items ?? [], [renderPlan]);
+  const [autoHeights, setAutoHeights] = useState<Record<string, number>>({});
   const layouts = useMemo(
-    () => createFrontstageResponsiveLayouts(renderItems),
-    [renderItems]
+    () => createFrontstageResponsiveLayouts(renderItems, autoHeights),
+    [autoHeights, renderItems]
   );
   const latestLayouts = useRef(layouts);
+  const activeBreakpoint = useRef<FrontstageGridBreakpoint>('lg');
   useEffect(() => {
     latestLayouts.current = layouts;
   }, [layouts]);
+
+  const saveCurrentResponsiveLayout = (
+    currentLayout: Layout,
+    presentationPatch?: {
+      blockId: string;
+      presentation: FrontstageBlockPresentation;
+    }
+  ) => {
+    const nextLayouts = replaceFrontstageBreakpointLayout(
+      latestLayouts.current,
+      activeBreakpoint.current,
+      currentLayout
+    );
+    latestLayouts.current = nextLayouts;
+    onResponsiveLayoutSave?.(
+      createFrontstagePersistedGridLayout(nextLayouts),
+      presentationPatch
+    );
+  };
+
+  const updateAutoHeight = (blockId: string, height: number) => {
+    setAutoHeights((current) =>
+      Math.abs((current[blockId] ?? 0) - height) < 1
+        ? current
+        : { ...current, [blockId]: height }
+    );
+  };
 
   if (isLoading) {
     return (
@@ -480,23 +523,40 @@ export const PageCanvas: FC<PageCanvasProps> = ({
             breakpoints={FRONTSTAGE_GRID_BREAKPOINTS}
             cols={FRONTSTAGE_GRID_COLUMNS}
             layouts={layouts}
-            rowHeight={32}
-            margin={[16, 16]}
+            rowHeight={FRONTSTAGE_GRID_ROW_HEIGHT}
+            margin={[16, FRONTSTAGE_GRID_ROW_GAP]}
             isDraggable={isDesignMode && !toolbarDisabled}
             isResizable={isDesignMode && !toolbarDisabled}
             draggableHandle=".frontstage-block-drag-handle"
             draggableCancel="button:not(.frontstage-block-drag-handle), input, textarea, select, a"
+            onBreakpointChange={(breakpoint) => {
+              activeBreakpoint.current = breakpoint as FrontstageGridBreakpoint;
+            }}
             onLayoutChange={(_layout: Layout, nextLayouts) => {
               latestLayouts.current = nextLayouts;
             }}
-            onDragStop={() => {
-              onResponsiveLayoutSave?.(
-                createFrontstagePersistedGridLayout(latestLayouts.current)
-              );
+            onDragStop={(currentLayout) => {
+              saveCurrentResponsiveLayout(currentLayout);
             }}
-            onResizeStop={() => {
-              onResponsiveLayoutSave?.(
-                createFrontstagePersistedGridLayout(latestLayouts.current)
+            onResizeStop={(currentLayout, _oldItem, resizedItem) => {
+              if (!resizedItem) {
+                saveCurrentResponsiveLayout(currentLayout);
+                return;
+              }
+              const item = renderItems.find(
+                (candidate) => candidate.blockId === resizedItem.i
+              );
+              saveCurrentResponsiveLayout(
+                currentLayout,
+                item?.presentation.heightMode === 'fixed'
+                  ? {
+                      blockId: resizedItem.i,
+                      presentation: {
+                        heightMode: 'fixed',
+                        height: frontstageGridRowsToPixels(resizedItem.h)
+                      }
+                    }
+                  : undefined
               );
             }}
           >
@@ -514,8 +574,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                   isDesignMode={isDesignMode}
                   designActions={designActions}
                   toolbarDisabled={toolbarDisabled}
-                  canMoveUp={slotIndex > 0}
-                  canMoveDown={slotIndex < renderItems.length - 1}
+                  onAutoHeightChange={updateAutoHeight}
                 />
               </div>
             ))}

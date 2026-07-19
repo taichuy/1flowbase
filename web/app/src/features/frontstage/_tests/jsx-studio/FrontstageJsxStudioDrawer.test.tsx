@@ -70,6 +70,7 @@ const block: FrontstageBlockInstance = {
     code: 'frontstage.js-ui-block'
   },
   props: { title: 'Orders' },
+  presentation: { heightMode: 'auto', height: null },
   layout: { order: 0 },
   order: 0,
   runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
@@ -199,6 +200,37 @@ describe('FrontstageJsxStudioDrawer', () => {
           }
         ]
       }
+    });
+  });
+
+  test('AC-004 saves fixed block height from the configuration section', async () => {
+    const onSaveBlock = vi.fn().mockResolvedValue(true);
+
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="configuration"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        diagnostics={[]}
+        onClose={vi.fn()}
+        onSaveBlock={onSaveBlock}
+      />
+    );
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '高度模式' }));
+    fireEvent.click(await screen.findByText('固定高度'));
+    fireEvent.change(screen.getByRole('spinbutton', { name: '固定高度' }), {
+      target: { value: '360' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
+
+    await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
+    expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({
+      presentation: { heightMode: 'fixed', height: 360 }
     });
   });
 

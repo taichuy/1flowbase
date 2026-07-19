@@ -9,6 +9,7 @@ import type {
   FrontstageBlockContributionRef,
   FrontstageBlockInstance,
   FrontstageBlockLayout,
+  FrontstageBlockPresentation,
   FrontstageBlockRuntimeHint,
   FrontstagePageDocument,
   FrontstagePageDocumentDiagnostic
@@ -46,6 +47,7 @@ export interface FrontstageBlockRenderPlanItem {
   catalog: FrontstageBlockCatalogRef;
   contribution: FrontstageBlockContributionRef;
   runtime: FrontstageBlockRuntimeHint;
+  presentation: FrontstageBlockPresentation;
   layout: FrontstageBlockLayout;
   props: Record<string, unknown>;
 }
@@ -293,6 +295,7 @@ export function createFrontstageBlockRenderPlanItem(
     catalog: cloneCatalog(block.catalog),
     contribution: cloneContribution(block.contribution),
     runtime: cloneRuntime(block.runtime),
+    presentation: { ...block.presentation },
     layout: cloneLayout(block.layout),
     props: cloneProps(block.props)
   };

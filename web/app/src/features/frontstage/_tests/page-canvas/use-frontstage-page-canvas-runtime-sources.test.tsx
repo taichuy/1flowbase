@@ -48,6 +48,7 @@ function createBlock(
       code: 'official.hero'
     },
     props: { title: 'Hello' },
+    presentation: overrides.presentation ?? { heightMode: 'auto', height: null },
     layout: { order: 0, region: 'main' },
     order: 0,
     runtime: {

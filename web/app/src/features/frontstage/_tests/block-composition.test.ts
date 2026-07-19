@@ -37,6 +37,7 @@ function createBlock(
       code: 'unknown'
     },
     props: overrides.props ?? {},
+    presentation: overrides.presentation ?? { heightMode: 'auto', height: null },
     layout: overrides.layout ?? { order: overrides.order ?? 0 },
     order: overrides.order ?? 0,
     runtime: overrides.runtime ?? {

@@ -45,6 +45,7 @@ function createBlock(): FrontstageBlockInstance {
       code: 'metric.panel'
     },
     props: { title: 'Revenue' },
+    presentation: { heightMode: 'auto', height: null },
     layout: { order: 1 },
     order: 1,
     runtime: {
@@ -134,7 +135,7 @@ describe('RestrictedBlockRuntimePreview', () => {
       />
     );
 
-    expect(screen.getByText('运行结果')).toBeInTheDocument();
+    expect(screen.queryByText('运行结果')).not.toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: 'Runtime Result' })
     ).toBeInTheDocument();
@@ -209,12 +210,16 @@ describe('RestrictedBlockRuntimePreview', () => {
     expect(screen.getByText('runtime.timeout')).toBeInTheDocument();
   });
 
-  test('renders idle, running, and disposed states without a raw runtime payload', () => {
+  test('renders idle and running as local loading shells while keeping disposed explicit', () => {
     const { rerender } = render(
       <RestrictedBlockRuntimePreview snapshot={createSnapshot({ status: 'idle' })} />
     );
 
-    expect(screen.getByText('尚未运行')).toBeInTheDocument();
+    expect(screen.getByTestId('block-ui-loading-shell')).toHaveAttribute(
+      'aria-busy',
+      'true'
+    );
+    expect(screen.queryByText('尚未运行')).not.toBeInTheDocument();
     expect(screen.queryByText(/restricted-block:block-1:code-1/)).not.toBeInTheDocument();
 
     rerender(
@@ -231,14 +236,17 @@ describe('RestrictedBlockRuntimePreview', () => {
         })}
       />
     );
-    expect(screen.getByText('运行中')).toBeInTheDocument();
-    expect(screen.getByText('booting')).toBeInTheDocument();
+    expect(screen.getByTestId('block-ui-loading-shell')).toBeInTheDocument();
+    expect(screen.queryByText('运行中')).not.toBeInTheDocument();
+    expect(screen.queryByText('booting')).not.toBeInTheDocument();
+    expect(screen.queryByText('日志')).not.toBeInTheDocument();
 
     rerender(
       <RestrictedBlockRuntimePreview
         snapshot={createSnapshot({ status: 'disposed' })}
       />
     );
+    expect(screen.queryByTestId('block-ui-loading-shell')).not.toBeInTheDocument();
     expect(screen.getByText('已释放')).toBeInTheDocument();
   });
 
@@ -286,7 +294,7 @@ describe('RestrictedBlockRuntimePreview', () => {
     );
 
     const runtimeResult = screen.getByTestId('restricted-block-runtime-preview');
-    expect(within(runtimeResult).getByText('运行结果')).toBeInTheDocument();
+    expect(within(runtimeResult).queryByText('运行结果')).not.toBeInTheDocument();
     expect(within(runtimeResult).getByText('Rendered preview')).toBeInTheDocument();
     fireEvent.click(
       within(runtimeResult).getByRole('button', { name: 'Panel action' })

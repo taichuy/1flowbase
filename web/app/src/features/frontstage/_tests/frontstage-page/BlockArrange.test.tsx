@@ -23,7 +23,6 @@ import {
   createFrontstagePageContentFixture,
   type FrontstagePageContentFixtureOverrides
 } from '../frontstage-page-content-fixtures';
-import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { FrontStagePage } from '../../pages/FrontStagePage';
 
 vi.setConfig({ testTimeout: 10_000 });
@@ -137,96 +136,6 @@ function createBlockPayload(blockId: string, order: number) {
   };
 }
 
-function createConfigurableBlockPayload() {
-  return {
-    id: 'hero',
-    codeRef: 'hero-code',
-    catalog: {
-      providerCode: 'official',
-      installationId: 'installation-1'
-    },
-    contribution: {
-      pluginId: 'official.blocks',
-      pluginVersion: '1.0.0',
-      code: 'hero.banner'
-    },
-    props: {
-      title: 'Configured title',
-      data: {
-        model: 'orders',
-        fields: ['id', 'title'],
-        operations: {
-          query: true,
-          update: true
-        },
-        pagination: { pageSize: 20 }
-      }
-    },
-    'x-layout': {
-      order: 3,
-      width: 12,
-      height: 5,
-      region: 'main'
-    },
-    runtime: {
-      kind: 'js-ui',
-      entry: 'blocks/hero/index.js',
-      hint: 'js-ui'
-    }
-  };
-}
-
-function createCatalogEntry(): NormalizedFrontstageBlockCatalogEntry {
-  return {
-    id: 'official:hero.banner',
-    runtimeKind: 'iframe',
-    installationId: 'installation-1',
-    providerCode: 'official',
-    pluginId: 'official.blocks',
-    pluginVersion: '1.0.0',
-    contributionCode: 'hero.banner',
-    title: 'Hero Banner',
-    entry: 'blocks/hero/index.js',
-    permissions: {
-      network: 'none',
-      storage: 'none',
-      secrets: 'none'
-    },
-    contextContract: {
-      primitives: ['text', 'data_record'],
-      inputSchema: {
-        type: 'object',
-        properties: {
-          recordId: { type: 'string' }
-        }
-      }
-    },
-    uiCapabilities: ['configurable', 'data_binding'],
-    raw: {
-      installation_id: 'installation-1',
-      provider_code: 'official',
-      plugin_id: 'official.blocks',
-      plugin_version: '1.0.0',
-      contribution_code: 'hero.banner',
-      title: 'Hero Banner',
-      runtime: 'iframe',
-      entry: 'blocks/hero/index.js',
-      context_contract: {
-        primitives: ['text', 'data_record'],
-        input_schema: {
-          type: 'object'
-        }
-      },
-      permissions: {
-        network: 'none',
-        storage: 'none',
-        secrets: 'none'
-      },
-      ui_capabilities: ['configurable', 'data_binding']
-    }
-  };
-}
-
 function createPageContentWithBlocks(
   blockIds: string[]
 ): FrontstagePageContent {
@@ -313,11 +222,9 @@ function mockPageContentSaveState(
   return state;
 }
 
-function mockFrontstageBlockCatalog(
-  items: NormalizedFrontstageBlockCatalogEntry[] = []
-) {
+function mockFrontstageBlockCatalog() {
   blockCatalogHook.useFrontstageBlockCatalog.mockReturnValue({
-    items,
+    items: [],
     diagnostics: [],
     loading: false,
     error: null
@@ -373,15 +280,6 @@ function clickBlockToolbar(blockId: string, buttonName: string) {
       name: buttonName
     })
   );
-}
-
-async function clickBlockMoveAction(blockId: string, actionName: string) {
-  clickBlockToolbar(blockId, '更多区块操作');
-  const action = (await screen.findByText(actionName)).closest('button');
-  if (!action) {
-    throw new Error(`Missing block action button: ${actionName}`);
-  }
-  await clickAndFlush(action);
 }
 
 async function confirmBlockDelete(blockId: string) {
@@ -469,38 +367,6 @@ describe('FrontStagePage block arrange actions', () => {
     });
   });
 
-  test('saves selected block move down and move up', async () => {
-    authenticate(['frontstage.page.design']);
-    const saveState = mockPageContentSaveState();
-    renderFrontStagePage(
-      createPageContentWithBlocks(['hero', 'feature', 'cta'])
-    );
-
-    await activateDesignMode();
-    await clickAndFlush(getBlockRow('feature'));
-    await clickBlockMoveAction('feature', '下移区块');
-
-    await waitFor(() => {
-      expect(saveState.save).toHaveBeenCalledTimes(1);
-    });
-
-    const [moveDownInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstageTabDocumentInput
-    ];
-    expect(getSavedBlockIds(moveDownInput)).toEqual(['hero', 'cta', 'feature']);
-
-    await clickBlockMoveAction('feature', '上移区块');
-
-    await waitFor(() => {
-      expect(saveState.save).toHaveBeenCalledTimes(2);
-    });
-
-    const [moveUpInput] = saveState.save.mock.calls[1] as [
-      SaveFrontstageTabDocumentInput
-    ];
-    expect(getSavedBlockIds(moveUpInput)).toEqual(['hero', 'feature', 'cta']);
-  });
-
   test('disables selected block arrange actions while page content is saving', async () => {
     authenticate(['frontstage.page.design']);
     mockPageContentSaveState({ saving: true, isPending: true });
@@ -517,10 +383,7 @@ describe('FrontStagePage block arrange actions', () => {
       })
     ).toBeDisabled();
     expect(
-      within(getBlockRow('feature')).getByRole('button', { name: '区块配置' })
-    ).toBeDisabled();
-    expect(
-      within(getBlockRow('feature')).getByRole('button', { name: '区块代码' })
+      within(getBlockRow('feature')).getByRole('button', { name: '编辑区块' })
     ).toBeDisabled();
     expect(
       within(getBlockRow('feature')).getByRole('button', {
@@ -536,7 +399,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('hero'));
-    clickBlockToolbar('hero', '区块代码');
+    clickBlockToolbar('hero', '编辑区块');
 
     const dialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     expect(dialog).toHaveAttribute('data-initial-section', 'code');
@@ -548,7 +411,7 @@ describe('FrontStagePage block arrange actions', () => {
     expect(within(dialog).getByText('code:hero-code')).toBeInTheDocument();
   });
 
-  test('#1300 exposes adjacent configuration and JSX editor actions for a selected block', async () => {
+  test('#1300 exposes one JSX Studio edit action for a selected block', async () => {
     authenticate(['frontstage.page.design']);
     renderFrontStagePage(createPageContentWithBlocks(['hero']));
 
@@ -556,42 +419,37 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('hero'));
 
     const block = within(getBlockRow('hero'));
-    const configurationButton = block.getByRole('button', {
-      name: '区块配置'
-    });
-    const codeButton = block.getByRole('button', { name: '区块代码' });
-    const buttons = block.getAllByRole('button');
-
-    expect(buttons.indexOf(codeButton)).toBe(
-      buttons.indexOf(configurationButton) + 1
-    );
+    const editButton = block.getByRole('button', { name: '编辑区块' });
     expect(
-      block.queryByRole('button', { name: '编辑区块' })
+      block.queryByRole('button', { name: '区块配置' })
+    ).not.toBeInTheDocument();
+    expect(
+      block.queryByRole('button', { name: '区块代码' })
     ).not.toBeInTheDocument();
 
-    fireEvent.click(configurationButton);
+    fireEvent.click(editButton);
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    expect(studio).toHaveAttribute('data-initial-section', 'configuration');
+    expect(studio).toHaveAttribute('data-initial-section', 'code');
   });
 
-  test('hides block code editor entry outside design mode and without design permission', async () => {
+  test('hides block editor entry outside design mode and without design permission', async () => {
     authenticate(['frontstage.page.design']);
     const view = renderFrontStagePage(createPageContentWithBlocks(['hero']));
 
     await clickAndFlush(getBlockRow('hero'));
     expect(
-      screen.queryByRole('button', { name: '区块代码' })
+      screen.queryByRole('button', { name: '编辑区块' })
     ).not.toBeInTheDocument();
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('hero'));
     expect(
-      within(getBlockRow('hero')).getByRole('button', { name: '区块代码' })
+      within(getBlockRow('hero')).getByRole('button', { name: '编辑区块' })
     ).toBeVisible();
 
     await exitDesignMode();
     expect(
-      screen.queryByRole('button', { name: '区块代码' })
+      screen.queryByRole('button', { name: '编辑区块' })
     ).not.toBeInTheDocument();
 
     await act(async () => {
@@ -616,78 +474,11 @@ describe('FrontStagePage block arrange actions', () => {
     );
 
     expect(
-      screen.queryByRole('button', { name: '区块代码' })
+      screen.queryByRole('button', { name: '编辑区块' })
     ).not.toBeInTheDocument();
   });
 
-  test('shows block configuration entry only for a selected block in design mode with design permission', async () => {
-    authenticate(['frontstage.page.design']);
-    const view = renderFrontStagePage(createPageContentWithBlocks(['hero']));
-
-    await clickAndFlush(getBlockRow('hero'));
-    expect(
-      screen.queryByRole('button', { name: '区块配置' })
-    ).not.toBeInTheDocument();
-
-    await activateDesignMode();
-    expect(
-      screen.queryByRole('button', { name: '区块配置' })
-    ).not.toBeInTheDocument();
-
-    await clickAndFlush(getBlockRow('hero'));
-    expect(
-      within(getBlockRow('hero')).getByRole('button', { name: '区块配置' })
-    ).toBeInTheDocument();
-
-    await exitDesignMode();
-    expect(
-      screen.queryByRole('button', { name: '区块配置' })
-    ).not.toBeInTheDocument();
-
-    await act(async () => {
-      resetAuthStore();
-      authenticate([]);
-    });
-    view.rerender(
-      <AppProviders>
-        <FrontStagePage
-          workspaceId="workspace-1"
-          pageId="page-1"
-          initialPageTree={[
-            {
-              id: 'page-1',
-              title: '页面 page-1',
-              kind: 'page'
-            }
-          ]}
-          pageContent={createPageContentWithBlocks(['hero'])}
-        />
-      </AppProviders>
-    );
-
-    expect(
-      screen.queryByRole('button', { name: '区块配置' })
-    ).not.toBeInTheDocument();
-  });
-
-  test('opens the shared JSX Studio on the configuration section', async () => {
-    authenticate(['frontstage.page.design']);
-    mockFrontstageBlockCatalog([createCatalogEntry()]);
-    renderFrontStagePage(
-      createPageContentWithBlockPayloads([createConfigurableBlockPayload()])
-    );
-
-    await activateDesignMode();
-    await clickAndFlush(getBlockRow('hero'));
-    clickBlockToolbar('hero', '区块配置');
-
-    const dialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    expect(dialog).toHaveAttribute('data-initial-section', 'configuration');
-    expect(within(dialog).getByText('block:hero')).toBeInTheDocument();
-    expect(within(dialog).getByText('code:hero-code')).toBeInTheDocument();
-  });
-
-  test('closes configuration Studio when exiting design mode, switching pages, or clearing selection', async () => {
+  test('closes Studio when exiting design mode or switching pages', async () => {
     authenticate(['frontstage.page.design']);
     const pageTree = [
       {
@@ -714,7 +505,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('hero'));
-    clickBlockToolbar('hero', '区块配置');
+    clickBlockToolbar('hero', '编辑区块');
     expect(
       await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
@@ -728,106 +519,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('hero'));
-    clickBlockToolbar('hero', '区块配置');
-    expect(
-      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
-    ).toBeInTheDocument();
-
-    await clickAndFlush(getBlockRow('hero'));
-    await waitFor(() => {
-      expect(
-        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
-      ).not.toBeInTheDocument();
-    });
-
-    await clickAndFlush(getBlockRow('hero'));
-    clickBlockToolbar('hero', '区块配置');
-    expect(
-      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
-    ).toBeInTheDocument();
-
-    // Switch page
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: /页面 page-2/
-      })
-    );
-    view.rerender(
-      <AppProviders>
-        <FrontStagePage
-          workspaceId="workspace-1"
-          pageId="page-2"
-          initialPageTree={pageTree}
-          pageContent={createPageContent({
-            page: {
-              id: 'page-2',
-              title: 'Second',
-              kind: 'page',
-              parentId: null,
-              rank: '002000'
-            },
-            schema: {
-              rootUid: 'root-2',
-              payload: {}
-            },
-            root: {
-              uid: 'root-2',
-              payload: {}
-            }
-          })}
-        />
-      </AppProviders>
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
-      ).not.toBeInTheDocument();
-    });
-  }, 25000);
-
-  test('closes code Studio when exiting design mode or switching pages', async () => {
-    authenticate(['frontstage.page.design']);
-    const pageTree = [
-      {
-        id: 'page-1',
-        title: '页面 page-1',
-        kind: 'page' as const
-      },
-      {
-        id: 'page-2',
-        title: '页面 page-2',
-        kind: 'page' as const
-      }
-    ];
-    const view = render(
-      <AppProviders>
-        <FrontStagePage
-          workspaceId="workspace-1"
-          pageId="page-1"
-          initialPageTree={pageTree}
-          pageContent={createPageContentWithBlocks(['hero'])}
-        />
-      </AppProviders>
-    );
-
-    await activateDesignMode();
-    await clickAndFlush(getBlockRow('hero'));
-    clickBlockToolbar('hero', '区块代码');
-    expect(
-      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
-    ).toBeInTheDocument();
-
-    await exitDesignMode();
-    await waitFor(() => {
-      expect(
-        screen.queryByRole('dialog', { name: 'TSX 编辑器' })
-      ).not.toBeInTheDocument();
-    });
-
-    await activateDesignMode();
-    await clickAndFlush(getBlockRow('hero'));
-    clickBlockToolbar('hero', '区块代码');
+    clickBlockToolbar('hero', '编辑区块');
     expect(
       await screen.findByRole('dialog', { name: 'TSX 编辑器' })
     ).toBeInTheDocument();
@@ -871,7 +563,7 @@ describe('FrontStagePage block arrange actions', () => {
     });
   });
 
-  test('shows a clear block arrange save error in design mode', async () => {
+  test('shows a clear block save error in design mode', async () => {
     authenticate(['frontstage.page.design']);
     mockPageContentSaveState({
       save: vi.fn(() => Promise.reject(new Error('arrange failed')))
@@ -880,7 +572,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('cta'));
-    await clickBlockMoveAction('cta', '上移区块');
+    await confirmBlockDelete('cta');
 
     expect(await screen.findByText('区块保存失败')).toBeInTheDocument();
     expect(screen.getByText('arrange failed')).toBeInTheDocument();

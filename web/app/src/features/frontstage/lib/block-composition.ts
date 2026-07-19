@@ -1,6 +1,7 @@
 import type {
   FrontstageBlockInstance,
   FrontstageBlockLayout,
+  FrontstageBlockPresentation,
   FrontstagePageDocument
 } from './page-document';
 import { FRONTSTAGE_BLOCK_RENDERER_VERSION_V1 } from './block-renderer-version';
@@ -91,6 +92,7 @@ function cloneBlock(
     catalog: { ...block.catalog },
     contribution: { ...block.contribution },
     props: { ...block.props },
+    presentation: { ...block.presentation },
     layout: {
       ...block.layout,
       order
@@ -185,6 +187,13 @@ function createBlockFromInput(
       code: input.contribution?.code ?? 'unknown'
     },
     props: { ...(input.props ?? {}) },
+    presentation: {
+      heightMode: input.presentation?.heightMode ?? 'auto',
+      height:
+        input.presentation?.heightMode === 'fixed'
+          ? input.presentation.height ?? 320
+          : null
+    },
     layout: {
       ...(input.layout ?? {}),
       order
@@ -337,6 +346,31 @@ export function updateFrontstageBlockProps(
     ),
     false
   );
+
+  return {
+    document,
+    selectedBlockId: normalizeSelection(document, state.selectedBlockId)
+  };
+}
+
+export function updateFrontstageBlockPresentation(
+  state: FrontstageBlockCompositionState,
+  blockId: string,
+  presentation: FrontstageBlockPresentation
+): FrontstageBlockCompositionState {
+  const targetIndex = state.document.blocks.findIndex(
+    (block) => block.id === blockId
+  );
+  if (targetIndex < 0) {
+    return state;
+  }
+
+  const nextBlocks = state.document.blocks.map((block, index) =>
+    index === targetIndex
+      ? { ...block, presentation: { ...presentation } }
+      : block
+  );
+  const document = withBlocks(state.document, nextBlocks, false);
 
   return {
     document,

@@ -219,7 +219,7 @@ describe('FrontStagePage trial panel link', () => {
 
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
-    fireEvent.click(screen.getByRole('button', { name: '区块代码' }));
+    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     fireEvent.click(within(studio).getByRole('button', { name: '运行预览' }));
 
@@ -232,7 +232,7 @@ describe('FrontStagePage trial panel link', () => {
 
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
-    fireEvent.click(screen.getByRole('button', { name: '区块代码' }));
+    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     fireEvent.click(within(studio).getByRole('button', { name: '运行预览' }));
 

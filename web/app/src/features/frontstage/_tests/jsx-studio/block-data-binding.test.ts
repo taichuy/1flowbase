@@ -47,6 +47,7 @@ function createBlock(): FrontstageBlockInstance {
         }
       ]
     },
+    presentation: { heightMode: 'auto', height: null },
     layout: { order: 0 },
     order: 0,
     runtime: {

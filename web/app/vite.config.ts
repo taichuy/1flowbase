@@ -3,6 +3,10 @@ import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 
+const reactDraggableBrowserDefines = {
+  'process.env.DRAGGABLE_DEBUG': 'false'
+};
+
 function manualChunks(id: string) {
   if (!id.includes('/node_modules/')) {
     return;
@@ -67,7 +71,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    define: reactDraggableBrowserDefines,
     optimizeDeps: {
+      esbuildOptions: {
+        define: reactDraggableBrowserDefines
+      },
       include: [
         '@lexical/react/LexicalComposer',
         '@lexical/react/LexicalComposerContext',
