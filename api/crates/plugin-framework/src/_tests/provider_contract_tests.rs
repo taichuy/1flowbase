@@ -1,16 +1,17 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use plugin_framework::{
     installation::PluginTaskStatus,
     provider_contract::{
-        ClientProtocolEnvelope, ModelDiscoveryMode, NativeModelRequestContext, NativePromptBlock,
-        NativePromptCacheControl, NativePromptCacheControlType, ProviderBalanceInfo,
-        ProviderBalanceResult, ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
+        semantic_required_capabilities, ClientProtocolEnvelope, ModelDiscoveryMode,
+        NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
+        NativePromptCacheControlType, ProviderBalanceInfo, ProviderBalanceResult,
+        ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
         ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
-        ProviderInvocationInput, ProviderInvocationResult, ProviderMessage, ProviderMessageRole,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
-        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
-        ProviderUsage, ProviderWireOperation,
+        ProviderInvocationCapability, ProviderInvocationInput, ProviderInvocationResult,
+        ProviderMessage, ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind,
+        ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse,
+        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::json;
@@ -256,6 +257,42 @@ fn ac_002_current_provider_fails_closed_when_required_capability_is_missing() {
     let message = error.to_string();
     assert!(message.contains("system_prompt_cache_control"));
     assert!(message.contains("end_user_reference"));
+}
+
+#[test]
+fn ac_003_semantic_requirements_expose_canonical_manifest_capability_names() {
+    let required = semantic_required_capabilities(
+        &[NativePromptBlock::Text {
+            text: "Cache this block".to_string(),
+            cache_control: Some(NativePromptCacheControl {
+                cache_type: NativePromptCacheControlType::Ephemeral,
+                ttl: None,
+            }),
+        }],
+        &NativeModelRequestContext {
+            end_user_reference: Some("external-user-123".to_string()),
+        },
+    );
+
+    assert_eq!(
+        required,
+        BTreeSet::from([
+            ProviderInvocationCapability::SystemPromptBlocks,
+            ProviderInvocationCapability::SystemPromptCacheControl,
+            ProviderInvocationCapability::EndUserReference,
+        ])
+    );
+    assert_eq!(
+        required
+            .iter()
+            .map(|capability| capability.manifest_capability_name())
+            .collect::<Vec<_>>(),
+        vec![
+            "system_prompt_blocks",
+            "system_prompt_cache_control",
+            "end_user_reference",
+        ]
+    );
 }
 
 #[test]

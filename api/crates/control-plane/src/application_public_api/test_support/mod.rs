@@ -5,13 +5,13 @@ use super::{
 use crate::errors::ControlPlaneError;
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Arc, Mutex},
 };
 
 use anyhow::Result;
 use async_trait::async_trait;
-use plugin_framework::provider_contract::ProviderCompactProfile;
+use plugin_framework::provider_contract::{ProviderCompactProfile, ProviderInvocationCapability};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -65,9 +65,10 @@ struct ApplicationPublicApiTestRepositoryInner {
     next_workflow_schedule_ordinal: u128,
     api_key_last_used_write_counts: HashMap<Uuid, usize>,
     fail_mark_api_key_used: bool,
-    published_generate_capability_supported: Option<bool>,
+    published_generate_manifest_capabilities: Option<BTreeSet<ProviderInvocationCapability>>,
     published_generate_capability_checks: usize,
     published_generate_capability_profiles: Vec<run_service::GenerateExecutionProfile>,
+    published_generate_capability_requirements: Vec<BTreeSet<ProviderInvocationCapability>>,
     published_count_tokens_capability_supported: Option<bool>,
     published_count_tokens_capability_checks: usize,
     published_compact_capability_supported: Option<bool>,
@@ -225,11 +226,14 @@ impl ApplicationPublicApiTestRepository {
             .fail_mark_api_key_used = fail;
     }
 
-    pub fn set_published_generate_capability_supported(&self, supported: bool) {
+    pub fn set_published_generate_manifest_capabilities(
+        &self,
+        capabilities: BTreeSet<ProviderInvocationCapability>,
+    ) {
         self.inner
             .lock()
             .expect("application public api test repo mutex poisoned")
-            .published_generate_capability_supported = Some(supported);
+            .published_generate_manifest_capabilities = Some(capabilities);
     }
 
     pub fn published_generate_capability_checks(&self) -> usize {
@@ -246,6 +250,16 @@ impl ApplicationPublicApiTestRepository {
             .lock()
             .expect("application public api test repo mutex poisoned")
             .published_generate_capability_profiles
+            .clone()
+    }
+
+    pub fn published_generate_capability_requirements(
+        &self,
+    ) -> Vec<BTreeSet<ProviderInvocationCapability>> {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .published_generate_capability_requirements
             .clone()
     }
 

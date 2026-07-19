@@ -174,6 +174,11 @@ where
 
         let ingress = match command.profile {
             CompactionProfile::LocalSummary => {
+                let required_semantic_capabilities =
+                    plugin_framework::provider_contract::semantic_required_capabilities(
+                        &command.request.system,
+                        &command.request.request_context,
+                    );
                 let route = PublishedRouteResolver::new(&self.repository)
                     .resolve_generate(
                         actor.workspace_id,
@@ -181,6 +186,7 @@ where
                         &compiled_plan_record,
                         PublishedRouteDispatch::OperationBinding,
                         GenerateExecutionProfile::LocalSummary,
+                        &required_semantic_capabilities,
                     )
                     .await
                     .map_err(PublishedCompactError::RouteUnavailable)?;

@@ -402,6 +402,22 @@ pub enum ProviderInvocationCapability {
     EndUserReference,
 }
 
+impl ProviderInvocationCapability {
+    /// The exact capability name declared by a provider package manifest.
+    pub fn manifest_capability_name(self) -> &'static str {
+        match self {
+            Self::CountTokens => PROVIDER_COUNT_TOKENS_CAPABILITY,
+            Self::CompactResponsesCompact => PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY,
+            Self::CompactResponsesCompactionV2 => {
+                PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY
+            }
+            Self::SystemPromptBlocks => "system_prompt_blocks",
+            Self::SystemPromptCacheControl => "system_prompt_cache_control",
+            Self::EndUserReference => "end_user_reference",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderCompactProfile {
@@ -860,21 +876,10 @@ fn bounded_wire_count(length: usize) -> u32 {
 }
 
 fn provider_invocation_capability_name(capability: &ProviderInvocationCapability) -> &'static str {
-    match capability {
-        ProviderInvocationCapability::CountTokens => PROVIDER_COUNT_TOKENS_CAPABILITY,
-        ProviderInvocationCapability::CompactResponsesCompact => {
-            PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY
-        }
-        ProviderInvocationCapability::CompactResponsesCompactionV2 => {
-            PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY
-        }
-        ProviderInvocationCapability::SystemPromptBlocks => "system_prompt_blocks",
-        ProviderInvocationCapability::SystemPromptCacheControl => "system_prompt_cache_control",
-        ProviderInvocationCapability::EndUserReference => "end_user_reference",
-    }
+    capability.manifest_capability_name()
 }
 
-fn semantic_required_capabilities(
+pub fn semantic_required_capabilities(
     system: &[NativePromptBlock],
     request_context: &NativeModelRequestContext,
 ) -> BTreeSet<ProviderInvocationCapability> {

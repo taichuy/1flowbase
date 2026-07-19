@@ -1,18 +1,18 @@
+use std::collections::BTreeSet;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use orchestration_runtime::compiled_plan::{CompiledLlmRuntime, CompiledPlan};
-use plugin_framework::provider_contract::{ProviderCompactProfile, ProviderWireOperation};
+use plugin_framework::provider_contract::{
+    ProviderCompactProfile, ProviderInvocationCapability, ProviderWireOperation,
+};
 use uuid::Uuid;
 
 #[cfg(not(test))]
 use crate::ports::{ModelProviderRepository, PluginRepository};
 #[cfg(not(test))]
 use plugin_framework::{
-    provider_contract::{
-        CURRENT_PROVIDER_CONTRACT, PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
-        PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY, PROVIDER_COUNT_TOKENS_CAPABILITY,
-    },
-    provider_package::ProviderPackage,
+    provider_contract::CURRENT_PROVIDER_CONTRACT, provider_package::ProviderPackage,
 };
 
 use super::super::publications::ApplicationPublicationVersionRecord;
@@ -102,6 +102,7 @@ pub trait PublishedProviderManifestCapabilityRepository: Send + Sync {
         workspace_id: Uuid,
         runtime: &CompiledLlmRuntime,
         profile: GenerateExecutionProfile,
+        required_semantic_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> Result<bool>;
     async fn supports_published_count_tokens(
         &self,
@@ -132,49 +133,15 @@ where
         workspace_id: Uuid,
         runtime: &CompiledLlmRuntime,
         _profile: GenerateExecutionProfile,
+        required_semantic_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> Result<bool> {
-        let mut targets = vec![(
-            runtime.provider_instance_id.as_str(),
-            runtime.provider_code.as_str(),
-            runtime.protocol.as_str(),
-        )];
-        if let Some(routing) = runtime.routing.as_ref() {
-            targets.extend(routing.queue_targets.iter().map(|target| {
-                (
-                    target.provider_instance_id.as_str(),
-                    target.provider_code.as_str(),
-                    target.protocol.as_str(),
-                )
-            }));
-        }
-        targets.sort_unstable();
-        targets.dedup();
-
-        for (provider_instance_id, provider_code, protocol) in targets {
-            let Ok(provider_instance_id) = Uuid::parse_str(provider_instance_id) else {
-                return Ok(false);
-            };
-            let Some(instance) = self
-                .get_instance(workspace_id, provider_instance_id)
-                .await?
-            else {
-                return Ok(false);
-            };
-            if instance.provider_code != provider_code || instance.protocol != protocol {
-                return Ok(false);
-            }
-            let Some(installation) = self.get_installation(instance.installation_id).await? else {
-                return Ok(false);
-            };
-            if installation.contract_version != CURRENT_PROVIDER_CONTRACT
-                || installation.provider_code != provider_code
-                || installation.protocol != protocol
-            {
-                return Ok(false);
-            }
-        }
-
-        Ok(true)
+        supports_published_manifest_capabilities(
+            self,
+            workspace_id,
+            runtime,
+            required_semantic_capabilities,
+        )
+        .await
     }
 
     async fn supports_published_count_tokens(
@@ -182,11 +149,12 @@ where
         workspace_id: Uuid,
         runtime: &CompiledLlmRuntime,
     ) -> Result<bool> {
-        supports_published_manifest_capability(
+        let required_capabilities = BTreeSet::from([ProviderInvocationCapability::CountTokens]);
+        supports_published_manifest_capabilities(
             self,
             workspace_id,
             runtime,
-            PROVIDER_COUNT_TOKENS_CAPABILITY,
+            &required_capabilities,
         )
         .await
     }
@@ -197,24 +165,23 @@ where
         runtime: &CompiledLlmRuntime,
         profile: ProviderCompactProfile,
     ) -> Result<bool> {
-        let capability = match profile {
-            ProviderCompactProfile::ResponsesCompact => {
-                PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY
-            }
-            ProviderCompactProfile::ResponsesCompactionV2 => {
-                PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY
-            }
-        };
-        supports_published_manifest_capability(self, workspace_id, runtime, capability).await
+        let required_capabilities = BTreeSet::from([profile.required_capability()]);
+        supports_published_manifest_capabilities(
+            self,
+            workspace_id,
+            runtime,
+            &required_capabilities,
+        )
+        .await
     }
 }
 
 #[cfg(not(test))]
-async fn supports_published_manifest_capability<T>(
+async fn supports_published_manifest_capabilities<T>(
     repository: &T,
     workspace_id: Uuid,
     runtime: &CompiledLlmRuntime,
-    capability: &str,
+    required_capabilities: &BTreeSet<ProviderInvocationCapability>,
 ) -> Result<bool>
 where
     T: ModelProviderRepository + PluginRepository + Send + Sync,
@@ -261,17 +228,20 @@ where
         {
             return Ok(false);
         }
-        let Ok(package) = ProviderPackage::load_from_dir(&installation.installed_path) else {
-            return Ok(false);
-        };
-        if !package
-            .manifest
-            .runtime
-            .capabilities
-            .iter()
-            .any(|declared| declared == capability)
-        {
-            return Ok(false);
+        if !required_capabilities.is_empty() {
+            let Ok(package) = ProviderPackage::load_from_dir(&installation.installed_path) else {
+                return Ok(false);
+            };
+            if required_capabilities.iter().any(|capability| {
+                !package
+                    .manifest
+                    .runtime
+                    .capabilities
+                    .iter()
+                    .any(|declared| declared == capability.manifest_capability_name())
+            }) {
+                return Ok(false);
+            }
         }
     }
 
@@ -297,6 +267,7 @@ where
         compiled_plan_record: &domain::CompiledPlanRecord,
         dispatch: PublishedRouteDispatch,
         profile: GenerateExecutionProfile,
+        required_semantic_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> std::result::Result<ResolvedPublishedRoute, PublishedRouteResolutionError> {
         if compiled_plan_record.id != publication.compiled_plan_id {
             return Err(PublishedRouteResolutionError::CompiledPlanMismatch);
@@ -329,7 +300,12 @@ where
             .ok_or(PublishedRouteResolutionError::IncompleteLlmRuntime)?;
         let supported = self
             .repository
-            .supports_published_generate(workspace_id, runtime, profile)
+            .supports_published_generate(
+                workspace_id,
+                runtime,
+                profile,
+                required_semantic_capabilities,
+            )
             .await
             .unwrap_or(false);
         if !supported {

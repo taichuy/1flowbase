@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use plugin_framework::provider_contract::semantic_required_capabilities;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -156,6 +157,8 @@ where
             .execution_operation()
             .generate_profile()
             .unwrap_or(GenerateExecutionProfile::Standard);
+        let required_semantic_capabilities =
+            semantic_required_capabilities(&client_request.system, &client_request.request_context);
         let external_model_parameters = validate_external_model_parameters(
             client_request.execution.model_parameters(),
             client_request.model.as_deref(),
@@ -186,6 +189,7 @@ where
                 &compiled_plan,
                 route_dispatch,
                 generate_profile,
+                &required_semantic_capabilities,
             )
             .await
             .map_err(NativeRunValidationError::RouteUnavailable)?;

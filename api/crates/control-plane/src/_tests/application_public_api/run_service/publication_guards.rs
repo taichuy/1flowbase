@@ -1,3 +1,7 @@
+use std::collections::BTreeSet;
+
+use plugin_framework::provider_contract::ProviderInvocationCapability;
+
 use super::*;
 
 /// Root #1366 AC-003 / AC-005: unbound Generate fails before capability lookup or run creation.
@@ -35,7 +39,8 @@ async fn generate_unbound_fails_closed_without_run_or_provider_capability_lookup
 
 /// Root #1366 AC-003 / AC-005: capability mismatch is rejected before any durable run exists.
 #[tokio::test]
-async fn generate_capability_mismatch_fails_closed_without_run_or_provider_spawn() {
+async fn generate_end_user_reference_capability_mismatch_fails_closed_without_run_or_provider_spawn(
+) {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Capability Mismatch App");
@@ -54,12 +59,14 @@ async fn generate_capability_mismatch_fails_closed_without_run_or_provider_spawn
         "node-frozen-llm",
         published_llm_runtime(),
     );
-    repository.set_published_generate_capability_supported(false);
+    repository.set_published_generate_manifest_capabilities(BTreeSet::new());
+    let mut request = native_request("blocking", None);
+    request.request_context.end_user_reference = Some("external-user-123".to_string());
 
     let error = ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
             bearer_token: token,
-            request: native_request("blocking", None),
+            request,
         })
         .await
         .unwrap_err();
@@ -72,6 +79,12 @@ async fn generate_capability_mismatch_fails_closed_without_run_or_provider_spawn
     );
     assert_eq!(repository.flow_run_count(), 0);
     assert_eq!(repository.published_generate_capability_checks(), 1);
+    assert_eq!(
+        repository.published_generate_capability_requirements(),
+        vec![BTreeSet::from([
+            ProviderInvocationCapability::EndUserReference
+        ])]
+    );
 }
 
 /// Root #1366 AC-003 / AC-006: both Generate profiles use the frozen target and fail closed.
@@ -143,6 +156,8 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
         "node-frozen-llm"
     );
     let resolver = PublishedRouteResolver::new(&repository);
+    let required_semantic_capabilities =
+        BTreeSet::from([ProviderInvocationCapability::EndUserReference]);
 
     let standard = resolver
         .resolve_generate(
@@ -151,6 +166,7 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
             GenerateExecutionProfile::Standard,
+            &required_semantic_capabilities,
         )
         .await
         .unwrap();
@@ -161,6 +177,7 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
             GenerateExecutionProfile::LocalSummary,
+            &required_semantic_capabilities,
         )
         .await
         .unwrap();
@@ -180,8 +197,15 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
             GenerateExecutionProfile::LocalSummary,
         ]
     );
+    assert_eq!(
+        repository.published_generate_capability_requirements(),
+        vec![
+            required_semantic_capabilities.clone(),
+            required_semantic_capabilities.clone(),
+        ]
+    );
 
-    repository.set_published_generate_capability_supported(false);
+    repository.set_published_generate_manifest_capabilities(BTreeSet::new());
     let mismatch = resolver
         .resolve_generate(
             application.workspace_id,
@@ -189,6 +213,7 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
             GenerateExecutionProfile::LocalSummary,
+            &required_semantic_capabilities,
         )
         .await
         .unwrap_err();
@@ -203,6 +228,14 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
             GenerateExecutionProfile::Standard,
             GenerateExecutionProfile::LocalSummary,
             GenerateExecutionProfile::LocalSummary,
+        ]
+    );
+    assert_eq!(
+        repository.published_generate_capability_requirements(),
+        vec![
+            required_semantic_capabilities.clone(),
+            required_semantic_capabilities.clone(),
+            required_semantic_capabilities,
         ]
     );
 }
@@ -552,6 +585,7 @@ async fn ordinary_generate_never_reaches_the_compact_resolver() {
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
             GenerateExecutionProfile::Standard,
+            &BTreeSet::new(),
         )
         .await
         .unwrap();
@@ -609,6 +643,7 @@ async fn generate_invalid_targets_fail_before_capability_lookup() {
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
             GenerateExecutionProfile::Standard,
+            &BTreeSet::new(),
         )
         .await
         .unwrap_err();
@@ -623,6 +658,7 @@ async fn generate_invalid_targets_fail_before_capability_lookup() {
             &incomplete_plan,
             PublishedRouteDispatch::OperationBinding,
             GenerateExecutionProfile::Standard,
+            &BTreeSet::new(),
         )
         .await
         .unwrap_err();
@@ -636,6 +672,7 @@ async fn generate_invalid_targets_fail_before_capability_lookup() {
             &non_llm_plan,
             PublishedRouteDispatch::OperationBinding,
             GenerateExecutionProfile::Standard,
+            &BTreeSet::new(),
         )
         .await
         .unwrap_err();
@@ -682,6 +719,7 @@ async fn explicit_application_flow_dispatch_returns_the_frozen_compiled_plan() {
             &compiled_plan,
             PublishedRouteDispatch::ApplicationFlow,
             GenerateExecutionProfile::Standard,
+            &BTreeSet::new(),
         )
         .await
         .unwrap();
