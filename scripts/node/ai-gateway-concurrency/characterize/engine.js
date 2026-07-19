@@ -23,6 +23,10 @@ const EXPECTED_OUTCOME = Object.freeze({
   [SCENARIO.HTTP_500]: 'failed',
   [SCENARIO.STREAM_INTERRUPTION]: 'interrupted',
 });
+const AUTHORIZED_HTTP_TRANSPORTS = Object.freeze([
+  TRANSPORT.RESPONSES_SSE,
+  TRANSPORT.ANTHROPIC_SSE,
+]);
 
 function round(value) {
   return Math.round(value * 1000) / 1000;
@@ -85,7 +89,53 @@ function requestNonceEvidence(transport, protocolEvents, texts, errorNonce) {
   return evidence;
 }
 
-async function runSseRequest({ endpoint, transport, scenario, clientNonce, headers, timeoutMs, batchStartedAt }) {
+function normalizeHeadersByTransport(headersByTransport = {}) {
+  if (!headersByTransport || typeof headersByTransport !== 'object' || Array.isArray(headersByTransport)) {
+    throw new Error('headersByTransport must be an object');
+  }
+  const normalized = {};
+  for (const [transport, headers] of Object.entries(headersByTransport)) {
+    if (!AUTHORIZED_HTTP_TRANSPORTS.includes(transport)) {
+      throw new Error(`headers are not allowed for transport: ${transport}`);
+    }
+    if (!headers || typeof headers !== 'object' || Array.isArray(headers)) {
+      throw new Error(`headers for ${transport} must be an object`);
+    }
+    normalized[transport] = {};
+    for (const [name, value] of Object.entries(headers)) {
+      if (typeof value !== 'string' || value.trim() === '') throw new Error(`header ${name} for ${transport} must be a non-empty string`);
+      normalized[transport][name] = value;
+    }
+  }
+  return normalized;
+}
+
+function authorizationHeadersByTransport(authorizationTokenByTransport) {
+  if (!authorizationTokenByTransport || typeof authorizationTokenByTransport !== 'object') {
+    throw new Error('authorizationTokenByTransport is required');
+  }
+  const keys = Object.keys(authorizationTokenByTransport);
+  for (const transport of keys) {
+    if (!AUTHORIZED_HTTP_TRANSPORTS.includes(transport)) throw new Error(`authorization token is not allowed for transport: ${transport}`);
+  }
+  for (const transport of AUTHORIZED_HTTP_TRANSPORTS) {
+    if (
+      typeof authorizationTokenByTransport[transport] !== 'string'
+      || authorizationTokenByTransport[transport].trim() === ''
+    ) {
+      throw new Error(`authorization token is required for transport: ${transport}`);
+    }
+  }
+  if (authorizationTokenByTransport[TRANSPORT.RESPONSES_SSE] === authorizationTokenByTransport[TRANSPORT.ANTHROPIC_SSE]) {
+    throw new Error('Responses SSE and Anthropic SSE must use distinct Application API keys');
+  }
+  return Object.fromEntries(AUTHORIZED_HTTP_TRANSPORTS.map((transport) => [
+    transport,
+    { authorization: `Bearer ${authorizationTokenByTransport[transport]}` },
+  ]));
+}
+
+async function runSseRequest({ endpoint, transport, scenario, clientNonce, headers, timeoutMs, batchStartedAt, fetchImpl }) {
   const startedAt = performance.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('request timeout')), timeoutMs);
@@ -96,7 +146,7 @@ async function runSseRequest({ endpoint, transport, scenario, clientNonce, heade
   let errorNonce = null;
   let outcome = 'interrupted';
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetchImpl(endpoint, {
       method: 'POST',
       headers: {
         accept: 'text/event-stream',
@@ -356,8 +406,18 @@ function batchSummary({ row, results, durationMs, mockEvidence }) {
   };
 }
 
-async function executeCharacterizePlan({ endpointSet, plan, headers = {}, mockSnapshot, timeoutMs = 5_000, WebSocketImpl = globalThis.WebSocket }) {
+async function executeCharacterizePlan({
+  endpointSet,
+  plan,
+  headersByTransport = {},
+  mockSnapshot,
+  timeoutMs = 5_000,
+  fetchImpl = globalThis.fetch,
+  WebSocketImpl = globalThis.WebSocket,
+}) {
   if (!Array.isArray(plan) || plan.length === 0) throw new Error('characterize plan must not be empty');
+  if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is unavailable');
+  const requestHeaders = normalizeHeadersByTransport(headersByTransport);
   const batches = [];
   const events = [];
   let nonceSequence = 0;
@@ -385,7 +445,7 @@ async function executeCharacterizePlan({ endpointSet, plan, headers = {}, mockSn
         if (typeof WebSocketImpl !== 'function') throw new Error('WebSocket implementation is unavailable');
         pending = runWebSocketRequest({ ...request, WebSocketImpl });
       } else {
-        pending = runSseRequest({ ...request, headers });
+        pending = runSseRequest({ ...request, headers: requestHeaders[row.transport] ?? {}, fetchImpl });
       }
       return pending.catch((error) => requestErrorResult(request, error));
     });
@@ -453,12 +513,12 @@ async function runDirectMockCharacterize({ repoRoot, timeoutMs }) {
   }
 }
 
-async function runGatewayCharacterize({ repoRoot, endpointSet, authorizationToken, mockSnapshot, timeoutMs }) {
-  const headers = authorizationToken ? { authorization: `Bearer ${authorizationToken}` } : {};
+async function runGatewayCharacterize({ repoRoot, endpointSet, authorizationTokenByTransport, mockSnapshot, timeoutMs }) {
+  const headersByTransport = authorizationHeadersByTransport(authorizationTokenByTransport);
   const result = await executeCharacterizePlan({
     endpointSet,
     plan: CHARACTERIZE_PLAN,
-    headers,
+    headersByTransport,
     mockSnapshot,
     timeoutMs,
   });
@@ -466,7 +526,9 @@ async function runGatewayCharacterize({ repoRoot, endpointSet, authorizationToke
 }
 
 module.exports = {
+  authorizationHeadersByTransport,
   executeCharacterizePlan,
+  normalizeHeadersByTransport,
   runDirectMockCharacterize,
   runGatewayCharacterize,
   validateRequestResult,

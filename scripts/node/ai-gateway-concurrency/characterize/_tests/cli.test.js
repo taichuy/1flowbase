@@ -20,16 +20,23 @@ test('AC-007: direct mock CLI selects characterize and fixed repo-root output ow
   });
 });
 
-test('AC-003/007: gateway CLI reads credentials only from the named environment variable', () => {
+test('AC-003/007: gateway CLI reads distinct Application keys from two named environment variables', () => {
   const parsed = parseCliArgs([
     '--profile', 'characterize',
     '--mode', 'gateway',
     '--responses-sse-url', 'http://127.0.0.1:7800/v1/responses',
     '--mock-responses-websocket-url', 'ws://127.0.0.1:7802/v1/responses',
     '--anthropic-sse-url', 'http://127.0.0.1:7801/v1/messages',
-    '--api-key-env', 'FIXTURE_API_KEY',
-  ], { FIXTURE_API_KEY: 'fixture-secret' });
-  assert.equal(parsed.authorizationToken, 'fixture-secret');
+    '--openai-api-key-env', 'OPENAI_FIXTURE_API_KEY',
+    '--anthropic-api-key-env', 'ANTHROPIC_FIXTURE_API_KEY',
+  ], {
+    OPENAI_FIXTURE_API_KEY: 'responses-fixture-secret',
+    ANTHROPIC_FIXTURE_API_KEY: 'anthropic-fixture-secret',
+  });
+  assert.deepEqual(parsed.authorizationTokenByTransport, {
+    [TRANSPORT.RESPONSES_SSE]: 'responses-fixture-secret',
+    [TRANSPORT.ANTHROPIC_SSE]: 'anthropic-fixture-secret',
+  });
   assert.deepEqual(parsed.endpointSet, {
     [TRANSPORT.RESPONSES_SSE]: 'http://127.0.0.1:7800/v1/responses',
     [TRANSPORT.RESPONSES_WEBSOCKET]: 'ws://127.0.0.1:7802/v1/responses',
@@ -45,5 +52,35 @@ test('AC-007 controlled negatives: regression profile and incomplete endpoints f
   assert.throws(
     () => parseCliArgs(['--profile', 'characterize', '--mode', 'gateway']),
     /missing required argument/u,
+  );
+});
+
+test('AC-003 controlled negatives: ambiguous or identical gateway keys fail closed', () => {
+  const base = [
+    '--profile', 'characterize',
+    '--mode', 'gateway',
+    '--responses-sse-url', 'http://127.0.0.1:7800/v1/responses',
+    '--mock-responses-websocket-url', 'ws://127.0.0.1:7802/v1/responses',
+    '--anthropic-sse-url', 'http://127.0.0.1:7801/v1/messages',
+  ];
+  assert.throws(
+    () => parseCliArgs([...base, '--api-key-env', 'AMBIGUOUS_KEY'], { AMBIGUOUS_KEY: 'secret' }),
+    /invalid argument: --api-key-env/u,
+  );
+  assert.throws(
+    () => parseCliArgs([
+      ...base,
+      '--openai-api-key-env', 'SHARED_KEY',
+      '--anthropic-api-key-env', 'SHARED_KEY',
+    ], { SHARED_KEY: 'secret' }),
+    /must use distinct environment variables/u,
+  );
+  assert.throws(
+    () => parseCliArgs([
+      ...base,
+      '--openai-api-key-env', 'OPENAI_KEY',
+      '--anthropic-api-key-env', 'ANTHROPIC_KEY',
+    ], { OPENAI_KEY: 'same-secret', ANTHROPIC_KEY: 'same-secret' }),
+    /Application API keys must be distinct/u,
   );
 });

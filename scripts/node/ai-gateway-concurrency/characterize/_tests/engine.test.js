@@ -4,7 +4,12 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { MOCK_ROUTE, SCENARIO, TRANSPORT } = require('../../contracts');
 const { createMockUpstream } = require('../../mock-upstream');
-const { executeCharacterizePlan, validateRequestResult } = require('../engine');
+const {
+  authorizationHeadersByTransport,
+  executeCharacterizePlan,
+  normalizeHeadersByTransport,
+  validateRequestResult,
+} = require('../engine');
 const { CHARACTERIZE_CONCURRENCY, CHARACTERIZE_PLAN } = require('../plan');
 
 async function withMock(run) {
@@ -68,6 +73,82 @@ test('AC-003 controlled negative: mixed upstream nonces fail chunk authenticity'
     upstreamNonceCount: 2,
   });
   assert.equal(failures.some((failure) => failure.includes('expected one upstream nonce')), true);
+});
+
+test('AC-003: one execute call keeps global nonce order and transport-specific authorization', async () => {
+  await withMock(async ({ mock, endpointSet }) => {
+    const fetchCalls = [];
+    const websocketCalls = [];
+    const fetchImpl = (url, options) => {
+      fetchCalls.push({
+        url: String(url),
+        authorization: options.headers.authorization,
+        clientNonce: JSON.parse(options.body).metadata.request_nonce,
+      });
+      return fetch(url, options);
+    };
+    const WebSocketImpl = new Proxy(WebSocket, {
+      construct(Target, args) {
+        websocketCalls.push(args);
+        return Reflect.construct(Target, args);
+      },
+    });
+    const result = await executeCharacterizePlan({
+      endpointSet,
+      plan: [
+        { transport: TRANSPORT.RESPONSES_SSE, scenario: SCENARIO.NORMAL, concurrency: 1 },
+        { transport: TRANSPORT.RESPONSES_WEBSOCKET, scenario: SCENARIO.NORMAL, concurrency: 1 },
+        { transport: TRANSPORT.ANTHROPIC_SSE, scenario: SCENARIO.NORMAL, concurrency: 1 },
+      ],
+      headersByTransport: {
+        [TRANSPORT.RESPONSES_SSE]: { authorization: 'Bearer responses-key' },
+        [TRANSPORT.ANTHROPIC_SSE]: { authorization: 'Bearer anthropic-key' },
+      },
+      fetchImpl,
+      WebSocketImpl,
+      mockSnapshot: mock.snapshot,
+      timeoutMs: 1_000,
+    });
+    assert.equal(result.summary.verdict, 'PASS');
+    assert.deepEqual(fetchCalls.map((call) => call.authorization), [
+      'Bearer responses-key',
+      'Bearer anthropic-key',
+    ]);
+    assert.deepEqual(fetchCalls.map((call) => call.clientNonce), ['load-000001', 'load-000003']);
+    assert.deepEqual(
+      result.events.filter((event) => event.kind === 'request').map((event) => event.clientNonce),
+      ['load-000001', 'load-000002', 'load-000003'],
+    );
+    assert.equal(websocketCalls.length, 1);
+    assert.equal(websocketCalls[0].length, 1);
+    assert.equal(String(websocketCalls[0][0]).includes('key'), false);
+  });
+});
+
+test('AC-003 controlled negatives: WebSocket, unknown, missing, and shared authorization fail closed', () => {
+  assert.throws(
+    () => normalizeHeadersByTransport({ [TRANSPORT.RESPONSES_WEBSOCKET]: { authorization: 'Bearer forbidden' } }),
+    /headers are not allowed for transport: responses-websocket/u,
+  );
+  assert.throws(
+    () => authorizationHeadersByTransport({
+      [TRANSPORT.RESPONSES_SSE]: 'responses-key',
+      [TRANSPORT.ANTHROPIC_SSE]: 'anthropic-key',
+      unknown: 'unknown-key',
+    }),
+    /authorization token is not allowed for transport: unknown/u,
+  );
+  assert.throws(
+    () => authorizationHeadersByTransport({ [TRANSPORT.RESPONSES_SSE]: 'responses-key' }),
+    /authorization token is required for transport: anthropic-sse/u,
+  );
+  assert.throws(
+    () => authorizationHeadersByTransport({
+      [TRANSPORT.RESPONSES_SSE]: 'shared-key',
+      [TRANSPORT.ANTHROPIC_SSE]: 'shared-key',
+    }),
+    /must use distinct Application API keys/u,
+  );
 });
 
 test('AC-003/004: characterize matrix fixes 1/4/16/32 normal load and finite fault rows', () => {

@@ -13,7 +13,8 @@ function usage() {
   node scripts/node/cli/ai-gateway-concurrency.js --profile characterize --mode direct-mock [--repo-root <path>] [--timeout-ms <ms>]
   node scripts/node/cli/ai-gateway-concurrency.js --profile characterize --mode gateway \\
     --responses-sse-url <url> --mock-responses-websocket-url <url> --anthropic-sse-url <url> \\
-    --api-key-env <environment-variable> [--repo-root <path>] [--timeout-ms <ms>]
+    --openai-api-key-env <environment-variable> --anthropic-api-key-env <environment-variable> \\
+    [--repo-root <path>] [--timeout-ms <ms>]
 
 Writes report.md, summary.json, and events.jsonl below
 tmp/test-governance/ai-gateway-concurrency/. Characterize applies correctness
@@ -27,7 +28,8 @@ function parseCliArgs(argv, env = process.env) {
   const values = new Map();
   const valueArgs = new Set([
     '--profile', '--mode', '--repo-root', '--timeout-ms', '--responses-sse-url',
-    '--mock-responses-websocket-url', '--anthropic-sse-url', '--api-key-env',
+    '--mock-responses-websocket-url', '--anthropic-sse-url',
+    '--openai-api-key-env', '--anthropic-api-key-env',
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -53,7 +55,13 @@ function parseCliArgs(argv, env = process.env) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 60_000) {
     throw new Error('--timeout-ms must be an integer between 100 and 60000');
   }
-  const gatewayArgs = ['--responses-sse-url', '--mock-responses-websocket-url', '--anthropic-sse-url', '--api-key-env'];
+  const gatewayArgs = [
+    '--responses-sse-url',
+    '--mock-responses-websocket-url',
+    '--anthropic-sse-url',
+    '--openai-api-key-env',
+    '--anthropic-api-key-env',
+  ];
   if (mode === 'direct-mock') {
     for (const argument of gatewayArgs) {
       if (values.has(argument)) throw new Error(`${argument} is only valid in gateway mode`);
@@ -63,16 +71,25 @@ function parseCliArgs(argv, env = process.env) {
   for (const argument of gatewayArgs) {
     if (!values.has(argument)) throw new Error(`missing required argument: ${argument}`);
   }
-  let authorizationToken = null;
-  const apiKeyEnvironment = values.get('--api-key-env');
-  authorizationToken = env[apiKeyEnvironment];
-  if (!authorizationToken) throw new Error(`API key environment variable is empty: ${apiKeyEnvironment}`);
+  const responsesApiKeyEnvironment = values.get('--openai-api-key-env');
+  const anthropicApiKeyEnvironment = values.get('--anthropic-api-key-env');
+  if (responsesApiKeyEnvironment === anthropicApiKeyEnvironment) {
+    throw new Error('OpenAI and Anthropic API keys must use distinct environment variables');
+  }
+  const responsesApiKey = env[responsesApiKeyEnvironment];
+  const anthropicApiKey = env[anthropicApiKeyEnvironment];
+  if (!responsesApiKey?.trim()) throw new Error(`API key environment variable is empty: ${responsesApiKeyEnvironment}`);
+  if (!anthropicApiKey?.trim()) throw new Error(`API key environment variable is empty: ${anthropicApiKeyEnvironment}`);
+  if (responsesApiKey === anthropicApiKey) throw new Error('OpenAI and Anthropic Application API keys must be distinct');
   return {
     help: false,
     mode,
     repoRoot,
     timeoutMs,
-    authorizationToken,
+    authorizationTokenByTransport: {
+      [TRANSPORT.RESPONSES_SSE]: responsesApiKey,
+      [TRANSPORT.ANTHROPIC_SSE]: anthropicApiKey,
+    },
     endpointSet: {
       [TRANSPORT.RESPONSES_SSE]: values.get('--responses-sse-url'),
       [TRANSPORT.RESPONSES_WEBSOCKET]: values.get('--mock-responses-websocket-url'),
