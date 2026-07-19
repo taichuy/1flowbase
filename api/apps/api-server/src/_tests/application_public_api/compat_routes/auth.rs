@@ -108,6 +108,30 @@ async fn three_ingress_routes_fail_unbound_generate_before_creating_a_run() {
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
+/// Root #1366 AC-003 / AC-005: OpenAI user remains a conversation identity.
+#[tokio::test]
+async fn d2_ac_003_openai_chat_user_does_not_require_provider_end_user_reference_capability() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "OpenAI Conversation User Capability App").await;
+    assert_published_compat_plan_has_provider_route(state.as_ref()).await;
+    let before = flow_run_count(state.as_ref()).await;
+    let mut body = openai_body(false);
+    body["user"] = json!("openai-conversation-user");
+
+    let response = post_json(
+        &app,
+        "/v1/chat/completions",
+        ("authorization", format!("Bearer {token}")),
+        body,
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response_json(response).await;
+    assert_eq!(payload["object"], json!("chat.completion"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+}
+
 async fn assert_run_creation_route_uses_last_used_cache(
     app: &Router,
     state: &ApiState,
