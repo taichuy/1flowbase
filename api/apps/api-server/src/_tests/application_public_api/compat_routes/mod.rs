@@ -135,12 +135,13 @@ impl RuntimeEventStream for NeverCloseDropTerminalRuntimeEventStream {
 
     async fn append_terminal_if_missing_and_close(
         &self,
-        run_id: uuid::Uuid,
-        event: RuntimeEventPayload,
+        _run_id: uuid::Uuid,
+        _event: RuntimeEventPayload,
     ) -> anyhow::Result<AppendTerminalIfMissingAndCloseOutcome> {
-        self.inner
-            .append_terminal_if_missing_and_close(run_id, event)
-            .await
+        // Durable persistence has already chosen the terminal. This fault injection accepts that
+        // projection but deliberately drops its ephemeral append and close, so timeout probes
+        // observe an actually open producer instead of a durable-terminal fallback.
+        Ok(AppendTerminalIfMissingAndCloseOutcome::Appended)
     }
 
     async fn subscribe(
