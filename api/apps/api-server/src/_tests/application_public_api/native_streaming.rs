@@ -2,7 +2,12 @@ use super::compat_routes::{
     test_app_with_runtime_event_stream, DropTerminalRuntimeEventStream,
     NeverCloseDropTerminalRuntimeEventStream,
 };
-use crate::_tests::support::{login_and_capture_cookie, test_app};
+use super::native_routes::{
+    assert_published_native_generate_route, configure_runnable_native_generate_target,
+};
+use crate::_tests::support::{
+    login_and_capture_cookie, test_api_state_with_database_url, test_config,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -114,6 +119,14 @@ async fn publish_native_application(app: &Router, cookie: &str, csrf: &str, appl
                                 "usage_selector": null,
                                 "files_selector": null,
                                 "error_selector": null
+                            },
+                            "operation_bindings": {
+                                "generate": { "target_node_id": "node-llm" },
+                                "count_tokens": null,
+                                "compact": {
+                                    "responses_compact": null,
+                                    "responses_compaction_v2": null
+                                }
                             }
                         },
                         "api_enabled": true
@@ -126,13 +139,32 @@ async fn publish_native_application(app: &Router, cookie: &str, csrf: &str, appl
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
+    let payload = response_json(response).await;
+    assert_eq!(
+        payload["data"]["operation_bindings"]["generate"]["target_node_id"],
+        json!("node-llm"),
+        "publication must preserve the explicit Generate target: {payload}"
+    );
 }
 
-async fn setup_published_native_app(app: &Router, name: &str) -> String {
+async fn test_app_with_state() -> (Router, std::sync::Arc<crate::app_state::ApiState>) {
+    let (state, _) = test_api_state_with_database_url().await;
+    let config = test_config();
+    let app = crate::app_with_state_and_config(state.clone(), &config);
+    (app, state)
+}
+
+async fn setup_published_native_app(
+    app: &Router,
+    state: &crate::app_state::ApiState,
+    name: &str,
+) -> String {
     let (cookie, csrf) = login_and_capture_cookie(app, "root", "change-me").await;
     let application_id = create_application(app, &cookie, &csrf, name).await;
     let token = create_application_key(app, &cookie, &csrf, &application_id).await;
+    configure_runnable_native_generate_target(app, &cookie, &csrf, &application_id).await;
     publish_native_application(app, &cookie, &csrf, &application_id).await;
+    assert_published_native_generate_route(state, &application_id).await;
     token
 }
 
@@ -183,8 +215,8 @@ async fn post_streaming_run(app: &Router, token: &str, stream_options: Value) ->
 
 #[tokio::test]
 async fn native_streaming_create_returns_sse_started_and_terminal_events() {
-    let app = test_app().await;
-    let token = setup_published_native_app(&app, "Native Streaming App").await;
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_native_app(&app, state.as_ref(), "Native Streaming App").await;
 
     let (content_type, body) = post_streaming_run(&app, &token, json!({})).await;
 
@@ -200,8 +232,9 @@ async fn native_streaming_create_returns_sse_started_and_terminal_events() {
 
 #[tokio::test]
 async fn native_streaming_default_hides_workflow_and_debug_internals() {
-    let app = test_app().await;
-    let token = setup_published_native_app(&app, "Native Streaming Filter App").await;
+    let (app, state) = test_app_with_state().await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Streaming Filter App").await;
 
     let (_, body) = post_streaming_run(&app, &token, json!({})).await;
 
@@ -214,9 +247,11 @@ async fn native_streaming_default_hides_workflow_and_debug_internals() {
 
 #[tokio::test]
 async fn native_streaming_emits_terminal_fallback_after_runtime_stream_closes() {
-    let (app, _) =
+    let (app, state) =
         test_app_with_runtime_event_stream(Arc::new(DropTerminalRuntimeEventStream::new())).await;
-    let token = setup_published_native_app(&app, "Native Dropped Terminal Stream App").await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Dropped Terminal Stream App")
+            .await;
 
     let (_, body) = post_streaming_run(&app, &token, json!({})).await;
 
@@ -230,11 +265,12 @@ async fn native_streaming_emits_terminal_fallback_after_runtime_stream_closes() 
 
 #[tokio::test]
 async fn native_streaming_does_not_poll_durable_terminal_while_runtime_stream_stays_open() {
-    let (app, _) = test_app_with_runtime_event_stream(Arc::new(
+    let (app, state) = test_app_with_runtime_event_stream(Arc::new(
         NeverCloseDropTerminalRuntimeEventStream::new(),
     ))
     .await;
-    let token = setup_published_native_app(&app, "Native Stuck Runtime Stream App").await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Stuck Runtime Stream App").await;
 
     let response = app
         .clone()

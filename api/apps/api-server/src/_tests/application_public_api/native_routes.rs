@@ -1,5 +1,6 @@
-use crate::_tests::support::{
-    login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config,
+use crate::_tests::{
+    create_ready_provider_instance,
+    support::{login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config},
 };
 use crate::routes::application_public_api::native::parse_native_run_request;
 use axum::{
@@ -10,8 +11,16 @@ use axum::{
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
 };
-use control_plane::ports::{
-    CreateCallbackTaskInput, CreateNodeRunInput, OrchestrationRuntimeRepository, UpdateFlowRunInput,
+use control_plane::{
+    application_public_api::run_service::{
+        GenerateExecutionProfile, PublishedRouteDispatch, PublishedRouteResolver,
+        ResolvedPublishedRoute,
+    },
+    ports::{
+        ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
+        CreateCallbackTaskInput, CreateNodeRunInput, OrchestrationRuntimeRepository,
+        UpdateFlowRunInput,
+    },
 };
 use serde_json::{json, Value};
 use time::OffsetDateTime;
@@ -146,9 +155,15 @@ async fn publish_native_application(
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
+    let payload = response_json(response).await;
+    assert_eq!(
+        payload["data"]["operation_bindings"]["generate"]["target_node_id"],
+        json!("node-llm"),
+        "publication must preserve the explicit Generate target: {payload}"
+    );
 }
 
-fn mapping_without_model_target() -> Value {
+fn mapping_with_runnable_generate_target() -> Value {
     json!({
         "input": {
             "query_target": "node-start.query",
@@ -162,6 +177,14 @@ fn mapping_without_model_target() -> Value {
             "usage_selector": null,
             "files_selector": null,
             "error_selector": null
+        },
+        "operation_bindings": {
+            "generate": { "target_node_id": "node-llm" },
+            "count_tokens": null,
+            "compact": {
+                "responses_compact": null,
+                "responses_compaction_v2": null
+            }
         }
     })
 }
@@ -217,18 +240,139 @@ async fn post_native_run(app: &Router, token: &str, body: Value) -> axum::respon
         .unwrap()
 }
 
-async fn setup_published_native_app(app: &Router, name: &str) -> String {
+pub(super) async fn configure_runnable_native_generate_target(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    application_id: &str,
+) {
+    let provider_instance_id = create_ready_provider_instance(app, cookie, csrf).await;
+    let state = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration"
+                ))
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(state.status(), StatusCode::OK);
+    let mut document = response_json(state).await["data"]["draft"]["document"].clone();
+    let llm_node = document["graph"]["nodes"]
+        .as_array_mut()
+        .expect("default draft should include graph nodes")
+        .iter_mut()
+        .find(|node| node["type"] == "llm")
+        .expect("default draft should include an LLM node");
+    assert_eq!(llm_node["id"], json!("node-llm"));
+    llm_node["config"]["model_provider"] = json!({
+        "provider_code": "fixture_provider",
+        "source_instance_id": provider_instance_id,
+        "model_id": "fixture_chat"
+    });
+
+    let save = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration/draft"
+                ))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "document": document,
+                        "change_kind": "logical",
+                        "summary": "configure native Generate provider route"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(save.status(), StatusCode::OK);
+}
+
+/// Root #1366 AC-003 / AC-005 / AC-008: positive native fixtures must resolve the frozen provider route.
+pub(super) async fn assert_published_native_generate_route(
+    state: &crate::app_state::ApiState,
+    application_id: &str,
+) {
+    let application_id = Uuid::parse_str(application_id).expect("application id should be a UUID");
+    let workspace_id: Uuid = sqlx::query_scalar("select scope_id from applications where id = $1")
+        .bind(application_id)
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let publication = state
+        .store
+        .load_active_application_publication(application_id)
+        .await
+        .unwrap()
+        .expect("fixture should publish an active application version");
+    assert_eq!(
+        publication
+            .operation_bindings
+            .generate
+            .as_ref()
+            .map(|binding| binding.target_node_id.as_str()),
+        Some("node-llm")
+    );
+    let compiled_plan = state
+        .store
+        .get_application_compiled_plan(publication.compiled_plan_id)
+        .await
+        .unwrap()
+        .expect("fixture publication should freeze a compiled plan");
+    let ResolvedPublishedRoute::Provider(route) = PublishedRouteResolver::new(&state.store)
+        .resolve_generate(
+            workspace_id,
+            &publication,
+            &compiled_plan,
+            PublishedRouteDispatch::OperationBinding,
+            GenerateExecutionProfile::Standard,
+        )
+        .await
+        .expect("fixture publication should resolve Generate through its provider")
+    else {
+        panic!("native public API fixture must resolve a provider route");
+    };
+
+    assert_eq!(route.target_node_id, "node-llm");
+    assert_eq!(route.llm_runtime.provider_code, "fixture_provider");
+    assert_eq!(route.llm_runtime.model, "fixture_chat");
+    assert!(
+        !route.llm_runtime.provider_instance_id.is_empty(),
+        "published Generate route should retain a provider instance"
+    );
+}
+
+async fn setup_published_native_app(
+    app: &Router,
+    state: &crate::app_state::ApiState,
+    name: &str,
+) -> String {
     let (cookie, csrf) = login_and_capture_cookie(app, "root", "change-me").await;
     let application_id = create_application(app, &cookie, &csrf, name).await;
     let token = create_application_key(app, &cookie, &csrf, &application_id).await;
+    configure_runnable_native_generate_target(app, &cookie, &csrf, &application_id).await;
     publish_native_application(
         app,
         &cookie,
         &csrf,
         &application_id,
-        mapping_without_model_target(),
+        mapping_with_runnable_generate_target(),
     )
     .await;
+    assert_published_native_generate_route(state, &application_id).await;
     token
 }
 
@@ -322,8 +466,8 @@ async fn seed_pending_llm_callback(
 #[tokio::test]
 async fn native_run_route_accepts_any_string_model_and_preserves_metadata_without_node_input_model()
 {
-    let app = test_app().await;
-    let token = setup_published_native_app(&app, "Native Route Model App").await;
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_native_app(&app, state.as_ref(), "Native Route Model App").await;
 
     let response = post_native_run(
         &app,
@@ -354,7 +498,8 @@ async fn native_run_route_accepts_any_string_model_and_preserves_metadata_withou
 #[tokio::test]
 async fn native_get_run_exposes_pending_llm_required_action() {
     let (app, state) = test_app_with_state().await;
-    let token = setup_published_native_app(&app, "Native Required Action Route App").await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Required Action Route App").await;
     let mut body = native_run_body(json!("provider/model:any-public-string"));
     body["response_mode"] = json!("manual");
 
@@ -401,7 +546,12 @@ async fn native_get_run_exposes_pending_llm_required_action() {
 #[tokio::test]
 async fn native_resume_rejects_missing_llm_tool_result_without_consuming_task() {
     let (app, state) = test_app_with_state().await;
-    let token = setup_published_native_app(&app, "Native Resume Missing Tool Result App").await;
+    let token = setup_published_native_app(
+        &app,
+        state.as_ref(),
+        "Native Resume Missing Tool Result App",
+    )
+    .await;
     let mut body = native_run_body(json!("provider/model:any-public-string"));
     body["response_mode"] = json!("manual");
 
@@ -448,7 +598,8 @@ async fn native_resume_rejects_missing_llm_tool_result_without_consuming_task() 
 #[tokio::test]
 async fn native_tool_resume_consumes_in_request_and_records_failure_timeline() {
     let (app, state) = test_app_with_state().await;
-    let token = setup_published_native_app(&app, "Native Streaming Tool Resume App").await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Streaming Tool Resume App").await;
     let mut body = native_run_body(json!("provider/model:any-public-string"));
     body["response_mode"] = json!("manual");
 
@@ -529,8 +680,9 @@ async fn native_tool_resume_consumes_in_request_and_records_failure_timeline() {
 
 #[tokio::test]
 async fn native_run_route_accepts_expand_id_and_returns_default_title_metadata() {
-    let app = test_app().await;
-    let token = setup_published_native_app(&app, "Native Route Expand Id App").await;
+    let (app, state) = test_app_with_state().await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Route Expand Id App").await;
     let mut body = native_run_body(json!("provider/model:any-public-string"));
     body["expand_id"] = json!("external-user-123");
 
@@ -555,8 +707,9 @@ async fn native_run_route_accepts_expand_id_and_returns_default_title_metadata()
 
 #[tokio::test]
 async fn native_run_route_rejects_legacy_user_id_field() {
-    let app = test_app().await;
-    let token = setup_published_native_app(&app, "Native Route Legacy User Id App").await;
+    let (app, state) = test_app_with_state().await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Route Legacy User Id App").await;
     let mut body = native_run_body(json!("provider/model:any-public-string"));
     body["user_id"] = json!("external-user-123");
 
@@ -570,8 +723,12 @@ async fn native_run_route_rejects_legacy_user_id_field() {
 #[tokio::test]
 async fn d2_ac_007_native_run_route_rejects_compatibility_mode_before_run_creation() {
     let (app, state) = test_app_with_state().await;
-    let token =
-        setup_published_native_app(&app, "Native Route Compatibility Mode Rejection App").await;
+    let token = setup_published_native_app(
+        &app,
+        state.as_ref(),
+        "Native Route Compatibility Mode Rejection App",
+    )
+    .await;
     let before = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
         .fetch_one(state.store.pool())
         .await
@@ -596,6 +753,7 @@ async fn d2_f1_native_run_route_rejects_execution_compatibility_mode_before_run_
     let (app, state) = test_app_with_state().await;
     let token = setup_published_native_app(
         &app,
+        state.as_ref(),
         "Native Route Execution Compatibility Mode Rejection App",
     )
     .await;
@@ -621,7 +779,12 @@ async fn d2_f1_native_run_route_rejects_execution_compatibility_mode_before_run_
 #[tokio::test]
 async fn d2_f1_native_run_route_rejects_unknown_metadata_before_fingerprint_or_response_echo() {
     let (app, state) = test_app_with_state().await;
-    let token = setup_published_native_app(&app, "Native Route Typed Metadata Rejection App").await;
+    let token = setup_published_native_app(
+        &app,
+        state.as_ref(),
+        "Native Route Typed Metadata Rejection App",
+    )
+    .await;
     let before = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
         .fetch_one(state.store.pool())
         .await
@@ -654,7 +817,9 @@ async fn d2_f1_native_run_route_rejects_unknown_metadata_before_fingerprint_or_r
 #[tokio::test]
 async fn d2_ac_007_native_run_persists_no_compatibility_mode() {
     let (app, state) = test_app_with_state().await;
-    let token = setup_published_native_app(&app, "Native Route Canonical Contract App").await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Route Canonical Contract App")
+            .await;
     let mut body = native_run_body(json!("provider/model:any-public-string"));
     body["response_mode"] = json!("manual");
 
@@ -676,7 +841,8 @@ async fn d2_ac_007_native_run_persists_no_compatibility_mode() {
 #[tokio::test]
 async fn d1_ac_009_native_run_route_rejects_unknown_fields_before_run_creation() {
     let (app, state) = test_app_with_state().await;
-    let token = setup_published_native_app(&app, "Native Route Unknown Field App").await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Route Unknown Field App").await;
     let before = sqlx::query_scalar::<_, i64>("select count(*) from flow_runs")
         .fetch_one(state.store.pool())
         .await
@@ -702,8 +868,12 @@ async fn d1_ac_009_native_run_route_rejects_unknown_fields_before_run_creation()
 #[tokio::test]
 async fn d2_ac_001_native_model_parameter_unknown_rejects_before_conversation_or_run_creation() {
     let (app, state) = test_app_with_state().await;
-    let token =
-        setup_published_native_app(&app, "Native Route Model Parameter Rejection App").await;
+    let token = setup_published_native_app(
+        &app,
+        state.as_ref(),
+        "Native Route Model Parameter Rejection App",
+    )
+    .await;
     let application_conversations_before =
         sqlx::query_scalar::<_, i64>("select count(*) from application_conversations")
             .fetch_one(state.store.pool())
@@ -763,8 +933,9 @@ async fn d2_ac_001_native_model_parameter_unknown_rejects_before_conversation_or
 
 #[tokio::test]
 async fn native_run_route_rejects_non_string_model_json_values() {
-    let app = test_app().await;
-    let token = setup_published_native_app(&app, "Native Route Invalid Model App").await;
+    let (app, state) = test_app_with_state().await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Route Invalid Model App").await;
 
     for invalid_model in [
         json!(null),
@@ -783,8 +954,9 @@ async fn native_run_route_rejects_non_string_model_json_values() {
 
 #[tokio::test]
 async fn native_run_route_validates_public_native_request_fields() {
-    let app = test_app().await;
-    let token = setup_published_native_app(&app, "Native Route Validation App").await;
+    let (app, state) = test_app_with_state().await;
+    let token =
+        setup_published_native_app(&app, state.as_ref(), "Native Route Validation App").await;
 
     for (field, invalid_value) in [
         ("query", json!(false)),
@@ -827,9 +999,11 @@ async fn native_run_route_returns_application_not_published_for_unpublished_key_
 
 #[tokio::test]
 async fn native_run_route_forbids_reading_run_created_by_another_application_api_key() {
-    let app = test_app().await;
-    let first_token = setup_published_native_app(&app, "First Native Route App").await;
-    let second_token = setup_published_native_app(&app, "Second Native Route App").await;
+    let (app, state) = test_app_with_state().await;
+    let first_token =
+        setup_published_native_app(&app, state.as_ref(), "First Native Route App").await;
+    let second_token =
+        setup_published_native_app(&app, state.as_ref(), "Second Native Route App").await;
     let created = post_native_run(&app, &first_token, native_run_body(json!("any-model"))).await;
     assert_eq!(created.status(), StatusCode::CREATED);
     let created_payload = response_json(created).await;
