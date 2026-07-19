@@ -12,12 +12,11 @@ use plugin_framework::{
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::PluginExecutionMode,
     provider_contract::{
-        ModelDiscoveryMode, ProviderBalanceResult, ProviderCompactError, ProviderCompactProfile,
-        ProviderCompactResult, ProviderCountTokensError, ProviderCountTokensInput,
-        ProviderCountTokensResult, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderModelDescriptor, ProviderRuntimeError, ProviderRuntimeErrorKind,
-        ProviderStdioMethod, ProviderStdioRequest, ProviderStreamEvent, ProviderWireOperation,
-        CURRENT_PROVIDER_CONTRACT,
+        ModelDiscoveryMode, ProviderBalanceResult, ProviderCompactError, ProviderCompactResult,
+        ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
+        ProviderInvocationInput, ProviderInvocationResult, ProviderModelDescriptor,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest,
+        ProviderStreamEvent, ProviderWireOperation, CURRENT_PROVIDER_CONTRACT,
     },
     PluginRuntimeLimits,
 };
@@ -909,7 +908,7 @@ use operations::{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use plugin_framework::provider_contract::NativePromptBlock;
+    use plugin_framework::provider_contract::{NativePromptBlock, ProviderCompactProfile};
     use std::{
         fs,
         path::{Path, PathBuf},

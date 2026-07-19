@@ -20,7 +20,7 @@ use super::super::{
 mod engine;
 mod helpers;
 
-use super::{append_runtime_event, fail_flow_run, load_run_detail, project_committed_terminal};
+use super::{fail_flow_run, load_run_detail, project_committed_terminal};
 use engine::continue_flow_debug_run_inner;
 
 pub(super) async fn continue_flow_debug_run<R, H>(
