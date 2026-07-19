@@ -126,9 +126,6 @@ async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Session History Route App").await;
     let session_id = "claude-code-session-1".to_string();
-    let metadata = json!({
-        "user_id": "{\"account_uuid\":\"account-1\",\"device_id\":\"device-1\"}"
-    });
 
     let first = post_json_with_headers(
         &app,
@@ -141,8 +138,7 @@ async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
             "stream": true,
             "messages": [
                 {"role": "user", "content": "Describe uploads/agent-flow-preview-debug.png"}
-            ],
-            "metadata": metadata
+            ]
         }),
     )
     .await;
@@ -159,8 +155,7 @@ async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
             "stream": true,
             "messages": [
                 {"role": "user", "content": "Find the corresponding code"}
-            ],
-            "metadata": metadata
+            ]
         }),
     )
     .await;
@@ -185,8 +180,7 @@ async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
             "stream": true,
             "messages": [
                 {"role": "user", "content": "Keep going"}
-            ],
-            "metadata": metadata
+            ]
         }),
     )
     .await;
