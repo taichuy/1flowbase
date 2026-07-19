@@ -1,0 +1,195 @@
+name: AI Gateway Concurrency Characterize
+
+on:
+  workflow_dispatch:
+    inputs:
+      main_source_sha:
+        description: Exact full 1flowbase source SHA
+        required: true
+        type: string
+      official_source_sha:
+        description: Exact full official-plugins source SHA
+        required: true
+        type: string
+      profile:
+        description: Approved evidence profile
+        required: true
+        type: choice
+        options:
+          - characterize
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-gateway-concurrency-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  OPENAI_API_KEY: ''
+  OPENAI_BASE_URL: ''
+  ANTHROPIC_API_KEY: ''
+  ANTHROPIC_AUTH_TOKEN: ''
+  ANTHROPIC_BASE_URL: ''
+  CLAUDE_CODE_OAUTH_TOKEN: ''
+  AI_GATEWAY_ARTIFACT_ROOT: tmp/test-governance/ai-gateway-concurrency
+
+jobs:
+  characterize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16.9
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Validate dispatch inputs before checkout
+        shell: bash
+        env:
+          INPUT_MAIN_SOURCE_SHA: ${{ inputs.main_source_sha }}
+          INPUT_OFFICIAL_SOURCE_SHA: ${{ inputs.official_source_sha }}
+          INPUT_PROFILE: ${{ inputs.profile }}
+        run: |
+          set -euo pipefail
+          [[ "$INPUT_MAIN_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'main_source_sha must be a full lowercase SHA' >&2; exit 2; }
+          [[ "$INPUT_OFFICIAL_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'official_source_sha must be a full lowercase SHA' >&2; exit 2; }
+          [[ "$INPUT_PROFILE" == characterize ]] || { echo 'profile is not approved; regression has no checked-in budget' >&2; exit 2; }
+
+      - name: Checkout exact main source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.main_source_sha }}
+          fetch-depth: 1
+
+      - name: Verify exact main source SHA
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.main_source_sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          [[ "$actual_sha" == "$EXPECTED_SHA" ]] || { echo "main checkout mismatch: $actual_sha" >&2; exit 2; }
+
+      - name: Checkout exact official provider source
+        uses: actions/checkout@v6
+        with:
+          repository: taichuy/1flowbase-official-plugins
+          ref: ${{ inputs.official_source_sha }}
+          path: tmp/ai-gateway-concurrency/official-source
+          fetch-depth: 1
+
+      - name: Verify exact official provider SHA
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.official_source_sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git -C tmp/ai-gateway-concurrency/official-source rev-parse HEAD)"
+          [[ "$actual_sha" == "$EXPECTED_SHA" ]] || { echo "official checkout mismatch: $actual_sha" >&2; exit 2; }
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pinned compatibility clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @openai/codex@0.144.1 @anthropic-ai/claude-code@2.1.212
+          codex --version | tee "$RUNNER_TEMP/codex-version.txt"
+          claude --version | tee "$RUNNER_TEMP/claude-version.txt"
+          grep -F '0.144.1' "$RUNNER_TEMP/codex-version.txt"
+          grep -F '2.1.212' "$RUNNER_TEMP/claude-version.txt"
+          echo "CODEX_EXECUTABLE=$(command -v codex)" >> "$GITHUB_ENV"
+          echo "CLAUDE_EXECUTABLE=$(command -v claude)" >> "$GITHUB_ENV"
+
+      - name: Build and package host-compatible official providers
+        shell: bash
+        run: |
+          set -euo pipefail
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          [[ -n "$host_target" ]] || { echo 'Rust host target is unavailable' >&2; exit 2; }
+          echo "HOST_TARGET=$host_target" >> "$GITHUB_ENV"
+          official_root=tmp/ai-gateway-concurrency/official-source
+          package_root=tmp/ai-gateway-concurrency/packages
+          rm -rf "$package_root"
+          for provider_code in openai anthropic; do
+            plugin_dir="$official_root/runtime-extensions/model-providers/$provider_code"
+            cargo build --manifest-path "$plugin_dir/Cargo.toml" --release --target "$host_target"
+            runtime_binary_name="$(node "$official_root/scripts/list-provider-package-targets.mjs" --plugin-dir "$plugin_dir" --rust-target "$host_target" --field runtime_binary_name)"
+            node scripts/node/plugin/cli.js package \
+              "$plugin_dir" \
+              --out "$package_root/$provider_code" \
+              --runtime-binary "$plugin_dir/target/$host_target/release/$runtime_binary_name" \
+              --target "$host_target"
+          done
+
+      - name: Build real gateway binaries
+        shell: bash
+        run: cargo build --manifest-path api/Cargo.toml --release -p api-server -p plugin-runner
+
+      - name: Run real gateway characterize contract
+        shell: bash
+        env:
+          AI_GATEWAY_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+        run: |
+          set -euo pipefail
+          mkdir -p "$AI_GATEWAY_ARTIFACT_ROOT"
+          node scripts/node/ai-gateway-concurrency/workflow-contract/cli.js run \
+            --main-source-sha "${{ inputs.main_source_sha }}" \
+            --official-source-sha "${{ inputs.official_source_sha }}" \
+            --profile "${{ inputs.profile }}" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --database-url "$AI_GATEWAY_DATABASE_URL" \
+            --api-server-bin api/target/release/api-server \
+            --plugin-runner-bin api/target/release/plugin-runner \
+            --openai-package-dir tmp/ai-gateway-concurrency/packages/openai \
+            --anthropic-package-dir tmp/ai-gateway-concurrency/packages/anthropic \
+            --codex-executable "$CODEX_EXECUTABLE" \
+            --claude-executable "$CLAUDE_EXECUTABLE" \
+            --host-target "$HOST_TARGET" \
+            2>&1 | tee "$AI_GATEWAY_ARTIFACT_ROOT/workflow-runner.log"
+
+      - name: Finalize job summary and owned cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          if [[ -f scripts/node/ai-gateway-concurrency/workflow-contract/cli.js ]] && command -v node >/dev/null 2>&1; then
+            node scripts/node/ai-gateway-concurrency/workflow-contract/cli.js finalize \
+              --main-source-sha "${{ inputs.main_source_sha }}" \
+              --official-source-sha "${{ inputs.official_source_sha }}" \
+              --profile "${{ inputs.profile }}" \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --host-target "${HOST_TARGET:-unavailable}" \
+              --summary-path "$GITHUB_STEP_SUMMARY"
+          else
+            mkdir -p "$AI_GATEWAY_ARTIFACT_ROOT"
+            printf '%s\n' '{"status":"fail","error":{"type":"Unverified","message":"workflow stopped before exact source checkout"}}' > "$AI_GATEWAY_ARTIFACT_ROOT/workflow-result.json"
+            printf '%s\n' '# AI Gateway Concurrency' '' '- Status: **FAIL**' '- Exact source checkout was not completed; no characterize evidence exists.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Upload bounded characterize evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ai-gateway-concurrency-${{ inputs.profile }}-${{ inputs.main_source_sha }}
+          path: tmp/test-governance/ai-gateway-concurrency/**
+          if-no-files-found: error
+          retention-days: 14
