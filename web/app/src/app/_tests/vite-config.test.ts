@@ -82,4 +82,17 @@ describe('vite config', () => {
       expect(source).toContain(`'${dependency}'`);
     }
   });
+
+  test('replaces the react-draggable debug process lookup in dev and production bundles', async () => {
+    const source = await readFile(
+      path.resolve(process.cwd(), 'vite.config.ts'),
+      'utf8'
+    );
+
+    expect(source).toContain('const reactDraggableBrowserDefines');
+    expect(source).toContain("'process.env.DRAGGABLE_DEBUG': 'false'");
+    expect(source.match(/define: reactDraggableBrowserDefines/g)).toHaveLength(
+      2
+    );
+  });
 });

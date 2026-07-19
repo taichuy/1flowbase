@@ -330,6 +330,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       expect.objectContaining({
         status: 'skipped',
         skipReason: 'source_not_ready',
+        sourceStatus: 'loading',
         slotIndex: 0,
         message: 'waiting for source'
       }),

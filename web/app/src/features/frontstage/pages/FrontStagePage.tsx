@@ -22,9 +22,6 @@ import { PageCanvas } from '../components/PageCanvas';
 import {
   FrontstageJsxStudioDrawer
 } from '../components/jsx-studio/FrontstageJsxStudioDrawer';
-import type {
-  FrontstageJsxStudioSection
-} from '../components/jsx-studio/JsxStudioResourcePanel';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
 import { useFrontstagePageCanvasRuntimeSessions } from '../hooks/use-frontstage-page-canvas-runtime-sessions';
 import { useFrontstagePageCanvasRuntimeSources } from '../hooks/use-frontstage-page-canvas-runtime-sources';
@@ -32,9 +29,9 @@ import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-conte
 import {
   appendFrontstageBlock,
   createFrontstageBlockCompositionState,
-  moveFrontstageBlock,
   removeFrontstageBlock,
   updateFrontstageBlockLayout,
+  updateFrontstageBlockPresentation,
   updateFrontstageBlockProps,
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
@@ -139,8 +136,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     useState(false);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isJsxStudioOpen, setIsJsxStudioOpen] = useState(false);
-  const [jsxStudioInitialSection, setJsxStudioInitialSection] =
-    useState<FrontstageJsxStudioSection>('code');
   const [jsBlockTrialContextSnapshot, setJsBlockTrialContextSnapshot] =
     useState<Record<string, unknown>>({});
   const [jsBlockTrialLimits, setJsBlockTrialLimits] =
@@ -479,10 +474,15 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         return false;
       }
 
-      const nextCompositionState = updateFrontstageBlockProps(
+      const propsState = updateFrontstageBlockProps(
         blockCompositionState,
         nextBlock.id,
         nextBlock.props
+      );
+      const nextCompositionState = updateFrontstageBlockPresentation(
+        propsState,
+        nextBlock.id,
+        nextBlock.presentation
       );
       return saveBlockComposition(activePageContent, nextCompositionState);
     },
@@ -494,43 +494,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       return undefined;
     }
 
-    const renderItems = activePageRenderPlan?.items ?? [];
-
     return {
-      onMoveUp: (blockId: string) => {
-        const idx = renderItems.findIndex((item) => item.blockId === blockId);
-        if (idx <= 0 || !blockCompositionState || !activePageContent) return;
-        const next = moveFrontstageBlock(
-          blockCompositionState,
-          blockId,
-          idx - 1
-        );
-        void saveBlockComposition(activePageContent, next);
-      },
-      onMoveDown: (blockId: string) => {
-        const idx = renderItems.findIndex((item) => item.blockId === blockId);
-        if (
-          idx < 0 ||
-          idx >= renderItems.length - 1 ||
-          !blockCompositionState ||
-          !activePageContent
-        )
-          return;
-        const next = moveFrontstageBlock(
-          blockCompositionState,
-          blockId,
-          idx + 1
-        );
-        void saveBlockComposition(activePageContent, next);
-      },
-      onConfigure: (blockId: string) => {
-        setSelectedBlockId(blockId);
-        setJsxStudioInitialSection('configuration');
-        setIsJsxStudioOpen(true);
-      },
       onEditCode: (blockId: string) => {
         setSelectedBlockId(blockId);
-        setJsxStudioInitialSection('code');
         setIsJsxStudioOpen(true);
       },
       onDelete: (blockId: string) => {
@@ -542,13 +508,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   }, [
     canEnterDesignMode,
     isDesignMode,
-    activePageRenderPlan?.items,
     blockCompositionState,
     activePageContent,
     saveBlockComposition,
     setSelectedBlockId,
-    setIsJsxStudioOpen,
-    setJsxStudioInitialSection
+    setIsJsxStudioOpen
   ]);
 
   if (initialPageTree === undefined && isPageTreeLoading) {
@@ -1171,7 +1135,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         toolbarDisabled={isPageContentSavePending}
         onResponsiveLayoutSave={
           canEnterDesignMode && isDesignMode
-            ? (layouts) => {
+            ? (layouts, presentationPatch) => {
                 if (!blockCompositionState || !activePageContent) return;
                 let next = blockCompositionState;
                 for (const [blockId, blockLayouts] of Object.entries(layouts)) {
@@ -1179,6 +1143,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                     next,
                     blockId,
                     blockLayouts
+                  );
+                }
+                if (presentationPatch) {
+                  next = updateFrontstageBlockPresentation(
+                    next,
+                    presentationPatch.blockId,
+                    presentationPatch.presentation
                   );
                 }
                 void saveBlockComposition(activePageContent, next);
@@ -1197,7 +1168,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           disabled={!canAddBlock || blockCatalog.loading}
           loading={isBlockSavePending}
           style={{
-            marginTop: 12,
+            margin: '8px 16px 16px',
             borderStyle: 'dashed',
             borderColor: FRONTSTAGE_DESIGN_BLUE.dashed,
             color: FRONTSTAGE_DESIGN_BLUE.primary
@@ -1308,7 +1279,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         {selectedBlock && selectedPageId ? (
           <FrontstageJsxStudioDrawer
             open={isJsxStudioOpen && canShowSelectedBlockActions}
-            initialSection={jsxStudioInitialSection}
+            initialSection="code"
             workspaceId={workspaceId}
             pageId={selectedPageId}
             tabId={tabId}

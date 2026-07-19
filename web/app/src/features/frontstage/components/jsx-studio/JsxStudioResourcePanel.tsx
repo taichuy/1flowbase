@@ -8,6 +8,7 @@ import {
   Divider,
   Empty,
   Input,
+  InputNumber,
   Select,
   Space,
   Spin,
@@ -29,6 +30,7 @@ import {
   type FrontstageJsxEditorProjection
 } from '../../lib/jsx-studio/editor-projection';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
+import type { FrontstageBlockHeightMode } from '../../lib/page-document';
 
 export type FrontstageJsxStudioSection =
   | 'code'
@@ -431,12 +433,26 @@ function ConfigurationPanel({
   const [description, setDescription] = useState(
     readString(block.props.description)
   );
+  const [heightMode, setHeightMode] = useState<FrontstageBlockHeightMode>(
+    block.presentation.heightMode
+  );
+  const [fixedHeight, setFixedHeight] = useState<number>(
+    block.presentation.height ?? 320
+  );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setTitle(readString(block.props.title));
     setDescription(readString(block.props.description));
-  }, [block.id, block.props.description, block.props.title]);
+    setHeightMode(block.presentation.heightMode);
+    setFixedHeight(block.presentation.height ?? 320);
+  }, [
+    block.id,
+    block.presentation.height,
+    block.presentation.heightMode,
+    block.props.description,
+    block.props.title
+  ]);
 
   const saveConfiguration = async () => {
     const props = { ...block.props };
@@ -444,7 +460,14 @@ function ConfigurationPanel({
     assignOptionalString(props, 'description', description);
     setSaving(true);
     try {
-      const saved = await onSaveBlock({ ...block, props });
+      const saved = await onSaveBlock({
+        ...block,
+        props,
+        presentation: {
+          heightMode,
+          height: heightMode === 'fixed' ? fixedHeight : null
+        }
+      });
       if (saved !== false) {
         void message.success(
           i18nText('frontstage', 'auto.block_configuration_saved')
@@ -477,6 +500,38 @@ function ConfigurationPanel({
             onChange={(event) => setDescription(event.target.value)}
           />
         </label>
+        <label className="frontstage-jsx-studio__field">
+          <span>{i18nText('frontstage', 'auto.height_mode')}</span>
+          <Select
+            aria-label={i18nText('frontstage', 'auto.height_mode')}
+            value={heightMode}
+            options={[
+              {
+                value: 'auto',
+                label: i18nText('frontstage', 'auto.auto_height')
+              },
+              {
+                value: 'fixed',
+                label: i18nText('frontstage', 'auto.fixed_height')
+              }
+            ]}
+            onChange={(value) => setHeightMode(value)}
+          />
+        </label>
+        {heightMode === 'fixed' ? (
+          <label className="frontstage-jsx-studio__field">
+            <span>{i18nText('frontstage', 'auto.fixed_height')}</span>
+            <InputNumber
+              aria-label={i18nText('frontstage', 'auto.fixed_height')}
+              min={120}
+              max={2400}
+              step={20}
+              value={fixedHeight}
+              onChange={(value) => setFixedHeight(value ?? 320)}
+              style={{ width: '100%' }}
+            />
+          </label>
+        ) : null}
         <Divider style={{ margin: '4px 0' }} />
         <Typography.Text type="secondary">Block ID</Typography.Text>
         <Typography.Text code copyable>

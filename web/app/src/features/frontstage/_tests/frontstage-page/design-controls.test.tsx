@@ -660,7 +660,9 @@ describe('FrontStagePage - design controls', () => {
           tabId="tab-1"
           onNavigateTab={vi.fn()}
           initialPageTree={[createBackendPage('page-1')]}
-          pageContent={createPageContent()}
+          pageContent={createPageContent({
+            page: { contentPresentation: 'tabs' }
+          })}
         />
       </AppProviders>
     );
@@ -721,12 +723,11 @@ describe('FrontStagePage - design controls', () => {
     const blockSlot = await screen.findByTestId('block-slot-orders-block');
     fireEvent.mouseEnter(blockSlot);
     fireEvent.click(
-      within(blockSlot).getByRole('button', { name: '区块配置' })
+      within(blockSlot).getByRole('button', { name: '编辑区块' })
     );
 
-    expect(
-      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
-    ).toBeInTheDocument();
+    const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
+    fireEvent.click(within(studio).getByRole('button', { name: '配置' }));
     expect(screen.getByText('结构化配置')).toBeInTheDocument();
     expect(
       screen.queryByRole('dialog', { name: '区块配置' })
@@ -765,7 +766,7 @@ describe('FrontStagePage - design controls', () => {
         />
       </AppProviders>
     );
-    expect(screen.getByText('操作失败')).toBeInTheDocument();
+    expect(screen.getByText('failed')).toBeInTheDocument();
   });
 
   test('keeps mutation status scoped to design mode controls', () => {

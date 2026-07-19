@@ -95,12 +95,12 @@ describe('PageCanvas', () => {
       />
     );
 
-    // All blocks show "区块加载中..." when no runtime session available
     expect(
-      within(screen.getByTestId('page-canvas-render-slots')).getAllByText(
-        '区块加载中...'
+      within(screen.getByTestId('page-canvas-render-slots')).getAllByTestId(
+        'block-ui-loading-shell'
       )
     ).toHaveLength(2);
+    expect(screen.queryByText('区块加载中...')).not.toBeInTheDocument();
   });
 
   test('shows loading placeholder for blocks without runtime sessions', () => {
@@ -127,7 +127,11 @@ describe('PageCanvas', () => {
     );
 
     const slots = within(screen.getByTestId('page-canvas-render-slots'));
-    expect(slots.getByText('区块加载中...')).toBeInTheDocument();
+    expect(slots.getByTestId('block-ui-loading-shell')).toHaveAttribute(
+      'aria-busy',
+      'true'
+    );
+    expect(slots.queryByText('区块加载中...')).not.toBeInTheDocument();
   });
 
   test('shows an explicit error instead of rendering an unsupported renderer version', () => {
@@ -223,9 +227,6 @@ describe('PageCanvas', () => {
 
   test('renders design mode with hover toolbar actions', () => {
     const designActions = {
-      onMoveUp: vi.fn(),
-      onMoveDown: vi.fn(),
-      onConfigure: vi.fn(),
       onEditCode: vi.fn(),
       onDelete: vi.fn()
     };
@@ -273,7 +274,7 @@ describe('PageCanvas', () => {
       'react-grid-item'
     );
     expect(screen.getByTestId('block-slot-hero')).toHaveStyle({
-      height: '100%'
+      height: 'auto'
     });
   });
 });

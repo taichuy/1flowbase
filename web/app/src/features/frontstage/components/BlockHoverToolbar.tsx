@@ -1,11 +1,8 @@
 import {
-  ArrowDownOutlined,
-  ArrowUpOutlined,
   CodeOutlined,
   DeleteOutlined,
-  HolderOutlined,
-  MoreOutlined,
-  SettingOutlined
+  DragOutlined,
+  MenuOutlined
 } from '@ant-design/icons';
 import { App as AntdApp, Button, Divider, Tooltip, message } from 'antd';
 import type { FC, MouseEvent } from 'react';
@@ -17,26 +14,16 @@ import { FrontstageNodeActionButton } from './FrontstageNodeActionButton';
 
 type BlockHoverToolbarProps = {
   blockId: string;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onConfigure: () => void;
   onEditCode: () => void;
   onDelete: () => void;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
   isVisible: boolean;
   disabled?: boolean;
 };
 
 export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
   blockId,
-  onMoveUp,
-  onMoveDown,
-  onConfigure,
   onEditCode,
   onDelete,
-  canMoveUp,
-  canMoveDown,
   isVisible,
   disabled = false
 }) => {
@@ -68,23 +55,12 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
           aria-label={i18nText('frontstage', 'auto.move_or_sort_block')}
           className="frontstage-block-drag-handle"
           disabled={disabled}
-          icon={<HolderOutlined />}
+          icon={<DragOutlined />}
         />
       </Tooltip>
-      <Tooltip title={i18nText('frontstage', 'auto.block_configuration')}>
+      <Tooltip title={i18nText('frontstage', 'auto.edit_block')}>
         <FrontstageNodeActionButton
-          aria-label={i18nText('frontstage', 'auto.block_configuration')}
-          disabled={disabled}
-          icon={<SettingOutlined />}
-          onClick={(event) => {
-            event.stopPropagation();
-            onConfigure();
-          }}
-        />
-      </Tooltip>
-      <Tooltip title={i18nText('frontstage', 'auto.block_code')}>
-        <FrontstageNodeActionButton
-          aria-label={i18nText('frontstage', 'auto.block_code')}
+          aria-label={i18nText('frontstage', 'auto.edit_block')}
           disabled={disabled}
           icon={<CodeOutlined />}
           onClick={(event) => {
@@ -99,7 +75,7 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
           aria-haspopup="menu"
           aria-label={i18nText('frontstage', 'auto.more_block_operations')}
           disabled={disabled}
-          icon={<MoreOutlined />}
+          icon={<MenuOutlined />}
           onClick={(event) => {
             event.stopPropagation();
             setIsMoreMenuOpen((open) => !open);
@@ -110,26 +86,6 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
             className="frontstage-block-hover-actions__menu"
             role="menu"
           >
-            <Button
-              block
-              type="text"
-              role="menuitem"
-              icon={<ArrowUpOutlined />}
-              disabled={disabled || !canMoveUp}
-              onClick={menuAction(onMoveUp)}
-            >
-              {i18nText('frontstage', 'auto.move_block_up')}
-            </Button>
-            <Button
-              block
-              type="text"
-              role="menuitem"
-              icon={<ArrowDownOutlined />}
-              disabled={disabled || !canMoveDown}
-              onClick={menuAction(onMoveDown)}
-            >
-              {i18nText('frontstage', 'auto.move_block_down')}
-            </Button>
             <Button
               block
               type="text"

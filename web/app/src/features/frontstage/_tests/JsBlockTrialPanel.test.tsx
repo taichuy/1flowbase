@@ -28,6 +28,7 @@ function createBlock(
       code: 'hero.banner'
     },
     props: { title: 'Hello' },
+    presentation: overrides.presentation ?? { heightMode: 'auto', height: null },
     layout: { order: 1 },
     order: 1,
     runtime: {
@@ -242,7 +243,11 @@ describe('JsBlockTrialPanel', () => {
     });
     expect(runtimeSession.session.subscribe).toHaveBeenCalledTimes(1);
     expect(runtimeSession.session.run).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('运行中')).toBeInTheDocument();
+    expect(screen.getByTestId('block-ui-loading-shell')).toHaveAttribute(
+      'aria-busy',
+      'true'
+    );
+    expect(screen.queryByText('运行中')).not.toBeInTheDocument();
 
     act(() => {
       runtimeSession.emit(
@@ -256,7 +261,7 @@ describe('JsBlockTrialPanel', () => {
       );
     });
 
-    expect(screen.getByText('运行结果')).toBeInTheDocument();
+    expect(screen.queryByText('运行结果')).not.toBeInTheDocument();
     expect(screen.getByText('Runtime Ready')).toBeInTheDocument();
 
     act(() => {

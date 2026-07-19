@@ -76,6 +76,7 @@ describe('frontstage page document', () => {
           code: 'official.hero'
         },
         props: { title: 'Hello' },
+        presentation: { heightMode: 'auto', height: null },
         layout: { region: 'main', order: 20, span: 12 },
         order: 20,
         runtime: {
@@ -203,6 +204,43 @@ describe('frontstage page document', () => {
     expect(document.diagnostics).toEqual([]);
   });
 
+  test('AC-003 normalizes and round-trips block height presentation separately from grid layout', () => {
+    const content = createPageContent({
+      root: {
+        uid: 'root-1',
+        payload: {
+          blocks: [
+            {
+              id: 'hero',
+              renderer_version: 'v1',
+              codeRef: 'hero-code',
+              contributionCode: 'official.hero',
+              'x-layout': { order: 0 },
+              'x-presentation': { heightMode: 'fixed', height: 360 },
+              runtime: 'inline'
+            }
+          ]
+        }
+      }
+    });
+    const document = createFrontstagePageDocument(content);
+
+    expect(document.blocks[0].presentation).toEqual({
+      heightMode: 'fixed',
+      height: 360
+    });
+    expect(
+      createFrontstagePageDocumentSaveInput(content, document).payload
+    ).toMatchObject({
+      blocks: [
+        {
+          'x-layout': { order: 0 },
+          'x-presentation': { heightMode: 'fixed', height: 360 }
+        }
+      ]
+    });
+  });
+
   test('falls back to schema blocks when root payload has no block array', () => {
     const document = createFrontstagePageDocument(
       createPageContent({
@@ -292,6 +330,7 @@ describe('frontstage page document', () => {
           code: 'unknown'
         },
         props: {},
+        presentation: { heightMode: 'auto', height: null },
         layout: { order: 0 },
         order: 0,
         runtime: {
@@ -401,6 +440,7 @@ describe('frontstage page document', () => {
         code: 'official.hero'
       },
       props: { title: 'Hello' },
+      presentation: { heightMode: 'auto', height: null },
       layout: { region: 'main', order: 99, span: 12, width: 12, height: 4 },
       order: 3,
       runtime: {
@@ -439,6 +479,7 @@ describe('frontstage page document', () => {
         code: 'official.hero'
       },
       props: { title: 'Hello' },
+      'x-presentation': { heightMode: 'auto', height: null },
       'x-layout': {
         region: 'main',
         order: 3,

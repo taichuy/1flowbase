@@ -38,6 +38,7 @@ export interface FrontstagePageCanvasRuntimeSessionEntryBase {
   sourceCodeRef: string | null;
   sourceIndex: number;
   slotIndex: number;
+  sourceStatus: FrontstagePageCanvasRuntimeRunPlanItem['sourceStatus'];
   runPlanStatus: FrontstagePageCanvasRuntimeRunPlanItem['status'];
 }
 
@@ -392,6 +393,7 @@ function createBaseEntry(
     sourceCodeRef: item.sourceCodeRef,
     sourceIndex: item.sourceIndex,
     slotIndex: item.slotIndex,
+    sourceStatus: item.sourceStatus,
     runPlanStatus: item.status
   };
 }

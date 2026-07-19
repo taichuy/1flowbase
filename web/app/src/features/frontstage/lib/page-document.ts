@@ -36,6 +36,13 @@ export type FrontstageBlockLayout = Record<string, unknown> & {
   order: number;
 };
 
+export type FrontstageBlockHeightMode = 'auto' | 'fixed';
+
+export interface FrontstageBlockPresentation {
+  heightMode: FrontstageBlockHeightMode;
+  height: number | null;
+}
+
 export interface FrontstageBlockInstance {
   id: string;
   rendererVersion: string | null;
@@ -45,6 +52,7 @@ export interface FrontstageBlockInstance {
   catalog: FrontstageBlockCatalogRef;
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
+  presentation: FrontstageBlockPresentation;
   layout: FrontstageBlockLayout;
   order: number;
   runtime: FrontstageBlockRuntimeHint;
@@ -65,6 +73,7 @@ interface FrontstageBlockPayload {
   catalog: FrontstageBlockCatalogRef;
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
+  'x-presentation': FrontstageBlockPresentation;
   'x-layout': FrontstageBlockLayout;
   runtime: FrontstageBlockRuntimeHint;
 }
@@ -217,6 +226,44 @@ function normalizeProps(
     message: 'Frontstage block props must be an object.'
   });
   return {};
+}
+
+function normalizePresentation(
+  block: Record<string, unknown>,
+  path: string,
+  diagnostics: FrontstagePageDocumentDiagnostic[]
+): FrontstageBlockPresentation {
+  const rawPresentation = block['x-presentation'];
+  if (rawPresentation === undefined || rawPresentation === null) {
+    return { heightMode: 'auto', height: null };
+  }
+
+  if (!isRecord(rawPresentation)) {
+    pushDiagnostic(diagnostics, {
+      severity: 'warning',
+      code: 'invalid_block_presentation',
+      path: `${path}.x-presentation`,
+      message: 'Frontstage block presentation must be an object.'
+    });
+    return { heightMode: 'auto', height: null };
+  }
+
+  if (rawPresentation.heightMode !== 'fixed') {
+    return { heightMode: 'auto', height: null };
+  }
+
+  const height = rawPresentation.height;
+  if (typeof height !== 'number' || !Number.isFinite(height) || height < 120) {
+    pushDiagnostic(diagnostics, {
+      severity: 'warning',
+      code: 'invalid_fixed_block_height',
+      path: `${path}.x-presentation.height`,
+      message: 'Fixed block height must be at least 120 pixels.'
+    });
+    return { heightMode: 'auto', height: null };
+  }
+
+  return { heightMode: 'fixed', height };
 }
 
 function normalizeRuntime(
@@ -378,6 +425,7 @@ function normalizeBlock(
   }
 
   const props = normalizeProps(block, path, diagnostics);
+  const presentation = normalizePresentation(block, path, diagnostics);
   const layout = normalizeLayout(block, blockIndex, path, diagnostics);
   const rendererVersion = normalizeRendererVersion(block, path, diagnostics);
   const runtimeDiagnostics: FrontstagePageDocumentDiagnostic[] = [];
@@ -409,6 +457,7 @@ function normalizeBlock(
       code: contributionCode
     },
     props,
+    presentation,
     layout,
     order: layout.order,
     runtime
@@ -476,6 +525,9 @@ function createBlockPayload(
     catalog: { ...block.catalog },
     contribution: { ...block.contribution },
     props: { ...block.props },
+    'x-presentation': {
+      ...(block.presentation ?? { heightMode: 'auto', height: null })
+    },
     'x-layout': {
       ...block.layout,
       order: block.order

@@ -23,6 +23,8 @@ import {
   type BlockUiStyle
 } from '@1flowbase/page-protocol';
 
+export { BlockUiLoadingShell } from './BlockUiLoadingShell';
+
 const { Text: AntdText, Title: AntdTitle, Paragraph } = Typography;
 const { TextArea } = AntdInput;
 

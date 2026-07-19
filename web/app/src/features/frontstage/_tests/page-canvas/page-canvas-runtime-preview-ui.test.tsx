@@ -116,6 +116,7 @@ describe('PageCanvas runtime preview UI', () => {
         sourceCodeRef: 'ready-code',
         sourceIndex: 0,
         slotIndex: 0,
+        sourceStatus: 'ready',
         runPlanStatus: 'run_plan_ready',
         snapshot: createRuntimeSnapshot({
           status: 'ready',
@@ -250,6 +251,7 @@ describe('PageCanvas runtime preview UI', () => {
         sourceCodeRef: 'factory-failed-code',
         sourceIndex: 0,
         slotIndex: 0,
+        sourceStatus: 'ready',
         runPlanStatus: 'run_plan_ready',
         message: 'worker unavailable',
         error: new Error('worker unavailable')
@@ -262,6 +264,7 @@ describe('PageCanvas runtime preview UI', () => {
         sourceCodeRef: 'loading-code',
         sourceIndex: 1,
         slotIndex: 1,
+        sourceStatus: 'loading',
         runPlanStatus: 'source_not_ready',
         skipReason: 'source_not_ready',
         message: 'waiting for source',
@@ -311,7 +314,8 @@ describe('PageCanvas runtime preview UI', () => {
     expect(
       screen.getByText('受限运行时会话创建失败。')
     ).toBeInTheDocument();
-    expect(screen.getByText('区块跳过运行')).toBeInTheDocument();
+    expect(screen.getByTestId('block-ui-loading-shell')).toBeInTheDocument();
+    expect(screen.queryByText('区块跳过运行')).not.toBeInTheDocument();
     expect(screen.queryByText('worker unavailable')).not.toBeInTheDocument();
   });
 });
