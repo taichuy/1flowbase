@@ -595,7 +595,10 @@ describe('FrontStagePage - design controls', () => {
     expect(tree?.children).toHaveLength(1);
     expect(
       within(tree as HTMLElement).getByRole('button', { name: '添加菜单' })
-    ).toBeInTheDocument();
+    ).toHaveClass(
+      'frontstage-add-action-button',
+      'frontstage-add-action-button--full'
+    );
   });
 
   test('AC-003 places Add menu after existing top-level nodes', () => {

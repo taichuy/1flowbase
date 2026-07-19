@@ -89,11 +89,7 @@ describe('Navigation', () => {
     resetFrontstageDesignModeStore();
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockReset();
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
-      consoleNavigationForPrimaryRoutes([
-        'home',
-        'embedded-apps',
-        'templates'
-      ])
+      consoleNavigationForPrimaryRoutes(['home', 'embedded-apps', 'templates'])
     );
     frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([]);
   });
@@ -188,13 +184,14 @@ describe('Navigation', () => {
     const nav = await screen.findByRole('navigation', { name: 'Primary' });
     expect(nav).toHaveClass('app-shell-navigation');
     expect(within(nav).getByRole('menu')).toHaveClass('app-shell-menu');
-    expect(within(nav).getByRole('button', { name: '添加菜单' })).toHaveClass(
+    const addMenuButton = within(nav).getByRole('button', {
+      name: '添加菜单'
+    });
+    expect(addMenuButton).toHaveClass(
       'frontstage-add-action-button',
       'frontstage-add-action-button--compact'
     );
-    expect(
-      within(nav).getByRole('button', { name: '添加菜单' })
-    ).toHaveTextContent('添加菜单');
+    expect(addMenuButton).toHaveTextContent('添加菜单');
     expect(
       await within(nav).findByRole('link', { name: '新增菜单' })
     ).toHaveAttribute('href', '/new-space');
