@@ -3,6 +3,8 @@ use crate::_tests::{
     support::{login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config},
 };
 use crate::routes::application_public_api::native::parse_native_run_request;
+use std::collections::BTreeSet;
+
 use axum::{
     body::{to_bytes, Body, Bytes},
     http::{Request, StatusCode},
@@ -22,6 +24,7 @@ use control_plane::{
         UpdateFlowRunInput,
     },
 };
+use plugin_framework::provider_contract::ProviderInvocationCapability;
 use serde_json::{json, Value};
 use time::OffsetDateTime;
 use tower::ServiceExt;
@@ -332,6 +335,7 @@ pub(super) async fn assert_published_native_generate_route(
         .await
         .unwrap()
         .expect("fixture publication should freeze a compiled plan");
+    let required_semantic_capabilities = BTreeSet::<ProviderInvocationCapability>::new();
     let ResolvedPublishedRoute::Provider(route) = PublishedRouteResolver::new(&state.store)
         .resolve_generate(
             workspace_id,
@@ -339,6 +343,7 @@ pub(super) async fn assert_published_native_generate_route(
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
             GenerateExecutionProfile::Standard,
+            &required_semantic_capabilities,
         )
         .await
         .expect("fixture publication should resolve Generate through its provider")
