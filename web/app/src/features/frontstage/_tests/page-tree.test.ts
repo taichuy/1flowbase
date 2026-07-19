@@ -4,6 +4,7 @@ import {
   createGroupNode,
   createPageNode,
   getFirstPageId,
+  getFirstTopLevelPageId,
   normalizePageTree,
   removeNodeFromTree,
   resolveSelectedPageId
@@ -12,6 +13,36 @@ import {
 import type { FrontStageTreeNode } from '../lib/page-tree';
 
 describe('frontstage page tree logic', () => {
+  test('AC-001 chooses the first top-level page without descending into groups', () => {
+    const tree: FrontStageTreeNode[] = [
+      {
+        id: 'group-first',
+        title: 'Collapsed group',
+        kind: 'group',
+        children: [
+          {
+            id: 'page-in-group',
+            title: 'Grouped page',
+            kind: 'page'
+          }
+        ]
+      },
+      {
+        id: 'page-top-level-first',
+        title: 'First top-level page',
+        kind: 'page'
+      },
+      {
+        id: 'page-top-level-second',
+        title: 'Second top-level page',
+        kind: 'page'
+      }
+    ];
+
+    expect(getFirstTopLevelPageId(tree)).toBe('page-top-level-first');
+    expect(getFirstTopLevelPageId(tree.slice(0, 1))).toBeNull();
+  });
+
   test('normalizes nested groups by preserving root groups and flattening descendant pages', () => {
     const tree: FrontStageTreeNode[] = [
       {

@@ -31,7 +31,10 @@ import {
 } from '../features/frontstage/api/page-tabs';
 import { useFrontstagePageTreeMutations } from '../features/frontstage/hooks/use-frontstage-page-tree-mutations';
 import { isForbiddenResponseError } from '../features/frontstage/lib/api-errors';
-import { resolveSelectedPageId } from '../features/frontstage/lib/page-tree';
+import {
+  getFirstTopLevelPageId,
+  resolveSelectedPageId
+} from '../features/frontstage/lib/page-tree';
 import { HomePage } from '../features/home/pages/HomePage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
 import type { MeSectionKey } from '../features/me/lib/me-sections';
@@ -291,10 +294,12 @@ function FrontStageWorkspaceContent({
     rootNode?.kind === 'page'
       ? rootNode.id
       : pageTreeFromApi
-        ? resolveSelectedPageId({
-            pageId: effectivePageId,
-            pageTree: pageTreeFromApi
-          }).selectedPageId
+        ? rootNode?.kind === 'group' && !pageId
+          ? getFirstTopLevelPageId(pageTreeFromApi)
+          : resolveSelectedPageId({
+              pageId: effectivePageId,
+              pageTree: pageTreeFromApi
+            }).selectedPageId
         : null;
   const pageTabsQuery = useQuery({
     queryKey: selectedPageId
@@ -341,6 +346,16 @@ function FrontStageWorkspaceContent({
       <Navigate
         to={FRONTSTAGE_SLUG_PAGE_PATH}
         params={{ slug: rootNode.slug, pageId: rootNode.id }}
+        replace
+      />
+    );
+  }
+
+  if (rootNode?.kind === 'group' && !pageId && selectedPageId && rootNode.slug) {
+    return (
+      <Navigate
+        to={FRONTSTAGE_SLUG_PAGE_PATH}
+        params={{ slug: rootNode.slug, pageId: selectedPageId }}
         replace
       />
     );

@@ -198,6 +198,12 @@ export function getFirstPageId(nodes: FrontStageTreeNode[]): string | null {
   return null;
 }
 
+export function getFirstTopLevelPageId(
+  nodes: FrontStageTreeNode[]
+): string | null {
+  return nodes.find((node) => node.kind === 'page')?.id ?? null;
+}
+
 export function resolveSelectedPageId({
   currentSelectedPageId,
   pageId,
