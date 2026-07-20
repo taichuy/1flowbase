@@ -1302,31 +1302,42 @@ fn mcp_interface_entry_from_operation(
     spec: &Value,
     source: McpInterfaceCapabilitySource,
 ) -> Option<domain::McpInterfaceCatalogEntry> {
-    let operation_node = openapi_operation_node(spec, operation)?;
-    let path_item_node = openapi_path_item_node(spec, operation)?;
+    let interface = crate::openapi_interface::catalog_entry_from_operation(operation, spec)?;
     let scope_policy = mcp_interface_scope_policy(operation, source);
 
     Some(domain::McpInterfaceCatalogEntry {
-        interface_id: operation.id.clone(),
-        method: operation.method.clone(),
-        path: operation.path.clone(),
-        name: operation
-            .summary
-            .clone()
-            .unwrap_or_else(|| operation.id.clone()),
-        short_description: operation
-            .description
-            .clone()
-            .unwrap_or_else(|| format!("{} {}", operation.method, operation.path)),
-        parameter_descriptors: operation_parameter_descriptors(
-            spec,
-            path_item_node,
-            operation_node,
-        ),
-        parameter_schema: operation_input_schema(spec, path_item_node, operation_node),
-        result_schema: operation_response_schema(spec, operation_node),
+        interface_id: interface.operation_id,
+        method: interface.method,
+        path: interface.path,
+        name: interface.name,
+        short_description: interface.description,
+        parameter_descriptors: interface
+            .parameter_descriptors
+            .into_iter()
+            .filter_map(|descriptor| {
+                use crate::openapi_interface::OpenApiParameterLocation;
+                let parameter_type = match descriptor.location {
+                    OpenApiParameterLocation::Path | OpenApiParameterLocation::Query => {
+                        McpParameterType::Url
+                    }
+                    OpenApiParameterLocation::JsonBody => McpParameterType::JsonBody,
+                    OpenApiParameterLocation::FormBody => McpParameterType::Form,
+                    OpenApiParameterLocation::Header => return None,
+                };
+                Some(McpParameterDescriptor {
+                    name: descriptor.name,
+                    field_type: descriptor.field_type,
+                    parameter_type,
+                    description: descriptor.description,
+                    required: descriptor.required,
+                    schema: descriptor.schema,
+                })
+            })
+            .collect(),
+        parameter_schema: interface.request_schema,
+        result_schema: interface.response_schema,
         permission_code: operation_permission_code(&operation.method, &operation.path),
-        security: operation_security(spec, operation_node),
+        security: interface.security,
         risk_level: operation_risk_level(&operation.method),
         bindable: scope_policy.bindable,
         disabled_reason: scope_policy.disabled_reason.map(str::to_string),

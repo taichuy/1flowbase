@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     body::{to_bytes, Body},
@@ -98,13 +98,44 @@ pub async fn execute(
 ) -> Result<Value, McpDebugExecuteError> {
     let interface_arguments =
         build_interface_arguments(&interface_entry, &body.input_mapping, &body.mcp_arguments)?;
-    let target_response =
-        dispatch_interface_request(state, &headers, &interface_entry, &interface_arguments).await?;
-    if !target_response.status().is_success() {
-        return Err(McpDebugExecuteError::TargetResponse(target_response));
-    }
-
-    let interface_response = parse_target_response_body(target_response).await?;
+    let dispatch_entry = crate::openapi_interface::OpenApiInterfaceCatalogEntry {
+        operation_id: interface_entry.interface_id.clone(),
+        method: interface_entry.method.clone(),
+        path: interface_entry.path.clone(),
+        name: interface_entry.name.clone(),
+        description: interface_entry.short_description.clone(),
+        parameter_descriptors: Vec::new(),
+        request_schema: interface_entry.parameter_schema.clone(),
+        response_schema: interface_entry.result_schema.clone(),
+        security: interface_entry.security.clone(),
+    };
+    let dispatch_arguments = crate::openapi_interface::DispatchArguments {
+        path: interface_arguments.path.clone(),
+        query: interface_arguments.query.clone(),
+        headers: Map::new(),
+        body: if interface_arguments.body.is_empty() {
+            Value::Null
+        } else {
+            Value::Object(interface_arguments.body.clone())
+        },
+    };
+    let interface_response = match crate::openapi_interface::dispatch(
+        state,
+        &headers,
+        &dispatch_entry,
+        dispatch_arguments,
+        BTreeMap::new(),
+    )
+    .await
+    {
+        Ok(success) => success.value,
+        Err(crate::openapi_interface::DispatchError::Api(error)) => {
+            return Err(McpDebugExecuteError::Api(error));
+        }
+        Err(crate::openapi_interface::DispatchError::Target(response)) => {
+            return Err(McpDebugExecuteError::TargetResponse(response));
+        }
+    };
     let tool_result = map_tool_result(&body.output_mapping, &interface_response);
 
     if matches!(body.debug_response_mode, McpDebugResponseMode::ToolResult) {

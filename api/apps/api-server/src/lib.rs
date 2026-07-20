@@ -18,6 +18,7 @@ pub mod official_mcp_bundles;
 pub mod official_plugin_registry;
 pub mod openapi;
 pub mod openapi_docs;
+pub mod openapi_interface;
 pub mod provider_runtime;
 pub mod response;
 pub mod routes;

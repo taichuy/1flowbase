@@ -152,6 +152,204 @@ async fn dispatch(
     .await
 }
 
+async fn callable_catalog(app: &axum::Router, cookie: &str, workspace_id: &str) -> Value {
+    let (status, payload) = get_json(
+        app,
+        &format!("/api/console/frontstage/{workspace_id}/callable-interfaces"),
+        cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    payload["data"].clone()
+}
+
+async fn dispatch_callable(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    workspace_id: &str,
+    page_id: &str,
+    tab_id: &str,
+    operation_id: &str,
+    request: Value,
+) -> (StatusCode, Value) {
+    send_json(
+        app,
+        "POST",
+        &format!(
+            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/callable-interfaces/dispatch"
+        ),
+        cookie,
+        csrf,
+        json!({ "operation_id": operation_id, "request": request }),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn callable_catalog_limits_runtime_read_models_and_keeps_filter_string() {
+    // Root AC-002/003: typed RuntimeRead capability is the operation inventory truth.
+    let app = test_app().await;
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let entries = callable_catalog(&app, &cookie, &workspace_id).await;
+    let conversations = entries
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|entry| {
+            entry["path"]
+                .as_str()
+                .is_some_and(|path| path.contains("/application_conversations/"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(conversations.len(), 2, "{entries}");
+    assert!(conversations
+        .iter()
+        .all(|entry| entry["method"] == json!("GET")));
+    assert!(conversations
+        .iter()
+        .any(|entry| entry["path"].as_str().unwrap().ends_with("/list")));
+    assert!(conversations
+        .iter()
+        .any(|entry| entry["path"].as_str().unwrap().contains("/get/{id}")));
+    let list = conversations
+        .iter()
+        .find(|entry| entry["path"].as_str().unwrap().ends_with("/list"))
+        .unwrap();
+    assert_eq!(
+        list["request_schema"]["properties"]["query"]["properties"]["filter"]["type"],
+        json!("string")
+    );
+}
+
+#[tokio::test]
+async fn callable_catalog_and_dispatch_use_registered_page_tab_read_adapter() {
+    // Root AC-002/004: a non-model operation uses the same catalog and dispatcher owner.
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let (page_id, tab_id) = create_page(&app, &cookie, &csrf, &workspace_id).await;
+    let entries = callable_catalog(&app, &cookie, &workspace_id).await;
+    let page_tab = entries
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["operation_id"] == json!("get_frontstage_page_detail"))
+        .expect("registered page-tab read callable");
+    assert_eq!(page_tab["adapter_id"], json!("frontstage_page_tab_get"));
+    assert_eq!(page_tab["bindable"], json!(true));
+    assert_eq!(
+        page_tab["host_injected_parameters"],
+        json!(["workspace_id", "page_id", "tab_reference"])
+    );
+    assert!(page_tab["request_schema"]["properties"]
+        .get("path")
+        .is_none());
+
+    let (status, payload) = dispatch_callable(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        &page_id,
+        &tab_id,
+        "get_frontstage_page_detail",
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    assert_eq!(payload["data"]["id"], json!(page_id));
+}
+
+#[tokio::test]
+async fn callable_dispatch_fails_closed_for_registry_scope_and_schema_negatives() {
+    // Root AC-004: unregistered, non-bindable, host-owned, auth, and schema failures are observable.
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let (page_id, tab_id) = create_page(&app, &cookie, &csrf, &workspace_id).await;
+
+    let (unregistered, _) = dispatch_callable(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        &page_id,
+        &tab_id,
+        "list_frontstage_pages",
+        json!({}),
+    )
+    .await;
+    assert_eq!(unregistered, StatusCode::NOT_FOUND);
+
+    let (non_bindable, _) = dispatch_callable(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        &page_id,
+        &tab_id,
+        "save_frontstage_tab_document",
+        json!({ "body": { "payload": {} } }),
+    )
+    .await;
+    assert_eq!(non_bindable, StatusCode::BAD_REQUEST);
+
+    let (host_parameter, _) = dispatch_callable(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        &page_id,
+        &tab_id,
+        "get_frontstage_page_detail",
+        json!({ "path": { "workspace_id": workspace_id } }),
+    )
+    .await;
+    assert_eq!(host_parameter, StatusCode::BAD_REQUEST);
+
+    let entries = callable_catalog(&app, &cookie, &workspace_id).await;
+    let list_operation = entries
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| {
+            entry["path"]
+                .as_str()
+                .is_some_and(|path| path.contains("/application_conversations/list"))
+        })
+        .unwrap()["operation_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (schema, _) = dispatch_callable(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        &page_id,
+        &tab_id,
+        &list_operation,
+        json!({ "query": { "filter": { "field": "id" } } }),
+    )
+    .await;
+    assert_eq!(schema, StatusCode::BAD_REQUEST);
+
+    let (unauthorized, _) = dispatch_callable(
+        &app,
+        "cookie=missing",
+        &csrf,
+        &workspace_id,
+        &page_id,
+        &tab_id,
+        "get_frontstage_page_detail",
+        json!({}),
+    )
+    .await;
+    assert_eq!(unauthorized, StatusCode::UNAUTHORIZED);
+}
+
 #[tokio::test]
 async fn data_capability_catalog_lists_descriptors_and_published_models() {
     let app = test_app().await;

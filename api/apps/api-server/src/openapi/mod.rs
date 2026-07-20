@@ -151,6 +151,8 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::frontstage::get_frontstage_block_code,
         crate::routes::frontstage::save_frontstage_block_code,
         crate::routes::frontstage::data_capabilities::list_frontstage_data_capabilities,
+        crate::routes::frontstage::callable_interfaces::list_frontstage_callable_interfaces,
+        crate::routes::frontstage::callable_interfaces::dispatch_frontstage_callable_interface,
         crate::routes::roles::list_roles,
         crate::routes::roles::create_role,
         crate::routes::roles::update_role,

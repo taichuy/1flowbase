@@ -278,6 +278,47 @@ async fn mcp_interface_capabilities_include_system_table_create_operation() {
 }
 
 #[tokio::test]
+async fn mcp_interface_capabilities_limit_runtime_read_model_to_list_and_get() {
+    // Root AC-003: MCP consumes the same capability-trimmed dynamic OpenAPI inventory.
+    let app = test_app().await;
+    let (root_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/mcp/interface-capabilities?bindable_only=true")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response_json(response).await;
+    let entries = payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|entry| {
+            entry["path"]
+                .as_str()
+                .is_some_and(|path| path.contains("/application_conversations/"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(entries.len(), 2, "{payload}");
+    assert!(entries.iter().all(|entry| entry["method"] == json!("GET")));
+    let list = entries
+        .iter()
+        .find(|entry| entry["path"].as_str().unwrap().ends_with("/list"))
+        .unwrap();
+    assert_eq!(
+        list["parameter_schema"]["properties"]["query"]["properties"]["filter"]["type"],
+        json!("string")
+    );
+}
+
+#[tokio::test]
 async fn mcp_tool_create_and_update_accept_runtime_data_model_crud_interfaces() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
