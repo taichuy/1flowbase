@@ -38,13 +38,36 @@
   width: 10px;
   height: auto;
   cursor: ew-resize;
-  background: linear-gradient(
-    to right,
-    transparent 4px,
-    rgba(22, 119, 255, 0.75) 4px,
-    rgba(22, 119, 255, 0.75) 6px,
-    transparent 6px
-  );
+  background: transparent;
+}
+
+.frontstage-page-canvas-grid
+  .react-grid-item
+  > .frontstage-grid-resize-handle--e::after,
+.frontstage-page-canvas-grid
+  .react-grid-item
+  > .frontstage-grid-resize-handle--w::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: 2px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(22, 119, 255, 0.75);
+  content: '';
+  transform: translate(-50%, -50%);
+  transition: background-color 120ms ease;
+}
+
+.frontstage-page-canvas-grid
+  .react-grid-item.resizing
+  > .frontstage-grid-resize-handle--e::after,
+.frontstage-page-canvas-grid
+  .react-grid-item.resizing
+  > .frontstage-grid-resize-handle--w::after {
+  background: rgba(22, 119, 255, 0.95);
 }
 
 .frontstage-page-canvas-grid
