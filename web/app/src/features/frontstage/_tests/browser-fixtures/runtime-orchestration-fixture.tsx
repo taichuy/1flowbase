@@ -33,18 +33,43 @@ function createRunPlanItem(
   const codeRef = `${blockId}-code`;
   const source =
     policyBlock && index === 0
-      ? `export default { render() { while (true) {} } };`
+      ? `
+import type { BlockModule, BlockResult } from '@1flowbase/block-sdk';
+
+async function main(): Promise<BlockResult> {
+  while (true) {}
+}
+
+export default { main } satisfies BlockModule;`
       : failingBlock && index === 0
-        ? `export default { render() { throw new Error('Controlled fixture failure'); } };`
+        ? `
+import type { BlockModule, BlockResult } from '@1flowbase/block-sdk';
+
+async function main(): Promise<BlockResult> {
+  throw new Error('Controlled fixture failure');
+}
+
+export default { main } satisfies BlockModule;`
         : `
-import { defineBlock } from '@1flowbase/block-sdk';
+import type {
+  BlockContext,
+  BlockModule,
+  BlockResult
+} from '@1flowbase/block-sdk';
 import { Text } from '@1flowbase/block-renderer/antd-facade';
-export default defineBlock({
-  async render(ctx) {
-    await ctx.data.query('fixture.delay', { blockId: ctx.props.blockId });
-    return Text({ children: 'Rendered ' + ctx.props.blockId });
-  }
-});`;
+
+async function main(ctx: BlockContext): Promise<BlockResult> {
+  const response = await ctx.interfaces.call('listRecords', {
+    body: { blockId: ctx.props.blockId }
+  });
+
+  return {
+    view: Text({ children: 'Rendered ' + ctx.props.blockId }),
+    outputs: { response }
+  };
+}
+
+export default { main } satisfies BlockModule;`;
 
   return {
     status: 'run_plan_ready',

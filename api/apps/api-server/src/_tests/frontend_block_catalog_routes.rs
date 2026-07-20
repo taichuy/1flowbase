@@ -141,9 +141,24 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .expect("system bootstrap must register the built-in JSX block");
 
     assert_eq!(jsx_block["code_template_language"], "tsx");
-    assert!(jsx_block["code_template"]
-        .as_str()
-        .is_some_and(|source| source.contains("<Stack>")));
+    assert_eq!(jsx_block["code_template_version"], "2.0.0");
+    let code_template = jsx_block["code_template"].as_str().unwrap();
+    assert!(code_template.contains("async function main"));
+    assert!(code_template.contains("satisfies BlockModule"));
+    assert!(code_template.contains("outputs: {}"));
+    assert!(!code_template.contains("defineBlock"));
+    assert!(!code_template.contains("render()"));
+    let sdk_declarations = jsx_block["code_modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|module| module["source"] == "@1flowbase/block-sdk")
+        .and_then(|module| module["type_declarations"].as_str())
+        .unwrap();
+    assert!(sdk_declarations.contains("interface BlockModule"));
+    assert!(sdk_declarations.contains("readonly inputs"));
+    assert!(sdk_declarations.contains("readonly interfaces"));
+    assert!(!sdk_declarations.contains("defineBlock"));
     assert_eq!(
         jsx_block["code_modules"]
             .as_array()

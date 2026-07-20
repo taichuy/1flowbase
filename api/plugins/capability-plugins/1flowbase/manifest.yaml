@@ -31,50 +31,108 @@ block_contributions:
     runtime: iframe
     entry: index.js
     code_template: |
-      import { defineBlock } from '@1flowbase/block-sdk';
-      import { Stack, Text, Title } from '@1flowbase/block-renderer/antd-facade';
+      import type {
+        BlockContext,
+        BlockModule,
+        BlockResult
+      } from '@1flowbase/block-sdk';
 
-      export default defineBlock({
-        title: '代码示例区块',
+      import {
+        Stack,
+        Text,
+        Title
+      } from '@1flowbase/block-renderer/antd-facade';
 
-        render() {
-          return (
+      async function main(_ctx: BlockContext): Promise<BlockResult> {
+        return {
+          view: (
             <Stack>
               <Title>代码示例区块</Title>
-              <Text>点击区块右上角的编辑图标修改这段 TSX。</Text>
+              <Text>从接口连接器插入函数，然后在 main 中调用。</Text>
             </Stack>
-          );
-        }
-      });
-    code_template_version: 1.0.0
+          ),
+          outputs: {}
+        };
+      }
+
+      /**
+       * @1flowbase-context
+       * inputs: 无
+       * interfaces: 无
+       * outputs: 无
+       */
+      export default {
+        main
+      } satisfies BlockModule;
+    code_template_version: 2.0.0
     code_template_language: tsx
     code_modules:
       - source: "@1flowbase/block-sdk"
         type_declarations: |
           declare module '@1flowbase/block-sdk' {
-            export interface BlockContext {
-              readonly props: Readonly<Record<string, unknown>>;
-              readonly state: Readonly<Record<string, unknown>>;
-              patch(next: Record<string, unknown>): void;
-              readonly data: {
-                query<T = unknown>(queryId: string, input?: unknown): Promise<T>;
-              };
-              readonly actions: {
-                invoke<T = unknown>(actionId: string, input?: unknown): Promise<T>;
-              };
-              readonly events: {
-                emit(eventName: string, payload?: unknown): void;
-              };
+            export type BlockContextRecord = Record<string, unknown>;
+            export interface BlockContextIdentity {
+              readonly id: string;
+              readonly displayName?: string;
             }
-            export interface BlockDefinitionInput {
-              readonly id?: string;
+            export interface BlockContextEntity {
+              readonly id: string;
+              readonly name?: string;
+            }
+            export interface BlockContextPage {
+              readonly id: string;
+              readonly route: string;
               readonly title?: string;
-              readonly initialState?: Readonly<Record<string, unknown>>;
-              readonly setup?: (ctx: BlockContext) => void | Promise<void>;
-              readonly render: (ctx: BlockContext) => unknown;
-              readonly dispose?: (ctx: BlockContext) => void | Promise<void>;
             }
-            export declare function defineBlock(definition: BlockDefinitionInput): Readonly<BlockDefinitionInput>;
+            export interface BlockInterfaceRequest {
+              readonly path?: BlockContextRecord;
+              readonly query?: BlockContextRecord;
+              readonly headers?: BlockContextRecord;
+              readonly body?: unknown;
+            }
+            export interface BlockContextInterfaces {
+              call<TResponse = unknown>(bindingAlias: string, request?: BlockInterfaceRequest): Promise<TResponse>;
+            }
+            export interface BlockContextEvents {
+              emit(event: string, payload?: BlockContextRecord): void;
+            }
+            export interface BlockContextTheme {
+              readonly mode: 'light' | 'dark';
+              readonly tokens: BlockContextRecord;
+            }
+            export interface BlockContextUi {
+              readonly locale?: string;
+              readonly density?: 'compact' | 'comfortable';
+            }
+            export interface BlockContext<TInputs extends BlockContextRecord = BlockContextRecord> {
+              readonly currentUser: BlockContextIdentity | null;
+              readonly workspace: BlockContextEntity;
+              readonly application: BlockContextEntity;
+              readonly page: BlockContextPage;
+              readonly inputs: Readonly<TInputs>;
+              readonly params: BlockContextRecord;
+              readonly props: BlockContextRecord;
+              readonly state: BlockContextRecord;
+              patch(patch: BlockContextRecord): void | Promise<void>;
+              readonly interfaces: BlockContextInterfaces;
+              readonly events: BlockContextEvents;
+              readonly theme: BlockContextTheme;
+              readonly ui: BlockContextUi;
+            }
+            export interface BlockResult<TOutputs extends BlockContextRecord = BlockContextRecord> {
+              readonly view: unknown;
+              readonly outputs: TOutputs;
+            }
+            export type BlockMain<
+              TInputs extends BlockContextRecord = BlockContextRecord,
+              TOutputs extends BlockContextRecord = BlockContextRecord
+            > = (ctx: BlockContext<TInputs>) => BlockResult<TOutputs> | Promise<BlockResult<TOutputs>>;
+            export interface BlockModule<
+              TInputs extends BlockContextRecord = BlockContextRecord,
+              TOutputs extends BlockContextRecord = BlockContextRecord
+            > {
+              readonly main: BlockMain<TInputs, TOutputs>;
+            }
           }
       - source: "@1flowbase/block-renderer/antd-facade"
         type_declarations: |
