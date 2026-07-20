@@ -66,6 +66,7 @@ import {
   isFlowTerminalNode
 } from './compact-dispatch';
 import { COMPACT_SOURCE_HANDLE_ID } from './canvas/handle-ids';
+import { validateAuthoringDocument } from '../../flow-editor/authoring/validation';
 
 export type { AgentFlowIssue } from './validation/issues';
 
@@ -823,7 +824,7 @@ export function validateDocument(
   environmentVariables: AgentFlowEnvironmentVariable[] = [],
   workflowTriggerContext: unknown = null
 ): AgentFlowIssue[] {
-  const issues: AgentFlowIssue[] = [];
+  const issues: AgentFlowIssue[] = validateAuthoringDocument(document);
   const nodeIds = new Set(document.graph.nodes.map((node) => node.id));
   const nodeById = new Map(document.graph.nodes.map((node) => [node.id, node]));
   const dependencies = buildNodeDependencyMap(document, nodeIds);
@@ -1291,5 +1292,5 @@ export function validateDocument(
     }
   }
 
-  return issues;
+  return [...new Map(issues.map((issue) => [issue.id, issue])).values()];
 }

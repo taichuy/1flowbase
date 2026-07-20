@@ -1,23 +1,25 @@
 import '../register';
 
-import type { AgentFlowNodeContributionEntry } from '../../agent-flow/api/node-contributions';
+import type { ConsoleNodeContributionEntry } from '@1flowbase/api-client';
 import {
-  GENERAL_EXECUTION_NODE_PICKER_TYPES,
   buildBuiltinNodePickerOptions,
+  SHARED_EXECUTION_NODE_PICKER_TYPES,
+  type BuiltinNodePickerOption
+} from '../../flow-editor/authoring/node-picker';
+import {
   toPluginContributionPickerOption,
-  type BuiltinNodePickerOption,
   type NodePickerOption
-} from '../../agent-flow/lib/plugin-node-definitions';
+} from '../../flow-editor/authoring/plugin-node-picker';
 
 export const WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
   buildBuiltinNodePickerOptions([
     'workflow_start',
     'workflow_end',
-    ...GENERAL_EXECUTION_NODE_PICKER_TYPES
+    ...SHARED_EXECUTION_NODE_PICKER_TYPES
   ]);
 
 export function buildWorkflowNodePickerOptions(
-  contributions: AgentFlowNodeContributionEntry[]
+  contributions: ConsoleNodeContributionEntry[]
 ): NodePickerOption[] {
   return [
     ...WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,

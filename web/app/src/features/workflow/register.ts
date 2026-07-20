@@ -1,4 +1,4 @@
-import { registerNodeDefinition } from '../agent-flow/lib/node-definitions/registry';
+import { registerNodeDefinition } from '../flow-editor/authoring/node-definition-registry';
 import { WorkflowStartCardDescription } from './components/WorkflowStartCardDescription';
 import {
   createWorkflowEndContract,
