@@ -38,7 +38,8 @@ test('AC-007: artifacts use the fixed governance paths and valid JSON/JSONL', ()
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-gateway-characterize-'));
   const summary = fixtureSummary();
   const events = [{ kind: 'request', clientNonce: 'load-000001', outcome: 'completed' }];
-  const artifacts = writeCharacterizeArtifacts({ repoRoot, summary, events });
+  const durableLedger = { schemaVersion: 1, verdict: 'PASS', requests: [], polls: [], failures: [] };
+  const artifacts = writeCharacterizeArtifacts({ repoRoot, summary, events, durableLedger });
   assert.equal(
     path.relative(repoRoot, artifacts.outputDirectory),
     path.join('tmp', 'test-governance', 'ai-gateway-concurrency'),
@@ -46,11 +47,13 @@ test('AC-007: artifacts use the fixed governance paths and valid JSON/JSONL', ()
   assert.equal(path.basename(artifacts.reportPath), 'report.md');
   assert.equal(path.basename(artifacts.summaryPath), 'summary.json');
   assert.equal(path.basename(artifacts.eventsPath), 'events.jsonl');
+  assert.equal(path.basename(artifacts.durableLedgerPath), 'durable-ledger.json');
   assert.deepEqual(JSON.parse(fs.readFileSync(artifacts.summaryPath, 'utf8')), summary);
   assert.deepEqual(
     fs.readFileSync(artifacts.eventsPath, 'utf8').trim().split('\n').map((line) => JSON.parse(line)),
     events,
   );
+  assert.deepEqual(JSON.parse(fs.readFileSync(artifacts.durableLedgerPath, 'utf8')), durableLedger);
 });
 
 test('AC-007: report labels timings as observations without an absolute budget', () => {

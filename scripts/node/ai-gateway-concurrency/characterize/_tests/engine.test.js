@@ -93,6 +93,7 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
         url: String(url),
         authorization: options.headers.authorization,
         clientNonce: JSON.parse(options.body).metadata.request_nonce,
+        traceId: JSON.parse(options.body).metadata.trace_id,
         model: JSON.parse(options.body).model,
       });
       return fetch(url, options);
@@ -136,6 +137,7 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
       'Bearer anthropic-key',
     ]);
     assert.deepEqual(fetchCalls.map((call) => call.clientNonce), ['load-000001', 'load-000003']);
+    assert.deepEqual(fetchCalls.map((call) => call.traceId), ['load-000001', 'load-000003']);
     assert.deepEqual(fetchCalls.map((call) => call.model), ['published-openai-model', 'published-anthropic-model']);
     assert.deepEqual(
       result.events.filter((event) => event.kind === 'request').map((event) => event.clientNonce),
@@ -147,6 +149,7 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
     assert.equal(websocketRequests.length, 1);
     assert.equal(websocketRequests[0].response.model, 'mock-model');
     assert.equal(websocketRequests[0].response.metadata.request_nonce, 'load-000002');
+    assert.equal(websocketRequests[0].response.metadata.trace_id, 'load-000002');
   });
 });
 

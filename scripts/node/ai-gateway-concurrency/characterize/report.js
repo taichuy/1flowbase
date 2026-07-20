@@ -13,6 +13,7 @@ function markdownReport(summary) {
     `- Profile: \`${summary.profile}\``,
     `- Requests: ${summary.totals.requests}`,
     `- Contract failures: ${summary.totals.contractFailures}`,
+    `- Durable convergence: ${summary.durableConvergence?.verdict ?? 'not-collected'}`,
     `- Peak observed at mock upstream: ${summary.metrics.mockArrivalPeak}`,
     '',
     'Absolute timing values are characterization observations, not performance budgets.',
@@ -31,17 +32,19 @@ function markdownReport(summary) {
   return `${lines.join('\n')}\n`;
 }
 
-function writeCharacterizeArtifacts({ repoRoot, summary, events }) {
+function writeCharacterizeArtifacts({ repoRoot, summary, events, durableLedger = null }) {
   if (!path.isAbsolute(repoRoot)) throw new Error('repoRoot must be an absolute path');
   const outputDirectory = path.join(repoRoot, ARTIFACT_RELATIVE_DIRECTORY);
   fs.mkdirSync(outputDirectory, { recursive: true });
   const reportPath = path.join(outputDirectory, 'report.md');
   const summaryPath = path.join(outputDirectory, 'summary.json');
   const eventsPath = path.join(outputDirectory, 'events.jsonl');
+  const durableLedgerPath = path.join(outputDirectory, 'durable-ledger.json');
   fs.writeFileSync(reportPath, markdownReport(summary), 'utf8');
   fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
   fs.writeFileSync(eventsPath, events.map((event) => JSON.stringify(event)).join('\n') + (events.length ? '\n' : ''), 'utf8');
-  return { outputDirectory, reportPath, summaryPath, eventsPath };
+  fs.writeFileSync(durableLedgerPath, `${JSON.stringify(durableLedger, null, 2)}\n`, 'utf8');
+  return { outputDirectory, reportPath, summaryPath, eventsPath, durableLedgerPath };
 }
 
 module.exports = { ARTIFACT_RELATIVE_DIRECTORY, markdownReport, writeCharacterizeArtifacts };

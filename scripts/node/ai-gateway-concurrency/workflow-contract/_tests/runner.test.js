@@ -36,6 +36,24 @@ function fixtureInputs() {
 }
 
 function fixtureManifest() {
+  const durable = (provider) => ({
+    query_run: {
+      method: 'GET',
+      url_template: `http://127.0.0.1:4100/api/agent/v1/runs/{run_id}`,
+      headers: { authorization: `Bearer ${provider}-application-key` },
+    },
+    list_runs: {
+      method: 'GET',
+      url: `http://127.0.0.1:4100/api/console/applications/${provider}/logs/runs?page=1&page_size=100&cache_mode=bypass`,
+      headers: { cookie: 'fixture-owner' },
+    },
+  });
+  const activity = (provider) => ({
+    method: 'GET',
+    url: `http://127.0.0.1:4100/api/console/applications/${provider}/monitoring/runtime-activity`,
+    headers: { cookie: 'fixture-owner' },
+  });
+  const streams = { method: 'GET', url: 'http://127.0.0.1:4200/providers/active-streams' };
   return {
     schema_version: '1flowbase.ai-gateway-fixture/v1',
     targets: {
@@ -43,11 +61,17 @@ function fixtureManifest() {
         api_key: 'openai-application-key',
         model: 'published-openai-model',
         gateway: { responses_url: 'http://127.0.0.1:4100/v1/responses' },
+        durable: durable('openai'),
+        runtime_activity: activity('openai'),
+        plugin_runner_active_streams: streams,
       },
       anthropic: {
         api_key: 'anthropic-application-key',
         model: 'published-anthropic-model',
         gateway: { anthropic_messages_url: 'http://127.0.0.1:4100/v1/messages' },
+        durable: durable('anthropic'),
+        runtime_activity: activity('anthropic'),
+        plugin_runner_active_streams: streams,
       },
     },
   };
@@ -76,12 +100,17 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
     async runGatewayCharacterize(options) {
       calls.push(['characterize', options]);
       return {
-        summary: { verdict: 'PASS', totals: { requests: 180, contractFailures: 0 } },
+        summary: {
+          verdict: 'PASS',
+          totals: { requests: 180, contractFailures: 0 },
+          durableConvergence: { verdict: 'PASS', requests: 120, polls: 2 },
+        },
         artifacts: { outputDirectory: path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency') },
       };
     },
   });
   assert.equal(result.status, 'pass');
+  assert.deepEqual(result.characterize.durable_convergence, { verdict: 'PASS', requests: 120, polls: 2 });
   assert.deepEqual(calls.map((call) => Array.isArray(call) ? call[0] : call), [
     'mock:create', 'mock:start', 'fixture:create', 'smoke', 'characterize', 'fixture:close', 'mock:stop',
   ]);
@@ -95,6 +124,10 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
     [TRANSPORT.ANTHROPIC_SSE]: 'published-anthropic-model',
   });
   assert.equal(characterize.endpointSet[TRANSPORT.RESPONSES_WEBSOCKET], 'ws://127.0.0.1:4000/v1/responses');
+  assert.deepEqual(
+    characterize.durableTargetsByTransport[TRANSPORT.RESPONSES_SSE],
+    fixtureManifest().targets.openai,
+  );
   assert.equal(JSON.stringify(result).includes('application-key'), false);
   assert.equal(fs.existsSync(path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency/gateway-ready.json')), false);
 });

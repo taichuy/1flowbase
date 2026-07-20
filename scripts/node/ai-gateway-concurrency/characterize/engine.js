@@ -13,7 +13,8 @@ const {
 } = require('../contracts');
 const { createMockUpstream } = require('../mock-upstream');
 const { CHARACTERIZE_PLAN } = require('./plan');
-const { createSseParser, eventText, nonceFromText, protocolEventType } = require('./stream-parsers');
+const { collectDurableConvergence } = require('./durable-evidence');
+const { createSseParser, eventText, nonceFromText, protocolEventType, protocolRunId } = require('./stream-parsers');
 const { writeCharacterizeArtifacts } = require('./report');
 
 const EXPECTED_OUTCOME = Object.freeze({
@@ -52,7 +53,7 @@ function endpointUrl(endpointSet, transport) {
 }
 
 function requestBody(transport, scenario, clientNonce, model = 'mock-model') {
-  const metadata = { mock_scenario: scenario, request_nonce: clientNonce };
+  const metadata = { mock_scenario: scenario, request_nonce: clientNonce, trace_id: clientNonce };
   if (transport === TRANSPORT.ANTHROPIC_SSE) {
     return {
       model,
@@ -165,6 +166,7 @@ async function runSseRequest({ endpoint, transport, scenario, clientNonce, model
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('request timeout')), timeoutMs);
   const protocolEvents = [];
+  const protocolIds = [];
   const texts = [];
   let ttftMs = null;
   let httpStatus = null;
@@ -193,6 +195,8 @@ async function runSseRequest({ endpoint, transport, scenario, clientNonce, model
       const parser = createSseParser((event) => {
         const type = protocolEventType(event);
         if (type) protocolEvents.push(type);
+        const protocolId = protocolRunId(transport, event);
+        if (protocolId) protocolIds.push(protocolId);
         const text = eventText(event);
         if (text) texts.push(text);
         if (ttftMs === null && text) ttftMs = round(performance.now() - startedAt);
@@ -224,6 +228,7 @@ async function runSseRequest({ endpoint, transport, scenario, clientNonce, model
     clearTimeout(timer);
   }
   const evidence = requestNonceEvidence(transport, protocolEvents, texts, errorNonce);
+  const uniqueProtocolIds = [...new Set(protocolIds)];
   return {
     clientNonce,
     transport,
@@ -231,6 +236,8 @@ async function runSseRequest({ endpoint, transport, scenario, clientNonce, model
     outcome,
     httpStatus,
     protocolEvents,
+    protocolId: uniqueProtocolIds.length === 1 ? uniqueProtocolIds[0] : null,
+    protocolIdCount: uniqueProtocolIds.length,
     chunkTexts: texts,
     ...evidence,
     dispatchedOffsetMs: round(startedAt - batchStartedAt),
@@ -550,6 +557,10 @@ async function runGatewayCharacterize({
   modelByTransport,
   mockSnapshot,
   timeoutMs,
+  durableTargetsByTransport,
+  durableGraceMs,
+  durablePollIntervalMs,
+  fetchImpl = globalThis.fetch,
 }) {
   const headersByTransport = authorizationHeadersByTransport(authorizationTokenByTransport);
   const publishedModels = requirePublishedModelsByTransport(modelByTransport);
@@ -560,8 +571,32 @@ async function runGatewayCharacterize({
     modelByTransport: publishedModels,
     mockSnapshot,
     timeoutMs,
+    fetchImpl,
   });
-  return { ...result, artifacts: writeCharacterizeArtifacts({ repoRoot, ...result }) };
+  const durableLedger = await collectDurableConvergence({
+    requestEvents: result.events.filter((event) => event.kind === 'request'),
+    targetsByTransport: durableTargetsByTransport,
+    fetchImpl,
+    graceMs: durableGraceMs,
+    pollIntervalMs: durablePollIntervalMs,
+  });
+  result.summary.durableConvergence = {
+    verdict: durableLedger.verdict,
+    requests: durableLedger.requests.length,
+    polls: durableLedger.polls.length,
+  };
+  if (durableLedger.verdict !== 'PASS') {
+    result.summary.verdict = 'FAIL';
+    for (const message of durableLedger.failures) {
+      result.summary.failures.push({ batch: 'durable-convergence', clientNonce: null, message });
+    }
+    result.summary.totals.contractFailures = result.summary.failures.length;
+  }
+  return {
+    ...result,
+    durableLedger,
+    artifacts: writeCharacterizeArtifacts({ repoRoot, ...result, durableLedger }),
+  };
 }
 
 module.exports = {

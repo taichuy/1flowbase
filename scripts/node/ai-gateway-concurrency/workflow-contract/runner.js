@@ -49,6 +49,17 @@ function readReadyManifest(filePath) {
     if (typeof target.model !== 'string' || !target.model.trim()) {
       throw new Error(`WP3 ready manifest omitted ${provider} published model`);
     }
+    for (const key of ['query_run', 'list_runs']) {
+      if (typeof target.durable?.[key]?.url !== 'string' && typeof target.durable?.[key]?.url_template !== 'string') {
+        throw new Error(`WP3 ready manifest omitted ${provider} durable ${key} endpoint`);
+      }
+    }
+    if (typeof target.runtime_activity?.url !== 'string') {
+      throw new Error(`WP3 ready manifest omitted ${provider} runtime activity endpoint`);
+    }
+    if (typeof target.plugin_runner_active_streams?.url !== 'string') {
+      throw new Error(`WP3 ready manifest omitted ${provider} plugin active streams endpoint`);
+    }
   }
   if (manifest.targets.openai.api_key === manifest.targets.anthropic.api_key) {
     throw new Error('WP3 ready manifest reused an Application API key');
@@ -117,6 +128,10 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
         [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.model,
       },
       mockSnapshot: mock.snapshot,
+      durableTargetsByTransport: {
+        [TRANSPORT.RESPONSES_SSE]: ready.targets.openai,
+        [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic,
+      },
     });
     if (characterizeResult.summary.verdict !== 'PASS') {
       throw new Error(`gateway characterize verdict was ${characterizeResult.summary.verdict}`);
@@ -161,6 +176,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
       verdict: characterizeResult.summary.verdict,
       requests: characterizeResult.summary.totals.requests,
       contract_failures: characterizeResult.summary.totals.contractFailures,
+      durable_convergence: characterizeResult.summary.durableConvergence ?? null,
       artifact_root: path.relative(inputs.repoRoot, characterizeResult.artifacts.outputDirectory),
     } : null,
     cleanup: {

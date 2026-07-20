@@ -53,4 +53,24 @@ function nonceFromText(text) {
   return text.match(/\bmock-\d{6}\b/u)?.[0] ?? null;
 }
 
-module.exports = { createSseParser, eventText, nonceFromText, parseSseBlock, protocolEventType };
+function protocolRunId(transport, parsed) {
+  const data = parsed?.data;
+  if (transport === 'responses-sse') {
+    return [data?.response?.id, data?.response_id]
+      .find((value) => typeof value === 'string' && value.startsWith('resp_')) ?? null;
+  }
+  if (transport === 'anthropic-sse') {
+    return [data?.message?.id, data?.id]
+      .find((value) => typeof value === 'string' && value.startsWith('msg_')) ?? null;
+  }
+  return null;
+}
+
+module.exports = {
+  createSseParser,
+  eventText,
+  nonceFromText,
+  parseSseBlock,
+  protocolEventType,
+  protocolRunId,
+};
