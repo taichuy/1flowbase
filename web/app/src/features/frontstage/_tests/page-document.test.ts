@@ -23,9 +23,30 @@ describe('frontstage page document', () => {
 
     expect(document.page.id).toBe('page-1');
     expect(document.rootUid).toBe('root-1');
+    expect(document.layoutMode).toBe('auto');
     expect(document.blocks).toEqual([]);
     expect(document.isEmpty).toBe(true);
     expect(document.diagnostics).toEqual([]);
+  });
+
+  test('AC-009 preserves an explicit free layout mode in the tab document payload', () => {
+    const content = createPageContent({
+      root: {
+        uid: 'root-1',
+        payload: {
+          'x-layout-mode': 'free',
+          blocks: []
+        }
+      }
+    });
+    const document = createFrontstagePageDocument(content);
+
+    expect(document.layoutMode).toBe('free');
+    expect(
+      createFrontstagePageDocumentSaveInput(content, document).payload
+    ).toMatchObject({
+      'x-layout-mode': 'free'
+    });
   });
 
   test('normalizes valid block instances from the root payload', () => {
@@ -408,6 +429,7 @@ describe('frontstage page document', () => {
     expect(input).toEqual({
       payload: {
         version: 1,
+        'x-layout-mode': 'auto',
         documentMeta: { owner: 'frontstage' },
         blocks: []
       }
@@ -496,6 +518,7 @@ describe('frontstage page document', () => {
 
     expect(input.payload).toEqual({
       version: 1,
+      'x-layout-mode': 'auto',
       blocks: [expectedBlock]
     });
     expect(input.payload).not.toHaveProperty('diagnostics');

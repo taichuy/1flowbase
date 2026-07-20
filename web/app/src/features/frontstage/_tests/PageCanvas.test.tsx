@@ -64,6 +64,40 @@ describe('PageCanvas', () => {
     ).not.toBeInTheDocument();
   });
 
+  test('AC-012 keeps the measured canvas host mounted when the first block is created', () => {
+    const view = render(
+      <PageCanvas content={createPageContent()} isDesignMode />
+    );
+    const measuredHost = screen.getByTestId('page-canvas-render-slots');
+
+    view.rerender(
+      <PageCanvas
+        content={createPageContent({
+          root: {
+            uid: 'root-1',
+            payload: {
+              blocks: [
+                {
+                  id: 'first-block',
+                  renderer_version: 'v1',
+                  codeRef: 'first-block-code',
+                  contributionCode: 'official.first-block',
+                  runtime: 'inline'
+                }
+              ]
+            }
+          }
+        })}
+        isDesignMode
+      />
+    );
+
+    expect(screen.getByTestId('page-canvas-render-slots')).toBe(measuredHost);
+    expect(
+      within(measuredHost).getByTestId('block-slot-first-block')
+    ).toBeInTheDocument();
+  });
+
   test('renders blocks sorted by order — each block shows loading placeholder', () => {
     render(
       <PageCanvas
@@ -276,5 +310,14 @@ describe('PageCanvas', () => {
     expect(screen.getByTestId('block-slot-hero')).toHaveStyle({
       height: 'auto'
     });
+    expect(
+      screen.getAllByTestId('frontstage-grid-resize-handle-e')
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByTestId('frontstage-grid-resize-handle-w')
+    ).toHaveLength(2);
+    expect(
+      renderSlots.querySelector('.react-resizable-handle-se')
+    ).not.toBeInTheDocument();
   });
 });

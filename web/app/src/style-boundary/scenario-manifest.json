@@ -157,6 +157,7 @@
       "web/app/src/features/frontstage/components/frontstage-add-action.css",
       "web/app/src/features/frontstage/components/frontstage-page-tree-sidebar.css",
       "web/app/src/features/frontstage/components/PageCanvas.tsx",
+      "web/app/src/features/frontstage/components/page-canvas.css",
       "web/app/src/features/frontstage/components/RestrictedBlockRuntimePreview.tsx",
       "web/app/src/features/frontstage/components/BlockHoverToolbar.tsx",
       "web/app/src/features/frontstage/components/FrontstagePageTabs.tsx",
@@ -172,6 +173,8 @@
       "web/app/src/shared/ui/resizable-drawer/resizable-drawer.css",
       "web/app/src/features/frontstage/lib/design-mode-theme.ts",
       "web/app/src/features/frontstage/lib/responsive-grid-layout.ts",
+      "web/app/src/features/frontstage/lib/page-canvas/frontstage-block-interaction.ts",
+      "web/app/src/features/frontstage/lib/page-canvas/frontstage-row-layout.ts",
       "web/app/src/app/router.tsx",
       "web/app/src/style-boundary/registry.tsx"
     ],

@@ -33,6 +33,7 @@ import {
   updateFrontstageBlockLayout,
   updateFrontstageBlockPresentation,
   updateFrontstageBlockProps,
+  updateFrontstagePageLayoutMode,
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
@@ -41,10 +42,16 @@ import { createFrontstageBlockBindingRuntimeLimits } from '../lib/jsx-studio/blo
 import {
   createFrontstagePageDocument,
   createFrontstagePageDocumentSaveInput,
-  type FrontstageBlockInstance
+  type FrontstageBlockInstance,
+  type FrontstagePageLayoutMode
 } from '../lib/page-document';
 import { createFrontstagePageRenderPlan } from '../lib/page-canvas/render-plan';
 import { createFrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
+import {
+  createFrontstagePersistedGridLayout,
+  createFrontstageResponsiveLayouts,
+  normalizeFrontstageAutomaticResponsiveLayouts
+} from '../lib/responsive-grid-layout';
 import {
   findNodeById,
   getDeleteConfirmMessage,
@@ -830,6 +837,38 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     });
   };
 
+  const handlePageLayoutModeChange = (layoutMode: FrontstagePageLayoutMode) => {
+    if (
+      !blockCompositionState ||
+      !activePageContent ||
+      blockCompositionState.document.layoutMode === layoutMode
+    ) {
+      return;
+    }
+
+    let next = updateFrontstagePageLayoutMode(
+      blockCompositionState,
+      layoutMode
+    );
+    if (layoutMode === 'auto') {
+      const responsiveLayouts = createFrontstageResponsiveLayouts(
+        next.document.blocks.map((block) => ({
+          blockId: block.id,
+          layout: block.layout,
+          presentation: block.presentation
+        }))
+      );
+      const normalizedLayouts = createFrontstagePersistedGridLayout(
+        normalizeFrontstageAutomaticResponsiveLayouts(responsiveLayouts)
+      );
+      for (const [blockId, blockLayouts] of Object.entries(normalizedLayouts)) {
+        next = updateFrontstageBlockLayout(next, blockId, blockLayouts);
+      }
+    }
+
+    void saveBlockComposition(activePageContent, next);
+  };
+
   const handleEditNodeTooltip = (
     nodeId: string,
     currentTooltip: string | null
@@ -1224,12 +1263,16 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                 {canEditPageTree ? (
                   <div className="frontstage-page-workspace__page-action">
                     <PageWorkspaceActionMenu
-                      disabled={isOperationPending}
+                      disabled={isOperationPending || isPageContentSavePending}
                       tabsEnabled={
                         selectedPageNode.content_presentation === 'tabs'
                       }
+                      layoutMode={
+                        blockCompositionState?.document.layoutMode ?? 'auto'
+                      }
                       onEdit={() => handleRenameNode(selectedPageNode)}
                       onTabsEnabledChange={handlePageTabsEnabledChange}
+                      onLayoutModeChange={handlePageLayoutModeChange}
                     />
                   </div>
                 ) : null}

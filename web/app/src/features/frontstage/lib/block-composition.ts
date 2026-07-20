@@ -2,7 +2,8 @@ import type {
   FrontstageBlockInstance,
   FrontstageBlockLayout,
   FrontstageBlockPresentation,
-  FrontstagePageDocument
+  FrontstagePageDocument,
+  FrontstagePageLayoutMode
 } from './page-document';
 import { FRONTSTAGE_BLOCK_RENDERER_VERSION_V1 } from './block-renderer-version';
 
@@ -322,6 +323,16 @@ export function updateFrontstageBlockLayout(
   return {
     document,
     selectedBlockId: normalizeSelection(document, state.selectedBlockId)
+  };
+}
+
+export function updateFrontstagePageLayoutMode(
+  state: FrontstageBlockCompositionState,
+  layoutMode: FrontstagePageLayoutMode
+): FrontstageBlockCompositionState {
+  return {
+    document: { ...state.document, layoutMode },
+    selectedBlockId: state.selectedBlockId
   };
 }
 
