@@ -280,6 +280,16 @@
     "page_scope": "当前页面",
     "connect": "连接",
     "signal_source_missing": "来源已失效",
+    "preview": "预览",
+    "console": "控制台",
+    "interface_calls": "接口调用",
+    "problems": "问题",
+    "confirm_write_run": "确认本次写操作",
+    "confirm_write_run_description": "本次草稿运行会调用写接口；授权仅对当前 run_id 有效。",
+    "maximize_window": "最大化窗口",
+    "restore_window": "还原窗口",
+    "unsaved_close_title": "关闭未保存的代码？",
+    "unsaved_close_description": "关闭主窗口会同时关闭其子窗口，未保存的源码将丢失。",
     "width": "宽度"
   },
   "design": {

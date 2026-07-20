@@ -280,6 +280,16 @@
     "page_scope": "Current page",
     "connect": "Connect",
     "signal_source_missing": "Source unavailable",
+    "preview": "Preview",
+    "console": "Console",
+    "interface_calls": "Interface calls",
+    "problems": "Problems",
+    "confirm_write_run": "Confirm this write run",
+    "confirm_write_run_description": "This draft run will call a write interface; authorization applies only to the current run_id.",
+    "maximize_window": "Maximize window",
+    "restore_window": "Restore window",
+    "unsaved_close_title": "Close unsaved code?",
+    "unsaved_close_description": "Closing the main window also closes its child windows and discards unsaved source.",
     "width": "Width"
   },
   "design": {
