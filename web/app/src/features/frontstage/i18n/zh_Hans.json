@@ -284,6 +284,9 @@
     "drag_handle": "拖拽排序",
     "enable_tabs": "开启 Tabs",
     "last_tab_hint": "页面至少保留一个标签页，最后一个标签页不可删除。",
+    "layout_mode": "布局方式",
+    "layout_mode_auto": "自动布局",
+    "layout_mode_free": "自由网格",
     "tab_route_segment": "访问路径",
     "tab_route_segment_required": "请输入标签页访问路径",
     "tab_settings": "标签页设置"

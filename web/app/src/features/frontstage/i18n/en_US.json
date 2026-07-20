@@ -284,6 +284,9 @@
     "drag_handle": "Drag to reorder",
     "enable_tabs": "Enable Tabs",
     "last_tab_hint": "A page keeps at least one tab; the last tab cannot be deleted.",
+    "layout_mode": "Layout mode",
+    "layout_mode_auto": "Automatic layout",
+    "layout_mode_free": "Free grid",
     "tab_route_segment": "Route segment",
     "tab_route_segment_required": "Enter a route segment",
     "tab_settings": "Tab settings"

@@ -617,9 +617,19 @@ describe('FrontStagePage - design controls', () => {
     ).toBeInTheDocument();
   });
 
-  test('AC-001 opens the two-action page menu from the page workspace', async () => {
+  test('AC-001/009 opens page settings and persists the selected layout mode', async () => {
     authenticate(['frontstage.page.design']);
-    renderPage('page-1');
+    const saveState = mockPageContentSaveState();
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          tabId="tab-1"
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent()}
+        />
+      </AppProviders>
+    );
 
     activateDesignMode();
 
@@ -636,12 +646,27 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(configurePage);
 
     const pageMenu = await screen.findByRole('menu');
-    expect(within(pageMenu).getAllByRole('menuitem')).toHaveLength(2);
+    expect(within(pageMenu).getAllByRole('menuitem')).toHaveLength(3);
     expect(within(pageMenu).getByText('编辑')).toBeInTheDocument();
+    const layoutMode = within(pageMenu).getByRole('combobox', {
+      name: '布局方式'
+    });
+    expect(within(pageMenu).getByText('自动布局')).toBeInTheDocument();
     expect(
       within(pageMenu).getByRole('switch', { name: '开启 Tabs' })
     ).not.toBeChecked();
 
+    fireEvent.mouseDown(layoutMode);
+    fireEvent.click(await screen.findByText('自由网格'));
+    await waitFor(() => expect(saveState.save).toHaveBeenCalledTimes(1));
+    const [layoutModeSaveInput] = saveState.save.mock.calls[0] as [
+      SaveFrontstageTabDocumentInput
+    ];
+    expect(layoutModeSaveInput.payload).toMatchObject({
+      'x-layout-mode': 'free'
+    });
+
+    fireEvent.click(configurePage);
     fireEvent.click(within(pageMenu).getByText('编辑'));
     expect(
       await screen.findByRole('dialog', { name: '配置页面' })

@@ -16,6 +16,7 @@ import type {
 import type { RestrictedBlockRunPlan } from '../../lib/restricted-block-loader';
 import type { RestrictedBlockRuntimeHostSnapshot } from '../../lib/restricted-block-runtime-host';
 import {
+  clearFrontstageRuntimeSessionCache,
   useFrontstagePageCanvasRuntimeSessions,
   type FrontstagePageCanvasRuntimeSessionFactory
 } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
@@ -255,6 +256,11 @@ function createFakeRuntimeSession(
 describe('useFrontstagePageCanvasRuntimeSessions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearFrontstageRuntimeSessionCache();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible'
+    });
   });
 
   test('creates, subscribes, and runs ready sessions with snapshots aligned by slot', async () => {
@@ -533,5 +539,128 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
     });
     expect(result.current.running).toBe(false);
     expect(result.current.hasError).toBe(true);
+  });
+
+  test('runs at most two sessions and starts the highest-demand queued block next', async () => {
+    const items = [
+      createReadyItem({ blockId: 'far', slotIndex: 0 }),
+      createReadyItem({ blockId: 'visible', slotIndex: 1 }),
+      createReadyItem({ blockId: 'near', slotIndex: 2 })
+    ];
+    const sessions = items.map((item) =>
+      createFakeRuntimeSession(
+        createSnapshot({
+          status: 'running',
+          requestId: item.runPlan.request.requestId,
+          blockId: item.blockId
+        })
+      )
+    );
+    const startedBlockIds: string[] = [];
+    const runtimeSessionFactory: FrontstagePageCanvasRuntimeSessionFactory = vi.fn(
+      (options) => {
+        startedBlockIds.push(options.runPlan.request.blockId);
+        return sessions[startedBlockIds.length - 1]!.session;
+      }
+    );
+    const runtimeRunPlanState = createRunPlanState(items);
+
+    renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        runtimeRunPlanState,
+        runtimeSessionFactory,
+        demandsByBlockId: { far: 3, visible: 1, near: 2 }
+      })
+    );
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
+    expect(startedBlockIds).toEqual(['visible', 'near']);
+
+    act(() => {
+      sessions[0]!.emit(
+        createSnapshot({
+          status: 'ready',
+          requestId: items[1]!.runPlan.request.requestId,
+          blockId: 'visible',
+          schema: { primitive: 'Text', props: { children: 'ready' } }
+        })
+      );
+    });
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(3));
+  });
+
+  test('does not start queued work while the page is hidden and resumes when visible', async () => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden'
+    });
+    const runtimeSessionFactory = vi.fn(() => createFakeRuntimeSession().session);
+    const runtimeRunPlanState = createRunPlanState([createReadyItem()]);
+
+    renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        runtimeRunPlanState,
+        runtimeSessionFactory
+      })
+    );
+    expect(runtimeSessionFactory).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible'
+    });
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
+  });
+
+  test('restores a recent successful snapshot immediately and revalidates it in the background', async () => {
+    const item = createReadyItem({ blockId: 'cached' });
+    const runtimeRunPlanState = createRunPlanState([item]);
+    const first = createFakeRuntimeSession(
+      createSnapshot({
+        status: 'running',
+        requestId: item.runPlan.request.requestId,
+        blockId: item.blockId
+      })
+    );
+    const firstRender = renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        runtimeRunPlanState,
+        runtimeSessionFactory: () => first.session
+      })
+    );
+    await waitFor(() => expect(first.session.run).toHaveBeenCalledTimes(1));
+    act(() => {
+      first.emit(
+        createSnapshot({
+          status: 'ready',
+          requestId: item.runPlan.request.requestId,
+          blockId: item.blockId,
+          schema: { primitive: 'Text', props: { children: 'cached' } }
+        })
+      );
+    });
+    firstRender.unmount();
+
+    const revalidation = createFakeRuntimeSession();
+    const revalidationFactory = vi.fn(() => revalidation.session);
+    const secondRender = renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        runtimeRunPlanState,
+        runtimeSessionFactory: revalidationFactory
+      })
+    );
+
+    await waitFor(() => {
+      expect(secondRender.result.current.entries[0]).toMatchObject({
+        status: 'ready',
+        snapshot: {
+          schema: { primitive: 'Text', props: { children: 'cached' } }
+        }
+      });
+      expect(revalidationFactory).toHaveBeenCalledTimes(1);
+    });
   });
 });

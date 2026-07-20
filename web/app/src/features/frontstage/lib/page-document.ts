@@ -37,6 +37,7 @@ export type FrontstageBlockLayout = Record<string, unknown> & {
 };
 
 export type FrontstageBlockHeightMode = 'auto' | 'fixed';
+export type FrontstagePageLayoutMode = 'auto' | 'free';
 
 export interface FrontstageBlockPresentation {
   heightMode: FrontstageBlockHeightMode;
@@ -61,9 +62,17 @@ export interface FrontstageBlockInstance {
 export interface FrontstagePageDocument {
   page: FrontstagePageContentNode;
   rootUid: string;
+  layoutMode: FrontstagePageLayoutMode;
   blocks: FrontstageBlockInstance[];
   isEmpty: boolean;
   diagnostics: FrontstagePageDocumentDiagnostic[];
+}
+
+function resolvePageLayoutMode(
+  content: FrontstagePageContent
+): FrontstagePageLayoutMode {
+  if (!isRecord(content.document.payload)) return 'auto';
+  return content.document.payload['x-layout-mode'] === 'free' ? 'free' : 'auto';
 }
 
 interface FrontstageBlockPayload {
@@ -505,6 +514,7 @@ export function createFrontstagePageDocument(
   return {
     page: content.page,
     rootUid: resolveRootUid(content),
+    layoutMode: resolvePageLayoutMode(content),
     blocks,
     isEmpty: blocks.length === 0,
     diagnostics
@@ -538,10 +548,12 @@ function createBlockPayload(
 
 function createPayloadWithBlocks(
   payload: unknown,
-  blocks: FrontstageBlockPayload[]
+  blocks: FrontstageBlockPayload[],
+  layoutMode: FrontstagePageLayoutMode
 ): Record<string, unknown> {
   return {
     ...createPayloadRecord(payload),
+    'x-layout-mode': layoutMode,
     blocks
   };
 }
@@ -553,7 +565,8 @@ export function createFrontstagePageDocumentSaveInput(
   return {
     payload: createPayloadWithBlocks(
       content.document.payload,
-      document.blocks.map(createBlockPayload)
+      document.blocks.map(createBlockPayload),
+      document.layoutMode
     )
   };
 }

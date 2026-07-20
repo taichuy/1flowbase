@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 import {
   JS_BLOCK_ALLOWED_IMPORTS,
@@ -133,6 +133,10 @@ function findEffectMessage(
   return message as Extract<JsBlockWorkerToHostMessage, { type: 'data' }>;
 }
 
+function withoutPhaseMessages(messages: JsBlockWorkerToHostMessage[]) {
+  return messages.filter((message) => message.type !== 'phase');
+}
+
 describe('FrontStage restricted block worker runtime', () => {
   test('attaches the default JS block runtime to a worker-like scope', async () => {
     const scope = new FakeWorkerScope();
@@ -166,7 +170,7 @@ describe('FrontStage restricted block worker runtime', () => {
     await attached.flush();
     attached.dispose();
 
-    expect(scope.messages).toEqual([
+    expect(withoutPhaseMessages(scope.messages)).toEqual([
       { direction: 'worker_to_host', type: 'ready' },
       {
         direction: 'worker_to_host',
@@ -194,6 +198,27 @@ describe('FrontStage restricted block worker runtime', () => {
 });
 
 describe('FrontStage restricted block worker factory', () => {
+  test('keeps only one pristine worker warm and releases it after TTL', () => {
+    FakeNativeWorker.instances.length = 0;
+    vi.useFakeTimers();
+    vi.stubGlobal('Worker', FakeNativeWorker);
+
+    try {
+      const factory = createFrontstageRestrictedBlockWorkerFactory();
+      factory();
+      vi.advanceTimersByTime(0);
+
+      expect(FakeNativeWorker.instances).toHaveLength(2);
+      expect(FakeNativeWorker.instances[1]?.terminateCount).toBe(0);
+
+      vi.advanceTimersByTime(30_000);
+      expect(FakeNativeWorker.instances[1]?.terminateCount).toBe(1);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('uses the app worker URL and module Worker options by default', () => {
     FakeNativeWorker.instances.length = 0;
 

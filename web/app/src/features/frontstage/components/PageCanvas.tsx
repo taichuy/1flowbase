@@ -1,13 +1,15 @@
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
-import type { CSSProperties, FC } from 'react';
+import type { CSSProperties, FC, Ref } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Responsive,
-  WidthProvider,
-  type Layout
-} from 'react-grid-layout/legacy';
+  ResponsiveGridLayout,
+  useContainerWidth,
+  type Layout,
+  type ResizeHandleAxis
+} from 'react-grid-layout/react';
 import 'react-grid-layout/css/styles.css';
+import './page-canvas.css';
 
 import type { FrontstagePageContent } from '../api/page-content';
 import { BlockHoverToolbar } from './BlockHoverToolbar';
@@ -30,12 +32,19 @@ import {
   FRONTSTAGE_GRID_COLUMNS,
   FRONTSTAGE_GRID_ROW_HEIGHT,
   FRONTSTAGE_GRID_ROW_GAP,
+  FRONTSTAGE_GRID_VERTICAL_MARGIN,
   frontstageGridRowsToPixels,
+  normalizeFrontstageAutomaticResponsiveLayouts,
   replaceFrontstageBreakpointLayout,
   type FrontstageGridBreakpoint,
   type FrontstagePersistedGridLayout
 } from '../lib/responsive-grid-layout';
 import type { FrontstageBlockPresentation } from '../lib/page-document';
+import {
+  createFrontstageInteractionCompactor,
+  frontstageLayoutsEqualForCommit
+} from '../lib/page-canvas/frontstage-block-interaction';
+import type { FrontstageRuntimeDemandPriority } from '../lib/page-canvas/runtime-demand';
 
 type DesignBlockActions = {
   onEditCode: (blockId: string) => void;
@@ -69,9 +78,27 @@ type PageCanvasProps = {
       presentation: FrontstageBlockPresentation;
     }
   ) => void;
+  onRuntimeDemandChange?: (
+    blockId: string,
+    priority: FrontstageRuntimeDemandPriority
+  ) => void;
+  onRuntimeRetry?: (blockId: string) => void;
 };
 
-const ResponsiveGridLayout = WidthProvider(Responsive);
+function renderFrontstageResizeHandle(
+  axis: ResizeHandleAxis,
+  ref: Ref<HTMLElement>
+) {
+  return (
+    <span
+      ref={ref as Ref<HTMLSpanElement>}
+      className={`react-resizable-handle react-resizable-handle-${axis} frontstage-grid-resize-handle frontstage-grid-resize-handle--${axis}`}
+      data-testid={`frontstage-grid-resize-handle-${axis}`}
+      aria-hidden="true"
+    />
+  );
+}
+
 function formatPageTitle(content: FrontstagePageContent): string {
   return (
     content.page.title?.trim() || i18nText('frontstage', 'auto.unnamed_page')
@@ -116,6 +143,11 @@ type RenderPlanSlotProps = {
   designActions?: DesignBlockActions;
   toolbarDisabled?: boolean;
   onAutoHeightChange?: (blockId: string, height: number) => void;
+  onRuntimeDemandChange?: (
+    blockId: string,
+    priority: FrontstageRuntimeDemandPriority
+  ) => void;
+  onRuntimeRetry?: (blockId: string) => void;
 };
 
 const blockFrameBaseStyle: CSSProperties = {
@@ -183,12 +215,46 @@ function RenderPlanSlot({
   isDesignMode,
   designActions,
   toolbarDisabled,
-  onAutoHeightChange
+  onAutoHeightChange,
+  onRuntimeDemandChange,
+  onRuntimeRetry
 }: RenderPlanSlotProps) {
   const [isHovered, setIsHovered] = useState(false);
   const blockRef = useRef<HTMLDivElement>(null);
   const rendererVersionError = resolveRendererVersionError(item);
   const isFixedHeight = item.presentation.heightMode === 'fixed';
+
+  useEffect(() => {
+    if (isSelected) {
+      onRuntimeDemandChange?.(item.blockId, 0);
+      return;
+    }
+
+    const node = blockRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      onRuntimeDemandChange?.(item.blockId, 1);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) {
+          onRuntimeDemandChange?.(item.blockId, 3);
+          return;
+        }
+        const rect = entry.boundingClientRect;
+        const visible =
+          rect.bottom > 0 &&
+          rect.top < window.innerHeight &&
+          rect.right > 0 &&
+          rect.left < window.innerWidth;
+        onRuntimeDemandChange?.(item.blockId, visible ? 1 : 2);
+      },
+      { rootMargin: '400px 0px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isSelected, item.blockId, onRuntimeDemandChange]);
 
   useEffect(() => {
     const node = blockRef.current;
@@ -265,6 +331,10 @@ function RenderPlanSlot({
         >
           <RestrictedBlockRuntimePreview
             snapshot={runtimeSessionEntry.snapshot}
+            diagnostic={isDesignMode}
+            onRetry={
+              onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
+            }
           />
         </div>
       );
@@ -291,7 +361,8 @@ function RenderPlanSlot({
     const isSourceLoading =
       runtimeSessionEntry?.status === 'skipped' &&
       runtimeSessionEntry.skipReason === 'source_not_ready' &&
-      runtimeSessionEntry.sourceStatus === 'loading';
+      (runtimeSessionEntry.sourceStatus === 'loading' ||
+        runtimeSessionEntry.sourceStatus === 'dormant');
 
     if (runtimeSessionEntry?.status === 'skipped' && !isSourceLoading) {
       return (
@@ -319,7 +390,9 @@ function RenderPlanSlot({
       ref={blockRef}
       style={{
         ...blockFrameBaseStyle,
-        height: isFixedHeight ? '100%' : 'auto',
+        height: isFixedHeight
+          ? `calc(100% - ${FRONTSTAGE_GRID_ROW_GAP}px)`
+          : 'auto',
         overflow: isFixedHeight ? 'hidden' : 'visible',
         ...borderStyle,
         position: 'relative',
@@ -380,7 +453,9 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   designActions,
   toolbarDisabled = false,
   showTitle = true,
-  onResponsiveLayoutSave
+  onResponsiveLayoutSave,
+  onRuntimeDemandChange,
+  onRuntimeRetry
 }) => {
   const document = useMemo(
     () => (content ? createFrontstagePageDocument(content) : null),
@@ -391,16 +466,37 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     [document]
   );
   const renderItems = useMemo(() => renderPlan?.items ?? [], [renderPlan]);
-  const [autoHeights, setAutoHeights] = useState<Record<string, number>>({});
-  const layouts = useMemo(
-    () => createFrontstageResponsiveLayouts(renderItems, autoHeights),
-    [autoHeights, renderItems]
+  const { width: measuredWidth, containerRef } = useContainerWidth({
+    initialWidth: 1280
+  });
+  const gridWidth = measuredWidth > 0 ? measuredWidth : 1280;
+  const interactionCompactor = useMemo(
+    () => createFrontstageInteractionCompactor(document?.layoutMode ?? 'auto'),
+    [document?.layoutMode]
   );
+  const [autoHeights, setAutoHeights] = useState<Record<string, number>>({});
+  const layouts = useMemo(() => {
+    const responsiveLayouts = createFrontstageResponsiveLayouts(
+      renderItems,
+      autoHeights
+    );
+    return document?.layoutMode === 'free'
+      ? responsiveLayouts
+      : normalizeFrontstageAutomaticResponsiveLayouts(responsiveLayouts);
+  }, [autoHeights, document?.layoutMode, renderItems]);
   const latestLayouts = useRef(layouts);
+  const dragCommittedLayout = useRef<Layout | null>(null);
   const activeBreakpoint = useRef<FrontstageGridBreakpoint>('lg');
   useEffect(() => {
     latestLayouts.current = layouts;
   }, [layouts]);
+  useEffect(
+    () => () => {
+      interactionCompactor.end();
+      dragCommittedLayout.current = null;
+    },
+    [interactionCompactor]
+  );
 
   const saveCurrentResponsiveLayout = (
     currentLayout: Layout,
@@ -485,60 +581,101 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         </Typography.Title>
       ) : null}
 
-      {renderPlan.isEmpty && isDesignMode ? (
-        <div
-          data-testid="page-canvas-design-empty-state"
-          style={{
-            minHeight: 28,
-            display: 'flex',
-            alignItems: 'center'
-          }}
-        >
-          <Typography.Text type="secondary">
-            {i18nText('frontstage', 'auto.page_content_empty')}
-          </Typography.Text>
-        </div>
-      ) : renderPlan.isEmpty ? (
-        <div
-          style={{
-            background: '#fafafa',
-            border: '1px solid #f0f0f0',
-            borderRadius: 8,
-            padding: 32,
-            textAlign: 'center'
-          }}
-        >
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={
-              <Typography.Text type="secondary">
-                {i18nText('frontstage', 'auto.page_content_empty')}
-              </Typography.Text>
-            }
-          />
-        </div>
-      ) : (
-        <div data-testid="page-canvas-render-slots">
+      <div
+        ref={containerRef}
+        className="frontstage-page-canvas-grid"
+        data-testid="page-canvas-render-slots"
+      >
+        {renderPlan.isEmpty && isDesignMode ? (
+          <div
+            data-testid="page-canvas-design-empty-state"
+            style={{
+              minHeight: 28,
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            <Typography.Text type="secondary">
+              {i18nText('frontstage', 'auto.page_content_empty')}
+            </Typography.Text>
+          </div>
+        ) : renderPlan.isEmpty ? (
+          <div
+            style={{
+              background: '#fafafa',
+              border: '1px solid #f0f0f0',
+              borderRadius: 8,
+              padding: 32,
+              textAlign: 'center'
+            }}
+          >
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={
+                <Typography.Text type="secondary">
+                  {i18nText('frontstage', 'auto.page_content_empty')}
+                </Typography.Text>
+              }
+            />
+          </div>
+        ) : (
           <ResponsiveGridLayout
+            width={gridWidth}
             breakpoints={FRONTSTAGE_GRID_BREAKPOINTS}
             cols={FRONTSTAGE_GRID_COLUMNS}
             layouts={layouts}
             rowHeight={FRONTSTAGE_GRID_ROW_HEIGHT}
-            margin={[16, FRONTSTAGE_GRID_ROW_GAP]}
-            isDraggable={isDesignMode && !toolbarDisabled}
-            isResizable={isDesignMode && !toolbarDisabled}
-            draggableHandle=".frontstage-block-drag-handle"
-            draggableCancel="button:not(.frontstage-block-drag-handle), input, textarea, select, a"
+            margin={[16, FRONTSTAGE_GRID_VERTICAL_MARGIN]}
+            compactor={interactionCompactor}
+            dragConfig={{
+              enabled: isDesignMode && !toolbarDisabled,
+              bounded: false,
+              handle: '.frontstage-block-drag-handle',
+              cancel:
+                'button:not(.frontstage-block-drag-handle), input, textarea, select, a',
+              threshold: 3
+            }}
+            resizeConfig={{
+              enabled: isDesignMode && !toolbarDisabled,
+              handles: ['e', 'w', 's', 'se', 'sw'],
+              handleComponent: renderFrontstageResizeHandle
+            }}
             onBreakpointChange={(breakpoint) => {
               activeBreakpoint.current = breakpoint as FrontstageGridBreakpoint;
             }}
             onLayoutChange={(_layout: Layout, nextLayouts) => {
               latestLayouts.current = nextLayouts;
             }}
+            onDragStart={(currentLayout, _oldItem, draggedItem) => {
+              if (draggedItem) {
+                dragCommittedLayout.current = currentLayout.map((item) => ({
+                  ...item
+                }));
+                interactionCompactor.begin(currentLayout, draggedItem.i);
+              }
+            }}
             onDragStop={(currentLayout) => {
-              saveCurrentResponsiveLayout(currentLayout);
+              const committedLayout = dragCommittedLayout.current;
+              interactionCompactor.end();
+              dragCommittedLayout.current = null;
+              if (
+                !committedLayout ||
+                !frontstageLayoutsEqualForCommit(committedLayout, currentLayout)
+              ) {
+                saveCurrentResponsiveLayout(currentLayout);
+              }
+            }}
+            onResizeStart={(currentLayout, _oldItem, resizedItem) => {
+              if (resizedItem) {
+                interactionCompactor.begin(
+                  currentLayout,
+                  resizedItem.i,
+                  'resize'
+                );
+              }
             }}
             onResizeStop={(currentLayout, _oldItem, resizedItem) => {
+              interactionCompactor.end();
               if (!resizedItem) {
                 saveCurrentResponsiveLayout(currentLayout);
                 return;
@@ -575,12 +712,14 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                   designActions={designActions}
                   toolbarDisabled={toolbarDisabled}
                   onAutoHeightChange={updateAutoHeight}
+                  onRuntimeDemandChange={onRuntimeDemandChange}
+                  onRuntimeRetry={onRuntimeRetry}
                 />
               </div>
             ))}
           </ResponsiveGridLayout>
-        </div>
-      )}
+        )}
+      </div>
     </Space>
   );
 };

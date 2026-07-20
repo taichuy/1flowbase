@@ -61,6 +61,7 @@ function createDocument(
       contentPresentation: 'single',
     },
     rootUid: 'root-1',
+    layoutMode: 'auto',
     blocks,
     isEmpty: blocks.length === 0,
     diagnostics: []

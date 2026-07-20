@@ -191,7 +191,7 @@ describe('FrontStage restricted block runtime host factory', () => {
       { status: 'running' },
       {
         status: 'failed',
-        error: { kind: 'runtime_error', message: 'worker exploded' }
+        error: { kind: 'worker_crash', message: 'worker exploded' }
       }
     ]);
 
@@ -211,7 +211,7 @@ describe('FrontStage restricted block runtime host factory', () => {
       {
         status: 'failed',
         error: {
-          kind: 'runtime_error',
+          kind: 'worker_crash',
           message: 'message channel exploded'
         }
       }
@@ -336,11 +336,7 @@ describe('FrontStage restricted block runtime host factory', () => {
 
     expect(FakeNativeWorker.instances).toEqual([]);
     expect(worker.messages).toEqual([
-      {
-        direction: 'host_to_worker',
-        type: 'run',
-        request: createRunRequest()
-      }
+      { direction: 'host_to_worker', type: 'init' }
     ]);
   });
 
@@ -380,11 +376,7 @@ describe('FrontStage restricted block runtime host factory', () => {
 
     expect(FakeNativeWorker.instances).toEqual([]);
     expect(worker.messages).toEqual([
-      {
-        direction: 'host_to_worker',
-        type: 'run',
-        request: createRunRequest()
-      }
+      { direction: 'host_to_worker', type: 'init' }
     ]);
   });
 

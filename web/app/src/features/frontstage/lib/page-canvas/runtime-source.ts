@@ -42,6 +42,10 @@ export type FrontstagePageCanvasBlockCodeReadResult =
     }
   | {
       codeRef: string;
+      status: 'dormant';
+    }
+  | {
+      codeRef: string;
       status: 'loading';
     }
   | {
@@ -89,6 +93,11 @@ export interface FrontstagePageCanvasLoadingRuntimeSource extends FrontstagePage
   request: FrontstagePageCanvasBlockCodeReadRequest;
 }
 
+export interface FrontstagePageCanvasDormantRuntimeSource extends FrontstagePageCanvasRuntimeSourceBase {
+  status: 'dormant';
+  request: FrontstagePageCanvasBlockCodeReadRequest;
+}
+
 export interface FrontstagePageCanvasMissingRuntimeSource extends FrontstagePageCanvasRuntimeSourceBase {
   status: 'missing';
   message: string;
@@ -108,6 +117,7 @@ export interface FrontstagePageCanvasSkippedRuntimeSource extends FrontstagePage
 
 export type FrontstagePageCanvasRuntimeSource =
   | FrontstagePageCanvasReadyRuntimeSource
+  | FrontstagePageCanvasDormantRuntimeSource
   | FrontstagePageCanvasLoadingRuntimeSource
   | FrontstagePageCanvasMissingRuntimeSource
   | FrontstagePageCanvasFailedRuntimeSource
@@ -176,6 +186,14 @@ export function createFrontstagePageCanvasRuntimeSourceState({
       }
 
       const result = resultsByCodeRef.get(request.codeRef);
+      if (result?.status === 'dormant') {
+        return {
+          ...createRuntimeSourceBase(slot, slotIndex),
+          status: 'dormant',
+          request: cloneReadRequest(request)
+        };
+      }
+
       if (!result || result.status === 'loading') {
         return {
           ...createRuntimeSourceBase(slot, slotIndex),

@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const pageTreeApi = vi.hoisted(() => ({
@@ -26,17 +26,30 @@ const pageContentApi = vi.hoisted(() => ({
   fetchFrontstagePageContent: vi.fn()
 }));
 
-const pageTreeMutations = vi.hoisted(() => ({
-  useFrontstagePageTreeMutations: vi.fn(() => ({
-    isPending: false,
-    error: null,
-    createGroup: vi.fn(),
-    createPage: vi.fn(),
-    renameNode: vi.fn(),
-    updateNodeMetadata: vi.fn(),
-    moveNode: vi.fn(),
-    deleteNode: vi.fn()
-  }))
+const pageTreeMutations = vi.hoisted(() => {
+  const moveNode = vi.fn();
+  return {
+    moveNode,
+    useFrontstagePageTreeMutations: vi.fn(() => ({
+      isPending: false,
+      error: null,
+      createGroup: vi.fn(),
+      createPage: vi.fn(),
+      renameNode: vi.fn(),
+      updateNodeMetadata: vi.fn(),
+      moveNode,
+      deleteNode: vi.fn()
+    }))
+  };
+});
+
+const frontStagePageView = vi.hoisted(() => ({
+  props: null as null | {
+    onMovePageNode?: (
+      nodeId: string,
+      input: { parentId: string | null; rank: string }
+    ) => Promise<unknown>;
+  }
 }));
 
 const consoleNavigationApi = vi.hoisted(() => ({
@@ -56,7 +69,10 @@ vi.mock('../api/page-content', () => pageContentApi);
 vi.mock('../hooks/use-frontstage-page-tree-mutations', () => pageTreeMutations);
 vi.mock('../../settings/api/console-navigation', () => consoleNavigationApi);
 vi.mock('../pages/FrontStagePage', () => ({
-  FrontStagePage: () => <div data-testid="frontstage-page" />
+  FrontStagePage: (props: NonNullable<typeof frontStagePageView.props>) => {
+    frontStagePageView.props = props;
+    return <div data-testid="frontstage-page" />;
+  }
 }));
 
 import { AppProviders } from '../../../app/AppProviders';
@@ -103,6 +119,7 @@ describe('frontstage topbar root routing', () => {
   beforeEach(() => {
     resetAuthStore();
     vi.clearAllMocks();
+    frontStagePageView.props = null;
     useAuthStore.getState().setAuthenticated({
       csrfToken: 'csrf-123',
       actor: {
@@ -165,5 +182,45 @@ describe('frontstage topbar root routing', () => {
       expect(pageTreeApi.fetchFrontstagePageTree).toHaveBeenCalled();
     });
     expect(window.location.pathname).toBe('/sales/pages/page-in-group');
+  });
+
+  test('AC-004 keeps an ungrouped page inside the scoped topbar root', async () => {
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    window.history.pushState({}, '', '/sales/pages/page-top-level');
+
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(frontStagePageView.props?.onMovePageNode).toBeDefined();
+    });
+    await act(async () => {
+      await frontStagePageView.props?.onMovePageNode?.('page-in-group', {
+        parentId: null,
+        rank: '001500'
+      });
+    });
+
+    expect(pageTreeMutations.moveNode).toHaveBeenCalledWith('page-in-group', {
+      parentId: 'group-sales',
+      rank: '001500'
+    });
+
+    await act(async () => {
+      await frontStagePageView.props?.onMovePageNode?.('page-top-level', {
+        parentId: 'group-collapsed',
+        rank: '002000'
+      });
+    });
+    expect(pageTreeMutations.moveNode).toHaveBeenLastCalledWith(
+      'page-top-level',
+      {
+        parentId: 'group-collapsed',
+        rank: '002000'
+      }
+    );
   });
 });

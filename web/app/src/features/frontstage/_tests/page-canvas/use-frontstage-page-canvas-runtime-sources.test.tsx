@@ -12,6 +12,7 @@ import {
   type FrontstagePageRenderPlan
 } from '../../lib/page-canvas/render-plan';
 import { useFrontstagePageCanvasRuntimeSources } from '../../hooks/use-frontstage-page-canvas-runtime-sources';
+import type { FrontstageRuntimeDemandByBlockId } from '../../lib/page-canvas/runtime-demand';
 
 const frontstageBlockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(),
@@ -110,10 +111,12 @@ function createQueryClient() {
 
 function setupRuntimeSources({
   workspaceId = 'workspace-1',
-  renderPlan = createRenderPlan([])
+  renderPlan = createRenderPlan([]),
+  demandsByBlockId
 }: {
   workspaceId?: string | null;
   renderPlan?: FrontstagePageRenderPlan | null;
+  demandsByBlockId?: FrontstageRuntimeDemandByBlockId;
 }) {
   const queryClient = createQueryClient();
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -124,7 +127,8 @@ function setupRuntimeSources({
     () =>
       useFrontstagePageCanvasRuntimeSources({
         workspaceId,
-        renderPlan
+        renderPlan,
+        demandsByBlockId
       }),
     { wrapper }
   );
@@ -306,5 +310,31 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
     expect(missingWorkspace.result.current.sourceState).toBeNull();
     expect(missingRenderPlan.result.current.readPlan).toBeNull();
     expect(missingRenderPlan.result.current.sourceState).toBeNull();
+  });
+
+  test('keeps dormant blocks out of the network until viewport demand arrives', async () => {
+    const renderPlan = createRenderPlan([
+      createSlot({ id: 'hero', codeRef: 'hero-code', sourceCodeRef: 'hero-code' }, 0),
+      createSlot({ id: 'below', codeRef: 'below-code', sourceCodeRef: 'below-code' }, 1)
+    ]);
+    frontstageBlockCodeApi.fetchFrontstageBlockCode.mockResolvedValue({
+      pageId: 'page-1',
+      codeRef: 'hero-code',
+      code: 'export default "ready";'
+    });
+
+    const { result } = setupRuntimeSources({
+      renderPlan,
+      demandsByBlockId: { hero: 1, below: 3 }
+    });
+
+    await waitFor(() => expect(result.current.sourceState?.sources[0]?.status).toBe('ready'));
+    expect(result.current.sourceState?.sources[1]?.status).toBe('dormant');
+    expect(frontstageBlockCodeApi.fetchFrontstageBlockCode).toHaveBeenCalledTimes(1);
+    expect(frontstageBlockCodeApi.fetchFrontstageBlockCode).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
+      'hero-code'
+    );
   });
 });
