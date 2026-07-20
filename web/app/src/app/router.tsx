@@ -289,6 +289,10 @@ function FrontStageWorkspaceContent({
       : rootNode?.kind === 'page'
         ? [rootNode]
         : pageTreeQuery.data;
+  const scopedPageTreeRootId =
+    rootNode?.kind === 'group' ? rootNode.id : null;
+  const resolvePageTreeParentId = (parentId: string | null) =>
+    parentId ?? scopedPageTreeRootId;
   const effectivePageId = rootNode?.kind === 'page' ? rootNode.id : pageId;
   const selectedPageId =
     rootNode?.kind === 'page'
@@ -428,24 +432,23 @@ function FrontStageWorkspaceContent({
         onCreateGroupNode={(input) =>
           pageTreeMutations.createGroup({
             ...input,
-            parentId:
-              rootNode?.kind === 'group' && input.parentId === null
-                ? rootNode.id
-                : input.parentId
+            parentId: resolvePageTreeParentId(input.parentId)
           })
         }
         onCreatePageNode={(input) =>
           pageTreeMutations.createPage({
             ...input,
-            parentId:
-              rootNode?.kind === 'group' && input.parentId === null
-                ? rootNode.id
-                : input.parentId
+            parentId: resolvePageTreeParentId(input.parentId)
           })
         }
         onRenamePageNode={pageTreeMutations.renameNode}
         onUpdatePageNodeMetadata={pageTreeMutations.updateNodeMetadata}
-        onMovePageNode={pageTreeMutations.moveNode}
+        onMovePageNode={(pageNodeId, input) =>
+          pageTreeMutations.moveNode(pageNodeId, {
+            ...input,
+            parentId: resolvePageTreeParentId(input.parentId)
+          })
+        }
         onDeletePageNode={pageTreeMutations.deleteNode}
         onRetryLoadPageTree={() => {
           void pageTreeQuery.refetch();
