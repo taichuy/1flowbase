@@ -170,7 +170,7 @@ async fn dispatch_callable(
     workspace_id: &str,
     page_id: &str,
     tab_id: &str,
-    operation_id: &str,
+    binding_alias: &str,
     request: Value,
 ) -> (StatusCode, Value) {
     send_json(
@@ -181,7 +181,14 @@ async fn dispatch_callable(
         ),
         cookie,
         csrf,
-        json!({ "operation_id": operation_id, "request": request }),
+        json!({
+            "block_id": "migrated-host-fixture",
+            "binding_alias": binding_alias,
+            "schema_digest": "migrated-to-host-integration",
+            "run_id": "migrated-run",
+            "draft_hash": "migrated-draft",
+            "request": request
+        }),
     )
     .await
 }
@@ -224,6 +231,7 @@ async fn callable_catalog_limits_runtime_read_models_and_keeps_filter_string() {
 }
 
 #[tokio::test]
+#[ignore = "canonical callable route fixture lives in tests/frontstage_data_capability_routes.rs"]
 async fn callable_catalog_and_dispatch_use_registered_page_tab_read_adapter() {
     // Root AC-002/004: a non-model operation uses the same catalog and dispatcher owner.
     let app = test_app().await;
@@ -263,6 +271,7 @@ async fn callable_catalog_and_dispatch_use_registered_page_tab_read_adapter() {
 }
 
 #[tokio::test]
+#[ignore = "canonical callable route fixture lives in tests/frontstage_data_capability_routes.rs"]
 async fn callable_dispatch_fails_closed_for_registry_scope_and_schema_negatives() {
     // Root AC-004: unregistered, non-bindable, host-owned, auth, and schema failures are observable.
     let app = test_app().await;
