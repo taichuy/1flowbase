@@ -116,7 +116,7 @@ export function createJsBlockWorkerHost(
       requestId,
       kind,
       message,
-      errors: [{ code: kind, path: 'worker', message }]
+      errors: [{ code: 'runtime_error', path: 'worker', message }]
     });
     clearStartupTimeout();
     queuedRequest = undefined;

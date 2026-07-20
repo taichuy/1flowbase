@@ -255,6 +255,10 @@ function createFakeRuntimeSession(
 describe('useFrontstagePageCanvasRuntimeSessions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible'
+    });
   });
 
   test('creates, subscribes, and runs ready sessions with snapshots aligned by slot', async () => {
@@ -533,5 +537,74 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
     });
     expect(result.current.running).toBe(false);
     expect(result.current.hasError).toBe(true);
+  });
+
+  test('runs at most two sessions and starts the highest-demand queued block next', async () => {
+    const items = [
+      createReadyItem({ blockId: 'far', slotIndex: 0 }),
+      createReadyItem({ blockId: 'visible', slotIndex: 1 }),
+      createReadyItem({ blockId: 'near', slotIndex: 2 })
+    ];
+    const sessions = items.map((item) =>
+      createFakeRuntimeSession(
+        createSnapshot({
+          status: 'running',
+          requestId: item.runPlan.request.requestId,
+          blockId: item.blockId
+        })
+      )
+    );
+    const runtimeSessionFactory = vi.fn(() =>
+      sessions[runtimeSessionFactory.mock.calls.length - 1]!.session
+    );
+
+    renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        runtimeRunPlanState: createRunPlanState(items),
+        runtimeSessionFactory,
+        demandsByBlockId: { far: 3, visible: 1, near: 2 }
+      })
+    );
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
+    expect(runtimeSessionFactory.mock.calls.map(([options]) => options.runPlan.request.blockId))
+      .toEqual(['visible', 'near']);
+
+    act(() => {
+      sessions[0]!.emit(
+        createSnapshot({
+          status: 'ready',
+          requestId: items[1]!.runPlan.request.requestId,
+          blockId: 'visible',
+          schema: { primitive: 'Text', props: { children: 'ready' } }
+        })
+      );
+    });
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(3));
+  });
+
+  test('does not start queued work while the page is hidden and resumes when visible', async () => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden'
+    });
+    const runtimeSessionFactory = vi.fn(() => createFakeRuntimeSession().session);
+
+    renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        runtimeRunPlanState: createRunPlanState([createReadyItem()]),
+        runtimeSessionFactory
+      })
+    );
+    expect(runtimeSessionFactory).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible'
+    });
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
   });
 });

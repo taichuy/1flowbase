@@ -2,7 +2,8 @@ import {
   createJsBlockBrowserWorkerFactory,
   type JsBlockBrowserWorkerConstructor,
   type JsBlockBrowserWorkerFactoryOptions,
-  type JsBlockWorkerFactory
+  type JsBlockWorkerFactory,
+  type JsBlockWorkerLike
 } from '@1flowbase/page-runtime';
 
 import frontstageRestrictedBlockWorkerUrl from '../workers/restricted-block-runtime.worker?worker&url';
@@ -15,6 +16,11 @@ export interface FrontstageRestrictedBlockWorkerFactoryOptions {
   workerUrl?: string | URL | null;
   workerOptions?: WorkerOptions;
 }
+
+const WARM_WORKER_TTL_MS = 30_000;
+let warmWorker: JsBlockWorkerLike | null = null;
+let warmWorkerTimer: ReturnType<typeof setTimeout> | null = null;
+let visibilityCleanupInstalled = false;
 
 export function getFrontstageRestrictedBlockWorkerUrl(): string {
   return frontstageRestrictedBlockWorkerUrl;
@@ -46,5 +52,73 @@ export function createFrontstageRestrictedBlockWorkerFactory(
     factoryOptions.workerConstructor = options.workerConstructor;
   }
 
-  return createJsBlockBrowserWorkerFactory(factoryOptions);
+  const createWorker = createJsBlockBrowserWorkerFactory(factoryOptions);
+  const canUseSharedWarmLease =
+    !Object.hasOwn(options, 'workerConstructor') &&
+    !Object.hasOwn(options, 'workerUrl') &&
+    !Object.hasOwn(options, 'workerOptions');
+
+  if (!canUseSharedWarmLease) {
+    return createWorker;
+  }
+
+  installWarmWorkerVisibilityCleanup();
+  return () => {
+    const worker = warmWorker ?? createWorker();
+    if (warmWorker === worker) {
+      warmWorker = null;
+      clearWarmWorkerTimer();
+    }
+    scheduleWarmWorker(createWorker);
+    return worker;
+  };
+}
+
+function scheduleWarmWorker(createWorker: JsBlockWorkerFactory): void {
+  if (
+    warmWorker ||
+    warmWorkerTimer ||
+    (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+  ) {
+    return;
+  }
+  warmWorkerTimer = setTimeout(() => {
+    warmWorkerTimer = null;
+    if (
+      warmWorker ||
+      (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+    ) {
+      return;
+    }
+    warmWorker = createWorker();
+    warmWorkerTimer = setTimeout(releaseWarmWorker, WARM_WORKER_TTL_MS);
+  }, 0);
+}
+
+function releaseWarmWorker(): void {
+  clearWarmWorkerTimer();
+  warmWorker?.terminate();
+  warmWorker = null;
+}
+
+function clearWarmWorkerTimer(): void {
+  if (warmWorkerTimer) {
+    clearTimeout(warmWorkerTimer);
+    warmWorkerTimer = null;
+  }
+}
+
+function installWarmWorkerVisibilityCleanup(): void {
+  if (
+    visibilityCleanupInstalled ||
+    typeof document === 'undefined'
+  ) {
+    return;
+  }
+  visibilityCleanupInstalled = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      releaseWarmWorker();
+    }
+  });
 }

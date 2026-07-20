@@ -399,7 +399,7 @@ function runtimeError(
   return {
     kind,
     message,
-    errors: [{ code: kind, path, message }]
+    errors: [{ code: 'runtime_error', path, message }]
   };
 }
 
@@ -412,7 +412,7 @@ function compileError(error: JsBlockRunError): JsBlockRunError {
     kind: 'compile_failed',
     errors: error.errors.map((item) => ({
       ...item,
-      code: 'compile_failed'
+      code: 'transform_failed'
     }))
   };
 }
