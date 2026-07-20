@@ -101,9 +101,15 @@ where
             )?
         };
 
-        self.repository
+        let applications = self
+            .repository
             .list_applications(actor.current_workspace_id, actor_user_id, visibility)
-            .await
+            .await?;
+
+        Ok(applications
+            .into_iter()
+            .map(with_product_capability_sections)
+            .collect())
     }
 
     pub async fn list_application_management(
@@ -224,7 +230,7 @@ where
             ))
             .await?;
 
-        Ok(created)
+        Ok(with_product_capability_sections(created))
     }
 
     pub async fn update_application(
@@ -286,7 +292,7 @@ where
             ))
             .await?;
 
-        Ok(updated)
+        Ok(with_product_capability_sections(updated))
     }
 
     pub async fn delete_application(&self, command: DeleteApplicationCommand) -> Result<()> {
@@ -448,7 +454,7 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
 
-        Ok(application)
+        Ok(with_product_capability_sections(application))
     }
 
     /// Loads a real application in the actor's current workspace and applies its independent
@@ -1382,7 +1388,7 @@ fn build_application_record(id: Uuid, input: CreateApplicationInput) -> domain::
         created_by: input.actor_user_id,
         updated_at: time::OffsetDateTime::now_utc(),
         tags: Vec::new(),
-        sections: planned_sections(input.application_type),
+        sections: planned_sections(input.application_type, input.workflow_trigger_type),
     }
 }
 
@@ -1398,8 +1404,11 @@ fn create_application_workflow_trigger_type(
     }
 }
 
-fn planned_sections(application_type: domain::ApplicationType) -> domain::ApplicationSections {
-    domain::ApplicationSections {
+fn planned_sections(
+    application_type: domain::ApplicationType,
+    workflow_trigger_type: Option<domain::WorkflowTriggerType>,
+) -> domain::ApplicationSections {
+    let mut sections = domain::ApplicationSections {
         orchestration: domain::ApplicationOrchestrationSection {
             status: "planned".to_string(),
             subject_kind: application_type.as_str().to_string(),
@@ -1426,6 +1435,48 @@ fn planned_sections(application_type: domain::ApplicationType) -> domain::Applic
             metrics_capability_status: "planned".to_string(),
             metrics_object_kind: "application_metrics".to_string(),
             tracing_config_status: "planned".to_string(),
+        },
+    };
+    sections.api = product_api_section(application_type, workflow_trigger_type, sections.api);
+    sections
+}
+
+fn with_product_capability_sections(
+    mut application: domain::ApplicationRecord,
+) -> domain::ApplicationRecord {
+    application.sections.api = product_api_section(
+        application.application_type,
+        application.workflow_trigger_type,
+        application.sections.api,
+    );
+    application
+}
+
+fn product_api_section(
+    application_type: domain::ApplicationType,
+    workflow_trigger_type: Option<domain::WorkflowTriggerType>,
+    agent_flow_api: domain::ApplicationApiSection,
+) -> domain::ApplicationApiSection {
+    match (application_type, workflow_trigger_type) {
+        (domain::ApplicationType::AgentFlow, _) => agent_flow_api,
+        (
+            domain::ApplicationType::Workflow,
+            Some(domain::WorkflowTriggerType::Extension),
+        ) => domain::ApplicationApiSection {
+            status: "available".to_string(),
+            credential_kind: "user_or_public".to_string(),
+            invoke_routing_mode: "published_workflow_operation".to_string(),
+            invoke_path_template: Some("/api/ex/{operation}".to_string()),
+            api_capability_status: "available".to_string(),
+            credentials_status: "not_required".to_string(),
+        },
+        (domain::ApplicationType::Workflow, _) => domain::ApplicationApiSection {
+            status: "unavailable".to_string(),
+            credential_kind: "not_applicable".to_string(),
+            invoke_routing_mode: "not_available".to_string(),
+            invoke_path_template: None,
+            api_capability_status: "unavailable".to_string(),
+            credentials_status: "not_applicable".to_string(),
         },
     }
 }

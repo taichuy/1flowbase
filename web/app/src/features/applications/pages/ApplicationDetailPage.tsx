@@ -39,6 +39,11 @@ const ApplicationApiPage = lazy(() =>
     default: module.ApplicationApiPage
   }))
 );
+const WorkflowExtensionApiPage = lazy(() =>
+  import('./WorkflowExtensionApiPage').then((module) => ({
+    default: module.WorkflowExtensionApiPage
+  }))
+);
 const ApplicationMonitoringPage = lazy(() =>
   import('./ApplicationMonitoringPage').then((module) => ({
     default: module.ApplicationMonitoringPage
@@ -89,7 +94,10 @@ export function ApplicationDetailPage({
   const application = detailQuery.data;
   const isWorkflow = application.application_type === 'workflow';
 
-  if (isWorkflow && requestedSectionKey === 'api') {
+  if (
+    requestedSectionKey === 'api' &&
+    application.sections.api.status === 'unavailable'
+  ) {
     return (
       <Navigate
         to="/applications/$applicationId/orchestration"
@@ -125,7 +133,11 @@ export function ApplicationDetailPage({
       </ApplicationSectionBoundary>
     ) : requestedSectionKey === 'api' ? (
       <ApplicationSectionBoundary>
-        <ApplicationApiPage application={application} />
+        {isWorkflow ? (
+          <WorkflowExtensionApiPage application={application} />
+        ) : (
+          <ApplicationApiPage application={application} />
+        )}
       </ApplicationSectionBoundary>
     ) : requestedSectionKey === 'monitoring' ? (
       <ApplicationSectionBoundary>
@@ -144,7 +156,7 @@ export function ApplicationDetailPage({
       navItems={getApplicationSections(
         applicationId,
         t,
-        application.application_type
+        application
       )}
       activeKey={requestedSectionKey}
       contentWidth={requestedSectionKey === 'orchestration' ? 'full' : 'wide'}

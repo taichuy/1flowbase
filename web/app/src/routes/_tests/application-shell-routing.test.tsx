@@ -195,12 +195,12 @@ function createWorkflowApplicationDetail() {
         current_draft_id: null
       },
       api: {
-        status: 'planned',
-        credential_kind: 'application_api_key',
-        invoke_routing_mode: 'api_key_bound_application',
-        invoke_path_template: null,
-        api_capability_status: 'planned',
-        credentials_status: 'planned'
+        status: 'available',
+        credential_kind: 'user_or_public',
+        invoke_routing_mode: 'published_workflow_operation',
+        invoke_path_template: '/api/ex/{operation}',
+        api_capability_status: 'available',
+        credentials_status: 'not_required'
       },
       logs: {
         status: 'planned',
@@ -253,9 +253,9 @@ describe('application shell routing', () => {
           status: 'planned',
           credential_kind: 'application_api_key',
           invoke_routing_mode: 'api_key_bound_application',
-          invoke_path_template: null,
-          api_capability_status: 'planned',
-          credentials_status: 'planned'
+          invoke_path_template: '/api/agent/v1/runs',
+          api_capability_status: 'not_published',
+          credentials_status: 'missing'
         },
         logs: {
           status: 'planned',

@@ -109,12 +109,12 @@ const application: ApplicationDetail = {
       current_draft_id: 'draft-1'
     },
     api: {
-      status: 'configured',
+      status: 'active',
       credential_kind: 'application_api_key',
       invoke_routing_mode: 'api_key_bound_application',
       invoke_path_template: '/api/agent/v1/runs',
       api_capability_status: 'enabled',
-      credentials_status: 'active'
+      credentials_status: 'configured'
     },
     logs: {
       status: 'ready',

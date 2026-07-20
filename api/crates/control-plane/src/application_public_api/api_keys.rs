@@ -114,6 +114,7 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
+        ensure_application_api_keys_supported(&application)?;
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
 
         let key_id = Uuid::now_v7();
@@ -152,6 +153,7 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
+        ensure_application_api_keys_supported(&application)?;
         ensure_application_view_permission(&self.repository, &actor, &application).await?;
 
         self.repository
@@ -168,6 +170,7 @@ where
             .get_application(actor.current_workspace_id, command.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
+        ensure_application_api_keys_supported(&application)?;
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
 
         self.repository
@@ -197,8 +200,6 @@ where
         {
             return Err(anyhow!("not_authenticated"));
         }
-        self.record_api_key_used(&api_key).await;
-
         let application_id = api_key
             .application_id
             .ok_or_else(|| anyhow!("not_authenticated"))?;
@@ -207,6 +208,10 @@ where
             .get_application(api_key.scope_id, application_id)
             .await?
             .ok_or_else(|| anyhow!("not_authenticated"))?;
+        if application.application_type != domain::ApplicationType::AgentFlow {
+            return Err(anyhow!("not_authenticated"));
+        }
+        self.record_api_key_used(&api_key).await;
         let actor = domain::ActorContext::scoped_in_scope(
             api_key.creator_user_id,
             api_key.tenant_id,
@@ -252,5 +257,17 @@ where
                 "application api key last_used_at update failed"
             );
         }
+    }
+}
+
+fn ensure_application_api_keys_supported(
+    application: &domain::ApplicationRecord,
+) -> Result<(), ControlPlaneError> {
+    if application.application_type == domain::ApplicationType::AgentFlow {
+        Ok(())
+    } else {
+        Err(ControlPlaneError::InvalidInput(
+            "application_api_key_application_type",
+        ))
     }
 }

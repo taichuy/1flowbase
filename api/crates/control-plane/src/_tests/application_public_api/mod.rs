@@ -31,11 +31,12 @@ use control_plane::{
         },
         ApplicationPublicApiTestHarness,
     },
-    auth::ApiKeyService,
+    auth::{hash_api_key_token, ApiKeyService},
     errors::ControlPlaneError,
     ports::{
-        ApplicationJsDependencySelectionRepository, ClaimedTask, EphemeralInspectionCapabilities,
-        FlowRepository, ReplaceApplicationJsDependencySelectionInput, TaskQueue,
+        ApiKeyRepository, ApplicationJsDependencySelectionRepository, ClaimedTask,
+        CreateApiKeyInput, EphemeralInspectionCapabilities, FlowRepository,
+        ReplaceApplicationJsDependencySelectionInput, TaskQueue,
     },
 };
 use std::collections::BTreeMap;
@@ -251,6 +252,76 @@ async fn application_public_api_key_service_requires_application_edit_permission
         .unwrap_err();
 
     assert!(error.to_string().contains("permission_denied"));
+}
+
+#[tokio::test]
+async fn ac_004_application_api_keys_fail_closed_for_workflows() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let workflow = harness.seed_workflow_application(actor_user_id(), "Order workflow");
+    let repository = harness.repository();
+    let service = ApplicationApiKeyService::new(repository.clone());
+
+    let create_error = service
+        .create_api_key(CreateApplicationApiKeyCommand {
+            actor_user_id: actor_user_id(),
+            application_id: workflow.id,
+            name: "Unsupported workflow key".into(),
+            expires_at: None,
+        })
+        .await
+        .unwrap_err();
+    assert!(create_error
+        .to_string()
+        .contains("application_api_key_application_type"));
+
+    let list_error = service
+        .list_api_keys(ListApplicationApiKeysCommand {
+            actor_user_id: actor_user_id(),
+            application_id: workflow.id,
+        })
+        .await
+        .unwrap_err();
+    assert!(list_error
+        .to_string()
+        .contains("application_api_key_application_type"));
+
+    let revoke_error = service
+        .revoke_api_key(RevokeApplicationApiKeyCommand {
+            actor_user_id: actor_user_id(),
+            application_id: workflow.id,
+            api_key_id: Uuid::now_v7(),
+        })
+        .await
+        .unwrap_err();
+    assert!(revoke_error
+        .to_string()
+        .contains("application_api_key_application_type"));
+
+    let legacy_token = "sk-workflow-legacy-token";
+    repository
+        .create_api_key(&CreateApiKeyInput {
+            id: Uuid::now_v7(),
+            name: "Legacy workflow key".into(),
+            token_hash: hash_api_key_token(legacy_token),
+            token_prefix: "sk-workflow".into(),
+            key_kind: domain::ApiKeyKind::ApplicationApiKey,
+            application_id: Some(workflow.id),
+            role_code: None,
+            creator_user_id: actor_user_id(),
+            tenant_id: Uuid::nil(),
+            scope_kind: domain::DataModelScopeKind::Workspace,
+            scope_id: workflow.workspace_id,
+            enabled: true,
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+
+    let auth_error = service
+        .authenticate_bearer_token(legacy_token)
+        .await
+        .unwrap_err();
+    assert!(auth_error.to_string().contains("not_authenticated"));
 }
 
 #[tokio::test]
