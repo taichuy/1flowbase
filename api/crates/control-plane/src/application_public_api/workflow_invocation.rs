@@ -59,8 +59,10 @@ pub struct WorkflowInvocationService<R> {
 pub enum WorkflowInvocationError {
     #[error("published workflow compiled plan is unavailable")]
     CompiledPlanUnavailable,
-    #[error("workflow invocation is invalid")]
-    InvalidInvocation(#[source] anyhow::Error),
+    #[error("workflow invocation input is invalid")]
+    InvalidInput(#[source] anyhow::Error),
+    #[error("workflow invocation repository operation failed")]
+    Repository(#[source] anyhow::Error),
 }
 
 impl<R> WorkflowInvocationService<R>
@@ -82,7 +84,7 @@ where
             .repository
             .get_application_compiled_plan(publication.compiled_plan_id)
             .await
-            .map_err(|_| WorkflowInvocationError::CompiledPlanUnavailable)?
+            .map_err(WorkflowInvocationError::Repository)?
             .ok_or(WorkflowInvocationError::CompiledPlanUnavailable)?;
         let environment_variables = self
             .repository
@@ -91,13 +93,13 @@ where
                 publication.application_id,
             )
             .await
-            .map_err(WorkflowInvocationError::InvalidInvocation)?;
+            .map_err(WorkflowInvocationError::Repository)?;
         let input_payload = public_freeze_workflow_run_input_environment(
             command.node_input_payload,
             &environment_variables,
             command.trigger.run_context(),
         )
-        .map_err(|error| WorkflowInvocationError::InvalidInvocation(error.into()))?;
+        .map_err(|error| WorkflowInvocationError::InvalidInput(error.into()))?;
 
         if let Some(idempotency_key) = command.trigger.idempotency_key() {
             if let Some(flow_run) = self
@@ -108,7 +110,7 @@ where
                     idempotency_key,
                 )
                 .await
-                .map_err(WorkflowInvocationError::InvalidInvocation)?
+                .map_err(WorkflowInvocationError::Repository)?
             {
                 return Ok(WorkflowInvocationResult {
                     flow_run,
@@ -144,7 +146,7 @@ where
                 idempotency_key: command.trigger.idempotency_key().map(str::to_string),
             })
             .await
-            .map_err(WorkflowInvocationError::InvalidInvocation)?;
+            .map_err(WorkflowInvocationError::Repository)?;
         if created.created {
             self.repository
                 .append_published_run_event(&crate::ports::AppendRunEventInput {
@@ -156,7 +158,7 @@ where
                         .event_payload(publication.id, publication.application_id),
                 })
                 .await
-                .map_err(WorkflowInvocationError::InvalidInvocation)?;
+                .map_err(WorkflowInvocationError::Repository)?;
         }
 
         Ok(WorkflowInvocationResult {

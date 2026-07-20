@@ -124,9 +124,10 @@ pub use orchestration::{
     ApplicationRunTraceProjectionDiagnostic, ApplicationRunTraceProjectionStatus,
     ApplicationRunTraceProjectionStatusRecord, CallbackTaskRecord, CallbackTaskStatus,
     CheckpointRecord, CompiledPlanRecord, DataModelSideEffectReceiptRecord,
-    FlowRunCallbackResumeAttemptRecord, FlowRunCallbackResumeAttemptStatus, FlowRunMode,
-    FlowRunRecord, FlowRunStatus, NodeDebugPreviewResult, NodeLastRun, NodeRunRecord,
-    NodeRunStatus, RunEventRecord, RuntimeDebugArtifactRecord,
+    FlowRunCallbackResumeAttemptRecord, FlowRunCallbackResumeAttemptStatus, FlowRunExecutionStage,
+    FlowRunInvocationContext, FlowRunInvocationSource, FlowRunMode, FlowRunPrincipal,
+    FlowRunPrincipalKind, FlowRunRecord, FlowRunStatus, NodeDebugPreviewResult, NodeLastRun,
+    NodeRunRecord, NodeRunStatus, RunEventRecord, RuntimeDebugArtifactRecord,
 };
 pub use plugin_worker::{PluginWorkerLeaseRecord, PluginWorkerStatus};
 pub use resource::runtime_model_resource_code;
@@ -151,3 +152,22 @@ pub fn crate_name() -> &'static str {
 
 #[cfg(test)]
 mod _tests;
+
+#[cfg(test)]
+mod attribution_exports_tests {
+    #[test]
+    fn attribution_types_are_available_from_the_domain_root() {
+        let principal = crate::FlowRunPrincipal {
+            kind: crate::FlowRunPrincipalKind::Public,
+            id: None,
+            display_name: None,
+        };
+        let context = crate::FlowRunInvocationContext {
+            execution_stage: crate::FlowRunExecutionStage::Published,
+            invocation_source: crate::FlowRunInvocationSource::WorkflowHttp,
+            principal,
+        };
+
+        assert_eq!(context.principal.kind, crate::FlowRunPrincipalKind::Public);
+    }
+}

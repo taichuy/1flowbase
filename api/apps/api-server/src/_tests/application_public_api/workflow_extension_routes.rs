@@ -187,27 +187,20 @@ async fn save_workflow_document_with_builder(
     assert_eq!(response.status(), StatusCode::OK);
 }
 
-async fn create_application_key(
-    app: &Router,
-    cookie: &str,
-    csrf: &str,
-    application_id: &str,
-) -> String {
+async fn create_user_api_key(app: &Router, cookie: &str, csrf: &str) -> String {
     let response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!(
-                    "/api/console/applications/{application_id}/api-keys"
-                ))
+                .uri("/api/console/user-api-keys")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
                         "name": "Workflow extension route key",
-                        "expires_at": null
+                        "expiration_policy": "never"
                     })
                     .to_string(),
                 ))
@@ -460,7 +453,7 @@ async fn setup_workflow_extension_app_with_enabled(
     let (cookie, csrf) = login_and_capture_cookie(app, "root", "change-me").await;
     let application_id = create_workflow_application(app, &cookie, &csrf, slug).await;
     save_workflow_document(app, &cookie, &csrf, &application_id).await;
-    let token = create_application_key(app, &cookie, &csrf, &application_id).await;
+    let token = create_user_api_key(app, &cookie, &csrf).await;
     let publication = publish_workflow_extension_with_enabled(
         app,
         &cookie,
@@ -527,7 +520,7 @@ async fn workflow_extension_sync_route_returns_accepted_when_run_waits_for_human
         workflow_waiting_document,
     )
     .await;
-    let token = create_application_key(&app, &cookie, &csrf, &application_id).await;
+    let token = create_user_api_key(&app, &cookie, &csrf).await;
     publish_workflow_extension(
         &app,
         &cookie,
@@ -660,7 +653,38 @@ async fn workflow_extension_route_returns_stable_errors_for_missing_slug_and_met
 }
 
 #[tokio::test]
-async fn workflow_extension_route_rejects_cross_application_api_key() {
+async fn workflow_extension_route_describes_user_api_key_authentication_neutrally() {
+    let app = test_app().await;
+    setup_workflow_extension_app(
+        &app,
+        "open-ticket-auth-error",
+        "async",
+        json!([]),
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/ex/open-ticket-auth-error")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let payload = response_json(response).await;
+    assert_eq!(payload["code"], json!("not_authenticated"));
+    assert_eq!(
+        payload["message"],
+        json!("invalid or unavailable user API key")
+    );
+}
+
+#[tokio::test]
+async fn workflow_extension_route_allows_authorized_user_api_key_across_applications() {
     let app = test_app().await;
     let (first_token, _) = setup_workflow_extension_app(
         &app,
@@ -701,11 +725,8 @@ async fn workflow_extension_route_rejects_cross_application_api_key() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
-    assert_eq!(
-        response_json(response).await["code"],
-        json!("workflow_extension_forbidden")
-    );
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    assert_eq!(response_json(response).await["status"], json!("queued"));
 }
 
 #[tokio::test]
@@ -923,7 +944,7 @@ async fn workflow_extension_route_rejects_schedule_trigger_application() {
     )
     .await;
     save_workflow_document(&app, &cookie, &csrf, &application_id).await;
-    let token = create_application_key(&app, &cookie, &csrf, &application_id).await;
+    let token = create_user_api_key(&app, &cookie, &csrf).await;
     publish_workflow_extension(
         &app,
         &cookie,

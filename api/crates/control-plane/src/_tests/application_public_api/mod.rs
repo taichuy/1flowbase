@@ -1405,7 +1405,10 @@ async fn workflow_http_operation_rejects_application_key_and_runs_with_public_pr
         })
         .await
         .unwrap_err();
-    assert_eq!(rejected, control_plane::application_public_api::workflow_extension::WorkflowExtensionRunError::NotAuthenticated);
+    assert!(matches!(
+        rejected,
+        control_plane::application_public_api::workflow_extension::WorkflowExtensionRunError::NotAuthenticated
+    ));
 
     mapping.extension.as_mut().unwrap().access_policy = WorkflowExtensionAccessPolicy::Public;
     ApplicationPublicationService::new(repository.clone())
