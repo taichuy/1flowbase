@@ -1,7 +1,4 @@
-import type {
-  ConsoleFrontstageDataCapabilities,
-  ConsoleFrontstageDataCapabilityDescriptor
-} from '@1flowbase/api-client';
+import type { ConsoleFrontstageCallableInterface } from '@1flowbase/api-client';
 import {
   Alert,
   Button,
@@ -17,14 +14,10 @@ import {
   message
 } from 'antd';
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
-import {
-  readFrontstageBlockDataBindings,
-  writeFrontstageBlockDataBindings,
-  type FrontstageBlockDataBinding
-} from '../../lib/jsx-studio/block-data-binding';
+import { bindFrontstageCallableInterface } from '../../lib/jsx-studio/interface-binding';
 import {
   createFrontstageJsxBindingSnippet,
   type FrontstageJsxEditorProjection
@@ -42,9 +35,9 @@ export type FrontstageJsxStudioSection =
 
 export function JsxStudioResourcePanel({
   block,
-  capabilities,
-  capabilitiesError,
-  capabilitiesLoading,
+  callableInterfaces,
+  callableInterfacesError,
+  callableInterfacesLoading,
   onInsertCode,
   onSaveBlock,
   projection,
@@ -52,9 +45,9 @@ export function JsxStudioResourcePanel({
   section
 }: {
   block: FrontstageBlockInstance;
-  capabilities: ConsoleFrontstageDataCapabilities;
-  capabilitiesError: Error | null;
-  capabilitiesLoading: boolean;
+  callableInterfaces: readonly ConsoleFrontstageCallableInterface[];
+  callableInterfacesError: Error | null;
+  callableInterfacesLoading: boolean;
   onInsertCode: (source: string) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
@@ -65,9 +58,9 @@ export function JsxStudioResourcePanel({
     return (
       <InterfaceConnectorPanel
         block={block}
-        capabilities={capabilities}
-        error={capabilitiesError}
-        loading={capabilitiesLoading}
+        callableInterfaces={callableInterfaces}
+        error={callableInterfacesError}
+        loading={callableInterfacesLoading}
         projection={projection}
         onInsertCode={onInsertCode}
         onSaveBlock={onSaveBlock}
@@ -89,9 +82,7 @@ export function JsxStudioResourcePanel({
   }
 
   if (section === 'configuration') {
-    return (
-      <ConfigurationPanel block={block} onSaveBlock={onSaveBlock} />
-    );
+    return <ConfigurationPanel block={block} onSaveBlock={onSaveBlock} />;
   }
 
   return runPanel ? (
@@ -106,7 +97,7 @@ export function JsxStudioResourcePanel({
 
 function InterfaceConnectorPanel({
   block,
-  capabilities,
+  callableInterfaces,
   error,
   loading,
   onInsertCode,
@@ -114,27 +105,15 @@ function InterfaceConnectorPanel({
   projection
 }: {
   block: FrontstageBlockInstance;
-  capabilities: ConsoleFrontstageDataCapabilities;
+  callableInterfaces: readonly ConsoleFrontstageCallableInterface[];
   error: Error | null;
   loading: boolean;
   onInsertCode: (source: string) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
 }) {
-  const [selectedModel, setSelectedModel] = useState<string | undefined>();
   const [pendingBindingId, setPendingBindingId] = useState<string | null>(null);
-  const bindings = useMemo(
-    () => readFrontstageBlockDataBindings(block.props),
-    [block.props]
-  );
-  const modelCodes = capabilities.models.map((model) => model.code);
-
-  useEffect(() => {
-    if (selectedModel && modelCodes.includes(selectedModel)) {
-      return;
-    }
-    setSelectedModel(modelCodes[0]);
-  }, [modelCodes, selectedModel]);
+  const bindings = block.interfaces ?? [];
 
   if (loading) {
     return <Spin />;
@@ -145,15 +124,12 @@ function InterfaceConnectorPanel({
       <Alert
         type="error"
         showIcon
-        message={i18nText(
-          'frontstage',
-          'auto.capability_catalog_load_failed'
-        )}
+        message={i18nText('frontstage', 'auto.capability_catalog_load_failed')}
       />
     );
   }
 
-  if (capabilities.models.length === 0) {
+  if (callableInterfaces.length === 0) {
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -163,28 +139,16 @@ function InterfaceConnectorPanel({
   }
 
   const bindCapability = async (
-    descriptor: ConsoleFrontstageDataCapabilityDescriptor,
-    kind: 'query' | 'action'
+    operation: ConsoleFrontstageCallableInterface
   ) => {
-    if (!selectedModel) {
-      return;
-    }
-
-    const bindingKey = createUniqueBindingKey(
-      selectedModel,
-      descriptor.id,
-      bindings
+    const alias = createUniqueBindingAlias(
+      operation.operation_id,
+      bindings.map((item) => item.alias)
     );
-    const nextBinding: FrontstageBlockDataBinding = {
-      key: bindingKey,
-      id: descriptor.id,
-      kind,
-      params: { model: selectedModel }
-    };
-    setPendingBindingId(descriptor.id);
+    setPendingBindingId(operation.operation_id);
     try {
       const saved = await onSaveBlock(
-        writeFrontstageBlockDataBindings(block, [...bindings, nextBinding])
+        bindFrontstageCallableInterface(block, alias, operation)
       );
       if (saved !== false) {
         void message.success(
@@ -199,12 +163,10 @@ function InterfaceConnectorPanel({
   const removeBinding = async (bindingKey: string) => {
     setPendingBindingId(bindingKey);
     try {
-      await onSaveBlock(
-        writeFrontstageBlockDataBindings(
-          block,
-          bindings.filter((binding) => binding.key !== bindingKey)
-        )
-      );
+      await onSaveBlock({
+        ...block,
+        interfaces: bindings.filter((binding) => binding.alias !== bindingKey)
+      });
     } finally {
       setPendingBindingId(null);
     }
@@ -219,17 +181,6 @@ function InterfaceConnectorPanel({
           'auto.interface_connector_description'
         )}
       />
-      <Select
-        aria-label={i18nText('frontstage', 'auto.select_data_model')}
-        value={selectedModel}
-        options={capabilities.models.map((model) => ({
-          label: model.code,
-          value: model.code
-        }))}
-        style={{ width: '100%' }}
-        onChange={setSelectedModel}
-      />
-
       {projection.bindings.length > 0 ? (
         <section className="frontstage-jsx-studio__resource-section">
           <Typography.Text strong>
@@ -238,13 +189,16 @@ function InterfaceConnectorPanel({
           {projection.bindings.map((binding) => (
             <div
               className="frontstage-jsx-studio__binding-row"
-              key={binding.key}
+              key={binding.binding.alias}
             >
               <div className="frontstage-jsx-studio__binding-copy">
-                <Typography.Text code>{binding.key}</Typography.Text>
+                <Typography.Text code>{binding.binding.alias}</Typography.Text>
                 <Typography.Text type="secondary" ellipsis>
-                  {binding.id}
+                  {binding.binding.operation_id}
                 </Typography.Text>
+                {binding.status !== 'current' ? (
+                  <Tag color="warning">{binding.status}</Tag>
+                ) : null}
               </div>
               <Space size={4}>
                 <Button
@@ -258,8 +212,8 @@ function InterfaceConnectorPanel({
                 <Button
                   danger
                   size="small"
-                  loading={pendingBindingId === binding.key}
-                  onClick={() => void removeBinding(binding.key)}
+                  loading={pendingBindingId === binding.binding.alias}
+                  onClick={() => void removeBinding(binding.binding.alias)}
                 >
                   {i18nText('frontstage', 'auto.unbind')}
                 </Button>
@@ -269,86 +223,49 @@ function InterfaceConnectorPanel({
         </section>
       ) : null}
 
-      <CapabilitySection
-        title={i18nText('frontstage', 'auto.queries')}
-        modelCode={selectedModel ?? ''}
-        descriptors={capabilities.queries}
-        bindings={bindings}
-        pendingBindingId={pendingBindingId}
-        kind="query"
-        onBind={bindCapability}
-      />
-      <CapabilitySection
-        title={i18nText('frontstage', 'auto.actions')}
-        modelCode={selectedModel ?? ''}
-        descriptors={capabilities.actions}
-        bindings={bindings}
-        pendingBindingId={pendingBindingId}
-        kind="action"
-        onBind={bindCapability}
-      />
-    </div>
-  );
-}
-
-function CapabilitySection({
-  bindings,
-  descriptors,
-  kind,
-  modelCode,
-  onBind,
-  pendingBindingId,
-  title
-}: {
-  bindings: readonly FrontstageBlockDataBinding[];
-  descriptors: readonly ConsoleFrontstageDataCapabilityDescriptor[];
-  kind: 'query' | 'action';
-  modelCode: string;
-  onBind: (
-    descriptor: ConsoleFrontstageDataCapabilityDescriptor,
-    kind: 'query' | 'action'
-  ) => Promise<void>;
-  pendingBindingId: string | null;
-  title: string;
-}) {
-  return (
-    <section className="frontstage-jsx-studio__resource-section">
-      <Typography.Text strong>{title}</Typography.Text>
-      {descriptors.map((descriptor) => {
-        const isBound = bindings.some(
-          (binding) =>
-            binding.id === descriptor.id && binding.params.model === modelCode
-        );
-        const operationLabel = getCapabilityOperationLabel(descriptor.id);
-        return (
-          <div
-            className="frontstage-jsx-studio__capability-row"
-            key={descriptor.id}
-          >
-            <div className="frontstage-jsx-studio__binding-copy">
-              <Space size={6}>
-                <Typography.Text>{operationLabel}</Typography.Text>
-                <Tag>{kind === 'query' ? 'Query' : 'Action'}</Tag>
-              </Space>
-              <Typography.Text type="secondary" ellipsis>
-                {descriptor.id}
-              </Typography.Text>
-            </div>
-            <Button
-              size="small"
-              disabled={isBound || !modelCode}
-              loading={pendingBindingId === descriptor.id}
-              aria-label={`${i18nText('frontstage', 'auto.bind')} ${modelCode} ${operationLabel}`}
-              onClick={() => void onBind(descriptor, kind)}
+      <section className="frontstage-jsx-studio__resource-section">
+        <Typography.Text strong>
+          {i18nText('frontstage', 'auto.interfaces')}
+        </Typography.Text>
+        {callableInterfaces.map((operation) => {
+          const isBound = bindings.some(
+            (binding) => binding.operation_id === operation.operation_id
+          );
+          return (
+            <div
+              className="frontstage-jsx-studio__capability-row"
+              key={operation.operation_id}
             >
-              {isBound
-                ? i18nText('frontstage', 'auto.bound')
-                : i18nText('frontstage', 'auto.bind')}
-            </Button>
-          </div>
-        );
-      })}
-    </section>
+              <div className="frontstage-jsx-studio__binding-copy">
+                <Space size={6}>
+                  <Typography.Text>{operation.name}</Typography.Text>
+                  <Tag>{operation.method.toUpperCase()}</Tag>
+                  <Tag>{operation.risk_level}</Tag>
+                </Space>
+                <Typography.Text type="secondary" ellipsis>
+                  {operation.operation_id}
+                </Typography.Text>
+                {!operation.bindable && operation.disabled_reason ? (
+                  <Typography.Text type="secondary">
+                    {operation.disabled_reason}
+                  </Typography.Text>
+                ) : null}
+              </div>
+              <Button
+                size="small"
+                disabled={isBound || !operation.bindable}
+                loading={pendingBindingId === operation.operation_id}
+                onClick={() => void bindCapability(operation)}
+              >
+                {isBound
+                  ? i18nText('frontstage', 'auto.bound')
+                  : i18nText('frontstage', 'auto.bind')}
+              </Button>
+            </div>
+          );
+        })}
+      </section>
+    </div>
   );
 }
 
@@ -490,7 +407,10 @@ function ConfigurationPanel({
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         <label className="frontstage-jsx-studio__field">
           <span>{i18nText('frontstage', 'auto.title')}</span>
-          <Input value={title} onChange={(event) => setTitle(event.target.value)} />
+          <Input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
         </label>
         <label className="frontstage-jsx-studio__field">
           <span>{i18nText('frontstage', 'auto.description')}</span>
@@ -541,7 +461,11 @@ function ConfigurationPanel({
         <Typography.Text code copyable>
           {block.codeRef}
         </Typography.Text>
-        <Button type="primary" loading={saving} onClick={() => void saveConfiguration()}>
+        <Button
+          type="primary"
+          loading={saving}
+          onClick={() => void saveConfiguration()}
+        >
           {i18nText('frontstage', 'auto.save_configuration')}
         </Button>
       </Space>
@@ -564,46 +488,18 @@ function ResourceHeading({
   );
 }
 
-function getCapabilityOperationLabel(id: string): string {
-  const labels: Record<string, string> = {
-    'frontstage.data_model.record.list': i18nText(
-      'frontstage',
-      'auto.query_list'
-    ),
-    'frontstage.data_model.record.get': i18nText(
-      'frontstage',
-      'auto.query_detail'
-    ),
-    'frontstage.data_model.record.create': i18nText(
-      'frontstage',
-      'auto.create_record'
-    ),
-    'frontstage.data_model.record.update': i18nText(
-      'frontstage',
-      'auto.update_record'
-    ),
-    'frontstage.data_model.record.delete': i18nText(
-      'frontstage',
-      'auto.delete_record'
-    )
-  };
-  return labels[id] ?? id;
-}
-
-function createUniqueBindingKey(
-  modelCode: string,
-  capabilityId: string,
-  bindings: readonly FrontstageBlockDataBinding[]
+function createUniqueBindingAlias(
+  operationId: string,
+  usedAliases: readonly string[]
 ): string {
-  const operation = capabilityId.split('.').at(-1) ?? 'binding';
-  const base = toCamelCase(`${modelCode}-${operation}`) || 'binding';
-  const usedKeys = new Set(bindings.map((binding) => binding.key));
-  if (!usedKeys.has(base)) {
+  const base = toCamelCase(operationId) || 'boundInterface';
+  const used = new Set(usedAliases);
+  if (!used.has(base)) {
     return base;
   }
 
   let suffix = 2;
-  while (usedKeys.has(`${base}${suffix}`)) {
+  while (used.has(`${base}${suffix}`)) {
     suffix += 1;
   }
   return `${base}${suffix}`;

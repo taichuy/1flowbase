@@ -10,14 +10,14 @@ import type { FrontstageBlockInstance } from '../../lib/page-document';
 const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
-const dataCapabilitiesHook = vi.hoisted(() => ({
-  useFrontstageDataCapabilities: vi.fn()
+const callableInterfacesHook = vi.hoisted(() => ({
+  useFrontstageCallableInterfaces: vi.fn()
 }));
 
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
-  '../../hooks/use-frontstage-data-capabilities',
-  () => dataCapabilitiesHook
+  '../../hooks/use-frontstage-callable-interfaces',
+  () => callableInterfacesHook
 );
 vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
   ResizableDrawer: ({
@@ -70,6 +70,7 @@ const block: FrontstageBlockInstance = {
     code: 'frontstage.js-ui-block'
   },
   props: { title: 'Orders' },
+  interfaces: [],
   presentation: { heightMode: 'auto', height: null },
   layout: { order: 0 },
   order: 0,
@@ -120,32 +121,27 @@ describe('FrontstageJsxStudioDrawer', () => {
       reset: vi.fn(),
       save: vi.fn().mockResolvedValue(undefined)
     });
-    dataCapabilitiesHook.useFrontstageDataCapabilities.mockReturnValue({
-      data: {
-        queries: [
-          {
-            id: 'frontstage.data_model.record.list',
-            kind: 'query',
-            params_schema: { type: 'object' },
-            result_schema: { type: 'object' }
-          }
-        ],
-        actions: [
-          {
-            id: 'frontstage.data_model.record.create',
-            kind: 'action',
-            params_schema: { type: 'object' },
-            result_schema: { type: 'object' }
-          }
-        ],
-        models: [
-          {
-            code: 'orders',
-            scope_kind: 'workspace',
-            fields: []
-          }
-        ]
-      },
+    callableInterfacesHook.useFrontstageCallableInterfaces.mockReturnValue({
+      data: [
+        {
+          operation_id: 'list_application_conversations_records',
+          method: 'GET',
+          path: '/api/runtime/models/application_conversations/list',
+          name: 'List conversations',
+          description: 'List conversations',
+          parameters: [],
+          request_schema: { type: 'object', properties: {} },
+          response_schema: { type: 'object', properties: {} },
+          schema_digest: 'digest-1',
+          adapter_id: 'runtime_data_model',
+          host_injected_parameters: [],
+          scope: 'frontstage_page_tab',
+          risk_level: 'low',
+          authorization: 'runtime_scope_grant_and_page_tab_access',
+          bindable: true,
+          disabled_reason: null
+        }
+      ],
       loading: false,
       error: null
     });
@@ -177,29 +173,22 @@ describe('FrontstageJsxStudioDrawer', () => {
       'data-edit-context',
       'false'
     );
-    expect(screen.getByText('结构化配置')).toBeInTheDocument();
+    expect(screen.getByText('区块设置')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '接口' }));
     expect(
-      screen.getByText('frontstage.data_model.record.list')
+      screen.getByText('list_application_conversations_records')
     ).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole('button', { name: '绑定 orders 查询列表' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '绑定' }));
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({
-      props: {
-        title: 'Orders',
-        dataBinding: [
-          {
-            key: 'ordersList',
-            id: 'frontstage.data_model.record.list',
-            kind: 'query',
-            params: { model: 'orders' }
-          }
-        ]
-      }
+      interfaces: [
+        expect.objectContaining({
+          operation_id: 'list_application_conversations_records',
+          schema_digest: 'digest-1'
+        })
+      ]
     });
   });
 
@@ -236,6 +225,7 @@ describe('FrontstageJsxStudioDrawer', () => {
 
   test('shows generated context in the editor surface and saves code through the existing hook', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
+    const setDraft = vi.fn();
     blockCodeHook.useFrontstageBlockCode.mockReturnValue({
       code: 'export default {}',
       draft: 'export default {}',
@@ -244,7 +234,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       saving: false,
       error: null,
       permissionDenied: false,
-      setDraft: vi.fn(),
+      setDraft,
       reset: vi.fn(),
       save
     });
@@ -258,17 +248,7 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={{
           ...block,
-          props: {
-            ...block.props,
-            dataBinding: [
-              {
-                key: 'ordersList',
-                id: 'frontstage.data_model.record.list',
-                kind: 'query',
-                params: { model: 'orders' }
-              }
-            ]
-          }
+          interfaces: []
         }}
         catalogEntry={catalogEntry}
         diagnostics={[]}
@@ -277,8 +257,10 @@ describe('FrontstageJsxStudioDrawer', () => {
       />
     );
 
-    expect(screen.getByText('自动注入上下文')).toBeInTheDocument();
-    expect(screen.getByText(/ordersList/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重新注入上下文' }));
+    expect(setDraft).toHaveBeenCalledWith(
+      expect.stringContaining('@1flowbase-context')
+    );
     fireEvent.click(screen.getByRole('button', { name: '保存代码' }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   });

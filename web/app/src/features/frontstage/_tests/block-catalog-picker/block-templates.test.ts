@@ -84,14 +84,11 @@ describe('frontstage block templates', () => {
 
       expect(code).toContain('@1flowbase/block-sdk');
       expect(code).toContain('@1flowbase/block-renderer/antd-facade');
-      expect(code).toContain('defineBlock');
-      expect(code).toContain(`blockId: '${templateInput.blockId}'`);
-      expect(code).toContain(`codeRef: '${templateInput.codeRef}'`);
-      expect(code).toContain(
-        `contributionCode: '${templateInput.contributionCode}'`
-      );
-      expect(code).toContain(`id: '${templateInput.blockId}'`);
-      expect(code).toContain(`title: '${template.title}'`);
+      expect(code).toContain('async function main(');
+      expect(code).toContain('satisfies BlockModule');
+      expect(code).toContain('outputs: {}');
+      expect(code).not.toContain('defineBlock');
+      expect(code).not.toContain(templateInput.blockId);
       expect(validateJsBlockSource(code)).toMatchObject({ ok: true });
     }
   });
@@ -130,27 +127,16 @@ describe('frontstage block templates', () => {
     }
   });
 
-  test('keeps data, state, event, and action examples inside the matching templates', () => {
-    const snippetsByTemplateId = {
-      blank: [],
-      'data-table': ['ctx.data.query', 'ctx.patch', 'ctx.events.emit'],
-      'create-form': ['ctx.actions.invoke', 'ctx.patch', 'ctx.events.emit'],
-      'edit-form': ['ctx.data.query', 'ctx.patch', 'ctx.actions.invoke'],
-      'search-table': ['ctx.data.query', 'ctx.patch', 'ctx.events.emit']
-    } satisfies Record<
-      (typeof FRONTSTAGE_BUILT_IN_JS_BLOCK_TEMPLATES)[number]['id'],
-      string[]
-    >;
-
+  test('keeps interface code out of templates until the user binds and inserts it', () => {
     for (const template of listFrontstageBuiltInJsBlockTemplates()) {
       const code = createFrontstageBuiltInJsBlockTemplateCode({
         ...templateInput,
         templateId: template.id
       });
 
-      for (const snippet of snippetsByTemplateId[template.id]) {
-        expect(code).toContain(snippet);
-      }
+      expect(code).not.toContain('ctx.data');
+      expect(code).not.toContain('ctx.actions');
+      expect(code).not.toContain('ctx.interfaces.call');
     }
   });
 
@@ -163,13 +149,9 @@ describe('frontstage block templates', () => {
 
     expect(code).toContain('@1flowbase/block-sdk');
     expect(code).toContain('@1flowbase/block-renderer/antd-facade');
-    expect(code).toContain('defineBlock');
-    expect(code).toContain("blockId: 'frontstage-js-block-1'");
-    expect(code).toContain("codeRef: 'frontstage-js-block-1-code'");
-    expect(code).toContain("contributionCode: 'frontstage.js-ui-block'");
-    expect(code).toContain("id: 'frontstage-js-block-1'");
-    expect(code).toContain("title: '代码示例区块'");
-    expect(code).toContain('render()');
+    expect(code).toContain('async function main(');
+    expect(code).toContain('satisfies BlockModule');
+    expect(code).toContain('@1flowbase-context');
     expect(code).toContain('<Title>代码示例区块</Title>');
     expect(code).not.toContain('ctx.data.query');
     expect(code).not.toContain('ctx.actions.invoke');
@@ -191,6 +173,7 @@ describe('frontstage block templates', () => {
         requestId: 'request-1',
         blockId: 'frontstage-js-block-1',
         source,
+        inputs: {},
         props: {},
         state: {},
         contextSnapshot: {
@@ -209,9 +192,9 @@ describe('frontstage block templates', () => {
     expect(messages).toEqual([
       {
         direction: 'worker_to_host',
-        type: 'rendered',
+        type: 'completed',
         requestId: 'request-1',
-        schema: {
+        view: {
           primitive: 'Stack',
           children: [
             {
@@ -221,11 +204,12 @@ describe('frontstage block templates', () => {
             {
               primitive: 'Text',
               props: {
-                children: '点击区块右上角的编辑图标修改这段 TSX。'
+                children: '从最小、可运行的 TSX 示例开始。'
               }
             }
           ]
-        }
+        },
+        outputs: {}
       }
     ]);
 

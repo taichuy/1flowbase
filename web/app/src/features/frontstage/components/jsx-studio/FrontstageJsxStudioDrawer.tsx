@@ -6,13 +6,8 @@ import {
   PlayCircleOutlined,
   SettingOutlined
 } from '@ant-design/icons';
-import Editor, {
-  type BeforeMount,
-  type OnMount
-} from '@monaco-editor/react';
-import type {
-  BlockRuntimeDiagnostic
-} from '@1flowbase/page-protocol';
+import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
+import type { BlockRuntimeDiagnostic } from '@1flowbase/page-protocol';
 import {
   createJsBlockDiagnostics,
   validateJsBlockSource
@@ -25,9 +20,10 @@ import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import { ResizableDrawer } from '../../../../shared/ui/resizable-drawer/ResizableDrawer';
 import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
-import { useFrontstageDataCapabilities } from '../../hooks/use-frontstage-data-capabilities';
+import { useFrontstageCallableInterfaces } from '../../hooks/use-frontstage-callable-interfaces';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
+import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { BlockRuntimeDiagnostics } from '../BlockRuntimeDiagnostics';
 import {
@@ -53,9 +49,7 @@ export interface FrontstageJsxStudioDrawerProps {
         onCodeChange: (code: string) => void;
       }) => ReactNode);
   onClose: () => void;
-  onSaveBlock: (
-    block: FrontstageBlockInstance
-  ) => Promise<boolean | void>;
+  onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }
 
 const studioSections: Array<{
@@ -111,7 +105,7 @@ export function FrontstageJsxStudioDrawer({
   const [activeSection, setActiveSection] =
     useState<FrontstageJsxStudioSection>(initialSection);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
-  const dataCapabilities = useFrontstageDataCapabilities({ workspaceId });
+  const callableInterfaces = useFrontstageCallableInterfaces(workspaceId);
   const {
     draft,
     dirty,
@@ -139,9 +133,9 @@ export function FrontstageJsxStudioDrawer({
       createFrontstageJsxEditorProjection({
         block,
         catalogEntry,
-        dataCapabilities: dataCapabilities.data
+        callableInterfaces: callableInterfaces.data
       }),
-    [block, catalogEntry, dataCapabilities.data]
+    [block, callableInterfaces.data, catalogEntry]
   );
   const allowedImports = catalogEntry?.codeCapabilities?.allowedImports ?? [];
   const compileDiagnostics = useMemo(() => {
@@ -167,8 +161,7 @@ export function FrontstageJsxStudioDrawer({
     monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
       allowNonTsExtensions: true,
       jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
-      moduleResolution:
-        monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
       target: monaco.languages.typescript.ScriptTarget.ES2022
     });
     projection.monacoExtraLibs.forEach((extraLib) => {
@@ -201,6 +194,9 @@ export function FrontstageJsxStudioDrawer({
   const saveCode = () => {
     void save().catch(() => undefined);
   };
+  const reinjectContext = () => {
+    setDraft(injectFrontstageContextComment(draft, projection.contextComment));
+  };
   const statusText = loading
     ? i18nText('frontstage', 'auto.code_loading')
     : dirty
@@ -224,7 +220,10 @@ export function FrontstageJsxStudioDrawer({
       onClose={onClose}
       extra={
         <Space size={8}>
-          <Typography.Text type="secondary" className="frontstage-jsx-studio__status">
+          <Typography.Text
+            type="secondary"
+            className="frontstage-jsx-studio__status"
+          >
             {statusText}
           </Typography.Text>
           <Button disabled={!dirty || loading || saving} onClick={reset}>
@@ -279,9 +278,9 @@ export function FrontstageJsxStudioDrawer({
           <aside className="frontstage-jsx-studio__resource-panel">
             <JsxStudioResourcePanel
               block={block}
-              capabilities={dataCapabilities.data}
-              capabilitiesError={dataCapabilities.error}
-              capabilitiesLoading={dataCapabilities.loading}
+              callableInterfaces={callableInterfaces.data}
+              callableInterfacesError={callableInterfaces.error}
+              callableInterfacesLoading={callableInterfaces.loading}
               onInsertCode={insertCode}
               onSaveBlock={onSaveBlock}
               projection={projection}
@@ -297,23 +296,14 @@ export function FrontstageJsxStudioDrawer({
             <Alert
               type="error"
               showIcon
-              message={i18nText(
-                'frontstage',
-                'auto.code_load_or_save_failed'
-              )}
+              message={i18nText('frontstage', 'auto.code_load_or_save_failed')}
             />
           ) : null}
-          <section className="frontstage-jsx-studio__generated-context">
-            <div className="frontstage-jsx-studio__generated-context-title">
-              <Typography.Text strong>
-                {i18nText('frontstage', 'auto.generated_context')}
-              </Typography.Text>
-              <Typography.Text type="secondary">
-                {i18nText('frontstage', 'auto.generated_context_readonly')}
-              </Typography.Text>
-            </div>
-            <pre>{projection.prelude}</pre>
-          </section>
+          <div className="frontstage-jsx-studio__context-actions">
+            <Button size="small" onClick={reinjectContext}>
+              {i18nText('frontstage', 'auto.generated_context')}
+            </Button>
+          </div>
           <div className="frontstage-jsx-studio__monaco">
             <Editor
               height="100%"

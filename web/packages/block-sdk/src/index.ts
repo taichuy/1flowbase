@@ -4,6 +4,8 @@ import type {
   BlockUiSchema
 } from '@1flowbase/page-protocol';
 
+export type { BlockContext } from '@1flowbase/page-protocol';
+
 export interface BlockResult<
   TOutputs extends BlockContextRecord = BlockContextRecord
 > {
@@ -38,8 +40,8 @@ export function isBlockModule(value: unknown): value is BlockModule {
   const descriptor = Object.getOwnPropertyDescriptor(value, 'main');
   return Boolean(
     descriptor &&
-      'value' in descriptor &&
-      typeof descriptor.value === 'function'
+    'value' in descriptor &&
+    typeof descriptor.value === 'function'
   );
 }
 
@@ -52,10 +54,10 @@ export function isBlockResult(value: unknown): value is BlockResult {
   const outputs = Object.getOwnPropertyDescriptor(value, 'outputs');
   return Boolean(
     view &&
-      'value' in view &&
-      outputs &&
-      'value' in outputs &&
-      isPlainRecord(outputs.value)
+    'value' in view &&
+    outputs &&
+    'value' in outputs &&
+    isPlainRecord(outputs.value)
   );
 }
 
