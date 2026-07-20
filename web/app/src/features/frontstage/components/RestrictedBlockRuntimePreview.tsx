@@ -3,7 +3,15 @@ import {
   BlockUiRenderer,
   type BlockRendererActionEvent
 } from '@1flowbase/block-renderer';
-import { Alert, Button, Descriptions, Empty, Space, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Button,
+  Descriptions,
+  Empty,
+  Space,
+  Tag,
+  Typography
+} from 'antd';
 
 import type { RestrictedBlockRuntimeHostSnapshot } from '../lib/restricted-block-runtime-host';
 import { i18nText } from '../../../shared/i18n/text';
@@ -23,17 +31,29 @@ function getStatusView(status: RestrictedBlockRuntimeHostSnapshot['status']): {
 } {
   switch (status) {
     case 'idle':
-      return { message: i18nText("frontstage", "auto.not_run_yet"), type: 'info' };
+      return {
+        message: i18nText('frontstage', 'auto.not_run_yet'),
+        type: 'info'
+      };
     case 'running':
-      return { message: i18nText("frontstage", "auto.running"), type: 'info' };
+      return { message: i18nText('frontstage', 'auto.running'), type: 'info' };
     case 'ready':
-      return { message: i18nText("frontstage", "auto.run_result"), type: 'success' };
+      return {
+        message: i18nText('frontstage', 'auto.run_result'),
+        type: 'success'
+      };
     case 'failed':
-      return { message: i18nText("frontstage", "auto.run_failed"), type: 'error' };
+      return {
+        message: i18nText('frontstage', 'auto.run_failed'),
+        type: 'error'
+      };
     case 'timed_out':
-      return { message: i18nText("frontstage", "auto.run_timeout"), type: 'warning' };
+      return {
+        message: i18nText('frontstage', 'auto.run_timeout'),
+        type: 'warning'
+      };
     case 'disposed':
-      return { message: i18nText("frontstage", "auto.released"), type: 'info' };
+      return { message: i18nText('frontstage', 'auto.released'), type: 'info' };
   }
 }
 
@@ -69,11 +89,14 @@ export function RestrictedBlockRuntimePreview({
 
       {snapshot.status === 'ready' ? (
         <Space direction="vertical" size="small" style={{ width: '100%' }}>
-          {snapshot.schema === undefined ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={i18nText("frontstage", "auto.no_ui_schema")} />
+          {snapshot.view === undefined ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={i18nText('frontstage', 'auto.no_ui_schema')}
+            />
           ) : (
             <BlockUiRenderer
-              schema={snapshot.schema}
+              schema={snapshot.view}
               validationOptions={snapshot.schemaValidationOptions}
               onAction={onAction}
             />
@@ -97,7 +120,8 @@ export function RestrictedBlockRuntimePreview({
         />
       ) : null}
 
-      {diagnostic && (snapshot.status === 'failed' || snapshot.status === 'timed_out') ? (
+      {diagnostic &&
+      (snapshot.status === 'failed' || snapshot.status === 'timed_out') ? (
         <RuntimeErrorSummary snapshot={snapshot} />
       ) : null}
       {diagnostic ? <RuntimeActivitySummary snapshot={snapshot} /> : null}
@@ -117,27 +141,33 @@ function RuntimeErrorSummary({
       bordered
       size="small"
       column={1}
-      title={i18nText("frontstage", "auto.error_summary")}
+      title={i18nText('frontstage', 'auto.error_summary')}
       items={[
         {
           key: 'kind',
-          label: i18nText("frontstage", "auto.kind"),
-          children: snapshot.error?.kind ?? i18nText("frontstage", "auto.unknown")
+          label: i18nText('frontstage', 'auto.kind'),
+          children:
+            snapshot.error?.kind ?? i18nText('frontstage', 'auto.unknown')
         },
         {
           key: 'message',
-          label: i18nText("frontstage", "auto.message"),
-          children: snapshot.error?.message ?? i18nText("frontstage", "auto.runtime_failed")
+          label: i18nText('frontstage', 'auto.message'),
+          children:
+            snapshot.error?.message ??
+            i18nText('frontstage', 'auto.runtime_failed')
         },
         {
           key: 'code',
-          label: i18nText("frontstage", "auto.code"),
-          children: firstError?.code ?? snapshot.error?.kind ?? i18nText("frontstage", "auto.runtime_error")
+          label: i18nText('frontstage', 'auto.code'),
+          children:
+            firstError?.code ??
+            snapshot.error?.kind ??
+            i18nText('frontstage', 'auto.runtime_error')
         },
         {
           key: 'path',
-          label: i18nText("frontstage", "auto.path"),
-          children: firstError?.path ?? i18nText("frontstage", "auto.runtime")
+          label: i18nText('frontstage', 'auto.path'),
+          children: firstError?.path ?? i18nText('frontstage', 'auto.runtime')
         }
       ]}
     />
@@ -151,11 +181,15 @@ function RuntimeActivitySummary({
 }) {
   return (
     <Space direction="vertical" size="small" style={{ width: '100%' }}>
-      <Typography.Text strong>{i18nText("frontstage", "auto.logs")}</Typography.Text>
+      <Typography.Text strong>
+        {i18nText('frontstage', 'auto.logs')}
+      </Typography.Text>
       {snapshot.logs.length > 0 ? (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <Typography.Text type="secondary">
-            {snapshot.logs.length} {i18nText("frontstage", "auto.item_count_suffix")}</Typography.Text>
+            {snapshot.logs.length}{' '}
+            {i18nText('frontstage', 'auto.item_count_suffix')}
+          </Typography.Text>
           {snapshot.logs.map((log, index) => (
             <Typography.Text key={`${log.level}-${index}`}>
               <Tag>{log.level}</Tag>
@@ -164,14 +198,20 @@ function RuntimeActivitySummary({
           ))}
         </Space>
       ) : (
-        <Typography.Text type="secondary">{i18nText("frontstage", "auto.none")}</Typography.Text>
+        <Typography.Text type="secondary">
+          {i18nText('frontstage', 'auto.none')}
+        </Typography.Text>
       )}
 
-      <Typography.Text strong>{i18nText("frontstage", "auto.effects")}</Typography.Text>
+      <Typography.Text strong>
+        {i18nText('frontstage', 'auto.effects')}
+      </Typography.Text>
       {snapshot.effects.length > 0 ? (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <Typography.Text type="secondary">
-            {snapshot.effects.length} {i18nText("frontstage", "auto.effect_count_suffix")}</Typography.Text>
+            {snapshot.effects.length}{' '}
+            {i18nText('frontstage', 'auto.effect_count_suffix')}
+          </Typography.Text>
           {snapshot.effects.map((effect, index) => (
             <Typography.Text key={`${effect.type}-${index}`}>
               {formatEffect(effect)}
@@ -179,14 +219,20 @@ function RuntimeActivitySummary({
           ))}
         </Space>
       ) : (
-        <Typography.Text type="secondary">{i18nText("frontstage", "auto.none")}</Typography.Text>
+        <Typography.Text type="secondary">
+          {i18nText('frontstage', 'auto.none')}
+        </Typography.Text>
       )}
 
-      <Typography.Text strong>{i18nText("frontstage", "auto.rejections")}</Typography.Text>
+      <Typography.Text strong>
+        {i18nText('frontstage', 'auto.rejections')}
+      </Typography.Text>
       {snapshot.rejections.length > 0 ? (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <Typography.Text type="secondary">
-            {snapshot.rejections.length} {i18nText("frontstage", "auto.rejection_count_suffix")}</Typography.Text>
+            {snapshot.rejections.length}{' '}
+            {i18nText('frontstage', 'auto.rejection_count_suffix')}
+          </Typography.Text>
           {snapshot.rejections.map((rejection, index) => (
             <Typography.Text key={`${rejection.code}-${index}`}>
               <Tag color="warning">{rejection.code}</Tag>
@@ -195,7 +241,9 @@ function RuntimeActivitySummary({
           ))}
         </Space>
       ) : (
-        <Typography.Text type="secondary">{i18nText("frontstage", "auto.none")}</Typography.Text>
+        <Typography.Text type="secondary">
+          {i18nText('frontstage', 'auto.none')}
+        </Typography.Text>
       )}
     </Space>
   );
@@ -205,11 +253,9 @@ function formatEffect(
   effect: RestrictedBlockRuntimeHostSnapshot['effects'][number]
 ): string {
   switch (effect.type) {
-    case 'action':
-      return `${i18nText("frontstage", "auto.effect_action")}: ${effect.actionId}`;
-    case 'data':
-      return `${i18nText("frontstage", "auto.effect_data")}: ${effect.queryId}`;
+    case 'interface':
+      return `${i18nText('frontstage', 'auto.interfaces')}: ${effect.bindingAlias}`;
     case 'event':
-      return `${i18nText("frontstage", "auto.effect_event")}: ${effect.name}`;
+      return `${i18nText('frontstage', 'auto.effect_event')}: ${effect.name}`;
   }
 }

@@ -1,10 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 
-import type {
-  JsBlockHostActionEffect,
-  JsBlockHostDataEffect
-} from '@1flowbase/page-runtime';
-
+import type { JsBlockHostInterfaceEffect } from '@1flowbase/page-runtime';
 import {
   createFrontstageJsBlockCapabilityHandlers,
   type FrontstageJsBlockCapabilityClient
@@ -12,43 +8,12 @@ import {
 
 function createClient(): FrontstageJsBlockCapabilityClient {
   return {
-    dispatchFrontstageQuery: vi.fn().mockResolvedValue({ items: [] }),
-    dispatchFrontstageAction: vi.fn().mockResolvedValue({ saved: true })
+    dispatchFrontstageCallable: vi.fn().mockResolvedValue({ items: [] })
   };
 }
 
 describe('createFrontstageJsBlockCapabilityHandlers', () => {
-  test('AC-010 forwards only queryId and params to the bound page-tab dispatch endpoint', async () => {
-    const client = createClient();
-    const handlers = createFrontstageJsBlockCapabilityHandlers({
-      workspaceId: 'workspace-1',
-      pageId: 'page-1',
-      tabId: 'tab-1',
-      baseUrl: 'http://api.test',
-      client
-    });
-    const effect: JsBlockHostDataEffect = {
-      type: 'data',
-      requestId: 'request-1',
-      effectId: 'effect-1',
-      queryId: 'frontstage.page_tab.get',
-      params: { model: 'users', url: 'https://forbidden.example' }
-    };
-
-    await expect(handlers.data(effect)).resolves.toEqual({ items: [] });
-    expect(client.dispatchFrontstageQuery).toHaveBeenCalledWith(
-      'workspace-1',
-      'page-1',
-      'tab-1',
-      {
-        query_id: 'frontstage.page_tab.get',
-        params: { model: 'users', url: 'https://forbidden.example' }
-      },
-      'http://api.test'
-    );
-  });
-
-  test('AC-010 forwards actionId and params with csrf to the bound page-tab dispatch endpoint', async () => {
+  test('AC-004 resolves the local alias before dispatching the registered operation', async () => {
     const client = createClient();
     const handlers = createFrontstageJsBlockCapabilityHandlers({
       workspaceId: 'workspace-1',
@@ -56,47 +21,49 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       tabId: 'tab-1',
       csrfToken: 'csrf-1',
       baseUrl: 'http://api.test',
-      client
+      client,
+      resolveOperationId: (_requestId, alias) =>
+        alias === 'listConversations'
+          ? 'list_application_conversations_records'
+          : null
     });
-    const effect: JsBlockHostActionEffect = {
-      type: 'action',
-      requestId: 'request-1',
+    const effect: JsBlockHostInterfaceEffect = {
+      type: 'interface',
+      requestId: 'restricted-block:block-1:code-1',
       effectId: 'effect-1',
-      actionId: 'frontstage.page_tab.document.save',
-      payload: { schema: {}, root: {} }
+      bindingAlias: 'listConversations',
+      request: { query: { page: 1 } }
     };
 
-    await expect(handlers.action(effect)).resolves.toEqual({ saved: true });
-    expect(client.dispatchFrontstageAction).toHaveBeenCalledWith(
+    await expect(handlers.interface(effect)).resolves.toEqual({ items: [] });
+    expect(client.dispatchFrontstageCallable).toHaveBeenCalledWith(
       'workspace-1',
       'page-1',
       'tab-1',
       {
-        action_id: 'frontstage.page_tab.document.save',
-        params: { schema: {}, root: {} }
+        operation_id: 'list_application_conversations_records',
+        request: { query: { page: 1 } }
       },
       'csrf-1',
       'http://api.test'
     );
   });
 
-  test('rejects action dispatch without csrf before calling the api client', async () => {
-    const client = createClient();
+  test('fails closed when the source block did not bind the alias', () => {
     const handlers = createFrontstageJsBlockCapabilityHandlers({
       workspaceId: 'workspace-1',
       pageId: 'page-1',
       tabId: 'tab-1',
-      client
+      csrfToken: 'csrf-1',
+      resolveOperationId: () => null
     });
-
     expect(() =>
-      handlers.action({
-        type: 'action',
-        requestId: 'request-1',
+      handlers.interface({
+        type: 'interface',
+        requestId: 'restricted-block:block-1:code-1',
         effectId: 'effect-1',
-        actionId: 'frontstage.page_tab.document.save'
+        bindingAlias: 'unbound'
       })
-    ).toThrow('JS Block action capability requires csrfToken.');
-    expect(client.dispatchFrontstageAction).not.toHaveBeenCalled();
+    ).toThrow('Interface binding is not registered: unbound.');
   });
 });

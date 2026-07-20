@@ -10,7 +10,6 @@ import type {
   FrontstagePageCanvasRuntimeSource,
   FrontstagePageCanvasRuntimeSourceState
 } from './runtime-source';
-import { createFrontstageBlockBindingRuntimeLimits } from '../jsx-studio/block-data-binding';
 
 export type FrontstagePageCanvasRuntimeRunPlanStatus =
   | 'run_plan_ready'
@@ -44,29 +43,25 @@ export interface FrontstagePageCanvasRuntimeRunPlanItemBase {
   sourceStatus: FrontstagePageCanvasRuntimeSource['status'];
 }
 
-export interface FrontstagePageCanvasRuntimeRunPlanReadyItem
-  extends FrontstagePageCanvasRuntimeRunPlanItemBase {
+export interface FrontstagePageCanvasRuntimeRunPlanReadyItem extends FrontstagePageCanvasRuntimeRunPlanItemBase {
   status: 'run_plan_ready';
   sourceStatus: 'ready';
   catalogId: string;
   runPlan: RestrictedBlockRunPlan;
 }
 
-export interface FrontstagePageCanvasRuntimeRunPlanSourceNotReadyItem
-  extends FrontstagePageCanvasRuntimeRunPlanItemBase {
+export interface FrontstagePageCanvasRuntimeRunPlanSourceNotReadyItem extends FrontstagePageCanvasRuntimeRunPlanItemBase {
   status: 'source_not_ready';
   reason: FrontstagePageCanvasRuntimeRunPlanIssue;
 }
 
-export interface FrontstagePageCanvasRuntimeRunPlanCatalogMissingItem
-  extends FrontstagePageCanvasRuntimeRunPlanItemBase {
+export interface FrontstagePageCanvasRuntimeRunPlanCatalogMissingItem extends FrontstagePageCanvasRuntimeRunPlanItemBase {
   status: 'catalog_missing';
   sourceStatus: 'ready';
   reason: FrontstagePageCanvasRuntimeRunPlanIssue;
 }
 
-export interface FrontstagePageCanvasRuntimeRunPlanRejectedItem
-  extends FrontstagePageCanvasRuntimeRunPlanItemBase {
+export interface FrontstagePageCanvasRuntimeRunPlanRejectedItem extends FrontstagePageCanvasRuntimeRunPlanItemBase {
   status: 'rejected';
   sourceStatus: 'ready';
   catalogId: string;
@@ -166,9 +161,18 @@ function createRuntimeRunPlanItem({
     block: source.block,
     catalogEntry,
     code: source.code,
-    contextSnapshot: resolveContextSnapshot(contextSnapshot, source, sourceIndex),
+    contextSnapshot: resolveContextSnapshot(
+      contextSnapshot,
+      source,
+      sourceIndex
+    ),
     limits: limits
-      ? createFrontstageBlockBindingRuntimeLimits(source.block, limits)
+      ? {
+          ...limits,
+          allowedInterfaces: (source.block.interfaces ?? []).map(
+            (binding) => binding.alias
+          )
+        }
       : undefined
   });
 
@@ -239,7 +243,7 @@ function findMatchingCatalogEntry(
 ): NormalizedFrontstageBlockCatalogEntry | null {
   const matchKey = createSourceMatchKey(source);
 
-  return matchKey ? catalogEntriesByMatchKey.get(matchKey) ?? null : null;
+  return matchKey ? (catalogEntriesByMatchKey.get(matchKey) ?? null) : null;
 }
 
 function createCatalogEntryMatchKey(

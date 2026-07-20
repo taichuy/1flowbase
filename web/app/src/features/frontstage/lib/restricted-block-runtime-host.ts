@@ -30,7 +30,8 @@ export interface RestrictedBlockRuntimeHostSnapshot {
   requestId: string;
   blockId: string;
   schemaValidationOptions: BlockUiSchemaValidationOptions;
-  schema?: unknown;
+  view?: unknown;
+  outputs?: Record<string, unknown>;
   error?: JsBlockRunError;
   logs: JsBlockWorkerLogEntry[];
   effects: JsBlockWorkerEffect[];
@@ -75,9 +76,7 @@ export function createRestrictedBlockRuntimeHost(
     const result = requestState?.result;
 
     return {
-      status: didDispose
-        ? 'disposed'
-        : mapSnapshotStatus(requestState?.status),
+      status: didDispose ? 'disposed' : mapSnapshotStatus(requestState?.status),
       phase: didDispose ? 'disposed' : requestState?.phase,
       requestId: runPlan.request.requestId,
       blockId: runPlan.request.blockId,
@@ -85,7 +84,10 @@ export function createRestrictedBlockRuntimeHost(
         runPlan.schemaValidationOptions
       ),
       ...(result?.ok === true
-        ? { schema: cloneSnapshotValue(result.schema) }
+        ? {
+            view: cloneSnapshotValue(result.view),
+            outputs: cloneSnapshotValue(result.outputs)
+          }
         : {}),
       ...(result?.ok === false
         ? { error: cloneSnapshotValue(result.error) }
@@ -152,7 +154,9 @@ function cloneSchemaValidationOptions(
     allowedActions: options.allowedActions
       ? [...options.allowedActions]
       : undefined,
-    allowedEvents: options.allowedEvents ? [...options.allowedEvents] : undefined
+    allowedEvents: options.allowedEvents
+      ? [...options.allowedEvents]
+      : undefined
   };
 }
 
@@ -160,10 +164,7 @@ function cloneSnapshotValue<T>(value: T): T {
   return cloneUnknown(value, new WeakMap<object, unknown>()) as T;
 }
 
-function cloneUnknown(
-  value: unknown,
-  seen: WeakMap<object, unknown>
-): unknown {
+function cloneUnknown(value: unknown, seen: WeakMap<object, unknown>): unknown {
   if (value === null || typeof value !== 'object') {
     return value;
   }

@@ -19,9 +19,7 @@ import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSideb
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import { PageCanvas } from '../components/PageCanvas';
-import {
-  FrontstageJsxStudioDrawer
-} from '../components/jsx-studio/FrontstageJsxStudioDrawer';
+import { FrontstageJsxStudioDrawer } from '../components/jsx-studio/FrontstageJsxStudioDrawer';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
 import { useFrontstagePageCanvasRuntimeSessions } from '../hooks/use-frontstage-page-canvas-runtime-sessions';
 import { useFrontstagePageCanvasRuntimeSources } from '../hooks/use-frontstage-page-canvas-runtime-sources';
@@ -172,18 +170,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     pageId: selectedPageId,
     tabId
   });
-  const jsBlockCapabilityHandlers = useMemo(
-    () =>
-      selectedPageId && tabId
-        ? createFrontstageJsBlockCapabilityHandlers({
-            workspaceId,
-            pageId: selectedPageId,
-            tabId,
-            csrfToken
-          })
-        : undefined,
-    [csrfToken, selectedPageId, tabId, workspaceId]
-  );
   const displayedPageContent = savedPageContent ?? pageContent;
   const hasLoadedSelectedPageContent = Boolean(
     selectedPageId && displayedPageContent?.page.id === selectedPageId
@@ -201,6 +187,29 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         : null,
     [activePageContent]
   );
+  const jsBlockCapabilityHandlers = useMemo(
+    () =>
+      selectedPageId && tabId
+        ? createFrontstageJsBlockCapabilityHandlers({
+            workspaceId,
+            pageId: selectedPageId,
+            tabId,
+            csrfToken,
+            resolveOperationId: (requestId, bindingAlias) => {
+              const blockId = requestId.split(':')[1];
+              const block = displayedPageDocument?.blocks.find(
+                (candidate) => candidate.id === blockId
+              );
+              return (
+                block?.interfaces?.find(
+                  (binding) => binding.alias === bindingAlias
+                )?.operation_id ?? null
+              );
+            }
+          })
+        : undefined,
+    [csrfToken, displayedPageDocument, selectedPageId, tabId, workspaceId]
+  );
   const activePageRenderPlan = useMemo(
     () =>
       displayedPageDocument
@@ -208,9 +217,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         : null,
     [displayedPageDocument]
   );
-  const [runtimeDemandsByBlockId, setRuntimeDemandsByBlockId] = useState<
-    FrontstageRuntimeDemandByBlockId
-  >({});
+  const [runtimeDemandsByBlockId, setRuntimeDemandsByBlockId] =
+    useState<FrontstageRuntimeDemandByBlockId>({});
   useEffect(() => {
     setRuntimeDemandsByBlockId({});
   }, [activePageContent?.page.id]);
@@ -259,7 +267,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const pageCanvasRuntimeSessions = useFrontstagePageCanvasRuntimeSessions({
     runtimeRunPlanState: pageCanvasRuntimeRunPlanState,
     handlers: jsBlockCapabilityHandlers,
-    demandsByBlockId: runtimeDemandsByBlockId
+    demandsByBlockId: runtimeDemandsByBlockId,
+    blocks: displayedPageDocument?.blocks,
+    tabId: activePageContent?.tab.id
   });
   const blockCompositionState = useMemo(
     () =>
@@ -455,7 +465,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       title: pageTreeFormDialog.initialTitle,
       icon: pageTreeFormDialog.initialIcon,
       tooltip: pageTreeFormDialog.initialTooltip,
-      slug: pageTreeFormDialog.initialSlug,
+      slug: pageTreeFormDialog.initialSlug
     });
   }, [pageTreeForm, pageTreeFormDialog]);
 

@@ -22,6 +22,7 @@ export interface RestrictedBlockLoaderLimits extends JsBlockRuntimeLimits {
   allowedEvents?: readonly string[];
   allowedQueries?: readonly string[];
   allowedDataOperations?: readonly BlockDataPermission[];
+  allowedInterfaces?: readonly string[];
   maxEventChainDepth?: number;
 }
 
@@ -60,6 +61,7 @@ export interface RestrictedBlockLoaderInput {
   contextSnapshot: Record<string, unknown>;
   props?: Record<string, unknown>;
   state?: Record<string, unknown>;
+  inputs?: Record<string, unknown>;
   limits?: RestrictedBlockLoaderLimits;
 }
 
@@ -77,7 +79,10 @@ export function createRestrictedBlockRunPlan(
     });
   }
 
-  const catalogValidation = validateCatalogMatch(input.block, input.catalogEntry);
+  const catalogValidation = validateCatalogMatch(
+    input.block,
+    input.catalogEntry
+  );
   if (catalogValidation) {
     return reject(base, catalogValidation);
   }
@@ -134,6 +139,7 @@ export function createRestrictedBlockRunPlan(
       requestId: createRequestId(input.block.id, codeRef),
       blockId: input.block.id,
       source: input.code,
+      inputs: { ...(input.inputs ?? {}) },
       props: { ...props },
       state: { ...state },
       contextSnapshot: { ...input.contextSnapshot },
@@ -143,8 +149,14 @@ export function createRestrictedBlockRunPlan(
     schemaValidationOptions: {
       maxDepth: limits.value.maxRenderDepth,
       maxNodes: limits.value.maxRenderNodes,
-      allowedDataPermissions: policy.allowedDataOperations,
-      allowedActions: policy.allowedActions,
+      allowedDataPermissions: hasFrontstageBlockDataPermission(
+        input.catalogEntry
+      )
+        ? [...(input.limits?.allowedDataOperations ?? [])]
+        : [],
+      allowedActions: hasFrontstageBlockActionPermission(input.catalogEntry)
+        ? [...(input.limits?.allowedActions ?? [])]
+        : [],
       allowedEvents: policy.allowedEvents
     },
     mediatorPolicy: policy
@@ -216,9 +228,7 @@ function validateRuntime(
   return null;
 }
 
-function normalizeLimits(
-  limits: RestrictedBlockLoaderLimits | undefined
-):
+function normalizeLimits(limits: RestrictedBlockLoaderLimits | undefined):
   | { ok: true; value: JsBlockRuntimeLimits }
   | {
       ok: false;
@@ -279,21 +289,13 @@ function createPolicy(
   catalogEntry: NormalizedFrontstageBlockCatalogEntry,
   limits: RestrictedBlockLoaderLimits | undefined
 ): BlockContextMediatorPolicy {
-  const allowedDataOperations = hasFrontstageBlockDataPermission(catalogEntry)
-    ? [...(limits?.allowedDataOperations ?? [])]
-    : [];
-  const allowedActions = hasFrontstageBlockActionPermission(catalogEntry)
-    ? [...(limits?.allowedActions ?? [])]
-    : [];
   const allowedEvents = hasFrontstageBlockEventPermission(catalogEntry)
     ? [...(limits?.allowedEvents ?? [])]
     : [];
 
   return {
     allowedEvents,
-    allowedActions,
-    allowedQueries: [...(limits?.allowedQueries ?? [])],
-    allowedDataOperations,
+    allowedInterfaces: [...(limits?.allowedInterfaces ?? [])],
     maxEventChainDepth: limits?.maxEventChainDepth
   };
 }
@@ -303,9 +305,7 @@ function createRequestId(blockId: string, codeRef: string): string {
 }
 
 function normalizeRequiredString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0
-    ? value
-    : null;
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -353,7 +353,10 @@ function getRejectionBase(
 
 function reject(
   base: Pick<RestrictedBlockLoaderRejection, 'blockId' | 'catalogId'>,
-  rejection: Omit<RestrictedBlockLoaderRejection, 'ok' | 'blockId' | 'catalogId'>
+  rejection: Omit<
+    RestrictedBlockLoaderRejection,
+    'ok' | 'blockId' | 'catalogId'
+  >
 ): RestrictedBlockLoaderRejection {
   return {
     ok: false,
