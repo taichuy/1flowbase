@@ -38,6 +38,7 @@ export type JsBlockWorkerClearTimeout = (
 
 export interface JsBlockWorkerHostOptions {
   workerFactory: JsBlockWorkerFactory;
+  startupTimeoutMs?: number;
   scheduleTimeout?: JsBlockWorkerScheduleTimeout;
   clearScheduledTimeout?: JsBlockWorkerClearTimeout;
   effectBridge?: JsBlockWorkerHostEffectBridgeOptions;
@@ -68,6 +69,8 @@ export function createJsBlockWorkerHost(
   const clearScheduledTimeout =
     options.clearScheduledTimeout ?? defaultClearTimeout;
   const timeoutHandles = new Map<string, JsBlockWorkerTimeoutHandle>();
+  let startupTimeoutHandle: JsBlockWorkerTimeoutHandle | undefined;
+  let queuedRequest: JsBlockRunRequest | undefined;
   let didTerminate = false;
   let didDispose = false;
   let effectBridge: JsBlockHostEffectBridge | undefined;
@@ -82,6 +85,14 @@ export function createJsBlockWorkerHost(
     timeoutHandles.delete(requestId);
   };
 
+  const clearStartupTimeout = () => {
+    if (startupTimeoutHandle === undefined) {
+      return;
+    }
+    clearScheduledTimeout(startupTimeoutHandle);
+    startupTimeoutHandle = undefined;
+  };
+
   const terminateOnce = () => {
     if (didTerminate) {
       return;
@@ -89,6 +100,27 @@ export function createJsBlockWorkerHost(
 
     didTerminate = true;
     worker.terminate();
+  };
+
+  const failCurrentRequest = (
+    kind: 'worker_startup_timeout' | 'worker_crash',
+    message: string
+  ) => {
+    const requestId = state.currentRequestId;
+    if (!requestId) {
+      return;
+    }
+    applyMessage({
+      direction: 'worker_to_host',
+      type: 'error',
+      requestId,
+      kind,
+      message,
+      errors: [{ code: kind, path: 'worker', message }]
+    });
+    clearStartupTimeout();
+    queuedRequest = undefined;
+    terminateOnce();
   };
 
   const reconcileTimeouts = () => {
@@ -155,6 +187,28 @@ export function createJsBlockWorkerHost(
     timeoutHandles.set(request.requestId, handle);
   };
 
+  const scheduleStartupTimeout = () => {
+    clearStartupTimeout();
+    startupTimeoutHandle = scheduleTimeout(
+      () => failCurrentRequest(
+        'worker_startup_timeout',
+        'JS block worker did not become ready in time.'
+      ),
+      options.startupTimeoutMs ?? 5000
+    );
+  };
+
+  const postQueuedRun = () => {
+    if (!queuedRequest || didDispose) {
+      return;
+    }
+    const request = queuedRequest;
+    queuedRequest = undefined;
+    clearStartupTimeout();
+    scheduleRequestTimeout(request);
+    worker.postMessage({ direction: 'host_to_worker', type: 'run', request });
+  };
+
   const detachWorker = () => {
     worker.onmessage = null;
     worker.onerror = null;
@@ -168,6 +222,14 @@ export function createJsBlockWorkerHost(
 
     const rejectionCount = state.rejections.length;
     applyMessage(event.data);
+    if (
+      typeof event.data === 'object' &&
+      event.data !== null &&
+      (event.data as { type?: unknown }).type === 'ready' &&
+      state.workerStatus === 'ready'
+    ) {
+      postQueuedRun();
+    }
     if (state.rejections.length === rejectionCount) {
       effectBridge?.handle(
         event.data,
@@ -180,24 +242,20 @@ export function createJsBlockWorkerHost(
       return;
     }
 
-    applyMessage({
-      direction: 'worker_to_host',
-      type: 'error',
-      requestId: state.currentRequestId,
-      message: event.message ?? 'JS block worker failed.'
-    });
+    failCurrentRequest(
+      'worker_crash',
+      event.message ?? 'JS block worker failed.'
+    );
   };
   worker.onmessageerror = (event) => {
     if (didDispose || !state.currentRequestId) {
       return;
     }
 
-    applyMessage({
-      direction: 'worker_to_host',
-      type: 'error',
-      requestId: state.currentRequestId,
-      message: event.message ?? 'JS block worker message failed.'
-    });
+    failCurrentRequest(
+      'worker_crash',
+      event.message ?? 'JS block worker message failed.'
+    );
   };
 
   return {
@@ -212,6 +270,9 @@ export function createJsBlockWorkerHost(
         return state;
       }
 
+      if (state.workerStatus === 'initializing' || state.workerStatus === 'ready') {
+        return state;
+      }
       const message = {
         direction: 'host_to_worker',
         type: 'init'
@@ -237,8 +298,22 @@ export function createJsBlockWorkerHost(
         return state;
       }
 
-      scheduleRequestTimeout(request);
-      worker.postMessage(message);
+      if (state.workerStatus === 'ready') {
+        scheduleRequestTimeout(request);
+        worker.postMessage(message);
+        return state;
+      }
+
+      queuedRequest = request;
+      scheduleStartupTimeout();
+      if (state.workerStatus === 'idle') {
+        const initMessage = {
+          direction: 'host_to_worker',
+          type: 'init'
+        } as const;
+        state = reduceJsBlockRuntimeSession(state, initMessage);
+        worker.postMessage(initMessage);
+      }
       return state;
     },
     resolveEffect(message) {
@@ -263,6 +338,8 @@ export function createJsBlockWorkerHost(
             } as const);
 
       state = reduceJsBlockRuntimeSession(state, message);
+      clearStartupTimeout();
+      queuedRequest = undefined;
       for (const [pendingRequestId] of timeoutHandles) {
         clearRequestTimeout(pendingRequestId);
       }

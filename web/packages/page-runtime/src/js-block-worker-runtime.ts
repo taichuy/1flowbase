@@ -28,9 +28,26 @@ export interface JsBlockRunRequest {
 
 export type JsBlockRunErrorKind =
   | 'source_policy_failed'
+  | 'worker_startup_timeout'
+  | 'worker_crash'
+  | 'compile_failed'
+  | 'render_failed'
+  | 'effect_failed'
   | 'schema_invalid'
   | 'runtime_timeout'
   | 'runtime_error';
+
+export type JsBlockRunPhase =
+  | 'queued'
+  | 'starting'
+  | 'compiling'
+  | 'executing'
+  | 'waiting_effect'
+  | 'validating_schema'
+  | 'ready'
+  | 'failed'
+  | 'timed_out'
+  | 'disposed';
 
 export interface JsBlockRunError {
   kind: JsBlockRunErrorKind;
@@ -100,6 +117,7 @@ export interface JsBlockRuntimeRequestState {
   requestId: string;
   blockId: string;
   status: JsBlockRunStatus;
+  phase: JsBlockRunPhase;
   request: JsBlockRunRequest;
   compiledSource?: JsBlockSourceTransformSuccess;
   result?: JsBlockRunResult;
@@ -186,6 +204,13 @@ export interface JsBlockWorkerReadyMessage {
   requestId?: string;
 }
 
+export interface JsBlockWorkerPhaseMessage {
+  direction: 'worker_to_host';
+  type: 'phase';
+  requestId: string;
+  phase: Extract<JsBlockRunPhase, 'compiling' | 'executing'>;
+}
+
 export interface JsBlockWorkerRenderedMessage {
   direction: 'worker_to_host';
   type: 'rendered';
@@ -239,6 +264,7 @@ export interface JsBlockWorkerActionRequestMessage {
 
 export type JsBlockWorkerToHostMessage =
   | JsBlockWorkerReadyMessage
+  | JsBlockWorkerPhaseMessage
   | JsBlockWorkerRenderedMessage
   | JsBlockWorkerErrorMessage
   | JsBlockWorkerLogMessage
@@ -304,10 +330,10 @@ function reduceHostToWorkerMessage(
 ): JsBlockRuntimeSessionState {
   switch (type) {
     case 'init':
-      return {
+      return updateCurrentRequestPhase({
         ...state,
         workerStatus: 'initializing'
-      };
+      }, 'starting');
     case 'run':
       return reduceRunMessage(state, message);
     case 'timeout':
@@ -336,6 +362,8 @@ function reduceWorkerToHostMessage(
         ...state,
         workerStatus: 'ready'
       };
+    case 'phase':
+      return reducePhaseMessage(state, message);
     case 'rendered':
       return reduceRenderedMessage(state, message);
     case 'error':
@@ -374,6 +402,7 @@ function reduceRunMessage(
     requestId: request.requestId,
     blockId: request.blockId,
     status: 'pending',
+    phase: 'queued',
     request,
     logs: [],
     effects: []
@@ -423,6 +452,10 @@ function reduceRenderedMessage(
     return reject(state, requestResult.rejection);
   }
 
+  const validatingState = updateRequest(state, {
+    ...requestResult.request,
+    phase: 'validating_schema'
+  });
   const validation = validateBlockUiSchema(message.schema, {
     maxDepth: requestResult.request.request.limits.maxRenderDepth,
     maxNodes: requestResult.request.request.limits.maxRenderNodes
@@ -430,7 +463,7 @@ function reduceRenderedMessage(
 
   if (!validation.ok) {
     return completeRequest(
-      state,
+      validatingState,
       withRunFailure(
         requestResult.request,
         'schema_invalid',
@@ -440,15 +473,42 @@ function reduceRenderedMessage(
     );
   }
 
-  return completeRequest(state, {
+  return completeRequest(validatingState, {
     ...requestResult.request,
     status: 'ready',
+    phase: 'ready',
     result: {
       ok: true,
       requestId: requestResult.request.requestId,
       blockId: requestResult.request.blockId,
       schema: validation.schema
     }
+  });
+}
+
+function reducePhaseMessage(
+  state: JsBlockRuntimeSessionState,
+  message: RecordValue
+): JsBlockRuntimeSessionState {
+  const requestIdResult = readString(message, 'requestId', 'message.requestId');
+  if (!requestIdResult.ok) {
+    return reject(state, requestIdResult.rejection);
+  }
+  if (message.phase !== 'compiling' && message.phase !== 'executing') {
+    return reject(state, {
+      code: 'invalid_message',
+      path: 'message.phase',
+      message: 'Runtime phase message is invalid.',
+      requestId: requestIdResult.value
+    });
+  }
+  const requestResult = readCurrentRequest(state, requestIdResult.value);
+  if (!requestResult.ok) {
+    return reject(state, requestResult.rejection);
+  }
+  return updateRequest(state, {
+    ...requestResult.request,
+    phase: message.phase
   });
 }
 
@@ -510,7 +570,8 @@ function reduceTimeoutMessage(
       'JS block runtime timed out.',
       [error]
     ),
-    status: 'timed_out'
+    status: 'timed_out',
+    phase: 'timed_out'
   });
 }
 
@@ -533,7 +594,10 @@ function reduceEffectResultMessage(
     return reject(state, requestResult.rejection);
   }
 
-  return state;
+  return updateRequest(state, {
+    ...requestResult.request,
+    phase: 'executing'
+  });
 }
 
 function reduceDisposeMessage(
@@ -561,7 +625,8 @@ function reduceDisposeMessage(
   return {
     ...completeRequest(state, {
       ...requestResult.request,
-      status: 'disposed'
+      status: 'disposed',
+      phase: 'disposed'
     }),
     currentRequestId: undefined
   };
@@ -631,6 +696,10 @@ function reduceEffectMessage(
 
   return updateRequest(state, {
     ...requestResult.request,
+    phase:
+      effectType === 'event'
+        ? requestResult.request.phase
+        : 'waiting_effect',
     effects: [...requestResult.request.effects, effectResult.effect]
   });
 }
@@ -950,6 +1019,7 @@ function withRunFailure(
   return {
     ...request,
     status: kind === 'runtime_timeout' ? 'timed_out' : 'failed',
+    phase: kind === 'runtime_timeout' ? 'timed_out' : 'failed',
     result: {
       ok: false,
       requestId: request.requestId,
@@ -999,6 +1069,20 @@ function updateRequest(
       [request.requestId]: request
     }
   };
+}
+
+function updateCurrentRequestPhase(
+  state: JsBlockRuntimeSessionState,
+  phase: JsBlockRunPhase
+): JsBlockRuntimeSessionState {
+  const requestId = state.currentRequestId;
+  if (!requestId || !state.requests[requestId]) {
+    return state;
+  }
+  return updateRequest(state, {
+    ...state.requests[requestId],
+    phase
+  });
 }
 
 function reject(
@@ -1055,6 +1139,11 @@ function isLogLevel(value: unknown): value is JsBlockWorkerLogLevel {
 function isRunErrorKind(value: unknown): value is JsBlockRunErrorKind {
   return (
     value === 'source_policy_failed' ||
+    value === 'worker_startup_timeout' ||
+    value === 'worker_crash' ||
+    value === 'compile_failed' ||
+    value === 'render_failed' ||
+    value === 'effect_failed' ||
     value === 'schema_invalid' ||
     value === 'runtime_timeout' ||
     value === 'runtime_error'

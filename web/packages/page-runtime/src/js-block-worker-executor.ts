@@ -213,15 +213,28 @@ async function runRequest(
   createEffectId: (requestId: string) => string,
   pendingEffects: Map<string, PendingEffect>
 ): Promise<void> {
+  postMessage({
+    direction: 'worker_to_host',
+    type: 'phase',
+    requestId: request.requestId,
+    phase: 'compiling'
+  });
   const evaluation = evaluateJsBlockSource({
     source: request.source,
     modules: selectRequestModules(modules, request.allowedImports)
   });
 
   if (!evaluation.ok) {
-    postError(request, evaluation.error, postMessage);
+    postError(request, compileError(evaluation.error), postMessage);
     return;
   }
+
+  postMessage({
+    direction: 'worker_to_host',
+    type: 'phase',
+    requestId: request.requestId,
+    phase: 'executing'
+  });
 
   const context = createBlockContext(
     request,
@@ -241,6 +254,7 @@ async function runRequest(
     postError(
       request,
       runtimeError(
+        'render_failed',
         'runtime.render',
         `JS block render failed: ${getErrorMessage(error)}`
       ),
@@ -377,16 +391,35 @@ function postError(
   });
 }
 
-function runtimeError(path: string, message: string): JsBlockRunError {
+function runtimeError(
+  kind: JsBlockRunError['kind'],
+  path: string,
+  message: string
+): JsBlockRunError {
   return {
-    kind: 'runtime_error',
+    kind,
     message,
-    errors: [{ code: 'runtime_error', path, message }]
+    errors: [{ code: kind, path, message }]
+  };
+}
+
+function compileError(error: JsBlockRunError): JsBlockRunError {
+  if (error.kind === 'source_policy_failed') {
+    return error;
+  }
+  return {
+    ...error,
+    kind: 'compile_failed',
+    errors: error.errors.map((item) => ({
+      ...item,
+      code: 'compile_failed'
+    }))
   };
 }
 
 function effectRuntimeError(error: JsBlockWorkerEffectError): JsBlockRunError {
   return runtimeError(
+    'effect_failed',
     'runtime.render',
     `JS block render failed: ${error.message}`
   );
