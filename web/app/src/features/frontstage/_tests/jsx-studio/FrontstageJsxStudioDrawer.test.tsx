@@ -223,6 +223,33 @@ describe('FrontstageJsxStudioDrawer', () => {
     });
   });
 
+  test('AC-006 declares a typed output port from the variables section', async () => {
+    const onSaveBlock = vi.fn().mockResolvedValue(true);
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="variables"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        pageBlocks={[block]}
+        catalogEntry={catalogEntry}
+        diagnostics={[]}
+        onClose={vi.fn()}
+        onSaveBlock={onSaveBlock}
+      />
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: '输出端口' }), {
+      target: { value: 'total' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '添加端口' }));
+    await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
+    expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({
+      ports: { outputs: [{ name: 'total', schema: { type: 'string' } }] }
+    });
+  });
+
   test('shows generated context in the editor surface and saves code through the existing hook', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const setDraft = vi.fn();

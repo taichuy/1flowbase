@@ -273,6 +273,13 @@
     "update_limits": "update limits",
     "variables": "Variables",
     "variables_description": "These ctx variables are injected by the controlled runtime and can be inserted into the current JSX.",
+    "input_ports": "Input ports",
+    "output_ports": "Output ports",
+    "add_port": "Add port",
+    "tab_scope": "Current tab",
+    "page_scope": "Current page",
+    "connect": "Connect",
+    "signal_source_missing": "Source unavailable",
     "width": "Width"
   },
   "design": {

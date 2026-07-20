@@ -40,6 +40,7 @@ export interface FrontstageJsxStudioDrawerProps {
   pageId: string;
   tabId: string | null | undefined;
   block: FrontstageBlockInstance;
+  pageBlocks?: readonly FrontstageBlockInstance[];
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
   diagnostics: BlockRuntimeDiagnostic[];
   runPanel?:
@@ -91,6 +92,7 @@ const studioSections: Array<{
 
 export function FrontstageJsxStudioDrawer({
   block,
+  pageBlocks = [],
   catalogEntry,
   diagnostics,
   initialSection,
@@ -278,6 +280,7 @@ export function FrontstageJsxStudioDrawer({
           <aside className="frontstage-jsx-studio__resource-panel">
             <JsxStudioResourcePanel
               block={block}
+              pageBlocks={pageBlocks}
               callableInterfaces={callableInterfaces.data}
               callableInterfacesError={callableInterfaces.error}
               callableInterfacesLoading={callableInterfaces.loading}

@@ -35,6 +35,7 @@ export type FrontstageJsxStudioSection =
 
 export function JsxStudioResourcePanel({
   block,
+  pageBlocks,
   callableInterfaces,
   callableInterfacesError,
   callableInterfacesLoading,
@@ -45,6 +46,7 @@ export function JsxStudioResourcePanel({
   section
 }: {
   block: FrontstageBlockInstance;
+  pageBlocks: readonly FrontstageBlockInstance[];
   callableInterfaces: readonly ConsoleFrontstageCallableInterface[];
   callableInterfacesError: Error | null;
   callableInterfacesLoading: boolean;
@@ -69,7 +71,14 @@ export function JsxStudioResourcePanel({
   }
 
   if (section === 'variables') {
-    return <VariablesPanel onInsertCode={onInsertCode} />;
+    return (
+      <VariablesPanel
+        block={block}
+        pageBlocks={pageBlocks}
+        onInsertCode={onInsertCode}
+        onSaveBlock={onSaveBlock}
+      />
+    );
   }
 
   if (section === 'components') {
@@ -270,15 +279,81 @@ function InterfaceConnectorPanel({
 }
 
 function VariablesPanel({
-  onInsertCode
+  block,
+  pageBlocks,
+  onInsertCode,
+  onSaveBlock
 }: {
+  block: FrontstageBlockInstance;
+  pageBlocks: readonly FrontstageBlockInstance[];
   onInsertCode: (source: string) => void;
+  onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }) {
+  const [outputName, setOutputName] = useState('');
+  const [outputType, setOutputType] = useState<
+    'string' | 'number' | 'boolean' | 'object'
+  >('string');
+  const [inputName, setInputName] = useState('');
+  const [sourceKey, setSourceKey] = useState<string>();
+  const [scope, setScope] = useState<'tab' | 'page'>('tab');
+  const [saving, setSaving] = useState(false);
+  const ports = block.ports ?? { inputs: [], outputs: [] };
+  const sources = pageBlocks.flatMap((candidate) =>
+    candidate.id === block.id
+      ? []
+      : (candidate.ports?.outputs ?? []).map((output) => ({
+          key: `${candidate.id}:${output.name}`,
+          blockId: candidate.id,
+          output
+        }))
+  );
+  const savePorts = async (
+    nextPorts: NonNullable<FrontstageBlockInstance['ports']>
+  ) => {
+    setSaving(true);
+    try {
+      await onSaveBlock({ ...block, ports: nextPorts });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const addOutput = () => {
+    const name = normalizePortName(outputName);
+    if (!name || ports.outputs.some((port) => port.name === name)) return;
+    void savePorts({
+      ...ports,
+      outputs: [...ports.outputs, { name, schema: { type: outputType } }]
+    });
+    setOutputName('');
+  };
+  const connectInput = () => {
+    const name = normalizePortName(inputName);
+    const source = sources.find((item) => item.key === sourceKey);
+    if (!name || !source || ports.inputs.some((port) => port.name === name))
+      return;
+    void savePorts({
+      ...ports,
+      inputs: [
+        ...ports.inputs,
+        {
+          name,
+          schema: { ...source.output.schema },
+          source: {
+            block_id: source.blockId,
+            output: source.output.name,
+            scope
+          }
+        }
+      ]
+    });
+    setInputName('');
+  };
   const variables = [
     'ctx.currentUser',
     'ctx.workspace',
     'ctx.application',
     'ctx.page',
+    ...ports.inputs.map((port) => `ctx.inputs.${port.name}`),
     'ctx.params',
     'ctx.props',
     'ctx.state',
@@ -300,6 +375,111 @@ function VariablesPanel({
           </Button>
         </div>
       ))}
+      <Divider />
+      <Typography.Text strong>
+        {i18nText('frontstage', 'auto.output_ports')}
+      </Typography.Text>
+      {ports.outputs.map((port) => (
+        <div className="frontstage-jsx-studio__insert-row" key={port.name}>
+          <Typography.Text code>{port.name}</Typography.Text>
+          <Button
+            danger
+            size="small"
+            disabled={saving}
+            onClick={() =>
+              void savePorts({
+                ...ports,
+                outputs: ports.outputs.filter((item) => item.name !== port.name)
+              })
+            }
+          >
+            {i18nText('frontstage', 'auto.delete')}
+          </Button>
+        </div>
+      ))}
+      <Space.Compact block>
+        <Input
+          aria-label={i18nText('frontstage', 'auto.output_ports')}
+          value={outputName}
+          onChange={(event) => setOutputName(event.target.value)}
+        />
+        <Select
+          value={outputType}
+          options={['string', 'number', 'boolean', 'object'].map((value) => ({
+            value,
+            label: value
+          }))}
+          onChange={setOutputType}
+          style={{ width: 120 }}
+        />
+        <Button loading={saving} onClick={addOutput}>
+          {i18nText('frontstage', 'auto.add_port')}
+        </Button>
+      </Space.Compact>
+      <Divider />
+      <Typography.Text strong>
+        {i18nText('frontstage', 'auto.input_ports')}
+      </Typography.Text>
+      {ports.inputs.map((port) => (
+        <div className="frontstage-jsx-studio__insert-row" key={port.name}>
+          <Typography.Text code>{port.name}</Typography.Text>
+          <Tag>{port.source?.scope ?? 'unbound'}</Tag>
+          {port.source &&
+          !sources.some(
+            (source) =>
+              source.blockId === port.source?.block_id &&
+              source.output.name === port.source?.output
+          ) ? (
+            <Tag color="error">
+              {i18nText('frontstage', 'auto.signal_source_missing')}
+            </Tag>
+          ) : null}
+          <Button
+            danger
+            size="small"
+            disabled={saving}
+            onClick={() =>
+              void savePorts({
+                ...ports,
+                inputs: ports.inputs.filter((item) => item.name !== port.name)
+              })
+            }
+          >
+            {i18nText('frontstage', 'auto.delete')}
+          </Button>
+        </div>
+      ))}
+      <Input
+        aria-label={i18nText('frontstage', 'auto.input_ports')}
+        value={inputName}
+        onChange={(event) => setInputName(event.target.value)}
+      />
+      <Select
+        value={sourceKey}
+        options={sources.map((source) => ({
+          value: source.key,
+          label: `${source.blockId}.${source.output.name}`
+        }))}
+        onChange={setSourceKey}
+        style={{ width: '100%' }}
+      />
+      <Select
+        value={scope}
+        options={[
+          { value: 'tab', label: i18nText('frontstage', 'auto.tab_scope') },
+          { value: 'page', label: i18nText('frontstage', 'auto.page_scope') }
+        ]}
+        onChange={setScope}
+        style={{ width: '100%' }}
+      />
+      <Button
+        type="primary"
+        loading={saving}
+        disabled={!sourceKey}
+        onClick={connectInput}
+      >
+        {i18nText('frontstage', 'auto.connect')}
+      </Button>
     </div>
   );
 }
@@ -518,6 +698,11 @@ function toCamelCase(value: string): string {
 
 function readString(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+function normalizePortName(value: string): string | null {
+  const name = value.trim();
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : null;
 }
 
 function assignOptionalString(

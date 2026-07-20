@@ -273,6 +273,13 @@
     "update_limits": "更新 limits",
     "variables": "变量",
     "variables_description": "这些 ctx 变量由受控运行时注入，可直接插入当前 JSX。",
+    "input_ports": "输入端口",
+    "output_ports": "输出端口",
+    "add_port": "添加端口",
+    "tab_scope": "当前 Tab",
+    "page_scope": "当前页面",
+    "connect": "连接",
+    "signal_source_missing": "来源已失效",
     "width": "宽度"
   },
   "design": {

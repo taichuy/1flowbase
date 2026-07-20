@@ -1361,6 +1361,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             pageId={selectedPageId}
             tabId={tabId}
             block={selectedBlock}
+            pageBlocks={displayedPageDocument?.blocks}
             catalogEntry={matchingJsBlockCatalogEntry}
             diagnostics={[]}
             onClose={() => setIsJsxStudioOpen(false)}
