@@ -3,6 +3,7 @@ import type { WindowWorkspaceRect } from './window-workspace-state';
 export const WINDOW_WORKSPACE_MARGIN = 8;
 export const WINDOW_WORKSPACE_MIN_WIDTH = 360;
 export const WINDOW_WORKSPACE_MIN_HEIGHT = 320;
+export const WINDOW_WORKSPACE_VISIBLE_TITLE_HEIGHT = 48;
 
 export function clampWindowWorkspaceRect(
   rect: WindowWorkspaceRect,
@@ -21,8 +22,22 @@ export function clampWindowWorkspaceRect(
     Math.max(minHeight, viewport.height - 16)
   );
   return {
-    left: clamp(rect.left, 8, Math.max(8, viewport.width - width - 8)),
-    top: clamp(rect.top, 8, Math.max(8, viewport.height - height - 8)),
+    left: clamp(
+      rect.left,
+      WINDOW_WORKSPACE_MARGIN,
+      Math.max(
+        WINDOW_WORKSPACE_MARGIN,
+        viewport.width - width - WINDOW_WORKSPACE_MARGIN
+      )
+    ),
+    top: clamp(
+      rect.top,
+      WINDOW_WORKSPACE_MARGIN,
+      Math.max(
+        WINDOW_WORKSPACE_MARGIN,
+        viewport.height - WINDOW_WORKSPACE_VISIBLE_TITLE_HEIGHT
+      )
+    ),
     width,
     height
   };

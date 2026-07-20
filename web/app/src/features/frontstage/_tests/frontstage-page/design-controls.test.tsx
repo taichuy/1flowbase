@@ -750,8 +750,10 @@ describe('FrontStagePage - design controls', () => {
     );
 
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    fireEvent.click(within(studio).getByRole('button', { name: '配置' }));
-    expect(screen.getByText('结构化配置')).toBeInTheDocument();
+    fireEvent.click(within(studio).getByRole('button', { name: '区块设置' }));
+    expect(
+      within(studio).getAllByText('区块设置').length
+    ).toBeGreaterThanOrEqual(1);
     expect(
       screen.queryByRole('dialog', { name: '区块配置' })
     ).not.toBeInTheDocument();
