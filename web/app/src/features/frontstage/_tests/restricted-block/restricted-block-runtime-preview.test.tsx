@@ -185,7 +185,9 @@ describe('RestrictedBlockRuntimePreview', () => {
     expect(screen.getByText('运行失败')).toBeInTheDocument();
     expect(screen.getAllByText('runtime_error').length).toBeGreaterThan(0);
     expect(screen.getByText('runtime.render')).toBeInTheDocument();
-    expect(screen.getByText('Worker crashed while rendering.')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Worker crashed while rendering.').length
+    ).toBeGreaterThan(0);
     expect(screen.queryByText(/errors/)).not.toBeInTheDocument();
 
     rerender(

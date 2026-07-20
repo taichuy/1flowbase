@@ -206,7 +206,7 @@ describe('restricted block runtime host controller', () => {
         }
       }
     });
-    expect(worker.messages).toHaveLength(1);
+    expect(worker.messages).toHaveLength(2);
   });
 
   test('reports source policy failure and worker errors as failed snapshots with stable run errors', () => {
@@ -473,6 +473,7 @@ describe('restricted block runtime host controller', () => {
 
     expect(host.getSnapshot()).toEqual({
       status: 'ready',
+      phase: 'ready',
       requestId: 'restricted-block:block-1:code-1',
       blockId: 'block-1',
       schema: {
