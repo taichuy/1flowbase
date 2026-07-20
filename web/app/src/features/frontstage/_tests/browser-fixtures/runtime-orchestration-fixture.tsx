@@ -28,11 +28,9 @@ function createRunPlanItem(index: number): FrontstagePageCanvasRuntimeRunPlanRea
   const codeRef = `${blockId}-code`;
   const source = policyBlock && index === 0
     ? `export default { render() { while (true) {} } };`
-    : nonSettlingBlock && index === 0
-      ? `export default { async render() { await new Promise(() => {}); } };`
-      : failingBlock && index === 0
-        ? `export default { render() { throw new Error('Controlled fixture failure'); } };`
-        : `
+    : failingBlock && index === 0
+      ? `export default { render() { throw new Error('Controlled fixture failure'); } };`
+      : `
 import { defineBlock } from '@1flowbase/block-sdk';
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 export default defineBlock({
@@ -166,7 +164,12 @@ function RuntimeOrchestrationFixture() {
     demandsByBlockId: demands,
     maxConcurrent: 2,
     handlers: {
-      data: () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 180))
+      data: (message) =>
+        nonSettlingBlock &&
+        message.requestId ===
+          'qa:runtime-fixture-1:runtime-fixture-1-code'
+          ? new Promise(() => {})
+          : new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 180))
     }
   });
   const ready = sessions.entries.filter((entry) => entry.status === 'ready').length;
