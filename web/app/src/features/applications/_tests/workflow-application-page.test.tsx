@@ -242,7 +242,7 @@ describe('Workflow application page', () => {
       await screen.findByRole('heading', { name: '工作流扩展 API' })
     ).toBeInTheDocument();
     expect(
-      screen.getByText('published_workflow_operation:app-workflow')
+      await screen.findByText('published_workflow_operation:app-workflow')
     ).toBeInTheDocument();
     expect(screen.getByText('/api/ex/orders/{order_id}')).toBeInTheDocument();
     expect(screen.getByText('path.order_id')).toBeInTheDocument();

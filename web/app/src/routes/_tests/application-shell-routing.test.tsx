@@ -173,11 +173,14 @@ function renderApplicationRouter() {
   return renderReactFlowScene(<AppRouterProvider />);
 }
 
-function createWorkflowApplicationDetail() {
+function createWorkflowApplicationDetail(
+  workflowTriggerType: 'extension' | 'schedule' = 'extension'
+) {
+  const apiAvailable = workflowTriggerType === 'extension';
   return {
     id: 'app-1',
     application_type: 'workflow',
-    workflow_trigger_type: 'extension',
+    workflow_trigger_type: workflowTriggerType,
     name: 'Ticket Workflow',
     description: 'ticket routing',
     icon: 'RobotOutlined',
@@ -195,12 +198,14 @@ function createWorkflowApplicationDetail() {
         current_draft_id: null
       },
       api: {
-        status: 'available',
-        credential_kind: 'user_or_public',
-        invoke_routing_mode: 'published_workflow_operation',
-        invoke_path_template: '/api/ex/{operation}',
-        api_capability_status: 'available',
-        credentials_status: 'not_required'
+        status: apiAvailable ? 'available' : 'unavailable',
+        credential_kind: apiAvailable ? 'user_or_public' : 'not_applicable',
+        invoke_routing_mode: apiAvailable
+          ? 'published_workflow_operation'
+          : 'not_available',
+        invoke_path_template: apiAvailable ? '/api/ex/{operation}' : null,
+        api_capability_status: apiAvailable ? 'available' : 'unavailable',
+        credentials_status: apiAvailable ? 'not_required' : 'not_applicable'
       },
       logs: {
         status: 'planned',
@@ -407,7 +412,7 @@ describe('application shell routing', () => {
     expect(applicationApi.fetchApplicationDetail).toHaveBeenCalledWith('app-1');
   });
 
-  test('renders workflow sections without the AgentFlow API section', async () => {
+  test('renders the API section for an extension workflow with backend API capability', async () => {
     applicationApi.fetchApplicationDetail.mockResolvedValue(
       createWorkflowApplicationDetail()
     );
@@ -432,13 +437,27 @@ describe('application shell routing', () => {
       within(sectionNavigation).getByRole('link', { name: '监控' })
     ).toHaveAttribute('href', '/applications/app-1/monitoring');
     expect(
-      within(sectionNavigation).queryByRole('link', { name: 'API' })
-    ).not.toBeInTheDocument();
+      within(sectionNavigation).getByRole('link', { name: 'API' })
+    ).toHaveAttribute('href', '/applications/app-1/api');
   });
 
-  test('redirects workflow API section requests back to the workflow editor', async () => {
+  test('renders the extension workflow API section without redirecting', async () => {
     applicationApi.fetchApplicationDetail.mockResolvedValue(
       createWorkflowApplicationDetail()
+    );
+
+    window.history.pushState({}, '', '/applications/app-1/api');
+    renderApplicationRouter();
+
+    expect(
+      await screen.findByRole('heading', { name: '工作流扩展 API' })
+    ).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/applications/app-1/api');
+  });
+
+  test('redirects an unavailable schedule workflow API section to the editor', async () => {
+    applicationApi.fetchApplicationDetail.mockResolvedValue(
+      createWorkflowApplicationDetail('schedule')
     );
 
     window.history.pushState({}, '', '/applications/app-1/api');
@@ -449,7 +468,6 @@ describe('application shell routing', () => {
         '/applications/app-1/orchestration'
       );
     });
-    expect(publicApi.fetchApplicationApiDocsCatalog).not.toHaveBeenCalled();
   });
 
   test(

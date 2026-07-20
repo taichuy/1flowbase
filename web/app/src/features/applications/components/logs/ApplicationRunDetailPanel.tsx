@@ -132,7 +132,7 @@ function principalText(principal: ApplicationRunSummary['principal']) {
     case 'application_api_key':
       return i18nText('applications', 'auto.principal_application_api_key');
     case 'user_api_key':
-      return i18nText('applications', 'auto.principal_user_api_key');
+      return i18nText('applications', 'auto.access_policy_user_api_key');
     case 'public':
       return i18nText('applications', 'auto.principal_public');
     case 'scheduler':
@@ -159,7 +159,7 @@ function RunIdSubtitle({ run, runId }: { run: ApplicationRunSummary | null; runI
       {run ? (
         <>
           <Tag>{run.execution_stage === 'published'
-            ? i18nText('applications', 'auto.execution_stage_published')
+            ? i18nText('applications', 'auto.publication_published')
             : i18nText('applications', 'auto.execution_stage_debug')}</Tag>
           <Tag>{invocationSourceText(run.invocation_source)}</Tag>
           <Tag>

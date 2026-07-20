@@ -43,7 +43,7 @@ function executionStageLabel(
   t: TFunction<'applications'>
 ) {
   return value === 'published'
-    ? t('auto.execution_stage_published')
+    ? t('auto.publication_published')
     : t('auto.execution_stage_debug');
 }
 
@@ -73,7 +73,7 @@ function principalKindLabel(
     case 'application_api_key':
       return t('auto.principal_application_api_key');
     case 'user_api_key':
-      return t('auto.principal_user_api_key');
+      return t('auto.access_policy_user_api_key');
     case 'public':
       return t('auto.principal_public');
     case 'scheduler':
