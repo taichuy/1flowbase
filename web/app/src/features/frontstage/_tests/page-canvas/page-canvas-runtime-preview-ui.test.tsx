@@ -28,7 +28,7 @@ function createRuntimeSnapshot(
     schemaValidationOptions: {
       maxDepth: 8,
       maxNodes: 250,
-      allowedActions: [],
+
       allowedEvents: [],
       allowedDataPermissions: []
     },
@@ -92,14 +92,13 @@ describe('PageCanvas runtime preview UI', () => {
             schemaValidationOptions: {
               maxDepth: 8,
               maxNodes: 250,
-              allowedActions: [],
+
               allowedEvents: [],
               allowedDataPermissions: []
             },
             mediatorPolicy: {
-              allowedQueries: [],
-              allowedDataOperations: [],
-              allowedActions: [],
+              allowedInterfaces: ['listRecords'],
+
               allowedEvents: [],
               maxEventChainDepth: 4
             }
@@ -120,7 +119,7 @@ describe('PageCanvas runtime preview UI', () => {
         runPlanStatus: 'run_plan_ready',
         snapshot: createRuntimeSnapshot({
           status: 'ready',
-          schema: {
+          view: {
             primitive: 'Title',
             props: { children: 'Synthetic Runtime Preview' }
           }
@@ -206,14 +205,13 @@ describe('PageCanvas runtime preview UI', () => {
             schemaValidationOptions: {
               maxDepth: 8,
               maxNodes: 250,
-              allowedActions: [],
+
               allowedEvents: [],
               allowedDataPermissions: []
             },
             mediatorPolicy: {
-              allowedQueries: [],
-              allowedDataOperations: [],
-              allowedActions: [],
+              allowedInterfaces: ['listRecords'],
+
               allowedEvents: [],
               maxEventChainDepth: 4
             }
@@ -311,9 +309,7 @@ describe('PageCanvas runtime preview UI', () => {
       screen.queryByTestId('restricted-block-runtime-preview')
     ).not.toBeInTheDocument();
     expect(screen.getByText('运行时预览不可用')).toBeInTheDocument();
-    expect(
-      screen.getByText('受限运行时会话创建失败。')
-    ).toBeInTheDocument();
+    expect(screen.getByText('受限运行时会话创建失败。')).toBeInTheDocument();
     expect(screen.getByTestId('block-ui-loading-shell')).toBeInTheDocument();
     expect(screen.queryByText('区块跳过运行')).not.toBeInTheDocument();
     expect(screen.queryByText('worker unavailable')).not.toBeInTheDocument();

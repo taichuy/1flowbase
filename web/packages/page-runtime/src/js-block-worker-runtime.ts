@@ -19,7 +19,7 @@ export interface JsBlockRunRequest {
   requestId: string;
   blockId: string;
   source: string;
-  inputs: Record<string, unknown>;
+  inputs?: Record<string, unknown>;
   props: Record<string, unknown>;
   state: Record<string, unknown>;
   contextSnapshot: Record<string, unknown>;
@@ -263,6 +263,8 @@ export type JsBlockWorkerRuntimeMessage =
   | JsBlockWorkerToHostMessage;
 
 type RecordValue = Record<string, unknown>;
+const MAX_WORKER_LOG_ENTRIES = 200;
+const MAX_WORKER_LOG_MESSAGE_LENGTH = 4_000;
 
 export function createJsBlockRuntimeSession(): JsBlockRuntimeSessionState {
   return {
@@ -316,10 +318,13 @@ function reduceHostToWorkerMessage(
 ): JsBlockRuntimeSessionState {
   switch (type) {
     case 'init':
-      return updateCurrentRequestPhase({
-        ...state,
-        workerStatus: 'initializing'
-      }, 'starting');
+      return updateCurrentRequestPhase(
+        {
+          ...state,
+          workerStatus: 'initializing'
+        },
+        'starting'
+      );
     case 'run':
       return reduceRunMessage(state, message);
     case 'timeout':
@@ -653,14 +658,42 @@ function reduceLogMessage(
   const logEntry: JsBlockWorkerLogEntry = {
     requestId: requestIdResult.value,
     level,
-    message: logMessageResult.value,
-    data: message.data
+    message: logMessageResult.value.slice(0, MAX_WORKER_LOG_MESSAGE_LENGTH),
+    data: sanitizeWorkerValue(message.data)
   };
 
   return updateRequest(state, {
     ...requestResult.request,
-    logs: [...requestResult.request.logs, logEntry]
+    logs: [...requestResult.request.logs, logEntry].slice(
+      -MAX_WORKER_LOG_ENTRIES
+    )
   });
+}
+
+function sanitizeWorkerValue(
+  value: unknown,
+  depth = 0,
+  seen = new WeakSet<object>()
+): unknown {
+  if (depth > 5) return '[MaxDepth]';
+  if (value === null || ['string', 'boolean'].includes(typeof value))
+    return value;
+  if (typeof value === 'number')
+    return Number.isFinite(value) ? value : String(value);
+  if (typeof value !== 'object') return String(value);
+  if (seen.has(value)) return '[Circular]';
+  seen.add(value);
+  if (Array.isArray(value))
+    return value
+      .slice(0, 100)
+      .map((item) => sanitizeWorkerValue(item, depth + 1, seen));
+  const output: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value).slice(0, 100)) {
+    output[key] = /authorization|cookie|token|secret|api[_-]?key/i.test(key)
+      ? '[REDACTED]'
+      : sanitizeWorkerValue(item, depth + 1, seen);
+  }
+  return output;
 }
 
 function reduceEffectMessage(
@@ -673,7 +706,11 @@ function reduceEffectMessage(
     return reject(state, requestIdResult.rejection);
   }
 
-  const effectResult = readWorkerEffect(message, effectType, requestIdResult.value);
+  const effectResult = readWorkerEffect(
+    message,
+    effectType,
+    requestIdResult.value
+  );
   if (!effectResult.ok) {
     return reject(state, effectResult.rejection);
   }
@@ -686,9 +723,7 @@ function reduceEffectMessage(
   return updateRequest(state, {
     ...requestResult.request,
     phase:
-      effectType === 'event'
-        ? requestResult.request.phase
-        : 'waiting_effect',
+      effectType === 'event' ? requestResult.request.phase : 'waiting_effect',
     effects: [...requestResult.request.effects, effectResult.effect]
   });
 }
@@ -722,7 +757,9 @@ function readRunRequest(
     return props;
   }
 
-  const inputs = readRecord(value, 'inputs', 'message.request.inputs');
+  const inputs = hasOwn(value, 'inputs')
+    ? readRecord(value, 'inputs', 'message.request.inputs')
+    : ({ ok: true, value: {} } as const);
   if (!inputs.ok) {
     return inputs;
   }

@@ -259,6 +259,9 @@ importers:
       '@1flowbase/page-protocol':
         specifier: workspace:*
         version: link:../page-protocol
+      '@jridgewell/trace-mapping':
+        specifier: ^0.3.31
+        version: 0.3.31
       sucrase:
         specifier: ^3.35.0
         version: 3.35.1

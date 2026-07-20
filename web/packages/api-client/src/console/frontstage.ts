@@ -160,6 +160,11 @@ export interface FrontstageCallableRequest {
 export interface DispatchFrontstageCallableInput {
   operation_id: string;
   request?: FrontstageCallableRequest;
+  run_authorization?: {
+    run_id: string;
+    operation_id: string;
+    confirmed: boolean;
+  };
 }
 
 export function listFrontstageCallableInterfaces(

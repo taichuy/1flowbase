@@ -21,8 +21,7 @@ import { createFrontstageNativeTrustedBlockRuntimeFactory } from '../../lib/nati
 
 const NATIVE_STYLE_SCOPE_ROOT_ATTRIBUTE =
   'data-flowbase-native-trusted-block-root';
-const NATIVE_STYLE_SCOPE_ID_ATTRIBUTE =
-  'data-flowbase-native-trusted-block-id';
+const NATIVE_STYLE_SCOPE_ID_ATTRIBUTE = 'data-flowbase-native-trusted-block-id';
 
 function createTestingRoot(): {
   createRoot: FrontstageNativeTrustedBlockCreateRoot;
@@ -72,21 +71,14 @@ function createFakeBlockContext(
     props: {},
     state: {},
     patch: vi.fn(),
-    data: {
-      query: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn()
-    },
-    actions: {
-      invoke: vi.fn()
-    },
+    interfaces: { call: vi.fn() },
     events: {
       emit: vi.fn()
     },
     theme: { mode: 'light', tokens: {} },
     ui: {},
-    ...overrides
+    ...overrides,
+    inputs: overrides.inputs ?? {}
   };
 }
 
@@ -102,7 +94,7 @@ import React from 'react';
 import { Button, Space } from 'antd';
 
 export default function HostCompositionBlock(props) {
-  void props.ctx.data.query('native-records', { title: props.props.title });
+  void props.ctx.interfaces.call('native-records', { body: { title: props.props.title } });
 
   return (
     <Space title="native-composition-block">
@@ -134,11 +126,8 @@ describe('native trusted block host composition smoke contract', () => {
       resolveBlockContext: () =>
         createFakeBlockContext({
           props: { title: 'Controlled ctx title' },
-          data: {
-            query,
-            create: vi.fn(),
-            update: vi.fn(),
-            delete: vi.fn()
+          interfaces: {
+            call: query as BlockContext['interfaces']['call']
           }
         }),
       resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()
@@ -165,16 +154,20 @@ describe('native trusted block host composition smoke contract', () => {
     expect(
       await screen.findByRole('button', { name: 'Controlled ctx title' })
     ).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'true' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'true' })
+    ).toBeInTheDocument();
     expect(query).toHaveBeenCalledWith('native-records', {
-      title: 'Prepared JSX AntD block'
+      body: { title: 'Prepared JSX AntD block' }
     });
     expect(root).toHaveAttribute(NATIVE_STYLE_SCOPE_ROOT_ATTRIBUTE, '');
     expect(root).toHaveAttribute(
       NATIVE_STYLE_SCOPE_ID_ATTRIBUTE,
       'host-composition-native-block'
     );
-    expect(await screen.findByTitle('native-provider-scope')).toBeInTheDocument();
+    expect(
+      await screen.findByTitle('native-provider-scope')
+    ).toBeInTheDocument();
 
     const disposedState = await host.dispose();
 
@@ -246,7 +239,9 @@ export default function CapabilityViolationBlock() {
     try {
       expect(prepareResult.ok).toBe(true);
       if (!prepareResult.ok) {
-        throw new Error('Expected capability violation source prepare to succeed.');
+        throw new Error(
+          'Expected capability violation source prepare to succeed.'
+        );
       }
 
       const mountedState = await host.mount(prepareResult.plan, root);
@@ -297,7 +292,7 @@ export default function CapabilityViolationBlock() {
           'createNativeTrustedBlockHost',
           'prepareNativeTrustedBlock'
         ].some((marker) => readFileSync(filePath, 'utf8').includes(marker))
-    );
+      );
 
     expect(matches).toEqual([]);
   });

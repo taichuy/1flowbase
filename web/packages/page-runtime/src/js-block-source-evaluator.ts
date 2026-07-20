@@ -19,6 +19,7 @@ import {
 } from './js-block-source-transform';
 import { compileJsBlockTsxSource } from './js-block-tsx-compile';
 import type { JsBlockRunError } from './js-block-worker-runtime';
+import { TraceMap, originalPositionFor } from '@jridgewell/trace-mapping';
 
 export type JsBlockInjectedModuleMap = Partial<
   Record<JsBlockInjectedModuleSource, Record<string, unknown>>
@@ -49,6 +50,10 @@ export type JsBlockSourceRunResult =
 export interface EvaluateJsBlockSourceInput {
   source: string | JsBlockSourceTransformSuccess;
   modules: JsBlockInjectedModuleMap;
+  console?: Record<
+    'debug' | 'info' | 'warn' | 'error' | 'log',
+    (...values: unknown[]) => void
+  >;
 }
 
 export interface RunJsBlockSourceInput extends EvaluateJsBlockSourceInput {
@@ -85,7 +90,7 @@ export function evaluateJsBlockSource(
 
   try {
     const evaluator = createEvaluator(compiledSource);
-    const defaultExport = evaluator(input.modules);
+    const defaultExport = evaluator(input.modules, input.console ?? console);
     if (!isBlockModule(defaultExport)) {
       return {
         ok: false,
@@ -128,7 +133,8 @@ export async function runJsBlockSource(
       ok: false,
       error: runtimeError(
         'runtime.main',
-        `JS block main failed: ${getErrorMessage(error)}`
+        `JS block main failed: ${getErrorMessage(error)}`,
+        mapJsBlockRuntimeSourceLocation(error, evaluation.compiledSource)
       )
     };
   }
@@ -177,16 +183,22 @@ function compileAndTransformSource(
     return { ok: false, errors: tsxResult.errors };
   }
 
-  return transformJsBlockSource(tsxResult.code, { allowedImports });
+  const transformed = transformJsBlockSource(tsxResult.code, {
+    allowedImports
+  });
+  return transformed.ok
+    ? { ...transformed, sourceMap: tsxResult.sourceMap }
+    : transformed;
 }
 
 function createEvaluator(
   compiledSource: JsBlockSourceTransformSuccess
-): (modules: JsBlockInjectedModuleMap) => unknown {
+): (modules: JsBlockInjectedModuleMap, console: unknown) => unknown {
   return new Function(
     compiledSource.moduleMapIdentifier,
-    `"use strict";\n${compiledSource.executableBody}`
-  ) as (modules: JsBlockInjectedModuleMap) => unknown;
+    '__console',
+    `"use strict";\nconst console = __console;\n${compiledSource.executableBody}`
+  ) as (modules: JsBlockInjectedModuleMap, console: unknown) => unknown;
 }
 
 function validateInjectedModules(
@@ -229,14 +241,41 @@ function createRunError(
   return { kind, message, errors };
 }
 
-function runtimeError(path: string, message: string): JsBlockRunError {
+function runtimeError(
+  path: string,
+  message: string,
+  sourceLocation?: BlockProtocolError['sourceLocation']
+): JsBlockRunError {
   return createRunError('runtime_error', message, [
     {
       code: 'runtime_error',
       path,
-      message
+      message,
+      ...(sourceLocation ? { sourceLocation } : {})
     }
   ]);
+}
+
+export function mapJsBlockRuntimeSourceLocation(
+  error: unknown,
+  compiled: JsBlockSourceTransformSuccess
+): BlockProtocolError['sourceLocation'] | undefined {
+  if (!(error instanceof Error) || !error.stack || !compiled.sourceMap)
+    return undefined;
+  const match = /<anonymous>:(\d+):(\d+)/.exec(error.stack);
+  if (!match) return undefined;
+  const generatedLine = Number(match[1]) - 4 - compiled.executablePreambleLines;
+  const generatedColumn = Math.max(0, Number(match[2]) - 1);
+  if (generatedLine < 1) return undefined;
+  const traced = originalPositionFor(
+    new TraceMap(
+      compiled.sourceMap as ConstructorParameters<typeof TraceMap>[0]
+    ),
+    { line: generatedLine, column: generatedColumn }
+  );
+  return traced.line === null || traced.column === null
+    ? undefined
+    : { line: traced.line, column: traced.column + 1 };
 }
 
 function getErrorMessage(error: unknown): string {

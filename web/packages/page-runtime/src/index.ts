@@ -15,3 +15,4 @@ export * from './js-block-worker-adapter';
 export * from './js-block-worker-executor';
 export * from './js-block-worker-modules';
 export * from './js-block-diagnostics';
+export * from './js-block-draft-run';

@@ -39,7 +39,11 @@ vi.mock('antd', async () => {
     App({ children }: { children?: ReactNode }) {
       antdProviderRecords.appRenderCount += 1;
 
-      return React.createElement('div', { 'data-testid': 'mock-antd-app' }, children);
+      return React.createElement(
+        'div',
+        { 'data-testid': 'mock-antd-app' },
+        children
+      );
     }
   };
 });
@@ -108,21 +112,14 @@ function createFakeBlockContext(
     props: {},
     state: {},
     patch: vi.fn(),
-    data: {
-      query: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn()
-    },
-    actions: {
-      invoke: vi.fn()
-    },
+    interfaces: { call: vi.fn() },
     events: {
       emit: vi.fn()
     },
     theme: { mode: 'light', tokens: {} },
     ui: {},
-    ...overrides
+    ...overrides,
+    inputs: overrides.inputs ?? {}
   };
 }
 
@@ -135,7 +132,9 @@ describe('frontstage native trusted block React adapter', () => {
   test('creates a React root and renders the resolved native component', async () => {
     const root = createBlockRoot();
     const testingRoot = createTestingRoot();
-    const resolvedComponent = vi.fn(() => <div data-testid="native-block">Ready</div>);
+    const resolvedComponent = vi.fn(() => (
+      <div data-testid="native-block">Ready</div>
+    ));
     const adapter = createFrontstageNativeTrustedBlockReactAdapter({
       createRoot: testingRoot.createRoot,
       resolveComponent: () => resolvedComponent
@@ -144,7 +143,9 @@ describe('frontstage native trusted block React adapter', () => {
     await adapter.mount({ plan: createPlan(), root });
 
     expect(testingRoot.roots).toEqual([root]);
-    expect(await screen.findByTestId('native-block')).toHaveTextContent('Ready');
+    expect(await screen.findByTestId('native-block')).toHaveTextContent(
+      'Ready'
+    );
     expect(resolvedComponent).toHaveBeenCalledTimes(1);
   });
 
@@ -217,12 +218,17 @@ describe('frontstage native trusted block React adapter', () => {
   test('restores only adapter-written style scope markers on dispose', async () => {
     const root = createBlockRoot();
     root.setAttribute('data-flowbase-native-trusted-block-root', 'preexisting');
-    root.setAttribute('data-flowbase-native-trusted-block-id', 'preexisting-block');
+    root.setAttribute(
+      'data-flowbase-native-trusted-block-id',
+      'preexisting-block'
+    );
     root.setAttribute('data-host-owned-attribute', 'keep-me');
     const testingRoot = createTestingRoot();
     const adapter = createFrontstageNativeTrustedBlockReactAdapter({
       createRoot: testingRoot.createRoot,
-      resolveComponent: () => () => <div data-testid="native-block">Mounted</div>
+      resolveComponent: () => () => (
+        <div data-testid="native-block">Mounted</div>
+      )
     });
 
     const mounted = await adapter.mount({
@@ -247,7 +253,10 @@ describe('frontstage native trusted block React adapter', () => {
       'data-flowbase-native-trusted-block-id',
       'preexisting-block'
     );
-    expect(root).toHaveAttribute('data-host-owned-attribute', 'changed-by-host');
+    expect(root).toHaveAttribute(
+      'data-host-owned-attribute',
+      'changed-by-host'
+    );
   });
 
   test('resolves scoped AntD theme and locale independently for each block', async () => {
@@ -256,8 +265,14 @@ describe('frontstage native trusted block React adapter', () => {
     const testingRoot = createTestingRoot();
     const firstTheme = { token: { colorPrimary: '#1677ff' } };
     const secondTheme = { token: { colorPrimary: '#52c41a' } };
-    const firstLocale = { locale: 'en_US', Empty: { description: 'First empty' } };
-    const secondLocale = { locale: 'zh_CN', Empty: { description: 'Second empty' } };
+    const firstLocale = {
+      locale: 'en_US',
+      Empty: { description: 'First empty' }
+    };
+    const secondLocale = {
+      locale: 'zh_CN',
+      Empty: { description: 'Second empty' }
+    };
     const scopeResolver = vi.fn((context) => {
       if (context.plan.blockId === 'native-block-1') {
         return { theme: firstTheme, locale: firstLocale };
@@ -326,7 +341,10 @@ describe('frontstage native trusted block React adapter', () => {
     const root = createBlockRoot();
     const testingRoot = createTestingRoot();
     const providerWrapper = vi.fn((children: ReactNode, context) => (
-      <section data-block-id={context.plan.blockId} data-testid="provider-wrapper">
+      <section
+        data-block-id={context.plan.blockId}
+        data-testid="provider-wrapper"
+      >
         {children}
       </section>
     ));
@@ -370,7 +388,9 @@ describe('frontstage native trusted block React adapter', () => {
   test('passes plan props and portal containment to the resolved component', async () => {
     const root = createBlockRoot();
     const testingRoot = createTestingRoot();
-    const plan = createPlan({ props: { title: 'Scoped block', nested: { ok: true } } });
+    const plan = createPlan({
+      props: { title: 'Scoped block', nested: { ok: true } }
+    });
     const received: unknown[] = [];
     const adapter = createFrontstageNativeTrustedBlockReactAdapter({
       createRoot: testingRoot.createRoot,
@@ -379,7 +399,8 @@ describe('frontstage native trusted block React adapter', () => {
 
         return (
           <output data-testid="native-props">
-            {props.props.title as string}:{String(props.portalContainment.root === root)}
+            {props.props.title as string}:
+            {String(props.portalContainment.root === root)}
           </output>
         );
       }
@@ -396,12 +417,18 @@ describe('frontstage native trusted block React adapter', () => {
         props: plan.props,
         portalContainment: expect.objectContaining({
           root,
-          modal: expect.objectContaining({ getContainer: expect.any(Function) }),
-          select: expect.objectContaining({ getPopupContainer: expect.any(Function) }),
+          modal: expect.objectContaining({
+            getContainer: expect.any(Function)
+          }),
+          select: expect.objectContaining({
+            getPopupContainer: expect.any(Function)
+          }),
           dropdown: expect.objectContaining({
             getPopupContainer: expect.any(Function)
           }),
-          tooltip: expect.objectContaining({ getPopupContainer: expect.any(Function) })
+          tooltip: expect.objectContaining({
+            getPopupContainer: expect.any(Function)
+          })
         })
       })
     ]);
@@ -417,7 +444,9 @@ describe('frontstage native trusted block React adapter', () => {
         receivedContext = props.ctx;
 
         return (
-          <output data-testid="native-context">{props.ctx.props.title as string}</output>
+          <output data-testid="native-context">
+            {props.ctx.props.title as string}
+          </output>
         );
       }
     });
@@ -449,22 +478,8 @@ describe('frontstage native trusted block React adapter', () => {
         ui: {}
       })
     );
-    await expect(receivedContext?.data.query('records')).rejects.toThrow(
-      'Native trusted block ctx.data.query is unavailable until the host injects a controlled BlockContext.'
-    );
-    await expect(receivedContext?.data.create('records', {})).rejects.toThrow(
-      'Native trusted block ctx.data.create is unavailable until the host injects a controlled BlockContext.'
-    );
-    await expect(
-      receivedContext?.data.update('records', 'record-1', {})
-    ).rejects.toThrow(
-      'Native trusted block ctx.data.update is unavailable until the host injects a controlled BlockContext.'
-    );
-    await expect(receivedContext?.data.delete('records', 'record-1')).rejects.toThrow(
-      'Native trusted block ctx.data.delete is unavailable until the host injects a controlled BlockContext.'
-    );
-    await expect(receivedContext?.actions.invoke('open-record')).rejects.toThrow(
-      'Native trusted block ctx.actions.invoke is unavailable until the host injects a controlled BlockContext.'
+    await expect(receivedContext?.interfaces.call('records')).rejects.toThrow(
+      'Native trusted block ctx.interfaces.call is unavailable until the host injects a controlled BlockContext.'
     );
     expect(() => receivedContext?.events.emit('record.opened')).toThrow(
       'Native trusted block ctx.events.emit is unavailable until the host injects a controlled BlockContext.'
@@ -476,11 +491,10 @@ describe('frontstage native trusted block React adapter', () => {
     const testingRoot = createTestingRoot();
     const fakeContext = createFakeBlockContext({
       props: { title: 'Injected context' },
-      data: {
-        query: vi.fn(async () => ({ title: 'Queried title' })),
-        create: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn()
+      interfaces: {
+        call: vi.fn(async () => ({
+          title: 'Queried title'
+        })) as BlockContext['interfaces']['call']
       }
     });
     const resolveBlockContext = vi.fn(() => fakeContext);
@@ -488,7 +502,9 @@ describe('frontstage native trusted block React adapter', () => {
       createRoot: testingRoot.createRoot,
       resolveBlockContext,
       resolveComponent: () => (props) => {
-        void props.ctx.data.query('records', { blockId: props.plan.blockId });
+        void props.ctx.interfaces.call('records', {
+          body: { blockId: props.plan.blockId }
+        });
 
         return (
           <output data-testid="native-injected-context">
@@ -498,11 +514,14 @@ describe('frontstage native trusted block React adapter', () => {
       }
     });
 
-    await adapter.mount({ plan: createPlan({ blockId: 'native-block-ctx' }), root });
+    await adapter.mount({
+      plan: createPlan({ blockId: 'native-block-ctx' }),
+      root
+    });
 
-    expect(await screen.findByTestId('native-injected-context')).toHaveTextContent(
-      'Injected context'
-    );
+    expect(
+      await screen.findByTestId('native-injected-context')
+    ).toHaveTextContent('Injected context');
     expect(resolveBlockContext).toHaveBeenCalledWith(
       expect.objectContaining({
         plan: expect.objectContaining({ blockId: 'native-block-ctx' }),
@@ -510,8 +529,8 @@ describe('frontstage native trusted block React adapter', () => {
         portalContainment: expect.objectContaining({ root })
       })
     );
-    expect(fakeContext.data.query).toHaveBeenCalledWith('records', {
-      blockId: 'native-block-ctx'
+    expect(fakeContext.interfaces.call).toHaveBeenCalledWith('records', {
+      body: { blockId: 'native-block-ctx' }
     });
   });
 
@@ -587,9 +606,9 @@ describe('frontstage native trusted block React adapter', () => {
         root: stableRoot
       });
 
-      expect(await screen.findByTestId('stable-native-block')).toHaveTextContent(
-        'Still mounted'
-      );
+      expect(
+        await screen.findByTestId('stable-native-block')
+      ).toHaveTextContent('Still mounted');
       await waitFor(() => {
         expect(onRuntimeError).toHaveBeenCalledWith(
           expect.objectContaining({ code: 'runtime_error' }),
@@ -617,7 +636,9 @@ describe('frontstage native trusted block React adapter', () => {
     try {
       await adapter.mount({ plan: createPlan(), root });
 
-      expect(root).not.toHaveTextContent('raw secret stack debug JSON prompt text');
+      expect(root).not.toHaveTextContent(
+        'raw secret stack debug JSON prompt text'
+      );
       expect(root).not.toHaveTextContent('Error:');
       expect(root).not.toHaveTextContent('runtime.render');
       expect(root).not.toHaveTextContent('{');
@@ -631,7 +652,9 @@ describe('frontstage native trusted block React adapter', () => {
     const testingRoot = createTestingRoot();
     const adapter = createFrontstageNativeTrustedBlockReactAdapter({
       createRoot: testingRoot.createRoot,
-      resolveComponent: () => () => <div data-testid="native-block">Mounted</div>
+      resolveComponent: () => () => (
+        <div data-testid="native-block">Mounted</div>
+      )
     });
 
     const mounted = await adapter.mount({ plan: createPlan(), root });
@@ -653,7 +676,9 @@ describe('frontstage native trusted block React adapter', () => {
 
     await expect(
       adapter.mount({ plan: createPlan(), root: { nodeType: 1 } })
-    ).rejects.toThrow('Native trusted block React adapter root must be a DOM Element.');
+    ).rejects.toThrow(
+      'Native trusted block React adapter root must be a DOM Element.'
+    );
     expect(testingRoot.roots).toEqual([]);
 
     const resolverFailure = createFrontstageNativeTrustedBlockReactAdapter({
@@ -678,10 +703,13 @@ describe('frontstage native trusted block React adapter', () => {
       join(frontstageDir, 'lib'),
       join(process.cwd(), 'src/routes'),
       join(process.cwd(), 'src/app')
-    ]).filter((filePath) =>
-      filePath !== __filename &&
-      !filePath.endsWith('native-trusted-block-runtime-factory.ts') &&
-      readFileSync(filePath, 'utf8').includes('native-trusted-block-react-adapter')
+    ]).filter(
+      (filePath) =>
+        filePath !== __filename &&
+        !filePath.endsWith('native-trusted-block-runtime-factory.ts') &&
+        readFileSync(filePath, 'utf8').includes(
+          'native-trusted-block-react-adapter'
+        )
     );
 
     expect(matches).toEqual([]);

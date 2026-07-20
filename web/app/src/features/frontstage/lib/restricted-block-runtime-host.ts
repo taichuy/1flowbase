@@ -3,6 +3,7 @@ import {
   createJsBlockWorkerHost,
   type BlockContextMediatorState,
   type JsBlockHostEffectHandlers,
+  type JsBlockInterfaceCallTrace,
   type JsBlockRunError,
   type JsBlockRunPhase,
   type JsBlockRuntimeRejection,
@@ -37,6 +38,7 @@ export interface RestrictedBlockRuntimeHostSnapshot {
   effects: JsBlockWorkerEffect[];
   rejections: JsBlockRuntimeRejection[];
   mediatorState?: BlockContextMediatorState;
+  interfaceCalls?: JsBlockInterfaceCallTrace[];
 }
 
 export interface RestrictedBlockRuntimeHostOptions {
@@ -58,6 +60,7 @@ export function createRestrictedBlockRuntimeHost(
   options: RestrictedBlockRuntimeHostOptions
 ): RestrictedBlockRuntimeHost {
   const runPlan = options.runPlan;
+  const interfaceCalls: JsBlockInterfaceCallTrace[] = [];
   const workerHost = createJsBlockWorkerHost({
     workerFactory: options.workerFactory,
     scheduleTimeout: options.scheduleTimeout,
@@ -65,7 +68,8 @@ export function createRestrictedBlockRuntimeHost(
     effectBridge: {
       policy: runPlan.mediatorPolicy,
       handlers: options.handlers,
-      getContext: () => ({ tickId: runPlan.request.requestId })
+      getContext: () => ({ tickId: runPlan.request.requestId }),
+      onInterfaceCall: (trace) => interfaceCalls.push(trace)
     }
   });
   let didDispose = false;
@@ -95,7 +99,8 @@ export function createRestrictedBlockRuntimeHost(
       logs: cloneSnapshotValue(requestState?.logs ?? []),
       effects: cloneSnapshotValue(requestState?.effects ?? []),
       rejections: cloneSnapshotValue(state.rejections),
-      mediatorState: cloneSnapshotValue(workerHost.getEffectMediatorState())
+      mediatorState: cloneSnapshotValue(workerHost.getEffectMediatorState()),
+      interfaceCalls: cloneSnapshotValue(interfaceCalls)
     };
   };
 

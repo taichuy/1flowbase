@@ -16,16 +16,14 @@ import {
 } from '../../lib/restricted-block-worker-factory';
 
 const validSource = `
-import { defineBlock } from '@1flowbase/block-sdk';
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 
-export default defineBlock({
-  async render(ctx) {
-    const record = await ctx.data.query('records', { limit: 1 });
-    ctx.events.emit('record.loaded', { title: record.title });
-    return Text({ children: record.title });
-  }
-});
+async function main(ctx) {
+  const record = await ctx.interfaces.call('listRecords', { query: { limit: 1 } });
+  ctx.events.emit('record.loaded', { title: record.title });
+  return { view: Text({ children: record.title }), outputs: { title: record.title } };
+}
+export default { main };
 `;
 
 class FakeWorkerScope implements JsBlockWorkerRuntimeScope {
@@ -104,11 +102,6 @@ function createRunRequest(
 
 function createTestModuleOverrides() {
   return {
-    '@1flowbase/block-sdk': {
-      defineBlock(definition: unknown) {
-        return definition;
-      }
-    },
     '@1flowbase/block-renderer/antd-facade': {
       Text(input: { children?: unknown; props?: { children?: unknown } }) {
         return {
@@ -122,15 +115,15 @@ function createTestModuleOverrides() {
 
 function findEffectMessage(
   messages: JsBlockWorkerToHostMessage[]
-): Extract<JsBlockWorkerToHostMessage, { type: 'data' }> {
-  const message = messages.find((item) => item.type === 'data');
+): Extract<JsBlockWorkerToHostMessage, { type: 'interface' }> {
+  const message = messages.find((item) => item.type === 'interface');
   expect(message).toMatchObject({
     direction: 'worker_to_host',
-    type: 'data',
+    type: 'interface',
     requestId: 'restricted-block:block-1:code-1',
     effectId: expect.any(String)
   });
-  return message as Extract<JsBlockWorkerToHostMessage, { type: 'data' }>;
+  return message as Extract<JsBlockWorkerToHostMessage, { type: 'interface' }>;
 }
 
 function withoutPhaseMessages(messages: JsBlockWorkerToHostMessage[]) {
@@ -174,10 +167,10 @@ describe('FrontStage restricted block worker runtime', () => {
       { direction: 'worker_to_host', type: 'ready' },
       {
         direction: 'worker_to_host',
-        type: 'data',
+        type: 'interface',
         requestId: 'restricted-block:block-1:code-1',
-        queryId: 'records',
-        params: { limit: 1 },
+        bindingAlias: 'listRecords',
+        request: { query: { limit: 1 } },
         effectId: effectMessage.effectId
       },
       {
@@ -189,9 +182,10 @@ describe('FrontStage restricted block worker runtime', () => {
       },
       {
         direction: 'worker_to_host',
-        type: 'rendered',
+        type: 'completed',
         requestId: 'restricted-block:block-1:code-1',
-        schema: { primitive: 'Text', props: { children: 'Ready' } }
+        view: { primitive: 'Text', props: { children: 'Ready' } },
+        outputs: { title: 'Ready' }
       }
     ]);
   });

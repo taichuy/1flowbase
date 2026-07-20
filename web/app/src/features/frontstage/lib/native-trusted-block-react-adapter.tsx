@@ -1,9 +1,17 @@
-import { Component, type ComponentType, type ErrorInfo, type ReactNode } from 'react';
+import {
+  Component,
+  type ComponentType,
+  type ErrorInfo,
+  type ReactNode
+} from 'react';
 import { App as AntdApp, ConfigProvider } from 'antd';
 import type { ConfigProviderProps } from 'antd/es/config-provider';
 import { createRoot as defaultCreateRoot } from 'react-dom/client';
 
-import type { BlockContext, BlockProtocolError } from '@1flowbase/page-protocol';
+import type {
+  BlockContext,
+  BlockProtocolError
+} from '@1flowbase/page-protocol';
 import {
   createNativeTrustedBlockPortalContainment,
   isNativeTrustedBlockRuntimeError,
@@ -64,8 +72,7 @@ export type FrontstageNativeTrustedBlockProviderWrapper = (
   context: FrontstageNativeTrustedBlockProviderContext
 ) => ReactNode;
 
-export interface FrontstageNativeTrustedBlockRuntimeErrorContext
-  extends FrontstageNativeTrustedBlockProviderContext {
+export interface FrontstageNativeTrustedBlockRuntimeErrorContext extends FrontstageNativeTrustedBlockProviderContext {
   blockId: string;
   componentStack?: string;
 }
@@ -150,11 +157,12 @@ export function createFrontstageNativeTrustedBlockReactAdapter(
 
 function resolveControlledBlockContext(
   context: FrontstageNativeTrustedBlockProviderContext,
-  resolveBlockContext:
-    | FrontstageNativeTrustedBlockResolveContext
-    | undefined
+  resolveBlockContext: FrontstageNativeTrustedBlockResolveContext | undefined
 ): BlockContext {
-  return resolveBlockContext?.(context) ?? createUnavailableBlockContext(context.plan);
+  return (
+    resolveBlockContext?.(context) ??
+    createUnavailableBlockContext(context.plan)
+  );
 }
 
 function createUnavailableBlockContext(
@@ -170,20 +178,15 @@ function createUnavailableBlockContext(
       id: plan.blockId,
       route: plan.blockId
     },
+    inputs: {},
     params: {},
     props: { ...plan.props },
     state,
     patch(patch) {
       Object.assign(state, patch);
     },
-    data: {
-      query: rejectUnavailable('ctx.data.query'),
-      create: rejectUnavailable('ctx.data.create'),
-      update: rejectUnavailable('ctx.data.update'),
-      delete: rejectUnavailable('ctx.data.delete')
-    },
-    actions: {
-      invoke: rejectUnavailable('ctx.actions.invoke')
+    interfaces: {
+      call: rejectUnavailable('ctx.interfaces.call')
     },
     events: {
       emit() {

@@ -26,9 +26,9 @@ type JsBlockHostEffectWithId<Effect extends JsBlockHostResolvableEffect> =
     effectId: string;
   };
 
-export type JsBlockHostEffectHandler<Effect extends JsBlockHostResolvableEffect> = (
-  effect: Effect
-) => unknown | Promise<unknown>;
+export type JsBlockHostEffectHandler<
+  Effect extends JsBlockHostResolvableEffect
+> = (effect: Effect) => unknown | Promise<unknown>;
 
 export interface JsBlockHostEffectHandlers {
   interface?: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
@@ -38,6 +38,18 @@ export interface JsBlockHostEffectBridgeOptions {
   mediator: BlockContextMediator;
   resolveEffect(message: JsBlockWorkerEffectResultMessage): void;
   handlers?: JsBlockHostEffectHandlers;
+  onInterfaceCall?: (trace: JsBlockInterfaceCallTrace) => void;
+}
+
+export interface JsBlockInterfaceCallTrace {
+  requestId: string;
+  effectId: string;
+  bindingAlias: string;
+  request?: unknown;
+  response?: unknown;
+  status: 'succeeded' | 'failed';
+  durationMs: number;
+  error?: string;
 }
 
 export type JsBlockHostEffectBridgeHandleResult =
@@ -93,7 +105,12 @@ export function createJsBlockHostEffectBridge(
         );
         return { handled: true, transition };
       }
-      resolveAllowedEffect(effect, interfaceHandler, resolveEffect);
+      resolveAllowedEffect(
+        effect,
+        interfaceHandler,
+        resolveEffect,
+        options.onInterfaceCall
+      );
       return { handled: true, transition };
     }
   };
@@ -123,22 +140,80 @@ function resolveMissingHandler(
 function resolveAllowedEffect<Effect extends JsBlockHostResolvableEffect>(
   effect: JsBlockHostEffectWithId<Effect>,
   handler: JsBlockHostEffectHandler<Effect>,
-  resolveEffect: (message: JsBlockWorkerEffectResultMessage) => void
+  resolveEffect: (message: JsBlockWorkerEffectResultMessage) => void,
+  onInterfaceCall?: (trace: JsBlockInterfaceCallTrace) => void
 ): void {
+  const startedAt = Date.now();
   try {
     const value = handler(effect);
     if (isPromiseLike(value)) {
       void value.then(
-        (resolvedValue) =>
-          resolveEffect(createEffectSuccessMessage(effect, resolvedValue)),
-        (error) => resolveEffect(createHandlerFailureMessage(effect, error))
+        (resolvedValue) => {
+          resolveEffect(createEffectSuccessMessage(effect, resolvedValue));
+          emitInterfaceTrace(effect, startedAt, onInterfaceCall, {
+            status: 'succeeded',
+            response: resolvedValue
+          });
+        },
+        (error) => {
+          resolveEffect(createHandlerFailureMessage(effect, error));
+          emitInterfaceTrace(effect, startedAt, onInterfaceCall, {
+            status: 'failed',
+            error:
+              error instanceof Error ? error.message : 'Interface call failed.'
+          });
+        }
       );
       return;
     }
 
     resolveEffect(createEffectSuccessMessage(effect, value));
+    emitInterfaceTrace(effect, startedAt, onInterfaceCall, {
+      status: 'succeeded',
+      response: value
+    });
   } catch (error) {
     resolveEffect(createHandlerFailureMessage(effect, error));
+    emitInterfaceTrace(effect, startedAt, onInterfaceCall, {
+      status: 'failed',
+      error: error instanceof Error ? error.message : 'Interface call failed.'
+    });
+  }
+}
+
+function emitInterfaceTrace(
+  effect: JsBlockHostEffectWithId<JsBlockHostResolvableEffect>,
+  startedAt: number,
+  callback: ((trace: JsBlockInterfaceCallTrace) => void) | undefined,
+  result: Pick<JsBlockInterfaceCallTrace, 'status' | 'response' | 'error'>
+): void {
+  callback?.({
+    requestId: effect.requestId,
+    effectId: effect.effectId,
+    bindingAlias: effect.bindingAlias,
+    ...(effect.request === undefined
+      ? {}
+      : { request: sanitizeTraceValue(effect.request) }),
+    ...(result.response === undefined
+      ? {}
+      : { response: sanitizeTraceValue(result.response) }),
+    status: result.status,
+    durationMs: Math.max(0, Date.now() - startedAt),
+    ...(result.error ? { error: result.error } : {})
+  });
+}
+
+function sanitizeTraceValue(value: unknown): unknown {
+  try {
+    return JSON.parse(
+      JSON.stringify(value, (key, item) =>
+        /authorization|cookie|token|secret|api[_-]?key/i.test(key)
+          ? '[REDACTED]'
+          : item
+      )
+    );
+  } catch {
+    return '[Unserializable]';
   }
 }
 
@@ -245,9 +320,7 @@ function isWorkerEffectMessage(value: unknown): value is WorkerEffectMessage {
     return false;
   }
 
-  return (
-    value.type === 'event' || value.type === 'interface'
-  );
+  return value.type === 'event' || value.type === 'interface';
 }
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {

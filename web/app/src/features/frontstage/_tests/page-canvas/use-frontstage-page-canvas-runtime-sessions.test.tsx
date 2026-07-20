@@ -1,13 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type {
-  JsBlockHostDataEffect,
+  JsBlockHostInterfaceEffect,
   JsBlockHostEffectHandler
 } from '@1flowbase/page-runtime';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type {
-  FrontstageRestrictedBlockRuntimeSession
-} from '../../lib/frontstage-restricted-block-runtime-host';
+import type { FrontstageRestrictedBlockRuntimeSession } from '../../lib/frontstage-restricted-block-runtime-host';
 import type {
   FrontstagePageCanvasRuntimeRunPlanItem,
   FrontstagePageCanvasRuntimeRunPlanReadyItem,
@@ -25,7 +23,8 @@ function createRunPlan(
   overrides: Partial<RestrictedBlockRunPlan['request']> = {}
 ): RestrictedBlockRunPlan {
   const blockId = overrides.blockId ?? 'hero';
-  const requestId = overrides.requestId ?? `restricted-block:${blockId}:hero-code`;
+  const requestId =
+    overrides.requestId ?? `restricted-block:${blockId}:hero-code`;
 
   return {
     ok: true,
@@ -47,13 +46,12 @@ function createRunPlan(
       maxDepth: 8,
       maxNodes: 250,
       allowedDataPermissions: ['query'],
-      allowedActions: ['record.save'],
+
       allowedEvents: ['record.saved']
     },
     mediatorPolicy: {
-      allowedQueries: ['records'],
-      allowedDataOperations: ['query'],
-      allowedActions: ['record.save'],
+      allowedInterfaces: ['listRecords'],
+
       allowedEvents: ['record.saved'],
       maxEventChainDepth: 4
     }
@@ -71,7 +69,7 @@ function createSnapshot(
       maxDepth: 8,
       maxNodes: 250,
       allowedDataPermissions: ['query'],
-      allowedActions: ['record.save'],
+
       allowedEvents: ['record.saved']
     },
     logs: [],
@@ -272,7 +270,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       })
     );
     const runtimeSessionFactory = vi.fn(() => runtimeSession.session);
-    const dataEffectHandler: JsBlockHostEffectHandler<JsBlockHostDataEffect> =
+    const interfaceEffectHandler: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect> =
       vi.fn(async () => ({ ok: true }));
     const runtimeRunPlanState = createRunPlanState([readyItem]);
 
@@ -280,7 +278,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       useFrontstagePageCanvasRuntimeSessions({
         runtimeRunPlanState,
         runtimeSessionFactory,
-        handlers: { data: dataEffectHandler }
+        handlers: { interface: interfaceEffectHandler }
       })
     );
 
@@ -301,7 +299,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
 
     expect(runtimeSessionFactory).toHaveBeenCalledWith({
       runPlan: readyItem.runPlan,
-      handlers: { data: dataEffectHandler }
+      handlers: { interface: interfaceEffectHandler }
     });
     expect(runtimeSession.callOrder).toEqual(['subscribe', 'run']);
     expect(result.current.snapshotsBySlot[2]).toMatchObject({
@@ -313,7 +311,9 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
   });
 
   test('skips non-ready run plan items without creating sessions', async () => {
-    const runtimeSessionFactory = vi.fn(() => createFakeRuntimeSession().session);
+    const runtimeSessionFactory = vi.fn(
+      () => createFakeRuntimeSession().session
+    );
     const runtimeRunPlanState = createRunPlanState([
       createSkippedItem('source_not_ready', 0),
       createSkippedItem('catalog_missing', 1),
@@ -373,7 +373,10 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
         blockId: secondItem.blockId
       })
     );
-    const sessions = [firstRuntimeSession.session, secondRuntimeSession.session];
+    const sessions = [
+      firstRuntimeSession.session,
+      secondRuntimeSession.session
+    ];
     const runtimeSessionFactory = vi.fn(() => sessions.shift()!);
 
     const { result, rerender } = renderHook(
@@ -460,7 +463,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
           requestId: readyItem.runPlan.request.requestId,
           blockId: readyItem.blockId,
           status: 'ready',
-          schema: {
+          view: {
             primitive: 'Text',
             props: { children: 'Runtime Ready' }
           }
@@ -472,7 +475,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       status: 'ready',
       snapshot: {
         status: 'ready',
-        schema: {
+        view: {
           primitive: 'Text',
           props: { children: 'Runtime Ready' }
         }
@@ -515,11 +518,10 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
   test('reports factory errors as stable entries instead of crashing', async () => {
     const failure = new Error('factory failed');
     const runtimeRunPlanState = createRunPlanState([createReadyItem()]);
-    const runtimeSessionFactory: FrontstagePageCanvasRuntimeSessionFactory = vi.fn(
-      () => {
+    const runtimeSessionFactory: FrontstagePageCanvasRuntimeSessionFactory =
+      vi.fn(() => {
         throw failure;
-      }
-    );
+      });
 
     const { result } = renderHook(() =>
       useFrontstagePageCanvasRuntimeSessions({
@@ -557,12 +559,11 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       )
     );
     const startedBlockIds: string[] = [];
-    const runtimeSessionFactory: FrontstagePageCanvasRuntimeSessionFactory = vi.fn(
-      (options) => {
+    const runtimeSessionFactory: FrontstagePageCanvasRuntimeSessionFactory =
+      vi.fn((options) => {
         startedBlockIds.push(options.runPlan.request.blockId);
         return sessions[startedBlockIds.length - 1]!.session;
-      }
-    );
+      });
     const runtimeRunPlanState = createRunPlanState(items);
 
     renderHook(() =>
@@ -582,7 +583,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
           status: 'ready',
           requestId: items[1]!.runPlan.request.requestId,
           blockId: 'visible',
-          schema: { primitive: 'Text', props: { children: 'ready' } }
+          view: { primitive: 'Text', props: { children: 'ready' } }
         })
       );
     });
@@ -595,7 +596,9 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       configurable: true,
       value: 'hidden'
     });
-    const runtimeSessionFactory = vi.fn(() => createFakeRuntimeSession().session);
+    const runtimeSessionFactory = vi.fn(
+      () => createFakeRuntimeSession().session
+    );
     const runtimeRunPlanState = createRunPlanState([createReadyItem()]);
 
     renderHook(() =>
@@ -638,7 +641,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
           status: 'ready',
           requestId: item.runPlan.request.requestId,
           blockId: item.blockId,
-          schema: { primitive: 'Text', props: { children: 'cached' } }
+          view: { primitive: 'Text', props: { children: 'cached' } }
         })
       );
     });
@@ -657,7 +660,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       expect(secondRender.result.current.entries[0]).toMatchObject({
         status: 'ready',
         snapshot: {
-          schema: { primitive: 'Text', props: { children: 'cached' } }
+          view: { primitive: 'Text', props: { children: 'cached' } }
         }
       });
       expect(revalidationFactory).toHaveBeenCalledTimes(1);

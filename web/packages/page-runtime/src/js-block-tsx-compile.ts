@@ -1,4 +1,4 @@
-import { transform } from 'sucrase';
+import { transform, type TransformResult } from 'sucrase';
 
 import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
@@ -8,22 +8,29 @@ export const JSX_RUNTIME_IMPORT_SOURCE =
   '@1flowbase/block-renderer/antd-facade';
 
 export type JsBlockTsxCompileResult =
-  | { ok: true; code: string; changed: boolean }
+  | {
+      ok: true;
+      code: string;
+      changed: boolean;
+      sourceMap?: TransformResult['sourceMap'];
+    }
   | { ok: false; errors: BlockProtocolError[] };
 
 export function compileJsBlockTsxSource(
   source: string
 ): JsBlockTsxCompileResult {
-  let compiled: string;
+  let transformed: TransformResult;
   try {
-    compiled = transform(source, {
+    transformed = transform(source, {
       transforms: ['jsx', 'typescript'],
       jsxPragma: JSX_PRAGMA,
       jsxFragmentPragma: JSX_FRAGMENT_PRAGMA,
       production: true,
       disableESTransforms: true,
-      keepUnusedImports: true
-    }).code;
+      keepUnusedImports: true,
+      filePath: 'block.tsx',
+      sourceMapOptions: { compiledFilename: 'block.js' }
+    });
   } catch (error) {
     return {
       ok: false,
@@ -33,21 +40,42 @@ export function compileJsBlockTsxSource(
           path: 'source.tsx',
           message: `Code block TSX compile failed: ${
             error instanceof Error ? error.message : String(error)
-          }`
+          }`,
+          ...readCompileSourceLocation(error)
         }
       ]
     };
   }
+  const compiled = transformed.code;
 
   if (compiled === source) {
-    return { ok: true, code: compiled, changed: false };
+    return {
+      ok: true,
+      code: compiled,
+      changed: false,
+      sourceMap: transformed.sourceMap
+    };
   }
 
   return {
     ok: true,
     code: ensureJsxRuntimeImport(source, compiled),
-    changed: true
+    changed: true,
+    sourceMap: transformed.sourceMap
   };
+}
+
+function readCompileSourceLocation(error: unknown): {
+  sourceLocation?: { line: number; column: number };
+} {
+  if (typeof error !== 'object' || error === null) return {};
+  const loc = (error as { loc?: unknown }).loc;
+  if (typeof loc !== 'object' || loc === null) return {};
+  const line = (loc as { line?: unknown }).line;
+  const column = (loc as { column?: unknown }).column;
+  return typeof line === 'number' && typeof column === 'number'
+    ? { sourceLocation: { line, column: column + 1 } }
+    : {};
 }
 
 function ensureJsxRuntimeImport(original: string, compiled: string): string {

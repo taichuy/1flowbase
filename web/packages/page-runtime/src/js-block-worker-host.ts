@@ -48,6 +48,7 @@ export interface JsBlockWorkerHostEffectBridgeOptions {
   policy: BlockContextMediatorPolicy;
   initialState?: BlockContextMediatorState;
   handlers?: JsBlockHostEffectHandlers;
+  onInterfaceCall?: import('./js-block-host-effect-bridge').JsBlockHostEffectBridgeOptions['onInterfaceCall'];
   getContext?: (message: unknown) => BlockContextMediatorContext;
 }
 
@@ -56,7 +57,9 @@ export interface JsBlockWorkerHost {
   getEffectMediatorState(): BlockContextMediatorState | undefined;
   init(): JsBlockRuntimeSessionState;
   run(request: JsBlockRunRequest): JsBlockRuntimeSessionState;
-  resolveEffect(message: JsBlockWorkerEffectResultMessage): JsBlockRuntimeSessionState;
+  resolveEffect(
+    message: JsBlockWorkerEffectResultMessage
+  ): JsBlockRuntimeSessionState;
   dispose(requestId?: string): JsBlockRuntimeSessionState;
 }
 
@@ -160,7 +163,8 @@ export function createJsBlockWorkerHost(
         options.effectBridge.initialState
       ),
       resolveEffect: resolveEffectMessage,
-      handlers: options.effectBridge.handlers
+      handlers: options.effectBridge.handlers,
+      onInterfaceCall: options.effectBridge.onInterfaceCall
     });
   }
 
@@ -190,10 +194,11 @@ export function createJsBlockWorkerHost(
   const scheduleStartupTimeout = () => {
     clearStartupTimeout();
     startupTimeoutHandle = scheduleTimeout(
-      () => failCurrentRequest(
-        'worker_startup_timeout',
-        'JS block worker did not become ready in time.'
-      ),
+      () =>
+        failCurrentRequest(
+          'worker_startup_timeout',
+          'JS block worker did not become ready in time.'
+        ),
       options.startupTimeoutMs ?? 5000
     );
   };
@@ -276,7 +281,10 @@ export function createJsBlockWorkerHost(
         return state;
       }
 
-      if (state.workerStatus === 'initializing' || state.workerStatus === 'ready') {
+      if (
+        state.workerStatus === 'initializing' ||
+        state.workerStatus === 'ready'
+      ) {
         return state;
       }
       const message = {

@@ -1,10 +1,7 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
-import { JsBlockTrialPanel } from '../../components/JsBlockTrialPanel';
 import { RestrictedBlockRuntimePreview } from '../../components/RestrictedBlockRuntimePreview';
-import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
-import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { RestrictedBlockRuntimeHostSnapshot } from '../../lib/restricted-block-runtime-host';
 
 function createSnapshot(
@@ -28,59 +25,6 @@ function createSnapshot(
   };
 }
 
-function createBlock(): FrontstageBlockInstance {
-  return {
-    id: 'block-1',
-    rendererVersion: 'v1',
-    sourceId: 'block-1',
-    codeRef: 'code-1',
-    sourceCodeRef: 'code-1',
-    catalog: {
-      providerCode: 'official',
-      installationId: 'installation-1'
-    },
-    contribution: {
-      pluginId: 'official.blocks',
-      pluginVersion: '1.0.0',
-      code: 'metric.panel'
-    },
-    props: { title: 'Revenue' },
-    presentation: { heightMode: 'auto', height: null },
-    layout: { order: 1 },
-    order: 1,
-    runtime: {
-      kind: 'iframe',
-      entry: 'blocks/metric/index.js',
-      hint: 'iframe'
-    }
-  };
-}
-
-function createCatalogEntry(): NormalizedFrontstageBlockCatalogEntry {
-  return {
-    id: 'official:metric.panel',
-    runtimeKind: 'iframe',
-    installationId: 'installation-1',
-    providerCode: 'official',
-    pluginId: 'official.blocks',
-    pluginVersion: '1.0.0',
-    contributionCode: 'metric.panel',
-    title: 'Metric Panel',
-    entry: 'blocks/metric/index.js',
-    permissions: {
-      network: 'none',
-      storage: 'none',
-      secrets: 'none'
-    },
-    contextContract: {
-      primitives: ['text', 'button'],
-      inputSchema: { type: 'object' }
-    },
-    uiCapabilities: ['responsive'],
-    raw: {} as NormalizedFrontstageBlockCatalogEntry['raw']
-  };
-}
-
 describe('RestrictedBlockRuntimePreview', () => {
   test('renders a ready snapshot with BlockUiRenderer and relays renderer actions through the injected callback', () => {
     const onAction = vi.fn();
@@ -89,7 +33,7 @@ describe('RestrictedBlockRuntimePreview', () => {
       <RestrictedBlockRuntimePreview
         snapshot={createSnapshot({
           status: 'ready',
-          schema: {
+          view: {
             primitive: 'Stack',
             children: [
               { primitive: 'Title', props: { children: 'Runtime Result' } },
@@ -115,11 +59,11 @@ describe('RestrictedBlockRuntimePreview', () => {
           ],
           effects: [
             {
-              type: 'action',
+              type: 'interface',
               requestId: 'restricted-block:block-1:code-1',
               effectId: 'effect-1',
-              actionId: 'record.save',
-              payload: { hidden: 'raw-effect-value' }
+              bindingAlias: 'saveRecord',
+              request: { hidden: 'raw-effect-value' }
             }
           ],
           rejections: [
@@ -153,7 +97,7 @@ describe('RestrictedBlockRuntimePreview', () => {
     expect(screen.getByText('日志')).toBeInTheDocument();
     expect(screen.getByText('1 条')).toBeInTheDocument();
     expect(screen.getByText('效果')).toBeInTheDocument();
-    expect(screen.getByText('动作 effect: record.save')).toBeInTheDocument();
+    expect(screen.getByText('接口: saveRecord')).toBeInTheDocument();
     expect(screen.getByText('拒绝项')).toBeInTheDocument();
     expect(screen.getByText('invalid_message')).toBeInTheDocument();
     expect(screen.queryByText(/raw-log-value/)).not.toBeInTheDocument();
@@ -217,7 +161,9 @@ describe('RestrictedBlockRuntimePreview', () => {
 
   test('renders idle and running as local loading shells while keeping disposed explicit', () => {
     const { rerender } = render(
-      <RestrictedBlockRuntimePreview snapshot={createSnapshot({ status: 'idle' })} />
+      <RestrictedBlockRuntimePreview
+        snapshot={createSnapshot({ status: 'idle' })}
+      />
     );
 
     expect(screen.getByTestId('block-ui-loading-shell')).toHaveAttribute(
@@ -225,7 +171,9 @@ describe('RestrictedBlockRuntimePreview', () => {
       'true'
     );
     expect(screen.queryByText('尚未运行')).not.toBeInTheDocument();
-    expect(screen.queryByText(/restricted-block:block-1:code-1/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/restricted-block:block-1:code-1/)
+    ).not.toBeInTheDocument();
 
     rerender(
       <RestrictedBlockRuntimePreview
@@ -251,65 +199,9 @@ describe('RestrictedBlockRuntimePreview', () => {
         snapshot={createSnapshot({ status: 'disposed' })}
       />
     );
-    expect(screen.queryByTestId('block-ui-loading-shell')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('block-ui-loading-shell')
+    ).not.toBeInTheDocument();
     expect(screen.getByText('已释放')).toBeInTheDocument();
-  });
-
-  test('keeps JsBlockTrialPanel run plan UI without a snapshot and shows runtime results when a snapshot is injected', () => {
-    const onRuntimeAction = vi.fn();
-    const { rerender } = render(
-      <JsBlockTrialPanel
-        block={createBlock()}
-        catalogEntry={createCatalogEntry()}
-        code="export default { render() {} }"
-        contextSnapshot={{ pageId: 'page-1' }}
-        limits={{ timeoutMs: 1000 }}
-      />
-    );
-
-    expect(screen.getByText('Run plan 已生成')).toBeInTheDocument();
-    expect(screen.queryByText('运行结果')).not.toBeInTheDocument();
-
-    rerender(
-      <JsBlockTrialPanel
-        block={createBlock()}
-        catalogEntry={createCatalogEntry()}
-        code="export default { render() {} }"
-        contextSnapshot={{ pageId: 'page-1' }}
-        limits={{ timeoutMs: 1000 }}
-        runtimeSnapshot={createSnapshot({
-          status: 'ready',
-          schema: {
-            primitive: 'Stack',
-            children: [
-              { primitive: 'Text', props: { children: 'Rendered preview' } },
-              {
-                primitive: 'Button',
-                key: 'panel-action',
-                props: {
-                  children: 'Panel action',
-                  actionId: 'record.save'
-                }
-              }
-            ]
-          }
-        })}
-        onRuntimeAction={onRuntimeAction}
-      />
-    );
-
-    const runtimeResult = screen.getByTestId('restricted-block-runtime-preview');
-    expect(within(runtimeResult).queryByText('运行结果')).not.toBeInTheDocument();
-    expect(within(runtimeResult).getByText('Rendered preview')).toBeInTheDocument();
-    fireEvent.click(
-      within(runtimeResult).getByRole('button', { name: 'Panel action' })
-    );
-    expect(onRuntimeAction).toHaveBeenCalledWith({
-      type: 'action',
-      primitive: 'Button',
-      key: 'panel-action',
-      actionId: 'record.save'
-    });
-    expect(screen.getByText('Run plan 已生成')).toBeInTheDocument();
   });
 });

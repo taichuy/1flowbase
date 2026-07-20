@@ -36,7 +36,7 @@ const PAGE_TAB_SAVE_OPERATION_ID: &str = "save_frontstage_tab_document";
 enum CallableAdapter {
     RuntimeDataModel,
     PageTabGet,
-    PageTabSaveDisabled,
+    PageTabSave,
 }
 
 struct RegisteredCallable {
@@ -88,6 +88,14 @@ pub struct DispatchFrontstageCallableBody {
     pub operation_id: String,
     #[serde(default)]
     pub request: DispatchArguments,
+    pub run_authorization: Option<FrontstageCallableRunAuthorization>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct FrontstageCallableRunAuthorization {
+    pub run_id: String,
+    pub operation_id: String,
+    pub confirmed: bool,
 }
 
 #[utoipa::path(
@@ -165,6 +173,18 @@ pub async fn dispatch_frontstage_callable_interface(
     if !callable.bindable {
         return Err(ControlPlaneError::InvalidInput("operation_id").into());
     }
+    if callable.risk_level == "high"
+        && !body
+            .run_authorization
+            .as_ref()
+            .is_some_and(|authorization| {
+                authorization.confirmed
+                    && !authorization.run_id.trim().is_empty()
+                    && authorization.operation_id == body.operation_id
+            })
+    {
+        return Err(ControlPlaneError::InvalidInput("run_authorization").into());
+    }
 
     let injected_path = match callable.adapter {
         CallableAdapter::RuntimeDataModel => BTreeMap::new(),
@@ -173,9 +193,11 @@ pub async fn dispatch_frontstage_callable_interface(
             ("page_id".to_string(), page_id.to_string()),
             ("tab_reference".to_string(), tab_id.to_string()),
         ]),
-        CallableAdapter::PageTabSaveDisabled => {
-            return Err(ControlPlaneError::InvalidInput("operation_id").into());
-        }
+        CallableAdapter::PageTabSave => BTreeMap::from([
+            ("workspace_id".to_string(), workspace_id.to_string()),
+            ("page_id".to_string(), page_id.to_string()),
+            ("tab_id".to_string(), tab_id.to_string()),
+        ]),
     };
 
     match crate::openapi_interface::dispatch(
@@ -210,10 +232,10 @@ async fn registered_callables(
                     adapter: if is_get {
                         CallableAdapter::PageTabGet
                     } else {
-                        CallableAdapter::PageTabSaveDisabled
+                        CallableAdapter::PageTabSave
                     },
-                    bindable: is_get,
-                    disabled_reason: (!is_get).then_some("write_requires_run_authorization"),
+                    bindable: true,
+                    disabled_reason: None,
                     host_injected_parameters: if is_get {
                         vec!["workspace_id", "page_id", "tab_reference"]
                     } else {
@@ -325,7 +347,7 @@ fn to_response(mut entry: RegisteredCallable) -> FrontstageCallableResponse {
         adapter_id: match entry.adapter {
             CallableAdapter::RuntimeDataModel => "runtime_data_model",
             CallableAdapter::PageTabGet => "frontstage_page_tab_get",
-            CallableAdapter::PageTabSaveDisabled => "frontstage_page_tab_save",
+            CallableAdapter::PageTabSave => "frontstage_page_tab_save",
         }
         .to_string(),
         host_injected_parameters: entry

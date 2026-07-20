@@ -1360,9 +1360,7 @@ async fn page_presentation_and_tab_route_segments_are_persisted_and_resolved() {
 
     let (legacy_status, legacy_payload) = get_json(
         &app,
-        &format!(
-            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{default_tab_id}"
-        ),
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{default_tab_id}"),
         &cookie,
     )
     .await;

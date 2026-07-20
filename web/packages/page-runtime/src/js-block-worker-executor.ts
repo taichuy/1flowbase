@@ -12,6 +12,7 @@ import { isBlockResult } from '@1flowbase/block-sdk';
 
 import {
   evaluateJsBlockSource,
+  mapJsBlockRuntimeSourceLocation,
   type JsBlockInjectedModuleMap
 } from './js-block-source-evaluator';
 import type {
@@ -216,7 +217,8 @@ async function runRequest(
 ): Promise<void> {
   const evaluation = evaluateJsBlockSource({
     source: request.source,
-    modules: selectRequestModules(modules, request.allowedImports)
+    modules: selectRequestModules(modules, request.allowedImports),
+    console: createWorkerConsole(request.requestId, postMessage)
   });
 
   if (!evaluation.ok) {
@@ -244,7 +246,8 @@ async function runRequest(
       runtimeError(
         'main_failed',
         'runtime.main',
-        `JS block main failed: ${getErrorMessage(error)}`
+        `JS block main failed: ${getErrorMessage(error)}`,
+        mapJsBlockRuntimeSourceLocation(error, evaluation.compiledSource)
       ),
       postMessage
     );
@@ -271,6 +274,44 @@ async function runRequest(
     view: blockResult.view,
     outputs: blockResult.outputs
   });
+}
+
+function createWorkerConsole(
+  requestId: string,
+  postMessage: (message: JsBlockWorkerToHostMessage) => void
+) {
+  const write = (
+    level: 'debug' | 'info' | 'warn' | 'error',
+    values: unknown[]
+  ) => {
+    postMessage({
+      direction: 'worker_to_host',
+      type: 'log',
+      requestId,
+      level,
+      message: values
+        .map((value) =>
+          typeof value === 'string' ? value : safeStringify(value)
+        )
+        .join(' '),
+      data: values.length > 1 ? values : values[0]
+    });
+  };
+  return {
+    debug: (...values: unknown[]) => write('debug', values),
+    info: (...values: unknown[]) => write('info', values),
+    log: (...values: unknown[]) => write('info', values),
+    warn: (...values: unknown[]) => write('warn', values),
+    error: (...values: unknown[]) => write('error', values)
+  };
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return '[Unserializable]';
+  }
 }
 
 function selectRequestModules(
@@ -319,7 +360,7 @@ function createBlockContext(
     workspace: readEntity(snapshot.workspace, 'workspace'),
     application: readEntity(snapshot.application, 'application'),
     page: readPage(snapshot.page),
-    inputs: { ...request.inputs },
+    inputs: { ...(request.inputs ?? {}) },
     params: readRecord(snapshot.params),
     props: { ...request.props },
     state,
@@ -380,12 +421,20 @@ function postError(
 function runtimeError(
   kind: JsBlockRunError['kind'],
   path: string,
-  message: string
+  message: string,
+  sourceLocation?: import('@1flowbase/page-protocol').BlockSourceLocation
 ): JsBlockRunError {
   return {
     kind,
     message,
-    errors: [{ code: 'runtime_error', path, message }]
+    errors: [
+      {
+        code: 'runtime_error',
+        path,
+        message,
+        ...(sourceLocation ? { sourceLocation } : {})
+      }
+    ]
   };
 }
 

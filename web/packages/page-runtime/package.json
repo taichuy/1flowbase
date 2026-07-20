@@ -7,6 +7,7 @@
     "@1flowbase/block-renderer": "workspace:*",
     "@1flowbase/block-sdk": "workspace:*",
     "@1flowbase/page-protocol": "workspace:*",
+    "@jridgewell/trace-mapping": "^0.3.31",
     "sucrase": "^3.35.0"
   },
   "scripts": {

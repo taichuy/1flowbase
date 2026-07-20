@@ -301,7 +301,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
         runPlanStatus: 'run_plan_ready',
         snapshot: createRuntimeSnapshot({
           status: 'ready',
-          schema: {
+          view: {
             primitive: 'Title',
             props: { children: 'FrontStage Runtime Snapshot' }
           }

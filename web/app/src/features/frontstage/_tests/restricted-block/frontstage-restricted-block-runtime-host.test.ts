@@ -111,14 +111,14 @@ function createRunPlan(
       maxDepth: 8,
       maxNodes: 250,
       allowedDataPermissions: ['query'],
-      allowedActions: ['record.save'],
+
       allowedEvents: ['record.saved']
     },
     mediatorPolicy: {
       allowedEvents: ['record.saved'],
-      allowedActions: ['record.save'],
-      allowedQueries: ['records'],
-      allowedDataOperations: ['query'],
+
+      allowedInterfaces: ['listRecords'],
+
       maxEventChainDepth: 4
     },
     ...overrides
@@ -163,14 +163,14 @@ describe('FrontStage restricted block runtime host factory', () => {
       direction: 'worker_to_host',
       type: 'rendered',
       requestId: 'restricted-block:block-1:code-1',
-      schema: { primitive: 'Text', props: { children: 'Ready' } }
+      view: { primitive: 'Text', props: { children: 'Ready' } }
     });
 
     expect(snapshots).toMatchObject([
       { status: 'running' },
       {
         status: 'ready',
-        schema: { primitive: 'Text', props: { children: 'Ready' } }
+        view: { primitive: 'Text', props: { children: 'Ready' } }
       }
     ]);
   });
@@ -181,9 +181,7 @@ describe('FrontStage restricted block runtime host factory', () => {
       ReturnType<typeof failedByError.host.getSnapshot>
     > = [];
 
-    failedByError.host.subscribe((snapshot) =>
-      errorSnapshots.push(snapshot)
-    );
+    failedByError.host.subscribe((snapshot) => errorSnapshots.push(snapshot));
     failedByError.host.run();
     failedByError.worker.emitError('worker exploded');
 
@@ -244,7 +242,7 @@ describe('FrontStage restricted block runtime host factory', () => {
       direction: 'worker_to_host',
       type: 'rendered',
       requestId: 'restricted-block:block-1:code-1',
-      schema: { primitive: 'Text', props: { children: 'Late' } }
+      view: { primitive: 'Text', props: { children: 'Late' } }
     });
 
     expect(snapshots).toMatchObject([
@@ -253,15 +251,13 @@ describe('FrontStage restricted block runtime host factory', () => {
     ]);
     const snapshot = host.getSnapshot();
     expect(snapshot.status).toBe('disposed');
-    expect(snapshot.schema).toBeUndefined();
+    expect(snapshot.view).toBeUndefined();
   });
 
   test('stops notifying after unsubscribe', () => {
     const { host, worker } = createObservableSubject();
     const snapshots: Array<ReturnType<typeof host.getSnapshot>> = [];
-    const unsubscribe = host.subscribe((snapshot) =>
-      snapshots.push(snapshot)
-    );
+    const unsubscribe = host.subscribe((snapshot) => snapshots.push(snapshot));
 
     host.run();
     unsubscribe();
@@ -269,7 +265,7 @@ describe('FrontStage restricted block runtime host factory', () => {
       direction: 'worker_to_host',
       type: 'rendered',
       requestId: 'restricted-block:block-1:code-1',
-      schema: { primitive: 'Text', props: { children: 'Ready' } }
+      view: { primitive: 'Text', props: { children: 'Ready' } }
     });
     host.dispose();
 
@@ -278,19 +274,23 @@ describe('FrontStage restricted block runtime host factory', () => {
 
   test('notifies each subscriber with an isolated cloned snapshot', () => {
     const { host, worker } = createObservableSubject();
-    const mutateFirstSnapshot = vi.fn((snapshot: ReturnType<typeof host.getSnapshot>) => {
-      if (snapshot.status !== 'ready') {
-        return;
-      }
+    const mutateFirstSnapshot = vi.fn(
+      (snapshot: ReturnType<typeof host.getSnapshot>) => {
+        if (snapshot.status !== 'ready') {
+          return;
+        }
 
-      const schema = snapshot.schema as {
-        props: { children: string };
-      };
-      schema.props.children = 'Mutated';
-      (
-        snapshot.schemaValidationOptions.allowedActions as string[] | undefined
-      )?.push('record.delete');
-    });
+        const schema = snapshot.view as {
+          props: { children: string };
+        };
+        schema.props.children = 'Mutated';
+        (
+          snapshot.schemaValidationOptions.allowedActions as
+            | string[]
+            | undefined
+        )?.push('record.delete');
+      }
+    );
     const secondSnapshots: Array<ReturnType<typeof host.getSnapshot>> = [];
 
     host.subscribe(mutateFirstSnapshot);
@@ -300,23 +300,19 @@ describe('FrontStage restricted block runtime host factory', () => {
       direction: 'worker_to_host',
       type: 'rendered',
       requestId: 'restricted-block:block-1:code-1',
-      schema: { primitive: 'Text', props: { children: 'Ready' } }
+      view: { primitive: 'Text', props: { children: 'Ready' } }
     });
 
     expect(mutateFirstSnapshot).toHaveBeenCalledTimes(2);
     expect(secondSnapshots[1]).toMatchObject({
       status: 'ready',
-      schema: { primitive: 'Text', props: { children: 'Ready' } },
-      schemaValidationOptions: {
-        allowedActions: ['record.save']
-      }
+      view: { primitive: 'Text', props: { children: 'Ready' } },
+      schemaValidationOptions: {}
     });
     expect(host.getSnapshot()).toMatchObject({
       status: 'ready',
-      schema: { primitive: 'Text', props: { children: 'Ready' } },
-      schemaValidationOptions: {
-        allowedActions: ['record.save']
-      }
+      view: { primitive: 'Text', props: { children: 'Ready' } },
+      schemaValidationOptions: {}
     });
   });
 
@@ -391,7 +387,7 @@ describe('FrontStage restricted block runtime host factory', () => {
         maxDepth: 8,
         maxNodes: 250,
         allowedDataPermissions: ['query'],
-        allowedActions: ['record.save'],
+
         allowedEvents: ['record.saved']
       },
       logs: [],
@@ -419,8 +415,7 @@ describe('FrontStage restricted block runtime host factory', () => {
       expect(error).toBeInstanceOf(JsBlockWorkerAdapterError);
       expect(error).toMatchObject({
         code: 'worker_construct_failed',
-        message:
-          'Failed to construct JS block worker: native worker blocked'
+        message: 'Failed to construct JS block worker: native worker blocked'
       });
     }
   });

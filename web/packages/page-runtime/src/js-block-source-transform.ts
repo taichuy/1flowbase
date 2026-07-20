@@ -5,7 +5,13 @@ import {
   validateJsBlockSource,
   type ValidateJsBlockSourceOptions
 } from './js-block-source-policy';
-import { isIdentifierPart, isIdentifierStart, isImportName, isLocalBindingName, isWhitespace } from './js-block-source-transform/identifiers';
+import {
+  isIdentifierPart,
+  isIdentifierStart,
+  isImportName,
+  isLocalBindingName,
+  isWhitespace
+} from './js-block-source-transform/identifiers';
 
 export type JsBlockInjectedModuleSource =
   (typeof JS_BLOCK_ALLOWED_IMPORTS)[number];
@@ -40,6 +46,8 @@ export interface JsBlockSourceTransformSuccess {
   injectedModules: JsBlockInjectedModule[];
   importBindings: JsBlockImportBinding[];
   executableBody: string;
+  executablePreambleLines: number;
+  sourceMap?: unknown;
   moduleMapIdentifier: string;
   defaultExportIdentifier: string;
   errors: [];
@@ -140,11 +148,19 @@ export function transformJsBlockSource(
   if (!bindingResult.ok) {
     return { ok: false, errors: [bindingResult.error] };
   }
+  const modulePreamble = createModuleBindingPreamble(
+    bindingResult.value.injectedModules
+  );
   const executableSource = applyEdits(policyResult.source, [
     ...imports.map((importDeclaration) => ({
       start: importDeclaration.start,
       end: importDeclaration.end,
-      replacement: ''
+      replacement: preserveLineBreaks(
+        policyResult.source.slice(
+          importDeclaration.start,
+          importDeclaration.end
+        )
+      )
     })),
     {
       start: defaultExport.start,
@@ -153,8 +169,8 @@ export function transformJsBlockSource(
     }
   ]);
   const executableBody = [
-    ...createModuleBindingPreamble(bindingResult.value.injectedModules),
-    executableSource.trim(),
+    ...modulePreamble,
+    executableSource.trimEnd(),
     `return ${DEFAULT_EXPORT_IDENTIFIER};`
   ]
     .filter((line) => line.length > 0)
@@ -167,10 +183,15 @@ export function transformJsBlockSource(
     injectedModules: bindingResult.value.injectedModules,
     importBindings: bindingResult.value.importBindings,
     executableBody,
+    executablePreambleLines: modulePreamble.length,
     moduleMapIdentifier: MODULES_IDENTIFIER,
     defaultExportIdentifier: DEFAULT_EXPORT_IDENTIFIER,
     errors: []
   };
+}
+
+function preserveLineBreaks(value: string): string {
+  return value.replace(/[^\r\n]/g, ' ');
 }
 
 function tokenizeSource(source: string): SourceToken[] {
@@ -633,9 +654,7 @@ function parseNamespaceBinding(
   };
 }
 
-function collectInjectedModules(
-  imports: ImportDeclaration[]
-): ParseResult<{
+function collectInjectedModules(imports: ImportDeclaration[]): ParseResult<{
   injectedModules: JsBlockInjectedModule[];
   importBindings: JsBlockImportBinding[];
 }> {
@@ -685,11 +704,15 @@ function createModuleBindingPreamble(
       module.source
     )}]`;
     const namespaceBindings = module.bindings.filter(
-      (binding): binding is Extract<JsBlockImportBinding, { kind: 'namespace' }> =>
+      (
+        binding
+      ): binding is Extract<JsBlockImportBinding, { kind: 'namespace' }> =>
         binding.kind === 'namespace'
     );
     const defaultBindings = module.bindings.filter(
-      (binding): binding is Extract<JsBlockImportBinding, { kind: 'default' }> =>
+      (
+        binding
+      ): binding is Extract<JsBlockImportBinding, { kind: 'default' }> =>
         binding.kind === 'default'
     );
     const namedBindings = module.bindings.filter(
@@ -724,7 +747,9 @@ function formatNamedBinding(
 }
 
 function applyEdits(source: string, edits: SourceEdit[]): string {
-  const orderedEdits = [...edits].sort((left, right) => left.start - right.start);
+  const orderedEdits = [...edits].sort(
+    (left, right) => left.start - right.start
+  );
   let result = '';
   let cursor = 0;
 
@@ -766,7 +791,10 @@ function readImportDeclarationEnd(
   let index = skipHorizontalWhitespace(source, start);
 
   while (source[index] === '/' && source[index + 1] === '*') {
-    index = skipHorizontalWhitespace(source, consumeBlockComment(source, index));
+    index = skipHorizontalWhitespace(
+      source,
+      consumeBlockComment(source, index)
+    );
   }
 
   if (source[index] === ';') {
@@ -777,7 +805,11 @@ function readImportDeclarationEnd(
     return consumeLineComment(source, index + 2);
   }
 
-  if (index >= source.length || source[index] === '\n' || source[index] === '\r') {
+  if (
+    index >= source.length ||
+    source[index] === '\n' ||
+    source[index] === '\r'
+  ) {
     return index;
   }
 

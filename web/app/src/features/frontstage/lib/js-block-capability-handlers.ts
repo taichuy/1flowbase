@@ -27,6 +27,18 @@ export interface CreateFrontstageJsBlockCapabilityHandlersOptions {
 const defaultClient: FrontstageJsBlockCapabilityClient = {
   dispatchFrontstageCallable
 };
+const draftRunWriteAuthorizations = new Map<string, Set<string>>();
+
+export function authorizeFrontstageDraftRunWrites(
+  runId: string,
+  operationIds: readonly string[]
+): void {
+  draftRunWriteAuthorizations.set(runId, new Set(operationIds));
+}
+
+export function revokeFrontstageDraftRunWrites(runId: string): void {
+  draftRunWriteAuthorizations.delete(runId);
+}
 
 export function getFrontstageJsBlockCapabilityApiBaseUrl(
   locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'
@@ -67,7 +79,18 @@ export function createFrontstageJsBlockCapabilityHandlers(
           operation_id: operationId,
           ...(effect.request === undefined
             ? {}
-            : { request: effect.request as FrontstageCallableRequest })
+            : { request: effect.request as FrontstageCallableRequest }),
+          ...(draftRunWriteAuthorizations
+            .get(effect.requestId)
+            ?.has(operationId)
+            ? {
+                run_authorization: {
+                  run_id: effect.requestId,
+                  operation_id: operationId,
+                  confirmed: true
+                }
+              }
+            : {})
         },
         requireCsrfToken(options.csrfToken),
         baseUrl

@@ -71,14 +71,14 @@ function createRunPlan(
       maxDepth: 8,
       maxNodes: 250,
       allowedDataPermissions: ['query'],
-      allowedActions: ['record.save'],
+
       allowedEvents: ['record.saved']
     },
     mediatorPolicy: {
       allowedEvents: ['record.saved'],
-      allowedActions: ['record.save'],
-      allowedQueries: ['records'],
-      allowedDataOperations: ['query'],
+
+      allowedInterfaces: ['listRecords'],
+
       maxEventChainDepth: 4
     },
     ...overrides
@@ -88,7 +88,9 @@ function createRunPlan(
 function createSubject(
   options: {
     runPlan?: RestrictedBlockRunPlan;
-    handlers?: Parameters<typeof createRestrictedBlockRuntimeHost>[0]['handlers'];
+    handlers?: Parameters<
+      typeof createRestrictedBlockRuntimeHost
+    >[0]['handlers'];
   } = {}
 ): {
   worker: FakeWorker;
@@ -106,7 +108,9 @@ function createSubject(
 
 function expectFailedSnapshot(
   snapshot: RestrictedBlockRuntimeHostSnapshot
-): asserts snapshot is RestrictedBlockRuntimeHostSnapshot & { status: 'failed' } {
+): asserts snapshot is RestrictedBlockRuntimeHostSnapshot & {
+  status: 'failed';
+} {
   expect(snapshot.status).toBe('failed');
 }
 
@@ -166,9 +170,10 @@ describe('restricted block runtime host controller', () => {
     });
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
       requestId: 'restricted-block:block-1:code-1',
-      schema: { primitive: 'Text', props: { children: 'Ready' } }
+      view: { primitive: 'Text', props: { children: 'Ready' } },
+      outputs: {}
     });
 
     expect(host.getSnapshot()).toEqual({
@@ -176,12 +181,12 @@ describe('restricted block runtime host controller', () => {
       phase: 'ready',
       requestId: 'restricted-block:block-1:code-1',
       blockId: 'block-1',
-      schema: { primitive: 'Text', props: { children: 'Ready' } },
+      view: { primitive: 'Text', props: { children: 'Ready' } },
       schemaValidationOptions: {
         maxDepth: 8,
         maxNodes: 250,
         allowedDataPermissions: ['query'],
-        allowedActions: ['record.save'],
+
         allowedEvents: ['record.saved']
       },
       logs: [
@@ -244,48 +249,29 @@ describe('restricted block runtime host controller', () => {
     });
   });
 
-  test('resolves allowed action and data effects through mediator policy and injected handlers', () => {
-    const dataHandler = vi.fn(() => ({ rows: [{ id: 'record-1' }] }));
-    const actionHandler = vi.fn(() => ({ saved: true }));
+  test('resolves allowed interface effects through mediator policy and injected handlers', () => {
+    const interfaceHandler = vi.fn(() => ({ rows: [{ id: 'record-1' }] }));
     const { worker, host } = createSubject({
-      handlers: {
-        data: dataHandler,
-        action: actionHandler
-      }
+      handlers: { interface: interfaceHandler }
     });
 
     host.run();
     emitWorkerReady(worker);
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'data',
+      type: 'interface',
       requestId: 'restricted-block:block-1:code-1',
-      effectId: 'effect-data',
-      queryId: 'records',
-      params: { where: { id: 'record-1' } }
-    });
-    worker.emitMessage({
-      direction: 'worker_to_host',
-      type: 'action',
-      requestId: 'restricted-block:block-1:code-1',
-      effectId: 'effect-action',
-      actionId: 'record.save',
-      payload: { id: 'record-1' }
+      effectId: 'effect-interface',
+      bindingAlias: 'listRecords',
+      request: { query: { id: 'record-1' } }
     });
 
-    expect(dataHandler).toHaveBeenCalledWith({
-      type: 'data',
+    expect(interfaceHandler).toHaveBeenCalledWith({
+      type: 'interface',
       requestId: 'restricted-block:block-1:code-1',
-      effectId: 'effect-data',
-      queryId: 'records',
-      params: { where: { id: 'record-1' } }
-    });
-    expect(actionHandler).toHaveBeenCalledWith({
-      type: 'action',
-      requestId: 'restricted-block:block-1:code-1',
-      effectId: 'effect-action',
-      actionId: 'record.save',
-      payload: { id: 'record-1' }
+      effectId: 'effect-interface',
+      bindingAlias: 'listRecords',
+      request: { query: { id: 'record-1' } }
     });
     expect(worker.messages).toEqual([
       { direction: 'host_to_worker', type: 'init' },
@@ -298,99 +284,54 @@ describe('restricted block runtime host controller', () => {
         direction: 'host_to_worker',
         type: 'effect_result',
         requestId: 'restricted-block:block-1:code-1',
-        effectId: 'effect-data',
+        effectId: 'effect-interface',
         ok: true,
         value: { rows: [{ id: 'record-1' }] }
-      },
-      {
-        direction: 'host_to_worker',
-        type: 'effect_result',
-        requestId: 'restricted-block:block-1:code-1',
-        effectId: 'effect-action',
-        ok: true,
-        value: { saved: true }
       }
     ]);
     expect(host.getSnapshot().effects).toEqual([
       {
-        type: 'data',
+        type: 'interface',
         requestId: 'restricted-block:block-1:code-1',
-        effectId: 'effect-data',
-        queryId: 'records',
-        params: { where: { id: 'record-1' } }
-      },
-      {
-        type: 'action',
-        requestId: 'restricted-block:block-1:code-1',
-        effectId: 'effect-action',
-        actionId: 'record.save',
-        payload: { id: 'record-1' }
+        effectId: 'effect-interface',
+        bindingAlias: 'listRecords',
+        request: { query: { id: 'record-1' } }
       }
     ]);
   });
 
   test('returns failed effect_result for denied effects', () => {
-    const dataHandler = vi.fn();
-    const actionHandler = vi.fn();
+    const interfaceHandler = vi.fn();
     const { worker, host } = createSubject({
-      handlers: {
-        data: dataHandler,
-        action: actionHandler
-      }
+      handlers: { interface: interfaceHandler }
     });
 
     host.run();
     emitWorkerReady(worker);
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'data',
+      type: 'interface',
       requestId: 'restricted-block:block-1:code-1',
-      effectId: 'effect-data',
-      queryId: 'private_records'
-    });
-    worker.emitMessage({
-      direction: 'worker_to_host',
-      type: 'action',
-      requestId: 'restricted-block:block-1:code-1',
-      effectId: 'effect-action',
-      actionId: 'record.delete'
+      effectId: 'effect-interface',
+      bindingAlias: 'privateRecords'
     });
 
-    expect(dataHandler).not.toHaveBeenCalled();
-    expect(actionHandler).not.toHaveBeenCalled();
+    expect(interfaceHandler).not.toHaveBeenCalled();
     expect(worker.messages.slice(2)).toEqual([
       {
         direction: 'host_to_worker',
         type: 'effect_result',
         requestId: 'restricted-block:block-1:code-1',
-        effectId: 'effect-data',
+        effectId: 'effect-interface',
         ok: false,
         error: {
           kind: 'runtime_error',
-          message: 'Query is not allowed: private_records.',
+          message: 'Interface binding is not allowed: privateRecords.',
           errors: [
             {
-              code: 'query_denied',
-              path: 'data.queryId',
-              message: 'Query is not allowed: private_records.'
-            }
-          ]
-        }
-      },
-      {
-        direction: 'host_to_worker',
-        type: 'effect_result',
-        requestId: 'restricted-block:block-1:code-1',
-        effectId: 'effect-action',
-        ok: false,
-        error: {
-          kind: 'runtime_error',
-          message: 'Action is not allowed: record.delete.',
-          errors: [
-            {
-              code: 'action_denied',
-              path: 'action.actionId',
-              message: 'Action is not allowed: record.delete.'
+              code: 'interface_denied',
+              path: 'interface.bindingAlias',
+              message: 'Interface binding is not allowed: privateRecords.'
             }
           ]
         }
@@ -406,14 +347,15 @@ describe('restricted block runtime host controller', () => {
     host.dispose();
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
       requestId: 'restricted-block:block-1:code-1',
-      schema: { primitive: 'Text', props: { children: 'Late' } }
+      view: { primitive: 'Text', props: { children: 'Late' } },
+      outputs: {}
     });
 
     const snapshot = host.getSnapshot();
     expect(snapshot.status).toBe('disposed');
-    expect(snapshot.schema).toBeUndefined();
+    expect(snapshot.view).toBeUndefined();
     expect(snapshot.error).toBeUndefined();
     expect(worker.terminateCount).toBe(1);
   });
@@ -440,16 +382,17 @@ describe('restricted block runtime host controller', () => {
     });
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
       requestId: 'restricted-block:block-1:code-1',
-      schema: {
+      view: {
         primitive: 'Stack',
         children: [{ primitive: 'Text', props: { children: 'Ready' } }]
-      }
+      },
+      outputs: {}
     });
 
     const snapshot = host.getSnapshot();
-    const schema = snapshot.schema as {
+    const schema = snapshot.view as {
       children: Array<{ props: { children: string } }>;
     };
     schema.children[0].props.children = 'Mutated';
@@ -476,7 +419,7 @@ describe('restricted block runtime host controller', () => {
       phase: 'ready',
       requestId: 'restricted-block:block-1:code-1',
       blockId: 'block-1',
-      schema: {
+      view: {
         primitive: 'Stack',
         children: [{ primitive: 'Text', props: { children: 'Ready' } }]
       },
@@ -484,7 +427,7 @@ describe('restricted block runtime host controller', () => {
         maxDepth: 8,
         maxNodes: 250,
         allowedDataPermissions: ['query'],
-        allowedActions: ['record.save'],
+
         allowedEvents: ['record.saved']
       },
       logs: [

@@ -1064,9 +1064,7 @@ fn to_tree_node_response(node: domain::FrontstagePageTreeNode) -> FrontstagePage
         is_hidden: node.page.is_hidden,
         kind: to_kind_response(node.page.kind),
         placement: to_placement_response(node.page.placement),
-        content_presentation: to_content_presentation_response(
-            node.page.content_presentation,
-        ),
+        content_presentation: to_content_presentation_response(node.page.content_presentation),
         slug: node.page.slug,
         children: node
             .children
