@@ -145,7 +145,7 @@ pub struct ApplicationRunMonitoringProtocolBreakdownResponse {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ApplicationRunMonitoringSourceBreakdownResponse {
-    pub source: String,
+    pub invocation_source: String,
     pub request_count: i64,
     pub success_rate: f64,
     pub total_tokens: i64,
@@ -404,7 +404,7 @@ fn to_report_response(
             .sources
             .into_iter()
             .map(|source| ApplicationRunMonitoringSourceBreakdownResponse {
-                source: source.source,
+                invocation_source: source.invocation_source,
                 request_count: source.request_count,
                 success_rate: source.success_rate,
                 total_tokens: source.total_tokens,

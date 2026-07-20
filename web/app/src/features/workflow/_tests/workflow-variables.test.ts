@@ -2,8 +2,8 @@ import { describe, expect, test } from 'vitest';
 
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
 
-import { listVisibleSelectorOptions } from '../../agent-flow/lib/selector-options';
 import { getWorkflowStartNodeVariableOutputs } from '../lib/node-definitions';
+import { listWorkflowVariableOptions } from '../lib/variables';
 import '../register';
 
 describe('workflow start variables', () => {
@@ -34,10 +34,9 @@ describe('workflow start variables', () => {
       }
     ];
 
-    const selectorOptions = listVisibleSelectorOptions(
+    const selectorOptions = listWorkflowVariableOptions(
       document,
       'node-workflow-end',
-      [],
       { triggerType: 'schedule' }
     );
     const selectorValues = selectorOptions.map((option) => option.value);

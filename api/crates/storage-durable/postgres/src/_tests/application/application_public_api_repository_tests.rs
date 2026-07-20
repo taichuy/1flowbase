@@ -2,9 +2,9 @@ use control_plane::{
     application_public_api::{
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationApiMappingInput,
-            ApplicationApiMappingOutput, ApplicationOperationBindings, WorkflowExtensionApiConfig,
-            WorkflowExtensionHttpMethod, WorkflowExtensionParameterMapping,
-            WorkflowExtensionParameterSource, WorkflowExtensionResponseMode,
+            ApplicationApiMappingOutput, ApplicationOperationBindings,
+            WorkflowExtensionAccessPolicy, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
+            WorkflowExtensionResponseMode,
         },
         publications::ApplicationPublicationJsDependencySnapshot,
     },
@@ -164,12 +164,8 @@ fn workflow_extension_mapping(slug: &str) -> ApplicationApiMappingConfig {
         extension: Some(WorkflowExtensionApiConfig {
             slug: slug.into(),
             method: WorkflowExtensionHttpMethod::Post,
+            access_policy: WorkflowExtensionAccessPolicy::UserApiKey,
             response_mode: WorkflowExtensionResponseMode::Async,
-            parameters: vec![WorkflowExtensionParameterMapping {
-                name: "customer_id".into(),
-                source: WorkflowExtensionParameterSource::Query,
-                target: "node-workflow-start.customer_id".into(),
-            }],
         }),
     }
 }

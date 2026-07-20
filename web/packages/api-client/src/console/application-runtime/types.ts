@@ -1,7 +1,16 @@
 export type ConsoleFlowRunMode =
   | 'debug_node_preview'
   | 'debug_flow_run'
-  | 'published_api_run';
+  | 'published_api_run'
+  | 'workflow_http_run'
+  | 'workflow_schedule_run';
+
+export type ConsoleFlowRunExecutionStage = 'debug' | 'published';
+export type ConsoleFlowRunInvocationSource =
+  | 'agent_flow_api'
+  | 'workflow_http'
+  | 'workflow_schedule'
+  | 'debug';
 
 export interface ConsoleApplicationRunSubject {
   kind: string;
@@ -10,8 +19,8 @@ export interface ConsoleApplicationRunSubject {
   target_node_id?: string | null;
 }
 
-export interface ConsoleApplicationRunActor {
-  kind: string;
+export interface ConsoleApplicationRunPrincipal {
+  kind: 'user' | 'application_api_key' | 'user_api_key' | 'public' | 'scheduler';
   id?: string | null;
   display_name?: string | null;
 }
@@ -34,10 +43,11 @@ export interface ConsoleApplicationRunLog {
   run_kind: string;
   status: string;
   title: string;
-  source: string;
+  execution_stage: ConsoleFlowRunExecutionStage;
+  invocation_source: ConsoleFlowRunInvocationSource;
   compatibility_mode?: string | null;
   subject: ConsoleApplicationRunSubject;
-  actor: ConsoleApplicationRunActor;
+  principal: ConsoleApplicationRunPrincipal;
   correlation: ConsoleApplicationRunCorrelation;
   started_at: string;
   finished_at: string | null;
@@ -52,15 +62,16 @@ export interface ConsoleApplicationRunSummary {
   run_object_kind?: string;
   run_kind?: string;
   run_mode: ConsoleFlowRunMode;
+  execution_stage: ConsoleFlowRunExecutionStage;
+  invocation_source: ConsoleFlowRunInvocationSource;
+  principal: ConsoleApplicationRunPrincipal;
   status: string;
   target_node_id: string | null;
   title?: string;
   expand_id?: string | null;
   authorized_account?: string | null;
-  source?: string;
   compatibility_mode?: string | null;
   subject?: ConsoleApplicationRunSubject;
-  actor?: ConsoleApplicationRunActor;
   correlation?: ConsoleApplicationRunCorrelation;
   statistics?: ConsoleApplicationRunStatistics;
   started_at: string;
@@ -166,7 +177,7 @@ export interface ConsoleApplicationRunMonitoringProtocolBreakdown {
 }
 
 export interface ConsoleApplicationRunMonitoringSourceBreakdown {
-  source: string;
+  invocation_source: ConsoleFlowRunInvocationSource;
   request_count: number;
   success_rate: number;
   total_tokens: number;

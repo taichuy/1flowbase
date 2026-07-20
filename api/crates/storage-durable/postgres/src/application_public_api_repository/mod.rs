@@ -318,6 +318,7 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
             returning
                 id,
                 application_id,
+                scope_id,
                 flow_id,
                 flow_version_id,
                 compiled_plan_id,
@@ -509,6 +510,7 @@ fn publication_select_sql(predicate: &str) -> String {
         select
             id,
             application_id,
+            scope_id,
             flow_id,
             flow_version_id,
             compiled_plan_id,
@@ -536,6 +538,7 @@ fn map_publication_row(row: sqlx::postgres::PgRow) -> Result<ApplicationPublicat
     Ok(ApplicationPublicationVersionRecord {
         id: row.get("id"),
         application_id: row.get("application_id"),
+        workspace_id: row.get("scope_id"),
         flow_id: row.get("flow_id"),
         flow_version_id: row.get("flow_version_id"),
         compiled_plan_id: row.get("compiled_plan_id"),

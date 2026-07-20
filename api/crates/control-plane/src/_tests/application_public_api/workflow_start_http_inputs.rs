@@ -1,7 +1,8 @@
 use control_plane::application_public_api::{
     workflow_extension::WorkflowExtensionRequestParameters,
     workflow_start_http_inputs::{
-        build_workflow_start_node_input_payload, parse_workflow_start_http_inputs,
+        build_workflow_start_node_input_payload, build_workflow_start_schedule_input_payload,
+        parse_workflow_start_http_inputs, parse_workflow_start_schedule_inputs,
         WorkflowStartHttpInputError, WorkflowStartHttpInputSource,
     },
 };
@@ -177,6 +178,58 @@ fn rejects_missing_required_and_invalid_basic_type() {
     };
     assert_eq!(
         build_workflow_start_node_input_payload(&contract, &parameters).unwrap_err(),
+        WorkflowStartHttpInputError::InvalidValue {
+            key: "enabled".into(),
+            value_type: "boolean".into(),
+        }
+    );
+}
+
+#[test]
+fn schedule_defaults_use_start_keys_and_types_without_http_source_semantics() {
+    let document = workflow_document(json!([
+        { "key": "customer_id", "valueType": "string", "required": true, "source": "path" },
+        { "key": "attempts", "valueType": "number", "defaultValue": 3, "source": "query" },
+        { "key": "enabled", "valueType": "boolean" }
+    ]));
+    let contract = parse_workflow_start_schedule_inputs(&document).unwrap();
+
+    let payload = build_workflow_start_schedule_input_payload(
+        &contract,
+        &json!({ "customer_id": 42, "enabled": "true" }),
+    )
+    .unwrap();
+
+    assert_eq!(
+        payload,
+        json!({
+            "node-workflow-start": {
+                "customer_id": "42",
+                "attempts": 3,
+                "enabled": true
+            }
+        })
+    );
+}
+
+#[test]
+fn schedule_defaults_reject_target_selectors_and_invalid_values() {
+    let document = workflow_document(json!([
+        { "key": "enabled", "valueType": "boolean", "required": true, "source": "body" }
+    ]));
+    let contract = parse_workflow_start_schedule_inputs(&document).unwrap();
+
+    assert_eq!(
+        build_workflow_start_schedule_input_payload(
+            &contract,
+            &json!({ "node-workflow-start": { "enabled": true } }),
+        )
+        .unwrap_err(),
+        WorkflowStartHttpInputError::TargetSelectorNotAllowed("node-workflow-start".into())
+    );
+    assert_eq!(
+        build_workflow_start_schedule_input_payload(&contract, &json!({ "enabled": "yes" }))
+            .unwrap_err(),
         WorkflowStartHttpInputError::InvalidValue {
             key: "enabled".into(),
             value_type: "boolean".into(),

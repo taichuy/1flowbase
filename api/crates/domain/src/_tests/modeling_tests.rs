@@ -99,6 +99,7 @@ fn builtin_data_model_contract_covers_core_and_runtime_read_models() {
     assert!(!runtime_contract.capabilities.record.can_create);
     assert!(!runtime_contract.capabilities.record.can_update);
     assert!(!runtime_contract.capabilities.record.can_delete);
+    assert!(runtime_contract.owns_field_code("created_by"));
 
     let request_logs_contract = crate::builtin_data_model_contract("model_provider_request_logs")
         .expect("model provider request logs runtime read contract");

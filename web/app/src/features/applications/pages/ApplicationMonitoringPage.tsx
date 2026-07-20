@@ -382,8 +382,8 @@ const protocolColumns: ColumnsType<ApplicationRunMonitoringProtocolBreakdown> =
 const sourceColumns: ColumnsType<ApplicationRunMonitoringSourceBreakdown> = [
   {
     title: i18nText("applications", "auto.source"),
-    dataIndex: 'source',
-    key: 'source',
+    dataIndex: 'invocation_source',
+    key: 'invocation_source',
     render: sourceLabel
   },
   {

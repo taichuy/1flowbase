@@ -45,6 +45,69 @@ fn create_command(actor_user_id: Uuid, name: &str) -> CreateApplicationCommand {
     }
 }
 
+fn create_workflow_command(
+    actor_user_id: Uuid,
+    name: &str,
+    workflow_trigger_type: domain::WorkflowTriggerType,
+) -> CreateApplicationCommand {
+    CreateApplicationCommand {
+        workflow_trigger_config: None,
+        actor_user_id,
+        application_type: ApplicationType::Workflow,
+        workflow_trigger_type: Some(workflow_trigger_type),
+        name: name.into(),
+        description: name.into(),
+        icon: None,
+        icon_type: None,
+        icon_background: None,
+    }
+}
+
+#[tokio::test]
+async fn ac_001_application_sections_express_product_api_capabilities() {
+    let service = ApplicationService::for_tests();
+
+    let agent_flow = service
+        .create_application(create_command(Uuid::nil(), "Support Agent"))
+        .await
+        .unwrap();
+    assert_eq!(
+        agent_flow.sections.api.credential_kind,
+        "application_api_key"
+    );
+    assert_eq!(
+        agent_flow.sections.api.invoke_path_template.as_deref(),
+        Some("/api/agent/v1/runs")
+    );
+
+    let extension = service
+        .create_application(create_workflow_command(
+            Uuid::nil(),
+            "Order Extension",
+            domain::WorkflowTriggerType::Extension,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(extension.sections.api.status, "available");
+    assert_eq!(extension.sections.api.credential_kind, "user_or_public");
+    assert_eq!(
+        extension.sections.api.invoke_routing_mode,
+        "published_workflow_operation"
+    );
+
+    let schedule = service
+        .create_application(create_workflow_command(
+            Uuid::nil(),
+            "Nightly Schedule",
+            domain::WorkflowTriggerType::Schedule,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(schedule.sections.api.status, "unavailable");
+    assert_eq!(schedule.sections.api.api_capability_status, "unavailable");
+    assert!(schedule.sections.api.invoke_path_template.is_none());
+}
+
 fn environment_variable(name: &str) -> ApplicationEnvironmentVariableInput {
     ApplicationEnvironmentVariableInput {
         name: name.into(),

@@ -123,7 +123,16 @@ function formatTrendBucket(
 }
 
 function sourceLabel(source: string) {
-  return source === 'public_api' ? 'Public API' : i18nText("applications", "auto.console");
+  switch (source) {
+    case 'agent_flow_api':
+      return i18nText('applications', 'auto.invocation_source_agent_flow_api');
+    case 'workflow_http':
+      return i18nText('applications', 'auto.invocation_source_workflow_http');
+    case 'workflow_schedule':
+      return i18nText('applications', 'auto.invocation_source_workflow_schedule');
+    default:
+      return i18nText('applications', 'auto.invocation_source_debug');
+  }
 }
 
 export {

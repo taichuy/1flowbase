@@ -75,6 +75,7 @@ async fn create_extension_workflow(app: &Router, cookie: &str, csrf: &str, name:
                         "workflow_trigger_config": {
                             "subpath": "orders/create",
                             "http_method": "POST",
+                            "access_policy": "user_api_key",
                             "response_mode": "sync"
                         },
                         "name": name,
@@ -374,6 +375,74 @@ async fn application_api_key_routes_create_list_hide_token_filter_and_revoke() {
 }
 
 #[tokio::test]
+async fn ac_004_application_api_key_routes_fail_closed_for_workflows() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workflow_id =
+        create_extension_workflow(&app, &cookie, &csrf, "Workflow without app keys").await;
+
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/console/applications/{workflow_id}/api-keys"))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"name": "Unsupported", "expires_at": null}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(create).await["code"],
+        json!("application_api_key_application_type")
+    );
+
+    let list = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/console/applications/{workflow_id}/api-keys"))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(list).await["code"],
+        json!("application_api_key_application_type")
+    );
+
+    let revoke = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/applications/{workflow_id}/api-keys/{}",
+                    Uuid::now_v7()
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(revoke.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(revoke).await["code"],
+        json!("application_api_key_application_type")
+    );
+}
+
+#[tokio::test]
 async fn application_api_mapping_routes_get_and_replace_nullable_model_target() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -496,8 +565,8 @@ async fn ac_007_extension_registration_fields_are_immutable_after_creation() {
                         "extension": {
                             "slug": "orders/changed",
                             "method": "PUT",
-                            "response_mode": "async",
-                            "parameters": []
+                            "access_policy": "public",
+                            "response_mode": "async"
                         }
                     })
                     .to_string(),
@@ -530,6 +599,10 @@ async fn ac_007_extension_registration_fields_are_immutable_after_creation() {
     let current = response_json(current).await;
     assert_eq!(current["data"]["extension"]["slug"], json!("orders/create"));
     assert_eq!(current["data"]["extension"]["method"], json!("POST"));
+    assert_eq!(
+        current["data"]["extension"]["access_policy"],
+        json!("user_api_key")
+    );
     assert_eq!(current["data"]["extension"]["response_mode"], json!("sync"));
 }
 

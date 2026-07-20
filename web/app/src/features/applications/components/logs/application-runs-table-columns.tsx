@@ -38,6 +38,49 @@ function formatRunStatisticRate(value: number | null | undefined) {
     : '-';
 }
 
+function executionStageLabel(
+  value: ApplicationRunSummary['execution_stage'],
+  t: TFunction<'applications'>
+) {
+  return value === 'published'
+    ? t('auto.publication_published')
+    : t('auto.execution_stage_debug');
+}
+
+function invocationSourceLabel(
+  value: ApplicationRunSummary['invocation_source'],
+  t: TFunction<'applications'>
+) {
+  switch (value) {
+    case 'agent_flow_api':
+      return t('auto.invocation_source_agent_flow_api');
+    case 'workflow_http':
+      return t('auto.invocation_source_workflow_http');
+    case 'workflow_schedule':
+      return t('auto.invocation_source_workflow_schedule');
+    case 'debug':
+      return t('auto.invocation_source_debug');
+  }
+}
+
+function principalKindLabel(
+  value: ApplicationRunSummary['principal']['kind'],
+  t: TFunction<'applications'>
+) {
+  switch (value) {
+    case 'user':
+      return t('auto.principal_user');
+    case 'application_api_key':
+      return t('auto.principal_application_api_key');
+    case 'user_api_key':
+      return t('auto.access_policy_user_api_key');
+    case 'public':
+      return t('auto.principal_public');
+    case 'scheduler':
+      return t('auto.principal_scheduler');
+  }
+}
+
 export function getApplicationRunsTableColumns(
   t: TFunction<'applications'>
 ): Array<DataTableColumn<ApplicationRunSummary>> {
@@ -59,12 +102,33 @@ export function getApplicationRunsTableColumns(
     render: (value) => (value ? `${value}` : '-')
   },
   {
-    key: 'authorized_account',
-    title: t('auto.authorizer'),
-    dataIndex: 'authorized_account',
-    width: 160,
+    key: 'execution_stage',
+    title: t('auto.execution_stage'),
+    dataIndex: 'execution_stage',
+    width: 130,
+    render: (value) => (
+      <Tag>{executionStageLabel(value as ApplicationRunSummary['execution_stage'], t)}</Tag>
+    )
+  },
+  {
+    key: 'invocation_source',
+    title: t('auto.invocation_source'),
+    dataIndex: 'invocation_source',
+    width: 170,
+    render: (value) => (
+      <Tag>{invocationSourceLabel(value as ApplicationRunSummary['invocation_source'], t)}</Tag>
+    )
+  },
+  {
+    key: 'principal',
+    title: t('auto.principal'),
+    width: 220,
     ellipsis: true,
-    render: (value) => (value ? `${value}` : '-')
+    render: (_value, run) => {
+      const identity = run.principal.display_name ?? run.principal.id;
+      const kind = principalKindLabel(run.principal.kind, t);
+      return identity ? `${kind} · ${identity}` : kind;
+    }
   },
   {
     key: 'id',

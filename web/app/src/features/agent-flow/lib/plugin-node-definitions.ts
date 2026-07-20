@@ -1,6 +1,5 @@
 import {
   NODE_CONTRIBUTION_SCHEMA_VERSION,
-  type BuiltinFlowNodeType,
   type FlowNodeDocument,
   type FlowPluginContributionOutputSchemaSnapshot,
   type FlowPluginContributionRef
@@ -8,109 +7,46 @@ import {
 
 import type { AgentFlowNodeContributionEntry } from '../api/node-contributions';
 import { isApplicationFlowCompactSource } from './compact-dispatch';
+import './node-definitions/contracts';
 import type {
   NodeDefinition,
   NodeDefinitionMeta
 } from './node-definitions/types';
-import {
-  builtinNodeRuntimeContractTypes,
-  getBuiltinNodeRuntimeContract
-} from './node-definitions/contracts';
 import { i18nText } from '../../../shared/i18n/text';
+import {
+  buildBuiltinNodePickerOptions,
+  SHARED_EXECUTION_NODE_PICKER_TYPES,
+  type BuiltinNodePickerOption
+} from '../../flow-editor/authoring/node-picker';
+import {
+  getNodePickerOptionNodeType,
+  toPluginContributionPickerOption,
+  type NodePickerOption
+} from '../../flow-editor/authoring/plugin-node-picker';
 
-export interface BuiltinNodePickerOption {
-  kind: 'builtin';
-  type: BuiltinFlowNodeType;
-  label: string;
-  description: string;
-  category: string | null;
-  inputKeys: string[];
-  outputKeys: string[];
-}
-
-export interface PluginContributionPickerOption {
-  kind: 'plugin_contribution';
-  label: string;
-  contribution: AgentFlowNodeContributionEntry;
-  disabled: boolean;
-  disabledReason: string | null;
-}
-
-export type NodePickerOption =
-  | BuiltinNodePickerOption
-  | PluginContributionPickerOption;
-
-// These nodes are incomplete and not available to users yet.
-const UNRELEASED_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
-  'human_input',
-  'iteration',
-  'knowledge_retrieval',
-  'loop',
-  'parameter_extractor',
-  'question_classifier',
-  'tool'
-]);
-
-const HIDDEN_BUILTIN_NODE_PICKER_TYPES = new Set<BuiltinFlowNodeType>([
-  'compact_response',
-  'workflow_start',
-  'workflow_end',
-  ...UNRELEASED_BUILTIN_NODE_PICKER_TYPES
-]);
-
-export function buildBuiltinNodePickerOptions(
-  nodeTypes: readonly BuiltinFlowNodeType[]
-): BuiltinNodePickerOption[] {
-  return nodeTypes.map((nodeType) => {
-    const contract = getBuiltinNodeRuntimeContract(nodeType);
-
-    if (!contract) {
-      throw new Error(`Missing runtime contract for node picker: ${nodeType}`);
-    }
-
-    return {
-      kind: 'builtin',
-      type: nodeType,
-      label: contract.meta.title,
-      description:
-        contract.defaults.description ?? contract.card.description ?? '',
-      category: contract.card.category ?? null,
-      inputKeys: contract.ports.inputs.map((port) => port.key),
-      outputKeys: contract.ports.outputs.map((port) => port.key)
-    };
-  });
-}
+export {
+  buildBuiltinNodePickerOptions,
+  SHARED_EXECUTION_NODE_PICKER_TYPES as GENERAL_EXECUTION_NODE_PICKER_TYPES,
+  type BuiltinNodePickerOption
+} from '../../flow-editor/authoring/node-picker';
+export {
+  getNodePickerOptionDescription,
+  getNodePickerOptionKey,
+  getNodePickerOptionNodeType,
+  toPluginContributionPickerOption,
+  type NodePickerOption,
+  type PluginContributionPickerOption
+} from '../../flow-editor/authoring/plugin-node-picker';
 
 export const BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
-  buildBuiltinNodePickerOptions(
-    builtinNodeRuntimeContractTypes
-      .filter(
-        (nodeType): nodeType is BuiltinFlowNodeType =>
-          nodeType !== 'plugin_node'
-      )
-      .filter((nodeType) => !HIDDEN_BUILTIN_NODE_PICKER_TYPES.has(nodeType))
-  );
+  buildBuiltinNodePickerOptions([
+    'start',
+    'answer',
+    ...SHARED_EXECUTION_NODE_PICKER_TYPES
+  ]);
 
 export const COMPACT_RESPONSE_NODE_PICKER_OPTIONS =
   buildBuiltinNodePickerOptions(['compact_response']);
-
-export const GENERAL_EXECUTION_NODE_PICKER_TYPES =
-  builtinNodeRuntimeContractTypes.filter(
-    (nodeType): nodeType is BuiltinFlowNodeType =>
-      nodeType !== 'plugin_node' &&
-      nodeType !== 'start' &&
-      nodeType !== 'answer' &&
-      nodeType !== 'compact_response' &&
-      nodeType !== 'workflow_start' &&
-      nodeType !== 'workflow_end' &&
-      !UNRELEASED_BUILTIN_NODE_PICKER_TYPES.has(nodeType)
-  );
-
-const DEPENDENCY_STATUS_LABELS: Record<string, string> = {
-  missing_plugin: i18nText('agentFlow', 'auto.dependency_missing_plugin'),
-  version_mismatch: i18nText('agentFlow', 'auto.dependency_version_mismatch'),
-  disabled_plugin: i18nText('agentFlow', 'auto.dependency_plugin_not_ready')
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -147,22 +83,6 @@ export const pluginNodeDefinitionMeta: NodeDefinitionMeta = {
   helpHref: null
 };
 
-export function toPluginContributionPickerOption(
-  contribution: AgentFlowNodeContributionEntry
-): PluginContributionPickerOption {
-  return {
-    kind: 'plugin_contribution' as const,
-    label: contribution.title,
-    contribution,
-    disabled: contribution.dependency_status !== 'ready',
-    disabledReason:
-      contribution.dependency_status === 'ready'
-        ? null
-        : (DEPENDENCY_STATUS_LABELS[contribution.dependency_status] ??
-          i18nText('agentFlow', 'auto.plugin_node_unavailable'))
-  };
-}
-
 export function buildNodePickerOptions(
   contributions: AgentFlowNodeContributionEntry[]
 ): NodePickerOption[] {
@@ -184,22 +104,6 @@ export function getNodePickerOptionsForSource(
   return options.filter(
     (option) => getNodePickerOptionNodeType(option) !== 'compact_response'
   );
-}
-
-export function getNodePickerOptionKey(option: NodePickerOption) {
-  return option.kind === 'builtin'
-    ? option.type
-    : `${option.contribution.plugin_id}:${option.contribution.contribution_code}`;
-}
-
-export function getNodePickerOptionNodeType(option: NodePickerOption) {
-  return option.kind === 'builtin' ? option.type : 'plugin_node';
-}
-
-export function getNodePickerOptionDescription(option: NodePickerOption) {
-  return option.kind === 'builtin'
-    ? option.description
-    : (option.disabledReason ?? option.contribution.description ?? null);
 }
 
 export function toPluginContributionRef(

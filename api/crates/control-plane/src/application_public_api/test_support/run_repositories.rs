@@ -147,17 +147,24 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
             .inner
             .lock()
             .expect("application public api test repo mutex poisoned");
-        if let (Some(api_key_id), Some(idempotency_key)) =
-            (record.api_key_id, record.idempotency_key.as_deref())
-        {
+        if let Some(idempotency_key) = record.idempotency_key.as_deref() {
             if let Some(existing) = inner
                 .flow_runs
                 .values()
                 .find(|run| {
                     run.application_id == record.application_id
-                        && run.api_key_id == Some(api_key_id)
                         && run.idempotency_key.as_deref() == Some(idempotency_key)
-                        && run.run_mode == domain::FlowRunMode::PublishedApiRun
+                        && match record.run_mode {
+                            domain::FlowRunMode::PublishedApiRun => {
+                                record.api_key_id.is_some()
+                                    && run.api_key_id == record.api_key_id
+                                    && run.run_mode == domain::FlowRunMode::PublishedApiRun
+                            }
+                            domain::FlowRunMode::WorkflowScheduleRun => {
+                                run.run_mode == domain::FlowRunMode::WorkflowScheduleRun
+                            }
+                            _ => false,
+                        }
                 })
                 .cloned()
             {
@@ -205,7 +212,11 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
                 run.application_id == application_id
                     && run.api_key_id == api_key_id
                     && run.idempotency_key.as_deref() == Some(idempotency_key)
-                    && run.run_mode == domain::FlowRunMode::PublishedApiRun
+                    && matches!(
+                        run.run_mode,
+                        domain::FlowRunMode::PublishedApiRun
+                            | domain::FlowRunMode::WorkflowScheduleRun
+                    )
             })
             .cloned())
     }

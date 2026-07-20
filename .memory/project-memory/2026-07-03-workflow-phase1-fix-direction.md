@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: workflow 一期编辑器边界修正方向
-summary: 用户于 2026-07-10 在人工验收后确认此前浅层装配仍是 AgentFlow 换皮；继续采用共享画布内核 + 独立 Workflow 编辑器装配，但允许重新划分 AgentFlowCanvasFrame 职责。一个 Workflow 应用仍只有一个触发器，触发器配置归 workflow_start，workflow_end 统一定义 Workflow Result，Workflow 使用测试运行 / Result / Trace 而非预览对话。
+summary: 用户于 2026-07-10 在人工验收后确认此前浅层装配仍是 AgentFlow 换皮；继续采用共享画布内核 + 独立 Workflow 编辑器装配。一个 Workflow 应用仍只有一个触发器；按 2026-07-13 后续决策，workflow_start 只拥有输入边界和触发器相关展示，slug/method/cron 等配置归 Workflow 产品触发器 contract；workflow_end 统一定义 Workflow Result。
 keywords:
   - workflow
   - issue-1186
@@ -12,8 +12,8 @@ match_when:
   - 继续 workflow 一期修正的 issue 起草、实现或验收
   - 需要判断 workflow 前端架构方向或中间节点范围
 created_at: 2026-07-03 00
-updated_at: 2026-07-10 00
-last_verified_at: 2026-07-10 00
+updated_at: 2026-07-20 15
+last_verified_at: 2026-07-20 15
 decision_policy: verify_before_decision
 scope:
   - web/app/src/features/agent-flow
@@ -36,7 +36,7 @@ scope:
 
 - 继续采用 balanced 方向：共享纯画布内核，建立真正独立的 AgentFlow Editor Assembly 与 Workflow Editor Assembly；允许重新划分 `AgentFlowCanvasFrame` ownership，旧的“不大拆 editor store / canvas ownership”停止条件不再有效。
 - 一个 Workflow 应用只有一个 `workflow_trigger_type`，不允许同时挂载多个触发器，也不按触发器拆 Application Type。
-- 触发器完整配置继续归 `workflow_start`；开始节点按唯一 trigger type 渲染专属配置，并把手动表单、定时 payload 或 HTTP 参数映射为 Workflow 输入变量。
+- 本条已被 2026-07-13 的后续决策修订：`workflow_start` 只定义 Workflow 输入并按唯一 trigger type 渲染参数来源和触发上下文；slug、HTTP method、response mode、cron、timezone 与发布配置归 Workflow 产品触发器 contract，不在 Start 节点形成第二份持久化真值。
 - `workflow_end` 对所有触发器统一表示 Workflow Result；不同触发器只改变结果交付方式，不拆不同 End 节点。
 - Workflow 编辑器使用“测试运行 + Workflow Result + Trace”，不使用 AgentFlow 的预览对话、聊天消息或 Answer 语义。
 - 中间节点范围：Workflow picker 直接复用 AgentFlow 通用执行节点（AgentFlow picker 可见 builtin 集合排除 start/answer，加插件贡献节点）。

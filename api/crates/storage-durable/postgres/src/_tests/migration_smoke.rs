@@ -2,6 +2,10 @@ use sqlx::PgPool;
 use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
+const WORKFLOW_SCHEDULE_IDEMPOTENCY_INDEX_MIGRATION: &str = include_str!(
+    "../../migrations/20260720110000_add_workflow_schedule_run_idempotency_unique_index.sql"
+);
+
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
@@ -1332,7 +1336,11 @@ async fn migration_smoke_creates_application_public_run_state() {
     assert!(flow_run_columns.contains(&"compatibility_mode".to_string()));
     assert!(flow_run_columns.contains(&"idempotency_key".to_string()));
     assert!(flow_run_columns.contains(&"updated_at".to_string()));
+    assert!(run_mode_check.contains("debug_node_preview"));
+    assert!(run_mode_check.contains("debug_flow_run"));
     assert!(run_mode_check.contains("published_api_run"));
+    assert!(run_mode_check.contains("workflow_http_run"));
+    assert!(run_mode_check.contains("workflow_schedule_run"));
     assert!(tables.contains(&"application_public_conversations".to_string()));
     assert!(conversation_columns.contains(&"id".to_string()));
     assert!(conversation_columns.contains(&"application_id".to_string()));
@@ -1498,4 +1506,52 @@ async fn migration_smoke_keeps_active_run_statuses_when_adding_incomplete() {
             );
         }
     }
+}
+
+#[test]
+fn workflow_schedule_idempotency_index_migration_only_adds_the_partial_unique_index() {
+    let normalized = WORKFLOW_SCHEDULE_IDEMPOTENCY_INDEX_MIGRATION
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(normalized.contains(
+        "create unique index if not exists flow_runs_workflow_schedule_idempotency_unique_idx on flow_runs (application_id, idempotency_key) where run_mode = 'workflow_schedule_run' and idempotency_key is not null"
+    ));
+    for forbidden_statement in ["alter table", "insert into", "update ", "delete from"] {
+        assert!(
+            !normalized.contains(forbidden_statement),
+            "schedule idempotency migration must not contain {forbidden_statement}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn migration_smoke_creates_workflow_schedule_idempotency_partial_unique_index() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let schema: String = sqlx::query_scalar("select current_schema()")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let index_definition: String = sqlx::query_scalar(
+        r#"
+        select indexdef
+        from pg_indexes
+        where schemaname = $1
+          and tablename = 'flow_runs'
+          and indexname = 'flow_runs_workflow_schedule_idempotency_unique_idx'
+        "#,
+    )
+    .bind(schema)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert!(index_definition.starts_with("CREATE UNIQUE INDEX"));
+    assert!(index_definition.contains("(application_id, idempotency_key)"));
+    assert!(index_definition.contains("run_mode = 'workflow_schedule_run'::text"));
+    assert!(index_definition.contains("idempotency_key IS NOT NULL"));
+    assert!(!index_definition.contains("api_key_id"));
 }

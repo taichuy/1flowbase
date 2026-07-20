@@ -871,7 +871,12 @@ where
             .get_flow_run(application_id, flow_run_id)
             .await?
             .ok_or_else(|| anyhow!("flow run not found"))?;
-        if flow_run.run_mode != domain::FlowRunMode::PublishedApiRun {
+        if !matches!(
+            flow_run.run_mode,
+            domain::FlowRunMode::PublishedApiRun
+                | domain::FlowRunMode::WorkflowHttpRun
+                | domain::FlowRunMode::WorkflowScheduleRun
+        ) {
             return Err(ControlPlaneError::InvalidInput("run_mode").into());
         }
         let actor = ApplicationRepository::load_actor_context_for_user(
@@ -1495,7 +1500,12 @@ where
         application: &domain::ApplicationRecord,
         flow_run: &domain::FlowRunRecord,
     ) {
-        if flow_run.run_mode != domain::FlowRunMode::PublishedApiRun {
+        if !matches!(
+            flow_run.run_mode,
+            domain::FlowRunMode::PublishedApiRun
+                | domain::FlowRunMode::WorkflowHttpRun
+                | domain::FlowRunMode::WorkflowScheduleRun
+        ) {
             return;
         }
         let (event_type, audit_action) = match flow_run.status {

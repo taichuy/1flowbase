@@ -108,7 +108,7 @@ pub struct ApplicationRunMonitoringProtocolBreakdown {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApplicationRunMonitoringSourceBreakdown {
-    pub source: String,
+    pub invocation_source: String,
     pub request_count: i64,
     pub success_rate: f64,
     pub total_tokens: i64,

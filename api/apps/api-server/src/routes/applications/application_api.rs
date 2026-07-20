@@ -22,8 +22,7 @@ use control_plane::{
             ApplicationApiMappingService, ApplicationCompactOperationBindings,
             ApplicationOperationBindings, ApplicationOperationTargetBinding,
             GetApplicationApiMappingCommand, ReplaceApplicationApiMappingCommand,
-            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
-            WorkflowExtensionParameterMapping, WorkflowExtensionParameterSource,
+            WorkflowExtensionAccessPolicy, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
             WorkflowExtensionResponseMode,
         },
         publications::{
@@ -31,6 +30,7 @@ use control_plane::{
             LoadActiveApplicationPublicationCommand, PublishApplicationCommand,
             SetApplicationApiEnabledCommand, UnpublishApplicationCommand,
         },
+        published_workflow_operation::PublishedWorkflowOperation,
         workflow_schedule::{
             GetWorkflowScheduleTriggerCommand, ReplaceWorkflowScheduleTriggerCommand,
             WorkflowScheduleTriggerRecord, WorkflowScheduleTriggerService,
@@ -169,9 +169,15 @@ pub struct ApplicationOperationBindingsBody {
 pub struct WorkflowExtensionApiBody {
     pub slug: String,
     pub method: WorkflowExtensionHttpMethodBody,
+    pub access_policy: WorkflowExtensionAccessPolicyBody,
     pub response_mode: WorkflowExtensionResponseModeBody,
-    #[serde(default)]
-    pub parameters: Vec<WorkflowExtensionParameterMappingBody>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowExtensionAccessPolicyBody {
+    UserApiKey,
+    Public,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
@@ -191,22 +197,6 @@ pub enum WorkflowExtensionHttpMethodBody {
 pub enum WorkflowExtensionResponseModeBody {
     Sync,
     Async,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
-pub struct WorkflowExtensionParameterMappingBody {
-    pub name: String,
-    pub source: WorkflowExtensionParameterSourceBody,
-    pub target: String,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkflowExtensionParameterSourceBody {
-    Path,
-    Query,
-    Form,
-    Body,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -309,11 +299,26 @@ pub struct ApplicationPublicationResponse {
     pub api_enabled: bool,
     pub mapping_snapshot: ApplicationApiMappingBody,
     #[schema(inline)]
+    pub operation: Option<PublishedWorkflowOperationResponse>,
+    #[schema(inline)]
     pub operation_bindings: ApplicationOperationBindingsBody,
     pub dependency_snapshot: Vec<ApplicationPublicationJsDependencySnapshotResponse>,
     pub public_url: String,
     pub created_by: Uuid,
     pub created_at: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PublishedWorkflowOperationResponse {
+    pub interface_id: String,
+    pub method: WorkflowExtensionHttpMethodBody,
+    pub route_template: String,
+    pub access_policy: WorkflowExtensionAccessPolicyBody,
+    pub response_mode: WorkflowExtensionResponseModeBody,
+    #[schema(value_type = Object)]
+    pub parameter_schema: Value,
+    #[schema(value_type = Object)]
+    pub result_schema: Value,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -606,32 +611,16 @@ fn to_extension_config(body: WorkflowExtensionApiBody) -> WorkflowExtensionApiCo
             WorkflowExtensionHttpMethodBody::Head => WorkflowExtensionHttpMethod::Head,
             WorkflowExtensionHttpMethodBody::Options => WorkflowExtensionHttpMethod::Options,
         },
+        access_policy: match body.access_policy {
+            WorkflowExtensionAccessPolicyBody::UserApiKey => {
+                WorkflowExtensionAccessPolicy::UserApiKey
+            }
+            WorkflowExtensionAccessPolicyBody::Public => WorkflowExtensionAccessPolicy::Public,
+        },
         response_mode: match body.response_mode {
             WorkflowExtensionResponseModeBody::Sync => WorkflowExtensionResponseMode::Sync,
             WorkflowExtensionResponseModeBody::Async => WorkflowExtensionResponseMode::Async,
         },
-        parameters: body
-            .parameters
-            .into_iter()
-            .map(|parameter| WorkflowExtensionParameterMapping {
-                name: parameter.name,
-                source: match parameter.source {
-                    WorkflowExtensionParameterSourceBody::Path => {
-                        WorkflowExtensionParameterSource::Path
-                    }
-                    WorkflowExtensionParameterSourceBody::Query => {
-                        WorkflowExtensionParameterSource::Query
-                    }
-                    WorkflowExtensionParameterSourceBody::Form => {
-                        WorkflowExtensionParameterSource::Form
-                    }
-                    WorkflowExtensionParameterSourceBody::Body => {
-                        WorkflowExtensionParameterSource::Body
-                    }
-                },
-                target: parameter.target,
-            })
-            .collect(),
     }
 }
 
@@ -647,38 +636,25 @@ fn to_extension_body(config: WorkflowExtensionApiConfig) -> WorkflowExtensionApi
             WorkflowExtensionHttpMethod::Head => WorkflowExtensionHttpMethodBody::Head,
             WorkflowExtensionHttpMethod::Options => WorkflowExtensionHttpMethodBody::Options,
         },
+        access_policy: match config.access_policy {
+            WorkflowExtensionAccessPolicy::UserApiKey => {
+                WorkflowExtensionAccessPolicyBody::UserApiKey
+            }
+            WorkflowExtensionAccessPolicy::Public => WorkflowExtensionAccessPolicyBody::Public,
+        },
         response_mode: match config.response_mode {
             WorkflowExtensionResponseMode::Sync => WorkflowExtensionResponseModeBody::Sync,
             WorkflowExtensionResponseMode::Async => WorkflowExtensionResponseModeBody::Async,
         },
-        parameters: config
-            .parameters
-            .into_iter()
-            .map(|parameter| WorkflowExtensionParameterMappingBody {
-                name: parameter.name,
-                source: match parameter.source {
-                    WorkflowExtensionParameterSource::Path => {
-                        WorkflowExtensionParameterSourceBody::Path
-                    }
-                    WorkflowExtensionParameterSource::Query => {
-                        WorkflowExtensionParameterSourceBody::Query
-                    }
-                    WorkflowExtensionParameterSource::Form => {
-                        WorkflowExtensionParameterSourceBody::Form
-                    }
-                    WorkflowExtensionParameterSource::Body => {
-                        WorkflowExtensionParameterSourceBody::Body
-                    }
-                },
-                target: parameter.target,
-            })
-            .collect(),
     }
 }
 
 fn to_publication_response(
     publication: ApplicationPublicationVersionRecord,
 ) -> ApplicationPublicationResponse {
+    let operation = PublishedWorkflowOperation::from_publication(publication.clone())
+        .ok()
+        .map(to_published_workflow_operation_response);
     ApplicationPublicationResponse {
         id: publication.id,
         application_id: publication.application_id,
@@ -690,6 +666,7 @@ fn to_publication_response(
         api_enabled: publication.api_enabled,
         public_url: publication_public_url(&publication),
         mapping_snapshot: to_mapping_body(publication.mapping_snapshot, None),
+        operation,
         operation_bindings: to_operation_bindings_body(publication.operation_bindings),
         dependency_snapshot: publication
             .dependency_snapshot
@@ -717,6 +694,25 @@ fn to_publication_response(
             .collect(),
         created_by: publication.created_by,
         created_at: format_time(publication.created_at),
+    }
+}
+
+fn to_published_workflow_operation_response(
+    operation: PublishedWorkflowOperation,
+) -> PublishedWorkflowOperationResponse {
+    let extension = operation
+        .publication
+        .mapping_snapshot
+        .extension
+        .expect("published workflow operation must have extension config");
+    PublishedWorkflowOperationResponse {
+        interface_id: operation.interface_id,
+        method: to_extension_body(extension.clone()).method,
+        route_template: operation.route_template,
+        access_policy: to_extension_body(extension.clone()).access_policy,
+        response_mode: to_extension_body(extension).response_mode,
+        parameter_schema: operation.parameter_schema,
+        result_schema: operation.result_schema,
     }
 }
 

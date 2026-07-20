@@ -332,6 +332,7 @@ pub struct StoredApplicationRunSummaryRow {
     pub title: String,
     pub input_payload: serde_json::Value,
     pub external_user: Option<String>,
+    pub created_by: Option<Uuid>,
     pub authorized_account: Option<String>,
     pub api_key_id: Option<Uuid>,
     pub publication_version_id: Option<Uuid>,
@@ -725,6 +726,7 @@ impl PgOrchestrationRuntimeMapper {
                 &row.input_payload,
             ),
             user_id: row.external_user,
+            created_by: row.created_by,
             authorized_account: row.authorized_account,
             api_key_id: row.api_key_id,
             publication_version_id: row.publication_version_id,
@@ -760,6 +762,8 @@ pub fn parse_flow_run_mode(value: &str) -> Result<domain::FlowRunMode> {
         "debug_node_preview" => Ok(domain::FlowRunMode::DebugNodePreview),
         "debug_flow_run" => Ok(domain::FlowRunMode::DebugFlowRun),
         "published_api_run" => Ok(domain::FlowRunMode::PublishedApiRun),
+        "workflow_http_run" => Ok(domain::FlowRunMode::WorkflowHttpRun),
+        "workflow_schedule_run" => Ok(domain::FlowRunMode::WorkflowScheduleRun),
         _ => Err(anyhow!("unknown flow run mode: {value}")),
     }
 }

@@ -13,6 +13,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
@@ -155,9 +156,49 @@ fn normalize_application_log_cache_hit_rate(record: &mut Value) {
     }
 }
 
+fn normalize_application_run_observability(record: &mut Value) {
+    let Some(run_mode) = record
+        .get("run_mode")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<domain::FlowRunMode>(value).ok())
+    else {
+        return;
+    };
+    let created_by = record
+        .get("created_by")
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok());
+    let api_key_id = record
+        .get("api_key_id")
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok());
+    let authorized_account = record
+        .get("authorized_account")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let context = run_mode.invocation_context(created_by, authorized_account, api_key_id);
+
+    if let Some(object) = record.as_object_mut() {
+        object.insert(
+            "execution_stage".to_string(),
+            Value::String(context.execution_stage.as_str().to_string()),
+        );
+        object.insert(
+            "invocation_source".to_string(),
+            Value::String(context.invocation_source.as_str().to_string()),
+        );
+        object.insert(
+            "principal".to_string(),
+            serde_json::to_value(context.principal)
+                .expect("FlowRunPrincipal serialization must remain infallible"),
+        );
+    }
+}
+
 fn runtime_record_response(model_code: &str, mut record: Value) -> Value {
     if model_code == "application_run_log_summaries" {
         normalize_application_log_cache_hit_rate(&mut record);
+        normalize_application_run_observability(&mut record);
     }
 
     record
@@ -793,6 +834,7 @@ mod tests {
             "application_run_log_summaries",
             json!({
                 "id": "run-1",
+                "run_mode": "debug_flow_run",
                 "total_tokens": 49901,
                 "input_cache_hit_tokens": 49063,
                 "input_cache_hit_rate": 0.9505703422053232
@@ -808,6 +850,7 @@ mod tests {
             "application_run_log_summaries",
             json!({
                 "id": "run-1",
+                "run_mode": "debug_flow_run",
                 "input_cache_hit_rate": 1.0
             }),
         );
@@ -826,6 +869,29 @@ mod tests {
         );
 
         assert_eq!(record["input_cache_hit_rate"], json!(0.9505703422053232));
+    }
+
+    #[test]
+    fn runtime_record_response_exposes_public_and_scheduler_without_creator_identity() {
+        for (run_mode, invocation_source, principal_kind) in [
+            ("workflow_http_run", "workflow_http", "public"),
+            ("workflow_schedule_run", "workflow_schedule", "scheduler"),
+        ] {
+            let record = runtime_record_response(
+                "application_run_log_summaries",
+                json!({
+                    "run_mode": run_mode,
+                    "created_by": Uuid::now_v7().to_string(),
+                    "authorized_account": "publication creator"
+                }),
+            );
+
+            assert_eq!(record["execution_stage"], json!("published"));
+            assert_eq!(record["invocation_source"], json!(invocation_source));
+            assert_eq!(record["principal"]["kind"], json!(principal_kind));
+            assert_eq!(record["principal"]["id"], Value::Null);
+            assert_eq!(record["principal"]["display_name"], Value::Null);
+        }
     }
 }
 

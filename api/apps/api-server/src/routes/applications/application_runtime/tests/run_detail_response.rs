@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn run_detail_response_does_not_expose_publication_creator_as_scheduler_principal() {
+    let application = test_application_record();
+    let flow_run_id = Uuid::now_v7();
+    let mut flow_run = test_flow_run_record(
+        application.id,
+        flow_run_id,
+        domain::FlowRunStatus::Succeeded,
+        serde_json::json!({}),
+    );
+    flow_run.run_mode = domain::FlowRunMode::WorkflowScheduleRun;
+    flow_run.authorized_account = Some("publication creator".to_string());
+    let detail = domain::ApplicationRunDetail {
+        flow_run,
+        node_runs: Vec::new(),
+        checkpoints: Vec::new(),
+        callback_tasks: Vec::new(),
+        events: Vec::new(),
+        stitched_trace: Vec::new(),
+        subagent_traces: Vec::new(),
+    };
+
+    let response = to_application_run_detail_response(&application, detail);
+
+    assert_eq!(response.run.execution_stage, "published");
+    assert_eq!(response.run.invocation_source, "workflow_schedule");
+    assert_eq!(response.run.principal.kind, "scheduler");
+    assert_eq!(response.run.principal.id, None);
+    assert_eq!(response.run.principal.display_name, None);
+}
+
+#[test]
 fn run_detail_response_moves_waiting_prefix_answer_into_answer_snapshot() {
     let application = test_application_record();
     let flow_run_id = Uuid::now_v7();

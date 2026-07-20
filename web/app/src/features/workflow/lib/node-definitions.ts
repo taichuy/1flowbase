@@ -12,8 +12,8 @@ import {
   panelField,
   panelSection
 } from '../../agent-flow/lib/node-definitions/contracts';
-import type { NodeDefinitionMeta } from '../../agent-flow/lib/node-definitions/types';
-import { getStartInputFields } from '../../agent-flow/lib/variables/start-node-variables';
+import type { NodeDefinitionMeta } from '../../flow-editor/authoring/node-definition-types';
+import { getStartInputFields } from '../../flow-editor/authoring/start-input-fields';
 import { asWorkflowTriggerContext } from './trigger-context';
 
 export function createWorkflowStartContract(): NodeRuntimeUiContract {

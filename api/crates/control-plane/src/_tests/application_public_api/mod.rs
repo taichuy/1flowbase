@@ -11,8 +11,7 @@ use control_plane::{
             ApplicationApiMappingInput, ApplicationApiMappingOutput, ApplicationApiMappingService,
             ApplicationOperationBindings, ApplicationOperationTargetBinding,
             GetApplicationApiMappingCommand, ReplaceApplicationApiMappingCommand,
-            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
-            WorkflowExtensionParameterMapping, WorkflowExtensionParameterSource,
+            WorkflowExtensionAccessPolicy, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
             WorkflowExtensionResponseMode,
         },
         publications::{
@@ -31,14 +30,14 @@ use control_plane::{
         },
         ApplicationPublicApiTestHarness,
     },
-    auth::ApiKeyService,
+    auth::{hash_api_key_token, ApiKeyService},
     errors::ControlPlaneError,
     ports::{
-        ApplicationJsDependencySelectionRepository, ClaimedTask, EphemeralInspectionCapabilities,
-        FlowRepository, ReplaceApplicationJsDependencySelectionInput, TaskQueue,
+        ApiKeyRepository, ApplicationJsDependencySelectionRepository, ClaimedTask,
+        CreateApiKeyInput, EphemeralInspectionCapabilities, FlowRepository,
+        ReplaceApplicationJsDependencySelectionInput, TaskQueue,
     },
 };
-use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use time::Duration;
 use uuid::Uuid;
@@ -50,6 +49,7 @@ mod native_run;
 mod openai_compat;
 mod operation_bindings;
 mod publications;
+mod published_workflow_operation;
 mod resume;
 mod run_service;
 mod workflow_start_http_inputs;
@@ -116,12 +116,8 @@ fn workflow_extension_mapping(slug: &str) -> ApplicationApiMappingConfig {
         extension: Some(WorkflowExtensionApiConfig {
             slug: slug.into(),
             method: WorkflowExtensionHttpMethod::Post,
+            access_policy: WorkflowExtensionAccessPolicy::UserApiKey,
             response_mode: WorkflowExtensionResponseMode::Async,
-            parameters: vec![WorkflowExtensionParameterMapping {
-                name: "customer_id".into(),
-                source: WorkflowExtensionParameterSource::Query,
-                target: "node-workflow-start.customer_id".into(),
-            }],
         }),
     }
 }
@@ -173,9 +169,61 @@ fn application_public_api_code_js_dependency_document(flow_id: Uuid) -> serde_js
     })
 }
 
+fn workflow_schedule_start_contract_document() -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": "1flowbase.flow/v2",
+        "graph": {
+            "nodes": [{
+                "id": "node-workflow-start",
+                "type": "workflow_start",
+                "config": {
+                    "input_fields": [
+                        {
+                            "key": "customer_id",
+                            "valueType": "string",
+                            "required": true,
+                            "source": "path"
+                        },
+                        {
+                            "key": "attempts",
+                            "valueType": "number",
+                            "defaultValue": 3,
+                            "source": "query"
+                        },
+                        {
+                            "key": "enabled",
+                            "valueType": "boolean",
+                            "source": "body"
+                        }
+                    ]
+                }
+            }],
+            "edges": []
+        }
+    })
+}
+
 #[derive(Default)]
 struct RecordingTaskQueue {
     enqueued: Mutex<Vec<(String, serde_json::Value, Option<String>)>>,
+    attempts: Mutex<usize>,
+    failures_remaining: Mutex<usize>,
+}
+
+impl RecordingTaskQueue {
+    fn failing_once() -> Self {
+        Self {
+            failures_remaining: Mutex::new(1),
+            ..Self::default()
+        }
+    }
+
+    fn attempt_count(&self) -> usize {
+        *self
+            .attempts
+            .lock()
+            .expect("recording task queue attempts mutex poisoned")
+    }
 }
 
 #[async_trait]
@@ -186,22 +234,38 @@ impl TaskQueue for RecordingTaskQueue {
         payload: serde_json::Value,
         idempotency_key: Option<&str>,
     ) -> Result<String> {
-        let task_id = format!(
-            "task-{}",
-            self.enqueued
-                .lock()
-                .expect("recording task queue mutex poisoned")
-                .len()
-                + 1
-        );
-        self.enqueued
+        *self
+            .attempts
             .lock()
-            .expect("recording task queue mutex poisoned")
-            .push((
-                queue.to_string(),
-                payload,
-                idempotency_key.map(ToOwned::to_owned),
-            ));
+            .expect("recording task queue attempts mutex poisoned") += 1;
+        let mut failures_remaining = self
+            .failures_remaining
+            .lock()
+            .expect("recording task queue failures mutex poisoned");
+        if *failures_remaining > 0 {
+            *failures_remaining -= 1;
+            anyhow::bail!("injected task queue enqueue failure");
+        }
+        drop(failures_remaining);
+
+        let mut enqueued = self
+            .enqueued
+            .lock()
+            .expect("recording task queue mutex poisoned");
+        if let Some(idempotency_key) = idempotency_key {
+            if let Some(index) = enqueued
+                .iter()
+                .position(|entry| entry.0 == queue && entry.2.as_deref() == Some(idempotency_key))
+            {
+                return Ok(format!("task-{}", index + 1));
+            }
+        }
+        let task_id = format!("task-{}", enqueued.len() + 1);
+        enqueued.push((
+            queue.to_string(),
+            payload,
+            idempotency_key.map(ToOwned::to_owned),
+        ));
         Ok(task_id)
     }
 
@@ -251,6 +315,76 @@ async fn application_public_api_key_service_requires_application_edit_permission
         .unwrap_err();
 
     assert!(error.to_string().contains("permission_denied"));
+}
+
+#[tokio::test]
+async fn ac_004_application_api_keys_fail_closed_for_workflows() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let workflow = harness.seed_workflow_application(actor_user_id(), "Order workflow");
+    let repository = harness.repository();
+    let service = ApplicationApiKeyService::new(repository.clone());
+
+    let create_error = service
+        .create_api_key(CreateApplicationApiKeyCommand {
+            actor_user_id: actor_user_id(),
+            application_id: workflow.id,
+            name: "Unsupported workflow key".into(),
+            expires_at: None,
+        })
+        .await
+        .unwrap_err();
+    assert!(create_error
+        .to_string()
+        .contains("application_api_key_application_type"));
+
+    let list_error = service
+        .list_api_keys(ListApplicationApiKeysCommand {
+            actor_user_id: actor_user_id(),
+            application_id: workflow.id,
+        })
+        .await
+        .unwrap_err();
+    assert!(list_error
+        .to_string()
+        .contains("application_api_key_application_type"));
+
+    let revoke_error = service
+        .revoke_api_key(RevokeApplicationApiKeyCommand {
+            actor_user_id: actor_user_id(),
+            application_id: workflow.id,
+            api_key_id: Uuid::now_v7(),
+        })
+        .await
+        .unwrap_err();
+    assert!(revoke_error
+        .to_string()
+        .contains("application_api_key_application_type"));
+
+    let legacy_token = "sk-workflow-legacy-token";
+    repository
+        .create_api_key(&CreateApiKeyInput {
+            id: Uuid::now_v7(),
+            name: "Legacy workflow key".into(),
+            token_hash: hash_api_key_token(legacy_token),
+            token_prefix: "sk-workflow".into(),
+            key_kind: domain::ApiKeyKind::ApplicationApiKey,
+            application_id: Some(workflow.id),
+            role_code: None,
+            creator_user_id: actor_user_id(),
+            tenant_id: Uuid::nil(),
+            scope_kind: domain::DataModelScopeKind::Workspace,
+            scope_id: workflow.workspace_id,
+            enabled: true,
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+
+    let auth_error = service
+        .authenticate_bearer_token(legacy_token)
+        .await
+        .unwrap_err();
+    assert!(auth_error.to_string().contains("not_authenticated"));
 }
 
 #[tokio::test]
@@ -1223,21 +1357,22 @@ async fn application_public_api_publish_rejects_extension_slug_used_by_saved_map
 }
 
 #[tokio::test]
-async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
+async fn workflow_http_operation_rejects_application_key_and_runs_with_public_principal() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
+    let agent_flow = harness.seed_application(actor_user_id(), "Support Agent");
     let repository = harness.repository();
-    let token = ApplicationApiKeyService::new(repository.clone())
+    let application_token = ApplicationApiKeyService::new(repository.clone())
         .create_api_key(CreateApplicationApiKeyCommand {
             actor_user_id: actor_user_id(),
-            application_id: application.id,
-            name: "Workflow extension".into(),
+            application_id: agent_flow.id,
+            name: "Rejected application key".into(),
             expires_at: None,
         })
         .await
         .unwrap()
         .token;
-    let mapping = ApplicationApiMappingConfig {
+    let mut mapping = ApplicationApiMappingConfig {
         input: ApplicationApiMappingInput {
             query_target: "node-start.query".into(),
             model_target: None,
@@ -1249,31 +1384,35 @@ async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
         extension: Some(WorkflowExtensionApiConfig {
             slug: "open-ticket".into(),
             method: WorkflowExtensionHttpMethod::Post,
+            access_policy: WorkflowExtensionAccessPolicy::UserApiKey,
             response_mode: WorkflowExtensionResponseMode::Async,
-            parameters: vec![
-                WorkflowExtensionParameterMapping {
-                    name: "slug".into(),
-                    source: WorkflowExtensionParameterSource::Path,
-                    target: "node-workflow-start.slug".into(),
-                },
-                WorkflowExtensionParameterMapping {
-                    name: "customer_id".into(),
-                    source: WorkflowExtensionParameterSource::Query,
-                    target: "node-workflow-start.customer_id".into(),
-                },
-                WorkflowExtensionParameterMapping {
-                    name: "priority".into(),
-                    source: WorkflowExtensionParameterSource::Form,
-                    target: "node-workflow-start.priority".into(),
-                },
-                WorkflowExtensionParameterMapping {
-                    name: "ticket_kind".into(),
-                    source: WorkflowExtensionParameterSource::Body,
-                    target: "node-workflow-start.ticket_kind".into(),
-                },
-            ],
         }),
     };
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: mapping.clone(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+
+    let rejected = WorkflowExtensionRunService::new(repository.clone())
+        .create_run(CreateWorkflowExtensionRunCommand {
+            bearer_token: Some(application_token.clone()),
+            request_path: "open-ticket".into(),
+            method: WorkflowExtensionHttpMethod::Post,
+            parameters: WorkflowExtensionRequestParameters::default(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        rejected,
+        control_plane::application_public_api::workflow_extension::WorkflowExtensionRunError::NotAuthenticated
+    ));
+
+    mapping.extension.as_mut().unwrap().access_policy = WorkflowExtensionAccessPolicy::Public;
     ApplicationPublicationService::new(repository.clone())
         .publish_active_version(PublishApplicationCommand {
             actor_user_id: actor_user_id(),
@@ -1286,21 +1425,10 @@ async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
 
     let run = WorkflowExtensionRunService::new(repository.clone())
         .create_run(CreateWorkflowExtensionRunCommand {
-            bearer_token: token,
-            slug: "open-ticket".into(),
+            bearer_token: Some(application_token),
+            request_path: "open-ticket".into(),
             method: WorkflowExtensionHttpMethod::Post,
-            parameters: WorkflowExtensionRequestParameters {
-                path: BTreeMap::from([("slug".to_string(), serde_json::json!("open-ticket"))]),
-                query: serde_json::Map::from_iter([(
-                    "customer_id".to_string(),
-                    serde_json::json!("C-42"),
-                )]),
-                form: serde_json::Map::from_iter([(
-                    "priority".to_string(),
-                    serde_json::json!("urgent"),
-                )]),
-                body: serde_json::json!({ "ticket_kind": "billing" }),
-            },
+            parameters: WorkflowExtensionRequestParameters::default(),
         })
         .await
         .unwrap();
@@ -1313,25 +1441,22 @@ async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
     assert_eq!(run.status, domain::FlowRunStatus::Queued);
     assert_eq!(
         stored.input_payload["node-workflow-start"],
-        serde_json::json!({
-            "slug": "open-ticket",
-            "customer_id": "C-42",
-            "priority": "urgent",
-            "ticket_kind": "billing"
-        })
+        serde_json::json!({})
     );
     assert_eq!(
         stored.input_payload["trigger"],
         serde_json::json!({ "type": "extension" })
     );
+    let expected_trace = format!(
+        "workflow-http:published_workflow_operation:{}",
+        application.id
+    );
     assert_eq!(
         stored.external_trace_id.as_deref(),
-        Some("workflow-extension:open-ticket")
+        Some(expected_trace.as_str())
     );
-    assert_eq!(
-        stored.compatibility_mode.as_deref(),
-        Some("workflow_extension_v1")
-    );
+    assert_eq!(stored.compatibility_mode, None);
+    assert_eq!(run.api_key_id, None, "public principal is not an API key");
 }
 
 #[tokio::test]
@@ -1406,11 +1531,15 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
             actor_user_id: actor_user_id(),
             application_id: application.id,
             mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: true,
+            api_enabled: false,
         })
         .await
         .unwrap();
-    service
+    repository.set_active_publication_document_snapshot(
+        application.id,
+        workflow_schedule_start_contract_document(),
+    );
+    let schedule_trigger = service
         .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
             actor_user_id: actor_user_id(),
             application_id: application.id,
@@ -1418,9 +1547,8 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
             cron: "0 9 * * *".into(),
             timezone: "UTC".into(),
             input_payload: serde_json::json!({
-                "node-workflow-start": { "customer_id": "C-42" },
-                "sys": { "user_id": "spoofed" },
-                "trigger": { "type": "spoofed" }
+                "customer_id": "C-42",
+                "enabled": "true"
             }),
         })
         .await
@@ -1432,7 +1560,7 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
         .dispatch_due_schedule(
             DispatchWorkflowScheduleCommand {
                 application_id: application.id,
-                scheduled_at,
+                scheduled_at: scheduled_at + Duration::seconds(20),
             },
             Some(&task_queue),
         )
@@ -1454,18 +1582,24 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
 
     assert_eq!(dispatched.status, domain::FlowRunStatus::Queued);
     assert_eq!(dispatched.task_id.as_deref(), Some("task-1"));
-    assert_eq!(stored.run_mode, domain::FlowRunMode::PublishedApiRun);
+    assert_eq!(stored.run_mode, domain::FlowRunMode::WorkflowScheduleRun);
+    assert_eq!(stored.api_key_id, None);
     assert_eq!(
         stored.external_trace_id.as_deref(),
-        Some(format!("workflow-schedule:{}", application.id).as_str())
+        Some(format!("workflow-schedule:{}", schedule_trigger.id).as_str())
     );
-    assert_eq!(
-        stored.compatibility_mode.as_deref(),
-        Some("workflow_schedule_v1")
-    );
+    assert_eq!(stored.compatibility_mode, None);
     assert_eq!(
         stored.input_payload["node-workflow-start"]["customer_id"],
         serde_json::json!("C-42")
+    );
+    assert_eq!(
+        stored.input_payload["node-workflow-start"]["attempts"],
+        serde_json::json!(3)
+    );
+    assert_eq!(
+        stored.input_payload["node-workflow-start"]["enabled"],
+        serde_json::json!(true)
     );
     assert_eq!(
         stored.input_payload["trigger"],
@@ -1476,6 +1610,19 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
         })
     );
     assert!(stored.input_payload.get("sys").is_none());
+    let schedule_event = repository
+        .run_events(dispatched.run_id)
+        .into_iter()
+        .find(|event| event.event_type == "workflow_schedule_run_enqueued")
+        .expect("schedule invocation should append its trigger event");
+    assert_eq!(
+        schedule_event.payload["trigger_id"],
+        serde_json::json!(schedule_trigger.id.to_string())
+    );
+    assert_eq!(
+        schedule_event.payload["operation_id"],
+        serde_json::json!(format!("workflow_schedule:{}", schedule_trigger.id))
+    );
     assert_eq!(enqueued.len(), 1);
     assert_eq!(enqueued[0].0, WORKFLOW_SCHEDULE_RUN_QUEUE);
     assert_eq!(
@@ -1514,8 +1661,142 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
         .clone();
 
     assert_eq!(duplicate.run_id, dispatched.run_id);
-    assert_eq!(duplicate.task_id, None);
+    assert_eq!(duplicate.task_id.as_deref(), Some("task-1"));
     assert_eq!(enqueued_after_duplicate.len(), 1);
+}
+
+#[tokio::test]
+async fn workflow_schedule_retry_enqueues_existing_run_after_the_first_enqueue_fails() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "Recoverable Schedule");
+    harness.set_workflow_trigger_type(application.id, domain::WorkflowTriggerType::Schedule);
+    let repository = harness.repository();
+    let service = WorkflowScheduleTriggerService::new(repository.clone());
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: false,
+        })
+        .await
+        .unwrap();
+    repository.set_active_publication_document_snapshot(
+        application.id,
+        workflow_schedule_start_contract_document(),
+    );
+    service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "0 9 * * *".into(),
+            timezone: "UTC".into(),
+            input_payload: serde_json::json!({ "customer_id": "C-42" }),
+        })
+        .await
+        .unwrap();
+    let task_queue = RecordingTaskQueue::failing_once();
+    let scheduled_at = time::OffsetDateTime::UNIX_EPOCH + Duration::hours(9);
+
+    service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at,
+            },
+            Some(&task_queue),
+        )
+        .await
+        .expect_err("the injected first enqueue must fail after the run is durable");
+    assert_eq!(repository.flow_run_count(), 1);
+
+    let retry = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at,
+            },
+            Some(&task_queue),
+        )
+        .await
+        .unwrap();
+    let WorkflowScheduleDispatchOutcome::Dispatched(retry) = retry else {
+        panic!("retry should recover delivery for the existing schedule run");
+    };
+    let enqueued = task_queue
+        .enqueued
+        .lock()
+        .expect("recording task queue mutex poisoned")
+        .clone();
+
+    assert_eq!(repository.flow_run_count(), 1);
+    assert_eq!(task_queue.attempt_count(), 2);
+    assert_eq!(retry.task_id.as_deref(), Some("task-1"));
+    assert_eq!(enqueued.len(), 1);
+    assert_eq!(
+        enqueued[0].2.as_deref(),
+        Some(
+            format!(
+                "workflow-schedule:{}:{}",
+                application.id,
+                scheduled_at.unix_timestamp()
+            )
+            .as_str()
+        )
+    );
+}
+
+#[tokio::test]
+async fn workflow_schedule_dispatch_skips_invalid_typed_start_defaults() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "Invalid Defaults");
+    harness.set_workflow_trigger_type(application.id, domain::WorkflowTriggerType::Schedule);
+    let repository = harness.repository();
+    let service = WorkflowScheduleTriggerService::new(repository.clone());
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: false,
+        })
+        .await
+        .unwrap();
+    repository.set_active_publication_document_snapshot(
+        application.id,
+        workflow_schedule_start_contract_document(),
+    );
+    service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "* * * * *".into(),
+            timezone: "UTC".into(),
+            input_payload: serde_json::json!({ "customer_id": "C-42", "enabled": "yes" }),
+        })
+        .await
+        .unwrap();
+
+    let outcome = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at: time::OffsetDateTime::UNIX_EPOCH,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        outcome,
+        WorkflowScheduleDispatchOutcome::Skipped {
+            reason: "invalid_input_defaults",
+        }
+    );
+    assert_eq!(repository.flow_run_count(), 0);
 }
 
 #[test]
@@ -2234,19 +2515,9 @@ fn application_public_api_mapping_validation_rejects_invalid_workflow_extension_
         .to_string()
         .contains("extension.slug"));
 
-    invalid_slug = workflow_extension_mapping("open-ticket");
-    invalid_slug
-        .extension
-        .as_mut()
-        .unwrap()
-        .parameters
-        .push(WorkflowExtensionParameterMapping {
-            name: "customer_id".into(),
-            source: WorkflowExtensionParameterSource::Query,
-            target: "node-workflow-start.duplicate_customer_id".into(),
-        });
+    invalid_slug = workflow_extension_mapping("open-ticket/*rest");
     assert!(validate_application_api_mapping(&invalid_slug)
         .unwrap_err()
         .to_string()
-        .contains("parameter"));
+        .contains("extension.slug"));
 }

@@ -29,7 +29,10 @@ import {
   HTTP_REQUEST_RESPONSE_BYTES_STEP
 } from '../http-request/contract';
 import { i18nText } from '../../../../shared/i18n/text';
-import { getRegisteredNodeDefinition } from './registry';
+import {
+  getNodeRuntimeContract,
+  registerNodeRuntimeContracts
+} from '../../../flow-editor/authoring/runtime-contract-registry';
 
 type BuiltinNodeRuntimeContractType = Exclude<FlowNodeType, 'unresolved_node'>;
 type ContractCategory = 'io' | 'generation' | 'control' | 'data' | 'external';
@@ -1186,13 +1189,12 @@ export const BUILTIN_NODE_RUNTIME_CONTRACTS: Record<
   plugin_node: createPluginNodeContract()
 };
 
+registerNodeRuntimeContracts(Object.values(BUILTIN_NODE_RUNTIME_CONTRACTS));
+
 export function getBuiltinNodeRuntimeContract(
   nodeType: FlowNodeType
 ): NodeRuntimeUiContract | null {
-  const contract =
-    BUILTIN_NODE_RUNTIME_CONTRACTS[
-      nodeType as StaticBuiltinNodeRuntimeContractType
-    ] ?? getRegisteredNodeDefinition(nodeType)?.contract;
+  const contract = getNodeRuntimeContract(nodeType);
 
   return contract ? duplicateContract(contract) : null;
 }

@@ -80,6 +80,15 @@ async fn application_routes_create_list_and_detail() {
         detail_payload["data"].get("workflow_trigger_type"),
         Some(&Value::Null)
     );
+    // AC-001: AgentFlow exposes its Application API Key route family.
+    assert_eq!(
+        detail_payload["data"]["sections"]["api"]["credential_kind"],
+        json!("application_api_key")
+    );
+    assert_eq!(
+        detail_payload["data"]["sections"]["api"]["invoke_path_template"],
+        json!("/api/agent/v1/runs")
+    );
 }
 
 #[tokio::test]
@@ -136,6 +145,15 @@ async fn application_routes_persist_workflow_trigger_type() {
     assert_eq!(
         detail_payload["data"]["workflow_trigger_type"].as_str(),
         Some("schedule")
+    );
+    // AC-001: schedules do not advertise an HTTP API capability.
+    assert_eq!(
+        detail_payload["data"]["sections"]["api"]["status"],
+        json!("unavailable")
+    );
+    assert_eq!(
+        detail_payload["data"]["sections"]["api"]["invoke_path_template"],
+        Value::Null
     );
 }
 
@@ -221,6 +239,7 @@ async fn application_routes_create_extension_mapping_draft() {
                         "workflow_trigger_config": {
                             "subpath": "orders/create",
                             "http_method": "POST",
+                            "access_policy": "user_api_key",
                             "response_mode": "sync"
                         },
                         "name": "Order Workflow",
@@ -238,6 +257,19 @@ async fn application_routes_create_extension_mapping_draft() {
     let create_status = create.status();
     let create_payload = response_json(create).await;
     assert_eq!(create_status, StatusCode::CREATED, "{create_payload}");
+    // AC-001: extensions expose a published workflow operation, not AgentFlow keys.
+    assert_eq!(
+        create_payload["data"]["sections"]["api"]["status"],
+        json!("available")
+    );
+    assert_eq!(
+        create_payload["data"]["sections"]["api"]["credential_kind"],
+        json!("user_or_public")
+    );
+    assert_eq!(
+        create_payload["data"]["sections"]["api"]["invoke_routing_mode"],
+        json!("published_workflow_operation")
+    );
     let application_id = create_payload["data"]["id"].as_str().unwrap().to_string();
     let mapping = app
         .oneshot(

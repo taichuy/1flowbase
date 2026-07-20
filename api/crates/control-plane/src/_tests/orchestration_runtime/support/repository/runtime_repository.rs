@@ -1203,6 +1203,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                 target_node_id: record.target_node_id.clone(),
                 title: record.title.clone(),
                 user_id: record.external_user.clone(),
+                created_by: Some(record.created_by),
                 authorized_account: record.authorized_account.clone(),
                 api_key_id: record.api_key_id,
                 publication_version_id: record.publication_version_id,

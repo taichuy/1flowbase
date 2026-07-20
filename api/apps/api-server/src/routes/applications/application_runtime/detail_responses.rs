@@ -316,6 +316,11 @@ fn to_application_run_detail_response(
         .map(to_stitched_trace_response)
         .collect::<Vec<_>>();
     let application_type = application.application_type.as_str().to_string();
+    let invocation_context = detail.flow_run.run_mode.invocation_context(
+        Some(detail.flow_run.created_by),
+        detail.flow_run.authorized_account.clone(),
+        detail.flow_run.api_key_id,
+    );
     let run = application_logs::ApplicationRunLogResponse {
         id: detail.flow_run.id.to_string(),
         application_id: application.id.to_string(),
@@ -324,7 +329,8 @@ fn to_application_run_detail_response(
         run_kind: detail.flow_run.run_mode.as_str().to_string(),
         status: detail.flow_run.status.as_str().to_string(),
         title: detail.flow_run.title.clone(),
-        source: application_logs::source_for_run(detail.flow_run.api_key_id),
+        execution_stage: invocation_context.execution_stage.as_str().to_string(),
+        invocation_source: invocation_context.invocation_source.as_str().to_string(),
         compatibility_mode: detail.flow_run.compatibility_mode.clone(),
         subject: application_logs::ApplicationRunSubjectResponse {
             kind: application_type,
@@ -332,10 +338,7 @@ fn to_application_run_detail_response(
             draft_id: Some(detail.flow_run.draft_id.to_string()),
             target_node_id: detail.flow_run.target_node_id.clone(),
         },
-        actor: application_logs::actor_from_console_user(
-            Some(detail.flow_run.created_by.to_string()),
-            detail.flow_run.authorized_account.clone(),
-        ),
+        principal: application_logs::principal_response(invocation_context.principal),
         correlation: application_logs::ApplicationRunCorrelationResponse {
             api_key_id: detail.flow_run.api_key_id.map(|value| value.to_string()),
             publication_version_id: detail

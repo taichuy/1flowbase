@@ -22,9 +22,7 @@ use serde_json::{json, Map, Value};
 
 use crate::{
     app_state::ApiState,
-    routes::application_public_api::native::{
-        api_provider_runtime, bearer_token, service_error, NativeApiError,
-    },
+    routes::application_public_api::native::{api_provider_runtime, service_error, NativeApiError},
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
@@ -46,14 +44,13 @@ pub async fn invoke_workflow_extension(
     uri: axum::http::Uri,
     body: Bytes,
 ) -> Result<Response, NativeApiError> {
-    let bearer_token = bearer_token(&headers)?;
+    let bearer_token = optional_bearer_token(&headers)?;
     let method = workflow_extension_method(&method)?;
-    let parameters = request_parameters(&slug, uri.query(), &headers, &body)?;
+    let parameters = request_parameters(uri.query(), &headers, &body)?;
     let run = WorkflowExtensionRunService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
         .create_run(CreateWorkflowExtensionRunCommand {
             bearer_token,
-            slug,
+            request_path: slug,
             method,
             parameters,
         })
@@ -179,12 +176,11 @@ fn workflow_extension_method(
 }
 
 fn request_parameters(
-    slug: &str,
     raw_query: Option<&str>,
     headers: &HeaderMap,
     body: &[u8],
 ) -> Result<WorkflowExtensionRequestParameters, NativeApiError> {
-    let path = BTreeMap::from([("slug".to_string(), Value::String(slug.to_string()))]);
+    let path = BTreeMap::new();
     let query = parse_urlencoded_object(raw_query.unwrap_or_default());
     let content_type = headers
         .get(CONTENT_TYPE)
@@ -229,7 +225,7 @@ fn workflow_extension_error(error: WorkflowExtensionRunError) -> NativeApiError 
         WorkflowExtensionRunError::NotAuthenticated => NativeApiError::new(
             StatusCode::UNAUTHORIZED,
             "not_authenticated",
-            "invalid application API key",
+            "invalid or unavailable user API key",
         ),
         WorkflowExtensionRunError::ExtensionNotFound => NativeApiError::new(
             StatusCode::NOT_FOUND,
@@ -244,7 +240,7 @@ fn workflow_extension_error(error: WorkflowExtensionRunError) -> NativeApiError 
         WorkflowExtensionRunError::Forbidden => NativeApiError::new(
             StatusCode::FORBIDDEN,
             "workflow_extension_forbidden",
-            "application API key cannot invoke this workflow extension",
+            "this user API key cannot invoke the workflow extension API",
         ),
         WorkflowExtensionRunError::MethodNotAllowed => NativeApiError::new(
             StatusCode::METHOD_NOT_ALLOWED,
@@ -261,7 +257,77 @@ fn workflow_extension_error(error: WorkflowExtensionRunError) -> NativeApiError 
             "invalid_mapping",
             "workflow extension API mapping is invalid",
         ),
+        WorkflowExtensionRunError::RouteConflict => NativeApiError::new(
+            StatusCode::CONFLICT,
+            "workflow_route_conflict",
+            "workflow extension route configuration is ambiguous",
+        ),
+        WorkflowExtensionRunError::Internal(error) => {
+            tracing::error!(error = ?error, "workflow extension service failed");
+            NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "workflow extension service failed",
+            )
+        }
     }
+}
+
+#[cfg(test)]
+mod error_mapping_tests {
+    use super::*;
+
+    #[test]
+    fn user_api_key_errors_use_product_accurate_messages() {
+        let unauthenticated = workflow_extension_error(WorkflowExtensionRunError::NotAuthenticated);
+        assert_eq!(unauthenticated.status, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            unauthenticated.message,
+            "invalid or unavailable user API key"
+        );
+
+        let forbidden = workflow_extension_error(WorkflowExtensionRunError::Forbidden);
+        assert_eq!(forbidden.status, StatusCode::FORBIDDEN);
+        assert_eq!(
+            forbidden.message,
+            "this user API key cannot invoke the workflow extension API"
+        );
+    }
+
+    #[test]
+    fn internal_errors_are_stable_and_do_not_leak_repository_details() {
+        let response = workflow_extension_error(WorkflowExtensionRunError::Internal(
+            anyhow::anyhow!("database password was rejected"),
+        ));
+
+        assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.code, "internal_error");
+        assert_eq!(response.message, "workflow extension service failed");
+    }
+}
+
+fn optional_bearer_token(headers: &HeaderMap) -> Result<Option<String>, NativeApiError> {
+    let Some(value) = headers.get(axum::http::header::AUTHORIZATION) else {
+        return Ok(None);
+    };
+    let value = value.to_str().map_err(|_| {
+        NativeApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "not_authenticated",
+            "invalid authorization header",
+        )
+    })?;
+    let token = value
+        .strip_prefix("Bearer ")
+        .filter(|token| !token.is_empty())
+        .ok_or_else(|| {
+            NativeApiError::new(
+                StatusCode::UNAUTHORIZED,
+                "not_authenticated",
+                "invalid authorization header",
+            )
+        })?;
+    Ok(Some(token.to_string()))
 }
 
 fn accepted_response(run_id: uuid::Uuid, status: domain::FlowRunStatus) -> Response {

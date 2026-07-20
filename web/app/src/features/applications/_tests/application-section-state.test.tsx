@@ -26,12 +26,12 @@ const application: ApplicationDetail = {
       current_draft_id: null
     },
     api: {
-      status: 'enabled',
+      status: 'active',
       credential_kind: 'application_api_key',
       invoke_routing_mode: 'api_key_bound_application',
-      invoke_path_template: '/api/apps/app-1/invoke',
+      invoke_path_template: '/api/agent/v1/runs',
       api_capability_status: 'enabled',
-      credentials_status: 'active'
+      credentials_status: 'configured'
     },
     logs: {
       status: 'planned',
@@ -82,8 +82,8 @@ describe('ApplicationSectionState', () => {
     expect(screen.getByText('application_api_key')).toBeInTheDocument();
     expect(screen.getByText('路由模式')).toBeInTheDocument();
     expect(screen.getByText('api_key_bound_application')).toBeInTheDocument();
-    expect(screen.getByText('/api/apps/app-1/invoke')).toBeInTheDocument();
-    expect(screen.getByText('active')).toBeInTheDocument();
+    expect(screen.getByText('/api/agent/v1/runs')).toBeInTheDocument();
+    expect(screen.getByText('configured')).toBeInTheDocument();
   });
 
   test('renders monitoring observability state', () => {

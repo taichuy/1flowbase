@@ -265,9 +265,26 @@ pub struct ApplicationApiMappingOutput {
 pub struct WorkflowExtensionApiConfig {
     pub slug: String,
     pub method: WorkflowExtensionHttpMethod,
-    pub response_mode: WorkflowExtensionResponseMode,
     #[serde(default)]
-    pub parameters: Vec<WorkflowExtensionParameterMapping>,
+    pub access_policy: WorkflowExtensionAccessPolicy,
+    pub response_mode: WorkflowExtensionResponseMode,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowExtensionAccessPolicy {
+    #[default]
+    UserApiKey,
+    Public,
+}
+
+impl WorkflowExtensionAccessPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::UserApiKey => "user_api_key",
+            Self::Public => "public",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -312,22 +329,6 @@ impl WorkflowExtensionResponseMode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkflowExtensionParameterMapping {
-    pub name: String,
-    pub source: WorkflowExtensionParameterSource,
-    pub target: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkflowExtensionParameterSource {
-    Path,
-    Query,
-    Form,
-    Body,
-}
-
 pub fn validate_application_api_mapping(mapping: &ApplicationApiMappingConfig) -> Result<()> {
     validate_required_selector("query_target", &mapping.input.query_target)?;
     validate_optional_selector("model_target", mapping.input.model_target.as_deref())?;
@@ -349,16 +350,6 @@ pub fn validate_application_api_mapping(mapping: &ApplicationApiMappingConfig) -
 
 fn validate_extension_api_config(extension: &WorkflowExtensionApiConfig) -> Result<()> {
     validate_extension_slug(&extension.slug)?;
-    let mut seen = std::collections::BTreeSet::new();
-    for parameter in &extension.parameters {
-        validate_parameter_name(&parameter.name)?;
-        validate_required_selector("parameter_target", &parameter.target)?;
-        let source_key = (parameter.source, parameter.name.as_str());
-        if !seen.insert(source_key) {
-            return Err(ControlPlaneError::InvalidInput("parameter").into());
-        }
-    }
-
     Ok(())
 }
 
@@ -370,11 +361,8 @@ fn validate_extension_slug(slug: &str) -> Result<()> {
                 && segment != "."
                 && segment != ".."
                 && segment.len() <= 63
-                && segment.chars().enumerate().all(|(index, character)| {
-                    character.is_ascii_lowercase()
-                        || character.is_ascii_digit()
-                        || (index > 0 && matches!(character, '-' | '_'))
-                })
+                && (valid_extension_literal_segment(segment)
+                    || valid_extension_placeholder_segment(segment))
         });
 
     if valid {
@@ -384,16 +372,25 @@ fn validate_extension_slug(slug: &str) -> Result<()> {
     }
 }
 
-fn validate_parameter_name(name: &str) -> Result<()> {
-    let valid = !name.is_empty()
+fn valid_extension_literal_segment(segment: &str) -> bool {
+    segment.chars().enumerate().all(|(index, character)| {
+        character.is_ascii_lowercase()
+            || character.is_ascii_digit()
+            || (index > 0 && matches!(character, '-' | '_'))
+    })
+}
+
+fn valid_extension_placeholder_segment(segment: &str) -> bool {
+    let Some(name) = segment
+        .strip_prefix('{')
+        .and_then(|value| value.strip_suffix('}'))
+    else {
+        return false;
+    };
+    !name.is_empty()
         && name
             .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'));
-    if valid {
-        Ok(())
-    } else {
-        Err(ControlPlaneError::InvalidInput("parameter.name").into())
-    }
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 fn validate_required_selector(field: &'static str, selector: &str) -> Result<()> {

@@ -132,24 +132,23 @@ export type ConsoleWorkflowExtensionHttpMethod =
   | 'OPTIONS';
 
 export type ConsoleWorkflowExtensionResponseMode = 'sync' | 'async';
-
-export type ConsoleWorkflowExtensionParameterSource =
-  | 'path'
-  | 'query'
-  | 'form'
-  | 'body';
-
-export interface ConsoleWorkflowExtensionParameterMapping {
-  name: string;
-  source: ConsoleWorkflowExtensionParameterSource;
-  target: string;
-}
+export type ConsoleWorkflowExtensionAccessPolicy = 'user_api_key' | 'public';
 
 export interface ConsoleWorkflowExtensionApiConfig {
   slug: string;
   method: ConsoleWorkflowExtensionHttpMethod;
+  access_policy: ConsoleWorkflowExtensionAccessPolicy;
   response_mode: ConsoleWorkflowExtensionResponseMode;
-  parameters: ConsoleWorkflowExtensionParameterMapping[];
+}
+
+export interface ConsolePublishedWorkflowOperation {
+  interface_id: string;
+  method: ConsoleWorkflowExtensionHttpMethod;
+  route_template: string;
+  access_policy: ConsoleWorkflowExtensionAccessPolicy;
+  response_mode: ConsoleWorkflowExtensionResponseMode;
+  parameter_schema: Record<string, unknown>;
+  result_schema: Record<string, unknown>;
 }
 
 export interface ConsoleApplicationApiPublication {
@@ -162,6 +161,7 @@ export interface ConsoleApplicationApiPublication {
   active: boolean;
   api_enabled: boolean;
   mapping_snapshot: ConsoleApplicationApiMapping;
+  operation: ConsolePublishedWorkflowOperation | null;
   public_url: string;
   created_by: string;
   created_at: string;

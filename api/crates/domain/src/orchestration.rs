@@ -10,6 +10,8 @@ pub enum FlowRunMode {
     DebugNodePreview,
     DebugFlowRun,
     PublishedApiRun,
+    WorkflowHttpRun,
+    WorkflowScheduleRun,
 }
 
 impl FlowRunMode {
@@ -18,8 +20,165 @@ impl FlowRunMode {
             Self::DebugNodePreview => "debug_node_preview",
             Self::DebugFlowRun => "debug_flow_run",
             Self::PublishedApiRun => "published_api_run",
+            Self::WorkflowHttpRun => "workflow_http_run",
+            Self::WorkflowScheduleRun => "workflow_schedule_run",
         }
     }
+
+    pub fn invocation_context(
+        self,
+        created_by: Option<Uuid>,
+        authorized_account: Option<String>,
+        api_key_id: Option<Uuid>,
+    ) -> FlowRunInvocationContext {
+        let (execution_stage, invocation_source, principal) = match self {
+            Self::PublishedApiRun => (
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::AgentFlowApi,
+                FlowRunPrincipal::application_api_key(api_key_id),
+            ),
+            Self::WorkflowHttpRun if api_key_id.is_some() => (
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::WorkflowHttp,
+                FlowRunPrincipal::user_api_key(api_key_id),
+            ),
+            Self::WorkflowHttpRun => (
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::WorkflowHttp,
+                FlowRunPrincipal::public(),
+            ),
+            Self::WorkflowScheduleRun => (
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::WorkflowSchedule,
+                FlowRunPrincipal::scheduler(),
+            ),
+            Self::DebugNodePreview | Self::DebugFlowRun => (
+                FlowRunExecutionStage::Debug,
+                FlowRunInvocationSource::Debug,
+                FlowRunPrincipal::user(created_by, authorized_account),
+            ),
+        };
+
+        FlowRunInvocationContext {
+            execution_stage,
+            invocation_source,
+            principal,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowRunExecutionStage {
+    Debug,
+    Published,
+}
+
+impl FlowRunExecutionStage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Published => "published",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowRunInvocationSource {
+    AgentFlowApi,
+    WorkflowHttp,
+    WorkflowSchedule,
+    Debug,
+}
+
+impl FlowRunInvocationSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AgentFlowApi => "agent_flow_api",
+            Self::WorkflowHttp => "workflow_http",
+            Self::WorkflowSchedule => "workflow_schedule",
+            Self::Debug => "debug",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowRunPrincipalKind {
+    User,
+    ApplicationApiKey,
+    UserApiKey,
+    Public,
+    Scheduler,
+}
+
+impl FlowRunPrincipalKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::ApplicationApiKey => "application_api_key",
+            Self::UserApiKey => "user_api_key",
+            Self::Public => "public",
+            Self::Scheduler => "scheduler",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlowRunPrincipal {
+    pub kind: FlowRunPrincipalKind,
+    pub id: Option<Uuid>,
+    pub display_name: Option<String>,
+}
+
+impl FlowRunPrincipal {
+    fn user(id: Option<Uuid>, display_name: Option<String>) -> Self {
+        Self {
+            kind: FlowRunPrincipalKind::User,
+            id,
+            display_name,
+        }
+    }
+
+    fn application_api_key(id: Option<Uuid>) -> Self {
+        Self {
+            kind: FlowRunPrincipalKind::ApplicationApiKey,
+            id,
+            display_name: None,
+        }
+    }
+
+    fn user_api_key(id: Option<Uuid>) -> Self {
+        Self {
+            kind: FlowRunPrincipalKind::UserApiKey,
+            id,
+            display_name: None,
+        }
+    }
+
+    fn public() -> Self {
+        Self {
+            kind: FlowRunPrincipalKind::Public,
+            id: None,
+            display_name: None,
+        }
+    }
+
+    fn scheduler() -> Self {
+        Self {
+            kind: FlowRunPrincipalKind::Scheduler,
+            id: None,
+            display_name: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlowRunInvocationContext {
+    pub execution_stage: FlowRunExecutionStage,
+    pub invocation_source: FlowRunInvocationSource,
+    pub principal: FlowRunPrincipal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -291,6 +450,7 @@ pub struct ApplicationRunSummary {
     pub target_node_id: Option<String>,
     pub title: String,
     pub user_id: Option<String>,
+    pub created_by: Option<Uuid>,
     pub authorized_account: Option<String>,
     pub api_key_id: Option<Uuid>,
     pub publication_version_id: Option<Uuid>,
@@ -495,4 +655,70 @@ pub struct NodeDebugPreviewResult {
     pub node_run: NodeRunRecord,
     pub events: Vec<RunEventRecord>,
     pub preview_payload: serde_json::Value,
+}
+
+#[cfg(test)]
+mod invocation_context_tests {
+    use super::*;
+
+    #[test]
+    fn maps_run_modes_and_real_credentials_to_orthogonal_observability_dimensions() {
+        let user_id = Uuid::now_v7();
+        let api_key_id = Uuid::now_v7();
+        let cases = [
+            (
+                FlowRunMode::PublishedApiRun,
+                Some(api_key_id),
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::AgentFlowApi,
+                FlowRunPrincipalKind::ApplicationApiKey,
+            ),
+            (
+                FlowRunMode::WorkflowHttpRun,
+                Some(api_key_id),
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::WorkflowHttp,
+                FlowRunPrincipalKind::UserApiKey,
+            ),
+            (
+                FlowRunMode::WorkflowHttpRun,
+                None,
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::WorkflowHttp,
+                FlowRunPrincipalKind::Public,
+            ),
+            (
+                FlowRunMode::WorkflowScheduleRun,
+                None,
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::WorkflowSchedule,
+                FlowRunPrincipalKind::Scheduler,
+            ),
+            (
+                FlowRunMode::DebugFlowRun,
+                None,
+                FlowRunExecutionStage::Debug,
+                FlowRunInvocationSource::Debug,
+                FlowRunPrincipalKind::User,
+            ),
+        ];
+
+        for (mode, credential, stage, source, principal_kind) in cases {
+            let context = mode.invocation_context(
+                Some(user_id),
+                Some("publication creator".to_string()),
+                credential,
+            );
+            assert_eq!(context.execution_stage, stage);
+            assert_eq!(context.invocation_source, source);
+            assert_eq!(context.principal.kind, principal_kind);
+            if matches!(
+                principal_kind,
+                FlowRunPrincipalKind::Public | FlowRunPrincipalKind::Scheduler
+            ) {
+                assert_eq!(context.principal.id, None);
+                assert_eq!(context.principal.display_name, None);
+            }
+        }
+    }
 }

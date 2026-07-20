@@ -1,5 +1,6 @@
 import type {
   ConsoleWorkflowExtensionHttpMethod,
+  ConsoleWorkflowExtensionAccessPolicy,
   ConsoleWorkflowExtensionResponseMode
 } from '../application-public-api';
 import { apiFetch, apiFetchVoid } from '../transport';
@@ -15,6 +16,7 @@ export type CreateConsoleWorkflowTriggerConfig =
   | {
       subpath: string;
       http_method: ConsoleWorkflowExtensionHttpMethod;
+      access_policy: ConsoleWorkflowExtensionAccessPolicy;
       response_mode: ConsoleWorkflowExtensionResponseMode;
     };
 
@@ -92,12 +94,27 @@ export interface ConsoleApplicationSections {
     current_draft_id: string | null;
   };
   api: {
-    status: string;
-    credential_kind: string;
-    invoke_routing_mode: string;
+    status: 'active' | 'planned' | 'available' | 'unavailable';
+    credential_kind:
+      | 'application_api_key'
+      | 'user_or_public'
+      | 'not_applicable';
+    invoke_routing_mode:
+      | 'api_key_bound_application'
+      | 'published_workflow_operation'
+      | 'not_available';
     invoke_path_template: string | null;
-    api_capability_status: string;
-    credentials_status: string;
+    api_capability_status:
+      | 'enabled'
+      | 'disabled'
+      | 'not_published'
+      | 'available'
+      | 'unavailable';
+    credentials_status:
+      | 'configured'
+      | 'missing'
+      | 'not_required'
+      | 'not_applicable';
   };
   logs: {
     status: string;

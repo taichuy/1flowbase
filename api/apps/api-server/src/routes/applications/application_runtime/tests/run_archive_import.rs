@@ -18,6 +18,44 @@ fn parse_run_archive_accepts_selected_runs_trace_zip() {
     );
     assert_eq!(archive.entries[0].node_runs.len(), 1);
     assert_eq!(archive.manifest.run_count, 1);
+    assert_eq!(
+        archive.source.exported_by_user_id,
+        "019ef3db-7807-7d90-8bd6-eee445d357ca"
+    );
+}
+
+#[test]
+fn trace_archive_import_keeps_non_user_principals_without_a_created_by_identity() {
+    for principal_kind in ["public", "scheduler", "user_api_key"] {
+        let mut run_export = trace_export_fixture("019ef419-9a7d-7eb1-a777-963d56131f65");
+        run_export.run.principal = application_logs::ApplicationRunPrincipalResponse {
+            kind: principal_kind.to_string(),
+            id: (principal_kind == "user_api_key")
+                .then(|| "019ef3db-7807-7d90-8bd6-eee445d357ca".to_string()),
+            display_name: None,
+        };
+        let manifest = ApplicationRunSelectedExportManifestResponse {
+            export_version: 1,
+            exported_at: "2026-06-24T07:58:00.458337961Z".to_string(),
+            export_status: "complete".to_string(),
+            application_id: run_export.run.application_id.clone(),
+            run_count: 1,
+            selected_run_ids: vec![run_export.run.id.clone()],
+            entries: vec![ApplicationRunSelectedExportManifestRunResponse {
+                run_id: run_export.run.id.clone(),
+                title: run_export.run.title.clone(),
+                started_at: run_export.run.started_at.clone(),
+                filename: format!("runs/{principal_kind}.json"),
+                export_status: "complete".to_string(),
+                export_warning_count: 0,
+            }],
+        };
+
+        let archive = build_archive_from_trace_exports(manifest, vec![run_export])
+            .expect("non-user trace export should remain importable");
+
+        assert_eq!(archive.source.exported_by_user_id, "", "{principal_kind}");
+    }
 }
 
 fn selected_runs_trace_zip_fixture() -> Vec<u8> {
@@ -74,7 +112,8 @@ fn trace_export_fixture(run_id: &str) -> ApplicationRunTraceExportResponse {
         run_kind: "debug_flow_run".to_string(),
         status: "succeeded".to_string(),
         title: "hi".to_string(),
-        source: "console".to_string(),
+        execution_stage: "debug".to_string(),
+        invocation_source: "debug".to_string(),
         compatibility_mode: None,
         subject: application_logs::ApplicationRunSubjectResponse {
             kind: "agent_flow".to_string(),
@@ -82,7 +121,7 @@ fn trace_export_fixture(run_id: &str) -> ApplicationRunTraceExportResponse {
             draft_id: Some(draft_id.to_string()),
             target_node_id: None,
         },
-        actor: application_logs::ApplicationRunActorResponse {
+        principal: application_logs::ApplicationRunPrincipalResponse {
             kind: "user".to_string(),
             id: Some(user_id.to_string()),
             display_name: Some("root".to_string()),

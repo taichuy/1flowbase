@@ -35,6 +35,7 @@ const publicApi = vi.hoisted(() => ({
   fetchApplicationApiPublication: vi.fn(),
   fetchWorkflowScheduleTrigger: vi.fn(),
   publishApplicationApiVersion: vi.fn(),
+  unpublishApplicationApiVersion: vi.fn(),
   saveApplicationApiMapping: vi.fn(),
   saveWorkflowScheduleTrigger: vi.fn()
 }));
@@ -42,8 +43,21 @@ const publicApi = vi.hoisted(() => ({
 vi.mock('../api/public-api', () => publicApi);
 
 vi.mock('../../../shared/ui/section-page-layout/SectionPageLayout', () => ({
-  SectionPageLayout: ({ children }: { children: ReactNode }) => (
-    <main>{children}</main>
+  SectionPageLayout: ({
+    children,
+    navItems
+  }: {
+    children: ReactNode;
+    navItems: Array<{ key: string; label: string }>;
+  }) => (
+    <main>
+      <nav aria-label="Application sections">
+        {navItems.map((item) => (
+          <span key={item.key}>{item.label}</span>
+        ))}
+      </nav>
+      {children}
+    </main>
   )
 }));
 
@@ -86,11 +100,14 @@ import { AppProviders } from '../../../app/AppProviders';
 
 import { ApplicationDetailPage } from '../pages/ApplicationDetailPage';
 
-function createWorkflowApplicationDetail() {
+function createWorkflowApplicationDetail(
+  workflowTriggerType: 'extension' | 'schedule' = 'extension'
+) {
+  const apiAvailable = workflowTriggerType === 'extension';
   return {
     id: 'app-workflow',
     application_type: 'workflow',
-    workflow_trigger_type: 'extension',
+    workflow_trigger_type: workflowTriggerType,
     name: 'Order workflow',
     description: '',
     icon: null,
@@ -108,12 +125,14 @@ function createWorkflowApplicationDetail() {
         current_draft_id: 'draft-1'
       },
       api: {
-        status: 'hidden',
-        credential_kind: 'api_key',
-        invoke_routing_mode: 'disabled',
-        invoke_path_template: null,
-        api_capability_status: 'disabled',
-        credentials_status: 'disabled'
+        status: apiAvailable ? 'available' : 'unavailable',
+        credential_kind: apiAvailable ? 'user_or_public' : 'not_applicable',
+        invoke_routing_mode: apiAvailable
+          ? 'published_workflow_operation'
+          : 'not_available',
+        invoke_path_template: apiAvailable ? '/api/ex/{operation}' : null,
+        api_capability_status: apiAvailable ? 'available' : 'unavailable',
+        credentials_status: apiAvailable ? 'not_required' : 'not_applicable'
       },
       logs: {
         status: 'ready',
@@ -155,11 +174,38 @@ describe('Workflow application page', () => {
     applicationsApi.fetchApplicationDetail.mockResolvedValue(
       createWorkflowApplicationDetail()
     );
-    publicApi.fetchApplicationApiMapping.mockResolvedValue(
-      createMappingWithoutExtension()
-    );
+    publicApi.fetchApplicationApiMapping.mockResolvedValue({
+      ...createMappingWithoutExtension(),
+      extension: {
+        slug: 'orders/{order_id}',
+        method: 'POST',
+        access_policy: 'user_api_key',
+        response_mode: 'sync'
+      }
+    });
     publicApi.fetchApplicationApiPublication.mockResolvedValue({
-      active: false
+      active: true,
+      api_enabled: true,
+      operation: {
+        interface_id: 'published_workflow_operation:app-workflow',
+        method: 'POST',
+        route_template: 'orders/{order_id}',
+        access_policy: 'user_api_key',
+        response_mode: 'sync',
+        parameter_schema: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'object',
+              properties: { order_id: { type: 'string' } }
+            }
+          }
+        },
+        result_schema: {
+          type: 'object',
+          properties: { accepted: { type: 'boolean' } }
+        }
+      }
     });
     publicApi.fetchWorkflowScheduleTrigger.mockResolvedValue(null);
   });
@@ -180,5 +226,49 @@ describe('Workflow application page', () => {
     expect(
       screen.queryByRole('button', { name: '触发器配置' })
     ).not.toBeInTheDocument();
+  });
+
+  test('AC-010 extension renders the published operation and never renders AgentFlow API tooling', async () => {
+    render(
+      <AppProviders>
+        <ApplicationDetailPage
+          applicationId="app-workflow"
+          requestedSectionKey="api"
+        />
+      </AppProviders>
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: '工作流扩展 API' })
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText('published_workflow_operation:app-workflow')
+    ).toBeInTheDocument();
+    expect(screen.getByText('/api/ex/orders/{order_id}')).toBeInTheDocument();
+    expect(screen.getByText('path.order_id')).toBeInTheDocument();
+    expect(screen.getByText('accepted')).toBeInTheDocument();
+    expect(screen.getByText('API')).toBeInTheDocument();
+    expect(screen.queryByText(/AgentFlow/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/API Key 管理/i)).not.toBeInTheDocument();
+  });
+
+  test('AC-001 schedule hides the API entry from backend capability truth', async () => {
+    applicationsApi.fetchApplicationDetail.mockResolvedValue(
+      createWorkflowApplicationDetail('schedule')
+    );
+
+    render(
+      <AppProviders>
+        <ApplicationDetailPage
+          applicationId="app-workflow"
+          requestedSectionKey="orchestration"
+        />
+      </AppProviders>
+    );
+
+    expect(await screen.findByText('Workflow editor shell')).toBeInTheDocument();
+    expect(
+      screen.getByRole('navigation', { name: 'Application sections' })
+    ).not.toHaveTextContent('API');
   });
 });

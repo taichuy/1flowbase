@@ -24,6 +24,23 @@ impl ApplicationPublicApiTestRepository {
             .await
     }
 
+    pub fn set_active_publication_document_snapshot(
+        &self,
+        application_id: Uuid,
+        document_snapshot: serde_json::Value,
+    ) {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let publication = inner
+            .publications
+            .values_mut()
+            .find(|publication| publication.application_id == application_id && publication.active)
+            .expect("active publication fixture must exist");
+        publication.document_snapshot = document_snapshot;
+    }
+
     pub async fn get_flow_run(
         &self,
         application_id: Uuid,

@@ -1,6 +1,80 @@
 use super::*;
 
 #[tokio::test]
+async fn monitoring_source_breakdown_uses_four_explicit_run_modes() {
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-07-20 08:00:00 UTC);
+
+    for (index, run_mode) in [
+        FlowRunMode::PublishedApiRun,
+        FlowRunMode::WorkflowHttpRun,
+        FlowRunMode::WorkflowScheduleRun,
+        FlowRunMode::DebugFlowRun,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let run = seed_flow_run_with_mode(
+            &store,
+            &seeded,
+            &compiled,
+            started_at + Duration::seconds(index as i64),
+            run_mode,
+            None,
+        )
+        .await;
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
+            &store,
+            &UpdateFlowRunInput {
+                flow_run_id: run.id,
+                status: FlowRunStatus::Succeeded,
+                output_payload: json!({}),
+                error_payload: None,
+                finished_at: Some(started_at + Duration::seconds(index as i64 + 1)),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    let report =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_monitoring_report(
+            &store,
+            seeded.application_id,
+            GetApplicationRunMonitoringReportInput {
+                started_from: Some(started_at - Duration::seconds(1)),
+                started_to: Some(started_at + Duration::minutes(1)),
+                bucket: "hour".to_string(),
+                slow_run_threshold_ms: 30_000,
+            },
+        )
+        .await
+        .unwrap();
+
+    let sources = report
+        .sources
+        .into_iter()
+        .map(|item| item.invocation_source)
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(
+        sources,
+        [
+            "agent_flow_api",
+            "workflow_http",
+            "workflow_schedule",
+            "debug"
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    );
+}
+
+#[tokio::test]
 async fn conversation_message_history_ignores_legacy_claude_code_control_runs() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
@@ -743,8 +817,8 @@ async fn application_run_monitoring_report_aggregates_terminal_log_summaries_by_
     assert_eq!(report.tokens_trend[0].input_cache_hit_tokens, 60);
     assert_eq!(report.protocols[0].protocol, "default");
     assert_eq!(report.protocols[1].protocol, "openai-responses-v1");
-    assert_eq!(report.sources[0].source, "console");
-    assert_eq!(report.sources[1].source, "public_api");
+    assert_eq!(report.sources[0].invocation_source, "debug");
+    assert_eq!(report.sources[1].invocation_source, "agent_flow_api");
     assert_eq!(
         report.external_users[0].external_user.as_deref(),
         Some("customer-1")

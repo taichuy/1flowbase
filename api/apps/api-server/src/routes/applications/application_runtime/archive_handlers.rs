@@ -1145,7 +1145,11 @@ fn build_archive_from_trace_exports(
     let first_document = documents
         .first()
         .ok_or(ControlPlaneError::InvalidInput("archive_trace_entries"))?;
-    let exported_by_user_id = first_document.run.actor.id.clone().unwrap_or_default();
+    let exported_by_user_id = if first_document.run.principal.kind == "user" {
+        first_document.run.principal.id.clone().unwrap_or_default()
+    } else {
+        String::new()
+    };
     let source = RunArchiveV1SourceResponse {
         source_kind: "application_run_trace_export_zip".to_string(),
         workspace_id: "unknown".to_string(),

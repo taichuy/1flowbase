@@ -241,8 +241,14 @@ async fn dispatch_interface_request(
     let method = Method::from_bytes(interface_entry.method.as_bytes())
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("interface_id"))?;
     let uri = target_uri(interface_entry, arguments)?;
-    let should_send_json_body = interface_has_body_parameters(interface_entry);
-    let request_body = if should_send_json_body {
+    let body_kind = interface_body_kind(interface_entry);
+    let request_body = if body_kind == Some(McpParameterType::Form) {
+        let mut serializer = form_urlencoded::Serializer::new(String::new());
+        for (name, value) in &arguments.body {
+            serializer.append_pair(name, &scalar_to_query_value(value));
+        }
+        Body::from(serializer.finish())
+    } else if body_kind == Some(McpParameterType::JsonBody) {
         Body::from(Value::Object(arguments.body.clone()).to_string())
     } else {
         Body::empty()
@@ -259,12 +265,16 @@ async fn dispatch_interface_request(
     copy_forwarded_header(headers, request.headers_mut(), AUTHORIZATION);
     copy_forwarded_header(headers, request.headers_mut(), ACCEPT_LANGUAGE);
     copy_forwarded_header(headers, request.headers_mut(), CSRF_HEADER);
-    if should_send_json_body {
+    if let Some(body_kind) = body_kind {
         request.headers_mut().insert(
             CONTENT_TYPE,
-            "application/json"
-                .parse()
-                .expect("application/json must be a valid header value"),
+            match body_kind {
+                McpParameterType::Form => "application/x-www-form-urlencoded",
+                McpParameterType::JsonBody => "application/json",
+                McpParameterType::Url => unreachable!("URL parameters are not request bodies"),
+            }
+            .parse()
+            .expect("compiled content type must be a valid header value"),
         );
     }
 
@@ -274,15 +284,16 @@ async fn dispatch_interface_request(
         .map_err(|error| anyhow::anyhow!("failed to execute MCP interface: {error}"))
 }
 
-fn interface_has_body_parameters(interface_entry: &domain::McpInterfaceCatalogEntry) -> bool {
+fn interface_body_kind(
+    interface_entry: &domain::McpInterfaceCatalogEntry,
+) -> Option<McpParameterType> {
     interface_entry
         .parameter_descriptors
         .iter()
-        .any(|descriptor| {
-            matches!(
-                descriptor.parameter_type,
-                McpParameterType::JsonBody | McpParameterType::Form
-            )
+        .find_map(|descriptor| match descriptor.parameter_type {
+            McpParameterType::JsonBody => Some(McpParameterType::JsonBody),
+            McpParameterType::Form => Some(McpParameterType::Form),
+            McpParameterType::Url => None,
         })
 }
 

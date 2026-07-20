@@ -1,23 +1,16 @@
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
 import {
-  validateDocument,
-  type AgentFlowIssue
-} from '../../agent-flow/lib/validate-document';
+  validateAuthoringDocument,
+  type FlowAuthoringIssue
+} from '../../flow-editor/authoring/validation';
+import { listWorkflowVariableOptions } from './variables';
 
 export function validateWorkflowDocument(
   document: FlowAuthoringDocument,
   workflowTriggerContext: unknown = null
-): AgentFlowIssue[] {
-  const issues: AgentFlowIssue[] = validateDocument(
-    document,
-    undefined,
-    [],
-    workflowTriggerContext
-  ).filter(
-    (issue) =>
-      issue.id !== 'global-start-count' && issue.id !== 'global-answer-missing'
-  );
+): FlowAuthoringIssue[] {
+  const issues = validateAuthoringDocument(document);
   const startNodes = document.graph.nodes.filter(
     (node) => node.type === 'workflow_start'
   );
@@ -65,6 +58,31 @@ export function validateWorkflowDocument(
       title: '节点类型不属于 Workflow',
       message: `Workflow 草稿不能包含 ${node.type} 节点。`
     });
+  }
+
+  for (const node of document.graph.nodes) {
+    const visibleSelectors = new Set(
+      listWorkflowVariableOptions(document, node.id, workflowTriggerContext).map(
+        (option) => option.value.join('.')
+      )
+    );
+
+    for (const [bindingKey, binding] of Object.entries(node.bindings)) {
+      if (binding.kind !== 'selector' || binding.value.length === 0) continue;
+      if (visibleSelectors.has(binding.value.join('.'))) continue;
+
+      issues.push({
+        id: `${node.id}-${bindingKey}-selector-not-visible`,
+        scope: 'node',
+        level: 'error',
+        nodeId: node.id,
+        sectionKey: 'inputs',
+        fieldKey: `bindings.${bindingKey}`,
+        title: 'Variable is not available',
+        message:
+          'Select an output from an upstream node or this workflow variable catalog.'
+      });
+    }
   }
 
   return issues;

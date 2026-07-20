@@ -59,6 +59,9 @@ export type ApplicationRunSummary = {
   application_id: string;
   scope_id: string;
   run_mode: ConsoleApplicationRunSummary['run_mode'];
+  execution_stage: ConsoleApplicationRunSummary['execution_stage'];
+  invocation_source: ConsoleApplicationRunSummary['invocation_source'];
+  principal: ConsoleApplicationRunSummary['principal'];
   status: string;
   target_node_id: string | null;
   title: string;
@@ -1063,6 +1066,18 @@ function toApplicationRunSummary(
       record,
       'run_mode'
     ) as ApplicationRunSummary['run_mode'],
+    execution_stage: stringField(
+      record,
+      'execution_stage'
+    ) as ApplicationRunSummary['execution_stage'],
+    invocation_source: stringField(
+      record,
+      'invocation_source'
+    ) as ApplicationRunSummary['invocation_source'],
+    principal: recordPayload(
+      record,
+      'principal'
+    ) as unknown as ApplicationRunSummary['principal'],
     status: stringField(record, 'status'),
     target_node_id: optionalStringField(record, 'target_node_id'),
     title: stringField(record, 'title'),

@@ -1,13 +1,12 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 use axum::{extract::State, Json};
 use control_plane::{
     application_public_api::{
-        mapping::{
-            WorkflowExtensionParameterMapping, WorkflowExtensionParameterSource,
-            WorkflowExtensionResponseMode,
+        mapping::{WorkflowExtensionAccessPolicy, WorkflowExtensionResponseMode},
+        published_workflow_operation::{
+            build_published_workflow_operations, PublishedWorkflowOperation,
         },
-        publications::ApplicationPublicationVersionRecord,
     },
     ports::ApplicationPublicationRepository,
 };
@@ -654,32 +653,29 @@ pub struct ApiDoc;
 pub async fn dynamic_openapi(State(state): State<Arc<ApiState>>) -> Result<Json<Value>, ApiError> {
     let mut document = serde_json::to_value(ApiDoc::openapi())?;
     let publications = state.store.list_enabled_extension_publications().await?;
-    append_workflow_extension_paths(&mut document, &publications);
+    let operations = build_published_workflow_operations(publications)
+        .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("workflow_route"))?;
+    document["components"]["securitySchemes"]["UserApiKey"] = json!({
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "User API Key"
+    });
+    append_workflow_extension_paths(&mut document, &operations);
     Ok(Json(document))
 }
 
 fn append_workflow_extension_paths(
     document: &mut Value,
-    publications: &[ApplicationPublicationVersionRecord],
+    operations: &[PublishedWorkflowOperation],
 ) {
     let Some(paths) = document.get_mut("paths").and_then(Value::as_object_mut) else {
         return;
     };
 
-    for publication in publications {
-        let Some(extension) = publication.mapping_snapshot.extension.as_ref() else {
-            continue;
-        };
-        let input_schemas = workflow_start_input_schemas(&publication.document_snapshot);
-        let response_schema = workflow_end_response_schema(&publication.document_snapshot);
-        let operation = workflow_extension_operation(
-            publication,
-            &extension.parameters,
-            &input_schemas,
-            response_schema,
-        );
-        let path = format!("/api/ex/{}", extension.slug);
-        let method = extension.method.as_str().to_ascii_lowercase();
+    for published_operation in operations {
+        let operation = workflow_extension_operation(published_operation);
+        let path = published_operation.public_path();
+        let method = published_operation.method.as_str().to_ascii_lowercase();
         let entry = paths
             .entry(path)
             .or_insert_with(|| Value::Object(Map::new()));
@@ -689,22 +685,16 @@ fn append_workflow_extension_paths(
     }
 }
 
-fn workflow_extension_operation(
-    publication: &ApplicationPublicationVersionRecord,
-    parameters: &[WorkflowExtensionParameterMapping],
-    input_schemas: &BTreeMap<String, Value>,
-    response_schema: Value,
-) -> Value {
-    let extension = publication
-        .mapping_snapshot
-        .extension
-        .as_ref()
-        .expect("workflow extension operation requires extension config");
-    let mut operation = json!({
+pub(crate) fn workflow_extension_operation(operation: &PublishedWorkflowOperation) -> Value {
+    let mut projected = json!({
         "tags": ["Workflow Extensions"],
-        "operationId": format!("invoke_workflow_extension_{}", extension.slug.replace('-', "_")),
-        "summary": format!("Invoke workflow extension {}", extension.slug),
-        "parameters": openapi_parameters(parameters, input_schemas),
+        "operationId": operation.interface_id,
+        "summary": format!("Invoke published workflow {}", operation.application_id),
+        "parameters": openapi_parameters(&operation.parameter_schema),
+        "security": match operation.access_policy {
+            WorkflowExtensionAccessPolicy::UserApiKey => json!([{ "UserApiKey": [] }]),
+            WorkflowExtensionAccessPolicy::Public => json!([]),
+        },
         "responses": {
             "202": {
                 "description": "Workflow run accepted",
@@ -722,59 +712,50 @@ fn workflow_extension_operation(
             "409": native_error_response()
         }
     });
-    if extension.response_mode == WorkflowExtensionResponseMode::Sync {
-        operation["responses"]["200"] = json!({
+    if operation.response_mode == WorkflowExtensionResponseMode::Sync {
+        projected["responses"]["200"] = json!({
             "description": "Workflow end output",
             "content": {
                 "application/json": {
-                    "schema": response_schema
+                    "schema": operation.result_schema
                 }
             }
         });
     }
-    if let Some(request_body) = openapi_request_body(parameters, input_schemas) {
-        operation["requestBody"] = request_body;
+    if let Some(request_body) = openapi_request_body(&operation.parameter_schema) {
+        projected["requestBody"] = request_body;
     }
-    operation
+    projected
 }
 
-fn openapi_parameters(
-    parameters: &[WorkflowExtensionParameterMapping],
-    input_schemas: &BTreeMap<String, Value>,
-) -> Vec<Value> {
-    parameters
-        .iter()
-        .filter_map(|parameter| match parameter.source {
-            WorkflowExtensionParameterSource::Path | WorkflowExtensionParameterSource::Query => {
-                Some(json!({
-                    "name": parameter.name,
-                    "in": match parameter.source {
-                        WorkflowExtensionParameterSource::Path => "path",
-                        _ => "query",
-                    },
-                    "required": true,
-                    "schema": schema_for_parameter(parameter, input_schemas),
+fn openapi_parameters(schema: &Value) -> Vec<Value> {
+    ["path", "query"]
+        .into_iter()
+        .flat_map(|location| {
+            let object = schema.pointer(&format!("/properties/{location}"));
+            let required = object
+                .and_then(|value| value.get("required"))
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            object
+                .and_then(|value| value.get("properties"))
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+                .map(move |(name, field_schema)| json!({
+                    "name": name,
+                    "in": location,
+                    "required": location == "path" || required.contains(&Value::String(name.clone())),
+                    "schema": field_schema,
                 }))
-            }
-            WorkflowExtensionParameterSource::Form | WorkflowExtensionParameterSource::Body => None,
         })
         .collect()
 }
 
-fn openapi_request_body(
-    parameters: &[WorkflowExtensionParameterMapping],
-    input_schemas: &BTreeMap<String, Value>,
-) -> Option<Value> {
-    let body_schema = object_schema_for_source(
-        parameters,
-        input_schemas,
-        WorkflowExtensionParameterSource::Body,
-    );
-    let form_schema = object_schema_for_source(
-        parameters,
-        input_schemas,
-        WorkflowExtensionParameterSource::Form,
-    );
+fn openapi_request_body(schema: &Value) -> Option<Value> {
+    let body_schema = schema.pointer("/properties/body").cloned();
+    let form_schema = schema.pointer("/properties/form").cloned();
     if body_schema.is_none() && form_schema.is_none() {
         return None;
     }
@@ -793,117 +774,6 @@ fn openapi_request_body(
         "required": true,
         "content": Value::Object(content)
     }))
-}
-
-fn object_schema_for_source(
-    parameters: &[WorkflowExtensionParameterMapping],
-    input_schemas: &BTreeMap<String, Value>,
-    source: WorkflowExtensionParameterSource,
-) -> Option<Value> {
-    let source_parameters = parameters
-        .iter()
-        .filter(|parameter| parameter.source == source)
-        .collect::<Vec<_>>();
-    if source_parameters.is_empty() {
-        return None;
-    }
-
-    let properties = source_parameters
-        .iter()
-        .map(|parameter| {
-            (
-                parameter.name.clone(),
-                schema_for_parameter(parameter, input_schemas),
-            )
-        })
-        .collect::<Map<_, _>>();
-    let required = source_parameters
-        .iter()
-        .map(|parameter| Value::String(parameter.name.clone()))
-        .collect::<Vec<_>>();
-    Some(json!({
-        "type": "object",
-        "properties": properties,
-        "required": required
-    }))
-}
-
-fn schema_for_parameter(
-    parameter: &WorkflowExtensionParameterMapping,
-    input_schemas: &BTreeMap<String, Value>,
-) -> Value {
-    parameter
-        .target
-        .rsplit('.')
-        .next()
-        .and_then(|key| input_schemas.get(key))
-        .cloned()
-        .unwrap_or_else(|| json!({ "type": "string" }))
-}
-
-fn workflow_start_input_schemas(document: &Value) -> BTreeMap<String, Value> {
-    workflow_node(document, "workflow_start")
-        .and_then(|node| node.get("config"))
-        .and_then(|config| config.get("input_fields"))
-        .and_then(Value::as_array)
-        .map(|fields| {
-            fields
-                .iter()
-                .filter_map(|field| {
-                    let key = field.get("key").and_then(Value::as_str)?;
-                    let schema =
-                        json_schema_for_value_type(field.get("valueType").and_then(Value::as_str));
-                    Some((key.to_string(), schema))
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn workflow_end_response_schema(document: &Value) -> Value {
-    let outputs = workflow_node(document, "workflow_end")
-        .and_then(|node| node.get("outputs"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let properties = outputs
-        .iter()
-        .filter_map(|output| {
-            let key = output.get("key").and_then(Value::as_str)?;
-            let schema =
-                json_schema_for_value_type(output.get("valueType").and_then(Value::as_str));
-            Some((key.to_string(), schema))
-        })
-        .collect::<Map<_, _>>();
-    let required = properties
-        .keys()
-        .map(|key| Value::String(key.clone()))
-        .collect::<Vec<_>>();
-    json!({
-        "type": "object",
-        "properties": properties,
-        "required": required
-    })
-}
-
-fn workflow_node<'a>(document: &'a Value, node_type: &str) -> Option<&'a Value> {
-    document
-        .get("graph")
-        .and_then(|graph| graph.get("nodes"))
-        .and_then(Value::as_array)?
-        .iter()
-        .find(|node| node.get("type").and_then(Value::as_str) == Some(node_type))
-}
-
-fn json_schema_for_value_type(value_type: Option<&str>) -> Value {
-    match value_type.unwrap_or("string") {
-        "number" => json!({ "type": "number" }),
-        "integer" => json!({ "type": "integer" }),
-        "boolean" => json!({ "type": "boolean" }),
-        "json" | "object" => json!({ "type": "object" }),
-        "array" => json!({ "type": "array", "items": {} }),
-        _ => json!({ "type": "string" }),
-    }
 }
 
 fn accepted_run_schema() -> Value {
@@ -926,4 +796,90 @@ fn native_error_response() -> Value {
             }
         }
     })
+}
+
+#[cfg(test)]
+mod workflow_operation_tests {
+    use super::*;
+    use control_plane::application_public_api::{
+        mapping::{
+            ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
+            ApplicationOperationBindings, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
+        },
+        publications::ApplicationPublicationVersionRecord,
+        published_workflow_operation::PublishedWorkflowOperation,
+    };
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    fn operation(access_policy: WorkflowExtensionAccessPolicy) -> PublishedWorkflowOperation {
+        let application_id = Uuid::from_u128(0x11111111111111111111111111111111);
+        PublishedWorkflowOperation::from_publication(ApplicationPublicationVersionRecord {
+            id: Uuid::from_u128(0x22222222222222222222222222222222),
+            application_id,
+            workspace_id: Uuid::from_u128(0x33333333333333333333333333333333),
+            flow_id: Uuid::from_u128(0x44444444444444444444444444444444),
+            flow_version_id: Uuid::from_u128(0x55555555555555555555555555555555),
+            mapping_snapshot: ApplicationApiMappingConfig {
+                input: ApplicationApiMappingInput {
+                    query_target: "node-workflow-start.query".into(),
+                    model_target: None,
+                    inputs_target: None,
+                    history_target: None,
+                    attachments_target: None,
+                },
+                output: ApplicationApiMappingOutput::default(),
+                extension: Some(WorkflowExtensionApiConfig {
+                    slug: "orders/{order_id}".into(),
+                    method: WorkflowExtensionHttpMethod::Post,
+                    access_policy,
+                    response_mode: WorkflowExtensionResponseMode::Sync,
+                }),
+            },
+            operation_bindings: ApplicationOperationBindings::default(),
+            extension_slug: Some("orders/{order_id}".into()),
+            compiled_plan_id: Uuid::from_u128(0x66666666666666666666666666666666),
+            version_sequence: 1,
+            active: true,
+            api_enabled: true,
+            flow_schema_version: "1flowbase.flow/v2".into(),
+            document_hash: "hash".into(),
+            document_snapshot: json!({
+                "graph": { "nodes": [
+                    { "id": "node-workflow-start", "type": "workflow_start", "config": { "input_fields": [
+                        { "key": "order_id", "valueType": "string", "source": "path", "required": true }
+                    ] } },
+                    { "id": "node-workflow-end", "type": "workflow_end", "outputs": [
+                        { "key": "accepted", "valueType": "boolean" }
+                    ] }
+                ] }
+            }),
+            runtime_profile_snapshot: json!({}),
+            output_selector: json!({}),
+            dependency_snapshot: Vec::new(),
+            created_by: Uuid::from_u128(0x77777777777777777777777777777777),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn ac_006_openapi_projects_start_end_and_user_api_key_security() {
+        let projected =
+            workflow_extension_operation(&operation(WorkflowExtensionAccessPolicy::UserApiKey));
+        assert_eq!(projected["security"], json!([{ "UserApiKey": [] }]));
+        assert_eq!(projected["parameters"][0]["name"], json!("order_id"));
+        assert_eq!(
+            projected["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+                ["accepted"]["type"],
+            json!("boolean")
+        );
+    }
+
+    #[test]
+    fn ac_005_public_operation_has_no_auth_requirement() {
+        let projected =
+            workflow_extension_operation(&operation(WorkflowExtensionAccessPolicy::Public));
+        assert_eq!(projected["security"], json!([]));
+    }
 }

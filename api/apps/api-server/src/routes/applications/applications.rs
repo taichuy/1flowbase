@@ -54,6 +54,7 @@ pub struct CreateWorkflowTriggerConfigBody {
     pub subpath: Option<String>,
     pub http_method: Option<String>,
     pub response_mode: Option<String>,
+    pub access_policy: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -174,13 +175,62 @@ pub struct ApplicationOrchestrationSectionResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationApiSectionStatusResponse {
+    Active,
+    Planned,
+    Available,
+    Unavailable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationApiCredentialKindResponse {
+    ApplicationApiKey,
+    UserOrPublic,
+    NotApplicable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationApiInvokeRoutingModeResponse {
+    ApiKeyBoundApplication,
+    PublishedWorkflowOperation,
+    NotAvailable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationApiCapabilityStatusResponse {
+    Enabled,
+    Disabled,
+    NotPublished,
+    Available,
+    Unavailable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationApiCredentialsStatusResponse {
+    Configured,
+    Missing,
+    NotRequired,
+    NotApplicable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ApplicationApiSectionResponse {
-    pub status: String,
-    pub credential_kind: String,
-    pub invoke_routing_mode: String,
+    #[schema(inline)]
+    pub status: ApplicationApiSectionStatusResponse,
+    #[schema(inline)]
+    pub credential_kind: ApplicationApiCredentialKindResponse,
+    #[schema(inline)]
+    pub invoke_routing_mode: ApplicationApiInvokeRoutingModeResponse,
     pub invoke_path_template: Option<String>,
-    pub api_capability_status: String,
-    pub credentials_status: String,
+    #[schema(inline)]
+    pub api_capability_status: ApplicationApiCapabilityStatusResponse,
+    #[schema(inline)]
+    pub credentials_status: ApplicationApiCredentialsStatusResponse,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -396,12 +446,12 @@ fn to_sections_response(sections: domain::ApplicationSections) -> ApplicationSec
                 .map(|value| value.to_string()),
         },
         api: ApplicationApiSectionResponse {
-            status: sections.api.status,
-            credential_kind: sections.api.credential_kind,
-            invoke_routing_mode: sections.api.invoke_routing_mode,
+            status: api_section_status(&sections.api.status),
+            credential_kind: api_credential_kind(&sections.api.credential_kind),
+            invoke_routing_mode: api_invoke_routing_mode(&sections.api.invoke_routing_mode),
             invoke_path_template: sections.api.invoke_path_template,
-            api_capability_status: sections.api.api_capability_status,
-            credentials_status: sections.api.credentials_status,
+            api_capability_status: api_capability_status(&sections.api.api_capability_status),
+            credentials_status: api_credentials_status(&sections.api.credentials_status),
         },
         logs: ApplicationLogsSectionResponse {
             status: sections.logs.status,
@@ -415,6 +465,54 @@ fn to_sections_response(sections: domain::ApplicationSections) -> ApplicationSec
             metrics_object_kind: sections.monitoring.metrics_object_kind,
             tracing_config_status: sections.monitoring.tracing_config_status,
         },
+    }
+}
+
+fn api_section_status(value: &str) -> ApplicationApiSectionStatusResponse {
+    match value {
+        "active" => ApplicationApiSectionStatusResponse::Active,
+        "planned" => ApplicationApiSectionStatusResponse::Planned,
+        "available" => ApplicationApiSectionStatusResponse::Available,
+        _ => ApplicationApiSectionStatusResponse::Unavailable,
+    }
+}
+
+fn api_credential_kind(value: &str) -> ApplicationApiCredentialKindResponse {
+    match value {
+        "application_api_key" => ApplicationApiCredentialKindResponse::ApplicationApiKey,
+        "user_or_public" => ApplicationApiCredentialKindResponse::UserOrPublic,
+        _ => ApplicationApiCredentialKindResponse::NotApplicable,
+    }
+}
+
+fn api_invoke_routing_mode(value: &str) -> ApplicationApiInvokeRoutingModeResponse {
+    match value {
+        "api_key_bound_application" => {
+            ApplicationApiInvokeRoutingModeResponse::ApiKeyBoundApplication
+        }
+        "published_workflow_operation" => {
+            ApplicationApiInvokeRoutingModeResponse::PublishedWorkflowOperation
+        }
+        _ => ApplicationApiInvokeRoutingModeResponse::NotAvailable,
+    }
+}
+
+fn api_capability_status(value: &str) -> ApplicationApiCapabilityStatusResponse {
+    match value {
+        "enabled" => ApplicationApiCapabilityStatusResponse::Enabled,
+        "disabled" => ApplicationApiCapabilityStatusResponse::Disabled,
+        "not_published" => ApplicationApiCapabilityStatusResponse::NotPublished,
+        "available" => ApplicationApiCapabilityStatusResponse::Available,
+        _ => ApplicationApiCapabilityStatusResponse::Unavailable,
+    }
+}
+
+fn api_credentials_status(value: &str) -> ApplicationApiCredentialsStatusResponse {
+    match value {
+        "configured" => ApplicationApiCredentialsStatusResponse::Configured,
+        "missing" => ApplicationApiCredentialsStatusResponse::Missing,
+        "not_required" => ApplicationApiCredentialsStatusResponse::NotRequired,
+        _ => ApplicationApiCredentialsStatusResponse::NotApplicable,
     }
 }
 
@@ -480,9 +578,16 @@ fn parse_create_workflow_trigger_config(
                 .ok_or(ControlPlaneError::InvalidInput("subpath"))?;
             let http_method = config.http_method.unwrap_or_else(|| "POST".to_string());
             let response_mode = config.response_mode.unwrap_or_else(|| "sync".to_string());
+            let access_policy = config
+                .access_policy
+                .unwrap_or_else(|| "user_api_key".to_string());
+            if !matches!(access_policy.as_str(), "user_api_key" | "public") {
+                return Err(ControlPlaneError::InvalidInput("access_policy").into());
+            }
             Ok(Some(CreateWorkflowTriggerConfig::Extension {
                 subpath,
                 http_method,
+                access_policy,
                 response_mode,
             }))
         }
