@@ -2,11 +2,13 @@ import type {
   BlockContext,
   BlockContextEntity,
   BlockContextIdentity,
+  BlockInterfaceRequest,
   BlockContextPage,
   BlockContextRecord,
   BlockContextTheme,
   BlockContextUi
 } from '@1flowbase/page-protocol';
+import { isBlockResult } from '@1flowbase/block-sdk';
 
 import {
   evaluateJsBlockSource,
@@ -16,9 +18,8 @@ import type {
   JsBlockHostToWorkerMessage,
   JsBlockRunError,
   JsBlockRunRequest,
-  JsBlockWorkerActionRequestMessage,
-  JsBlockWorkerDataRequestMessage,
   JsBlockWorkerEventRequestMessage,
+  JsBlockWorkerInterfaceRequestMessage,
   JsBlockWorkerEffectResultMessage,
   JsBlockWorkerToHostMessage
 } from './js-block-worker-runtime';
@@ -229,9 +230,9 @@ async function runRequest(
     createEffectId,
     pendingEffects
   );
-  let schema: unknown;
+  let blockResult: unknown;
   try {
-    schema = await evaluation.block.render(context);
+    blockResult = await evaluation.block.main(context);
   } catch (error) {
     if (error instanceof JsBlockWorkerEffectError) {
       postError(request, effectRuntimeError(error), postMessage);
@@ -241,9 +242,22 @@ async function runRequest(
     postError(
       request,
       runtimeError(
-        'render_failed',
-        'runtime.render',
-        `JS block render failed: ${getErrorMessage(error)}`
+        'main_failed',
+        'runtime.main',
+        `JS block main failed: ${getErrorMessage(error)}`
+      ),
+      postMessage
+    );
+    return;
+  }
+
+  if (!isBlockResult(blockResult)) {
+    postError(
+      request,
+      runtimeError(
+        'runtime_error',
+        'runtime.result',
+        'JS block main must return { view, outputs } with plain-object outputs.'
       ),
       postMessage
     );
@@ -252,9 +266,10 @@ async function runRequest(
 
   postMessage({
     direction: 'worker_to_host',
-    type: 'rendered',
+    type: 'completed',
     requestId: request.requestId,
-    schema
+    view: blockResult.view,
+    outputs: blockResult.outputs
   });
 }
 
@@ -285,9 +300,7 @@ function createBlockContext(
   const state = { ...request.state };
   const postEvent = (message: JsBlockWorkerEventRequestMessage) =>
     postMessage(message);
-  const requestHostEffect = (
-    message: JsBlockWorkerDataRequestMessage | JsBlockWorkerActionRequestMessage
-  ) => {
+  const requestHostEffect = (message: JsBlockWorkerInterfaceRequestMessage) => {
     const promise = new Promise<unknown>((resolve, reject) => {
       const effectId = createEffectId(request.requestId);
       pendingEffects.set(effectId, {
@@ -306,6 +319,7 @@ function createBlockContext(
     workspace: readEntity(snapshot.workspace, 'workspace'),
     application: readEntity(snapshot.application, 'application'),
     page: readPage(snapshot.page),
+    inputs: { ...request.inputs },
     params: readRecord(snapshot.params),
     props: { ...request.props },
     state,
@@ -314,35 +328,20 @@ function createBlockContext(
         Object.assign(state, patch);
       }
     },
-    data: {
-      async query(queryId, params) {
-        return requestHostEffect({
+    interfaces: {
+      async call<TResponse = unknown>(
+        bindingAlias: string,
+        interfaceRequest?: BlockInterfaceRequest
+      ): Promise<TResponse> {
+        return (await requestHostEffect({
           direction: 'worker_to_host',
-          type: 'data',
+          type: 'interface',
           requestId: request.requestId,
-          queryId,
-          ...(isRecord(params) ? { params } : {})
-        });
-      },
-      async create() {
-        throw new Error('Restricted block data creation is not supported.');
-      },
-      async update() {
-        throw new Error('Restricted block data updates are not supported.');
-      },
-      async delete() {
-        throw new Error('Restricted block data deletion is not supported.');
-      }
-    },
-    actions: {
-      async invoke(actionId, payload) {
-        return requestHostEffect({
-          direction: 'worker_to_host',
-          type: 'action',
-          requestId: request.requestId,
-          actionId,
-          ...(isRecord(payload) ? { payload } : {})
-        });
+          bindingAlias,
+          ...(interfaceRequest === undefined
+            ? {}
+            : { request: interfaceRequest })
+        })) as TResponse;
       }
     },
     events: {
@@ -407,8 +406,8 @@ function compileError(error: JsBlockRunError): JsBlockRunError {
 function effectRuntimeError(error: JsBlockWorkerEffectError): JsBlockRunError {
   return runtimeError(
     'effect_failed',
-    'runtime.render',
-    `JS block render failed: ${error.message}`
+    'runtime.main',
+    `JS block main failed: ${error.message}`
   );
 }
 

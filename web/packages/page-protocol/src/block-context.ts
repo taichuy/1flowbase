@@ -34,19 +34,18 @@ export interface BlockContextPage {
   title?: string;
 }
 
-export interface BlockContextDataAccess {
-  query(queryId: string, params?: BlockContextRecord): Promise<unknown>;
-  create(modelId: string, values: BlockContextRecord): Promise<BlockContextRecord>;
-  update(
-    modelId: string,
-    recordId: string,
-    values: BlockContextRecord
-  ): Promise<unknown>;
-  delete(modelId: string, recordId: string): Promise<unknown>;
+export interface BlockInterfaceRequest {
+  path?: BlockContextRecord;
+  query?: BlockContextRecord;
+  headers?: BlockContextRecord;
+  body?: unknown;
 }
 
-export interface BlockContextActions {
-  invoke(actionId: string, params?: BlockContextRecord): Promise<unknown>;
+export interface BlockContextInterfaces {
+  call<TResponse = unknown>(
+    bindingAlias: string,
+    request?: BlockInterfaceRequest
+  ): Promise<TResponse>;
 }
 
 export interface BlockContextEvents {
@@ -63,17 +62,19 @@ export interface BlockContextUi {
   density?: 'compact' | 'comfortable';
 }
 
-export interface BlockContext {
+export interface BlockContext<
+  TInputs extends BlockContextRecord = BlockContextRecord
+> {
   currentUser: BlockContextIdentity | null;
   workspace: BlockContextEntity;
   application: BlockContextEntity;
   page: BlockContextPage;
+  inputs: Readonly<TInputs>;
   params: BlockContextRecord;
   props: BlockContextRecord;
   state: BlockContextRecord;
   patch(patch: BlockContextRecord): void | Promise<void>;
-  data: BlockContextDataAccess;
-  actions: BlockContextActions;
+  interfaces: BlockContextInterfaces;
   events: BlockContextEvents;
   theme: BlockContextTheme;
   ui: BlockContextUi;

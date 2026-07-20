@@ -1,25 +1,14 @@
-import type {
-  BlockDataPermission,
-  BlockRuntimeErrorCode
-} from '@1flowbase/page-protocol';
+import type { BlockRuntimeErrorCode } from '@1flowbase/page-protocol';
 
 import type { JsBlockWorkerEffect } from './js-block-worker-runtime';
-
-export type BlockContextMediatorDataOperation = BlockDataPermission;
 
 export type BlockContextMediatorRejectionCode =
   | Extract<
       BlockRuntimeErrorCode,
-      | 'event_denied'
-      | 'action_denied'
-      | 'query_denied'
-      | 'create_denied'
-      | 'update_denied'
-      | 'delete_denied'
+      'event_denied' | 'interface_denied'
     >
   | 'payload_invalid'
-  | 'effect_invalid'
-  | 'data_operation_invalid';
+  | 'effect_invalid';
 
 export type BlockContextJsonValue =
   | string
@@ -31,9 +20,7 @@ export type BlockContextJsonValue =
 
 export interface BlockContextMediatorPolicy {
   allowedEvents?: readonly string[];
-  allowedActions?: readonly string[];
-  allowedQueries?: readonly string[];
-  allowedDataOperations?: readonly BlockContextMediatorDataOperation[];
+  allowedInterfaces?: readonly string[];
   maxEventChainDepth?: number;
 }
 
@@ -131,10 +118,8 @@ export function reduceBlockContextMediator(
   switch (normalizedEffect.type) {
     case 'event':
       return reduceEventEffect(state, normalizedEffect, policy, context);
-    case 'action':
-      return reduceActionEffect(state, normalizedEffect, policy);
-    case 'data':
-      return reduceDataEffect(state, normalizedEffect, policy);
+    case 'interface':
+      return reduceInterfaceEffect(state, normalizedEffect, policy);
   }
 }
 
@@ -189,61 +174,33 @@ function reduceEventEffect(
   });
 }
 
-function reduceActionEffect(
+function reduceInterfaceEffect(
   state: BlockContextMediatorState,
-  effect: Extract<NormalizedEffect, { type: 'action' }>,
+  effect: Extract<NormalizedEffect, { type: 'interface' }>,
   policy: BlockContextMediatorPolicy
 ): BlockContextMediatorTransition {
-  if (!toSet(policy.allowedActions).has(effect.actionId)) {
+  if (!toSet(policy.allowedInterfaces).has(effect.bindingAlias)) {
     return reject(state, {
       requestId: effect.requestId,
-      code: 'action_denied',
-      path: 'action.actionId',
-      message: `Action is not allowed: ${effect.actionId}.`
+      code: 'interface_denied',
+      path: 'interface.bindingAlias',
+      message: `Interface binding is not allowed: ${effect.bindingAlias}.`
     });
   }
 
-  const payloadResult = normalizeOptionalPayload(effect.payload);
+  const payloadResult = normalizeOptionalPayload(effect.request, 'request');
   if (!payloadResult.ok) {
     return rejectPayload(state, effect.requestId, payloadResult);
   }
 
   return allow(state, {
-    type: 'action',
+    type: 'interface',
     requestId: effect.requestId,
     ...(effect.effectId ? { effectId: effect.effectId } : {}),
-    actionId: effect.actionId,
+    bindingAlias: effect.bindingAlias,
     ...(payloadResult.value === undefined
       ? {}
-      : { payload: payloadResult.value })
-  });
-}
-
-function reduceDataEffect(
-  state: BlockContextMediatorState,
-  effect: Extract<NormalizedEffect, { type: 'data' }>,
-  policy: BlockContextMediatorPolicy
-): BlockContextMediatorTransition {
-  if (!toSet(policy.allowedQueries).has(effect.queryId)) {
-    return reject(state, {
-      requestId: effect.requestId,
-      code: 'query_denied',
-      path: 'data.queryId',
-      message: `Query is not allowed: ${effect.queryId}.`
-    });
-  }
-
-  const payloadResult = normalizeOptionalPayload(effect.params);
-  if (!payloadResult.ok) {
-    return rejectPayload(state, effect.requestId, payloadResult);
-  }
-
-  return allow(state, {
-    type: 'data',
-    requestId: effect.requestId,
-    ...(effect.effectId ? { effectId: effect.effectId } : {}),
-    queryId: effect.queryId,
-    ...(payloadResult.value === undefined ? {} : { params: payloadResult.value })
+      : { request: payloadResult.value })
   });
 }
 
@@ -306,15 +263,14 @@ function normalizeEffect(
     return effectInvalid(requestId.path, requestId.message);
   }
 
-  const payload = readOptionalProperty(value, 'payload');
-  if (!payload.ok) {
-    return effectInvalid(payload.path, payload.message, requestId.value);
-  }
-
   if (type.value === 'event') {
     const name = readStringProperty(value, 'name', 'effect.name');
     if (!name.ok) {
       return effectInvalid(name.path, name.message, requestId.value);
+    }
+    const payload = readOptionalProperty(value, 'payload');
+    if (!payload.ok) {
+      return effectInvalid(payload.path, payload.message, requestId.value);
     }
 
     return {
@@ -328,10 +284,22 @@ function normalizeEffect(
     };
   }
 
-  if (type.value === 'action') {
-    const actionId = readStringProperty(value, 'actionId', 'effect.actionId');
-    if (!actionId.ok) {
-      return effectInvalid(actionId.path, actionId.message, requestId.value);
+  if (type.value === 'interface') {
+    const bindingAlias = readStringProperty(
+      value,
+      'bindingAlias',
+      'effect.bindingAlias'
+    );
+    if (!bindingAlias.ok) {
+      return effectInvalid(
+        bindingAlias.path,
+        bindingAlias.message,
+        requestId.value
+      );
+    }
+    const request = readOptionalProperty(value, 'request');
+    if (!request.ok) {
+      return effectInvalid(request.path, request.message, requestId.value);
     }
     const effectId = readOptionalStringProperty(
       value,
@@ -345,41 +313,11 @@ function normalizeEffect(
     return {
       ok: true,
       effect: {
-        type: 'action',
+        type: 'interface',
         requestId: requestId.value,
         ...(effectId.value ? { effectId: effectId.value } : {}),
-        actionId: actionId.value,
-        ...(payload.hasValue ? { payload: payload.value } : {})
-      }
-    };
-  }
-
-  if (type.value === 'data') {
-    const queryId = readStringProperty(value, 'queryId', 'effect.queryId');
-    if (!queryId.ok) {
-      return effectInvalid(queryId.path, queryId.message, requestId.value);
-    }
-    const params = readOptionalProperty(value, 'params');
-    if (!params.ok) {
-      return effectInvalid(params.path, params.message, requestId.value);
-    }
-    const effectId = readOptionalStringProperty(
-      value,
-      'effectId',
-      'effect.effectId'
-    );
-    if (!effectId.ok) {
-      return effectInvalid(effectId.path, effectId.message, requestId.value);
-    }
-
-    return {
-      ok: true,
-      effect: {
-        type: 'data',
-        requestId: requestId.value,
-        ...(effectId.value ? { effectId: effectId.value } : {}),
-        queryId: queryId.value,
-        ...(params.hasValue ? { params: params.value } : {})
+        bindingAlias: bindingAlias.value,
+        ...(request.hasValue ? { request: request.value } : {})
       }
     };
   }
@@ -392,7 +330,8 @@ function normalizeEffect(
 }
 
 function normalizeOptionalPayload(
-  value: unknown
+  value: unknown,
+  path = 'payload'
 ):
   | { ok: true; value?: BlockContextJsonValue }
   | Extract<JsonNormalizationResult, { ok: false }> {
@@ -400,7 +339,7 @@ function normalizeOptionalPayload(
     return { ok: true };
   }
 
-  return normalizeJsonValue(value, 'payload', new WeakSet<object>());
+  return normalizeJsonValue(value, path, new WeakSet<object>());
 }
 
 function normalizeJsonValue(

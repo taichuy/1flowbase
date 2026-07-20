@@ -2,9 +2,14 @@ import {
   validateBlockUiSchema,
   type BlockContext,
   type BlockProtocolError,
-  type BlockUiSchema,
   type BlockUiSchemaValidationOptions
 } from '@1flowbase/page-protocol';
+import {
+  isBlockModule,
+  isBlockResult,
+  type BlockModule,
+  type BlockResult
+} from '@1flowbase/block-sdk';
 
 import {
   transformJsBlockSource,
@@ -19,28 +24,22 @@ export type JsBlockInjectedModuleMap = Partial<
   Record<JsBlockInjectedModuleSource, Record<string, unknown>>
 >;
 
-export interface JsBlockDefinitionLike {
-  render(ctx: BlockContext): BlockUiSchema | Promise<BlockUiSchema>;
-  setup?: (ctx: BlockContext) => unknown | Promise<unknown>;
-  dispose?: (ctx: BlockContext) => unknown | Promise<unknown>;
-}
-
 export type JsBlockSourceEvaluationResult =
   | {
       ok: true;
       compiledSource: JsBlockSourceTransformSuccess;
-      block: JsBlockDefinitionLike;
+      block: BlockModule;
     }
   | {
       ok: false;
       error: JsBlockRunError;
     };
 
-export type JsBlockSourceRenderResult =
+export type JsBlockSourceRunResult =
   | {
       ok: true;
       compiledSource: JsBlockSourceTransformSuccess;
-      schema: BlockUiSchema;
+      result: BlockResult;
     }
   | {
       ok: false;
@@ -52,7 +51,7 @@ export interface EvaluateJsBlockSourceInput {
   modules: JsBlockInjectedModuleMap;
 }
 
-export interface RenderJsBlockSourceInput extends EvaluateJsBlockSourceInput {
+export interface RunJsBlockSourceInput extends EvaluateJsBlockSourceInput {
   context: BlockContext;
   validationOptions?: BlockUiSchemaValidationOptions;
 }
@@ -87,12 +86,12 @@ export function evaluateJsBlockSource(
   try {
     const evaluator = createEvaluator(compiledSource);
     const defaultExport = evaluator(input.modules);
-    if (!isBlockDefinitionLike(defaultExport)) {
+    if (!isBlockModule(defaultExport)) {
       return {
         ok: false,
         error: runtimeError(
           'source.defaultExport',
-          'JS block default export must be a block definition with render(ctx).'
+          'JS block default export must be a BlockModule with main(ctx).'
         )
       };
     }
@@ -113,29 +112,39 @@ export function evaluateJsBlockSource(
   }
 }
 
-export async function renderJsBlockSource(
-  input: RenderJsBlockSourceInput
-): Promise<JsBlockSourceRenderResult> {
+export async function runJsBlockSource(
+  input: RunJsBlockSourceInput
+): Promise<JsBlockSourceRunResult> {
   const evaluation = evaluateJsBlockSource(input);
   if (!evaluation.ok) {
     return evaluation;
   }
 
-  let renderedSchema: unknown;
+  let blockResult: unknown;
   try {
-    renderedSchema = await evaluation.block.render(input.context);
+    blockResult = await evaluation.block.main(input.context);
   } catch (error) {
     return {
       ok: false,
       error: runtimeError(
-        'runtime.render',
-        `JS block render failed: ${getErrorMessage(error)}`
+        'runtime.main',
+        `JS block main failed: ${getErrorMessage(error)}`
+      )
+    };
+  }
+
+  if (!isBlockResult(blockResult)) {
+    return {
+      ok: false,
+      error: runtimeError(
+        'runtime.result',
+        'JS block main must return { view, outputs } with plain-object outputs.'
       )
     };
   }
 
   const validation = validateBlockUiSchema(
-    renderedSchema,
+    blockResult.view,
     input.validationOptions
   );
   if (!validation.ok) {
@@ -143,7 +152,7 @@ export async function renderJsBlockSource(
       ok: false,
       error: createRunError(
         'schema_invalid',
-        'Rendered schema validation failed.',
+        'BlockResult view validation failed.',
         validation.errors
       )
     };
@@ -152,7 +161,10 @@ export async function renderJsBlockSource(
   return {
     ok: true,
     compiledSource: evaluation.compiledSource,
-    schema: validation.schema
+    result: {
+      view: validation.schema,
+      outputs: blockResult.outputs
+    }
   };
 }
 
@@ -207,10 +219,6 @@ function validateInjectedModules(
   }
 
   return null;
-}
-
-function isBlockDefinitionLike(value: unknown): value is JsBlockDefinitionLike {
-  return isRecord(value) && typeof value.render === 'function';
 }
 
 function createRunError(

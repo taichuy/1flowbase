@@ -26,17 +26,22 @@ export function createJsBlockDiagnostics(
 function diagnosticPhase(
   code: BlockProtocolError['code']
 ): BlockRuntimeDiagnosticPhase {
-  if (code === 'query_denied') {
-    return 'data';
+  if (code === 'interface_denied') {
+    return 'interface';
+  }
+  if (code === 'event_denied') {
+    return 'event';
+  }
+  if (code === 'action_denied') {
+    return 'action';
   }
   if (
+    code === 'query_denied' ||
     code === 'create_denied' ||
     code === 'update_denied' ||
-    code === 'delete_denied' ||
-    code === 'action_denied' ||
-    code === 'event_denied'
+    code === 'delete_denied'
   ) {
-    return 'action';
+    return 'data';
   }
   if (
     code === 'import_denied' ||

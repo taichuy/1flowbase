@@ -140,14 +140,6 @@ export function transformJsBlockSource(
   if (!bindingResult.ok) {
     return { ok: false, errors: [bindingResult.error] };
   }
-  const defaultExportContract = validateDefaultExportContract(
-    defaultExport.expression,
-    bindingResult.value.importBindings
-  );
-  if (!defaultExportContract.ok) {
-    return { ok: false, errors: [defaultExportContract.error] };
-  }
-
   const executableSource = applyEdits(policyResult.source, [
     ...imports.map((importDeclaration) => ({
       start: importDeclaration.start,
@@ -683,53 +675,6 @@ function collectInjectedModules(
   };
 }
 
-function validateDefaultExportContract(
-  expression: string,
-  importBindings: readonly JsBlockImportBinding[]
-): ParseResult<void> {
-  const defineBlockBindings = new Set<string>();
-  const namespaceBindings = new Set<string>();
-
-  for (const binding of importBindings) {
-    if (binding.source !== '@1flowbase/block-sdk') {
-      continue;
-    }
-
-    if (binding.kind === 'named' && binding.imported === 'defineBlock') {
-      defineBlockBindings.add(binding.local);
-      continue;
-    }
-
-    if (binding.kind === 'namespace') {
-      namespaceBindings.add(binding.local);
-    }
-  }
-
-  const callee = readDefaultExportCallCallee(expression);
-  if (!callee) {
-    return parseError(
-      'source.defaultExport',
-      'JS block default export must call defineBlock.'
-    );
-  }
-
-  if (defineBlockBindings.has(callee)) {
-    return { ok: true, value: undefined };
-  }
-
-  const namespaceMatch = /^([A-Za-z_$][A-Za-z0-9_$]*)\.defineBlock$/.exec(
-    callee
-  );
-  if (namespaceMatch && namespaceBindings.has(namespaceMatch[1])) {
-    return { ok: true, value: undefined };
-  }
-
-  return parseError(
-    'source.defaultExport',
-    'JS block default export must use defineBlock from @1flowbase/block-sdk.'
-  );
-}
-
 function createModuleBindingPreamble(
   modules: JsBlockInjectedModule[]
 ): string[] {
@@ -937,38 +882,6 @@ function findTopLevelComma(source: string): number {
   }
 
   return -1;
-}
-
-function readDefaultExportCallCallee(expression: string): string | null {
-  let index = skipWhitespaceAndComments(expression, 0);
-  const base = readIdentifierAt(expression, index);
-  if (!base) {
-    return null;
-  }
-
-  index = skipWhitespaceAndComments(expression, base.end);
-  if (expression[index] === '.') {
-    const property = readIdentifierAt(
-      expression,
-      skipWhitespaceAndComments(expression, index + 1)
-    );
-    if (!property) {
-      return null;
-    }
-
-    index = skipWhitespaceAndComments(expression, property.end);
-    if (expression[index] !== '(') {
-      return null;
-    }
-
-    return `${base.value}.${property.value}`;
-  }
-
-  if (expression[index] !== '(') {
-    return null;
-  }
-
-  return base.value;
 }
 
 function readIdentifierAt(

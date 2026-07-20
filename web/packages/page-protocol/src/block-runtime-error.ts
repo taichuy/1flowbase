@@ -10,6 +10,7 @@ export const BLOCK_RUNTIME_ERROR_CODES = [
   'update_denied',
   'delete_denied',
   'action_denied',
+  'interface_denied',
   'event_denied'
 ] as const;
 
@@ -26,7 +27,9 @@ export type BlockRuntimeDiagnosticPhase =
   | 'compile'
   | 'runtime'
   | 'data'
-  | 'action';
+  | 'action'
+  | 'interface'
+  | 'event';
 
 export interface BlockSourceLocation {
   line: number;

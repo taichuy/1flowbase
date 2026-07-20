@@ -16,17 +16,11 @@ import type {
   JsBlockWorkerEffectResultMessage
 } from './js-block-worker-runtime';
 
-export type JsBlockHostDataEffect = Extract<
+export type JsBlockHostInterfaceEffect = Extract<
   JsBlockWorkerEffect,
-  { type: 'data' }
+  { type: 'interface' }
 >;
-export type JsBlockHostActionEffect = Extract<
-  JsBlockWorkerEffect,
-  { type: 'action' }
->;
-export type JsBlockHostResolvableEffect =
-  | JsBlockHostDataEffect
-  | JsBlockHostActionEffect;
+export type JsBlockHostResolvableEffect = JsBlockHostInterfaceEffect;
 type JsBlockHostEffectWithId<Effect extends JsBlockHostResolvableEffect> =
   Effect & {
     effectId: string;
@@ -37,8 +31,7 @@ export type JsBlockHostEffectHandler<Effect extends JsBlockHostResolvableEffect>
 ) => unknown | Promise<unknown>;
 
 export interface JsBlockHostEffectHandlers {
-  data?: JsBlockHostEffectHandler<JsBlockHostDataEffect>;
-  action?: JsBlockHostEffectHandler<JsBlockHostActionEffect>;
+  interface?: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
 }
 
 export interface JsBlockHostEffectBridgeOptions {
@@ -68,8 +61,7 @@ export function createJsBlockHostEffectBridge(
   options: JsBlockHostEffectBridgeOptions
 ): JsBlockHostEffectBridge {
   const resolveEffect = options.resolveEffect;
-  const dataHandler = options.handlers?.data;
-  const actionHandler = options.handlers?.action;
+  const interfaceHandler = options.handlers?.interface;
 
   return {
     getMediatorState() {
@@ -92,20 +84,16 @@ export function createJsBlockHostEffectBridge(
         return { handled: true, transition };
       }
 
-      if (effect.type === 'data') {
-        if (!dataHandler) {
-          resolveMissingHandler(effect, 'query_denied', 'data.handler', resolveEffect);
-          return { handled: true, transition };
-        }
-        resolveAllowedEffect(effect, dataHandler, resolveEffect);
+      if (!interfaceHandler) {
+        resolveMissingHandler(
+          effect,
+          'interface_denied',
+          'interface.handler',
+          resolveEffect
+        );
         return { handled: true, transition };
       }
-
-      if (!actionHandler) {
-        resolveMissingHandler(effect, 'action_denied', 'action.handler', resolveEffect);
-        return { handled: true, transition };
-      }
-      resolveAllowedEffect(effect, actionHandler, resolveEffect);
+      resolveAllowedEffect(effect, interfaceHandler, resolveEffect);
       return { handled: true, transition };
     }
   };
@@ -160,7 +148,7 @@ function resolveDeniedEffect(
   resolveEffect: (message: JsBlockWorkerEffectResultMessage) => void
 ): void {
   if (
-    (message.type !== 'action' && message.type !== 'data') ||
+    message.type !== 'interface' ||
     typeof message.effectId !== 'string' ||
     message.effectId.length === 0 ||
     typeof result.requestId !== 'string'
@@ -249,7 +237,7 @@ function hasEffectId<Effect extends JsBlockHostResolvableEffect>(
 
 type WorkerEffectMessage = Record<string, unknown> & {
   direction: 'worker_to_host';
-  type: 'event' | 'action' | 'data';
+  type: 'event' | 'interface';
 };
 
 function isWorkerEffectMessage(value: unknown): value is WorkerEffectMessage {
@@ -258,9 +246,7 @@ function isWorkerEffectMessage(value: unknown): value is WorkerEffectMessage {
   }
 
   return (
-    value.type === 'event' ||
-    value.type === 'action' ||
-    value.type === 'data'
+    value.type === 'event' || value.type === 'interface'
   );
 }
 

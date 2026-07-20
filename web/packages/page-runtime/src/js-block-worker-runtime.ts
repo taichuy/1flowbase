@@ -19,6 +19,7 @@ export interface JsBlockRunRequest {
   requestId: string;
   blockId: string;
   source: string;
+  inputs: Record<string, unknown>;
   props: Record<string, unknown>;
   state: Record<string, unknown>;
   contextSnapshot: Record<string, unknown>;
@@ -31,7 +32,7 @@ export type JsBlockRunErrorKind =
   | 'worker_startup_timeout'
   | 'worker_crash'
   | 'compile_failed'
-  | 'render_failed'
+  | 'main_failed'
   | 'effect_failed'
   | 'schema_invalid'
   | 'runtime_timeout'
@@ -60,7 +61,8 @@ export type JsBlockRunResult =
       ok: true;
       requestId: string;
       blockId: string;
-      schema: BlockUiSchema;
+      view: BlockUiSchema;
+      outputs: Record<string, unknown>;
     }
   | {
       ok: false;
@@ -99,18 +101,11 @@ export type JsBlockWorkerEffect =
       payload?: unknown;
     }
   | {
-      type: 'data';
+      type: 'interface';
       requestId: string;
       effectId?: string;
-      queryId: string;
-      params?: unknown;
-    }
-  | {
-      type: 'action';
-      requestId: string;
-      effectId?: string;
-      actionId: string;
-      payload?: unknown;
+      bindingAlias: string;
+      request?: unknown;
     };
 
 export interface JsBlockRuntimeRequestState {
@@ -211,11 +206,12 @@ export interface JsBlockWorkerPhaseMessage {
   phase: Extract<JsBlockRunPhase, 'compiling' | 'executing'>;
 }
 
-export interface JsBlockWorkerRenderedMessage {
+export interface JsBlockWorkerCompletedMessage {
   direction: 'worker_to_host';
-  type: 'rendered';
+  type: 'completed';
   requestId: string;
-  schema: unknown;
+  view: unknown;
+  outputs: unknown;
 }
 
 export interface JsBlockWorkerErrorMessage {
@@ -244,33 +240,23 @@ export interface JsBlockWorkerEventRequestMessage {
   payload?: unknown;
 }
 
-export interface JsBlockWorkerDataRequestMessage {
+export interface JsBlockWorkerInterfaceRequestMessage {
   direction: 'worker_to_host';
-  type: 'data';
+  type: 'interface';
   requestId: string;
   effectId?: string;
-  queryId: string;
-  params?: unknown;
-}
-
-export interface JsBlockWorkerActionRequestMessage {
-  direction: 'worker_to_host';
-  type: 'action';
-  requestId: string;
-  effectId?: string;
-  actionId: string;
-  payload?: unknown;
+  bindingAlias: string;
+  request?: unknown;
 }
 
 export type JsBlockWorkerToHostMessage =
   | JsBlockWorkerReadyMessage
   | JsBlockWorkerPhaseMessage
-  | JsBlockWorkerRenderedMessage
+  | JsBlockWorkerCompletedMessage
   | JsBlockWorkerErrorMessage
   | JsBlockWorkerLogMessage
   | JsBlockWorkerEventRequestMessage
-  | JsBlockWorkerDataRequestMessage
-  | JsBlockWorkerActionRequestMessage;
+  | JsBlockWorkerInterfaceRequestMessage;
 
 export type JsBlockWorkerRuntimeMessage =
   | JsBlockHostToWorkerMessage
@@ -364,18 +350,16 @@ function reduceWorkerToHostMessage(
       };
     case 'phase':
       return reducePhaseMessage(state, message);
-    case 'rendered':
-      return reduceRenderedMessage(state, message);
+    case 'completed':
+      return reduceCompletedMessage(state, message);
     case 'error':
       return reduceRuntimeErrorMessage(state, message);
     case 'log':
       return reduceLogMessage(state, message);
     case 'event':
       return reduceEffectMessage(state, message, 'event');
-    case 'data':
-      return reduceEffectMessage(state, message, 'data');
-    case 'action':
-      return reduceEffectMessage(state, message, 'action');
+    case 'interface':
+      return reduceEffectMessage(state, message, 'interface');
     default:
       return reject(state, {
         code: 'invalid_message',
@@ -429,7 +413,7 @@ function reduceRunMessage(
   );
 }
 
-function reduceRenderedMessage(
+function reduceCompletedMessage(
   state: JsBlockRuntimeSessionState,
   message: RecordValue
 ): JsBlockRuntimeSessionState {
@@ -438,13 +422,17 @@ function reduceRenderedMessage(
     return reject(state, requestIdResult.rejection);
   }
 
-  if (!hasOwn(message, 'schema')) {
+  if (!hasOwn(message, 'view')) {
     return reject(state, {
       code: 'invalid_message',
-      path: 'message.schema',
-      message: 'Rendered message schema is required.',
+      path: 'message.view',
+      message: 'Completed message view is required.',
       requestId: requestIdResult.value
     });
+  }
+  const outputsResult = readRecord(message, 'outputs', 'message.outputs');
+  if (!outputsResult.ok) {
+    return reject(state, outputsResult.rejection);
   }
 
   const requestResult = readCurrentRequest(state, requestIdResult.value);
@@ -456,7 +444,7 @@ function reduceRenderedMessage(
     ...requestResult.request,
     phase: 'validating_schema'
   });
-  const validation = validateBlockUiSchema(message.schema, {
+  const validation = validateBlockUiSchema(message.view, {
     maxDepth: requestResult.request.request.limits.maxRenderDepth,
     maxNodes: requestResult.request.request.limits.maxRenderNodes
   });
@@ -467,7 +455,7 @@ function reduceRenderedMessage(
       withRunFailure(
         requestResult.request,
         'schema_invalid',
-        'Rendered schema validation failed.',
+        'BlockResult view validation failed.',
         validation.errors
       )
     );
@@ -481,7 +469,8 @@ function reduceRenderedMessage(
       ok: true,
       requestId: requestResult.request.requestId,
       blockId: requestResult.request.blockId,
-      schema: validation.schema
+      view: validation.schema,
+      outputs: outputsResult.value
     }
   });
 }
@@ -733,6 +722,11 @@ function readRunRequest(
     return props;
   }
 
+  const inputs = readRecord(value, 'inputs', 'message.request.inputs');
+  if (!inputs.ok) {
+    return inputs;
+  }
+
   const state = readRecord(value, 'state', 'message.request.state');
   if (!state.ok) {
     return state;
@@ -765,6 +759,7 @@ function readRunRequest(
       requestId: requestId.value,
       blockId: blockId.value,
       source: source.value,
+      inputs: inputs.value,
       props: props.value,
       state: state.value,
       contextSnapshot: contextSnapshot.value,
@@ -875,30 +870,13 @@ function readWorkerEffect(
     };
   }
 
-  if (effectType === 'data') {
-    const queryId = readString(message, 'queryId', 'message.queryId');
-    if (!queryId.ok) {
-      return queryId;
-    }
-    const effectId =
-      typeof message.effectId === 'string' && message.effectId.length > 0
-        ? message.effectId
-        : undefined;
-    return {
-      ok: true,
-      effect: {
-        type: 'data',
-        requestId,
-        ...(effectId ? { effectId } : {}),
-        queryId: queryId.value,
-        params: message.params
-      }
-    };
-  }
-
-  const actionId = readString(message, 'actionId', 'message.actionId');
-  if (!actionId.ok) {
-    return actionId;
+  const bindingAlias = readString(
+    message,
+    'bindingAlias',
+    'message.bindingAlias'
+  );
+  if (!bindingAlias.ok) {
+    return bindingAlias;
   }
   const effectId =
     typeof message.effectId === 'string' && message.effectId.length > 0
@@ -907,11 +885,11 @@ function readWorkerEffect(
   return {
     ok: true,
     effect: {
-      type: 'action',
+      type: 'interface',
       requestId,
       ...(effectId ? { effectId } : {}),
-      actionId: actionId.value,
-      payload: message.payload
+      bindingAlias: bindingAlias.value,
+      request: message.request
     }
   };
 }
@@ -1142,7 +1120,7 @@ function isRunErrorKind(value: unknown): value is JsBlockRunErrorKind {
     value === 'worker_startup_timeout' ||
     value === 'worker_crash' ||
     value === 'compile_failed' ||
-    value === 'render_failed' ||
+    value === 'main_failed' ||
     value === 'effect_failed' ||
     value === 'schema_invalid' ||
     value === 'runtime_timeout' ||
