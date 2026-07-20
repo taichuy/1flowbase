@@ -134,13 +134,15 @@ async fn save_workflow_document(app: &Router, cookie: &str, csrf: &str, applicat
     save_workflow_document_with_builder(app, cookie, csrf, application_id, workflow_document).await;
 }
 
-async fn save_workflow_document_with_builder(
+async fn save_workflow_document_with_builder<F>(
     app: &Router,
     cookie: &str,
     csrf: &str,
     application_id: &str,
-    build_document: fn(&str) -> Value,
-) {
+    build_document: F,
+) where
+    F: FnOnce(&str) -> Value,
+{
     let state = app
         .clone()
         .oneshot(
@@ -253,8 +255,8 @@ async fn publish_workflow_extension_with_enabled(
                             "extension": {
                                 "slug": options.slug,
                                 "method": "POST",
-                                "response_mode": options.response_mode,
-                                "parameters": options.parameters
+                                "access_policy": "user_api_key",
+                                "response_mode": options.response_mode
                             }
                         },
                         "api_enabled": options.api_enabled
@@ -266,23 +268,27 @@ async fn publish_workflow_extension_with_enabled(
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CREATED);
-    response_json(response).await
+    let status = response.status();
+    let body = response_json(response).await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "unexpected publish response: {body}"
+    );
+    body
 }
 
 struct WorkflowExtensionPublishOptions {
     slug: String,
     response_mode: String,
-    parameters: Value,
     api_enabled: bool,
 }
 
 impl WorkflowExtensionPublishOptions {
-    fn new(slug: &str, response_mode: &str, parameters: Value, api_enabled: bool) -> Self {
+    fn new(slug: &str, response_mode: &str, api_enabled: bool) -> Self {
         Self {
             slug: slug.to_string(),
             response_mode: response_mode.to_string(),
-            parameters,
             api_enabled,
         }
     }
@@ -295,14 +301,13 @@ async fn publish_workflow_extension(
     application_id: &str,
     slug: &str,
     response_mode: &str,
-    parameters: Value,
 ) -> Value {
     publish_workflow_extension_with_enabled(
         app,
         cookie,
         csrf,
         application_id,
-        WorkflowExtensionPublishOptions::new(slug, response_mode, parameters, true),
+        WorkflowExtensionPublishOptions::new(slug, response_mode, true),
     )
     .await
 }
@@ -323,9 +328,10 @@ fn workflow_document(flow_id: &str) -> Value {
                     "configVersion": 1,
                     "config": {
                         "input_fields": [
-                            { "key": "customer_id", "label": "Customer ID", "inputType": "text", "valueType": "string", "required": true },
-                            { "key": "priority", "label": "Priority", "inputType": "text", "valueType": "string", "required": false },
-                            { "key": "ticket_kind", "label": "Ticket Kind", "inputType": "text", "valueType": "string", "required": false }
+                            { "key": "slug", "label": "Slug", "inputType": "text", "valueType": "string", "source": "body", "required": false },
+                            { "key": "customer_id", "label": "Customer ID", "inputType": "text", "valueType": "string", "source": "body", "required": true },
+                            { "key": "priority", "label": "Priority", "inputType": "text", "valueType": "string", "source": "body", "required": false },
+                            { "key": "ticket_kind", "label": "Ticket Kind", "inputType": "text", "valueType": "string", "source": "body", "required": false }
                         ],
                         "sync_timeout_ms": 30000
                     },
@@ -373,6 +379,31 @@ fn workflow_document(flow_id: &str) -> Value {
     })
 }
 
+fn workflow_document_with_http_parameters(flow_id: &str, parameters: &Value) -> Value {
+    let mut document = workflow_document(flow_id);
+    let sources = parameters
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|parameter| {
+            Some((
+                parameter.get("name")?.as_str()?,
+                parameter.get("source")?.as_str()?,
+            ))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    for field in document["graph"]["nodes"][0]["config"]["input_fields"]
+        .as_array_mut()
+        .expect("workflow start input fields")
+    {
+        let key = field["key"].as_str().expect("workflow start input key");
+        if let Some(source) = sources.get(key) {
+            field["source"] = json!(source);
+        }
+    }
+    document
+}
+
 fn workflow_waiting_document(flow_id: &str) -> Value {
     json!({
         "schemaVersion": "1flowbase.flow/v2",
@@ -389,7 +420,7 @@ fn workflow_waiting_document(flow_id: &str) -> Value {
                     "configVersion": 1,
                     "config": {
                         "input_fields": [
-                            { "key": "customer_id", "label": "Customer ID", "inputType": "text", "valueType": "string", "required": true }
+                            { "key": "customer_id", "label": "Customer ID", "inputType": "text", "valueType": "string", "source": "query", "required": true }
                         ],
                         "sync_timeout_ms": 30000
                     },
@@ -452,14 +483,17 @@ async fn setup_workflow_extension_app_with_enabled(
 ) -> (String, Value) {
     let (cookie, csrf) = login_and_capture_cookie(app, "root", "change-me").await;
     let application_id = create_workflow_application(app, &cookie, &csrf, slug).await;
-    save_workflow_document(app, &cookie, &csrf, &application_id).await;
+    save_workflow_document_with_builder(app, &cookie, &csrf, &application_id, |flow_id| {
+        workflow_document_with_http_parameters(flow_id, &parameters)
+    })
+    .await;
     let token = create_user_api_key(app, &cookie, &csrf).await;
     let publication = publish_workflow_extension_with_enabled(
         app,
         &cookie,
         &csrf,
         &application_id,
-        WorkflowExtensionPublishOptions::new(slug, response_mode, parameters, api_enabled),
+        WorkflowExtensionPublishOptions::new(slug, response_mode, api_enabled),
     )
     .await;
     (token, publication)
@@ -528,13 +562,6 @@ async fn workflow_extension_sync_route_returns_accepted_when_run_waits_for_human
         &application_id,
         "open-ticket-waiting",
         "sync",
-        json!([
-            {
-                "name": "customer_id",
-                "source": "query",
-                "target": "node-workflow-start.customer_id"
-            }
-        ]),
     )
     .await;
 
@@ -655,13 +682,7 @@ async fn workflow_extension_route_returns_stable_errors_for_missing_slug_and_met
 #[tokio::test]
 async fn workflow_extension_route_describes_user_api_key_authentication_neutrally() {
     let app = test_app().await;
-    setup_workflow_extension_app(
-        &app,
-        "open-ticket-auth-error",
-        "async",
-        json!([]),
-    )
-    .await;
+    setup_workflow_extension_app(&app, "open-ticket-auth-error", "async", json!([])).await;
 
     let response = app
         .oneshot(
@@ -759,10 +780,10 @@ async fn workflow_extension_route_rejects_disabled_publication() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(
         response_json(response).await["code"],
-        json!("application_not_published")
+        json!("workflow_extension_not_found")
     );
 }
 
@@ -771,7 +792,7 @@ async fn workflow_extension_openapi_registers_concrete_slug_operation() {
     let app = test_app().await;
     setup_workflow_extension_app(
         &app,
-        "open-ticket-docs",
+        "open-ticket-docs/{slug}",
         "sync",
         json!([
             {
@@ -811,7 +832,7 @@ async fn workflow_extension_openapi_registers_concrete_slug_operation() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
-    let operation = &payload["paths"]["/api/ex/open-ticket-docs"]["post"];
+    let operation = &payload["paths"]["/api/ex/open-ticket-docs/{slug}"]["post"];
     assert_eq!(operation["parameters"][0]["in"], json!("path"));
     assert_eq!(operation["parameters"][1]["in"], json!("query"));
     assert_eq!(
@@ -848,12 +869,7 @@ async fn workflow_schedule_tick_creates_and_executes_async_run() {
         &cookie,
         &csrf,
         &application_id,
-        WorkflowExtensionPublishOptions::new(
-            "tick-scheduled-workflow",
-            "async",
-            json!([]),
-            false,
-        ),
+        WorkflowExtensionPublishOptions::new("tick-scheduled-workflow", "async", false),
     )
     .await;
 
@@ -952,7 +968,6 @@ async fn workflow_extension_route_rejects_schedule_trigger_application() {
         &application_id,
         "schedule-typed-extension",
         "async",
-        json!([]),
     )
     .await;
 
@@ -968,10 +983,10 @@ async fn workflow_extension_route_rejects_schedule_trigger_application() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(
         response_json(response).await["code"],
-        json!("workflow_trigger_type_mismatch")
+        json!("workflow_extension_not_found")
     );
 }
 
@@ -995,7 +1010,6 @@ async fn workflow_extension_openapi_excludes_schedule_trigger_applications() {
         &application_id,
         "schedule-typed-docs",
         "async",
-        json!([]),
     )
     .await;
 
