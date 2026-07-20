@@ -154,7 +154,10 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
 
     await fixture.close();
     await fixture.close();
-    assert.deepEqual(fake.stopped.map(path.basename), ['api-server', 'plugin-runner']);
+    assert.deepEqual(fake.stopped.map((value) => path.basename(value)), [
+      'api-server',
+      'plugin-runner',
+    ]);
     assert.equal(fs.existsSync(path.dirname(installRoot)), false);
   } finally {
     await fixture?.close();
@@ -175,7 +178,10 @@ test('controlled bootstrap failure terminates both owned children and removes sc
       createGatewayFixture(files.options, fake.dependencies),
       /controlled sign-in failure/u
     );
-    assert.deepEqual(fake.stopped.map(path.basename), ['api-server', 'plugin-runner']);
+    assert.deepEqual(fake.stopped.map((value) => path.basename(value)), [
+      'api-server',
+      'plugin-runner',
+    ]);
     const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;
     assert.equal(fs.existsSync(path.dirname(installRoot)), false);
   } finally {
