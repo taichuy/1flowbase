@@ -65,6 +65,7 @@ pub enum CreateWorkflowTriggerConfig {
     Extension {
         subpath: String,
         http_method: String,
+        access_policy: String,
         response_mode: String,
     },
 }

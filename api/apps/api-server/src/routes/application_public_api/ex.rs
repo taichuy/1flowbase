@@ -22,9 +22,7 @@ use serde_json::{json, Map, Value};
 
 use crate::{
     app_state::ApiState,
-    routes::application_public_api::native::{
-        api_provider_runtime, bearer_token, service_error, NativeApiError,
-    },
+    routes::application_public_api::native::{api_provider_runtime, service_error, NativeApiError},
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
@@ -46,14 +44,13 @@ pub async fn invoke_workflow_extension(
     uri: axum::http::Uri,
     body: Bytes,
 ) -> Result<Response, NativeApiError> {
-    let bearer_token = bearer_token(&headers)?;
+    let bearer_token = optional_bearer_token(&headers)?;
     let method = workflow_extension_method(&method)?;
-    let parameters = request_parameters(&slug, uri.query(), &headers, &body)?;
+    let parameters = request_parameters(uri.query(), &headers, &body)?;
     let run = WorkflowExtensionRunService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
         .create_run(CreateWorkflowExtensionRunCommand {
             bearer_token,
-            slug,
+            request_path: slug,
             method,
             parameters,
         })
@@ -179,12 +176,11 @@ fn workflow_extension_method(
 }
 
 fn request_parameters(
-    slug: &str,
     raw_query: Option<&str>,
     headers: &HeaderMap,
     body: &[u8],
 ) -> Result<WorkflowExtensionRequestParameters, NativeApiError> {
-    let path = BTreeMap::from([("slug".to_string(), Value::String(slug.to_string()))]);
+    let path = BTreeMap::new();
     let query = parse_urlencoded_object(raw_query.unwrap_or_default());
     let content_type = headers
         .get(CONTENT_TYPE)
@@ -261,7 +257,25 @@ fn workflow_extension_error(error: WorkflowExtensionRunError) -> NativeApiError 
             "invalid_mapping",
             "workflow extension API mapping is invalid",
         ),
+        WorkflowExtensionRunError::RouteConflict => NativeApiError::new(
+            StatusCode::CONFLICT,
+            "workflow_route_conflict",
+            "workflow extension route configuration is ambiguous",
+        ),
     }
+}
+
+fn optional_bearer_token(headers: &HeaderMap) -> Result<Option<String>, NativeApiError> {
+    let Some(value) = headers.get(axum::http::header::AUTHORIZATION) else {
+        return Ok(None);
+    };
+    let value = value.to_str().map_err(|_| {
+        NativeApiError::new(StatusCode::UNAUTHORIZED, "not_authenticated", "invalid authorization header")
+    })?;
+    let token = value.strip_prefix("Bearer ").filter(|token| !token.is_empty()).ok_or_else(|| {
+        NativeApiError::new(StatusCode::UNAUTHORIZED, "not_authenticated", "invalid authorization header")
+    })?;
+    Ok(Some(token.to_string()))
 }
 
 fn accepted_response(run_id: uuid::Uuid, status: domain::FlowRunStatus) -> Response {

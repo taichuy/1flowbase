@@ -35,6 +35,7 @@ const publicApi = vi.hoisted(() => ({
   fetchApplicationApiPublication: vi.fn(),
   fetchWorkflowScheduleTrigger: vi.fn(),
   publishApplicationApiVersion: vi.fn(),
+  unpublishApplicationApiVersion: vi.fn(),
   saveApplicationApiMapping: vi.fn(),
   saveWorkflowScheduleTrigger: vi.fn()
 }));
@@ -173,11 +174,38 @@ describe('Workflow application page', () => {
     applicationsApi.fetchApplicationDetail.mockResolvedValue(
       createWorkflowApplicationDetail()
     );
-    publicApi.fetchApplicationApiMapping.mockResolvedValue(
-      createMappingWithoutExtension()
-    );
+    publicApi.fetchApplicationApiMapping.mockResolvedValue({
+      ...createMappingWithoutExtension(),
+      extension: {
+        slug: 'orders/{order_id}',
+        method: 'POST',
+        access_policy: 'user_api_key',
+        response_mode: 'sync'
+      }
+    });
     publicApi.fetchApplicationApiPublication.mockResolvedValue({
-      active: false
+      active: true,
+      api_enabled: true,
+      operation: {
+        interface_id: 'published_workflow_operation:app-workflow',
+        method: 'POST',
+        route_template: 'orders/{order_id}',
+        access_policy: 'user_api_key',
+        response_mode: 'sync',
+        parameter_schema: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'object',
+              properties: { order_id: { type: 'string' } }
+            }
+          }
+        },
+        result_schema: {
+          type: 'object',
+          properties: { accepted: { type: 'boolean' } }
+        }
+      }
     });
     publicApi.fetchWorkflowScheduleTrigger.mockResolvedValue(null);
   });
@@ -200,7 +228,7 @@ describe('Workflow application page', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('AC-001 extension consumes sections.api and renders operation semantics without AgentFlow API tooling', async () => {
+  test('AC-010 extension renders the published operation and never renders AgentFlow API tooling', async () => {
     render(
       <AppProviders>
         <ApplicationDetailPage
@@ -213,11 +241,15 @@ describe('Workflow application page', () => {
     expect(
       await screen.findByRole('heading', { name: '工作流扩展 API' })
     ).toBeInTheDocument();
-    expect(screen.getByText('published_workflow_operation')).toBeInTheDocument();
-    expect(screen.getByText('/api/ex/{operation}')).toBeInTheDocument();
+    expect(
+      screen.getByText('published_workflow_operation:app-workflow')
+    ).toBeInTheDocument();
+    expect(screen.getByText('/api/ex/orders/{order_id}')).toBeInTheDocument();
+    expect(screen.getByText('path.order_id')).toBeInTheDocument();
+    expect(screen.getByText('accepted')).toBeInTheDocument();
     expect(screen.getByText('API')).toBeInTheDocument();
-    expect(publicApi.fetchApplicationApiMapping).not.toHaveBeenCalled();
-    expect(publicApi.fetchApplicationApiPublication).not.toHaveBeenCalled();
+    expect(screen.queryByText(/AgentFlow/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/API Key 管理/i)).not.toBeInTheDocument();
   });
 
   test('AC-001 schedule hides the API entry from backend capability truth', async () => {

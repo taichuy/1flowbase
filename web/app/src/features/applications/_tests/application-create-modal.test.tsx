@@ -93,6 +93,7 @@ describe('ApplicationFormModal create intent', () => {
           workflow_trigger_config: {
             subpath: 'orders/create',
             http_method: 'POST',
+            access_policy: 'user_api_key',
             response_mode: 'sync'
           },
           name: 'Order workflow'

@@ -321,6 +321,7 @@ impl ApplicationRepository for PgControlPlaneStore {
                 CreateWorkflowTriggerConfig::Extension {
                     subpath,
                     http_method,
+                    access_policy,
                     response_mode,
                 } => {
                     sqlx::query(
@@ -364,8 +365,8 @@ impl ApplicationRepository for PgControlPlaneStore {
                         "extension": {
                             "slug": subpath,
                             "method": http_method,
+                            "access_policy": access_policy,
                             "response_mode": response_mode,
-                            "parameters": []
                         }
                     });
                     sqlx::query(

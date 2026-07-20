@@ -11,8 +11,7 @@ use control_plane::{
             ApplicationApiMappingInput, ApplicationApiMappingOutput, ApplicationApiMappingService,
             ApplicationOperationBindings, ApplicationOperationTargetBinding,
             GetApplicationApiMappingCommand, ReplaceApplicationApiMappingCommand,
-            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
-            WorkflowExtensionParameterMapping, WorkflowExtensionParameterSource,
+            WorkflowExtensionAccessPolicy, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
             WorkflowExtensionResponseMode,
         },
         publications::{
@@ -39,7 +38,6 @@ use control_plane::{
         ReplaceApplicationJsDependencySelectionInput, TaskQueue,
     },
 };
-use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use time::Duration;
 use uuid::Uuid;
@@ -51,6 +49,7 @@ mod native_run;
 mod openai_compat;
 mod operation_bindings;
 mod publications;
+mod published_workflow_operation;
 mod resume;
 mod run_service;
 mod workflow_start_http_inputs;
@@ -117,12 +116,8 @@ fn workflow_extension_mapping(slug: &str) -> ApplicationApiMappingConfig {
         extension: Some(WorkflowExtensionApiConfig {
             slug: slug.into(),
             method: WorkflowExtensionHttpMethod::Post,
+            access_policy: WorkflowExtensionAccessPolicy::UserApiKey,
             response_mode: WorkflowExtensionResponseMode::Async,
-            parameters: vec![WorkflowExtensionParameterMapping {
-                name: "customer_id".into(),
-                source: WorkflowExtensionParameterSource::Query,
-                target: "node-workflow-start.customer_id".into(),
-            }],
         }),
     }
 }
@@ -1294,21 +1289,21 @@ async fn application_public_api_publish_rejects_extension_slug_used_by_saved_map
 }
 
 #[tokio::test]
-async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
+async fn workflow_http_operation_rejects_application_key_and_runs_with_public_principal() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
     let repository = harness.repository();
-    let token = ApplicationApiKeyService::new(repository.clone())
+    let application_token = ApplicationApiKeyService::new(repository.clone())
         .create_api_key(CreateApplicationApiKeyCommand {
             actor_user_id: actor_user_id(),
             application_id: application.id,
-            name: "Workflow extension".into(),
+            name: "Rejected application key".into(),
             expires_at: None,
         })
         .await
         .unwrap()
         .token;
-    let mapping = ApplicationApiMappingConfig {
+    let mut mapping = ApplicationApiMappingConfig {
         input: ApplicationApiMappingInput {
             query_target: "node-start.query".into(),
             model_target: None,
@@ -1320,31 +1315,32 @@ async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
         extension: Some(WorkflowExtensionApiConfig {
             slug: "open-ticket".into(),
             method: WorkflowExtensionHttpMethod::Post,
+            access_policy: WorkflowExtensionAccessPolicy::UserApiKey,
             response_mode: WorkflowExtensionResponseMode::Async,
-            parameters: vec![
-                WorkflowExtensionParameterMapping {
-                    name: "slug".into(),
-                    source: WorkflowExtensionParameterSource::Path,
-                    target: "node-workflow-start.slug".into(),
-                },
-                WorkflowExtensionParameterMapping {
-                    name: "customer_id".into(),
-                    source: WorkflowExtensionParameterSource::Query,
-                    target: "node-workflow-start.customer_id".into(),
-                },
-                WorkflowExtensionParameterMapping {
-                    name: "priority".into(),
-                    source: WorkflowExtensionParameterSource::Form,
-                    target: "node-workflow-start.priority".into(),
-                },
-                WorkflowExtensionParameterMapping {
-                    name: "ticket_kind".into(),
-                    source: WorkflowExtensionParameterSource::Body,
-                    target: "node-workflow-start.ticket_kind".into(),
-                },
-            ],
         }),
     };
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: mapping.clone(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+
+    let rejected = WorkflowExtensionRunService::new(repository.clone())
+        .create_run(CreateWorkflowExtensionRunCommand {
+            bearer_token: Some(application_token.clone()),
+            request_path: "open-ticket".into(),
+            method: WorkflowExtensionHttpMethod::Post,
+            parameters: WorkflowExtensionRequestParameters::default(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(rejected, control_plane::application_public_api::workflow_extension::WorkflowExtensionRunError::NotAuthenticated);
+
+    mapping.extension.as_mut().unwrap().access_policy = WorkflowExtensionAccessPolicy::Public;
     ApplicationPublicationService::new(repository.clone())
         .publish_active_version(PublishApplicationCommand {
             actor_user_id: actor_user_id(),
@@ -1357,21 +1353,10 @@ async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
 
     let run = WorkflowExtensionRunService::new(repository.clone())
         .create_run(CreateWorkflowExtensionRunCommand {
-            bearer_token: token,
-            slug: "open-ticket".into(),
+            bearer_token: Some(application_token),
+            request_path: "open-ticket".into(),
             method: WorkflowExtensionHttpMethod::Post,
-            parameters: WorkflowExtensionRequestParameters {
-                path: BTreeMap::from([("slug".to_string(), serde_json::json!("open-ticket"))]),
-                query: serde_json::Map::from_iter([(
-                    "customer_id".to_string(),
-                    serde_json::json!("C-42"),
-                )]),
-                form: serde_json::Map::from_iter([(
-                    "priority".to_string(),
-                    serde_json::json!("urgent"),
-                )]),
-                body: serde_json::json!({ "ticket_kind": "billing" }),
-            },
+            parameters: WorkflowExtensionRequestParameters::default(),
         })
         .await
         .unwrap();
@@ -1384,25 +1369,19 @@ async fn workflow_extension_run_maps_path_query_form_and_body_parameters() {
     assert_eq!(run.status, domain::FlowRunStatus::Queued);
     assert_eq!(
         stored.input_payload["node-workflow-start"],
-        serde_json::json!({
-            "slug": "open-ticket",
-            "customer_id": "C-42",
-            "priority": "urgent",
-            "ticket_kind": "billing"
-        })
+        serde_json::json!({})
     );
     assert_eq!(
         stored.input_payload["trigger"],
         serde_json::json!({ "type": "extension" })
     );
-    assert_eq!(
-        stored.external_trace_id.as_deref(),
-        Some("workflow-extension:open-ticket")
-    );
+    let expected_trace = format!("workflow-http:published_workflow_operation:{}", application.id);
+    assert_eq!(stored.external_trace_id.as_deref(), Some(expected_trace.as_str()));
     assert_eq!(
         stored.compatibility_mode.as_deref(),
-        Some("workflow_extension_v1")
+        Some("workflow_http_v1")
     );
+    assert_eq!(run.api_key_id, None, "public principal is not an API key");
 }
 
 #[tokio::test]
@@ -2305,19 +2284,9 @@ fn application_public_api_mapping_validation_rejects_invalid_workflow_extension_
         .to_string()
         .contains("extension.slug"));
 
-    invalid_slug = workflow_extension_mapping("open-ticket");
-    invalid_slug
-        .extension
-        .as_mut()
-        .unwrap()
-        .parameters
-        .push(WorkflowExtensionParameterMapping {
-            name: "customer_id".into(),
-            source: WorkflowExtensionParameterSource::Query,
-            target: "node-workflow-start.duplicate_customer_id".into(),
-        });
+    invalid_slug = workflow_extension_mapping("open-ticket/*rest");
     assert!(validate_application_api_mapping(&invalid_slug)
         .unwrap_err()
         .to_string()
-        .contains("parameter"));
+        .contains("extension.slug"));
 }

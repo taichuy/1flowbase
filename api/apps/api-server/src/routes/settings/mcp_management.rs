@@ -21,6 +21,10 @@ use control_plane::mcp_management::{
     UpdateMcpProxyToolCommand, UpdateMcpToolBindingCommand, UpdateMcpToolCommand,
     UpsertMcpGroupCommand,
 };
+use control_plane::{
+    application_public_api::published_workflow_operation::build_published_workflow_operations,
+    ports::{ApplicationPublicationRepository, AuthRepository},
+};
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -1186,6 +1190,7 @@ fn parse_risk_level(value: &str) -> Result<domain::McpRiskLevel, ApiError> {
 enum McpInterfaceCapabilitySource {
     StaticApiDocs,
     RuntimeDataModelCrud,
+    PublishedWorkflowOperation,
 }
 
 struct McpInterfaceScopePolicy {
@@ -1200,6 +1205,42 @@ async fn mcp_interface_catalog_entries(
     let mut entries = static_mcp_interface_catalog_entries(&state.api_docs);
     let models = runtime_data_model_docs::ready_models(state, actor_user_id).await?;
     entries.extend(runtime_data_model_mcp_interface_catalog_entries(&models));
+    let actor = state.store.load_actor_context_for_user(actor_user_id).await?;
+    let publications = state.store.list_enabled_extension_publications().await?;
+    let operations = build_published_workflow_operations(publications)
+        .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("workflow_route"))?;
+    for operation in operations
+        .into_iter()
+        .filter(|operation| operation.workspace_id == actor.current_workspace_id)
+    {
+        let path = operation.public_path();
+        let method = operation.method.as_str().to_string();
+        let docs_operation = DocsCatalogOperation {
+            id: operation.interface_id.clone(),
+            method: method.clone(),
+            path: path.clone(),
+            summary: Some(format!("Invoke published workflow {}", operation.application_id)),
+            description: Some("Invoke the active publication of a Workflow application".into()),
+            tags: vec!["Workflow Extensions".into()],
+            group: "workflow_extensions".into(),
+            deprecated: false,
+        };
+        let spec = serde_json::json!({
+            "openapi": "3.1.0",
+            "paths": {
+                (path): {
+                    (method.to_ascii_lowercase()): crate::openapi::workflow_extension_operation(&operation)
+                }
+            }
+        });
+        if let Some(entry) = mcp_interface_entry_from_operation(
+            &docs_operation,
+            &spec,
+            McpInterfaceCapabilitySource::PublishedWorkflowOperation,
+        ) {
+            entries.push(entry);
+        }
+    }
     Ok(entries)
 }
 
@@ -1349,6 +1390,7 @@ fn mcp_interface_scope_policy(
         McpInterfaceCapabilitySource::RuntimeDataModelCrud => {
             runtime_data_model_crud_path_is_concrete(&operation.path)
         }
+        McpInterfaceCapabilitySource::PublishedWorkflowOperation => true,
     };
 
     McpInterfaceScopePolicy {
@@ -2793,5 +2835,46 @@ mod tests {
         assert_eq!(descriptor.parameter_type, McpParameterType::JsonBody);
         assert_eq!(descriptor.description.as_deref(), Some("Raw body"));
         assert!(descriptor.required);
+    }
+
+    #[test]
+    fn ac_007_published_workflow_interface_is_bindable_with_stable_identity() {
+        let path = "/api/ex/orders/{order_id}";
+        let spec = json!({
+            "paths": {
+                (path): {
+                    "post": {
+                        "operationId": "published_workflow_operation:11111111-1111-1111-1111-111111111111",
+                        "security": [{ "UserApiKey": [] }],
+                        "parameters": [{
+                            "name": "order_id",
+                            "in": "path",
+                            "required": true,
+                            "schema": { "type": "string" }
+                        }],
+                        "responses": { "200": { "description": "Workflow Result", "content": {
+                            "application/json": { "schema": { "type": "object", "properties": {
+                                "accepted": { "type": "boolean" }
+                            } } }
+                        } } }
+                    }
+                }
+            }
+        });
+        let entry = mcp_interface_entry_from_operation(
+            &operation(
+                "published_workflow_operation:11111111-1111-1111-1111-111111111111",
+                "POST",
+                path,
+            ),
+            &spec,
+            McpInterfaceCapabilitySource::PublishedWorkflowOperation,
+        )
+        .expect("published workflow operation should become an MCP interface");
+
+        assert!(entry.bindable);
+        assert_eq!(entry.interface_id, "published_workflow_operation:11111111-1111-1111-1111-111111111111");
+        assert_eq!(entry.parameter_descriptors[0].name, "order_id");
+        assert_eq!(entry.result_schema["properties"]["accepted"]["type"], json!("boolean"));
     }
 }

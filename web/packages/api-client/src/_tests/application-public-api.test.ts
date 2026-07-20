@@ -118,29 +118,8 @@ describe('application public API client', () => {
       extension: {
         slug: 'ticket_webhook',
         method: 'PATCH',
-        response_mode: 'sync',
-        parameters: [
-          {
-            source: 'path',
-            name: 'ticket_id',
-            target: 'node-workflow-start.path.ticket_id'
-          },
-          {
-            source: 'query',
-            name: 'include_history',
-            target: 'node-workflow-start.query.include_history'
-          },
-          {
-            source: 'form',
-            name: 'assignee',
-            target: 'node-workflow-start.form.assignee'
-          },
-          {
-            source: 'body',
-            name: 'summary',
-            target: 'node-workflow-start.body.summary'
-          }
-        ]
+        access_policy: 'user_api_key',
+        response_mode: 'sync'
       }
     };
     const fetchMock = vi

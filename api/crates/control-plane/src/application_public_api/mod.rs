@@ -9,6 +9,7 @@ pub mod model_catalog;
 pub mod native;
 pub mod operation_bindings;
 pub mod protocol_translation;
+pub mod published_workflow_operation;
 pub mod publications;
 pub mod run_service;
 pub mod workflow_extension;

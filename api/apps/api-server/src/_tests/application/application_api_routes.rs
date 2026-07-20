@@ -75,6 +75,7 @@ async fn create_extension_workflow(app: &Router, cookie: &str, csrf: &str, name:
                         "workflow_trigger_config": {
                             "subpath": "orders/create",
                             "http_method": "POST",
+                            "access_policy": "user_api_key",
                             "response_mode": "sync"
                         },
                         "name": name,
@@ -568,8 +569,8 @@ async fn ac_007_extension_registration_fields_are_immutable_after_creation() {
                         "extension": {
                             "slug": "orders/changed",
                             "method": "PUT",
-                            "response_mode": "async",
-                            "parameters": []
+                            "access_policy": "public",
+                            "response_mode": "async"
                         }
                     })
                     .to_string(),
@@ -602,6 +603,10 @@ async fn ac_007_extension_registration_fields_are_immutable_after_creation() {
     let current = response_json(current).await;
     assert_eq!(current["data"]["extension"]["slug"], json!("orders/create"));
     assert_eq!(current["data"]["extension"]["method"], json!("POST"));
+    assert_eq!(
+        current["data"]["extension"]["access_policy"],
+        json!("user_api_key")
+    );
     assert_eq!(current["data"]["extension"]["response_mode"], json!("sync"));
 }
 

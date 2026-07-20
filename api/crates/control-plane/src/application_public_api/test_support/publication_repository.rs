@@ -36,6 +36,11 @@ impl ApplicationPublicationRepository for ApplicationPublicApiTestRepository {
                 deterministic_test_id(0x44444444444444440000000000000000, ordinal)
             }),
             application_id: input.application_id,
+            workspace_id: inner
+                .applications
+                .get(&input.application_id)
+                .expect("publication application must exist")
+                .workspace_id,
             flow_id: input.flow_id,
             flow_version_id: input.flow_version_id,
             mapping_snapshot: input.mapping_snapshot.clone(),

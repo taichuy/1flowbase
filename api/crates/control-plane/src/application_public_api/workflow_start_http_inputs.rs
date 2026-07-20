@@ -14,7 +14,7 @@ pub enum WorkflowStartHttpInputSource {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WorkflowStartHttpInputValueType {
+pub enum WorkflowStartHttpInputValueType {
     String,
     Number,
     Boolean,
@@ -44,6 +44,10 @@ impl WorkflowStartHttpInputField {
 
     pub fn default_value(&self) -> Option<&Value> {
         self.default_value.as_ref()
+    }
+
+    pub fn value_type(&self) -> WorkflowStartHttpInputValueType {
+        self.value_type
     }
 }
 
@@ -257,7 +261,7 @@ fn coerce_value(
 }
 
 impl WorkflowStartHttpInputValueType {
-    fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::String => "string",
             Self::Number => "number",

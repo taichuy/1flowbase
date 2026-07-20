@@ -1,5 +1,6 @@
 import type {
   ConsoleWorkflowExtensionHttpMethod,
+  ConsoleWorkflowExtensionAccessPolicy,
   ConsoleWorkflowExtensionResponseMode
 } from '../application-public-api';
 import { apiFetch, apiFetchVoid } from '../transport';
@@ -15,6 +16,7 @@ export type CreateConsoleWorkflowTriggerConfig =
   | {
       subpath: string;
       http_method: ConsoleWorkflowExtensionHttpMethod;
+      access_policy: ConsoleWorkflowExtensionAccessPolicy;
       response_mode: ConsoleWorkflowExtensionResponseMode;
     };
 

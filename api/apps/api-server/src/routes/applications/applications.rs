@@ -54,6 +54,7 @@ pub struct CreateWorkflowTriggerConfigBody {
     pub subpath: Option<String>,
     pub http_method: Option<String>,
     pub response_mode: Option<String>,
+    pub access_policy: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -577,9 +578,16 @@ fn parse_create_workflow_trigger_config(
                 .ok_or(ControlPlaneError::InvalidInput("subpath"))?;
             let http_method = config.http_method.unwrap_or_else(|| "POST".to_string());
             let response_mode = config.response_mode.unwrap_or_else(|| "sync".to_string());
+            let access_policy = config
+                .access_policy
+                .unwrap_or_else(|| "user_api_key".to_string());
+            if !matches!(access_policy.as_str(), "user_api_key" | "public") {
+                return Err(ControlPlaneError::InvalidInput("access_policy").into());
+            }
             Ok(Some(CreateWorkflowTriggerConfig::Extension {
                 subpath,
                 http_method,
+                access_policy,
                 response_mode,
             }))
         }

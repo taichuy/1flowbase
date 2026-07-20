@@ -13,6 +13,9 @@ use super::mapping::{
     ApplicationApiMappingConfig, ApplicationApiMappingOutput, ApplicationOperationBindings,
     ApplicationOperationTargetBinding,
 };
+use super::published_workflow_operation::{
+    validate_published_workflow_contract, workflow_route_shapes_conflict,
+};
 use crate::{
     application::{
         ensure_existing_application_non_crud_console_operation, ApplicationNonCrudConsoleOperation,
@@ -96,6 +99,7 @@ impl From<domain::ApplicationJsDependencySelection> for ApplicationPublicationJs
 pub struct ApplicationPublicationVersionRecord {
     pub id: Uuid,
     pub application_id: Uuid,
+    pub workspace_id: Uuid,
     pub flow_id: Uuid,
     pub flow_version_id: Uuid,
     pub mapping_snapshot: ApplicationApiMappingConfig,
@@ -227,6 +231,21 @@ where
             .await?;
         let publication_version = latest_flow_version(&publication_state)?;
         let document = publication_state.draft.document.clone();
+        if let Some(extension) = command.mapping.extension.as_ref() {
+            validate_published_workflow_contract(extension, &document)
+                .map_err(|_| ControlPlaneError::InvalidInput("workflow_operation"))?;
+            for existing in self.repository.list_enabled_extension_publications().await? {
+                let Some(existing_extension) = existing.mapping_snapshot.extension.as_ref() else {
+                    continue;
+                };
+                if existing.application_id != application.id
+                    && existing_extension.method == extension.method
+                    && workflow_route_shapes_conflict(&existing_extension.slug, &extension.slug)
+                {
+                    return Err(ControlPlaneError::Conflict("workflow_route").into());
+                }
+            }
+        }
         let compile_context = self
             .repository
             .build_application_compile_context(application.workspace_id, application.id)

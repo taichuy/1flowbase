@@ -162,7 +162,10 @@ impl PgControlPlaneStore {
         .await?;
 
         let flow_run = map_flow_run_record(row)?;
-        if flow_run.run_mode == domain::FlowRunMode::PublishedApiRun {
+        if matches!(
+            flow_run.run_mode,
+            domain::FlowRunMode::PublishedApiRun | domain::FlowRunMode::WorkflowHttpRun
+        ) {
             self.upsert_application_run_log_summary_for_flow_run(&flow_run)
                 .await?;
         }

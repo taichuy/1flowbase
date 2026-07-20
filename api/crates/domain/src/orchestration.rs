@@ -10,6 +10,7 @@ pub enum FlowRunMode {
     DebugNodePreview,
     DebugFlowRun,
     PublishedApiRun,
+    WorkflowHttpRun,
 }
 
 impl FlowRunMode {
@@ -18,6 +19,7 @@ impl FlowRunMode {
             Self::DebugNodePreview => "debug_node_preview",
             Self::DebugFlowRun => "debug_flow_run",
             Self::PublishedApiRun => "published_api_run",
+            Self::WorkflowHttpRun => "workflow_http_run",
         }
     }
 }
