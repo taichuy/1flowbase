@@ -105,6 +105,10 @@ const successfulSnapshotCache = new Map<
   { snapshot: RestrictedBlockRuntimeHostSnapshot; expiresAt: number }
 >();
 
+export function clearFrontstageRuntimeSessionCache(): void {
+  successfulSnapshotCache.clear();
+}
+
 type InternalRuntimeSessionEntry =
   FrontstagePageCanvasRuntimeSessionEntry & {
     sessionKey?: string;
@@ -442,7 +446,9 @@ function isInternalEntryEqual(
     return (
       'snapshot' in currentEntry &&
       'snapshot' in nextEntry &&
-      currentEntry.snapshot === nextEntry.snapshot
+      (currentEntry.snapshot === nextEntry.snapshot ||
+        stableSerialize(currentEntry.snapshot) ===
+          stableSerialize(nextEntry.snapshot))
     );
   }
 

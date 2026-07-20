@@ -213,12 +213,6 @@ async function runRequest(
   createEffectId: (requestId: string) => string,
   pendingEffects: Map<string, PendingEffect>
 ): Promise<void> {
-  postMessage({
-    direction: 'worker_to_host',
-    type: 'phase',
-    requestId: request.requestId,
-    phase: 'compiling'
-  });
   const evaluation = evaluateJsBlockSource({
     source: request.source,
     modules: selectRequestModules(modules, request.allowedImports)
@@ -228,13 +222,6 @@ async function runRequest(
     postError(request, compileError(evaluation.error), postMessage);
     return;
   }
-
-  postMessage({
-    direction: 'worker_to_host',
-    type: 'phase',
-    requestId: request.requestId,
-    phase: 'executing'
-  });
 
   const context = createBlockContext(
     request,

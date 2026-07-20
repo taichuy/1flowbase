@@ -73,6 +73,10 @@ function createRunRequest(
   };
 }
 
+function withoutPhaseMessages(messages: JsBlockWorkerToHostMessage[]) {
+  return messages.filter((message) => message.type !== 'phase');
+}
+
 describe('JS block worker executor', () => {
   test('posts ready on init and rendered schema on run', async () => {
     const messages: JsBlockWorkerToHostMessage[] = [];
@@ -88,7 +92,7 @@ describe('JS block worker executor', () => {
       request: createRunRequest()
     });
 
-    expect(messages).toEqual([
+    expect(withoutPhaseMessages(messages)).toEqual([
       { direction: 'worker_to_host', type: 'ready' },
       {
         direction: 'worker_to_host',
@@ -174,12 +178,12 @@ export default defineBlock({
       })
     });
 
-    expect(messages).toEqual([
+    expect(withoutPhaseMessages(messages)).toEqual([
       {
         direction: 'worker_to_host',
         type: 'error',
         requestId: 'request-1',
-        kind: 'runtime_error',
+        kind: 'render_failed',
         message: 'JS block render failed: render exploded',
         errors: [
           {
@@ -211,7 +215,7 @@ export default defineBlock({
     });
 
     expect(defineBlock).not.toHaveBeenCalled();
-    expect(messages).toEqual([
+    expect(withoutPhaseMessages(messages)).toEqual([
       {
         direction: 'worker_to_host',
         type: 'error',
@@ -259,7 +263,7 @@ export default defineBlock({
       })
     });
 
-    expect(messages).toEqual([
+    expect(withoutPhaseMessages(messages)).toEqual([
       {
         direction: 'worker_to_host',
         type: 'action',
@@ -318,7 +322,7 @@ export default defineBlock({
 
     await Promise.resolve();
 
-    expect(messages).toEqual([
+    expect(withoutPhaseMessages(messages)).toEqual([
       {
         direction: 'worker_to_host',
         type: 'data',
@@ -419,7 +423,7 @@ export default defineBlock({
       direction: 'worker_to_host',
       type: 'error',
       requestId: 'request-1',
-      kind: 'runtime_error',
+      kind: 'effect_failed',
       message: 'JS block render failed: Query denied by host policy.',
       errors: [
         {
@@ -536,7 +540,7 @@ export default defineBlock({
       value: { title: 'Late' }
     });
 
-    expect(messages).toEqual([
+    expect(withoutPhaseMessages(messages)).toEqual([
       {
         direction: 'worker_to_host',
         type: 'data',
@@ -575,7 +579,7 @@ export default defineBlock({
     });
 
     expect(request.state).toEqual({ count: 1 });
-    expect(messages).toEqual([
+    expect(withoutPhaseMessages(messages)).toEqual([
       {
         direction: 'worker_to_host',
         type: 'rendered',
@@ -602,7 +606,7 @@ export default defineBlock({
       request: createRunRequest()
     });
 
-    expect(messages).toEqual([]);
+    expect(withoutPhaseMessages(messages)).toEqual([]);
   });
 
   test('attaches to a worker-like scope and detaches on dispose', async () => {
@@ -630,7 +634,7 @@ export default defineBlock({
     listener?.({ data: { direction: 'host_to_worker', type: 'init' } });
     await attached.flush();
 
-    expect(messages).toEqual([{ direction: 'worker_to_host', type: 'ready' }]);
+    expect(withoutPhaseMessages(messages)).toEqual([{ direction: 'worker_to_host', type: 'ready' }]);
     expect(listener).toBeNull();
   });
 });

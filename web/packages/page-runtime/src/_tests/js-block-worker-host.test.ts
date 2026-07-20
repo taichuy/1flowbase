@@ -231,6 +231,7 @@ describe('JS block worker host adapter', () => {
     });
 
     expect(worker.messages).toEqual([
+      { direction: 'host_to_worker', type: 'init' },
       {
         direction: 'host_to_worker',
         type: 'run',
@@ -284,6 +285,7 @@ describe('JS block worker host adapter', () => {
     });
 
     expect(worker.messages).toEqual([
+      { direction: 'host_to_worker', type: 'init' },
       {
         direction: 'host_to_worker',
         type: 'run',

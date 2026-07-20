@@ -132,6 +132,7 @@ describe('RestrictedBlockRuntimePreview', () => {
           ]
         })}
         onAction={onAction}
+        diagnostic
       />
     );
 
@@ -163,6 +164,7 @@ describe('RestrictedBlockRuntimePreview', () => {
   test('renders failed and timed out snapshots as controlled error summaries', () => {
     const { rerender } = render(
       <RestrictedBlockRuntimePreview
+        diagnostic
         snapshot={createSnapshot({
           status: 'failed',
           error: {
@@ -188,6 +190,7 @@ describe('RestrictedBlockRuntimePreview', () => {
 
     rerender(
       <RestrictedBlockRuntimePreview
+        diagnostic
         snapshot={createSnapshot({
           status: 'timed_out',
           error: {

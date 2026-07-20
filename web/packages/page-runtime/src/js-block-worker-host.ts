@@ -205,6 +205,12 @@ export function createJsBlockWorkerHost(
     const request = queuedRequest;
     queuedRequest = undefined;
     clearStartupTimeout();
+    applyMessage({
+      direction: 'worker_to_host',
+      type: 'phase',
+      requestId: request.requestId,
+      phase: 'compiling'
+    });
     scheduleRequestTimeout(request);
     worker.postMessage({ direction: 'host_to_worker', type: 'run', request });
   };
@@ -299,6 +305,12 @@ export function createJsBlockWorkerHost(
       }
 
       if (state.workerStatus === 'ready') {
+        applyMessage({
+          direction: 'worker_to_host',
+          type: 'phase',
+          requestId: request.requestId,
+          phase: 'compiling'
+        });
         scheduleRequestTimeout(request);
         worker.postMessage(message);
         return state;
